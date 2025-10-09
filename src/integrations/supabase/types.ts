@@ -14,16 +14,522 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      audit_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          data: Json | null
+          entity: string
+          entity_id: string | null
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          data?: Json | null
+          entity: string
+          entity_id?: string | null
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          data?: Json | null
+          entity?: string
+          entity_id?: string | null
+          id?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      businesses: {
+        Row: {
+          created_at: string | null
+          dba: string | null
+          ein: string | null
+          entity_type: Database["public"]["Enums"]["entity_type"] | null
+          formation_status: string | null
+          id: string
+          legal_name: string
+          naics: string | null
+          owner_user_id: string
+          registered_agent_renewal_date: string | null
+          registered_agent_state: string | null
+          revenue_band: string | null
+          state_of_formation: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          dba?: string | null
+          ein?: string | null
+          entity_type?: Database["public"]["Enums"]["entity_type"] | null
+          formation_status?: string | null
+          id?: string
+          legal_name: string
+          naics?: string | null
+          owner_user_id: string
+          registered_agent_renewal_date?: string | null
+          registered_agent_state?: string | null
+          revenue_band?: string | null
+          state_of_formation?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          dba?: string | null
+          ein?: string | null
+          entity_type?: Database["public"]["Enums"]["entity_type"] | null
+          formation_status?: string | null
+          id?: string
+          legal_name?: string
+          naics?: string | null
+          owner_user_id?: string
+          registered_agent_renewal_date?: string | null
+          registered_agent_state?: string | null
+          revenue_band?: string | null
+          state_of_formation?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      credit_accounts: {
+        Row: {
+          balance: number | null
+          created_at: string | null
+          creditor: string
+          id: string
+          limit_amount: number | null
+          opened_on: string | null
+          status: string | null
+          type: Database["public"]["Enums"]["account_type"]
+          updated_at: string | null
+          user_id: string
+          utilization: number | null
+        }
+        Insert: {
+          balance?: number | null
+          created_at?: string | null
+          creditor: string
+          id?: string
+          limit_amount?: number | null
+          opened_on?: string | null
+          status?: string | null
+          type: Database["public"]["Enums"]["account_type"]
+          updated_at?: string | null
+          user_id: string
+          utilization?: number | null
+        }
+        Update: {
+          balance?: number | null
+          created_at?: string | null
+          creditor?: string
+          id?: string
+          limit_amount?: number | null
+          opened_on?: string | null
+          status?: string | null
+          type?: Database["public"]["Enums"]["account_type"]
+          updated_at?: string | null
+          user_id?: string
+          utilization?: number | null
+        }
+        Relationships: []
+      }
+      dispute_letters: {
+        Row: {
+          account_number: string | null
+          business_name: string | null
+          created_at: string | null
+          dispute_type: string
+          id: string
+          letter_content: string | null
+          status: Database["public"]["Enums"]["letter_status"]
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          account_number?: string | null
+          business_name?: string | null
+          created_at?: string | null
+          dispute_type: string
+          id?: string
+          letter_content?: string | null
+          status?: Database["public"]["Enums"]["letter_status"]
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          account_number?: string | null
+          business_name?: string | null
+          created_at?: string | null
+          dispute_type?: string
+          id?: string
+          letter_content?: string | null
+          status?: Database["public"]["Enums"]["letter_status"]
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      disputes: {
+        Row: {
+          account_number_masked: string | null
+          bureau: string
+          created_at: string | null
+          creditor_name: string
+          due_date: string | null
+          id: string
+          narrative: string | null
+          open_date: string | null
+          reason_code: string
+          resolution_note: string | null
+          status: Database["public"]["Enums"]["dispute_status"]
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          account_number_masked?: string | null
+          bureau: string
+          created_at?: string | null
+          creditor_name: string
+          due_date?: string | null
+          id?: string
+          narrative?: string | null
+          open_date?: string | null
+          reason_code: string
+          resolution_note?: string | null
+          status?: Database["public"]["Enums"]["dispute_status"]
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          account_number_masked?: string | null
+          bureau?: string
+          created_at?: string | null
+          creditor_name?: string
+          due_date?: string | null
+          id?: string
+          narrative?: string | null
+          open_date?: string | null
+          reason_code?: string
+          resolution_note?: string | null
+          status?: Database["public"]["Enums"]["dispute_status"]
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      funding_offers: {
+        Row: {
+          affiliate_tag: string | null
+          apply_url: string
+          apr_range: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          limits_range: string | null
+          name: string
+          product_type: string
+          requirements: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          affiliate_tag?: string | null
+          apply_url: string
+          apr_range?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          limits_range?: string | null
+          name: string
+          product_type: string
+          requirements?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          affiliate_tag?: string | null
+          apply_url?: string
+          apr_range?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          limits_range?: string | null
+          name?: string
+          product_type?: string
+          requirements?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      letters: {
+        Row: {
+          body_markdown: string | null
+          created_at: string | null
+          dispute_id: string
+          id: string
+          letter_type: string
+          mail_tracking_url: string | null
+          mailed: boolean | null
+          pdf_url: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          body_markdown?: string | null
+          created_at?: string | null
+          dispute_id: string
+          id?: string
+          letter_type: string
+          mail_tracking_url?: string | null
+          mailed?: boolean | null
+          pdf_url?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          body_markdown?: string | null
+          created_at?: string | null
+          dispute_id?: string
+          id?: string
+          letter_type?: string
+          mail_tracking_url?: string | null
+          mailed?: boolean | null
+          pdf_url?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "letters_dispute_id_fkey"
+            columns: ["dispute_id"]
+            isOneToOne: false
+            referencedRelation: "disputes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          amount: number
+          created_at: string | null
+          currency: string | null
+          id: string
+          plan_type: string
+          status: Database["public"]["Enums"]["order_status"]
+          stripe_session_id: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          plan_type: string
+          status?: Database["public"]["Enums"]["order_status"]
+          stripe_session_id?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          currency?: string | null
+          id?: string
+          plan_type?: string
+          status?: Database["public"]["Enums"]["order_status"]
+          stripe_session_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          address: string | null
+          avatar_url: string | null
+          city: string | null
+          created_at: string | null
+          dob_last4: string | null
+          full_name: string | null
+          id: string
+          phone: string | null
+          postal_code: string | null
+          state: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          avatar_url?: string | null
+          city?: string | null
+          created_at?: string | null
+          dob_last4?: string | null
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          postal_code?: string | null
+          state?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          avatar_url?: string | null
+          city?: string | null
+          created_at?: string | null
+          dob_last4?: string | null
+          full_name?: string | null
+          id?: string
+          phone?: string | null
+          postal_code?: string | null
+          state?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      tasks: {
+        Row: {
+          biz_id: string | null
+          created_at: string | null
+          description: string | null
+          due_date: string | null
+          id: string
+          metadata: Json | null
+          status: Database["public"]["Enums"]["task_status"]
+          title: string
+          track: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          biz_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          metadata?: Json | null
+          status?: Database["public"]["Enums"]["task_status"]
+          title: string
+          track?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          biz_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          metadata?: Json | null
+          status?: Database["public"]["Enums"]["task_status"]
+          title?: string
+          track?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_biz_id_fkey"
+            columns: ["biz_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      vendor_offers: {
+        Row: {
+          affiliate_tag: string | null
+          apply_url: string
+          benefits: string | null
+          category: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          requirements: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          affiliate_tag?: string | null
+          apply_url: string
+          benefits?: string | null
+          category: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          requirements?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          affiliate_tag?: string | null
+          apply_url?: string
+          benefits?: string | null
+          category?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          requirements?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      account_type:
+        | "credit_card"
+        | "auto_loan"
+        | "mortgage"
+        | "personal_loan"
+        | "student_loan"
+        | "collections"
+      app_role: "admin" | "moderator" | "user"
+      dispute_status:
+        | "draft"
+        | "submitted"
+        | "under_review"
+        | "resolved"
+        | "rejected"
+      entity_type: "LLC" | "Corporation" | "Sole Proprietorship" | "Partnership"
+      letter_status: "draft" | "generated" | "sent" | "delivered"
+      order_status: "pending" | "completed" | "failed" | "refunded"
+      task_status: "pending" | "in_progress" | "completed" | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +656,27 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      account_type: [
+        "credit_card",
+        "auto_loan",
+        "mortgage",
+        "personal_loan",
+        "student_loan",
+        "collections",
+      ],
+      app_role: ["admin", "moderator", "user"],
+      dispute_status: [
+        "draft",
+        "submitted",
+        "under_review",
+        "resolved",
+        "rejected",
+      ],
+      entity_type: ["LLC", "Corporation", "Sole Proprietorship", "Partnership"],
+      letter_status: ["draft", "generated", "sent", "delivered"],
+      order_status: ["pending", "completed", "failed", "refunded"],
+      task_status: ["pending", "in_progress", "completed", "cancelled"],
+    },
   },
 } as const
