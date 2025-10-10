@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, AlertCircle } from "lucide-react";
+import { Download, AlertCircle, User } from "lucide-react";
 
 interface BureauData {
   name: string;
@@ -128,9 +128,46 @@ export function ThreeBureauReport() {
         </div>
       </Card>
 
-      {/* Account Summary */}
+      {/* Personal Information */}
       <Card className="p-6 bg-card border-border shadow-card">
-        <h2 className="text-2xl font-semibold mb-6">Account Summary</h2>
+        <div className="flex items-center gap-2 mb-6">
+          <User className="w-5 h-5 text-primary" />
+          <h2 className="text-2xl font-semibold">Personal Information</h2>
+        </div>
+        <div className="space-y-0">
+          <div className="grid grid-cols-4 gap-4 pb-3 border-b-2 border-border font-bold">
+            <div></div>
+            {bureauData.map((bureau) => (
+              <div key={bureau.name} className="text-center">{bureau.name}</div>
+            ))}
+          </div>
+
+          <CategoryRow 
+            label="Name" 
+            values={["ANTONIO DANIEL", "ANTONIO DANIEL", "ANTONIO DANIEL"]} 
+          />
+          <CategoryRow 
+            label="Also Known As" 
+            values={["ANTONIO M DANIEL", "ANTONIO DANIEL", "ANTONIO DANIEL"]} 
+          />
+          <CategoryRow 
+            label="Date of Birth" 
+            values={["1986", "1986", "1986"]} 
+          />
+          <CategoryRow 
+            label="Current Address" 
+            values={["13606 SANTA ROSA DR", "13606 SANTA ROSA DR", "13606 SANTA ROSA"]} 
+          />
+          <CategoryRow 
+            label="Credit Report Date" 
+            values={["10/3/2025", "10/3/2025", "10/3/2025"]} 
+          />
+        </div>
+      </Card>
+
+      {/* Summary - All Categories */}
+      <Card className="p-6 bg-card border-border shadow-card">
+        <h2 className="text-2xl font-semibold mb-6">Summary</h2>
         <div className="space-y-0">
           <div className="grid grid-cols-4 gap-4 pb-3 border-b-2 border-border font-bold">
             <div></div>
@@ -152,14 +189,58 @@ export function ThreeBureauReport() {
             label="Closed Accounts" 
             values={bureauData.map(b => b.closedAccounts)} 
           />
+          <CategoryRow 
+            label="Delinquent" 
+            values={bureauData.map(b => b.delinquentItems)}
+            variant="warning"
+          />
+          <CategoryRow 
+            label="Derogatory" 
+            values={bureauData.map(b => b.derogatoryItems)}
+            variant="warning"
+          />
+          <CategoryRow 
+            label="Balances" 
+            values={bureauData.map(b => formatCurrency(b.balances))} 
+          />
+          <CategoryRow 
+            label="Payments" 
+            values={bureauData.map(b => formatCurrency(b.payments))} 
+          />
+          <CategoryRow 
+            label="Public Records" 
+            values={bureauData.map(b => b.publicRecords)} 
+          />
+          <CategoryRow 
+            label="Inquiries (2 years)" 
+            values={bureauData.map(b => b.inquiries)} 
+          />
         </div>
       </Card>
 
-      {/* Negative Items */}
+      {/* Consumer Statement */}
+      <Card className="p-6 bg-card border-border shadow-card">
+        <h2 className="text-2xl font-semibold mb-6">Consumer Statement</h2>
+        <div className="space-y-0">
+          <div className="grid grid-cols-4 gap-4 pb-3 border-b-2 border-border font-bold">
+            <div></div>
+            {bureauData.map((bureau) => (
+              <div key={bureau.name} className="text-center">{bureau.name}</div>
+            ))}
+          </div>
+
+          <CategoryRow 
+            label="Statement" 
+            values={["NONE REPORTED", "NONE REPORTED", "NONE REPORTED"]} 
+          />
+        </div>
+      </Card>
+
+      {/* Negative Items Details */}
       <Card className="p-6 bg-card border-border shadow-card">
         <div className="flex items-center gap-2 mb-6">
           <AlertCircle className="w-5 h-5 text-warning" />
-          <h2 className="text-2xl font-semibold">Negative Items</h2>
+          <h2 className="text-2xl font-semibold">Negative Items Details</h2>
         </div>
         <div className="space-y-0">
           <div className="grid grid-cols-4 gap-4 pb-3 border-b-2 border-border font-bold">
@@ -179,54 +260,20 @@ export function ThreeBureauReport() {
             values={bureauData.map(b => b.delinquentItems)}
             variant="warning"
           />
-        </div>
-      </Card>
-
-      {/* Financial Summary */}
-      <Card className="p-6 bg-card border-border shadow-card">
-        <h2 className="text-2xl font-semibold mb-6">Financial Summary</h2>
-        <div className="space-y-0">
-          <div className="grid grid-cols-4 gap-4 pb-3 border-b-2 border-border font-bold">
-            <div></div>
-            {bureauData.map((bureau) => (
-              <div key={bureau.name} className="text-center">{bureau.name}</div>
-            ))}
-          </div>
-
           <CategoryRow 
-            label="Total Balances" 
-            values={bureauData.map(b => formatCurrency(b.balances))} 
+            label="Collections" 
+            values={[0, 0, 0]}
+            variant="warning"
           />
           <CategoryRow 
-            label="Monthly Payments" 
-            values={bureauData.map(b => formatCurrency(b.payments))} 
+            label="Charge-offs" 
+            values={[0, 0, 0]}
+            variant="warning"
           />
         </div>
       </Card>
 
-      {/* Inquiries & Public Records */}
-      <Card className="p-6 bg-card border-border shadow-card">
-        <h2 className="text-2xl font-semibold mb-6">Inquiries & Public Records</h2>
-        <div className="space-y-0">
-          <div className="grid grid-cols-4 gap-4 pb-3 border-b-2 border-border font-bold">
-            <div></div>
-            {bureauData.map((bureau) => (
-              <div key={bureau.name} className="text-center">{bureau.name}</div>
-            ))}
-          </div>
-
-          <CategoryRow 
-            label="Public Records" 
-            values={bureauData.map(b => b.publicRecords)} 
-          />
-          <CategoryRow 
-            label="Inquiries (2 years)" 
-            values={bureauData.map(b => b.inquiries)} 
-          />
-        </div>
-      </Card>
-
-      {/* Dispute Summary */}
+      {/* Dispute Opportunities */}
       <Card className="p-6 bg-gradient-subtle border-border shadow-card">
         <h2 className="text-2xl font-semibold mb-4">Dispute Opportunities</h2>
         <div className="grid grid-cols-3 gap-6">
