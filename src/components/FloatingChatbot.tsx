@@ -175,7 +175,7 @@ export const FloatingChatbot = () => {
                     className={`rounded-lg px-4 py-2 max-w-[80%] ${
                       message.role === "user"
                         ? "bg-primary text-primary-foreground"
-                        : "bg-secondary"
+                        : "bg-muted text-foreground"
                     }`}
                   >
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
