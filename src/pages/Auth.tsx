@@ -202,7 +202,7 @@ const Auth = () => {
 
           <Button
             type="submit"
-            className="w-full bg-gradient-gold"
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
             disabled={isLoading}
           >
             {isLoading ? (
