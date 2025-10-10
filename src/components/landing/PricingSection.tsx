@@ -136,7 +136,7 @@ export function PricingSection() {
                     : "bg-muted text-foreground hover:bg-muted/80"
                 }`}
                 size="lg"
-                onClick={() => navigate("/auth")}
+                onClick={() => navigate("/auth?mode=signup")}
               >
                 {tier.cta}
               </Button>
