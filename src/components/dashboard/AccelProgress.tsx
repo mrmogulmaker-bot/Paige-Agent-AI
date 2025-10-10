@@ -55,9 +55,9 @@ export const AccelProgress = ({ onToggle }: AccelProgressProps) => {
         ))}
       </div>
 
-      <div className="mt-6 p-4 bg-secondary rounded-lg border border-border">
-        <p className="text-sm font-medium mb-1">Next Action</p>
-        <p className="text-xs text-muted-foreground">
+      <div className="mt-6 p-5 bg-gradient-gold/20 rounded-lg border-2 border-primary shadow-glow animate-fade-in">
+        <p className="text-base font-bold mb-2 text-foreground">Next Action</p>
+        <p className="text-sm text-foreground">
           Review and submit 2 pending dispute letters for inaccurate items
         </p>
       </div>
