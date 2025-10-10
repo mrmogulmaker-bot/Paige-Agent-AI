@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare } from "lucide-react";
+import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2 } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -15,6 +15,7 @@ const menuItems = [
   { title: "Dashboard", icon: LayoutDashboard, id: "dashboard" },
   { title: "Disputes", icon: FileText, id: "disputes" },
   { title: "Accounts", icon: CreditCard, id: "accounts" },
+  { title: "Business Credit", icon: Building2, id: "business-credit" },
   { title: "BUILD Steps", icon: TrendingUp, id: "build-steps" },
   { title: "Reports", icon: BarChart3, id: "reports" },
   { title: "Learning Vault", icon: BookOpen, id: "learning-vault" },

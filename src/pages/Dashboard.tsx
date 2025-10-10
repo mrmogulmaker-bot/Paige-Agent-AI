@@ -14,6 +14,7 @@ import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
 import { BuildSteps } from "@/components/dashboard/BuildSteps";
 import { ReportsView } from "@/components/dashboard/ReportsView";
 import { ThreeBureauReport } from "@/components/dashboard/ThreeBureauReport";
+import { BusinessCreditReport } from "@/components/dashboard/BusinessCreditReport";
 import { Button } from "@/components/ui/button";
 import { FileUp, Bell } from "lucide-react";
 
@@ -128,6 +129,7 @@ const Dashboard = () => {
           
           {activeSection === "disputes" && <ThreeBureauReport />}
           {activeSection === "accounts" && <AccountsOverview />}
+          {activeSection === "business-credit" && <BusinessCreditReport />}
           {activeSection === "build-steps" && <BuildSteps />}
           {activeSection === "reports" && <ReportsView />}
         </main>
