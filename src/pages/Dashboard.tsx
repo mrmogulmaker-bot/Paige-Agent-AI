@@ -6,6 +6,10 @@ import { AccelProgress } from "@/components/dashboard/AccelProgress";
 import { BuildProgress } from "@/components/dashboard/BuildProgress";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 import { LearningVault } from "@/components/dashboard/LearningVault";
+import { DisputesManager } from "@/components/dashboard/DisputesManager";
+import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
+import { BuildSteps } from "@/components/dashboard/BuildSteps";
+import { ReportsView } from "@/components/dashboard/ReportsView";
 
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -36,41 +40,10 @@ const Dashboard = () => {
           {activeSection === "paige-ai" && <PaigeAIChat />}
           {activeSection === "learning-vault" && <LearningVault />}
           
-          {activeSection === "disputes" && (
-            <div className="max-w-4xl mx-auto">
-              <h2 className="text-3xl font-bold mb-6">Credit Disputes</h2>
-              <div className="bg-card border border-border rounded-lg p-8 text-center">
-                <p className="text-muted-foreground">Dispute management coming soon</p>
-              </div>
-            </div>
-          )}
-          
-          {activeSection === "accounts" && (
-            <div className="max-w-4xl mx-auto">
-              <h2 className="text-3xl font-bold mb-6">Account Overview</h2>
-              <div className="bg-card border border-border rounded-lg p-8 text-center">
-                <p className="text-muted-foreground">Account details coming soon</p>
-              </div>
-            </div>
-          )}
-          
-          {activeSection === "build-steps" && (
-            <div className="max-w-4xl mx-auto">
-              <h2 className="text-3xl font-bold mb-6">BUILD Framework Steps</h2>
-              <div className="bg-card border border-border rounded-lg p-8 text-center">
-                <p className="text-muted-foreground">Detailed BUILD steps coming soon</p>
-              </div>
-            </div>
-          )}
-          
-          {activeSection === "reports" && (
-            <div className="max-w-4xl mx-auto">
-              <h2 className="text-3xl font-bold mb-6">Credit Reports</h2>
-              <div className="bg-card border border-border rounded-lg p-8 text-center">
-                <p className="text-muted-foreground">Credit reports coming soon</p>
-              </div>
-            </div>
-          )}
+          {activeSection === "disputes" && <DisputesManager />}
+          {activeSection === "accounts" && <AccountsOverview />}
+          {activeSection === "build-steps" && <BuildSteps />}
+          {activeSection === "reports" && <ReportsView />}
         </main>
       </div>
     </SidebarProvider>
