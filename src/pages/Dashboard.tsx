@@ -33,7 +33,7 @@ const Dashboard = () => {
                 <div className="flex gap-3">
                   <Button variant="outline" className="gap-2">
                     <Bell className="w-4 h-4" />
-                    Credit Monitoring
+                    Import Your Report
                   </Button>
                   <Button className="gap-2 bg-gradient-gold hover:opacity-90">
                     <FileUp className="w-4 h-4" />
