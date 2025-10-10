@@ -1,1 +1,4 @@
 project_id = "bfmyebsjyuoecmjskqhs"
+
+[functions.paige-ai-chat]
+verify_jwt = false

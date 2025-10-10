@@ -263,6 +263,45 @@ export type Database = {
         }
         Relationships: []
       }
+      knowledge_base: {
+        Row: {
+          category: Database["public"]["Enums"]["knowledge_category"]
+          content: string
+          created_at: string | null
+          framework: string
+          id: string
+          metadata: Json | null
+          summary: string | null
+          tags: string[] | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          category: Database["public"]["Enums"]["knowledge_category"]
+          content: string
+          created_at?: string | null
+          framework: string
+          id?: string
+          metadata?: Json | null
+          summary?: string | null
+          tags?: string[] | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: Database["public"]["Enums"]["knowledge_category"]
+          content?: string
+          created_at?: string | null
+          framework?: string
+          id?: string
+          metadata?: Json | null
+          summary?: string | null
+          tags?: string[] | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       letters: {
         Row: {
           body_markdown: string | null
@@ -527,6 +566,13 @@ export type Database = {
         | "resolved"
         | "rejected"
       entity_type: "LLC" | "Corporation" | "Sole Proprietorship" | "Partnership"
+      knowledge_category:
+        | "framework"
+        | "principle"
+        | "practice"
+        | "model"
+        | "stage"
+        | "implementation"
       letter_status: "draft" | "generated" | "sent" | "delivered"
       order_status: "pending" | "completed" | "failed" | "refunded"
       task_status: "pending" | "in_progress" | "completed" | "cancelled"
@@ -674,6 +720,14 @@ export const Constants = {
         "rejected",
       ],
       entity_type: ["LLC", "Corporation", "Sole Proprietorship", "Partnership"],
+      knowledge_category: [
+        "framework",
+        "principle",
+        "practice",
+        "model",
+        "stage",
+        "implementation",
+      ],
       letter_status: ["draft", "generated", "sent", "delivered"],
       order_status: ["pending", "completed", "failed", "refunded"],
       task_status: ["pending", "in_progress", "completed", "cancelled"],
