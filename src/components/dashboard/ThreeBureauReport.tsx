@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, AlertCircle, User, Home, CreditCard, DollarSign, Wallet } from "lucide-react";
+import { Download, AlertCircle, User, Home, CreditCard, DollarSign, Wallet, AlertTriangle, FileText, Search, Phone } from "lucide-react";
 
 interface BureauData {
   name: string;
@@ -1050,6 +1050,152 @@ export function ThreeBureauReport() {
                   </div>
                 </div>
               </Card>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Collections */}
+      <Card className="p-6 bg-card border-border shadow-card">
+        <div className="flex items-center gap-2 mb-6">
+          <AlertTriangle className="w-5 h-5 text-warning" />
+          <h2 className="text-2xl font-semibold">Collections</h2>
+        </div>
+        
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="grid grid-cols-4 gap-4 bg-muted p-4 font-bold border-b border-border">
+            <div></div>
+            <div className="text-center">Equifax®</div>
+            <div className="text-center">Experian®</div>
+            <div className="text-center">TransUnion®</div>
+          </div>
+          <div className="p-8 text-center text-muted-foreground">
+            No collection accounts found
+          </div>
+        </div>
+      </Card>
+
+      {/* Public Information */}
+      <Card className="p-6 bg-card border-border shadow-card">
+        <div className="flex items-center gap-2 mb-6">
+          <FileText className="w-5 h-5 text-primary" />
+          <h2 className="text-2xl font-semibold">Public Information</h2>
+        </div>
+        
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="grid grid-cols-4 gap-4 bg-muted p-4 font-bold border-b border-border">
+            <div></div>
+            <div className="text-center">Equifax®</div>
+            <div className="text-center">Experian®</div>
+            <div className="text-center">TransUnion®</div>
+          </div>
+          <div className="p-8 text-center text-muted-foreground">
+            No public records found
+          </div>
+        </div>
+      </Card>
+
+      {/* Inquiries */}
+      <Card className="p-6 bg-card border-border shadow-card">
+        <div className="flex items-center gap-2 mb-6">
+          <Search className="w-5 h-5 text-primary" />
+          <h2 className="text-2xl font-semibold">Inquiries</h2>
+          <Badge variant="outline" className="ml-2">Last 2 years</Badge>
+        </div>
+        
+        <div className="space-y-6">
+          {/* Equifax Inquiries */}
+          <div>
+            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <span className="text-primary">Equifax®</span>
+              <Badge variant="outline">0 inquiries</Badge>
+            </h3>
+            <div className="border border-border rounded-lg p-4 text-center text-muted-foreground">
+              No inquiries found
+            </div>
+          </div>
+
+          {/* Experian Inquiries */}
+          <div>
+            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <span className="text-primary">Experian®</span>
+              <Badge variant="outline">0 inquiries</Badge>
+            </h3>
+            <div className="border border-border rounded-lg p-4 text-center text-muted-foreground">
+              No inquiries found
+            </div>
+          </div>
+
+          {/* TransUnion Inquiries */}
+          <div>
+            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <span className="text-primary">TransUnion®</span>
+              <Badge variant="outline">1 inquiry</Badge>
+            </h3>
+            <div className="border border-border rounded-lg overflow-hidden">
+              <div className="bg-muted p-3 font-semibold border-b border-border">
+                Recent Inquiry
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Company:</span>
+                    <span className="ml-2 font-medium">Sample Credit Company</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Date:</span>
+                    <span className="ml-2 font-medium">Within last 2 years</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Creditor Contacts */}
+      <Card className="p-6 bg-card border-border shadow-card">
+        <div className="flex items-center gap-2 mb-6">
+          <Phone className="w-5 h-5 text-primary" />
+          <h2 className="text-2xl font-semibold">Creditor Contacts</h2>
+        </div>
+        
+        <div className="space-y-4">
+          {/* MICH SGCU Contact */}
+          <div className="border border-border rounded-lg p-4">
+            <h3 className="text-lg font-semibold mb-3">MICH SGCU</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground mb-1">Address:</p>
+                <p className="font-medium">Michigan State Credit Union</p>
+                <p className="font-medium">P.O. Box [Address]</p>
+                <p className="font-medium">Michigan, MI [ZIP]</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground mb-1">Phone:</p>
+                <p className="font-medium">(XXX) XXX-XXXX</p>
+                <p className="text-muted-foreground mt-3 mb-1">Account:</p>
+                <p className="font-medium">806878******</p>
+              </div>
+            </div>
+          </div>
+
+          {/* NAVY FEDERAL Contact */}
+          <div className="border border-border rounded-lg p-4">
+            <h3 className="text-lg font-semibold mb-3">NAVY FEDERAL CREDIT UNION</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground mb-1">Address:</p>
+                <p className="font-medium">Navy Federal Credit Union</p>
+                <p className="font-medium">P.O. Box [Address]</p>
+                <p className="font-medium">Virginia, VA [ZIP]</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground mb-1">Phone:</p>
+                <p className="font-medium">(XXX) XXX-XXXX</p>
+                <p className="text-muted-foreground mt-3 mb-1">Account:</p>
+                <p className="font-medium">110001**********</p>
+              </div>
             </div>
           </div>
         </div>
