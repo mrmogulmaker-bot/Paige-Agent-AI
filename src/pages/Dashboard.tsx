@@ -10,6 +10,7 @@ import { DisputesManager } from "@/components/dashboard/DisputesManager";
 import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
 import { BuildSteps } from "@/components/dashboard/BuildSteps";
 import { ReportsView } from "@/components/dashboard/ReportsView";
+import { ThreeBureauReport } from "@/components/dashboard/ThreeBureauReport";
 import { Button } from "@/components/ui/button";
 import { FileUp, Bell } from "lucide-react";
 
@@ -54,7 +55,7 @@ const Dashboard = () => {
           {activeSection === "paige-ai" && <PaigeAIChat />}
           {activeSection === "learning-vault" && <LearningVault />}
           
-          {activeSection === "disputes" && <DisputesManager />}
+          {activeSection === "disputes" && <ThreeBureauReport />}
           {activeSection === "accounts" && <AccountsOverview />}
           {activeSection === "build-steps" && <BuildSteps />}
           {activeSection === "reports" && <ReportsView />}
