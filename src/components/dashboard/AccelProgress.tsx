@@ -1,8 +1,13 @@
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, Circle } from "lucide-react";
+import { CheckCircle2, Circle, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-export const AccelProgress = () => {
+interface AccelProgressProps {
+  onToggle?: () => void;
+}
+
+export const AccelProgress = ({ onToggle }: AccelProgressProps) => {
   const steps = [
     { label: "Audit Reports", progress: 100, complete: true },
     { label: "Correct Inaccuracies", progress: 60, complete: false },
@@ -15,12 +20,19 @@ export const AccelProgress = () => {
     <Card className="p-6 bg-card border-border shadow-card">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold">A.C.C.E.L. Framework</h2>
+          <h2 className="text-2xl font-bold">A.C.C.E.L.</h2>
           <p className="text-sm text-muted-foreground mt-1">Credit Repair Journey</p>
         </div>
-        <div className="text-right">
-          <p className="text-3xl font-bold text-primary">44%</p>
-          <p className="text-xs text-muted-foreground">Overall Progress</p>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p className="text-3xl font-bold text-primary">44%</p>
+            <p className="text-xs text-muted-foreground">Overall Progress</p>
+          </div>
+          {onToggle && (
+            <Button variant="ghost" size="icon" onClick={onToggle}>
+              <X className="w-4 h-4" />
+            </Button>
+          )}
         </div>
       </div>
 

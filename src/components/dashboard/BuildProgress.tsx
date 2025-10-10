@@ -1,8 +1,13 @@
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Lock, CheckCircle2, Circle } from "lucide-react";
+import { Lock, CheckCircle2, Circle, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-export const BuildProgress = () => {
+interface BuildProgressProps {
+  onToggle?: () => void;
+}
+
+export const BuildProgress = ({ onToggle }: BuildProgressProps) => {
   const steps = [
     { label: "Base Setup", progress: 0, complete: false, locked: true },
     { label: "Utilize Tradelines", progress: 0, complete: false, locked: true },
@@ -18,12 +23,19 @@ export const BuildProgress = () => {
       <div className="relative">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-bold">B.U.I.L.D. Framework</h2>
+            <h2 className="text-2xl font-bold">B.U.I.L.D.</h2>
             <p className="text-sm text-muted-foreground mt-1">Credit Building Path</p>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1 bg-muted rounded-full">
-            <Lock className="w-4 h-4 text-warning" />
-            <span className="text-xs font-medium">Locked</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1 bg-muted rounded-full">
+              <Lock className="w-4 h-4 text-warning" />
+              <span className="text-xs font-medium">Locked</span>
+            </div>
+            {onToggle && (
+              <Button variant="ghost" size="icon" onClick={onToggle}>
+                <X className="w-4 h-4" />
+              </Button>
+            )}
           </div>
         </div>
 
@@ -49,7 +61,7 @@ export const BuildProgress = () => {
         <div className="mt-6 p-4 bg-gradient-gold/10 rounded-lg border border-primary/20">
           <p className="text-sm font-medium mb-1 text-primary">Unlock Requirement</p>
           <p className="text-xs text-muted-foreground">
-            Complete A.C.C.E.L. framework and achieve 80% fundability score to unlock BUILD
+            Complete A.C.C.E.L. and achieve 80% fundability score to unlock BUILD
           </p>
         </div>
       </div>

@@ -16,6 +16,8 @@ import { FileUp, Bell } from "lucide-react";
 
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
+  const [showAccel, setShowAccel] = useState(true);
+  const [showBuild, setShowBuild] = useState(true);
 
   return (
     <SidebarProvider>
@@ -46,9 +48,20 @@ const Dashboard = () => {
               <CreditScoreOverview />
               
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <AccelProgress />
-                <BuildProgress />
+                {showAccel && <AccelProgress onToggle={() => setShowAccel(false)} />}
+                {showBuild && <BuildProgress onToggle={() => setShowBuild(false)} />}
               </div>
+              
+              {!showAccel && !showBuild && (
+                <div className="flex gap-4 justify-center">
+                  <Button onClick={() => setShowAccel(true)} variant="outline">
+                    Show A.C.C.E.L.
+                  </Button>
+                  <Button onClick={() => setShowBuild(true)} variant="outline">
+                    Show B.U.I.L.D.
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           
