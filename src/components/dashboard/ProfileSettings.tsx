@@ -14,6 +14,7 @@ const ssnSchema = z.string().regex(/^\d{3}-?\d{2}-?\d{4}$/, "Invalid SSN format 
 
 export const ProfileSettings = () => {
   const [isLoading, setIsLoading] = useState(false);
+  const [isEditingPersonal, setIsEditingPersonal] = useState(false);
   const { toast } = useToast();
 
   // Personal Info
@@ -162,6 +163,7 @@ export const ProfileSettings = () => {
         title: "Success",
         description: "Personal information updated successfully",
       });
+      setIsEditingPersonal(false);
     } catch (error) {
       toast({
         title: "Error",
@@ -264,7 +266,56 @@ export const ProfileSettings = () => {
 
         <TabsContent value="personal">
           <Card className="p-6">
-            <div className="space-y-4">
+            {!isEditingPersonal ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">Personal Information</h3>
+                    <p className="text-sm text-muted-foreground">View your saved information</p>
+                  </div>
+                  <Button onClick={() => setIsEditingPersonal(true)} variant="outline">
+                    Edit
+                  </Button>
+                </div>
+                
+                <div className="grid gap-3 pt-4">
+                  {fullName && (
+                    <div>
+                      <Label className="text-muted-foreground">Full Name</Label>
+                      <p className="font-medium">{fullName}</p>
+                    </div>
+                  )}
+                  {phone && (
+                    <div>
+                      <Label className="text-muted-foreground">Phone</Label>
+                      <p className="font-medium">{phone}</p>
+                    </div>
+                  )}
+                  {address && (
+                    <div>
+                      <Label className="text-muted-foreground">Address</Label>
+                      <p className="font-medium">{address}</p>
+                      {city && state && (
+                        <p className="font-medium">{city}, {state} {postalCode}</p>
+                      )}
+                    </div>
+                  )}
+                  {dobMasked && (
+                    <div>
+                      <Label className="text-muted-foreground">Date of Birth</Label>
+                      <p className="font-medium">{dobMasked}</p>
+                    </div>
+                  )}
+                  {ssnLast4 && (
+                    <div>
+                      <Label className="text-muted-foreground">SSN</Label>
+                      <p className="font-medium">***-**-{ssnLast4}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="fullName">Full Name *</Label>
                 <Input
@@ -395,21 +446,32 @@ export const ProfileSettings = () => {
                 </div>
               </div>
 
-              <Button
-                onClick={savePersonalInfo}
-                disabled={isLoading || !fullName}
-                className="w-full bg-gradient-gold"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save Personal Information"
-                )}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setIsEditingPersonal(false)}
+                  disabled={isLoading}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={savePersonalInfo}
+                  disabled={isLoading || !fullName}
+                  className="flex-1 bg-gradient-gold"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Personal Information"
+                  )}
+                </Button>
+              </div>
             </div>
+            )}
           </Card>
         </TabsContent>
 
