@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2 } from "lucide-react";
+import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -20,6 +20,7 @@ const menuItems = [
   { title: "Reports", icon: BarChart3, id: "reports" },
   { title: "Learning Vault", icon: BookOpen, id: "learning-vault" },
   { title: "Paige AI", icon: MessageSquare, id: "paige-ai" },
+  { title: "Settings", icon: Settings, id: "settings" },
 ];
 
 interface AppSidebarProps {

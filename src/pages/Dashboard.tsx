@@ -15,6 +15,8 @@ import { BuildSteps } from "@/components/dashboard/BuildSteps";
 import { ReportsView } from "@/components/dashboard/ReportsView";
 import { ThreeBureauReport } from "@/components/dashboard/ThreeBureauReport";
 import { BusinessCreditReport } from "@/components/dashboard/BusinessCreditReport";
+import { ProfileSettings } from "@/components/dashboard/ProfileSettings";
+import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
 import { Button } from "@/components/ui/button";
 import { FileUp, Bell } from "lucide-react";
 
@@ -25,6 +27,7 @@ const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -49,11 +52,27 @@ const Dashboard = () => {
       
       if (!session?.user) {
         navigate("/auth");
+      } else {
+        // Check if user needs onboarding
+        checkOnboardingStatus(session.user.id);
       }
     });
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  const checkOnboardingStatus = async (userId: string) => {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("user_id", userId)
+      .maybeSingle();
+    
+    // Show onboarding if profile is incomplete
+    if (!profile?.full_name) {
+      setShowOnboarding(true);
+    }
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -76,7 +95,10 @@ const Dashboard = () => {
   }
 
   return (
-    <SidebarProvider>
+    <>
+      <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
+      
+      <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <AppSidebar activeSection={activeSection} setActiveSection={setActiveSection} />
         <main className="flex-1 p-8 bg-background overflow-auto">
@@ -132,9 +154,11 @@ const Dashboard = () => {
           {activeSection === "business-credit" && <BusinessCreditReport />}
           {activeSection === "build-steps" && <BuildSteps />}
           {activeSection === "reports" && <ReportsView />}
+          {activeSection === "settings" && <ProfileSettings />}
         </main>
       </div>
     </SidebarProvider>
+    </>
   );
 };
 
