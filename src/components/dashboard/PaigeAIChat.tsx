@@ -152,10 +152,12 @@ export const PaigeAIChat = () => {
                   className={`max-w-[80%] rounded-lg p-4 ${
                     message.role === "user"
                       ? "bg-primary text-primary-foreground"
-                      : "bg-secondary"
+                      : "bg-muted/30 border border-border"
                   }`}
                 >
-                  <p className="text-sm">{message.content}</p>
+                  <p className={`text-sm ${message.role === "assistant" ? "text-foreground" : ""}`}>
+                    {message.content}
+                  </p>
                 </div>
               </div>
             ))}
