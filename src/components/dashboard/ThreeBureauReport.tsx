@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, AlertCircle, User, Home, CreditCard, DollarSign } from "lucide-react";
+import { Download, AlertCircle, User, Home, CreditCard, DollarSign, Wallet } from "lucide-react";
 
 interface BureauData {
   name: string;
@@ -580,6 +580,18 @@ export function ThreeBureauReport() {
           <div className="text-center py-8 text-muted-foreground">
             No personal loan accounts found
           </div>
+        </div>
+      </Card>
+
+      {/* Overdraft/Reserve Checking/Line of Credit */}
+      <Card className="p-6 bg-card border-border shadow-card">
+        <div className="flex items-center gap-2 mb-6">
+          <Wallet className="w-5 h-5 text-primary" />
+          <h2 className="text-2xl font-semibold">Overdraft/Reserve Checking/Line of Credit</h2>
+        </div>
+        
+        <div className="text-center py-8 text-muted-foreground">
+          No overdraft, reserve checking, or line of credit accounts found
         </div>
       </Card>
 
