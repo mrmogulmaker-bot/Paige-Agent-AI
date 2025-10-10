@@ -33,12 +33,12 @@ export function Header() {
 
           {/* Auth Buttons */}
           <div className="hidden md:flex md:items-center md:space-x-4">
-            <Button variant="ghost" onClick={() => navigate("/dashboard")}>
+            <Button variant="ghost" onClick={() => navigate("/auth")}>
               Sign In
             </Button>
             <Button 
               className="bg-gradient-primary text-primary-foreground hover:opacity-90 shadow-glow"
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navigate("/auth")}
             >
               Get Started
             </Button>
@@ -86,13 +86,13 @@ export function Header() {
               <Button 
                 variant="outline" 
                 className="w-full"
-                onClick={() => navigate("/dashboard")}
+                onClick={() => navigate("/auth")}
               >
                 Sign In
               </Button>
               <Button 
                 className="w-full bg-gradient-primary text-primary-foreground"
-                onClick={() => navigate("/dashboard")}
+                onClick={() => navigate("/auth")}
               >
                 Get Started
               </Button>
