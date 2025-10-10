@@ -70,6 +70,7 @@ export default {
         'gradient-hero': 'var(--gradient-hero)',
         'gradient-primary': 'var(--gradient-primary)',
         'gradient-accent': 'var(--gradient-accent)',
+        'gradient-gold': 'var(--gradient-gold)',
       },
       boxShadow: {
         'sm': 'var(--shadow-sm)',
