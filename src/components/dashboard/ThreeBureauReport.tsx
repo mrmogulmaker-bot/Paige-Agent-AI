@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, AlertCircle, User, Home, CreditCard, DollarSign, Wallet, AlertTriangle, FileText, Search, Phone } from "lucide-react";
+import { Download, AlertCircle, User, Home, CreditCard, DollarSign, Wallet, AlertTriangle, FileText, Search, Phone, Bot } from "lucide-react";
+import { DisputeLetterDialog } from "./DisputeLetterDialog";
 
 interface BureauData {
   name: string;
@@ -92,7 +94,15 @@ const CategoryRow = ({ label, values, variant = "default" }: CategoryRowProps) =
 };
 
 export function ThreeBureauReport() {
+  const [selectedBureau, setSelectedBureau] = useState<BureauData | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  
   const formatCurrency = (amount: number) => `$${amount.toLocaleString()}`;
+
+  const handleGenerateLetter = (bureau: BureauData) => {
+    setSelectedBureau(bureau);
+    setIsDialogOpen(true);
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -1203,7 +1213,16 @@ export function ThreeBureauReport() {
 
       {/* Dispute Opportunities */}
       <Card className="p-6 bg-gradient-subtle border-border shadow-card">
-        <h2 className="text-2xl font-semibold mb-4">Dispute Opportunities</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-semibold">Dispute Opportunities</h2>
+          <Badge variant="outline" className="gap-2">
+            <Bot className="w-4 h-4" />
+            AI-Powered Letter Generation
+          </Badge>
+        </div>
+        <p className="text-muted-foreground mb-6">
+          Use our AI assistant to generate professional, FCRA-compliant dispute letters for any inaccuracies found on your credit reports.
+        </p>
         <div className="grid grid-cols-3 gap-6">
           {bureauData.map((bureau) => {
             const totalIssues = bureau.derogatoryItems + bureau.delinquentItems;
@@ -1215,20 +1234,44 @@ export function ThreeBureauReport() {
                     <Badge variant="destructive" className="text-lg px-4 py-2 mb-3">
                       {totalIssues} Items to Dispute
                     </Badge>
-                    <Button className="w-full bg-gradient-gold hover:opacity-90" size="sm">
-                      Start Disputes
+                    <Button 
+                      className="w-full bg-gradient-gold hover:opacity-90 gap-2" 
+                      size="sm"
+                      onClick={() => handleGenerateLetter(bureau)}
+                    >
+                      <Bot className="w-4 h-4" />
+                      Generate Dispute Letter
                     </Button>
                   </>
                 ) : (
-                  <Badge variant="outline" className="text-sm px-4 py-2">
-                    No Issues Found
-                  </Badge>
+                  <div className="space-y-3">
+                    <Badge variant="outline" className="text-sm px-4 py-2">
+                      No Issues Found
+                    </Badge>
+                    <Button 
+                      className="w-full gap-2" 
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleGenerateLetter(bureau)}
+                    >
+                      <Bot className="w-4 h-4" />
+                      Create Custom Letter
+                    </Button>
+                  </div>
                 )}
               </div>
             );
           })}
         </div>
       </Card>
+
+      {selectedBureau && (
+        <DisputeLetterDialog 
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          bureauData={selectedBureau}
+        />
+      )}
     </div>
   );
 }
