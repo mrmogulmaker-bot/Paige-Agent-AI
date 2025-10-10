@@ -23,14 +23,15 @@ export const ProfileSettings = () => {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [postalCode, setPostalCode] = useState("");
-  const [dobLast4, setDobLast4] = useState("");
   
-  // SSN and DOB
+  // SSN and DOB - sensitive fields
   const [ssn, setSsn] = useState("");
   const [ssnLast4, setSsnLast4] = useState(""); // For display only
   const [dateOfBirth, setDateOfBirth] = useState("");
+  const [dobMasked, setDobMasked] = useState(""); // For display only
   const [showSsn, setShowSsn] = useState(false);
   const [isEditingSSN, setIsEditingSSN] = useState(false);
+  const [isEditingDOB, setIsEditingDOB] = useState(false);
 
   // Business Info
   const [legalName, setLegalName] = useState("");
@@ -64,14 +65,21 @@ export const ProfileSettings = () => {
         setCity(profile.city || "");
         setState(profile.state || "");
         setPostalCode(profile.postal_code || "");
-        setDobLast4(profile.dob_last4 || "");
-        setDateOfBirth(profile.date_of_birth || "");
+        
+        // Handle DOB - mask it if exists
+        if (profile.date_of_birth) {
+          const date = new Date(profile.date_of_birth);
+          setDobMasked(`**/**/****`);
+          setDateOfBirth("");
+          setIsEditingDOB(false);
+        }
         
         // Store only last 4 of SSN for display
         if (profile.ssn_encrypted) {
           const last4 = profile.ssn_encrypted.slice(-4);
           setSsnLast4(last4);
           setSsn(""); // Don't load full SSN into state
+          setIsEditingSSN(false);
         }
       }
 
@@ -124,8 +132,6 @@ export const ProfileSettings = () => {
         city,
         state,
         postal_code: postalCode,
-        dob_last4: dobLast4,
-        date_of_birth: dateOfBirth || null,
       };
 
       // Only update SSN if user is editing it
@@ -135,6 +141,14 @@ export const ProfileSettings = () => {
         setSsn("");
         setIsEditingSSN(false);
         setShowSsn(false);
+      }
+
+      // Only update DOB if user is editing it
+      if (dateOfBirth && isEditingDOB) {
+        updateData.date_of_birth = dateOfBirth;
+        setDobMasked(`**/**/****`);
+        setDateOfBirth("");
+        setIsEditingDOB(false);
       }
 
       const { error } = await supabase
@@ -307,27 +321,14 @@ export const ProfileSettings = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="postalCode">ZIP Code</Label>
-                  <Input
-                    id="postalCode"
-                    value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
-                    placeholder="10001"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="dobLast4">DOB Last 4 Digits</Label>
-                  <Input
-                    id="dobLast4"
-                    value={dobLast4}
-                    onChange={(e) => setDobLast4(e.target.value)}
-                    placeholder="1990"
-                    maxLength={4}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="postalCode">ZIP Code</Label>
+                <Input
+                  id="postalCode"
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                  placeholder="10001"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -335,10 +336,24 @@ export const ProfileSettings = () => {
                   <Label htmlFor="dateOfBirth">Date of Birth</Label>
                   <Input
                     id="dateOfBirth"
-                    type="date"
-                    value={dateOfBirth}
-                    onChange={(e) => setDateOfBirth(e.target.value)}
+                    type={isEditingDOB ? "date" : "text"}
+                    value={isEditingDOB ? dateOfBirth : dobMasked}
+                    onChange={(e) => {
+                      setDateOfBirth(e.target.value);
+                      setIsEditingDOB(true);
+                    }}
+                    onClick={() => {
+                      if (!isEditingDOB && dobMasked) {
+                        setIsEditingDOB(true);
+                        setDateOfBirth("");
+                      }
+                    }}
+                    placeholder={dobMasked || "Select date"}
+                    readOnly={!isEditingDOB && !!dobMasked}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    {dobMasked && !isEditingDOB ? "Click to update" : ""}
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -360,16 +375,19 @@ export const ProfileSettings = () => {
                       }}
                       placeholder="XXX-XX-XXXX"
                       maxLength={11}
+                      readOnly={!isEditingSSN && !!ssnLast4}
                     />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0 top-0 h-full"
-                      onClick={() => setShowSsn(!showSsn)}
-                    >
-                      {showSsn ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
+                    {isEditingSSN && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-0 h-full"
+                        onClick={() => setShowSsn(!showSsn)}
+                      >
+                        {showSsn ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {ssnLast4 && !isEditingSSN ? "Click to update" : "Format: XXX-XX-XXXX"}
