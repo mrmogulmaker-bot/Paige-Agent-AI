@@ -10,6 +10,8 @@ import { DisputesManager } from "@/components/dashboard/DisputesManager";
 import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
 import { BuildSteps } from "@/components/dashboard/BuildSteps";
 import { ReportsView } from "@/components/dashboard/ReportsView";
+import { Button } from "@/components/ui/button";
+import { FileUp, Bell } from "lucide-react";
 
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -21,11 +23,23 @@ const Dashboard = () => {
         <main className="flex-1 p-8 bg-background overflow-auto">
           {activeSection === "dashboard" && (
             <div className="space-y-8 max-w-7xl mx-auto">
-              <div>
-                <h1 className="text-4xl font-bold mb-2 bg-gradient-gold bg-clip-text text-transparent">
-                  Welcome Back, Mentee
-                </h1>
-                <p className="text-muted-foreground">Track your journey to financial empowerment</p>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h1 className="text-4xl font-bold mb-2 bg-gradient-gold bg-clip-text text-transparent">
+                    Welcome Back, Mentee
+                  </h1>
+                  <p className="text-muted-foreground">Track your journey to financial empowerment</p>
+                </div>
+                <div className="flex gap-3">
+                  <Button variant="outline" className="gap-2">
+                    <Bell className="w-4 h-4" />
+                    Credit Monitoring
+                  </Button>
+                  <Button className="gap-2 bg-gradient-gold hover:opacity-90">
+                    <FileUp className="w-4 h-4" />
+                    Import Credit Report
+                  </Button>
+                </div>
               </div>
               
               <CreditScoreOverview />
