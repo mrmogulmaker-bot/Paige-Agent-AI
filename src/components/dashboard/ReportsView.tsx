@@ -145,34 +145,13 @@ export function ReportsView() {
               </Button>
             </>
           ) : !loading ? (
-            <Button onClick={() => setShowWizard(true)} className="bg-gradient-primary">
+            <Button onClick={() => setShowWizard(true)} className="bg-gradient-gold hover:opacity-90">
               <Download className="w-4 h-4 mr-2" />
               Import Credit Reports
             </Button>
           ) : null}
         </div>
       </div>
-
-      {!loading && !verificationStatus.isVerified && (
-        <Card className="p-6 border-accent/20 bg-accent/5">
-          <div className="flex items-start gap-4">
-            <div className="p-3 rounded-lg bg-accent/10">
-              <AlertCircle className="w-6 h-6 text-accent" />
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-lg mb-2">Connect Your Credit Reports</h3>
-              <p className="text-muted-foreground mb-4">
-                To access your credit reports and start tracking your progress, you'll need to securely 
-                connect to the three major credit bureaus. This process is quick, secure, and only takes 
-                a few minutes.
-              </p>
-              <Button onClick={() => setShowWizard(true)} className="bg-gradient-primary">
-                Get Started
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {creditReports.map((report) => (
