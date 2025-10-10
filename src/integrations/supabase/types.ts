@@ -460,11 +460,13 @@ export type Database = {
           avatar_url: string | null
           city: string | null
           created_at: string | null
+          date_of_birth: string | null
           dob_last4: string | null
           full_name: string | null
           id: string
           phone: string | null
           postal_code: string | null
+          ssn_encrypted: string | null
           state: string | null
           updated_at: string | null
           user_id: string
@@ -474,11 +476,13 @@ export type Database = {
           avatar_url?: string | null
           city?: string | null
           created_at?: string | null
+          date_of_birth?: string | null
           dob_last4?: string | null
           full_name?: string | null
           id?: string
           phone?: string | null
           postal_code?: string | null
+          ssn_encrypted?: string | null
           state?: string | null
           updated_at?: string | null
           user_id: string
@@ -488,11 +492,13 @@ export type Database = {
           avatar_url?: string | null
           city?: string | null
           created_at?: string | null
+          date_of_birth?: string | null
           dob_last4?: string | null
           full_name?: string | null
           id?: string
           phone?: string | null
           postal_code?: string | null
+          ssn_encrypted?: string | null
           state?: string | null
           updated_at?: string | null
           user_id?: string

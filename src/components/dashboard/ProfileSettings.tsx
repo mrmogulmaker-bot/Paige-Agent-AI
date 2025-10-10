@@ -7,7 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, User, Building2 } from "lucide-react";
+import { Loader2, User, Building2, Eye, EyeOff } from "lucide-react";
+import { z } from "zod";
+
+const ssnSchema = z.string().regex(/^\d{3}-?\d{2}-?\d{4}$/, "Invalid SSN format (XXX-XX-XXXX)");
 
 export const ProfileSettings = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -21,6 +24,13 @@ export const ProfileSettings = () => {
   const [state, setState] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [dobLast4, setDobLast4] = useState("");
+  
+  // SSN and DOB
+  const [ssn, setSsn] = useState("");
+  const [ssnLast4, setSsnLast4] = useState(""); // For display only
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [showSsn, setShowSsn] = useState(false);
+  const [isEditingSSN, setIsEditingSSN] = useState(false);
 
   // Business Info
   const [legalName, setLegalName] = useState("");
@@ -55,6 +65,14 @@ export const ProfileSettings = () => {
         setState(profile.state || "");
         setPostalCode(profile.postal_code || "");
         setDobLast4(profile.dob_last4 || "");
+        setDateOfBirth(profile.date_of_birth || "");
+        
+        // Store only last 4 of SSN for display
+        if (profile.ssn_encrypted) {
+          const last4 = profile.ssn_encrypted.slice(-4);
+          setSsnLast4(last4);
+          setSsn(""); // Don't load full SSN into state
+        }
       }
 
       // Load business profile
@@ -84,17 +102,44 @@ export const ProfileSettings = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      // Validate SSN if provided
+      if (ssn && isEditingSSN) {
+        try {
+          ssnSchema.parse(ssn);
+        } catch (error) {
+          toast({
+            title: "Invalid SSN",
+            description: "Please enter a valid SSN (XXX-XX-XXXX)",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      const updateData: any = {
+        full_name: fullName,
+        phone,
+        address,
+        city,
+        state,
+        postal_code: postalCode,
+        dob_last4: dobLast4,
+        date_of_birth: dateOfBirth || null,
+      };
+
+      // Only update SSN if user is editing it
+      if (ssn && isEditingSSN) {
+        updateData.ssn_encrypted = ssn; // In production, encrypt this!
+        setSsnLast4(ssn.slice(-4));
+        setSsn("");
+        setIsEditingSSN(false);
+        setShowSsn(false);
+      }
+
       const { error } = await supabase
         .from("profiles")
-        .update({
-          full_name: fullName,
-          phone,
-          address,
-          city,
-          state,
-          postal_code: postalCode,
-          dob_last4: dobLast4,
-        })
+        .update(updateData)
         .eq("user_id", user.id);
 
       if (error) throw error;
@@ -282,6 +327,53 @@ export const ProfileSettings = () => {
                     placeholder="1990"
                     maxLength={4}
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                  <Input
+                    id="dateOfBirth"
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(e) => setDateOfBirth(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ssn">Social Security Number</Label>
+                  <div className="relative">
+                    <Input
+                      id="ssn"
+                      type={showSsn ? "text" : "password"}
+                      value={isEditingSSN ? ssn : (ssnLast4 ? `***-**-${ssnLast4}` : "")}
+                      onChange={(e) => {
+                        setSsn(e.target.value);
+                        setIsEditingSSN(true);
+                      }}
+                      onClick={() => {
+                        if (!isEditingSSN && ssnLast4) {
+                          setIsEditingSSN(true);
+                          setSsn("");
+                        }
+                      }}
+                      placeholder="XXX-XX-XXXX"
+                      maxLength={11}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-full"
+                      onClick={() => setShowSsn(!showSsn)}
+                    >
+                      {showSsn ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {ssnLast4 && !isEditingSSN ? "Click to update" : "Format: XXX-XX-XXXX"}
+                  </p>
                 </div>
               </div>
 
