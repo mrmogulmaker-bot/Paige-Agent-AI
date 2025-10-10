@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 const tiers = [
   {
     name: "Starter",
-    price: "$97",
+    price: "$47",
     period: "/month",
     description: "Perfect for getting started with credit repair",
     features: [
@@ -22,7 +22,7 @@ const tiers = [
   },
   {
     name: "Professional",
-    price: "$197",
+    price: "$97",
     period: "/month",
     description: "Complete credit and business building solution",
     features: [
@@ -38,18 +38,35 @@ const tiers = [
     popular: true,
   },
   {
+    name: "Premium",
+    price: "$197",
+    period: "/month",
+    description: "Advanced tools for serious credit builders",
+    features: [
+      "Everything in Professional",
+      "Advanced analytics dashboard",
+      "Custom funding strategies",
+      "Dedicated account manager",
+      "Unlimited disputes",
+      "Priority AI coaching",
+      "Monthly strategy sessions",
+    ],
+    cta: "Get Started",
+    popular: false,
+  },
+  {
     name: "Enterprise",
     price: "$497",
     period: "/month",
     description: "For serious entrepreneurs scaling fast",
     features: [
-      "Everything in Professional",
+      "Everything in Premium",
       "3M Framework (Make, Manage, Multiply)",
       "Dedicated success manager",
-      "Custom funding strategies",
-      "Advanced analytics",
       "White-glove service",
-      "Unlimited disputes",
+      "Custom integration support",
+      "Team collaboration tools",
+      "Personalized training sessions",
     ],
     cta: "Contact Sales",
     popular: false,
@@ -77,7 +94,7 @@ export function PricingSection() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {tiers.map((tier, index) => (
             <Card
               key={index}
