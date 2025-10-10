@@ -19,6 +19,9 @@ import { ProfileSettings } from "@/components/dashboard/ProfileSettings";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
 import { Button } from "@/components/ui/button";
 import { FileUp, Bell } from "lucide-react";
+import { UpgradeBanner } from "@/components/dashboard/UpgradeBanner";
+import { UpgradeModal } from "@/components/dashboard/UpgradeModal";
+import { PlanGate } from "@/components/dashboard/PlanGate";
 
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -28,6 +31,7 @@ const Dashboard = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -97,6 +101,7 @@ const Dashboard = () => {
   return (
     <>
       <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
+      <UpgradeModal open={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} />
       
       <SidebarProvider>
       <div className="min-h-screen flex w-full">
@@ -104,6 +109,8 @@ const Dashboard = () => {
         <main className="flex-1 p-8 bg-background overflow-auto">
           {activeSection === "dashboard" && (
             <div className="space-y-8 max-w-7xl mx-auto">
+              <UpgradeBanner onUpgradeClick={() => setShowUpgradeModal(true)} />
+              
               <div className="flex items-start justify-between">
                 <div>
                   <h1 className="text-4xl font-bold mb-2 bg-gradient-gold bg-clip-text text-transparent">
@@ -151,8 +158,16 @@ const Dashboard = () => {
           
           {activeSection === "disputes" && <ThreeBureauReport />}
           {activeSection === "accounts" && <AccountsOverview />}
-          {activeSection === "business-credit" && <BusinessCreditReport />}
-          {activeSection === "build-steps" && <BuildSteps />}
+          {activeSection === "business-credit" && (
+            <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
+              <BusinessCreditReport />
+            </PlanGate>
+          )}
+          {activeSection === "build-steps" && (
+            <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
+              <BuildSteps />
+            </PlanGate>
+          )}
           {activeSection === "reports" && <ReportsView />}
           {activeSection === "settings" && <ProfileSettings />}
         </main>

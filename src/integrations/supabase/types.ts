@@ -427,6 +427,48 @@ export type Database = {
         }
         Relationships: []
       }
+      subscription_plans: {
+        Row: {
+          ai_chat_limit: number | null
+          created_at: string | null
+          dispute_limit: number | null
+          features: Json
+          has_business_credit: boolean | null
+          has_funding_tools: boolean | null
+          id: string
+          name: string
+          price: number
+          slug: string
+          updated_at: string | null
+        }
+        Insert: {
+          ai_chat_limit?: number | null
+          created_at?: string | null
+          dispute_limit?: number | null
+          features?: Json
+          has_business_credit?: boolean | null
+          has_funding_tools?: boolean | null
+          id?: string
+          name: string
+          price: number
+          slug: string
+          updated_at?: string | null
+        }
+        Update: {
+          ai_chat_limit?: number | null
+          created_at?: string | null
+          dispute_limit?: number | null
+          features?: Json
+          has_business_credit?: boolean | null
+          has_funding_tools?: boolean | null
+          id?: string
+          name?: string
+          price?: number
+          slug?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       tasks: {
         Row: {
           biz_id: string | null
@@ -494,6 +536,75 @@ export type Database = {
           created_at?: string | null
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_subscriptions: {
+        Row: {
+          created_at: string | null
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          plan_slug: string
+          status: string
+          stripe_subscription_id: string | null
+          trial_ends_at: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          plan_slug: string
+          status?: string
+          stripe_subscription_id?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          plan_slug?: string
+          status?: string
+          stripe_subscription_id?: string | null
+          trial_ends_at?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_usage: {
+        Row: {
+          ai_chats_used: number | null
+          created_at: string | null
+          disputes_used: number | null
+          id: string
+          reset_at: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ai_chats_used?: number | null
+          created_at?: string | null
+          disputes_used?: number | null
+          id?: string
+          reset_at?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ai_chats_used?: number | null
+          created_at?: string | null
+          disputes_used?: number | null
+          id?: string
+          reset_at?: string | null
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []
