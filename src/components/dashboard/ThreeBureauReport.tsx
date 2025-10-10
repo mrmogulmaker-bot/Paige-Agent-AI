@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, AlertCircle, User, Home } from "lucide-react";
+import { Download, AlertCircle, User, Home, CreditCard } from "lucide-react";
 
 interface BureauData {
   name: string;
@@ -270,6 +270,466 @@ export function ThreeBureauReport() {
             values={[0, 0, 0]}
             variant="warning"
           />
+        </div>
+      </Card>
+
+      {/* Revolving Accounts */}
+      <Card className="p-6 bg-card border-border shadow-card">
+        <div className="flex items-center gap-2 mb-6">
+          <CreditCard className="w-5 h-5 text-primary" />
+          <h2 className="text-2xl font-semibold">Revolving Accounts</h2>
+          <Badge variant="outline" className="ml-2">Accounts with an open-end term</Badge>
+        </div>
+
+        {/* Account 1: NAVY FEDERAL CREDIT UNION */}
+        <div className="mb-8 pb-8 border-b border-border">
+          <h3 className="text-xl font-semibold mb-4">NAVY FEDERAL CREDIT UNION - Credit Card</h3>
+          
+          <div className="border border-border rounded-lg overflow-hidden">
+            <div className="grid grid-cols-4 gap-4 bg-muted p-4 font-bold border-b border-border">
+              <div></div>
+              <div className="text-center">Equifax®</div>
+              <div className="text-center">Experian®</div>
+              <div className="text-center">TransUnion®</div>
+            </div>
+
+            <div className="divide-y divide-border">
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Account #</div>
+                <div className="text-sm text-center">110001**********</div>
+                <div className="text-sm text-center">110001******</div>
+                <div className="text-sm text-center">****</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">High Balance</div>
+                <div className="text-sm text-center font-semibold">$7,407</div>
+                <div className="text-sm text-center font-semibold">$0</div>
+                <div className="text-sm text-center font-semibold">$7,407</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Balance Owed</div>
+                <div className="text-sm text-center font-semibold text-primary">$185</div>
+                <div className="text-sm text-center font-semibold text-primary">$185</div>
+                <div className="text-sm text-center font-semibold text-primary">$185</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Credit Limit</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Date Opened</div>
+                <div className="text-sm text-center">9/1/2021</div>
+                <div className="text-sm text-center">8/1/2025</div>
+                <div className="text-sm text-center">8/31/2025</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Date Reported</div>
+                <div className="text-sm text-center">9/1/2021</div>
+                <div className="text-sm text-center">8/1/2025</div>
+                <div className="text-sm text-center">8/31/2025</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Last Verified</div>
+                <div className="text-sm text-center">8/1/2025</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Date of Last Activity</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Account Type</div>
+                <div className="text-sm text-center">Bank Credit Cards</div>
+                <div className="text-sm text-center">Bank Credit Cards</div>
+                <div className="text-sm text-center">Bank Credit Cards</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Account Status</div>
+                <div className="text-sm text-center"><Badge variant="outline" className="bg-success/10">Open</Badge></div>
+                <div className="text-sm text-center"><Badge variant="outline" className="bg-success/10">Open</Badge></div>
+                <div className="text-sm text-center"><Badge variant="outline" className="bg-success/10">Open</Badge></div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Payment Status</div>
+                <div className="text-sm text-center"><Badge className="bg-success">Current</Badge></div>
+                <div className="text-sm text-center"><Badge className="bg-success">Current</Badge></div>
+                <div className="text-sm text-center"><Badge className="bg-success">Current</Badge></div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Account Rating</div>
+                <div className="text-sm text-center">Paid</div>
+                <div className="text-sm text-center">Open</div>
+                <div className="text-sm text-center">Open</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Account Description</div>
+                <div className="text-sm text-center">Individual</div>
+                <div className="text-sm text-center">Individual</div>
+                <div className="text-sm text-center">Individual</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Creditor Type</div>
+                <div className="text-sm text-center">All Banks</div>
+                <div className="text-sm text-center">All Banks</div>
+                <div className="text-sm text-center">All Banks</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Dispute Status</div>
+                <div className="text-sm text-center">Account not disputed</div>
+                <div className="text-sm text-center">Account not disputed</div>
+                <div className="text-sm text-center">Account not disputed</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Creditor Remarks</div>
+                <div className="text-sm text-center">Credit card</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Closed Date</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <h4 className="text-lg font-semibold mb-4">Two-Year Payment History</h4>
+            <div className="border border-border rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted border-b border-border">
+                      <th className="p-2 text-left font-semibold">Bureau</th>
+                      {['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', "'24", 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', "'25", 'Feb', 'Mar', 'Apr'].map((month, idx) => (
+                        <th key={idx} className="p-2 text-center">{month}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    <tr className="hover:bg-muted/50">
+                      <td className="p-2 font-medium">Equifax</td>
+                      {Array(24).fill('OK').map((_, idx) => (
+                        <td key={idx} className="p-2 text-center">
+                          <Badge variant="outline" className="bg-success/10 text-xs px-1">OK</Badge>
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="hover:bg-muted/50">
+                      <td className="p-2 font-medium">Experian</td>
+                      {Array(24).fill('OK').map((_, idx) => (
+                        <td key={idx} className="p-2 text-center">
+                          <Badge variant="outline" className="bg-success/10 text-xs px-1">OK</Badge>
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="hover:bg-muted/50">
+                      <td className="p-2 font-medium">TransUnion</td>
+                      {Array(24).fill('OK').map((_, idx) => (
+                        <td key={idx} className="p-2 text-center">
+                          <Badge variant="outline" className="bg-success/10 text-xs px-1">OK</Badge>
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <h4 className="text-lg font-semibold mb-4">Days Late - 7 Year History</h4>
+            <div className="grid grid-cols-3 gap-4">
+              <Card className="p-4">
+                <div className="text-sm font-semibold mb-2">Equifax®</div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">30 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">60 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">90 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-sm font-semibold mb-2">Experian®</div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">30 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">60 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">90 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-sm font-semibold mb-2">TransUnion®</div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">30 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">60 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">90 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+        </div>
+
+        {/* Account 2: Additional Credit Card Account */}
+        <div className="mb-8 pb-8 border-b border-border">
+          <h3 className="text-xl font-semibold mb-4">Credit Card Account - $9,500 Limit</h3>
+          
+          <div className="border border-border rounded-lg overflow-hidden">
+            <div className="grid grid-cols-4 gap-4 bg-muted p-4 font-bold border-b border-border">
+              <div></div>
+              <div className="text-center">Equifax®</div>
+              <div className="text-center">Experian®</div>
+              <div className="text-center">TransUnion®</div>
+            </div>
+
+            <div className="divide-y divide-border">
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Account #</div>
+                <div className="text-sm text-center">-3499**********</div>
+                <div className="text-sm text-center">349993******</div>
+                <div className="text-sm text-center">349993**********</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">High Balance</div>
+                <div className="text-sm text-center font-semibold">$242</div>
+                <div className="text-sm text-center font-semibold">$242</div>
+                <div className="text-sm text-center font-semibold">$0</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Balance Owed</div>
+                <div className="text-sm text-center font-semibold text-primary">—</div>
+                <div className="text-sm text-center font-semibold text-primary">—</div>
+                <div className="text-sm text-center font-semibold text-primary">—</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Credit Limit</div>
+                <div className="text-sm text-center font-semibold">$9,500</div>
+                <div className="text-sm text-center font-semibold">$9,500</div>
+                <div className="text-sm text-center font-semibold">$9,500</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Payment Amount</div>
+                <div className="text-sm text-center">$0</div>
+                <div className="text-sm text-center">$0</div>
+                <div className="text-sm text-center">$0</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Last Payment</div>
+                <div className="text-sm text-center">8/1/2025</div>
+                <div className="text-sm text-center">7/29/2025</div>
+                <div className="text-sm text-center">7/29/2025</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Date of Last Activity</div>
+                <div className="text-sm text-center">9/1/2025</div>
+                <div className="text-sm text-center">9/2/2025</div>
+                <div className="text-sm text-center">—</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Last Verified</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Account Type</div>
+                <div className="text-sm text-center">Credit Card</div>
+                <div className="text-sm text-center">Credit Card</div>
+                <div className="text-sm text-center">Credit Card</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Account Status</div>
+                <div className="text-sm text-center"><Badge variant="outline" className="bg-success/10">Open</Badge></div>
+                <div className="text-sm text-center"><Badge variant="outline" className="bg-success/10">Open</Badge></div>
+                <div className="text-sm text-center"><Badge variant="outline" className="bg-success/10">Open</Badge></div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Payment Status</div>
+                <div className="text-sm text-center"><Badge className="bg-success">Current</Badge></div>
+                <div className="text-sm text-center"><Badge className="bg-success">Current</Badge></div>
+                <div className="text-sm text-center"><Badge className="bg-success">Current</Badge></div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Past Due Amount</div>
+                <div className="text-sm text-center">$0</div>
+                <div className="text-sm text-center">$0</div>
+                <div className="text-sm text-center">$0</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Term Length</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-4 p-3 hover:bg-muted/50">
+                <div className="text-sm font-medium text-muted-foreground">Payment Frequency</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+                <div className="text-sm text-center">—</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <h4 className="text-lg font-semibold mb-4">Two-Year Payment History</h4>
+            <div className="border border-border rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted border-b border-border">
+                      <th className="p-2 text-left font-semibold">Bureau</th>
+                      {['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', "'24", 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', "'25", 'Feb', 'Mar', 'Apr'].map((month, idx) => (
+                        <th key={idx} className="p-2 text-center">{month}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    <tr className="hover:bg-muted/50">
+                      <td className="p-2 font-medium">Equifax</td>
+                      {Array(24).fill('OK').map((_, idx) => (
+                        <td key={idx} className="p-2 text-center">
+                          <Badge variant="outline" className="bg-success/10 text-xs px-1">OK</Badge>
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="hover:bg-muted/50">
+                      <td className="p-2 font-medium">Experian</td>
+                      {Array(24).fill('OK').map((_, idx) => (
+                        <td key={idx} className="p-2 text-center">
+                          <Badge variant="outline" className="bg-success/10 text-xs px-1">OK</Badge>
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="hover:bg-muted/50">
+                      <td className="p-2 font-medium">TransUnion</td>
+                      {Array(24).fill('OK').map((_, idx) => (
+                        <td key={idx} className="p-2 text-center">
+                          <Badge variant="outline" className="bg-success/10 text-xs px-1">OK</Badge>
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <h4 className="text-lg font-semibold mb-4">Days Late - 7 Year History</h4>
+            <div className="grid grid-cols-3 gap-4">
+              <Card className="p-4">
+                <div className="text-sm font-semibold mb-2">Equifax®</div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">30 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">60 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">90 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-sm font-semibold mb-2">Experian®</div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">30 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">60 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">90 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-sm font-semibold mb-2">TransUnion®</div>
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">30 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">60 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">90 days:</span>
+                    <span className="font-semibold">0</span>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
         </div>
       </Card>
 
