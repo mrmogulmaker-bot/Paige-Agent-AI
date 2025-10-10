@@ -137,6 +137,78 @@ export type Database = {
         }
         Relationships: []
       }
+      credit_report_verifications: {
+        Row: {
+          created_at: string | null
+          date_of_birth: string | null
+          equifax_api_user_id: string | null
+          equifax_expires_at: string | null
+          equifax_verified: boolean | null
+          equifax_verified_at: string | null
+          experian_api_user_id: string | null
+          experian_expires_at: string | null
+          experian_verified: boolean | null
+          experian_verified_at: string | null
+          id: string
+          kba_attempts: number | null
+          kba_completed: boolean | null
+          kba_last_attempt_at: string | null
+          ssn_last_4: string | null
+          transunion_api_user_id: string | null
+          transunion_expires_at: string | null
+          transunion_verified: boolean | null
+          transunion_verified_at: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          date_of_birth?: string | null
+          equifax_api_user_id?: string | null
+          equifax_expires_at?: string | null
+          equifax_verified?: boolean | null
+          equifax_verified_at?: string | null
+          experian_api_user_id?: string | null
+          experian_expires_at?: string | null
+          experian_verified?: boolean | null
+          experian_verified_at?: string | null
+          id?: string
+          kba_attempts?: number | null
+          kba_completed?: boolean | null
+          kba_last_attempt_at?: string | null
+          ssn_last_4?: string | null
+          transunion_api_user_id?: string | null
+          transunion_expires_at?: string | null
+          transunion_verified?: boolean | null
+          transunion_verified_at?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          date_of_birth?: string | null
+          equifax_api_user_id?: string | null
+          equifax_expires_at?: string | null
+          equifax_verified?: boolean | null
+          equifax_verified_at?: string | null
+          experian_api_user_id?: string | null
+          experian_expires_at?: string | null
+          experian_verified?: boolean | null
+          experian_verified_at?: string | null
+          id?: string
+          kba_attempts?: number | null
+          kba_completed?: boolean | null
+          kba_last_attempt_at?: string | null
+          ssn_last_4?: string | null
+          transunion_api_user_id?: string | null
+          transunion_expires_at?: string | null
+          transunion_verified?: boolean | null
+          transunion_verified_at?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       dispute_letters: {
         Row: {
           account_number: string | null

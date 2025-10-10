@@ -1,8 +1,12 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Download, AlertCircle, CheckCircle2, TrendingUp } from "lucide-react";
+import { FileText, Download, AlertCircle, CheckCircle2, TrendingUp, Shield } from "lucide-react";
+import { CreditReportWizard } from "./CreditReportWizard";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const creditReports = [
   {
@@ -58,7 +62,66 @@ const reportItems = [
   },
 ];
 
+interface VerificationStatus {
+  isVerified: boolean;
+  experian: boolean;
+  equifax: boolean;
+  transunion: boolean;
+  expiresAt?: string;
+}
+
 export function ReportsView() {
+  const [showWizard, setShowWizard] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>({
+    isVerified: false,
+    experian: false,
+    equifax: false,
+    transunion: false,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchVerificationStatus();
+  }, []);
+
+  const fetchVerificationStatus = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("credit_report_verifications")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error fetching verification:", error);
+        return;
+      }
+
+      if (data) {
+        const isVerified = data.experian_verified && data.equifax_verified && data.transunion_verified;
+        setVerificationStatus({
+          isVerified,
+          experian: data.experian_verified || false,
+          equifax: data.equifax_verified || false,
+          transunion: data.transunion_verified || false,
+          expiresAt: data.experian_expires_at || undefined,
+        });
+      }
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWizardComplete = () => {
+    fetchVerificationStatus();
+  };
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -68,11 +131,48 @@ export function ReportsView() {
           </h1>
           <p className="text-muted-foreground mt-2">Monitor your credit reports from all three bureaus</p>
         </div>
-        <Button className="bg-gradient-gold hover:opacity-90">
-          <Download className="w-4 h-4 mr-2" />
-          Download All Reports
-        </Button>
+
+        <div className="flex items-center gap-3">
+          {!loading && verificationStatus.isVerified ? (
+            <>
+              <Badge className="bg-success text-success-foreground">
+                <Shield className="w-3 h-3 mr-1" />
+                Verified
+              </Badge>
+              <Button className="bg-gradient-gold hover:opacity-90">
+                <Download className="w-4 h-4 mr-2" />
+                Download All Reports
+              </Button>
+            </>
+          ) : !loading ? (
+            <Button onClick={() => setShowWizard(true)} className="bg-gradient-primary">
+              <Download className="w-4 h-4 mr-2" />
+              Import Credit Reports
+            </Button>
+          ) : null}
+        </div>
       </div>
+
+      {!loading && !verificationStatus.isVerified && (
+        <Card className="p-6 border-accent/20 bg-accent/5">
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-lg bg-accent/10">
+              <AlertCircle className="w-6 h-6 text-accent" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg mb-2">Connect Your Credit Reports</h3>
+              <p className="text-muted-foreground mb-4">
+                To access your credit reports and start tracking your progress, you'll need to securely 
+                connect to the three major credit bureaus. This process is quick, secure, and only takes 
+                a few minutes.
+              </p>
+              <Button onClick={() => setShowWizard(true)} className="bg-gradient-primary">
+                Get Started
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {creditReports.map((report) => (
@@ -185,6 +285,12 @@ export function ReportsView() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <CreditReportWizard
+        open={showWizard}
+        onClose={() => setShowWizard(false)}
+        onComplete={handleWizardComplete}
+      />
     </div>
   );
 }
