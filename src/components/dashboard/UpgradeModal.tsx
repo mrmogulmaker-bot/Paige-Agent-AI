@@ -6,6 +6,7 @@ import { CheckCircle, Crown } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 
 interface UpgradeModalProps {
   open: boolean;
@@ -14,13 +15,12 @@ interface UpgradeModalProps {
 
 export function UpgradeModal({ open, onClose }: UpgradeModalProps) {
   const [plans, setPlans] = useState<any[]>([]);
-  const [currentPlanSlug, setCurrentPlanSlug] = useState<string>("");
   const [loading, setLoading] = useState<string | null>(null);
+  const { planSlug: currentPlanSlug } = useSubscription();
 
   useEffect(() => {
     if (open) {
       fetchPlans();
-      fetchCurrentPlan();
     }
   }, [open]);
 
@@ -34,28 +34,30 @@ export function UpgradeModal({ open, onClose }: UpgradeModalProps) {
     if (data) setPlans(data);
   };
 
-  const fetchCurrentPlan = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data } = await supabase
-      .from("user_subscriptions")
-      .select("plan_slug")
-      .eq("user_id", user.id)
-      .single();
-    
-    if (data) setCurrentPlanSlug(data.plan_slug);
-  };
-
   const handleSelectPlan = async (planSlug: string) => {
     setLoading(planSlug);
     
-    // TODO: Integrate with Stripe when API key is available
-    toast.info("Payment processing coming soon!", {
-      description: "We're setting up Stripe. For now, contact support to upgrade."
-    });
-    
-    setLoading(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-checkout", {
+        body: { planSlug },
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.open(data.url, '_blank');
+        toast.success("Redirecting to checkout...", {
+          description: "Complete your payment to upgrade your plan."
+        });
+      }
+    } catch (error: any) {
+      console.error("Checkout error:", error);
+      toast.error("Failed to start checkout", {
+        description: error.message || "Please try again or contact support."
+      });
+    } finally {
+      setLoading(null);
+    }
   };
 
   return (
