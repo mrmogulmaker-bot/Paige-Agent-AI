@@ -89,23 +89,23 @@ export function HeroSection() {
 
           {/* Right Column - Dashboard Preview with floating icons */}
           <div className="relative animate-fade-in" style={{ animationDelay: "0.3s" }}>
-            {/* Floating feature badges */}
-            <div className="absolute -top-4 -left-4 z-10 animate-float">
-              <div className="bg-gradient-primary text-primary-foreground px-4 py-2 rounded-full shadow-glow flex items-center gap-2">
-                <Shield className="w-4 h-4" />
-                <span className="text-sm font-semibold">FCRA Compliant</span>
+            {/* Floating feature badges - positioned outside the main content */}
+            <div className="absolute -top-8 left-1/4 z-10 animate-float hidden lg:block">
+              <div className="bg-gradient-primary text-primary-foreground px-3 py-1.5 rounded-full shadow-glow flex items-center gap-2 text-xs font-semibold">
+                <Shield className="w-3 h-3" />
+                <span>FCRA Compliant</span>
               </div>
             </div>
-            <div className="absolute -top-2 -right-4 z-10 animate-float-delayed">
-              <div className="bg-gradient-accent text-accent-foreground px-4 py-2 rounded-full shadow-glow-lg flex items-center gap-2">
-                <Sparkles className="w-4 h-4" />
-                <span className="text-sm font-semibold">AI Powered</span>
+            <div className="absolute -top-6 right-1/4 z-10 animate-float-delayed hidden lg:block">
+              <div className="bg-gradient-accent text-accent-foreground px-3 py-1.5 rounded-full shadow-glow-lg flex items-center gap-2 text-xs font-semibold">
+                <Sparkles className="w-3 h-3" />
+                <span>AI Powered</span>
               </div>
             </div>
-            <div className="absolute -bottom-4 left-1/4 z-10 animate-float-slow">
-              <div className="bg-gradient-to-r from-success to-success-light text-white px-4 py-2 rounded-full shadow-md flex items-center gap-2">
-                <Target className="w-4 h-4" />
-                <span className="text-sm font-semibold">90% Success Rate</span>
+            <div className="absolute -bottom-8 right-1/3 z-10 animate-float-slow hidden lg:block">
+              <div className="bg-gradient-to-r from-success to-success-light text-white px-3 py-1.5 rounded-full shadow-md flex items-center gap-2 text-xs font-semibold">
+                <Target className="w-3 h-3" />
+                <span>90% Success</span>
               </div>
             </div>
             
