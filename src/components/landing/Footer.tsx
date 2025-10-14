@@ -31,7 +31,7 @@ export function Footer() {
           {/* Brand */}
           <div className="col-span-1">
             <h3 className="text-xl font-bold mb-4 bg-gradient-accent bg-clip-text text-transparent">
-              Mogul Maker Academy
+              PaigeAgent.ai
             </h3>
             <p className="text-sm opacity-80 leading-relaxed">
               Empowering entrepreneurs to master credit, access capital, and build lasting wealth.
@@ -92,7 +92,7 @@ export function Footer() {
 
         <div className="pt-8 border-t border-primary-foreground/10">
           <p className="text-sm text-center opacity-60">
-            © {new Date().getFullYear()} Mogul Maker Academy. All rights reserved.
+            © {new Date().getFullYear()} PaigeAgent.ai. All rights reserved.
           </p>
         </div>
       </div>

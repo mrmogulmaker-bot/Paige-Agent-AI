@@ -14,7 +14,7 @@ export function Header() {
           {/* Logo */}
           <div className="flex items-center">
             <h1 className="text-xl font-bold bg-gradient-hero bg-clip-text text-transparent">
-              Mogul Maker Academy
+              PaigeAgent.ai
             </h1>
           </div>
 
