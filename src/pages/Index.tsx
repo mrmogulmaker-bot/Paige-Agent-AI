@@ -25,7 +25,7 @@ const Index = () => {
   ];
 
   return (
-    <div className="relative z-10 min-h-screen bg-background">
+    <div className="min-h-screen bg-background">
       <SiteBackground />
       <Header />
       <HeroSection />
