@@ -28,7 +28,7 @@ const features = [
   },
   {
     icon: Sparkles,
-    title: "Paige AI Coach",
+    title: "PaigeAgent.ai Coach",
     description: "Get personalized guidance powered by AI trained on proven credit repair and business building frameworks.",
   },
   {

@@ -115,7 +115,7 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
       }
 
       toast({
-        title: "Welcome to Paige AI!",
+        title: "Welcome to PaigeAgent.ai!",
         description: "Your profile has been set up successfully",
       });
 
@@ -135,7 +135,7 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
     <Dialog open={open} onOpenChange={() => {}}>
       <DialogContent className="max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle className="text-2xl">Welcome to Paige AI! 🎉</DialogTitle>
+          <DialogTitle className="text-2xl">Welcome to PaigeAgent.ai! 🎉</DialogTitle>
           <DialogDescription>
             Let's set up your profile to personalize your experience
           </DialogDescription>

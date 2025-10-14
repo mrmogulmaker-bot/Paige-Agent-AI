@@ -19,7 +19,7 @@ const menuItems = [
   { title: "BUILD Steps", icon: TrendingUp, id: "build-steps" },
   { title: "Reports", icon: BarChart3, id: "reports" },
   { title: "Learning Vault", icon: BookOpen, id: "learning-vault" },
-  { title: "Paige AI", icon: MessageSquare, id: "paige-ai" },
+  { title: "PaigeAgent.ai", icon: MessageSquare, id: "paige-ai" },
   { title: "Settings", icon: Settings, id: "settings" },
 ];
 
@@ -33,7 +33,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
     <Sidebar className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border p-6">
         <h2 className="text-2xl font-bold bg-gradient-gold bg-clip-text text-transparent">
-          Paige AI
+          PaigeAgent.ai
         </h2>
         <p className="text-sm text-sidebar-foreground/60">Mogul Maker Academy</p>
       </SidebarHeader>

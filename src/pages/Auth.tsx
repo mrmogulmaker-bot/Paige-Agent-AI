@@ -124,7 +124,7 @@ const Auth = () => {
 
         toast({
           title: "Account created!",
-          description: "Welcome to Paige AI. Redirecting to dashboard...",
+          description: "Welcome to PaigeAgent.ai. Redirecting to dashboard...",
         });
       }
     } catch (error) {
@@ -151,7 +151,7 @@ const Auth = () => {
       <Card className="w-full max-w-md p-8 shadow-glow">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold bg-gradient-gold bg-clip-text text-transparent mb-2">
-            Paige AI
+            PaigeAgent.ai
           </h1>
           <p className="text-muted-foreground">
             {isLogin ? "Welcome back" : "Create your account"}

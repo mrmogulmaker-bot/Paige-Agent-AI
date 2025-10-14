@@ -125,7 +125,7 @@ export const PaigeAIChat = () => {
       <div className="flex flex-col h-full">
         <div className="mb-6">
           <h2 className="text-3xl font-bold bg-gradient-gold bg-clip-text text-transparent">
-            Chat with Paige AI
+            Chat with PaigeAgent.ai
           </h2>
           <p className="text-muted-foreground mt-2">
             Your personal credit coaching assistant
@@ -144,7 +144,7 @@ export const PaigeAIChat = () => {
                 {message.role === "assistant" && (
                   <img
                     src={paigeAvatar}
-                    alt="Paige AI"
+                    alt="PaigeAgent.ai"
                     className="w-10 h-10 rounded-full border-2 border-primary"
                   />
                 )}

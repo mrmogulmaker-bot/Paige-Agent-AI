@@ -18,7 +18,7 @@ export const FloatingChatbot = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Hi! I'm Paige AI, your financial coach. How can I help you navigate the site today?"
+      content: "Hi! I'm PaigeAgent.ai, your financial coach. How can I help you navigate the site today?"
     }
   ]);
   const [input, setInput] = useState("");
@@ -139,9 +139,9 @@ export const FloatingChatbot = () => {
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-border">
             <div className="flex items-center gap-2">
-              <img src={paigeAvatar} alt="Paige AI" className="w-8 h-8 rounded-full" />
+              <img src={paigeAvatar} alt="PaigeAgent.ai" className="w-8 h-8 rounded-full" />
               <div>
-                <h3 className="font-semibold">Paige AI</h3>
+                <h3 className="font-semibold">PaigeAgent.ai</h3>
                 <p className="text-xs text-muted-foreground">Your Financial Coach</p>
               </div>
             </div>
@@ -167,7 +167,7 @@ export const FloatingChatbot = () => {
                   {message.role === "assistant" && (
                     <img
                       src={paigeAvatar}
-                      alt="Paige AI"
+                      alt="PaigeAgent.ai"
                       className="w-8 h-8 rounded-full flex-shrink-0"
                     />
                   )}
