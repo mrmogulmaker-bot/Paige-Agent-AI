@@ -454,6 +454,42 @@ export type Database = {
         }
         Relationships: []
       }
+      pii_access_log: {
+        Row: {
+          access_type: string
+          accessed_at: string | null
+          accessed_user_id: string
+          accessor_user_id: string
+          field_names: string[]
+          id: string
+          ip_address: unknown | null
+          table_name: string
+          user_agent: string | null
+        }
+        Insert: {
+          access_type: string
+          accessed_at?: string | null
+          accessed_user_id: string
+          accessor_user_id: string
+          field_names: string[]
+          id?: string
+          ip_address?: unknown | null
+          table_name: string
+          user_agent?: string | null
+        }
+        Update: {
+          access_type?: string
+          accessed_at?: string | null
+          accessed_user_id?: string
+          accessor_user_id?: string
+          field_names?: string[]
+          id?: string
+          ip_address?: unknown | null
+          table_name?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           address: string | null
