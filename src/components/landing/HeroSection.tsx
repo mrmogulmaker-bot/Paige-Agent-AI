@@ -11,13 +11,7 @@ export function HeroSection() {
     <section className="relative overflow-hidden py-20 lg:py-32">
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-accent/5 to-background -z-20" />
-      
-      {/* Floating background elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-        <div className="absolute top-20 right-1/4 w-72 h-72 bg-accent/10 rounded-full blur-3xl animate-float" />
-        <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-float-slow" />
-        <div className="absolute top-1/2 left-1/3 w-64 h-64 bg-success/10 rounded-full blur-3xl animate-float-delayed" />
-      </div>
+      {/* Removed floating background elements to avoid overlap */}
       
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
@@ -89,25 +83,8 @@ export function HeroSection() {
 
           {/* Right Column - Dashboard Preview with floating icons */}
           <div className="relative animate-fade-in" style={{ animationDelay: "0.3s" }}>
-            {/* Floating feature badges - positioned outside the main content */}
-            <div className="absolute -top-8 left-1/4 z-10 animate-float hidden lg:block">
-              <div className="bg-gradient-primary text-primary-foreground px-3 py-1.5 rounded-full shadow-glow flex items-center gap-2 text-xs font-semibold">
-                <Shield className="w-3 h-3" />
-                <span>FCRA Compliant</span>
-              </div>
-            </div>
-            <div className="absolute -top-6 right-1/4 z-10 animate-float-delayed hidden lg:block">
-              <div className="bg-gradient-accent text-accent-foreground px-3 py-1.5 rounded-full shadow-glow-lg flex items-center gap-2 text-xs font-semibold">
-                <Sparkles className="w-3 h-3" />
-                <span>AI Powered</span>
-              </div>
-            </div>
-            <div className="absolute -bottom-8 right-1/3 z-10 animate-float-slow hidden lg:block">
-              <div className="bg-gradient-to-r from-success to-success-light text-white px-3 py-1.5 rounded-full shadow-md flex items-center gap-2 text-xs font-semibold">
-                <Target className="w-3 h-3" />
-                <span>90% Success</span>
-              </div>
-            </div>
+            {/* Floating badges removed to prevent overlap */}
+            {/* Floating badges removed to prevent overlap */}
             
             <Card className="p-6 bg-card border-border shadow-lg relative overflow-hidden hover:shadow-glow-lg transition-shadow duration-500">
               {/* Gradient overlay */}
