@@ -57,17 +57,17 @@ export function FeaturesSection() {
   return (
     <section id="features" className="py-20 bg-muted/30">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
+        <div className="text-center mb-16 animate-fade-in">
           <Badge className="mb-4 bg-accent/10 text-accent border-accent/20">
             Everything You Need
           </Badge>
-          <h2 className="text-4xl lg:text-5xl font-bold mb-4">
+          <h2 className="text-4xl lg:text-5xl font-bold mb-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>
             Comprehensive Credit{" "}
             <span className="bg-gradient-hero bg-clip-text text-transparent">
               Transformation Tools
             </span>
           </h2>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.2s" }}>
             All the features you need to repair credit, build business credit, and access funding
           </p>
         </div>
@@ -76,12 +76,13 @@ export function FeaturesSection() {
           {features.map((feature, index) => (
             <Card 
               key={index}
-              className="p-6 bg-card border-border hover:border-accent/50 hover:shadow-glow transition-all duration-300 group"
+              className="p-6 bg-card border-border hover:border-accent/50 hover:shadow-glow hover:-translate-y-2 transition-all duration-300 group animate-fade-in cursor-default"
+              style={{ animationDelay: `${index * 0.1}s` }}
             >
-              <div className="p-3 bg-gradient-primary rounded-lg w-fit mb-4 group-hover:scale-110 transition-transform duration-300">
+              <div className="p-3 bg-gradient-primary rounded-lg w-fit mb-4 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300">
                 <feature.icon className="w-6 h-6 text-primary-foreground" />
               </div>
-              <h3 className="font-semibold text-lg mb-2">{feature.title}</h3>
+              <h3 className="font-semibold text-lg mb-2 group-hover:text-accent transition-colors duration-300">{feature.title}</h3>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {feature.description}
               </p>

@@ -80,17 +80,17 @@ export function PricingSection() {
   return (
     <section id="pricing" className="py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
+        <div className="text-center mb-16 animate-fade-in">
           <Badge className="mb-4 bg-accent/10 text-accent border-accent/20">
             Simple Pricing
           </Badge>
-          <h2 className="text-4xl lg:text-5xl font-bold mb-4">
+          <h2 className="text-4xl lg:text-5xl font-bold mb-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>
             Choose Your{" "}
             <span className="bg-gradient-hero bg-clip-text text-transparent">
               Success Path
             </span>
           </h2>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.2s" }}>
             Transparent pricing with no hidden fees. Start with a 14-day free trial.
           </p>
         </div>
@@ -101,9 +101,10 @@ export function PricingSection() {
               key={index}
               className={`p-8 bg-card relative ${
                 tier.popular
-                  ? "border-accent shadow-glow-lg scale-105"
-                  : "border-border shadow-md"
-              } transition-all duration-300 hover:shadow-glow`}
+                  ? "border-accent shadow-glow-lg scale-105 animate-fade-in"
+                  : "border-border shadow-md animate-fade-in"
+              } transition-all duration-300 hover:shadow-glow hover:-translate-y-2`}
+              style={{ animationDelay: `${index * 0.1}s` }}
             >
               {tier.popular && (
                 <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-accent text-accent-foreground border-0">
@@ -132,9 +133,9 @@ export function PricingSection() {
               <Button
                 className={`w-full ${
                   tier.popular
-                    ? "bg-gradient-primary text-primary-foreground shadow-glow"
-                    : "bg-muted text-foreground hover:bg-muted/80"
-                }`}
+                    ? "bg-gradient-primary text-primary-foreground shadow-glow hover:scale-105"
+                    : "bg-muted text-foreground hover:bg-muted/80 hover:scale-105"
+                } transition-all duration-300`}
                 size="lg"
                 onClick={() => navigate("/auth?mode=signup")}
               >
