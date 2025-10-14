@@ -3,6 +3,7 @@ import { HeroSection } from "@/components/landing/HeroSection";
 import { FeaturesSection } from "@/components/landing/FeaturesSection";
 import { PricingSection } from "@/components/landing/PricingSection";
 import { Footer } from "@/components/landing/Footer";
+import { SiteBackground } from "@/components/landing/SiteBackground";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -25,6 +26,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <SiteBackground />
       <Header />
       <HeroSection />
       <FeaturesSection />
