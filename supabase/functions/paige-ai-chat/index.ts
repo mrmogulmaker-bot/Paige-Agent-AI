@@ -1,10 +1,21 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { z } from "https://esm.sh/zod@3.22.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Input validation schema
+const messageSchema = z.object({
+  messages: z.array(
+    z.object({
+      role: z.enum(['user', 'assistant', 'system']),
+      content: z.string().min(1).max(4000)
+    })
+  ).min(1).max(50)
+});
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -12,24 +23,76 @@ serve(async (req) => {
   }
 
   try {
-    const { messages } = await req.json();
-    
+    // Authenticate the user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY")!;
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Verify user with anon key
+    const supabaseClient = createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate input
+    const rawData = await req.json();
+    let validatedData;
+    
+    try {
+      validatedData = messageSchema.parse(rawData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Invalid input format', 
+            details: error.issues.map(i => ({ path: i.path.join('.'), message: i.message }))
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      throw error;
+    }
+
+    const { messages } = validatedData;
+
+    // Use service role key for knowledge base query
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Extract the last user message to search for relevant knowledge
     const lastUserMessage = messages.filter((m: any) => m.role === "user").pop();
     let relevantKnowledge = "";
 
     if (lastUserMessage) {
-      // Search knowledge base for relevant content
+      // Sanitize user input for database query
+      const sanitizedContent = lastUserMessage.content
+        .replace(/[%_]/g, '\\$&')
+        .substring(0, 200);
+
+      const keywords = extractKeywords(sanitizedContent)
+        .split(',')
+        .filter(k => /^[a-z]+$/.test(k));
+
+      // Search knowledge base for relevant content with sanitized input
       const { data: knowledge, error: kbError } = await supabase
         .from("knowledge_base")
         .select("title, content, summary, framework, category")
-        .or(`content.ilike.%${lastUserMessage.content}%,tags.cs.{${extractKeywords(lastUserMessage.content)}}`)
+        .textSearch('content', sanitizedContent)
         .limit(5);
 
       if (knowledge && knowledge.length > 0) {
@@ -103,8 +166,7 @@ ${relevantKnowledge}`;
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
+      console.error("AI gateway error:", response.status);
       return new Response(
         JSON.stringify({ error: "AI service error" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -116,9 +178,9 @@ ${relevantKnowledge}`;
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {
-    console.error("Chat error:", error);
+    console.error("Chat error:", error instanceof Error ? error.message : 'Unknown error');
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: "An error occurred while processing your request" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
