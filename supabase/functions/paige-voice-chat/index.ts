@@ -30,14 +30,15 @@ serve(async (req) => {
   socket.onopen = () => {
     console.log("Client WebSocket connected");
     
-    // Connect to OpenAI Realtime API
-    const url = "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01";
-    const headers = {
-      "Authorization": `Bearer ${OPENAI_API_KEY}`,
-      "OpenAI-Beta": "realtime=v1",
-    };
-
-    openAISocket = new WebSocket(url, { headers });
+    // Connect to OpenAI Realtime API using the special protocol format
+    const url = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01';
+    
+    // OpenAI requires API key in the protocol subprotocols
+    openAISocket = new WebSocket(url, [
+      'realtime',
+      `openai-insecure-api-key.${OPENAI_API_KEY}`,
+      'openai-beta.realtime-v1',
+    ]);
 
     openAISocket.onopen = () => {
       console.log("Connected to OpenAI Realtime API");
