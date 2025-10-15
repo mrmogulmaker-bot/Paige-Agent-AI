@@ -7,6 +7,11 @@ import {
   personalCreditTaskTemplates,
   templateToTaskData,
 } from "@/lib/personalCreditTaskTemplates";
+import {
+  businessCreditTaskTemplates,
+  businessTemplateToTaskData,
+} from "@/lib/businessCreditTaskTemplates";
+import { validateBusinessCreditTask } from "@/lib/businessTaskKeywordFilter";
 
 export interface Task {
   id: string;
@@ -52,69 +57,147 @@ export const useTasks = () => {
     }
   };
 
-  const createTask = async (taskData: Partial<Task>) => {
+  const createTask = async (taskData: Partial<Task>, isBusinessMode: boolean = false) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Validate against business credit keywords for personal credit tasks
-      const validationResult = validatePersonalCreditTask(
-        taskData.title || "",
-        taskData.description || ""
-      );
+      if (isBusinessMode) {
+        // Business Credit Task validation
+        const validationResult = validateBusinessCreditTask(
+          taskData.title || "",
+          taskData.description || ""
+        );
 
-      if (!validationResult.isAllowed) {
+        if (!validationResult.isAllowed) {
+          if (validationResult.isDataFurnishing) {
+            toast({
+              title: "Data Furnishing Not Supported",
+              description: "Data Furnishing features are not supported inside Paige.",
+              variant: "destructive",
+            });
+          } else if (validationResult.shouldReroute) {
+            toast({
+              title: "Personal Credit Content Detected",
+              description: "That belongs in Personal Credit—move it there?",
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Invalid Business Task",
+              description: validationResult.reason || "Please include business credit/funding keywords",
+              variant: "destructive",
+            });
+          }
+          return null;
+        }
+
+        // Ensure metadata includes proper category and tags for business
+        let metadata: any = taskData.metadata || {};
+        const category = metadata?.category;
+        
+        // Validate category is Business Credit, Funding, or Business Compliance
+        const validCategories = ["Business Credit", "Funding", "Business Compliance"];
+        if (category && !validCategories.includes(category)) {
+          toast({
+            title: "Invalid Category",
+            description: "Use Business Credit, Funding, or Business Compliance categories only",
+            variant: "destructive",
+          });
+          return null;
+        }
+
+        // Auto-tag if not already tagged
+        if (!metadata.tags || (Array.isArray(metadata.tags) && metadata.tags.length === 0)) {
+          let baseTag = "#BusinessCredit";
+          if (category === "Funding") baseTag = "#Funding";
+          else if (category === "Business Compliance") baseTag = "#Compliance";
+          metadata = { ...metadata, tags: [baseTag] };
+        }
+
+        const { data, error } = await supabase
+          .from("tasks")
+          .insert([{
+            user_id: user.id,
+            title: taskData.title || "",
+            description: taskData.description || null,
+            status: taskData.status || "pending",
+            track: taskData.track || null,
+            due_date: taskData.due_date || null,
+            metadata: metadata,
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setTasks((prev) => [...prev, data as Task]);
         toast({
-          title: "Business Credit Content Detected",
-          description: "That belongs in Business Credit/Funding—move it there?",
-          variant: "destructive",
+          title: "Success",
+          description: "Business task created successfully",
         });
-        return null;
-      }
 
-      // Ensure metadata includes proper category and tags
-      let metadata: any = taskData.metadata || {};
-      const category = metadata?.category;
-      
-      // Validate category is Personal Credit or Personal Finance only
-      if (category && category !== "Personal Credit" && category !== "Personal Finance") {
+        return data;
+      } else {
+        // Personal Credit Task validation
+        const validationResult = validatePersonalCreditTask(
+          taskData.title || "",
+          taskData.description || ""
+        );
+
+        if (!validationResult.isAllowed) {
+          toast({
+            title: "Business Credit Content Detected",
+            description: "That belongs in Business Credit/Funding—move it there?",
+            variant: "destructive",
+          });
+          return null;
+        }
+
+        // Ensure metadata includes proper category and tags
+        let metadata: any = taskData.metadata || {};
+        const category = metadata?.category;
+        
+        // Validate category is Personal Credit or Personal Finance only
+        if (category && category !== "Personal Credit" && category !== "Personal Finance") {
+          toast({
+            title: "Invalid Category",
+            description: "That belongs in Business Credit/Funding—move it there?",
+            variant: "destructive",
+          });
+          return null;
+        }
+
+        // Auto-tag if not already tagged
+        if (!metadata.tags || (Array.isArray(metadata.tags) && metadata.tags.length === 0)) {
+          const baseTag = category === "Personal Finance" ? "#PersonalFinance" : "#PersonalCredit";
+          metadata = { ...metadata, tags: [baseTag] };
+        }
+
+        const { data, error } = await supabase
+          .from("tasks")
+          .insert([{
+            user_id: user.id,
+            title: taskData.title || "",
+            description: taskData.description || null,
+            status: taskData.status || "pending",
+            track: taskData.track || null,
+            due_date: taskData.due_date || null,
+            metadata: metadata,
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setTasks((prev) => [...prev, data as Task]);
         toast({
-          title: "Invalid Category",
-          description: "That belongs in Business Credit/Funding—move it there?",
-          variant: "destructive",
+          title: "Success",
+          description: "Task created successfully",
         });
-        return null;
+
+        return data;
       }
-
-      // Auto-tag if not already tagged
-      if (!metadata.tags || (Array.isArray(metadata.tags) && metadata.tags.length === 0)) {
-        const baseTag = category === "Personal Finance" ? "#PersonalFinance" : "#PersonalCredit";
-        metadata = { ...metadata, tags: [baseTag] };
-      }
-
-      const { data, error } = await supabase
-        .from("tasks")
-        .insert([{
-          user_id: user.id,
-          title: taskData.title || "",
-          description: taskData.description || null,
-          status: taskData.status || "pending",
-          track: taskData.track || null,
-          due_date: taskData.due_date || null,
-          metadata: metadata,
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setTasks((prev) => [...prev, data as Task]);
-      toast({
-        title: "Success",
-        description: "Task created successfully",
-      });
-
-      return data;
     } catch (error) {
       console.error("Error creating task:", error);
       toast({
@@ -248,57 +331,6 @@ export const useTasks = () => {
   };
 
   const generateBuildTasks = async () => {
-    const buildTaskTemplates = [
-      {
-        title: "Choose Business Structure",
-        description: "Decide between LLC, Corporation, or other entity types",
-        track: "BUILD-B",
-        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        title: "File Formation Documents",
-        description: "Submit formation paperwork to your state",
-        track: "BUILD-B",
-        due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        title: "Obtain EIN from IRS",
-        description: "Apply for your Employer Identification Number",
-        track: "BUILD-B",
-        due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        title: "Open Business Bank Account",
-        description: "Separate personal and business finances",
-        track: "BUILD-B",
-        due_date: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        title: "Open Net-30 Vendor Accounts",
-        description: "Establish credit with suppliers offering net-30 terms",
-        track: "BUILD-U",
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        title: "Make Timely Payments",
-        description: "Maintain perfect payment history on all vendor accounts",
-        track: "BUILD-U",
-        due_date: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        title: "Request Credit Reporting",
-        description: "Ensure vendors report your payment history to credit bureaus",
-        track: "BUILD-U",
-        due_date: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-      {
-        title: "Apply for Business Credit Card",
-        description: "Get a business credit card to diversify credit mix",
-        track: "BUILD-D",
-        due_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-    ];
-
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
@@ -313,14 +345,29 @@ export const useTasks = () => {
       if (existingTasks && existingTasks.length > 0) {
         toast({
           title: "Info",
-          description: "BUILD tasks already generated",
+          description: "Business Credit tasks already generated",
         });
         return;
       }
 
+      // Use templates and validate
+      const validBusinessTemplates = businessCreditTaskTemplates.filter(template => {
+        const taskData = businessTemplateToTaskData(template);
+        const validation = validateBusinessCreditTask(taskData.title, taskData.description || "");
+        
+        if (!validation.isAllowed) {
+          console.warn(`Skipping template ${template.id}: ${validation.reason}`);
+          return false;
+        }
+        
+        return true;
+      });
+
+      const buildTasks = validBusinessTemplates.map(businessTemplateToTaskData);
+
       // Create all tasks
       const { error } = await supabase.from("tasks").insert(
-        buildTaskTemplates.map((task) => ({
+        buildTasks.map((task) => ({
           ...task,
           user_id: user.id,
           status: "pending" as const,
@@ -333,13 +380,13 @@ export const useTasks = () => {
 
       toast({
         title: "Success! 🚀",
-        description: `Generated ${buildTaskTemplates.length} BUILD framework tasks`,
+        description: `Generated ${buildTasks.length} Business Credit/Funding tasks`,
       });
     } catch (error) {
-      console.error("Error generating BUILD tasks:", error);
+      console.error("Error generating Business Credit tasks:", error);
       toast({
         title: "Error",
-        description: "Failed to generate BUILD tasks",
+        description: "Failed to generate Business Credit tasks",
         variant: "destructive",
       });
     }
