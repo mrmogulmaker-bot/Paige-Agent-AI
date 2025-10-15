@@ -96,9 +96,12 @@ export const useTasks = () => {
       setTasks((prev) => prev.map((t) => (t.id === id ? data : t)));
       
       if (updates.status === "completed") {
+        const isPersonalCredit = data.track?.startsWith("ACCEL");
         toast({
           title: "Task Completed! 🎉",
-          description: "Great progress on your BUILD journey",
+          description: isPersonalCredit 
+            ? "Great progress on your personal credit journey" 
+            : "Great progress on your business credit journey",
         });
       }
 
@@ -138,52 +141,64 @@ export const useTasks = () => {
   const generateAccelTasks = async () => {
     const accelTaskTemplates = [
       {
-        title: "Pull All Three Credit Reports",
-        description: "Obtain reports from Experian, Equifax, and TransUnion",
+        title: "Pull All Three Personal Credit Reports",
+        description: "Obtain your personal credit reports from Experian, Equifax, and TransUnion (use AnnualCreditReport.com)",
         track: "ACCEL-A",
         due_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
       },
       {
-        title: "Review Reports for Errors",
-        description: "Identify inaccuracies, outdated accounts, or fraudulent items",
+        title: "Review Personal Reports for Errors",
+        description: "Identify inaccuracies, outdated personal accounts, late payments, or identity theft on your personal credit files",
         track: "ACCEL-A",
         due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       },
       {
-        title: "Prepare Dispute Letters",
-        description: "Document all errors and prepare comprehensive dispute letters",
+        title: "Prepare Personal Credit Dispute Letters",
+        description: "Document all personal credit errors under FCRA guidelines and prepare dispute letters",
         track: "ACCEL-C1",
         due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
       },
       {
-        title: "Submit Disputes to Bureaus",
-        description: "Send dispute letters to all three credit bureaus via certified mail",
+        title: "Submit Personal Credit Disputes",
+        description: "Send dispute letters to all three personal credit bureaus via certified mail",
         track: "ACCEL-C1",
         due_date: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString(),
       },
       {
-        title: "Follow Up on Dispute Responses",
-        description: "Review bureau responses and prepare follow-up actions",
+        title: "Follow Up on Personal Dispute Responses",
+        description: "Review bureau responses for your personal credit disputes and prepare follow-up actions",
         track: "ACCEL-C2",
         due_date: new Date(Date.now() + 51 * 24 * 60 * 60 * 1000).toISOString(),
       },
       {
-        title: "Set Up Payment Reminders",
-        description: "Ensure all bills are paid on time to build positive history",
+        title: "Set Up Personal Bill Payment Reminders",
+        description: "Ensure all personal bills and credit cards are paid on time to build positive payment history",
         track: "ACCEL-E",
         due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       },
       {
-        title: "Monitor Credit Utilization",
-        description: "Keep credit card balances under 30% of limits",
+        title: "Monitor Personal Credit Card Utilization",
+        description: "Keep personal credit card balances under 30% of limits to improve your FICO score",
         track: "ACCEL-E",
         due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       },
       {
-        title: "Enable Credit Monitoring",
-        description: "Set up alerts for changes to your credit reports",
+        title: "Pay Down Personal Debt",
+        description: "Create a strategy to reduce personal credit card debt and improve debt-to-income ratio",
+        track: "ACCEL-E",
+        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        title: "Enable Personal Credit Monitoring",
+        description: "Set up alerts for changes to your personal credit reports to protect against identity theft",
         track: "ACCEL-L",
         due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        title: "Review Personal Credit Score Factors",
+        description: "Understand what's impacting your personal FICO score and create an improvement plan",
+        track: "ACCEL-A",
+        due_date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
       },
     ];
 
