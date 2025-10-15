@@ -88,6 +88,24 @@ export const PaigeAIChat = () => {
               content: data.transcript
             }]);
           }
+        } else if (data.type === 'response.function_call_arguments.done') {
+          console.log('Function executed:', data.name, data.arguments);
+          try {
+            const result = JSON.parse(data.arguments);
+            
+            if (data.name === 'navigate_to' && result.path) {
+              window.location.href = result.path;
+            }
+            
+            if (result.success && result.message) {
+              toast({
+                title: "Action Complete",
+                description: result.message,
+              });
+            }
+          } catch (e) {
+            console.error('Error parsing function result:', e);
+          }
         } else if (data.type === "input_audio_buffer.speech_started") {
           setIsListening(true);
         } else if (data.type === "input_audio_buffer.speech_stopped") {

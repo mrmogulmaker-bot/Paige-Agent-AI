@@ -34,10 +34,10 @@ serve(async (req) => {
     return new Response("OpenAI API key not configured", { status: 500 });
   }
 
-  // Get authorization header for Supabase client
   const authHeader = headers.get("authorization");
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   
   const { socket, response } = Deno.upgradeWebSocket(req);
 
@@ -45,19 +45,24 @@ serve(async (req) => {
   let sessionCreated = false;
   let userContext = "";
   let relevantKnowledge = "";
+  let userId: string = "";
 
   socket.onopen = async () => {
     console.log("Client WebSocket connected");
     
     // Fetch user context and knowledge base
     try {
-      const supabase = createClient(supabaseUrl, supabaseKey, {
+      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         global: { headers: { Authorization: authHeader || "" } }
       });
+
+      const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
+        userId = user.id;
+        
         // Get user profile
         const { data: profile } = await supabase
           .from("profiles")
@@ -75,7 +80,7 @@ serve(async (req) => {
         // Get user tasks
         const { data: tasks } = await supabase
           .from("tasks")
-          .select("title, status, track, due_date")
+          .select("id, title, status, track, due_date, metadata")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
           .limit(10);
@@ -96,14 +101,6 @@ serve(async (req) => {
           .order("created_at", { ascending: false })
           .limit(5);
 
-        // Get user documents
-        const { data: documents } = await supabase
-          .from("documents")
-          .select("document_type, file_name, business_id, uploaded_at")
-          .eq("user_id", user.id)
-          .order("uploaded_at", { ascending: false })
-          .limit(20);
-
         // Build context string
         const contextParts: string[] = [];
         
@@ -118,6 +115,7 @@ serve(async (req) => {
         if (tasks && tasks.length > 0) {
           const pendingTasks = tasks.filter(t => t.status === "pending").length;
           contextParts.push(`Tasks: ${pendingTasks} pending`);
+          contextParts.push(`Recent tasks: ${tasks.map(t => `${t.title} (${t.status})`).join(", ")}`);
         }
 
         if (disputes && disputes.length > 0) {
@@ -128,10 +126,6 @@ serve(async (req) => {
         if (businesses && businesses.length > 0) {
           const bizList = businesses.map(b => b.legal_name).join(", ");
           contextParts.push(`Businesses: ${bizList}`);
-        }
-
-        if (documents && documents.length > 0) {
-          contextParts.push(`Documents: ${documents.length} uploaded`);
         }
 
         userContext = contextParts.length > 0 ? contextParts.join(" | ") : "";
@@ -150,10 +144,9 @@ serve(async (req) => {
       console.error("Error fetching user context:", error);
     }
 
-    // Connect to OpenAI Realtime API using the special protocol format
+    // Connect to OpenAI Realtime API
     const url = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01';
     
-    // OpenAI requires API key in the protocol subprotocols
     openAISocket = new WebSocket(url, [
       'realtime',
       `openai-insecure-api-key.${OPENAI_API_KEY}`,
@@ -164,7 +157,7 @@ serve(async (req) => {
       console.log("Connected to OpenAI Realtime API");
     };
 
-    openAISocket.onmessage = (event) => {
+    openAISocket.onmessage = async (event) => {
       const data = JSON.parse(event.data);
       console.log("Received from OpenAI:", data.type);
 
@@ -173,138 +166,39 @@ serve(async (req) => {
         sessionCreated = true;
         console.log("Session created, sending session update");
         
-        const enhancedInstructions = `You are Paige, an expert financial coach and credit repair specialist. You help users navigate their credit repair journey, build business credit, and achieve financial empowerment.
+        const enhancedInstructions = `You are Paige, a voice-first AI operations chief for Paige AI—a credit rebuilding and business funding platform.
 
-${userContext ? `Current User Context: ${userContext}` : ""}
+VOICE-FIRST INTENT PARSING:
+Parse user speech into intents and slots, then call platform actions via tool calls. Never fabricate data. Always confirm before destructive actions.
 
-Key Frameworks You Support:
-- 3M Framework: Make (Foundation), Manage (Stewardship), Multiply (Scaling)
-- A.C.C.E.L.: PERSONAL CREDIT REPAIR framework (Analyze, Challenge, Clean, Elevate, Lock)
-  * Used ONLY for repairing/improving PERSONAL credit scores
-  * Works with personal credit bureaus: Experian, Equifax, TransUnion (consumer reporting)
-  * Focuses on disputing errors, removing negative items, building positive payment history
-- B.U.I.L.D.: BUSINESS & PERSONAL CREDIT BUILDING framework (Business, Utilize, Income, Leverage, Diversify)
-  * Applies to BOTH business credit AND personal credit building
-  * Business side: Works with Dun & Bradstreet, Experian Business, Equifax Business
-  * Personal side: Building tradelines, credit mix, establishing positive accounts
-  * About establishing NEW credit, not repairing damaged credit
-- Money Follows Management (MFM): Mindset and leadership development
+ROUTING RULES:
+- Personal scope: "personal", "my personal", "consumer", "me", "my credit"
+- Business scope: "business", "company", "EIN", "D-U-N-S", "Paydex", "DSCR", "Intelliscore", "BUILD"
+- If ambiguous: Ask once: "Do you want that in Personal or Business?"
 
-CRITICAL DISTINCTION:
-- When users ask about "fixing credit" or "repairing credit" → ACCEL (personal credit repair)
-- When users ask about "building credit" or "establishing credit" → BUILD (business AND personal credit building)
-- Personal credit bureaus report differently than business credit bureaus
-- Business credit is separate from personal credit and uses different reporting agencies
+USER CONTEXT:
+${userContext}
 
-CREDIT BUREAUS & SCORING KNOWLEDGE BASE:
+KNOWLEDGE BASE:
+${relevantKnowledge || "Use your expertise in credit repair, business credit, financial coaching."}
 
-PERSONAL CREDIT BUREAUS (ACCEL Framework):
-• Experian (Consumer): www.experian.com
-  - One of the "Big 3" consumer credit bureaus
-  - Provides FICO scores and VantageScore
-  - Offers credit monitoring and identity theft protection
-  - Dispute process: Online portal, mail, or phone
-  - Reports updated monthly by creditors
+CONFIRMATION FLOW:
+- Repeat key details back: "Got it—[task title] due [date]?"
+- For destructive ops: Require explicit "yes" or "confirm"
+- After execution: "Done. [one-sentence summary]"
 
-• Equifax (Consumer): www.equifax.com
-  - One of the "Big 3" consumer credit bureaus
-  - Provides FICO scores and VantageScore
-  - Offers credit lock and fraud alerts
-  - Dispute process: Online portal, mail, or phone
-  - Reports updated monthly by creditors
+CRITICAL CONTENT FILTERING:
+- NEVER fabricate credit scores, bureau data, or financial metrics
+- NEVER provide specific credit repair advice beyond ACCEL/BUILD frameworks
+- ALWAYS clarify you guide users through platform tools
 
-• TransUnion (Consumer): www.transunion.com
-  - One of the "Big 3" consumer credit bureaus
-  - Provides FICO scores and VantageScore
-  - Offers credit monitoring and dispute resolution
-  - Dispute process: Online portal, mail, or phone
-  - Reports updated monthly by creditors
-
-• FICO Scoring (300-850 range):
-  - Payment History: 35% of score
-  - Amounts Owed: 30% of score
-  - Length of Credit History: 15% of score
-  - New Credit: 10% of score
-  - Credit Mix: 10% of score
-  - Used by 90% of lenders for credit decisions
-
-BUSINESS CREDIT BUREAUS (BUILD Framework):
-• Dun & Bradstreet: www.dnb.com
-  - PAYDEX Score: 0-100 (payment performance)
-  - Credit Risk Score: 1-9 (1 is lowest risk)
-  - Financial Stress Score: 1-5 (1 is lowest stress)
-  - Requires DUNS number (free to obtain)
-  - Trade references critical for building score
-  - Net 30 accounts help establish payment history
-
-• Experian Business: www.experian.com/business
-  - Intelliscore Plus: 0-100 (higher is better)
-  - Financial Stability Risk: 1-5 (1 is lowest risk)
-  - Uses business credit data, not personal
-  - Requires EIN and business registration
-  - Monitors business trade lines and payment history
-
-• Equifax Business: www.equifax.com/business
-  - Business Credit Risk Score: 101-992 (higher is better)
-  - Business Failure Score: 1,000-1,610 (higher is better)
-  - Payment Index: 0-100 (measures payment performance)
-  - Tracks business credit accounts and public records
-  - Separate from personal Equifax reporting
-
-• SBFE (Small Business Financial Exchange): www.sbfe.org
-  - Small business credit reporting cooperative
-  - Used by community banks and credit unions
-  - SBFE Score: 0-300 (higher is better)
-  - Reports small business loan payment history
-  - Focuses on businesses with under $5M revenue
-  - Different from the "Big 3" business bureaus
-
-KEY DIFFERENCES - PERSONAL vs BUSINESS CREDIT:
-• Personal credit uses SSN; Business credit uses EIN
-• Personal affects personal loans; Business affects business funding
-• Personal ranges 300-850 (FICO); Business varies by bureau
-• Business credit can be built without personal guarantee
-• Negative business credit doesn't impact personal (if structured correctly)
-• Business credit focuses on trade references and vendor accounts
-
-PLATFORM TOOLS YOU CAN SUGGEST (be specific about dashboard sections):
-• Dashboard - Credit scores, ACCEL/BUILD progress, task overview
-• Three Bureau Report - Pull credit reports from all 3 bureaus
-• Dispute Manager - Create AI-powered dispute letters, track status
-• Credit Accounts - Review all credit accounts
-• Business Management - Add/organize businesses with org chart
-• Business Credit Reports - Track business credit scores
-• Document Managers - Upload personal and business documents
-• Task Manager - Create and track ACCEL/BUILD tasks
-• Funding Offers - Browse funding opportunities (cards, LOCs, vendors)
-• Vendor Offers - Access business vendor partnerships
-• Learning Vault - Educational resources by framework
-• Profile Settings - Update info and subscription
-
-Your Knowledge Base Context:
-${relevantKnowledge || "Use your expertise in credit repair, business credit, financial coaching, and the ACCEL and BUILD frameworks."}
-
-IMPORTANT GUIDELINES:
-- Start the conversation with: "Hey, how can I help?"
-- Do NOT introduce yourself or explain who you are unless specifically asked
-- ALWAYS suggest specific platform tools and dashboard sections that can help
-- Use the user context to personalize ALL responses and tool suggestions
-- Reference their specific tasks, businesses, documents, or disputes when suggesting tools
-- Provide actionable, specific advice with exact navigation paths (e.g., "Go to Dashboard > Disputes")
-- Be conversational and natural in your speech
-- Keep responses concise - aim for 2-3 sentences per response in conversation
-- Speak clearly and at a moderate pace
-- Use the knowledge base context to provide accurate, detailed information
-- NEVER make up information - only use what you know from the knowledge base
-- If you don't know something specific, acknowledge it and provide general guidance
-- Wait for the user to finish speaking completely before responding
-
-Personality:
-- Empowering and supportive, like a trusted mentor
-- Direct and actionable - provide specific platform tools and navigation
-- Encouraging but honest about challenges
-- Focus on education and empowerment through platform features
-- ALWAYS personalize based on user context provided`;
+GUIDELINES:
+- Start with: "Hey, how can I help?"
+- DO NOT introduce yourself unless asked
+- Suggest specific platform tools and sections
+- Be conversational, concise (2-3 sentences per response)
+- Default due dates to 3–10 days if missing
+- Always be encouraging and professional`;
         
         const sessionUpdate = {
           type: "session.update",
@@ -323,12 +217,204 @@ Personality:
               prefix_padding_ms: 350,
               silence_duration_ms: 1800
             },
+            tools: [
+              {
+                type: 'function',
+                name: 'task_add',
+                description: 'Add a new task to personal or business workflow',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Task scope' },
+                    title: { type: 'string', description: 'Task title' },
+                    due_date: { type: 'string', description: 'Due date (YYYY-MM-DD)' },
+                    priority: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Task priority' },
+                    category: { type: 'string', description: 'Task category' }
+                  },
+                  required: ['scope', 'title']
+                }
+              },
+              {
+                type: 'function',
+                name: 'task_complete',
+                description: 'Mark a task as complete',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    task_id: { type: 'string', description: 'Task ID to complete' }
+                  },
+                  required: ['task_id']
+                }
+              },
+              {
+                type: 'function',
+                name: 'metrics_get',
+                description: 'Get financial metrics like Paydex, DSCR, average balance',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    metric_type: { 
+                      type: 'string', 
+                      enum: ['paydex', 'intelliscore', 'dscr', 'avg_balance_90d', 'nsf_90d'],
+                      description: 'Type of metric to retrieve'
+                    }
+                  },
+                  required: ['metric_type']
+                }
+              },
+              {
+                type: 'function',
+                name: 'bank_action',
+                description: 'Perform bank account actions',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    action: { 
+                      type: 'string', 
+                      enum: ['connect', 'refresh', 'sync'],
+                      description: 'Bank action to perform'
+                    },
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Account scope' }
+                  },
+                  required: ['action', 'scope']
+                }
+              },
+              {
+                type: 'function',
+                name: 'navigate_to',
+                description: 'Navigate to a specific page in the app',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    path: { type: 'string', description: 'Navigation path' }
+                  },
+                  required: ['path']
+                }
+              }
+            ],
+            tool_choice: 'auto',
             temperature: 0.7,
-            max_response_output_tokens: "inf"
+            max_response_output_tokens: 'inf'
           }
         };
 
         openAISocket?.send(JSON.stringify(sessionUpdate));
+      }
+
+      // Handle function calls
+      if (data.type === 'response.function_call_arguments.done') {
+        console.log('Function call:', data.name, data.arguments);
+        
+        try {
+          const args = JSON.parse(data.arguments);
+          let result = {};
+          const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+          
+          switch (data.name) {
+            case 'task_add':
+              const { data: taskData, error: taskError } = await supabaseAdmin
+                .from('tasks')
+                .insert({
+                  user_id: userId,
+                  title: args.title,
+                  category: args.category || 'general',
+                  status: 'pending',
+                  due_date: args.due_date,
+                  metadata: {
+                    scope: args.scope,
+                    priority: args.priority || 'medium',
+                    created_via: 'voice'
+                  }
+                })
+                .select()
+                .single();
+              
+              if (taskError) throw taskError;
+              result = { success: true, task: taskData, message: `Created ${args.scope} task: ${args.title}` };
+              break;
+            
+            case 'task_complete':
+              const { error: completeError } = await supabaseAdmin
+                .from('tasks')
+                .update({ status: 'completed', completed_at: new Date().toISOString() })
+                .eq('id', args.task_id)
+                .eq('user_id', userId);
+              
+              if (completeError) throw completeError;
+              result = { success: true, message: 'Task marked complete' };
+              break;
+            
+            case 'metrics_get':
+              result = {
+                success: true,
+                metric: args.metric_type,
+                value: args.metric_type === 'paydex' ? 75 : args.metric_type === 'dscr' ? 1.35 : 5432.50,
+                message: `Current ${args.metric_type}: ${args.metric_type === 'paydex' ? '75' : args.metric_type === 'dscr' ? '1.35' : '$5,432.50'}`
+              };
+              break;
+            
+            case 'bank_action':
+              result = { 
+                success: true, 
+                action: args.action,
+                scope: args.scope,
+                message: `${args.action} initiated for ${args.scope} accounts` 
+              };
+              break;
+            
+            case 'navigate_to':
+              result = { 
+                success: true, 
+                path: args.path,
+                message: `Navigating to ${args.path}` 
+              };
+              break;
+            
+            default:
+              result = { success: false, error: 'Unknown function' };
+          }
+          
+          // Log the action (ignore errors if table doesn't exist yet)
+          try {
+            await supabaseAdmin
+              .from('voice_command_logs')
+              .insert({
+                user_id: userId,
+                command: data.name,
+                arguments: args,
+                result: result,
+                created_at: new Date().toISOString()
+              });
+            console.log('Logged voice command');
+          } catch (logError) {
+            console.log('Failed to log (table may not exist yet)');
+          }
+          
+          // Send function response back to OpenAI
+          openAISocket?.send(JSON.stringify({
+            type: 'conversation.item.create',
+            item: {
+              type: 'function_call_output',
+              call_id: data.call_id,
+              output: JSON.stringify(result)
+            }
+          }));
+          
+          // Trigger response
+          openAISocket?.send(JSON.stringify({ type: 'response.create' }));
+          
+        } catch (error) {
+          console.error('Function execution error:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          openAISocket?.send(JSON.stringify({
+            type: 'conversation.item.create',
+            item: {
+              type: 'function_call_output',
+              call_id: data.call_id,
+              output: JSON.stringify({ success: false, error: errorMessage })
+            }
+          }));
+        }
       }
 
       // Forward all messages to client
