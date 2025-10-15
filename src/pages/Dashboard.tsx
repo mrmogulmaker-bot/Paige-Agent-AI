@@ -12,6 +12,7 @@ import { LearningVault } from "@/components/dashboard/LearningVault";
 import { DisputesManager } from "@/components/dashboard/DisputesManager";
 import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
 import { BuildProgramOutline } from "@/components/dashboard/BuildProgramOutline";
+import { BuildProgramBusinessWrapper } from "@/components/dashboard/BuildProgramBusinessWrapper";
 import { PersonalBuildProgramOutline } from "@/components/dashboard/PersonalBuildProgramOutline";
 import { AccelProgramOutline } from "@/components/dashboard/AccelProgramOutline";
 import { PersonalSection } from "@/components/dashboard/PersonalSection";
@@ -196,7 +197,7 @@ const Dashboard = () => {
                 )}
                 {activeSection === "build-steps" && (
                   <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
-                    <BuildProgramOutline />
+                    <BuildProgramBusinessWrapper />
                   </PlanGate>
                 )}
                 {activeSection === "business-documents" && (
