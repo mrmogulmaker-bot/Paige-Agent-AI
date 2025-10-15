@@ -14,7 +14,7 @@ export const PaigeAIChat = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Hello! I'm Paige, your AI credit coach powered by the Mogul Maker Academy frameworks. I can help you with credit repair (A.C.C.E.L.), business credit building (B.U.I.L.D.), and our complete 3M Framework (Make, Manage, Multiply). I'm also trained in Money Follows Management mindset principles. How can I help you today?",
+      content: "Hey, how can I help?",
     },
   ]);
   const [input, setInput] = useState("");
@@ -30,6 +30,7 @@ export const PaigeAIChat = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioQueueRef = useRef<AudioQueue | null>(null);
   const currentTranscriptRef = useRef<string>("");
+  const lastCancelAtRef = useRef<number>(0);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -109,6 +110,23 @@ export const PaigeAIChat = () => {
       };
       
       recorderRef.current = new AudioRecorder((audioData) => {
+        // Compute RMS to detect when the user starts speaking (barge-in detection)
+        let sumSquares = 0;
+        for (let i = 0; i < audioData.length; i++) sumSquares += audioData[i] * audioData[i];
+        const rms = Math.sqrt(sumSquares / audioData.length);
+
+        // If AI is speaking and the user starts talking, cancel current response immediately
+        if (isSpeaking && rms > 0.02) {
+          const now = Date.now();
+          if (wsRef.current?.readyState === WebSocket.OPEN && now - lastCancelAtRef.current > 800) {
+            console.log('Barge-in detected: cancelling current response');
+            wsRef.current.send(JSON.stringify({ type: 'response.cancel' }));
+            audioQueueRef.current?.clear();
+            setIsSpeaking(false);
+            lastCancelAtRef.current = now;
+          }
+        }
+
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           const encoded = encodeAudioForAPI(audioData);
           wsRef.current.send(JSON.stringify({
