@@ -72,13 +72,13 @@ export function FloatingGraphics() {
   };
 
   return (
-    <div className="fixed inset-0 -z-40 pointer-events-none overflow-hidden">
+    <div className="fixed inset-0 -z-50 pointer-events-none overflow-hidden">
       {shapes.map((shape) => (
         <div
           key={shape.id}
-          className={`absolute opacity-20 ${getShapeClasses(shape.shape)} 
-            bg-gradient-to-br from-accent/30 via-primary/30 to-success/30
-            animate-float-gentle blur-sm`}
+          className={`absolute opacity-5 ${getShapeClasses(shape.shape)} 
+            bg-gradient-to-br from-accent/20 via-primary/20 to-success/20
+            animate-float-gentle blur-xl`}
           style={getShapeStyles(shape)}
         />
       ))}
