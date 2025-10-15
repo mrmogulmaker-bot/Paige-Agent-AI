@@ -24,6 +24,22 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Check if user is admin - admins get full access
+      const { data: adminRole } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+
+      if (adminRole) {
+        setSubscribed(true);
+        setPlanSlug('enterprise');
+        setSubscriptionEnd(null);
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('check-subscription');
       
       if (error) {

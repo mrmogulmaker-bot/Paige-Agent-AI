@@ -26,11 +26,25 @@ export function PlanGate({ feature, children, onUpgradeClick }: PlanGateProps) {
       return;
     }
 
+    // Check if user is admin - admins get full access
+    const { data: adminRole } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (adminRole) {
+      setHasAccess(true);
+      setLoading(false);
+      return;
+    }
+
     const { data: subscription } = await supabase
       .from("user_subscriptions")
       .select("plan_slug")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (!subscription) {
       setHasAccess(false);
@@ -42,7 +56,7 @@ export function PlanGate({ feature, children, onUpgradeClick }: PlanGateProps) {
       .from("subscription_plans")
       .select("*")
       .eq("slug", subscription.plan_slug)
-      .single();
+      .maybeSingle();
 
     if (!plan) {
       setHasAccess(false);
