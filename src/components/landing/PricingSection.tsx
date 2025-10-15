@@ -140,8 +140,8 @@ export function PricingSection() {
               <Button
                 className={`w-full ${
                   tier.popular
-                    ? "bg-gradient-primary text-primary-foreground shadow-glow hover:scale-105"
-                    : "bg-muted text-foreground hover:bg-muted/80 hover:scale-105"
+                    ? "bg-gradient-primary text-primary-foreground shadow-glow hover:shadow-glow-lg hover:scale-110 hover:brightness-125"
+                    : "bg-muted text-foreground hover:bg-accent hover:text-accent-foreground hover:scale-105"
                 } transition-all duration-300`}
                 size="lg"
                 onClick={() => navigate("/auth?mode=signup")}

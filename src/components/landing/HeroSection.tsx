@@ -70,7 +70,7 @@ export function HeroSection() {
             <div className="flex flex-col sm:flex-row gap-4 animate-fade-in" style={{ animationDelay: "0.5s" }}>
               <Button 
                 size="lg"
-                className="bg-gradient-primary text-primary-foreground hover:opacity-90 hover:scale-105 shadow-glow transition-all duration-300"
+                className="bg-gradient-primary text-primary-foreground hover:shadow-glow-lg hover:scale-110 hover:brightness-125 transition-all duration-300"
                 onClick={() => navigate("/dashboard")}
               >
                 Start Building Now

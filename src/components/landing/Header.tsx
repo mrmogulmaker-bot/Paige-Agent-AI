@@ -37,7 +37,7 @@ export function Header() {
               Sign In
             </Button>
             <Button 
-              className="bg-gradient-primary text-primary-foreground hover:opacity-90 shadow-glow"
+              className="bg-gradient-primary text-primary-foreground hover:shadow-glow-lg hover:scale-110 hover:brightness-125 transition-all duration-300"
               onClick={() => navigate("/auth")}
             >
               Get Started
@@ -91,7 +91,7 @@ export function Header() {
                 Sign In
               </Button>
               <Button 
-                className="w-full bg-gradient-primary text-primary-foreground"
+                className="w-full bg-gradient-primary text-primary-foreground hover:shadow-glow-lg hover:scale-105 hover:brightness-125 transition-all duration-300"
                 onClick={() => navigate("/auth")}
               >
                 Get Started
