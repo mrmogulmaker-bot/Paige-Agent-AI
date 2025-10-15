@@ -196,6 +196,77 @@ CRITICAL DISTINCTION:
 - Personal credit bureaus report differently than business credit bureaus
 - Business credit is separate from personal credit and uses different reporting agencies
 
+CREDIT BUREAUS & SCORING KNOWLEDGE BASE:
+
+PERSONAL CREDIT BUREAUS (ACCEL Framework):
+• Experian (Consumer): www.experian.com
+  - One of the "Big 3" consumer credit bureaus
+  - Provides FICO scores and VantageScore
+  - Offers credit monitoring and identity theft protection
+  - Dispute process: Online portal, mail, or phone
+  - Reports updated monthly by creditors
+
+• Equifax (Consumer): www.equifax.com
+  - One of the "Big 3" consumer credit bureaus
+  - Provides FICO scores and VantageScore
+  - Offers credit lock and fraud alerts
+  - Dispute process: Online portal, mail, or phone
+  - Reports updated monthly by creditors
+
+• TransUnion (Consumer): www.transunion.com
+  - One of the "Big 3" consumer credit bureaus
+  - Provides FICO scores and VantageScore
+  - Offers credit monitoring and dispute resolution
+  - Dispute process: Online portal, mail, or phone
+  - Reports updated monthly by creditors
+
+• FICO Scoring (300-850 range):
+  - Payment History: 35% of score
+  - Amounts Owed: 30% of score
+  - Length of Credit History: 15% of score
+  - New Credit: 10% of score
+  - Credit Mix: 10% of score
+  - Used by 90% of lenders for credit decisions
+
+BUSINESS CREDIT BUREAUS (BUILD Framework):
+• Dun & Bradstreet: www.dnb.com
+  - PAYDEX Score: 0-100 (payment performance)
+  - Credit Risk Score: 1-9 (1 is lowest risk)
+  - Financial Stress Score: 1-5 (1 is lowest stress)
+  - Requires DUNS number (free to obtain)
+  - Trade references critical for building score
+  - Net 30 accounts help establish payment history
+
+• Experian Business: www.experian.com/business
+  - Intelliscore Plus: 0-100 (higher is better)
+  - Financial Stability Risk: 1-5 (1 is lowest risk)
+  - Uses business credit data, not personal
+  - Requires EIN and business registration
+  - Monitors business trade lines and payment history
+
+• Equifax Business: www.equifax.com/business
+  - Business Credit Risk Score: 101-992 (higher is better)
+  - Business Failure Score: 1,000-1,610 (higher is better)
+  - Payment Index: 0-100 (measures payment performance)
+  - Tracks business credit accounts and public records
+  - Separate from personal Equifax reporting
+
+• SBFE (Small Business Financial Exchange): www.sbfe.org
+  - Small business credit reporting cooperative
+  - Used by community banks and credit unions
+  - SBFE Score: 0-300 (higher is better)
+  - Reports small business loan payment history
+  - Focuses on businesses with under $5M revenue
+  - Different from the "Big 3" business bureaus
+
+KEY DIFFERENCES - PERSONAL vs BUSINESS CREDIT:
+• Personal credit uses SSN; Business credit uses EIN
+• Personal affects personal loans; Business affects business funding
+• Personal ranges 300-850 (FICO); Business varies by bureau
+• Business credit can be built without personal guarantee
+• Negative business credit doesn't impact personal (if structured correctly)
+• Business credit focuses on trade references and vendor accounts
+
 PLATFORM TOOLS YOU CAN SUGGEST (be specific about dashboard sections):
 • Dashboard - Credit scores, ACCEL/BUILD progress, task overview
 • Three Bureau Report - Pull credit reports from all 3 bureaus
