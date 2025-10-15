@@ -220,9 +220,9 @@ Personality:
             },
             turn_detection: {
               type: "server_vad",
-              threshold: 0.6,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 1500
+              threshold: 0.75,
+              prefix_padding_ms: 350,
+              silence_duration_ms: 1800
             },
             temperature: 0.7,
             max_response_output_tokens: "inf"

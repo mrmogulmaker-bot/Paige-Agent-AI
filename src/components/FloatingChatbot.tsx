@@ -19,7 +19,7 @@ export const FloatingChatbot = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Hi! I'm PaigeAgent.ai, your financial coach. How can I help you navigate the site today?"
+      content: "Hey, how can I help?"
     }
   ]);
   const [input, setInput] = useState("");
@@ -32,6 +32,7 @@ export const FloatingChatbot = () => {
   const recorderRef = useRef<AudioRecorder | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioQueueRef = useRef<AudioQueue | null>(null);
+  const lastCancelAtRef = useRef<number>(0);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -106,6 +107,23 @@ export const FloatingChatbot = () => {
       };
 
       recorderRef.current = new AudioRecorder((audioData) => {
+        // Compute RMS to detect when the user starts speaking (barge-in detection)
+        let sumSquares = 0;
+        for (let i = 0; i < audioData.length; i++) sumSquares += audioData[i] * audioData[i];
+        const rms = Math.sqrt(sumSquares / audioData.length);
+
+        // If AI is speaking and the user starts talking, cancel current response immediately
+        if (isSpeaking && rms > 0.02) {
+          const now = Date.now();
+          if (wsRef.current?.readyState === WebSocket.OPEN && now - lastCancelAtRef.current > 800) {
+            console.log('Barge-in detected: cancelling current response');
+            wsRef.current.send(JSON.stringify({ type: 'response.cancel' }));
+            audioQueueRef.current?.clear();
+            setIsSpeaking(false);
+            lastCancelAtRef.current = now;
+          }
+        }
+
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           const encoded = encodeAudioForAPI(audioData);
           wsRef.current.send(JSON.stringify({
