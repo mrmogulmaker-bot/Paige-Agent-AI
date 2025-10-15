@@ -3,8 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ChevronDown, CheckCircle2, FileText, Building2, TrendingUp, BarChart3, Shield, DollarSign, Upload, AlertTriangle, Info } from "lucide-react";
+import { ChevronDown, CheckCircle2, FileText, Building2, TrendingUp, BarChart3, Shield, DollarSign, Upload, AlertTriangle, Info, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { DocumentUpload } from "./DocumentUpload";
+import { useToast } from "@/hooks/use-toast";
 
 const buildModules = [
   {
@@ -169,6 +171,8 @@ export const BuildProgramOutline = () => {
   const [expandedModule, setExpandedModule] = useState<number | null>(1);
   const [businessAccounts, setBusinessAccounts] = useState<BusinessAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [parsingSyncing, setParsingSyncing] = useState(false);
+  const { toast } = useToast();
   const [analysis, setAnalysis] = useState<AccountAnalysis>({
     hasVendor: false,
     hasFinancial: false,
@@ -239,6 +243,70 @@ export const BuildProgramOutline = () => {
     });
   };
 
+  const handleReportUpload = async () => {
+    setParsingSyncing(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Call edge function to parse the uploaded PDF
+      const { data, error } = await supabase.functions.invoke("parse-business-credit-report", {
+        body: { userId: user.id }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Report parsed successfully",
+        description: `Found ${data.accountsAdded} business accounts in your credit report.`,
+      });
+
+      // Refresh the accounts
+      await fetchBusinessAccounts();
+    } catch (error: any) {
+      console.error("Error parsing report:", error);
+      toast({
+        title: "Parsing failed",
+        description: error.message || "Failed to parse business credit report",
+        variant: "destructive",
+      });
+    } finally {
+      setParsingSyncing(false);
+    }
+  };
+
+  const handleSyncBureaus = async () => {
+    setParsingSyncing(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Call edge function to fetch from credit bureaus
+      const { data, error } = await supabase.functions.invoke("sync-business-credit-bureaus", {
+        body: { userId: user.id }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Credit bureaus synced",
+        description: `Synced data from ${data.bureausSynced.join(", ")}`,
+      });
+
+      // Refresh the accounts
+      await fetchBusinessAccounts();
+    } catch (error: any) {
+      console.error("Error syncing bureaus:", error);
+      toast({
+        title: "Sync failed",
+        description: error.message || "Failed to sync with credit bureaus",
+        variant: "destructive",
+      });
+    } finally {
+      setParsingSyncing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -250,12 +318,75 @@ export const BuildProgramOutline = () => {
         </p>
       </div>
 
+      {/* Upload Section */}
+      <Card className="p-6 border-primary/20">
+        <CardHeader className="px-0 pt-0">
+          <CardTitle>Import Business Credit Report</CardTitle>
+          <CardDescription>
+            Upload your business credit report PDF or sync directly from credit bureaus
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="px-0 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <DocumentUpload
+                documentType="business_credit_report"
+                label="Business Credit Report"
+                description="Upload PDF from Dun & Bradstreet, Experian, Equifax, or Nav"
+                bucketName="business-documents"
+                onUploadSuccess={() => {}}
+              />
+              <Button 
+                onClick={handleReportUpload} 
+                className="w-full mt-3"
+                disabled={parsingSyncing}
+              >
+                {parsingSyncing ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Parsing Report...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Parse Uploaded Report
+                  </>
+                )}
+              </Button>
+            </div>
+            <div className="flex flex-col justify-center">
+              <h4 className="font-semibold mb-2">Or Sync from Bureaus</h4>
+              <p className="text-sm text-muted-foreground mb-4">
+                Connect directly to business credit bureaus for automatic updates
+              </p>
+              <Button 
+                onClick={handleSyncBureaus} 
+                variant="outline"
+                disabled={parsingSyncing}
+              >
+                {parsingSyncing ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Sync from Bureaus
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Credit Report Analysis */}
       {!loading && analysis.totalAccounts === 0 ? (
         <Alert className="border-warning/50 bg-warning/10">
           <Upload className="h-4 w-4" />
           <AlertDescription>
-            Import your business credit report to receive personalized recommendations on which accounts to add for maximum buying power.
+            Upload and parse your business credit report above to receive personalized account recommendations.
           </AlertDescription>
         </Alert>
       ) : (
