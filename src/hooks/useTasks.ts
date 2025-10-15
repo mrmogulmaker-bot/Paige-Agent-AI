@@ -135,6 +135,104 @@ export const useTasks = () => {
     }
   };
 
+  const generateAccelTasks = async () => {
+    const accelTaskTemplates = [
+      {
+        title: "Pull All Three Credit Reports",
+        description: "Obtain reports from Experian, Equifax, and TransUnion",
+        track: "ACCEL-A",
+        due_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        title: "Review Reports for Errors",
+        description: "Identify inaccuracies, outdated accounts, or fraudulent items",
+        track: "ACCEL-A",
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        title: "Prepare Dispute Letters",
+        description: "Document all errors and prepare comprehensive dispute letters",
+        track: "ACCEL-C1",
+        due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        title: "Submit Disputes to Bureaus",
+        description: "Send dispute letters to all three credit bureaus via certified mail",
+        track: "ACCEL-C1",
+        due_date: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        title: "Follow Up on Dispute Responses",
+        description: "Review bureau responses and prepare follow-up actions",
+        track: "ACCEL-C2",
+        due_date: new Date(Date.now() + 51 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        title: "Set Up Payment Reminders",
+        description: "Ensure all bills are paid on time to build positive history",
+        track: "ACCEL-E",
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        title: "Monitor Credit Utilization",
+        description: "Keep credit card balances under 30% of limits",
+        track: "ACCEL-E",
+        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        title: "Enable Credit Monitoring",
+        description: "Set up alerts for changes to your credit reports",
+        track: "ACCEL-L",
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ];
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Check if tasks already exist
+      const { data: existingTasks } = await supabase
+        .from("tasks")
+        .select("track")
+        .eq("user_id", user.id)
+        .like("track", "ACCEL%");
+
+      if (existingTasks && existingTasks.length > 0) {
+        toast({
+          title: "Info",
+          description: "ACCEL tasks already generated",
+        });
+        return;
+      }
+
+      // Create all tasks
+      const { error } = await supabase.from("tasks").insert(
+        accelTaskTemplates.map((task) => ({
+          ...task,
+          user_id: user.id,
+          status: "pending" as const,
+        }))
+      );
+
+      if (error) throw error;
+
+      await fetchTasks();
+
+      toast({
+        title: "Success! 🎯",
+        description: `Generated ${accelTaskTemplates.length} ACCEL framework tasks`,
+      });
+    } catch (error) {
+      console.error("Error generating ACCEL tasks:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate ACCEL tasks",
+        variant: "destructive",
+      });
+    }
+  };
+
   const generateBuildTasks = async () => {
     const buildTaskTemplates = [
       {
@@ -156,22 +254,34 @@ export const useTasks = () => {
         due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
       },
       {
+        title: "Open Business Bank Account",
+        description: "Separate personal and business finances",
+        track: "BUILD-B",
+        due_date: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
         title: "Open Net-30 Vendor Accounts",
         description: "Establish credit with suppliers offering net-30 terms",
         track: "BUILD-U",
-        due_date: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString(),
+        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       },
       {
         title: "Make Timely Payments",
         description: "Maintain perfect payment history on all vendor accounts",
         track: "BUILD-U",
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        due_date: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(),
       },
       {
         title: "Request Credit Reporting",
         description: "Ensure vendors report your payment history to credit bureaus",
         track: "BUILD-U",
-        due_date: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(),
+        due_date: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        title: "Apply for Business Credit Card",
+        description: "Get a business credit card to diversify credit mix",
+        track: "BUILD-D",
+        due_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
       },
     ];
 
@@ -184,7 +294,7 @@ export const useTasks = () => {
         .from("tasks")
         .select("track")
         .eq("user_id", user.id)
-        .in("track", ["BUILD-B", "BUILD-U"]);
+        .like("track", "BUILD%");
 
       if (existingTasks && existingTasks.length > 0) {
         toast({
@@ -251,6 +361,7 @@ export const useTasks = () => {
     createTask,
     updateTask,
     deleteTask,
+    generateAccelTasks,
     generateBuildTasks,
     refetch: fetchTasks,
   };
