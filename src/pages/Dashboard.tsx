@@ -118,6 +118,7 @@ const Dashboard = () => {
                 <h1 className="text-xl font-semibold">
                   {activeSection === "dashboard" && "Dashboard"}
                   {activeSection === "personal" && "Personal Credit"}
+                  {activeSection === "tasks" && "Tasks"}
                   {activeSection === "paige-ai" && "PaigeAgent.ai"}
                   {activeSection === "learning-vault" && "Learning Vault"}
                   {activeSection === "business-credit" && "Business Credit"}
@@ -165,6 +166,7 @@ const Dashboard = () => {
                 )}
                 
                 {activeSection === "personal" && <PersonalSection />}
+                {activeSection === "tasks" && <TaskManager businessMode={false} />}
                 {activeSection === "paige-ai" && <PaigeAIChat />}
                 {activeSection === "learning-vault" && <LearningVault />}
                 {activeSection === "business-credit" && (

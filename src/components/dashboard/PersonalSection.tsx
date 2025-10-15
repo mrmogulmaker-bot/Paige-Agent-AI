@@ -1,9 +1,8 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, CreditCard, BarChart3, CheckSquare } from "lucide-react";
+import { FileText, CreditCard, BarChart3 } from "lucide-react";
 import { DisputesManager } from "./DisputesManager";
 import { AccountsOverview } from "./AccountsOverview";
 import { ThreeBureauReport } from "./ThreeBureauReport";
-import { TaskManager } from "./TaskManager";
 
 export function PersonalSection() {
   return (
@@ -18,7 +17,7 @@ export function PersonalSection() {
       </div>
 
       <Tabs defaultValue="disputes" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="disputes" className="gap-2">
             <FileText className="w-4 h-4" />
             Credit Disputes
@@ -30,10 +29,6 @@ export function PersonalSection() {
           <TabsTrigger value="reports" className="gap-2">
             <BarChart3 className="w-4 h-4" />
             Credit Reports
-          </TabsTrigger>
-          <TabsTrigger value="tasks" className="gap-2">
-            <CheckSquare className="w-4 h-4" />
-            Tasks
           </TabsTrigger>
         </TabsList>
 
@@ -47,10 +42,6 @@ export function PersonalSection() {
 
         <TabsContent value="reports" className="mt-6">
           <ThreeBureauReport />
-        </TabsContent>
-
-        <TabsContent value="tasks" className="mt-6">
-          <TaskManager businessMode={false} />
         </TabsContent>
       </Tabs>
     </div>

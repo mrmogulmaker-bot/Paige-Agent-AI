@@ -14,6 +14,7 @@ import {
 const personalMenuItems = [
   { title: "Dashboard", icon: LayoutDashboard, id: "dashboard" },
   { title: "Personal Credit", icon: CreditCard, id: "personal" },
+  { title: "Tasks", icon: CheckSquare, id: "tasks" },
 ];
 
 const businessMenuItems = [
