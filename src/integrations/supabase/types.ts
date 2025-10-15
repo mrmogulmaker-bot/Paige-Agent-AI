@@ -124,15 +124,21 @@ export type Database = {
       }
       businesses: {
         Row: {
+          business_type:
+            | Database["public"]["Enums"]["business_hierarchy_type"]
+            | null
           created_at: string | null
           dba: string | null
+          display_order: number | null
           ein: string | null
           entity_type: Database["public"]["Enums"]["entity_type"] | null
           formation_status: string | null
           id: string
           legal_name: string
           naics: string | null
+          organizational_level: number | null
           owner_user_id: string
+          parent_business_id: string | null
           registered_agent_renewal_date: string | null
           registered_agent_state: string | null
           revenue_band: string | null
@@ -140,15 +146,21 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          business_type?:
+            | Database["public"]["Enums"]["business_hierarchy_type"]
+            | null
           created_at?: string | null
           dba?: string | null
+          display_order?: number | null
           ein?: string | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
           formation_status?: string | null
           id?: string
           legal_name: string
           naics?: string | null
+          organizational_level?: number | null
           owner_user_id: string
+          parent_business_id?: string | null
           registered_agent_renewal_date?: string | null
           registered_agent_state?: string | null
           revenue_band?: string | null
@@ -156,22 +168,36 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          business_type?:
+            | Database["public"]["Enums"]["business_hierarchy_type"]
+            | null
           created_at?: string | null
           dba?: string | null
+          display_order?: number | null
           ein?: string | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
           formation_status?: string | null
           id?: string
           legal_name?: string
           naics?: string | null
+          organizational_level?: number | null
           owner_user_id?: string
+          parent_business_id?: string | null
           registered_agent_renewal_date?: string | null
           registered_agent_state?: string | null
           revenue_band?: string | null
           state_of_formation?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "businesses_parent_business_id_fkey"
+            columns: ["parent_business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       commission_payments: {
         Row: {
@@ -488,9 +514,11 @@ export type Database = {
           file_name: string
           file_path: string
           file_size: number
+          folder_path: string | null
           id: string
           metadata: Json | null
           mime_type: string
+          tags: string[] | null
           updated_at: string | null
           uploaded_at: string | null
           user_id: string
@@ -502,9 +530,11 @@ export type Database = {
           file_name: string
           file_path: string
           file_size: number
+          folder_path?: string | null
           id?: string
           metadata?: Json | null
           mime_type: string
+          tags?: string[] | null
           updated_at?: string | null
           uploaded_at?: string | null
           user_id: string
@@ -516,9 +546,11 @@ export type Database = {
           file_name?: string
           file_path?: string
           file_size?: number
+          folder_path?: string | null
           id?: string
           metadata?: Json | null
           mime_type?: string
+          tags?: string[] | null
           updated_at?: string | null
           uploaded_at?: string | null
           user_id?: string
@@ -1124,6 +1156,20 @@ export type Database = {
         }
         Returns: boolean
       }
+      get_business_hierarchy: {
+        Args: { _user_id: string }
+        Returns: {
+          business_type: Database["public"]["Enums"]["business_hierarchy_type"]
+          child_count: number
+          display_order: number
+          ein: string
+          entity_type: Database["public"]["Enums"]["entity_type"]
+          id: string
+          legal_name: string
+          organizational_level: number
+          parent_business_id: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1157,6 +1203,11 @@ export type Database = {
         | "student_loan"
         | "collections"
       app_role: "admin" | "moderator" | "user" | "affiliate"
+      business_hierarchy_type:
+        | "holding"
+        | "parent"
+        | "subsidiary"
+        | "standalone"
       dispute_status:
         | "draft"
         | "submitted"
@@ -1310,6 +1361,12 @@ export const Constants = {
         "collections",
       ],
       app_role: ["admin", "moderator", "user", "affiliate"],
+      business_hierarchy_type: [
+        "holding",
+        "parent",
+        "subsidiary",
+        "standalone",
+      ],
       dispute_status: [
         "draft",
         "submitted",

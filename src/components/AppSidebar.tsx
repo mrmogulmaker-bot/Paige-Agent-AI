@@ -21,6 +21,7 @@ const personalMenuItems = [
 const businessMenuItems = [
   { title: "Business Credit", icon: Building2, id: "business-credit" },
   { title: "BUILD Program", icon: TrendingUp, id: "build-steps" },
+  { title: "Organization Chart", icon: Building2, id: "business-organization" },
 ];
 
 const generalMenuItems = [
