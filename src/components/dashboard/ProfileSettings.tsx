@@ -111,7 +111,7 @@ export const ProfileSettings = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Validate SSN if provided
+      // Validate SSN if provided (client-side check)
       if (ssn && isEditingSSN) {
         try {
           ssnSchema.parse(ssn);
@@ -126,6 +126,7 @@ export const ProfileSettings = () => {
         }
       }
 
+      // Update non-sensitive fields directly
       const updateData: any = {
         full_name: fullName,
         phone,
@@ -135,29 +136,42 @@ export const ProfileSettings = () => {
         postal_code: postalCode,
       };
 
-      // Only update SSN if user is editing it
-      if (ssn && isEditingSSN) {
-        updateData.ssn_encrypted = ssn; // In production, encrypt this!
-        setSsnLast4(ssn.slice(-4));
-        setSsn("");
-        setIsEditingSSN(false);
-        setShowSsn(false);
-      }
-
-      // Only update DOB if user is editing it
-      if (dateOfBirth && isEditingDOB) {
-        updateData.date_of_birth = dateOfBirth;
-        setDobMasked(`**/**/****`);
-        setDateOfBirth("");
-        setIsEditingDOB(false);
-      }
-
-      const { error } = await supabase
+      const { error: profileError } = await supabase
         .from("profiles")
         .update(updateData)
         .eq("user_id", user.id);
 
-      if (error) throw error;
+      if (profileError) throw profileError;
+
+      // Update SSN/DOB using secure server-side function if editing
+      if ((ssn && isEditingSSN) || (dateOfBirth && isEditingDOB)) {
+        // Remove dashes from SSN for storage
+        const cleanedSsn = ssn ? ssn.replace(/-/g, '') : null;
+        const ssnLast4Value = cleanedSsn ? cleanedSsn.slice(-4) : null;
+        
+        const { error: ssnError } = await supabase.rpc('update_profile_ssn', {
+          _user_id: user.id,
+          _ssn_encrypted: (ssn && isEditingSSN) ? cleanedSsn : null,
+          _ssn_last_4: (ssn && isEditingSSN) ? ssnLast4Value : null,
+          _date_of_birth: (dateOfBirth && isEditingDOB) ? dateOfBirth : null,
+        });
+
+        if (ssnError) throw ssnError;
+
+        // Update local state
+        if (ssn && isEditingSSN) {
+          setSsnLast4(ssnLast4Value!);
+          setSsn("");
+          setIsEditingSSN(false);
+          setShowSsn(false);
+        }
+
+        if (dateOfBirth && isEditingDOB) {
+          setDobMasked(`**/**/****`);
+          setDateOfBirth("");
+          setIsEditingDOB(false);
+        }
+      }
 
       toast({
         title: "Success",
@@ -167,7 +181,7 @@ export const ProfileSettings = () => {
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to update personal information",
+        description: error instanceof Error ? error.message : "Failed to update personal information",
         variant: "destructive",
       });
     } finally {
