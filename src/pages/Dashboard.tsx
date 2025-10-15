@@ -20,7 +20,8 @@ import { OrganizationChart } from "@/components/dashboard/OrganizationChart";
 import { BusinessDocumentsManager } from "@/components/dashboard/BusinessDocumentsManager";
 import { ProfileSettings } from "@/components/dashboard/ProfileSettings";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
-import { DocumentsManager } from "@/components/dashboard/DocumentsManager";
+import { PersonalDocuments } from "@/components/dashboard/PersonalDocuments";
+import { BusinessDocuments } from "@/components/dashboard/BusinessDocuments";
 import { TaskManager } from "@/components/dashboard/TaskManager";
 import { PaymentHistory } from "@/components/dashboard/PaymentHistory";
 import { AffiliateTracking } from "@/components/dashboard/AffiliateTracking";
@@ -127,11 +128,13 @@ const Dashboard = () => {
                   {activeSection === "dashboard" && "Dashboard"}
                   {activeSection === "personal" && "Personal Credit"}
                   {activeSection === "personal-build" && "BUILD Program - Personal"}
+                  {activeSection === "personal-documents" && "Personal Documents"}
                   {activeSection === "tasks" && "Tasks"}
                   {activeSection === "paige-ai" && "PaigeAgent.ai"}
                   {activeSection === "learning-vault" && "Learning Vault"}
                   {activeSection === "business-credit" && "Business Credit"}
                   {activeSection === "build-steps" && "BUILD Program - Business"}
+                  {activeSection === "business-documents" && "Business Documents"}
                   {activeSection === "business-organization" && "Business Organization"}
                   {activeSection === "payments" && "Payment History"}
                   {activeSection === "affiliate" && "Affiliate Program"}
@@ -181,6 +184,7 @@ const Dashboard = () => {
                     <PersonalBuildProgramOutline />
                   </div>
                 )}
+                {activeSection === "personal-documents" && <PersonalDocuments />}
                 {activeSection === "tasks" && <TaskManager businessMode={false} />}
                 {activeSection === "paige-ai" && <PaigeAIChat />}
                 {activeSection === "learning-vault" && <LearningVault />}
@@ -192,6 +196,11 @@ const Dashboard = () => {
                 {activeSection === "build-steps" && (
                   <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
                     <BuildProgramOutline />
+                  </PlanGate>
+                )}
+                {activeSection === "business-documents" && (
+                  <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
+                    <BusinessDocuments />
                   </PlanGate>
                 )}
                 {activeSection === "business-organization" && (
@@ -206,7 +215,6 @@ const Dashboard = () => {
                 {activeSection === "affiliate" && <AffiliateTracking />}
                   {activeSection === "integrations" && <Integrations />}
                 {activeSection === "settings" && <ProfileSettings />}
-                {/* Documents section removed - now under Personal and Business tabs */}
               </div>
             </main>
           </div>

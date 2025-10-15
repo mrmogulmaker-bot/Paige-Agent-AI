@@ -15,12 +15,14 @@ const personalMenuItems = [
   { title: "Dashboard", icon: LayoutDashboard, id: "dashboard" },
   { title: "Personal Credit", icon: CreditCard, id: "personal" },
   { title: "BUILD Program", icon: TrendingUp, id: "personal-build" },
+  { title: "Documents", icon: FolderOpen, id: "personal-documents" },
   { title: "Tasks", icon: CheckSquare, id: "tasks" },
 ];
 
 const businessMenuItems = [
   { title: "Business Credit", icon: Building2, id: "business-credit" },
   { title: "BUILD Program", icon: TrendingUp, id: "build-steps" },
+  { title: "Documents", icon: FolderOpen, id: "business-documents" },
   { title: "Organization Chart", icon: Building2, id: "business-organization" },
 ];
 
