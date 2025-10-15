@@ -52,12 +52,16 @@ export default function BuildProgramBusiness({
       {/* Header */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-xl md:text-2xl font-semibold text-foreground">BUILD Program — Business</h1>
-          <p className="text-sm text-muted-foreground">Build fundable business credit with strategic account placement.</p>
+          <h1 className="text-xl md:text-2xl font-bold text-foreground">BUILD Program — Business</h1>
+          <p className="text-sm text-muted-foreground mt-1">Build fundable business credit with strategic account placement.</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={onRunAssessment} className="rounded-xl bg-foreground px-4 py-2 text-background shadow hover:opacity-90 text-sm md:text-base">Run BUILD Assessment</button>
-          <button onClick={onSyncBureaus} className="rounded-xl border border-border px-4 py-2 text-foreground hover:bg-accent text-sm md:text-base">Sync Bureaus</button>
+          <button onClick={onRunAssessment} className="rounded-xl bg-primary px-5 py-2.5 text-primary-foreground shadow-md hover:shadow-lg hover:bg-primary-light transition-all text-sm md:text-base font-semibold">
+            Run BUILD Assessment
+          </button>
+          <button onClick={onSyncBureaus} className="rounded-xl border-2 border-border px-5 py-2.5 text-foreground hover:border-gold hover:bg-gold/5 transition-all text-sm md:text-base font-semibold">
+            Sync Bureaus
+          </button>
         </div>
       </div>
 
@@ -71,33 +75,52 @@ export default function BuildProgramBusiness({
 
       {/* Upload / Sync */}
       <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="rounded-2xl border border-gold/30 bg-card p-5 shadow-card">
-          <h3 className="mb-2 text-base md:text-lg font-semibold text-foreground">Upload Business Credit Report (PDF)</h3>
-          <p className="mb-4 text-sm text-muted-foreground">Dun &amp; Bradstreet, Experian, Equifax, or Nav.</p>
-          <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-border px-4 py-2 hover:bg-accent text-sm">
+        <div className="rounded-2xl border-2 border-gold/40 bg-card p-6 shadow-card hover:shadow-glow transition-all">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-gold flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-base md:text-lg font-bold text-foreground">Upload Business Credit Report</h3>
+              <p className="text-xs text-muted-foreground mt-1">Dun &amp; Bradstreet, Experian, Equifax, or Nav.</p>
+            </div>
+          </div>
+          <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border-2 border-gold bg-gradient-gold px-5 py-2.5 hover:shadow-glow transition-all text-sm font-semibold text-primary">
             <input
               type="file"
               accept=".pdf"
               className="hidden"
               onChange={(e) => e.target.files?.[0] && onParseReport(e.target.files[0])}
             />
-            {uploading ? "Parsing…" : "Choose File"}
+            {uploading ? "Parsing PDF..." : "Choose PDF File"}
           </label>
         </div>
 
-        <div className="rounded-2xl border border-accent/30 bg-card p-5 shadow-card">
-          <h3 className="mb-2 text-base md:text-lg font-semibold text-foreground">Sync from Bureaus</h3>
-          <p className="mb-4 text-sm text-muted-foreground">Connect to business bureaus for automatic updates.</p>
-          <button onClick={onSyncBureaus} className="rounded-xl bg-accent px-4 py-2 text-accent-foreground hover:opacity-90 text-sm">
-            {syncing ? "Syncing…" : "Sync Now"}
+        <div className="rounded-2xl border-2 border-accent/40 bg-card p-6 shadow-card hover:shadow-glow-teal transition-all">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-accent flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-base md:text-lg font-bold text-foreground">Sync from Bureaus</h3>
+              <p className="text-xs text-muted-foreground mt-1">Connect for automatic updates.</p>
+            </div>
+          </div>
+          <button onClick={onSyncBureaus} className="rounded-xl bg-accent px-5 py-2.5 text-accent-foreground hover:bg-accent-glow transition-all text-sm font-semibold shadow-md hover:shadow-glow-teal">
+            {syncing ? "Syncing..." : "Sync Now"}
           </button>
         </div>
       </div>
 
       {/* BUILD Ladder */}
-      <div className="mb-6 rounded-2xl bg-card p-5 shadow-card ring-1 ring-border">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-base md:text-lg font-semibold text-foreground">BUILD Ladder</h3>
+      <div className="mb-6 rounded-2xl bg-gradient-surface p-6 shadow-lg ring-1 ring-border">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-base md:text-lg font-bold text-foreground">BUILD Ladder</h3>
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Progress Stages</span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {(["B","U","I","L","D"] as const).map(key => (
@@ -151,26 +174,27 @@ export default function BuildProgramBusiness({
 
 function KpiCard({ label, value, target, accent }: { label: string; value: number|string|undefined; target?: string; accent?: string }) {
   return (
-    <div className="rounded-2xl bg-card p-4 md:p-5 shadow-card ring-1 ring-border">
+    <div className="rounded-2xl bg-card p-4 md:p-5 shadow-card ring-1 ring-border hover:ring-2 hover:ring-gold/20 transition-all">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-xs md:text-sm text-muted-foreground">{label}</span>
-        <span className={`h-2 w-2 rounded-full ${accent || "bg-muted"}`} />
+        <span className="text-xs md:text-sm font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
+        <span className={`h-3 w-3 rounded-full ${accent || "bg-muted"} shadow-sm`} />
       </div>
-      <div className="text-xl md:text-2xl font-semibold text-foreground">{value ?? "—"}</div>
-      {target && <div className="mt-1 text-xs text-muted-foreground">Target {target}</div>}
+      <div className="text-xl md:text-2xl font-bold text-foreground">{value ?? "—"}</div>
+      {target && <div className="mt-1 text-xs font-medium text-muted-foreground">Target: {target}</div>}
     </div>
   );
 }
 
 function StageBar({ label, percent, onClick }: { label: string; percent: number; onClick: () => void }) {
+  const isComplete = percent >= 100;
   return (
-    <button onClick={onClick} className="group rounded-xl border border-border p-3 text-left transition hover:bg-accent">
+    <button onClick={onClick} className={`group rounded-xl border-2 p-3 text-left transition-all ${isComplete ? 'border-gold bg-gold/5 shadow-glow' : 'border-border hover:border-gold/50 hover:bg-accent/5'}`}>
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs md:text-sm font-medium text-foreground">{label}</span>
-        <span className="text-xs text-muted-foreground">{Math.round(percent)}%</span>
+        <span className="text-xs md:text-sm font-bold text-foreground group-hover:text-gold transition-colors">{label}</span>
+        <span className={`text-xs font-semibold ${isComplete ? 'text-gold' : 'text-muted-foreground'}`}>{Math.round(percent)}%</span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded bg-muted">
-        <div className="h-full bg-gold transition-all" style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+      <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+        <div className={`h-full transition-all duration-500 ${isComplete ? 'bg-gradient-gold shadow-glow' : 'bg-gold'}`} style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
       </div>
     </button>
   );
@@ -181,12 +205,18 @@ function labelFor(k: "B"|"U"|"I"|"L"|"D") {
 }
 
 function GaugeCard({ score }: { score: number }) {
-  const band = score >= 70 ? "text-emerald-600" : score >= 40 ? "text-amber-500" : "text-rose-500";
+  const band = score >= 70 ? "text-emerald-600 dark:text-emerald-400" : score >= 40 ? "text-gold" : "text-rose-500 dark:text-rose-400";
+  const ringColor = score >= 70 ? "ring-emerald-500/20" : score >= 40 ? "ring-gold/20" : "ring-rose-500/20";
   return (
-    <div className="rounded-2xl bg-card p-5 shadow-card ring-1 ring-border">
-      <div className="mb-2 text-sm text-muted-foreground">BUILD Score</div>
-      <div className={`text-3xl md:text-4xl font-bold ${band}`}>{Math.round(score)}</div>
-      <div className="mt-1 text-xs text-muted-foreground">70+ unlocks Funding Plan</div>
+    <div className={`rounded-2xl bg-card p-6 shadow-card ring-2 ${ringColor} hover:shadow-lg transition-all`}>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">BUILD Score</div>
+        <div className="w-2 h-2 rounded-full bg-gold shadow-glow"></div>
+      </div>
+      <div className={`text-4xl md:text-5xl font-black ${band} mb-2`}>{Math.round(score)}</div>
+      <div className="text-xs font-medium text-muted-foreground">
+        {score >= 70 ? "✓ Funding Ready" : "70+ unlocks Funding Plan"}
+      </div>
     </div>
   );
 }
