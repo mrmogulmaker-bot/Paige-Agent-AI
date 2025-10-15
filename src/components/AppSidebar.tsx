@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen } from "lucide-react";
+import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -19,6 +19,7 @@ const menuItems = [
   { title: "BUILD Steps", icon: TrendingUp, id: "build-steps" },
   { title: "Documents", icon: FolderOpen, id: "documents" },
   { title: "Reports", icon: BarChart3, id: "reports" },
+  { title: "Tasks", icon: CheckSquare, id: "tasks" },
   { title: "Learning Vault", icon: BookOpen, id: "learning-vault" },
   { title: "PaigeAgent.ai", icon: MessageSquare, id: "paige-ai" },
   { title: "Settings", icon: Settings, id: "settings" },
