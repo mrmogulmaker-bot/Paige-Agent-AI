@@ -164,37 +164,6 @@ const categorizeAccount = (creditor: string, type: string): AccountCategory | nu
   return null;
 };
 
-const accountRecommendations: Record<AccountCategory, {
-  title: string;
-  description: string;
-  examples: string[];
-  benefit: string;
-}> = {
-  vendor: {
-    title: "Vendor Accounts (Net 30/60)",
-    description: "Establish trade credit with suppliers that report to business credit bureaus",
-    examples: ["Uline", "Grainger", "Quill", "Net 30 vendors"],
-    benefit: "Builds PAYDEX score and demonstrates payment reliability"
-  },
-  financial: {
-    title: "Financial Accounts",
-    description: "Business credit cards and lines of credit from banks and financial institutions",
-    examples: ["Business credit cards", "Business lines of credit", "Term loans"],
-    benefit: "Increases available credit and shows diversified credit management"
-  },
-  retail: {
-    title: "Retail Accounts",
-    description: "Store credit cards and retail accounts that report to business bureaus",
-    examples: ["Home Depot Business", "Staples Business", "Amazon Business"],
-    benefit: "Easy approval and helps establish credit diversity"
-  },
-  subscription: {
-    title: "Subscription & Utility Accounts",
-    description: "Recurring service payments that can be reported to business credit bureaus",
-    examples: ["Business phone/internet", "SaaS subscriptions", "Utilities"],
-    benefit: "Demonstrates consistent payment history and business operations"
-  }
-};
 
 export const BuildProgramOutline = () => {
   const [expandedModule, setExpandedModule] = useState<number | null>(1);
@@ -356,56 +325,6 @@ export const BuildProgramOutline = () => {
               </div>
             </div>
 
-            {analysis.missingCategories.length > 0 && (
-              <Alert className="border-accent/50 bg-accent/10">
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Recommendations:</strong> You're missing {analysis.missingCategories.length} key account {analysis.missingCategories.length === 1 ? 'type' : 'types'}. 
-                  Adding {analysis.missingCategories.map(cat => accountRecommendations[cat].title).join(", ")} will diversify your credit profile and increase your fundability.
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Missing Account Recommendations */}
-      {analysis.missingCategories.length > 0 && (
-        <Card className="p-6 border-accent/20 shadow-glow">
-          <CardHeader className="px-0 pt-0">
-            <CardTitle className="text-accent">Recommended Account Types to Add</CardTitle>
-            <CardDescription>
-              Strategic accounts to maximize your business buying power
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-0 space-y-4">
-            {analysis.missingCategories.map((category) => {
-              const rec = accountRecommendations[category];
-              return (
-                <div key={category} className="p-4 rounded-lg border border-border bg-card hover:shadow-md transition-shadow">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-1" />
-                    <div className="flex-1">
-                      <h4 className="font-semibold mb-1">{rec.title}</h4>
-                      <p className="text-sm text-muted-foreground mb-3">{rec.description}</p>
-                      <div className="space-y-2">
-                        <p className="text-xs font-medium text-accent">Suggested accounts:</p>
-                        <div className="flex flex-wrap gap-2">
-                          {rec.examples.map((example, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs">
-                              {example}
-                            </Badge>
-                          ))}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          <strong>Why this helps:</strong> {rec.benefit}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
           </CardContent>
         </Card>
       )}
