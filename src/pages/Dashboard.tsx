@@ -186,7 +186,7 @@ const Dashboard = () => {
                   </div>
                 )}
                 {activeSection === "personal-documents" && <PersonalDocuments />}
-                {activeSection === "tasks" && <TaskManager />}
+                {activeSection === "tasks" && <TaskManager businessMode={false} />}
                 {activeSection === "paige-ai" && <PaigeAIChat />}
                 {activeSection === "learning-vault" && <LearningVault />}
                 {activeSection === "business-credit" && (
@@ -206,7 +206,7 @@ const Dashboard = () => {
                 )}
                 {activeSection === "business-tasks" && (
                   <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
-                    <TaskManager />
+                    <TaskManager businessMode={true} />
                   </PlanGate>
                 )}
                 {activeSection === "business-organization" && (
