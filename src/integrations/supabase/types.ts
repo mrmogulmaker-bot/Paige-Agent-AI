@@ -160,6 +160,155 @@ export type Database = {
           },
         ]
       }
+      build_scores: {
+        Row: {
+          active_vendors: number | null
+          activity_recency_score: number | null
+          build_score: number | null
+          bureau_health_score: number | null
+          compliance_pass: boolean | null
+          compliance_score: number | null
+          created_at: string | null
+          current_tier: string | null
+          duns_verified: boolean | null
+          funding_readiness_score: number | null
+          id: string
+          intelliscore: number | null
+          last_calculated_at: string | null
+          months_clean_reporting: number | null
+          paydex: number | null
+          tier_b_unlocked: boolean | null
+          tier_d_unlocked: boolean | null
+          tier_i_unlocked: boolean | null
+          tier_l_unlocked: boolean | null
+          tier_u_unlocked: boolean | null
+          updated_at: string | null
+          user_id: string
+          vendors_score: number | null
+        }
+        Insert: {
+          active_vendors?: number | null
+          activity_recency_score?: number | null
+          build_score?: number | null
+          bureau_health_score?: number | null
+          compliance_pass?: boolean | null
+          compliance_score?: number | null
+          created_at?: string | null
+          current_tier?: string | null
+          duns_verified?: boolean | null
+          funding_readiness_score?: number | null
+          id?: string
+          intelliscore?: number | null
+          last_calculated_at?: string | null
+          months_clean_reporting?: number | null
+          paydex?: number | null
+          tier_b_unlocked?: boolean | null
+          tier_d_unlocked?: boolean | null
+          tier_i_unlocked?: boolean | null
+          tier_l_unlocked?: boolean | null
+          tier_u_unlocked?: boolean | null
+          updated_at?: string | null
+          user_id: string
+          vendors_score?: number | null
+        }
+        Update: {
+          active_vendors?: number | null
+          activity_recency_score?: number | null
+          build_score?: number | null
+          bureau_health_score?: number | null
+          compliance_pass?: boolean | null
+          compliance_score?: number | null
+          created_at?: string | null
+          current_tier?: string | null
+          duns_verified?: boolean | null
+          funding_readiness_score?: number | null
+          id?: string
+          intelliscore?: number | null
+          last_calculated_at?: string | null
+          months_clean_reporting?: number | null
+          paydex?: number | null
+          tier_b_unlocked?: boolean | null
+          tier_d_unlocked?: boolean | null
+          tier_i_unlocked?: boolean | null
+          tier_l_unlocked?: boolean | null
+          tier_u_unlocked?: boolean | null
+          updated_at?: string | null
+          user_id?: string
+          vendors_score?: number | null
+        }
+        Relationships: []
+      }
+      business_vendors: {
+        Row: {
+          account_number: string | null
+          account_opened_date: string | null
+          business_id: string | null
+          created_at: string | null
+          credit_limit: number | null
+          early_payments: number | null
+          id: string
+          is_active: boolean | null
+          last_payment_date: string | null
+          late_payments: number | null
+          on_time_payments: number | null
+          payment_terms: string | null
+          reports_to_bureaus: boolean | null
+          total_payments: number | null
+          updated_at: string | null
+          user_id: string
+          vendor_name: string
+          vendor_type: string
+        }
+        Insert: {
+          account_number?: string | null
+          account_opened_date?: string | null
+          business_id?: string | null
+          created_at?: string | null
+          credit_limit?: number | null
+          early_payments?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_payment_date?: string | null
+          late_payments?: number | null
+          on_time_payments?: number | null
+          payment_terms?: string | null
+          reports_to_bureaus?: boolean | null
+          total_payments?: number | null
+          updated_at?: string | null
+          user_id: string
+          vendor_name: string
+          vendor_type: string
+        }
+        Update: {
+          account_number?: string | null
+          account_opened_date?: string | null
+          business_id?: string | null
+          created_at?: string | null
+          credit_limit?: number | null
+          early_payments?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_payment_date?: string | null
+          late_payments?: number | null
+          on_time_payments?: number | null
+          payment_terms?: string | null
+          reports_to_bureaus?: boolean | null
+          total_payments?: number | null
+          updated_at?: string | null
+          user_id?: string
+          vendor_name?: string
+          vendor_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_vendors_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       businesses: {
         Row: {
           business_type:

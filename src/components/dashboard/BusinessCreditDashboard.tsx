@@ -14,9 +14,15 @@ import {
   ArrowRight,
   ShieldCheck,
   BarChart3,
-  Briefcase
+  Briefcase,
+  Lock,
+  Activity,
+  Users,
+  Award
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useBuildScore } from "@/hooks/useBuildScore";
+import { useFinancialKPIs } from "@/hooks/useFinancialKPIs";
 
 // Mock data for demonstration
 const mockData = {
@@ -39,6 +45,8 @@ const mockData = {
 
 const BusinessCreditDashboard = () => {
   const { toast } = useToast();
+  const { data: buildScore } = useBuildScore();
+  const { data: kpis } = useFinancialKPIs();
 
   const handleAction = (action: string) => {
     toast({
@@ -58,6 +66,111 @@ const BusinessCreditDashboard = () => {
           Manage your business credit profile, fundability, and compliance
         </p>
       </div>
+
+      {/* BUILD Ladder Progress */}
+      <Card className="shadow-card border-primary/20 bg-gradient-to-br from-background to-primary/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Award className="w-5 h-5 text-primary" />
+            BUILD Ladder Progress
+          </CardTitle>
+          <CardDescription>Base • Utility • Intermediate • Leverage • Develop</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-6">
+            {/* BUILD Score */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">BUILD Score</span>
+                <span className="text-3xl font-bold text-primary">
+                  {Math.round(buildScore?.build_score || 0)}/100
+                </span>
+              </div>
+              <Progress value={buildScore?.build_score || 0} className="h-3" />
+              <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                <span>Foundation (0-39)</span>
+                <span>Growth (40-69)</span>
+                <span>Prime Ready (70-100)</span>
+              </div>
+            </div>
+
+            {/* Tier Progress */}
+            <div className="grid grid-cols-5 gap-4">
+              {[
+                { tier: 'B', label: 'Base', unlocked: buildScore?.tier_b_unlocked || true },
+                { tier: 'U', label: 'Utility', unlocked: buildScore?.tier_u_unlocked || false },
+                { tier: 'I', label: 'Intermediate', unlocked: buildScore?.tier_i_unlocked || false },
+                { tier: 'L', label: 'Leverage', unlocked: buildScore?.tier_l_unlocked || false },
+                { tier: 'D', label: 'Develop', unlocked: buildScore?.tier_d_unlocked || false },
+              ].map((item) => (
+                <div
+                  key={item.tier}
+                  className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all ${
+                    item.unlocked
+                      ? 'border-primary bg-primary/10'
+                      : 'border-muted bg-muted/20'
+                  } ${buildScore?.current_tier === item.tier ? 'ring-2 ring-primary' : ''}`}
+                >
+                  {item.unlocked ? (
+                    <CheckCircle2 className="w-8 h-8 text-primary mb-2" />
+                  ) : (
+                    <Lock className="w-8 h-8 text-muted-foreground mb-2" />
+                  )}
+                  <div className="text-2xl font-bold">{item.tier}</div>
+                  <div className="text-xs text-muted-foreground">{item.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Component Scores */}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">Compliance (20%)</div>
+                <div className="flex items-center gap-2">
+                  <Progress value={buildScore?.compliance_score || 0} className="h-2" />
+                  <span className="text-xs font-semibold">{Math.round(buildScore?.compliance_score || 0)}</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">Vendors (25%)</div>
+                <div className="flex items-center gap-2">
+                  <Progress value={buildScore?.vendors_score || 0} className="h-2" />
+                  <span className="text-xs font-semibold">{Math.round(buildScore?.vendors_score || 0)}</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">Bureaus (20%)</div>
+                <div className="flex items-center gap-2">
+                  <Progress value={buildScore?.bureau_health_score || 0} className="h-2" />
+                  <span className="text-xs font-semibold">{Math.round(buildScore?.bureau_health_score || 0)}</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">Funding (20%)</div>
+                <div className="flex items-center gap-2">
+                  <Progress value={buildScore?.funding_readiness_score || 0} className="h-2" />
+                  <span className="text-xs font-semibold">{Math.round(buildScore?.funding_readiness_score || 0)}</span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">Activity (15%)</div>
+                <div className="flex items-center gap-2">
+                  <Progress value={buildScore?.activity_recency_score || 0} className="h-2" />
+                  <span className="text-xs font-semibold">{Math.round(buildScore?.activity_recency_score || 0)}</span>
+                </div>
+              </div>
+            </div>
+
+            <Button 
+              onClick={() => handleAction("Run BUILD Assessment")}
+              className="w-full bg-gradient-gold hover:opacity-90"
+            >
+              <Activity className="w-4 h-4 mr-2" />
+              Run BUILD Assessment
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Fundability Snapshot */}
       <Card className="shadow-card border-primary/20">
