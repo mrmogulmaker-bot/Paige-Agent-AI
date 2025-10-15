@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { AccountsOverview } from "./AccountsOverview";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import BusinessCreditDashboard from "./BusinessCreditDashboard";
 
 const mockBusinessCreditReport = {
   duns: "12-345-6789",
@@ -273,17 +274,12 @@ const BankAccountsTab = () => {
 export function BusinessCreditSection() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-4xl font-bold bg-gradient-gold bg-clip-text text-transparent">
-          Business Credit
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          Monitor and manage your business credit profile
-        </p>
-      </div>
-
-      <Tabs defaultValue="accounts" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview" className="gap-2">
+            <BarChart3 className="w-4 h-4" />
+            Overview
+          </TabsTrigger>
           <TabsTrigger value="accounts" className="gap-2">
             <CreditCard className="w-4 h-4" />
             Credit Accounts
@@ -297,6 +293,10 @@ export function BusinessCreditSection() {
             Bank Accounts
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="overview" className="mt-6">
+          <BusinessCreditDashboard />
+        </TabsContent>
 
         <TabsContent value="accounts" className="mt-6">
           <AccountsOverview businessOnly={true} />
