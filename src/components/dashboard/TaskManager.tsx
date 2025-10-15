@@ -25,7 +25,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export function TaskManager() {
+interface TaskManagerProps {
+  businessMode?: boolean;
+}
+
+export function TaskManager({ businessMode = false }: TaskManagerProps) {
   const { tasks, loading, updateTask, createTask, deleteTask, generateBuildTasks } = useTasks();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newTask, setNewTask] = useState({
@@ -93,10 +97,10 @@ export function TaskManager() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold bg-gradient-gold bg-clip-text text-transparent">
-            Task Manager
+            {businessMode ? "Business Tasks" : "Personal Tasks"}
           </h1>
           <p className="text-muted-foreground mt-2">
-            Track your progress and stay on top of deadlines
+            Track your {businessMode ? "business" : "personal"} progress and stay on top of deadlines
           </p>
         </div>
         <div className="flex gap-2">

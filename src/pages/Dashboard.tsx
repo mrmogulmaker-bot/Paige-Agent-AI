@@ -120,13 +120,14 @@ const Dashboard = () => {
                   {activeSection === "dashboard" && "Dashboard"}
                   {activeSection === "paige-ai" && "PaigeAgent.ai"}
                   {activeSection === "learning-vault" && "Learning Vault"}
-                  {activeSection === "disputes" && "Credit Disputes"}
-                  {activeSection === "accounts" && "Credit Accounts"}
+                  {activeSection === "disputes" && "Personal Credit Disputes"}
+                  {activeSection === "accounts" && "Personal Credit Accounts"}
                   {activeSection === "business-credit" && "Business Credit"}
-                  {activeSection === "build-steps" && "BUILD Framework"}
-                  {activeSection === "reports" && "Credit Reports"}
+                  {activeSection === "build-steps" && "BUILD Program"}
+                  {activeSection === "business-tasks" && "Business Tasks"}
+                  {activeSection === "reports" && "Personal Credit Reports"}
                   {activeSection === "documents" && "Documents"}
-                  {activeSection === "tasks" && "Tasks"}
+                  {activeSection === "tasks" && "Personal Tasks"}
                   {activeSection === "payments" && "Payment History"}
                   {activeSection === "affiliate" && "Affiliate Program"}
                   {activeSection === "settings" && "Settings"}
@@ -170,8 +171,10 @@ const Dashboard = () => {
                 
                 {activeSection === "paige-ai" && <PaigeAIChat />}
                 {activeSection === "learning-vault" && <LearningVault />}
-                {activeSection === "disputes" && <ThreeBureauReport />}
+                {activeSection === "disputes" && <DisputesManager />}
                 {activeSection === "accounts" && <AccountsOverview />}
+                {activeSection === "reports" && <ThreeBureauReport />}
+                {activeSection === "tasks" && <TaskManager />}
                 {activeSection === "business-credit" && (
                   <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
                     <BusinessCreditReport />
@@ -185,9 +188,12 @@ const Dashboard = () => {
                     </div>
                   </PlanGate>
                 )}
-                {activeSection === "reports" && <ReportsView />}
+                {activeSection === "business-tasks" && (
+                  <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
+                    <TaskManager businessMode={true} />
+                  </PlanGate>
+                )}
                 {activeSection === "documents" && <DocumentsManager />}
-                {activeSection === "tasks" && <TaskManager />}
                 {activeSection === "payments" && <PaymentHistory />}
                 {activeSection === "affiliate" && <AffiliateTracking />}
                 {activeSection === "settings" && <ProfileSettings />}
