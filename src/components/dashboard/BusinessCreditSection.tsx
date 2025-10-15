@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { AccountsOverview } from "./AccountsOverview";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { usePlaidSync } from "@/hooks/usePlaidSync";
+import { useFinancialKPIs } from "@/hooks/useFinancialKPIs";
 import BusinessCreditDashboard from "./BusinessCreditDashboard";
 
 const mockBusinessCreditReport = {
@@ -92,6 +94,8 @@ const BankAccountsTab = () => {
   const [connectedAccounts, setConnectedAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { syncTransactions, syncing } = usePlaidSync();
+  const { data: kpis } = useFinancialKPIs();
 
   // Fetch connected accounts
   const fetchConnectedAccounts = async () => {

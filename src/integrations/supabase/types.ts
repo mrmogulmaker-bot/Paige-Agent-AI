@@ -122,6 +122,44 @@ export type Database = {
         }
         Relationships: []
       }
+      balance_snapshots: {
+        Row: {
+          account_id: string
+          available: number | null
+          balance: number
+          created_at: string | null
+          id: string
+          snapshot_date: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          available?: number | null
+          balance: number
+          created_at?: string | null
+          id?: string
+          snapshot_date: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          available?: number | null
+          balance?: number
+          created_at?: string | null
+          id?: string
+          snapshot_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "balance_snapshots_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "connected_bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       businesses: {
         Row: {
           business_type:
@@ -565,6 +603,48 @@ export type Database = {
           },
         ]
       }
+      financial_kpis: {
+        Row: {
+          avg_balance_30d: number | null
+          avg_balance_90d: number | null
+          created_at: string | null
+          dscr: number | null
+          id: string
+          last_calculated_at: string | null
+          monthly_inflow: number | null
+          monthly_outflow: number | null
+          nsf_count: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          avg_balance_30d?: number | null
+          avg_balance_90d?: number | null
+          created_at?: string | null
+          dscr?: number | null
+          id?: string
+          last_calculated_at?: string | null
+          monthly_inflow?: number | null
+          monthly_outflow?: number | null
+          nsf_count?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          avg_balance_30d?: number | null
+          avg_balance_90d?: number | null
+          created_at?: string | null
+          dscr?: number | null
+          id?: string
+          last_calculated_at?: string | null
+          monthly_inflow?: number | null
+          monthly_outflow?: number | null
+          nsf_count?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       funding_offers: {
         Row: {
           affiliate_tag: string | null
@@ -759,6 +839,98 @@ export type Database = {
           ip_address?: unknown | null
           table_name?: string
           user_agent?: string | null
+        }
+        Relationships: []
+      }
+      plaid_transactions: {
+        Row: {
+          account_id: string
+          amount: number
+          category: string[] | null
+          created_at: string | null
+          date: string
+          id: string
+          merchant_name: string | null
+          name: string | null
+          pending: boolean | null
+          transaction_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          amount: number
+          category?: string[] | null
+          created_at?: string | null
+          date: string
+          id?: string
+          merchant_name?: string | null
+          name?: string | null
+          pending?: boolean | null
+          transaction_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          amount?: number
+          category?: string[] | null
+          created_at?: string | null
+          date?: string
+          id?: string
+          merchant_name?: string | null
+          name?: string | null
+          pending?: boolean | null
+          transaction_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plaid_transactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "connected_bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plaid_webhook_events: {
+        Row: {
+          created_at: string | null
+          error: string | null
+          id: string
+          item_id: string
+          payload: Json
+          processed: boolean | null
+          processed_at: string | null
+          user_id: string | null
+          webhook_code: string
+          webhook_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          item_id: string
+          payload: Json
+          processed?: boolean | null
+          processed_at?: string | null
+          user_id?: string | null
+          webhook_code: string
+          webhook_type: string
+        }
+        Update: {
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          item_id?: string
+          payload?: Json
+          processed?: boolean | null
+          processed_at?: string | null
+          user_id?: string | null
+          webhook_code?: string
+          webhook_type?: string
         }
         Relationships: []
       }
