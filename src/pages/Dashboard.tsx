@@ -19,6 +19,8 @@ import { ProfileSettings } from "@/components/dashboard/ProfileSettings";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
 import { DocumentsManager } from "@/components/dashboard/DocumentsManager";
 import { TaskManager } from "@/components/dashboard/TaskManager";
+import { PaymentHistory } from "@/components/dashboard/PaymentHistory";
+import { AffiliateTracking } from "@/components/dashboard/AffiliateTracking";
 import { Button } from "@/components/ui/button";
 import { UpgradeBanner } from "@/components/dashboard/UpgradeBanner";
 import { UpgradeModal } from "@/components/dashboard/UpgradeModal";
@@ -124,6 +126,8 @@ const Dashboard = () => {
                   {activeSection === "reports" && "Credit Reports"}
                   {activeSection === "documents" && "Documents"}
                   {activeSection === "tasks" && "Tasks"}
+                  {activeSection === "payments" && "Payment History"}
+                  {activeSection === "affiliate" && "Affiliate Program"}
                   {activeSection === "settings" && "Settings"}
                 </h1>
               </div>
@@ -178,9 +182,11 @@ const Dashboard = () => {
                   </PlanGate>
                 )}
                 {activeSection === "reports" && <ReportsView />}
-          {activeSection === "documents" && <DocumentsManager />}
-          {activeSection === "tasks" && <TaskManager />}
-          {activeSection === "settings" && <ProfileSettings />}
+                {activeSection === "documents" && <DocumentsManager />}
+                {activeSection === "tasks" && <TaskManager />}
+                {activeSection === "payments" && <PaymentHistory />}
+                {activeSection === "affiliate" && <AffiliateTracking />}
+                {activeSection === "settings" && <ProfileSettings />}
               </div>
             </main>
           </div>
