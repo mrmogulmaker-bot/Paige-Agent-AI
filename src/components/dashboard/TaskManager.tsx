@@ -42,10 +42,15 @@ export function TaskManager({ businessMode = false }: TaskManagerProps) {
     due_date: "",
   });
 
-  // Filter tasks by mode
+  // Filter tasks by mode - Personal Credit only shows Personal Credit/Finance categories
   const filteredTasks = businessMode 
     ? tasks.filter((t) => t.track?.startsWith("BUILD"))
-    : tasks.filter((t) => t.track?.startsWith("ACCEL"));
+    : tasks.filter((t) => {
+        // Personal Credit mode: strict filtering by category
+        const metadata = t.metadata as any;
+        const category = metadata?.category;
+        return category === "Personal Credit" || category === "Personal Finance" || t.track?.startsWith("ACCEL");
+      });
 
   const pendingTasks = filteredTasks.filter((t) => t.status === "pending" || t.status === "in_progress");
   const completedTasks = filteredTasks.filter((t) => t.status === "completed");

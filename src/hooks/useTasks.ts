@@ -57,21 +57,39 @@ export const useTasks = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Validate personal credit task (only for ACCEL tasks)
-      if (taskData.track?.startsWith("ACCEL")) {
-        const validationResult = validatePersonalCreditTask(
-          taskData.title || "",
-          taskData.description || ""
-        );
+      // Validate against business credit keywords for personal credit tasks
+      const validationResult = validatePersonalCreditTask(
+        taskData.title || "",
+        taskData.description || ""
+      );
 
-        if (!validationResult.isAllowed) {
-          toast({
-            title: "Business Credit Content Detected",
-            description: validationResult.rerouteMessage || "This belongs in Business Credit section",
-            variant: "destructive",
-          });
-          return null;
-        }
+      if (!validationResult.isAllowed) {
+        toast({
+          title: "Business Credit Content Detected",
+          description: "That belongs in Business Credit/Funding—move it there?",
+          variant: "destructive",
+        });
+        return null;
+      }
+
+      // Ensure metadata includes proper category and tags
+      let metadata: any = taskData.metadata || {};
+      const category = metadata?.category;
+      
+      // Validate category is Personal Credit or Personal Finance only
+      if (category && category !== "Personal Credit" && category !== "Personal Finance") {
+        toast({
+          title: "Invalid Category",
+          description: "That belongs in Business Credit/Funding—move it there?",
+          variant: "destructive",
+        });
+        return null;
+      }
+
+      // Auto-tag if not already tagged
+      if (!metadata.tags || (Array.isArray(metadata.tags) && metadata.tags.length === 0)) {
+        const baseTag = category === "Personal Finance" ? "#PersonalFinance" : "#PersonalCredit";
+        metadata = { ...metadata, tags: [baseTag] };
       }
 
       const { data, error } = await supabase
@@ -83,7 +101,7 @@ export const useTasks = () => {
           status: taskData.status || "pending",
           track: taskData.track || null,
           due_date: taskData.due_date || null,
-          metadata: taskData.metadata || null,
+          metadata: metadata,
         }])
         .select()
         .single();
@@ -184,17 +202,31 @@ export const useTasks = () => {
         return;
       }
 
-      // Convert all templates to task data
-      const tasksToCreate = personalCreditTaskTemplates.map((template) => {
-        const taskData = templateToTaskData(template);
-        return {
-          ...taskData,
-          user_id: user.id,
-          status: "pending" as const,
-        };
-      });
+      // Convert templates to task data - strict Personal Credit/Finance filtering
+      const tasksToCreate = personalCreditTaskTemplates
+        .filter(template => 
+          template.category === "Personal Credit" || 
+          template.category === "Personal Finance"
+        )
+        .map((template) => {
+          const taskData = templateToTaskData(template);
+          
+          // Validate each task against business keywords
+          const validation = validatePersonalCreditTask(taskData.title, taskData.description || "");
+          if (!validation.isAllowed) {
+            console.warn(`Skipping task "${taskData.title}" - contains business keywords`);
+            return null;
+          }
+          
+          return {
+            ...taskData,
+            user_id: user.id,
+            status: "pending" as const,
+          };
+        })
+        .filter((task): task is NonNullable<typeof task> => task !== null);
 
-      // Create all tasks
+      // Create all validated tasks
       const { error } = await supabase.from("tasks").insert(tasksToCreate);
 
       if (error) throw error;
@@ -203,7 +235,7 @@ export const useTasks = () => {
 
       toast({
         title: "Success! 🎯",
-        description: `Generated ${tasksToCreate.length} professional personal credit tasks`,
+        description: `Generated ${tasksToCreate.length} Personal Credit/Finance tasks`,
       });
     } catch (error) {
       console.error("Error generating personal credit tasks:", error);
