@@ -1,7 +1,7 @@
 /**
- * Business Credit Task Templates
+ * Business Credit Task Templates v1.0.0
  * Categories: Business Credit, Funding, Business Compliance
- * Excludes: Data Furnishing (not supported)
+ * Excludes: Data Furnishing (Metro 2, e-OSCAR - not supported)
  */
 
 export interface BusinessTaskTemplate {
@@ -9,35 +9,251 @@ export interface BusinessTaskTemplate {
   title: string;
   category: "Business Credit" | "Funding" | "Business Compliance";
   tags: string[];
-  priority: "P0" | "P1" | "P2";
-  due_in_days: number; // Between 3-10 days
-  estimated_minutes: number;
+  priority: "P0" | "P1" | "P2" | "P3";
+  due_in_days: number; // Between 3-10 days per system defaults
+  estimated_minutes?: number;
   checklist: string[];
   instructions: string;
   dependencies?: string[];
   resources?: string[];
-  metrics?: Record<string, any>;
+  metrics?: {
+    target_paydex?: number;
+    target_intelliscore?: number;
+    target_dscr?: number;
+    min_bank_balance?: number;
+  };
   track?: string; // BUILD framework step
 }
 
 export const businessCreditTaskTemplates: BusinessTaskTemplate[] = [
-  // Business Formation & Setup
+  // Business Compliance Foundation
   {
-    id: "bc-duns-setup",
-    title: "Obtain D-U-N-S number for business",
-    category: "Business Credit",
-    tags: ["#BusinessCredit", "#Formation", "#DUNS"],
-    priority: "P0",
-    due_in_days: 5,
-    estimated_minutes: 30,
+    id: "bc-identity-consistency",
+    title: "Verify business identity consistency",
+    category: "Business Compliance",
+    tags: ["#Compliance", "#GoodStanding"],
+    priority: "P1",
+    due_in_days: 3,
+    estimated_minutes: 45,
     track: "BUILD-B",
     checklist: [
-      "Verify business is registered with state",
-      "Apply for D-U-N-S via Dun & Bradstreet",
-      "Confirm D-U-N-S issuance (7-10 business days)",
-      "Document D-U-N-S number in business profile"
+      "SOS record matches legal name",
+      "IRS EIN letter on file",
+      "Business address/phone/domain email consistent",
+      "Website + 411 listing live",
+      "NAICS selected and documented"
     ],
-    instructions: "D-U-N-S number is required for business credit building. Apply free via D&B website using your EIN, business name, and address."
+    instructions: "Audit all public records and internal docs for exact NAP+NAICS consistency across government, bank, and directory sources."
+  },
+  {
+    id: "bc-annual-compliance",
+    title: "Annual compliance health check",
+    category: "Business Compliance",
+    tags: ["#Compliance", "#Renewals"],
+    priority: "P2",
+    due_in_days: 10,
+    estimated_minutes: 60,
+    track: "BUILD-B",
+    checklist: [
+      "SOS good standing verified",
+      "Licenses/permits renewed",
+      "Registered agent active",
+      "Address/phone/domain consistency reconfirmed"
+    ],
+    instructions: "Complete yearly compliance audit; fix any inconsistencies proactively."
+  },
+
+  // Business Credit - D-U-N-S & Paydex
+  {
+    id: "bc-duns-paydex-ready",
+    title: "Request D-U-N-S and prep for Paydex",
+    category: "Business Credit",
+    tags: ["#DUNS", "#Paydex", "#BusinessCredit"],
+    priority: "P1",
+    due_in_days: 7,
+    estimated_minutes: 40,
+    track: "BUILD-B",
+    checklist: [
+      "Request/verify D-U-N-S",
+      "Confirm industry classification",
+      "Identify 3 trade references",
+      "Set Net-30 payment SOP (<15 days actual)"
+    ],
+    instructions: "Create D-U-N-S, align NAICS, and set payment workflow to achieve Paydex ≥ 80.",
+    metrics: { target_paydex: 80 }
+  },
+  {
+    id: "bc-claim-biz-bureaus",
+    title: "Claim Experian/Equifax Business profiles",
+    category: "Business Credit",
+    tags: ["#ExperianBiz", "#EquifaxBiz", "#Monitoring"],
+    priority: "P1",
+    due_in_days: 7,
+    estimated_minutes: 35,
+    track: "BUILD-U",
+    checklist: [
+      "Claim Experian Business profile and correct NAP",
+      "Claim Equifax Business profile and correct NAP",
+      "Enable bureau monitoring/alerts"
+    ],
+    instructions: "Claim and correct profiles; turn on monitoring for score/match changes.",
+    metrics: { target_intelliscore: 76 }
+  },
+
+  // Vendor Credit Tiers
+  {
+    id: "bc-starter-vendors",
+    title: "Open 3–5 starter Net-30 vendor accounts",
+    category: "Business Credit",
+    tags: ["#Vendors", "#TradeRefs", "#BusinessCredit"],
+    priority: "P2",
+    due_in_days: 10,
+    estimated_minutes: 60,
+    track: "BUILD-U",
+    checklist: [
+      "Select 3–5 vendors (Uline, Quill, Grainger)",
+      "Place small orders invoiced to legal business",
+      "Pay within 15 days"
+    ],
+    instructions: "Use vendors known to report; keep payments early to seed trade history."
+  },
+  {
+    id: "bc-store-fleet-cards",
+    title: "Apply for 2–3 store/fleet cards (Tier 2)",
+    category: "Business Credit",
+    tags: ["#Vendors", "#Fleet", "#PGPolicy"],
+    priority: "P2",
+    due_in_days: 10,
+    estimated_minutes: 50,
+    track: "BUILD-U",
+    dependencies: ["bc-starter-vendors"],
+    checklist: [
+      "Evaluate PG/no-PG policy",
+      "Map statement cut dates",
+      "Apply to 2–3 targets; log decisions"
+    ],
+    instructions: "Sequence apps post vendor reporting; time payments pre-statement."
+  },
+  {
+    id: "bc-corp-card-strategy",
+    title: "Corporate card strategy & CLI cadence",
+    category: "Business Credit",
+    tags: ["#CorporateCard", "#CLI", "#Policy"],
+    priority: "P2",
+    due_in_days: 10,
+    estimated_minutes: 45,
+    track: "BUILD-D",
+    checklist: [
+      "Select issuers and products",
+      "Document internal limit reallocation policy (if supported)",
+      "Schedule CLI reviews every 90–120 days"
+    ],
+    instructions: "Codify PG/no-PG strategy; set quarterly CLI reviews with issuer rules."
+  },
+  {
+    id: "bc-trade-ref-management",
+    title: "Gather & verify trade references",
+    category: "Business Credit",
+    tags: ["#TradeRefs", "#Reporting"],
+    priority: "P2",
+    due_in_days: 10,
+    estimated_minutes: 40,
+    track: "BUILD-U",
+    checklist: [
+      "Collect invoices and payment proofs",
+      "Verify vendor reporting behaviors",
+      "Log on-time score impacts"
+    ],
+    instructions: "Maintain reference pack to accelerate bureau updates and tier jumps."
+  },
+
+  // Funding Preparation
+  {
+    id: "fund-profile-readiness",
+    title: "Build fundability profile",
+    category: "Funding",
+    tags: ["#Funding", "#Readiness", "#Fundability"],
+    priority: "P1",
+    due_in_days: 7,
+    estimated_minutes: 90,
+    track: "BUILD-L",
+    checklist: [
+      "Upload EIN letter, operating docs, bank statements (3–6 mo)",
+      "Prepare YTD P&L + last year tax return",
+      "Document cash-flow and average balances"
+    ],
+    instructions: "Assemble lender-ready docs; ensure balances and cash-flow meet target thresholds.",
+    metrics: { min_bank_balance: 5000 }
+  },
+  {
+    id: "fund-choose-products",
+    title: "Select funding products & targets",
+    category: "Funding",
+    tags: ["#Funding", "#Strategy"],
+    priority: "P2",
+    due_in_days: 5,
+    estimated_minutes: 60,
+    track: "BUILD-L",
+    checklist: [
+      "Match needs to LOC/term/SBA/MCA-alt",
+      "Map lender criteria vs profile",
+      "Create application sequence"
+    ],
+    instructions: "Choose 2–3 products and a phased app plan based on eligibility signals."
+  },
+  {
+    id: "fund-apply-loc",
+    title: "Apply for business line of credit",
+    category: "Funding",
+    tags: ["#Funding", "#LOC", "#Underwriting"],
+    priority: "P1",
+    due_in_days: 7,
+    estimated_minutes: 75,
+    track: "BUILD-L",
+    dependencies: ["fund-profile-readiness"],
+    checklist: [
+      "Submit complete app + statements",
+      "Confirm underwriting SLA and doc list",
+      "Log decision; schedule follow-up"
+    ],
+    instructions: "Submit to target bank or CU; track underwriting milestones and conditions precedent."
+  },
+  {
+    id: "fund-track-underwriting",
+    title: "Track active underwriting & conditions",
+    category: "Funding",
+    tags: ["#Underwriting", "#FollowUp"],
+    priority: "P1",
+    due_in_days: 3,
+    estimated_minutes: 30,
+    track: "BUILD-L",
+    checklist: [
+      "Record assigned underwriter contact",
+      "Upload requests (bank verif, tax transcripts, insurance)",
+      "Set decision ETA reminders"
+    ],
+    instructions: "Maintain daily status until clear to close; escalate if SLA breached.",
+    metrics: { target_dscr: 1.25 }
+  },
+
+  // Monitoring & Maintenance
+  {
+    id: "bc-quarterly-review",
+    title: "Quarterly business credit report review",
+    category: "Business Credit",
+    tags: ["#BusinessCredit", "#Monitoring", "#Quarterly"],
+    priority: "P1",
+    due_in_days: 7,
+    estimated_minutes: 45,
+    track: "BUILD-U",
+    checklist: [
+      "Pull D&B, Experian Business, Equifax Business reports",
+      "Review tradelines for accuracy",
+      "Check for unauthorized inquiries",
+      "Dispute errors within 30 days",
+      "Document Paydex/Intelliscore trends"
+    ],
+    instructions: "Monitor quarterly to catch errors early and track credit building progress. Dispute inaccuracies immediately."
   },
   {
     id: "bc-paydex-monitor",
@@ -54,239 +270,8 @@ export const businessCreditTaskTemplates: BusinessTaskTemplate[] = [
       "Verify vendor payment reporting",
       "Document score and identify improvement areas"
     ],
-    instructions: "Paydex ranges 1-100; 80+ is excellent. Monitor quarterly and ensure vendor accounts report on-time payments."
-  },
-
-  // Vendor Credit Tiers
-  {
-    id: "bc-tier1-vendors",
-    title: "Establish Tier 1 vendor accounts (net-30 starter)",
-    category: "Business Credit",
-    tags: ["#BusinessCredit", "#VendorCredit", "#Tier1"],
-    priority: "P1",
-    due_in_days: 5,
-    estimated_minutes: 45,
-    track: "BUILD-U",
-    checklist: [
-      "Apply to Uline, Quill, Grainger (starter vendors)",
-      "Make small purchases ($50-$200)",
-      "Pay invoices 5-7 days early",
-      "Verify reporting to D&B after 60-90 days"
-    ],
-    instructions: "Tier 1 vendors report to D&B and don't require PG. Start with 3-5 accounts, use regularly, pay early to build Paydex."
-  },
-  {
-    id: "bc-tier2-vendors",
-    title: "Graduate to Tier 2 vendor accounts (higher limits)",
-    category: "Business Credit",
-    tags: ["#BusinessCredit", "#VendorCredit", "#Tier2"],
-    priority: "P1",
-    due_in_days: 7,
-    estimated_minutes: 40,
-    track: "BUILD-U",
-    dependencies: ["bc-tier1-vendors"],
-    checklist: [
-      "Ensure 3+ Tier 1 tradelines on D&B report",
-      "Apply to Amazon Business, Office Depot, FedEx",
-      "Request credit limits $1K-$5K",
-      "Maintain on-time payment record"
-    ],
-    instructions: "Tier 2 vendors offer higher limits and often report faster. Requires established Tier 1 history (3+ months)."
-  },
-  {
-    id: "bc-tier3-vendors",
-    title: "Obtain Tier 3 vendor credit (fleet/telecom)",
-    category: "Business Credit",
-    tags: ["#BusinessCredit", "#VendorCredit", "#Tier3"],
-    priority: "P2",
-    due_in_days: 8,
-    estimated_minutes: 50,
-    track: "BUILD-D",
-    dependencies: ["bc-tier2-vendors"],
-    checklist: [
-      "Confirm Paydex 75+, 5+ tradelines on report",
-      "Apply to fleet cards (WEX, Shell) or telecom (AT&T)",
-      "Request $5K-$10K limits",
-      "Use and pay on-time to boost Paydex"
-    ],
-    instructions: "Tier 3 vendors report high-limit tradelines. Requires strong Paydex and established payment history."
-  },
-
-  // Funding Preparation
-  {
-    id: "fund-credit-readiness",
-    title: "Prepare business credit profile for funding",
-    category: "Funding",
-    tags: ["#Funding", "#CreditReadiness"],
-    priority: "P0",
-    due_in_days: 7,
-    estimated_minutes: 60,
-    track: "BUILD-L",
-    checklist: [
-      "Verify 5+ vendor tradelines reporting",
-      "Ensure Paydex 75+ and clean payment history",
-      "Pull business credit reports (D&B, Experian, Equifax)",
-      "Correct any inaccuracies via dispute process"
-    ],
-    instructions: "Lenders review business credit before approval. Target: 5+ tradelines, Paydex 75+, no delinquencies."
-  },
-  {
-    id: "fund-revenue-docs",
-    title: "Organize revenue documentation for funding applications",
-    category: "Funding",
-    tags: ["#Funding", "#Documentation", "#Revenue"],
-    priority: "P1",
-    due_in_days: 5,
-    estimated_minutes: 45,
-    track: "BUILD-I",
-    checklist: [
-      "Gather 3-6 months business bank statements",
-      "Prepare profit & loss statements",
-      "Collect invoices/AR aging if applicable",
-      "Document revenue sources and trends"
-    ],
-    instructions: "Revenue verification is critical for funding. Organize clean, accurate financials showing consistent income."
-  },
-  {
-    id: "fund-application-prep",
-    title: "Complete funding application checklist",
-    category: "Funding",
-    tags: ["#Funding", "#ApplicationPrep"],
-    priority: "P0",
-    due_in_days: 6,
-    estimated_minutes: 90,
-    track: "BUILD-L",
-    dependencies: ["fund-credit-readiness", "fund-revenue-docs"],
-    checklist: [
-      "EIN, business license, formation docs ready",
-      "Business credit reports pulled and reviewed",
-      "Revenue docs organized and accessible",
-      "Personal credit score verified (if PG required)",
-      "Funding purpose and amount defined"
-    ],
-    instructions: "Prepare complete application package before applying. Missing docs delay approval and hurt credibility."
-  },
-  {
-    id: "fund-terms-review",
-    title: "Review and compare funding offers/terms",
-    category: "Funding",
-    tags: ["#Funding", "#TermsReview"],
-    priority: "P1",
-    due_in_days: 4,
-    estimated_minutes: 40,
-    checklist: [
-      "Compare APR/factor rates across offers",
-      "Review payment terms and frequency",
-      "Check for prepayment penalties or fees",
-      "Calculate total cost of capital",
-      "Verify personal guarantee requirements"
-    ],
-    instructions: "Always compare multiple offers. Understand total cost, not just approval amount. Avoid predatory terms."
-  },
-
-  // Business Compliance
-  {
-    id: "comp-annual-report",
-    title: "File annual report with state (if required)",
-    category: "Business Compliance",
-    tags: ["#Compliance", "#AnnualReport"],
-    priority: "P0",
-    due_in_days: 10,
-    estimated_minutes: 30,
-    track: "BUILD-B",
-    checklist: [
-      "Verify state annual report deadline",
-      "Update business address/officers if changed",
-      "Pay filing fee",
-      "Retain confirmation/receipt"
-    ],
-    instructions: "Most states require annual reports. Missing deadline can result in penalties or administrative dissolution."
-  },
-  {
-    id: "comp-licenses-renewal",
-    title: "Renew business licenses and permits",
-    category: "Business Compliance",
-    tags: ["#Compliance", "#Licenses"],
-    priority: "P1",
-    due_in_days: 8,
-    estimated_minutes: 35,
-    checklist: [
-      "Inventory all required licenses/permits",
-      "Check expiration dates",
-      "Renew 30+ days before expiration",
-      "Update business records with new dates"
-    ],
-    instructions: "Operating with expired licenses can void insurance and incur fines. Set renewal reminders 60 days in advance."
-  },
-  {
-    id: "comp-registered-agent",
-    title: "Verify registered agent service is current",
-    category: "Business Compliance",
-    tags: ["#Compliance", "#RegisteredAgent"],
-    priority: "P2",
-    due_in_days: 6,
-    estimated_minutes: 15,
-    checklist: [
-      "Confirm registered agent renewal date",
-      "Verify service address is current",
-      "Update if moving or changing providers",
-      "Ensure compliance documents are forwarded"
-    ],
-    instructions: "Registered agent receives legal/tax documents. Lapsed service can result in missed notices and default judgments."
-  },
-  {
-    id: "comp-ein-verify",
-    title: "Verify EIN and business structure accuracy",
-    category: "Business Compliance",
-    tags: ["#Compliance", "#EIN", "#BusinessStructure"],
-    priority: "P1",
-    due_in_days: 5,
-    estimated_minutes: 20,
-    track: "BUILD-B",
-    checklist: [
-      "Confirm EIN matches IRS records",
-      "Verify business name and structure (LLC, Corp, etc.)",
-      "Ensure EIN is used consistently across accounts",
-      "Update if business structure changed"
-    ],
-    instructions: "Mismatched EIN or structure can block credit applications and create tax issues. Verify annually."
-  },
-
-  // Credit Monitoring
-  {
-    id: "bc-quarterly-review",
-    title: "Quarterly business credit report review",
-    category: "Business Credit",
-    tags: ["#BusinessCredit", "#Monitoring", "#Quarterly"],
-    priority: "P1",
-    due_in_days: 7,
-    estimated_minutes: 45,
-    track: "BUILD-U",
-    checklist: [
-      "Pull D&B, Experian Business, Equifax Business reports",
-      "Review tradelines for accuracy",
-      "Check for unauthorized inquiries",
-      "Dispute errors within 30 days",
-      "Document score trends"
-    ],
-    instructions: "Monitor quarterly to catch errors early and track credit building progress. Dispute inaccuracies immediately."
-  },
-  {
-    id: "bc-utilization-check",
-    title: "Optimize business credit utilization",
-    category: "Business Credit",
-    tags: ["#BusinessCredit", "#Utilization"],
-    priority: "P1",
-    due_in_days: 5,
-    estimated_minutes: 30,
-    track: "BUILD-U",
-    checklist: [
-      "Calculate utilization across all vendor/credit lines",
-      "Target <30% utilization per account",
-      "Pay down high-balance accounts",
-      "Request credit limit increases on established accounts"
-    ],
-    instructions: "Keep utilization low to maximize Paydex and credit scores. Pay before statement dates when possible."
+    instructions: "Paydex ranges 1-100; 80+ is excellent. Monitor quarterly and ensure vendor accounts report on-time payments.",
+    metrics: { target_paydex: 80 }
   }
 ];
 
