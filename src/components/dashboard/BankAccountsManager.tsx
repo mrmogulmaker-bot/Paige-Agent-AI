@@ -10,6 +10,10 @@ import { AccountsTab } from "./bank-accounts/AccountsTab";
 import { TransactionsTab } from "./bank-accounts/TransactionsTab";
 import { CashflowTab } from "./bank-accounts/CashflowTab";
 import { FundingSignalsTab } from "./bank-accounts/FundingSignalsTab";
+import { RulesAlertsTab } from "./bank-accounts/RulesAlertsTab";
+import { StatementsTab } from "./bank-accounts/StatementsTab";
+import { ReconciliationTab } from "./bank-accounts/ReconciliationTab";
+import { ConnectionsTab } from "./bank-accounts/ConnectionsTab";
 
 interface BankAccountsManagerProps {
   businessMode?: boolean;
@@ -130,7 +134,7 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
 
       {/* Tabbed Interface */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid h-auto p-1 bg-muted/50 border border-border/50">
+        <TabsList className="flex flex-wrap lg:inline-flex h-auto p-1 bg-muted/50 border border-border/50">
           <TabsTrigger value="overview" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
             Overview
           </TabsTrigger>
@@ -143,8 +147,20 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
           <TabsTrigger value="cashflow" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
             Cashflow
           </TabsTrigger>
+          <TabsTrigger value="rules" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
+            Rules & Alerts
+          </TabsTrigger>
+          <TabsTrigger value="statements" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
+            Statements
+          </TabsTrigger>
+          <TabsTrigger value="reconciliation" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
+            Reconciliation
+          </TabsTrigger>
           <TabsTrigger value="funding" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
             Funding Signals
+          </TabsTrigger>
+          <TabsTrigger value="connections" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
+            Connections
           </TabsTrigger>
         </TabsList>
 
@@ -174,8 +190,24 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
           <CashflowTab />
         </TabsContent>
 
+        <TabsContent value="rules" className="mt-6">
+          <RulesAlertsTab />
+        </TabsContent>
+
+        <TabsContent value="statements" className="mt-6">
+          <StatementsTab />
+        </TabsContent>
+
+        <TabsContent value="reconciliation" className="mt-6">
+          <ReconciliationTab />
+        </TabsContent>
+
         <TabsContent value="funding" className="mt-6">
           <FundingSignalsTab />
+        </TabsContent>
+
+        <TabsContent value="connections" className="mt-6">
+          <ConnectionsTab />
         </TabsContent>
       </Tabs>
     </div>
