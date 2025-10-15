@@ -1,22 +1,24 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePlaidLink } from "@/hooks/usePlaidLink";
 import { toast } from "sonner";
-import { Loader2, Building2, User, TrendingUp, AlertCircle, RefreshCcw, Trash2 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { Building2, User } from "lucide-react";
+import { OverviewTab } from "./bank-accounts/OverviewTab";
+import { AccountsTab } from "./bank-accounts/AccountsTab";
+import { TransactionsTab } from "./bank-accounts/TransactionsTab";
+import { CashflowTab } from "./bank-accounts/CashflowTab";
+import { FundingSignalsTab } from "./bank-accounts/FundingSignalsTab";
 
 interface BankAccountsManagerProps {
   businessMode?: boolean;
 }
 
 export function BankAccountsManager({ businessMode = false }: BankAccountsManagerProps) {
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("overview");
 
-  const { data: accounts, isLoading, refetch } = useQuery({
+  const { data: accountsData, isLoading, refetch } = useQuery({
     queryKey: ["connected-bank-accounts", businessMode],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -46,8 +48,22 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
     refetch();
   });
 
-  const handleDelete = async (accountId: string) => {
-    setIsDeleting(accountId);
+  const handleRefreshAccount = async (accountId: string) => {
+    toast.info("Syncing account...");
+    try {
+      const { error } = await supabase.functions.invoke("plaid-sync-transactions", {
+        body: { accountId },
+      });
+      if (error) throw error;
+      toast.success("Account synced successfully!");
+      refetch();
+    } catch (error) {
+      console.error("Error syncing account:", error);
+      toast.error("Failed to sync account");
+    }
+  };
+
+  const handleDisconnectAccount = async (accountId: string) => {
     try {
       const { error } = await supabase
         .from("connected_bank_accounts")
@@ -55,188 +71,113 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
         .eq("id", accountId);
 
       if (error) throw error;
-
-      toast.success("Bank account disconnected");
+      toast.success("Account disconnected");
       refetch();
     } catch (error) {
       console.error("Error disconnecting account:", error);
       toast.error("Failed to disconnect account");
-    } finally {
-      setIsDeleting(null);
     }
   };
 
-  const handleSync = async (accountId: string) => {
-    toast.info("Syncing transactions...");
-    try {
-      const { data, error } = await supabase.functions.invoke("plaid-sync-transactions", {
-        body: { accountId },
-      });
+  // Mock data for demo - replace with real data
+  const mockAccounts = [
+    {
+      id: "1",
+      institution: "Chase Bank",
+      accountName: "Business Checking",
+      type: "checking",
+      currentBalance: 127450,
+      available: 127450,
+      lastSync: new Date(),
+      status: "connected" as const,
+      isPrimary: true,
+    },
+  ];
 
-      if (error) throw error;
-
-      toast.success("Transactions synced successfully!");
-      refetch();
-    } catch (error) {
-      console.error("Error syncing transactions:", error);
-      toast.error("Failed to sync transactions");
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const mockTransactions = [
+    {
+      id: "1",
+      date: new Date(),
+      description: "Client Payment - ABC Corp",
+      category: "income",
+      inflow: 15000,
+      balance: 127450,
+      pending: false,
+    },
+    {
+      id: "2",
+      date: new Date(Date.now() - 86400000),
+      description: "Office Supplies",
+      category: "expenses",
+      outflow: 450,
+      balance: 112450,
+      pending: false,
+    },
+  ];
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            {businessMode ? <Building2 className="h-6 w-6" /> : <User className="h-6 w-6" />}
-            {businessMode ? "Business" : "Personal"} Bank Accounts
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage your connected bank accounts and sync transactions
-          </p>
-        </div>
-        <Button onClick={() => openPlaidLink()} disabled={!plaidReady} className="bg-primary hover:bg-primary-light">
-          <TrendingUp className="mr-2 h-4 w-4" />
-          Connect Bank Account
-        </Button>
+      <div className="space-y-2">
+        <h2 className="text-3xl font-bold text-primary flex items-center gap-3">
+          {businessMode ? <Building2 className="h-8 w-8" /> : <User className="h-8 w-8" />}
+          Bank Accounts
+        </h2>
+        <p className="text-muted-foreground">
+          Cashflow clarity that closes deals
+        </p>
       </div>
 
-      {/* Connected Accounts */}
-      {!accounts || accounts.length === 0 ? (
-        <Card className="border-2 border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No Bank Accounts Connected</h3>
-            <p className="text-sm text-muted-foreground text-center mb-6 max-w-md">
-              Connect your {businessMode ? "business" : "personal"} bank account to track transactions,
-              monitor cash flow, and improve your {businessMode ? "BUILD" : "credit"} score.
-            </p>
-            <Button onClick={() => openPlaidLink()} variant="outline" disabled={!plaidReady}>
-              <TrendingUp className="mr-2 h-4 w-4" />
-              Connect Your First Account
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {accounts.map((account) => (
-            <Card key={account.id} className="hover:shadow-md transition-shadow">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center">
-                        <Building2 className="h-6 w-6 text-primary-foreground" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-lg">
-                          {account.institution_name}
-                        </CardTitle>
-                        <CardDescription className="flex items-center gap-2 mt-1">
-                          {account.account_name}
-                          {account.account_mask && (
-                            <Badge variant="outline" className="text-xs">
-                              ••••{account.account_mask}
-                            </Badge>
-                          )}
-                        </CardDescription>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleSync(account.id)}
-                    >
-                      <RefreshCcw className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDelete(account.id)}
-                      disabled={isDeleting === account.id}
-                    >
-                      {isDeleting === account.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Account Type</p>
-                    <p className="font-medium capitalize">
-                      {account.account_type || "Unknown"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Subtype</p>
-                    <p className="font-medium capitalize">
-                      {account.account_subtype || "—"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Connected</p>
-                    <p className="font-medium">
-                      {formatDistanceToNow(new Date(account.created_at), {
-                        addSuffix: true,
-                      })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Last Synced</p>
-                    <p className="font-medium">
-                      {account.last_sync_at
-                        ? formatDistanceToNow(new Date(account.last_sync_at), {
-                            addSuffix: true,
-                          })
-                        : "Never"}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      {/* Tabbed Interface */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid h-auto p-1 bg-muted/50 border border-border/50">
+          <TabsTrigger value="overview" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="accounts" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
+            Accounts
+          </TabsTrigger>
+          <TabsTrigger value="transactions" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
+            Transactions
+          </TabsTrigger>
+          <TabsTrigger value="cashflow" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
+            Cashflow
+          </TabsTrigger>
+          <TabsTrigger value="funding" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
+            Funding Signals
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Info Card */}
-      <Card className="bg-accent/5 border-accent/20">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-accent" />
-            Why Connect Bank Accounts?
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground space-y-2">
-          <p>
-            • <strong>Automatic Transaction Tracking:</strong> Import and categorize transactions automatically
-          </p>
-          <p>
-            • <strong>{businessMode ? "BUILD Score" : "Credit Score"} Insights:</strong> Track cash flow and improve your financial profile
-          </p>
-          <p>
-            • <strong>Funding Readiness:</strong> Demonstrate strong banking relationships to lenders
-          </p>
-          <p>
-            • <strong>Secure &amp; Private:</strong> Bank-level encryption with read-only access
-          </p>
-        </CardContent>
-      </Card>
+        <TabsContent value="overview" className="mt-6">
+          <OverviewTab
+            onConnectBank={() => plaidReady && openPlaidLink()}
+            onRefresh={() => refetch()}
+          />
+        </TabsContent>
+
+        <TabsContent value="accounts" className="mt-6">
+          <AccountsTab
+            accounts={mockAccounts}
+            onRefresh={handleRefreshAccount}
+            onDisconnect={handleDisconnectAccount}
+          />
+        </TabsContent>
+
+        <TabsContent value="transactions" className="mt-6">
+          <TransactionsTab
+            transactions={mockTransactions}
+            cursorStatus="up-to-date"
+          />
+        </TabsContent>
+
+        <TabsContent value="cashflow" className="mt-6">
+          <CashflowTab />
+        </TabsContent>
+
+        <TabsContent value="funding" className="mt-6">
+          <FundingSignalsTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
