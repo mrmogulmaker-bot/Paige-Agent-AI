@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Loader2 } from "lucide-react";
+import { MessageCircle, X, Send, Loader2, Mic, MicOff, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
+import { AudioRecorder, encodeAudioForAPI, AudioQueue, createWavFromPCM } from "@/utils/VoiceAudio";
 
 type Message = {
   role: "user" | "assistant";
@@ -23,7 +24,14 @@ export const FloatingChatbot = () => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const recorderRef = useRef<AudioRecorder | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioQueueRef = useRef<AudioQueue | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -31,6 +39,108 @@ export const FloatingChatbot = () => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  const startVoiceChat = async () => {
+    try {
+      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+      audioQueueRef.current = new AudioQueue(audioContextRef.current);
+
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const wsUrl = `wss://${projectId}.supabase.co/functions/v1/paige-voice-chat`;
+      
+      wsRef.current = new WebSocket(wsUrl);
+
+      wsRef.current.onopen = () => {
+        console.log('Voice chat WebSocket connected');
+        setIsVoiceActive(true);
+      };
+
+      wsRef.current.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        console.log('Received:', data.type);
+
+        if (data.type === 'response.audio.delta' && data.delta) {
+          setIsSpeaking(true);
+          const binaryString = atob(data.delta);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          await audioQueueRef.current?.addToQueue(bytes);
+        } else if (data.type === 'response.audio.done') {
+          setIsSpeaking(false);
+        } else if (data.type === 'response.audio_transcript.delta') {
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastMsg = newMessages[newMessages.length - 1];
+            if (lastMsg?.role === 'assistant') {
+              lastMsg.content += data.delta;
+            } else {
+              newMessages.push({ role: 'assistant', content: data.delta });
+            }
+            return newMessages;
+          });
+        } else if (data.type === 'conversation.item.input_audio_transcription.completed') {
+          setMessages(prev => [...prev, { role: 'user', content: data.transcript }]);
+        } else if (data.type === 'input_audio_buffer.speech_started') {
+          setIsListening(true);
+        } else if (data.type === 'input_audio_buffer.speech_stopped') {
+          setIsListening(false);
+        }
+      };
+
+      wsRef.current.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        toast({
+          title: "Connection Error",
+          description: "Failed to connect to voice chat",
+          variant: "destructive",
+        });
+      };
+
+      wsRef.current.onclose = () => {
+        console.log('Voice chat WebSocket closed');
+        setIsVoiceActive(false);
+        setIsSpeaking(false);
+        setIsListening(false);
+      };
+
+      recorderRef.current = new AudioRecorder((audioData) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          const encoded = encodeAudioForAPI(audioData);
+          wsRef.current.send(JSON.stringify({
+            type: 'input_audio_buffer.append',
+            audio: encoded
+          }));
+        }
+      });
+
+      await recorderRef.current.start();
+    } catch (error) {
+      console.error('Error starting voice chat:', error);
+      toast({
+        title: "Error",
+        description: "Failed to start voice chat. Please check microphone permissions.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopVoiceChat = () => {
+    recorderRef.current?.stop();
+    wsRef.current?.close();
+    audioQueueRef.current?.clear();
+    audioContextRef.current?.close();
+    
+    recorderRef.current = null;
+    wsRef.current = null;
+    audioQueueRef.current = null;
+    audioContextRef.current = null;
+    
+    setIsVoiceActive(false);
+    setIsSpeaking(false);
+    setIsListening(false);
+  };
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -187,23 +297,50 @@ export const FloatingChatbot = () => {
 
           {/* Input */}
           <div className="p-4 border-t border-border">
+            {isVoiceActive && (
+              <div className="mb-3 flex items-center justify-center gap-4 text-sm">
+                {isSpeaking && (
+                  <div className="flex items-center gap-2 text-primary">
+                    <Volume2 className="h-4 w-4 animate-pulse" />
+                    <span>Speaking...</span>
+                  </div>
+                )}
+                {isListening && (
+                  <div className="flex items-center gap-2 text-primary">
+                    <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                    <span>Listening...</span>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex gap-2">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleSend()}
                 placeholder="Ask me anything..."
-                disabled={isLoading}
+                disabled={isLoading || isVoiceActive}
               />
               <Button
                 onClick={handleSend}
-                disabled={isLoading || !input.trim()}
+                disabled={isLoading || !input.trim() || isVoiceActive}
                 size="icon"
               >
                 {isLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Send className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                onClick={isVoiceActive ? stopVoiceChat : startVoiceChat}
+                variant={isVoiceActive ? "destructive" : "secondary"}
+                size="icon"
+              >
+                {isVoiceActive ? (
+                  <MicOff className="h-4 w-4" />
+                ) : (
+                  <Mic className="h-4 w-4" />
                 )}
               </Button>
             </div>
