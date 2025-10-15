@@ -15,6 +15,7 @@ const personalMenuItems = [
   { title: "Dashboard", icon: LayoutDashboard, id: "dashboard" },
   { title: "Personal Credit", icon: CreditCard, id: "personal" },
   { title: "BUILD Program", icon: TrendingUp, id: "personal-build" },
+  { title: "Bank Accounts", icon: BarChart3, id: "personal-bank-accounts" },
   { title: "Documents", icon: FolderOpen, id: "personal-documents" },
   { title: "Tasks", icon: CheckSquare, id: "tasks" },
 ];
@@ -22,6 +23,7 @@ const personalMenuItems = [
 const businessMenuItems = [
   { title: "Business Credit", icon: Building2, id: "business-credit" },
   { title: "BUILD Program", icon: TrendingUp, id: "build-steps" },
+  { title: "Bank Accounts", icon: BarChart3, id: "business-bank-accounts" },
   { title: "Documents", icon: FolderOpen, id: "business-documents" },
   { title: "Tasks", icon: CheckSquare, id: "business-tasks" },
   { title: "Organization Chart", icon: Building2, id: "business-organization" },

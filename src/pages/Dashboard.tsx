@@ -27,6 +27,7 @@ import { TaskManager } from "@/components/dashboard/TaskManager";
 import { PaymentHistory } from "@/components/dashboard/PaymentHistory";
 import { AffiliateTracking } from "@/components/dashboard/AffiliateTracking";
 import { Integrations } from "@/components/dashboard/Integrations";
+import { BankAccountsManager } from "@/components/dashboard/BankAccountsManager";
 import { Button } from "@/components/ui/button";
 import { UpgradeBanner } from "@/components/dashboard/UpgradeBanner";
 import { UpgradeModal } from "@/components/dashboard/UpgradeModal";
@@ -129,12 +130,14 @@ const Dashboard = () => {
                   {activeSection === "dashboard" && "Dashboard"}
                   {activeSection === "personal" && "Personal Credit"}
                   {activeSection === "personal-build" && "BUILD Program - Personal"}
+                  {activeSection === "personal-bank-accounts" && "Personal Bank Accounts"}
                   {activeSection === "personal-documents" && "Personal Documents"}
                   {activeSection === "tasks" && "Personal Tasks"}
                   {activeSection === "paige-ai" && "PaigeAgent.ai"}
                   {activeSection === "learning-vault" && "Learning Vault"}
                   {activeSection === "business-credit" && "Business Credit"}
                   {activeSection === "build-steps" && "BUILD Program - Business"}
+                  {activeSection === "business-bank-accounts" && "Business Bank Accounts"}
                   {activeSection === "business-documents" && "Business Documents"}
                   {activeSection === "business-tasks" && "Business Tasks"}
                   {activeSection === "business-organization" && "Business Organization"}
@@ -187,6 +190,7 @@ const Dashboard = () => {
                   </div>
                 )}
                 {activeSection === "personal-documents" && <PersonalDocuments />}
+                {activeSection === "personal-bank-accounts" && <BankAccountsManager businessMode={false} />}
                 {activeSection === "tasks" && <TaskManager businessMode={false} />}
                 {activeSection === "paige-ai" && <PaigeAIChat />}
                 {activeSection === "learning-vault" && <LearningVault />}
@@ -203,6 +207,11 @@ const Dashboard = () => {
                 {activeSection === "business-documents" && (
                   <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
                     <BusinessDocuments />
+                  </PlanGate>
+                )}
+                {activeSection === "business-bank-accounts" && (
+                  <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
+                    <BankAccountsManager businessMode={true} />
                   </PlanGate>
                 )}
                 {activeSection === "business-tasks" && (
