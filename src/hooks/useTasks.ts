@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { TaskMetadata } from "@/lib/taskSchema";
+import { validatePersonalCreditTask } from "@/lib/taskKeywordFilter";
 
 export interface Task {
   id: string;
@@ -52,6 +53,23 @@ export const useTasks = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      // Validate personal credit task (only for ACCEL tasks)
+      if (taskData.track?.startsWith("ACCEL")) {
+        const validationResult = validatePersonalCreditTask(
+          taskData.title || "",
+          taskData.description || ""
+        );
+
+        if (!validationResult.isAllowed) {
+          toast({
+            title: "Business Credit Content Detected",
+            description: validationResult.rerouteMessage || "This belongs in Business Credit section",
+            variant: "destructive",
+          });
+          return null;
+        }
+      }
+
       const { data, error } = await supabase
         .from("tasks")
         .insert([{
@@ -61,6 +79,7 @@ export const useTasks = () => {
           status: taskData.status || "pending",
           track: taskData.track || null,
           due_date: taskData.due_date || null,
+          metadata: taskData.metadata || null,
         }])
         .select()
         .single();
