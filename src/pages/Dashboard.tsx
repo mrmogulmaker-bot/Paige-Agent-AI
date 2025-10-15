@@ -29,6 +29,8 @@ import { Button } from "@/components/ui/button";
 import { UpgradeBanner } from "@/components/dashboard/UpgradeBanner";
 import { UpgradeModal } from "@/components/dashboard/UpgradeModal";
 import { PlanGate } from "@/components/dashboard/PlanGate";
+import { InstallPWA } from "@/components/InstallPWA";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -39,6 +41,7 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -110,16 +113,17 @@ const Dashboard = () => {
       <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
       <UpgradeModal open={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} />
       
-      <SidebarProvider defaultOpen={true}>
+      <SidebarProvider defaultOpen={!isMobile}>
         <div className="min-h-screen flex w-full bg-background">
+          <InstallPWA />
           <AppSidebar activeSection={activeSection} setActiveSection={setActiveSection} />
           
           <div className="flex-1 flex flex-col">
             {/* Top Header Bar */}
-            <header className="h-16 border-b border-border bg-card px-6 flex items-center justify-between sticky top-0 z-10">
-              <div className="flex items-center gap-4">
-                <SidebarTrigger className="-ml-2" />
-                <h1 className="text-xl font-semibold">
+            <header className="h-14 md:h-16 border-b border-border bg-card px-3 md:px-6 flex items-center justify-between sticky top-0 z-10">
+              <div className="flex items-center gap-2 md:gap-4">
+                <SidebarTrigger className="-ml-1 md:-ml-2" />
+                <h1 className="text-base md:text-xl font-semibold truncate">
                   {activeSection === "dashboard" && "Dashboard"}
                   {activeSection === "personal" && "Personal Credit"}
                   {activeSection === "personal-build" && "BUILD Program - Personal"}
@@ -136,16 +140,16 @@ const Dashboard = () => {
                   {activeSection === "settings" && "Settings"}
                 </h1>
               </div>
-              <div className="flex items-center gap-3">
-                <Button variant="outline" size="sm" onClick={handleLogout}>
-                  Logout
+              <div className="flex items-center gap-2 md:gap-3">
+                <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs md:text-sm">
+                  {isMobile ? "Out" : "Logout"}
                 </Button>
               </div>
             </header>
 
             {/* Main Content Area */}
             <main className="flex-1 overflow-auto">
-              <div className="p-6 max-w-7xl mx-auto w-full">
+              <div className="p-3 md:p-6 max-w-7xl mx-auto w-full">
                 {activeSection === "dashboard" && (
                   <div className="space-y-6">
                     <UpgradeBanner onUpgradeClick={() => setShowUpgradeModal(true)} />
