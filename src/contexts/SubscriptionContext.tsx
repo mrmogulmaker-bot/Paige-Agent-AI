@@ -64,7 +64,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     checkSubscription();
 
     // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN') {
         checkSubscription();
       } else if (event === 'SIGNED_OUT') {
@@ -74,12 +74,26 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Check subscription every 60 seconds
-    const interval = setInterval(checkSubscription, 60000);
+    // Set up realtime listener for subscription changes
+    const channel = supabase
+      .channel('user_subscriptions_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_subscriptions',
+        },
+        (payload) => {
+          console.log('Subscription updated via realtime:', payload);
+          checkSubscription();
+        }
+      )
+      .subscribe();
 
     return () => {
-      subscription.unsubscribe();
-      clearInterval(interval);
+      authSubscription.unsubscribe();
+      supabase.removeChannel(channel);
     };
   }, []);
 

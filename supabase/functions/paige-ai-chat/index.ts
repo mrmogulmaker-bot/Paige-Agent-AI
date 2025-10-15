@@ -50,6 +50,34 @@ serve(async (req) => {
       );
     }
 
+    // Check rate limit using service role
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: rateLimitCheck, error: rateLimitError } = await supabase.rpc('check_rate_limit', {
+      _user_id: user.id,
+      _function_name: 'paige-ai-chat',
+      _max_requests: 20,
+      _window_minutes: 1
+    });
+
+    if (rateLimitError) {
+      console.error('Rate limit check error:', rateLimitError.message);
+    } else if (!rateLimitCheck) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Rate limit exceeded. Please try again in a moment.',
+          retryAfter: 60
+        }),
+        { 
+          status: 429,
+          headers: { 
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Retry-After': '60'
+          }
+        }
+      );
+    }
+
     // Validate input
     const rawData = await req.json();
     let validatedData;
@@ -70,9 +98,6 @@ serve(async (req) => {
     }
 
     const { messages } = validatedData;
-
-    // Use service role key for knowledge base query
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Extract the last user message to search for relevant knowledge
     const lastUserMessage = messages.filter((m: any) => m.role === "user").pop();
@@ -154,21 +179,36 @@ ${relevantKnowledge}`;
     });
 
     if (!response.ok) {
+      const errorId = crypto.randomUUID();
       if (response.status === 429) {
+        console.error(`[AI-CHAT-ERROR-${errorId}] Rate limit from AI service:`, response.status);
         return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again in a moment." }),
+          JSON.stringify({ 
+            error: "Rate limit exceeded. Please try again in a moment.",
+            errorId 
+          }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       if (response.status === 402) {
+        console.error(`[AI-CHAT-ERROR-${errorId}] Payment required:`, response.status);
         return new Response(
-          JSON.stringify({ error: "AI service requires additional credits." }),
+          JSON.stringify({ 
+            error: "AI service requires additional credits.",
+            errorId 
+          }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      console.error("AI gateway error:", response.status);
+      console.error(`[AI-CHAT-ERROR-${errorId}] AI gateway error:`, {
+        status: response.status,
+        timestamp: new Date().toISOString()
+      });
       return new Response(
-        JSON.stringify({ error: "AI service error" }),
+        JSON.stringify({ 
+          error: "An error occurred while processing your request",
+          errorId
+        }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -178,9 +218,17 @@ ${relevantKnowledge}`;
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {
-    console.error("Chat error:", error instanceof Error ? error.message : 'Unknown error');
+    const errorId = crypto.randomUUID();
+    console.error(`[AI-CHAT-ERROR-${errorId}] Function error:`, {
+      message: error instanceof Error ? error.message : 'Unknown',
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString()
+    });
     return new Response(
-      JSON.stringify({ error: "An error occurred while processing your request" }),
+      JSON.stringify({ 
+        error: "An error occurred while processing your request",
+        errorId
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

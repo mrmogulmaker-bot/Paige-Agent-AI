@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { z } from "https://esm.sh/zod@3.22.4";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,6 +24,43 @@ serve(async (req) => {
   }
 
   try {
+    // Authenticate user and check rate limit
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabase.auth.getUser(token);
+      
+      if (user) {
+        const { data: rateLimitCheck } = await supabase.rpc('check_rate_limit', {
+          _user_id: user.id,
+          _function_name: 'generate-dispute-letter',
+          _max_requests: 5,
+          _window_minutes: 60
+        });
+
+        if (!rateLimitCheck) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Rate limit exceeded. Please try again in an hour.',
+              retryAfter: 3600
+            }),
+            { 
+              status: 429,
+              headers: { 
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                'Retry-After': '3600'
+              }
+            }
+          );
+        }
+      }
+    }
+
     // Validate input
     const rawData = await req.json();
     let validatedData;
@@ -101,21 +139,36 @@ Format the letter with proper paragraphs and spacing.`;
     });
 
     if (!response.ok) {
+      const errorId = crypto.randomUUID();
       if (response.status === 429) {
+        console.error(`[DISPUTE-LETTER-ERROR-${errorId}] Rate limit from AI service:`, response.status);
         return new Response(
-          JSON.stringify({ error: "Rate limits exceeded, please try again later." }),
+          JSON.stringify({ 
+            error: "Rate limits exceeded, please try again later.",
+            errorId
+          }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       if (response.status === 402) {
+        console.error(`[DISPUTE-LETTER-ERROR-${errorId}] Payment required:`, response.status);
         return new Response(
-          JSON.stringify({ error: "Payment required, please add funds to your Lovable AI workspace." }),
+          JSON.stringify({ 
+            error: "Payment required, please add funds to your Lovable AI workspace.",
+            errorId
+          }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      console.error("AI gateway error:", response.status);
+      console.error(`[DISPUTE-LETTER-ERROR-${errorId}] AI gateway error:`, {
+        status: response.status,
+        timestamp: new Date().toISOString()
+      });
       return new Response(
-        JSON.stringify({ error: "AI service error" }),
+        JSON.stringify({ 
+          error: "An error occurred while processing your request",
+          errorId
+        }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -130,9 +183,17 @@ Format the letter with proper paragraphs and spacing.`;
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Error in generate-dispute-letter:", error instanceof Error ? error.message : 'Unknown');
+    const errorId = crypto.randomUUID();
+    console.error(`[DISPUTE-LETTER-ERROR-${errorId}] Function error:`, {
+      message: error instanceof Error ? error.message : 'Unknown',
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString()
+    });
     return new Response(
-      JSON.stringify({ error: "An error occurred while processing your request" }),
+      JSON.stringify({ 
+        error: "An error occurred while processing your request",
+        errorId
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
