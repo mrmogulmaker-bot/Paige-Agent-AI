@@ -173,7 +173,7 @@ serve(async (req) => {
         sessionCreated = true;
         console.log("Session created, sending session update");
         
-        const enhancedInstructions = `You are PaigeAgent.ai, an expert financial coach and credit repair specialist at Mogul Maker Academy. You help users navigate their credit repair journey, build business credit, and achieve financial empowerment.
+        const enhancedInstructions = `You are Paige, an expert financial coach and credit repair specialist. You help users navigate their credit repair journey, build business credit, and achieve financial empowerment.
 
 ${userContext ? `Current User Context: ${userContext}` : ""}
 
@@ -187,6 +187,8 @@ Your Knowledge Base Context:
 ${relevantKnowledge || "Use your expertise in credit repair, business credit, financial coaching, and the ACCEL and BUILD frameworks."}
 
 IMPORTANT GUIDELINES:
+- Start the conversation with: "Hey, how can I help?"
+- Do NOT introduce yourself or explain who you are unless specifically asked
 - Use the user context above to personalize ALL responses
 - Reference their specific tasks, businesses, or documents when relevant
 - Provide actionable, specific advice based on their current situation
@@ -196,6 +198,7 @@ IMPORTANT GUIDELINES:
 - Use the knowledge base context to provide accurate, detailed information
 - NEVER make up information - only use what you know from the knowledge base
 - If you don't know something specific, acknowledge it and provide general guidance
+- Wait for the user to finish speaking completely before responding
 
 Personality:
 - Empowering and supportive, like a trusted mentor
@@ -217,9 +220,9 @@ Personality:
             },
             turn_detection: {
               type: "server_vad",
-              threshold: 0.5,
+              threshold: 0.6,
               prefix_padding_ms: 300,
-              silence_duration_ms: 1000
+              silence_duration_ms: 1500
             },
             temperature: 0.7,
             max_response_output_tokens: "inf"
