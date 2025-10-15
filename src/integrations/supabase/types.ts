@@ -297,8 +297,10 @@ export type Database = {
           institution_id: string
           institution_name: string
           is_active: boolean | null
+          last_sync_at: string | null
           plaid_access_token: string
           plaid_item_id: string
+          transactions_cursor: string | null
           updated_at: string | null
           user_id: string
         }
@@ -314,8 +316,10 @@ export type Database = {
           institution_id: string
           institution_name: string
           is_active?: boolean | null
+          last_sync_at?: string | null
           plaid_access_token: string
           plaid_item_id: string
+          transactions_cursor?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -331,8 +335,10 @@ export type Database = {
           institution_id?: string
           institution_name?: string
           is_active?: boolean | null
+          last_sync_at?: string | null
           plaid_access_token?: string
           plaid_item_id?: string
+          transactions_cursor?: string | null
           updated_at?: string | null
           user_id?: string
         }
@@ -842,6 +848,33 @@ export type Database = {
         }
         Relationships: []
       }
+      plaid_notifications: {
+        Row: {
+          channel: string
+          id: string
+          metadata: Json | null
+          sent_at: string | null
+          template: string
+          user_id: string
+        }
+        Insert: {
+          channel: string
+          id?: string
+          metadata?: Json | null
+          sent_at?: string | null
+          template: string
+          user_id: string
+        }
+        Update: {
+          channel?: string
+          id?: string
+          metadata?: Json | null
+          sent_at?: string | null
+          template?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       plaid_transactions: {
         Row: {
           account_id: string
@@ -899,11 +932,13 @@ export type Database = {
         Row: {
           created_at: string | null
           error: string | null
+          event_id: string | null
           id: string
           item_id: string
           payload: Json
           processed: boolean | null
           processed_at: string | null
+          tasks_created: string[] | null
           user_id: string | null
           webhook_code: string
           webhook_type: string
@@ -911,11 +946,13 @@ export type Database = {
         Insert: {
           created_at?: string | null
           error?: string | null
+          event_id?: string | null
           id?: string
           item_id: string
           payload: Json
           processed?: boolean | null
           processed_at?: string | null
+          tasks_created?: string[] | null
           user_id?: string | null
           webhook_code: string
           webhook_type: string
@@ -923,11 +960,13 @@ export type Database = {
         Update: {
           created_at?: string | null
           error?: string | null
+          event_id?: string | null
           id?: string
           item_id?: string
           payload?: Json
           processed?: boolean | null
           processed_at?: string | null
+          tasks_created?: string[] | null
           user_id?: string | null
           webhook_code?: string
           webhook_type?: string
