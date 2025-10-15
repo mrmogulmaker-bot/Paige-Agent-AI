@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { CreditScoreOverview } from "@/components/dashboard/CreditScoreOverview";
 import { AccelProgress } from "@/components/dashboard/AccelProgress";
@@ -19,7 +19,6 @@ import { ProfileSettings } from "@/components/dashboard/ProfileSettings";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
 import { DocumentsManager } from "@/components/dashboard/DocumentsManager";
 import { Button } from "@/components/ui/button";
-import { FileUp, Bell } from "lucide-react";
 import { UpgradeBanner } from "@/components/dashboard/UpgradeBanner";
 import { UpgradeModal } from "@/components/dashboard/UpgradeModal";
 import { PlanGate } from "@/components/dashboard/PlanGate";
@@ -104,77 +103,86 @@ const Dashboard = () => {
       <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
       <UpgradeModal open={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} />
       
-      <SidebarProvider>
-      <div className="min-h-screen flex w-full">
-        <AppSidebar activeSection={activeSection} setActiveSection={setActiveSection} />
-        <main className="flex-1 p-8 bg-background overflow-auto">
-          {activeSection === "dashboard" && (
-            <div className="space-y-8 max-w-7xl mx-auto">
-              <UpgradeBanner onUpgradeClick={() => setShowUpgradeModal(true)} />
-              
-              <div className="flex items-start justify-between">
-                <div>
-                  <h1 className="text-4xl font-bold mb-2 bg-gradient-gold bg-clip-text text-transparent">
-                    Welcome Back, {user?.user_metadata?.full_name || "Mentee"}
-                  </h1>
-                  <p className="text-muted-foreground">Track your journey to financial empowerment</p>
-                </div>
-                <div className="flex gap-3">
-                  <Button variant="outline" className="gap-2" onClick={handleLogout}>
-                    Logout
-                  </Button>
-                  <Button variant="outline" className="gap-2">
-                    <Bell className="w-4 h-4" />
-                    Import Your Report
-                  </Button>
-                  <Button className="gap-2 bg-gradient-gold hover:opacity-90">
-                    <FileUp className="w-4 h-4" />
-                    Import Credit Report
-                  </Button>
-                </div>
-              </div>
-              
-              <CreditScoreOverview />
-              
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {showAccel && <AccelProgress onToggle={() => setShowAccel(false)} />}
-                {showBuild && <BuildProgress onToggle={() => setShowBuild(false)} />}
-              </div>
-              
-              {!showAccel && !showBuild && (
-                <div className="flex gap-4 justify-center">
-                  <Button onClick={() => setShowAccel(true)} variant="outline">
-                    Show A.C.C.E.L.
-                  </Button>
-                  <Button onClick={() => setShowBuild(true)} variant="outline">
-                    Show B.U.I.L.D.
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+      <SidebarProvider defaultOpen={true}>
+        <div className="min-h-screen flex w-full bg-background">
+          <AppSidebar activeSection={activeSection} setActiveSection={setActiveSection} />
           
-          {activeSection === "paige-ai" && <PaigeAIChat />}
-          {activeSection === "learning-vault" && <LearningVault />}
-          
-          {activeSection === "disputes" && <ThreeBureauReport />}
-          {activeSection === "accounts" && <AccountsOverview />}
-          {activeSection === "business-credit" && (
-            <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
-              <BusinessCreditReport />
-            </PlanGate>
-          )}
-          {activeSection === "build-steps" && (
-            <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
-              <BuildSteps />
-            </PlanGate>
-          )}
-          {activeSection === "reports" && <ReportsView />}
-          {activeSection === "documents" && <DocumentsManager />}
-          {activeSection === "settings" && <ProfileSettings />}
-        </main>
-      </div>
-    </SidebarProvider>
+          <div className="flex-1 flex flex-col">
+            {/* Top Header Bar */}
+            <header className="h-16 border-b border-border bg-card px-6 flex items-center justify-between sticky top-0 z-10">
+              <div className="flex items-center gap-4">
+                <SidebarTrigger className="-ml-2" />
+                <h1 className="text-xl font-semibold">
+                  {activeSection === "dashboard" && "Dashboard"}
+                  {activeSection === "paige-ai" && "PaigeAgent.ai"}
+                  {activeSection === "learning-vault" && "Learning Vault"}
+                  {activeSection === "disputes" && "Credit Disputes"}
+                  {activeSection === "accounts" && "Credit Accounts"}
+                  {activeSection === "business-credit" && "Business Credit"}
+                  {activeSection === "build-steps" && "BUILD Framework"}
+                  {activeSection === "reports" && "Credit Reports"}
+                  {activeSection === "documents" && "Documents"}
+                  {activeSection === "settings" && "Settings"}
+                </h1>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button variant="outline" size="sm" onClick={handleLogout}>
+                  Logout
+                </Button>
+              </div>
+            </header>
+
+            {/* Main Content Area */}
+            <main className="flex-1 overflow-auto">
+              <div className="p-6 max-w-7xl mx-auto w-full">
+                {activeSection === "dashboard" && (
+                  <div className="space-y-6">
+                    <UpgradeBanner onUpgradeClick={() => setShowUpgradeModal(true)} />
+                    
+                    <div className="grid gap-6">
+                      <CreditScoreOverview />
+                      
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {showAccel && <AccelProgress onToggle={() => setShowAccel(false)} />}
+                        {showBuild && <BuildProgress onToggle={() => setShowBuild(false)} />}
+                      </div>
+                      
+                      {!showAccel && !showBuild && (
+                        <div className="flex gap-4 justify-center">
+                          <Button onClick={() => setShowAccel(true)} variant="outline">
+                            Show A.C.C.E.L.
+                          </Button>
+                          <Button onClick={() => setShowBuild(true)} variant="outline">
+                            Show B.U.I.L.D.
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {activeSection === "paige-ai" && <PaigeAIChat />}
+                {activeSection === "learning-vault" && <LearningVault />}
+                {activeSection === "disputes" && <ThreeBureauReport />}
+                {activeSection === "accounts" && <AccountsOverview />}
+                {activeSection === "business-credit" && (
+                  <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
+                    <BusinessCreditReport />
+                  </PlanGate>
+                )}
+                {activeSection === "build-steps" && (
+                  <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
+                    <BuildSteps />
+                  </PlanGate>
+                )}
+                {activeSection === "reports" && <ReportsView />}
+                {activeSection === "documents" && <DocumentsManager />}
+                {activeSection === "settings" && <ProfileSettings />}
+              </div>
+            </main>
+          </div>
+        </div>
+      </SidebarProvider>
     </>
   );
 };
