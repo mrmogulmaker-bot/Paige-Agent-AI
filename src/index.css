@@ -8,17 +8,18 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* Premium Fintech Color System */
-    --background: 0 0% 100%;
-    --foreground: 222 84% 5%;
+    /* Premium Fintech Color System - BUILD Dashboard */
+    --background: 210 20% 98%;
+    --foreground: 222 87% 12%;
+    --surface: 0 0% 97%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 84% 5%;
+    --card-foreground: 222 87% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 84% 5%;
+    --popover-foreground: 222 87% 12%;
 
-    --primary: 222 87% 12%;
+    --primary: 222 87% 12%; /* Deep Navy */
     --primary-light: 222 87% 25%;
     --primary-foreground: 0 0% 98%;
 
@@ -28,36 +29,44 @@ All colors MUST be HSL.
     --muted: 222 13% 95%;
     --muted-foreground: 222 13% 45%;
 
-    --accent: 212 100% 50%;
-    --accent-glow: 212 100% 65%;
+    --accent: 174 62% 47%; /* Teal */
+    --accent-glow: 174 62% 65%;
     --accent-foreground: 0 0% 98%;
+
+    --gold: 45 100% 50%; /* Gold #FFC300 */
+    --gold-light: 45 100% 70%;
+    --gold-dark: 35 100% 40%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
 
     --border: 222 13% 90%;
     --input: 222 13% 90%;
-    --ring: 212 100% 50%;
+    --ring: 45 100% 50%;
 
-    --radius: 0.75rem;
+    --radius: 1rem;
 
     --success: 142 76% 36%;
     --success-light: 142 69% 58%;
     --warning: 38 92% 50%;
-    --info: 212 100% 50%;
+    --info: 174 62% 47%;
 
-    /* Gradients */
-    --gradient-hero: linear-gradient(135deg, hsl(222 87% 12%) 0%, hsl(212 100% 50%) 50%, hsl(258 100% 65%) 100%);
+    /* Premium Gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(222 87% 12%) 0%, hsl(174 62% 47%) 50%, hsl(45 100% 50%) 100%);
     --gradient-primary: linear-gradient(135deg, hsl(222 87% 12%), hsl(222 87% 25%));
-    --gradient-accent: linear-gradient(135deg, hsl(212 100% 50%), hsl(258 100% 65%));
-    --gradient-gold: linear-gradient(135deg, hsl(45 100% 60%), hsl(35 100% 50%));
+    --gradient-accent: linear-gradient(135deg, hsl(174 62% 47%), hsl(174 62% 65%));
+    --gradient-gold: linear-gradient(135deg, hsl(45 100% 60%), hsl(45 100% 50%));
+    --gradient-teal: linear-gradient(135deg, hsl(174 62% 47%), hsl(174 62% 35%));
+    --gradient-surface: linear-gradient(180deg, hsl(210 20% 98%), hsl(0 0% 100%));
     
-    /* Shadows */
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
-    --shadow-glow: 0 0 30px hsl(212 100% 50% / 0.3);
-    --shadow-glow-lg: 0 0 50px hsl(212 100% 50% / 0.4);
+    /* Premium Shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(11 18 33 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(11 18 33 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(11 18 33 / 0.1);
+    --shadow-card: 0 8px 24px rgba(11, 18, 33, 0.08);
+    --shadow-glow: 0 0 30px hsl(45 100% 50% / 0.3);
+    --shadow-glow-lg: 0 0 50px hsl(45 100% 50% / 0.4);
+    --shadow-glow-teal: 0 0 30px hsl(174 62% 47% / 0.3);
 
     /* Sidebar */
     --sidebar-background: 222 87% 12%;

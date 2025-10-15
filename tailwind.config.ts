@@ -41,6 +41,12 @@ export default {
           glow: "hsl(var(--accent-glow))",
           foreground: "hsl(var(--accent-foreground))",
         },
+        gold: {
+          DEFAULT: "hsl(var(--gold))",
+          light: "hsl(var(--gold-light))",
+          dark: "hsl(var(--gold-dark))",
+        },
+        surface: "hsl(var(--surface))",
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
@@ -71,13 +77,17 @@ export default {
         'gradient-primary': 'var(--gradient-primary)',
         'gradient-accent': 'var(--gradient-accent)',
         'gradient-gold': 'var(--gradient-gold)',
+        'gradient-teal': 'var(--gradient-teal)',
+        'gradient-surface': 'var(--gradient-surface)',
       },
       boxShadow: {
         'sm': 'var(--shadow-sm)',
         'md': 'var(--shadow-md)',
         'lg': 'var(--shadow-lg)',
+        'card': 'var(--shadow-card)',
         'glow': 'var(--shadow-glow)',
         'glow-lg': 'var(--shadow-glow-lg)',
+        'glow-teal': 'var(--shadow-glow-teal)',
       },
       borderRadius: {
         lg: "var(--radius)",
