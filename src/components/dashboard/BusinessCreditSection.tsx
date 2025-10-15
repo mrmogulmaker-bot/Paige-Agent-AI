@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CreditCard, BarChart3, Building2, Plus, Trash2 } from "lucide-react";
+import { CreditCard, BarChart3, Building2, Plus, Trash2, FolderOpen } from "lucide-react";
+import { DocumentUpload } from "./DocumentUpload";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -283,7 +284,7 @@ export function BusinessCreditSection() {
       </div>
 
       <Tabs defaultValue="accounts" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="accounts" className="gap-2">
             <CreditCard className="w-4 h-4" />
             Credit Accounts
@@ -295,6 +296,10 @@ export function BusinessCreditSection() {
           <TabsTrigger value="bank-accounts" className="gap-2">
             <Building2 className="w-4 h-4" />
             Bank Accounts
+          </TabsTrigger>
+          <TabsTrigger value="documents" className="gap-2">
+            <FolderOpen className="w-4 h-4" />
+            Documents
           </TabsTrigger>
         </TabsList>
 
@@ -308,6 +313,31 @@ export function BusinessCreditSection() {
 
         <TabsContent value="bank-accounts" className="mt-6">
           <BankAccountsTab />
+        </TabsContent>
+
+        <TabsContent value="documents" className="mt-6 space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            <DocumentUpload 
+              documentType="articles_of_incorporation" 
+              label="Articles of Incorporation" 
+              bucketName="business-documents"
+            />
+            <DocumentUpload 
+              documentType="ein_letter" 
+              label="EIN Letter" 
+              bucketName="business-documents"
+            />
+            <DocumentUpload 
+              documentType="operating_agreement" 
+              label="Operating Agreement" 
+              bucketName="business-documents"
+            />
+            <DocumentUpload 
+              documentType="business_license" 
+              label="Business License" 
+              bucketName="business-documents"
+            />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

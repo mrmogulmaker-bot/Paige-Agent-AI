@@ -25,7 +25,6 @@ const businessMenuItems = [
 ];
 
 const generalMenuItems = [
-  { title: "Documents", icon: FolderOpen, id: "documents" },
   { title: "Payments", icon: Receipt, id: "payments" },
   { title: "Affiliate", icon: Users, id: "affiliate" },
   { title: "Integrations", icon: Plug, id: "integrations" },

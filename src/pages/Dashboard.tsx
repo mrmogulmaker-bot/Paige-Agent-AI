@@ -133,7 +133,6 @@ const Dashboard = () => {
                   {activeSection === "business-credit" && "Business Credit"}
                   {activeSection === "build-steps" && "BUILD Program - Business"}
                   {activeSection === "business-organization" && "Business Organization"}
-                  {activeSection === "documents" && "Documents"}
                   {activeSection === "payments" && "Payment History"}
                   {activeSection === "affiliate" && "Affiliate Program"}
                   {activeSection === "integrations" && "Integrations"}
@@ -203,11 +202,11 @@ const Dashboard = () => {
                     </div>
                   </PlanGate>
                 )}
-                {activeSection === "documents" && <DocumentsManager />}
                 {activeSection === "payments" && <PaymentHistory />}
                 {activeSection === "affiliate" && <AffiliateTracking />}
-                {activeSection === "integrations" && <Integrations />}
+                  {activeSection === "integrations" && <Integrations />}
                 {activeSection === "settings" && <ProfileSettings />}
+                {/* Documents section removed - now under Personal and Business tabs */}
               </div>
             </main>
           </div>

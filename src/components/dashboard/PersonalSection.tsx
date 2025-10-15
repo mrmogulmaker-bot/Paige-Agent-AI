@@ -1,8 +1,9 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, CreditCard, BarChart3 } from "lucide-react";
+import { FileText, CreditCard, BarChart3, FolderOpen } from "lucide-react";
 import { DisputesManager } from "./DisputesManager";
 import { AccountsOverview } from "./AccountsOverview";
 import { ThreeBureauReport } from "./ThreeBureauReport";
+import { DocumentUpload } from "./DocumentUpload";
 
 export function PersonalSection() {
   return (
@@ -17,7 +18,7 @@ export function PersonalSection() {
       </div>
 
       <Tabs defaultValue="accel" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="accel" className="gap-2">
             <FileText className="w-4 h-4" />
             ACCEL
@@ -29,6 +30,10 @@ export function PersonalSection() {
           <TabsTrigger value="reports" className="gap-2">
             <BarChart3 className="w-4 h-4" />
             Credit Reports
+          </TabsTrigger>
+          <TabsTrigger value="documents" className="gap-2">
+            <FolderOpen className="w-4 h-4" />
+            Documents
           </TabsTrigger>
         </TabsList>
 
@@ -42,6 +47,33 @@ export function PersonalSection() {
 
         <TabsContent value="reports" className="mt-6">
           <ThreeBureauReport />
+        </TabsContent>
+
+        <TabsContent value="documents" className="mt-6 space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            <DocumentUpload 
+              documentType="drivers_license" 
+              label="Driver's License" 
+              bucketName="personal-documents"
+            />
+            <DocumentUpload 
+              documentType="social_security_card" 
+              label="Social Security Card" 
+              bucketName="personal-documents"
+            />
+            <DocumentUpload 
+              documentType="utility_bill" 
+              label="Utility Bill" 
+              description="Recent utility bill for address verification"
+              bucketName="personal-documents"
+            />
+            <DocumentUpload 
+              documentType="bank_statement" 
+              label="Bank Statement" 
+              description="Recent bank statement for financial verification"
+              bucketName="personal-documents"
+            />
+          </div>
         </TabsContent>
       </Tabs>
     </div>
