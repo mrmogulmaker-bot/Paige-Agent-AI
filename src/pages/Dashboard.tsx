@@ -17,6 +17,7 @@ import { ThreeBureauReport } from "@/components/dashboard/ThreeBureauReport";
 import { BusinessCreditReport } from "@/components/dashboard/BusinessCreditReport";
 import { ProfileSettings } from "@/components/dashboard/ProfileSettings";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
+import { DocumentsManager } from "@/components/dashboard/DocumentsManager";
 import { Button } from "@/components/ui/button";
 import { FileUp, Bell } from "lucide-react";
 import { UpgradeBanner } from "@/components/dashboard/UpgradeBanner";
@@ -169,6 +170,7 @@ const Dashboard = () => {
             </PlanGate>
           )}
           {activeSection === "reports" && <ReportsView />}
+          {activeSection === "documents" && <DocumentsManager />}
           {activeSection === "settings" && <ProfileSettings />}
         </main>
       </div>

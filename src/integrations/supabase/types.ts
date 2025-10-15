@@ -320,6 +320,59 @@ export type Database = {
         }
         Relationships: []
       }
+      documents: {
+        Row: {
+          bucket_name: string
+          business_id: string | null
+          document_type: string
+          file_name: string
+          file_path: string
+          file_size: number
+          id: string
+          metadata: Json | null
+          mime_type: string
+          updated_at: string | null
+          uploaded_at: string | null
+          user_id: string
+        }
+        Insert: {
+          bucket_name: string
+          business_id?: string | null
+          document_type: string
+          file_name: string
+          file_path: string
+          file_size: number
+          id?: string
+          metadata?: Json | null
+          mime_type: string
+          updated_at?: string | null
+          uploaded_at?: string | null
+          user_id: string
+        }
+        Update: {
+          bucket_name?: string
+          business_id?: string | null
+          document_type?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          id?: string
+          metadata?: Json | null
+          mime_type?: string
+          updated_at?: string | null
+          uploaded_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documents_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funding_offers: {
         Row: {
           affiliate_tag: string | null
