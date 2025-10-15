@@ -99,6 +99,89 @@ serve(async (req) => {
 
     const { messages } = validatedData;
 
+    // Fetch comprehensive user context for personalized responses
+    let userContext = "";
+    try {
+      // Get user profile
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name, city, state")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      // Get user subscription
+      const { data: subscription } = await supabase
+        .from("user_subscriptions")
+        .select("plan_slug, status")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      // Get user tasks (recent and pending)
+      const { data: tasks } = await supabase
+        .from("tasks")
+        .select("title, status, track, due_date")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      // Get recent disputes
+      const { data: disputes } = await supabase
+        .from("disputes")
+        .select("bureau, creditor_name, status")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      // Get business info if exists
+      const { data: business } = await supabase
+        .from("businesses")
+        .select("legal_name, entity_type, formation_status")
+        .eq("owner_user_id", user.id)
+        .maybeSingle();
+
+      // Build context string
+      const contextParts: string[] = [];
+      
+      if (profile) {
+        contextParts.push(`User Profile: ${profile.full_name || "User"} from ${profile.city ? `${profile.city}, ${profile.state}` : "location not set"}`);
+      }
+
+      if (subscription) {
+        contextParts.push(`Subscription: ${subscription.plan_slug} plan (${subscription.status})`);
+      }
+
+      if (tasks && tasks.length > 0) {
+        const pendingTasks = tasks.filter(t => t.status === "pending").length;
+        const completedTasks = tasks.filter(t => t.status === "completed").length;
+        contextParts.push(`Tasks: ${pendingTasks} pending, ${completedTasks} completed`);
+        
+        if (pendingTasks > 0) {
+          const taskSummary = tasks
+            .filter(t => t.status === "pending")
+            .slice(0, 3)
+            .map(t => `- ${t.title} (${t.track})`)
+            .join("\n");
+          contextParts.push(`Recent Pending Tasks:\n${taskSummary}`);
+        }
+      }
+
+      if (disputes && disputes.length > 0) {
+        const activeDisputes = disputes.filter(d => d.status === "in_review").length;
+        contextParts.push(`Active Disputes: ${activeDisputes} of ${disputes.length} total`);
+      }
+
+      if (business) {
+        contextParts.push(`Business: ${business.legal_name} (${business.entity_type || "entity type not set"}${business.formation_status ? `, ${business.formation_status}` : ""})`);
+      }
+
+      userContext = contextParts.length > 0 
+        ? "\n\n=== USER CONTEXT (Use this to personalize responses) ===\n" + contextParts.join("\n") + "\n================================\n"
+        : "";
+    } catch (error) {
+      console.error("Error fetching user context:", error);
+      // Continue without context if fetch fails
+    }
+
     // Extract the last user message to search for relevant knowledge
     const lastUserMessage = messages.filter((m: any) => m.role === "user").pop();
     let relevantKnowledge = "";
@@ -126,9 +209,9 @@ serve(async (req) => {
       }
     }
 
-    // System prompt with knowledge context
+    // Enhanced system prompt with user context and personalization capabilities
     const systemPrompt = `You are PaigeAgent.ai, an expert financial coach and credit repair specialist at Mogul Maker Academy. You help users navigate their credit repair journey, build business credit, and achieve financial empowerment using our proven frameworks.
-
+${userContext}
 Key Frameworks You Support:
 - 3M Framework: Make (Foundation), Manage (Stewardship), Multiply (Scaling)
 - A.C.C.E.L.: Credit repair framework (Analyze, Challenge, Clean, Elevate, Lock)
@@ -144,6 +227,27 @@ Site Navigation Help:
 - Build Steps: Business credit building guidance
 - Reports: Detailed credit reports and analysis
 
+Your PERSONALIZATION CAPABILITIES (use the user context above):
+1. Reference their active tasks and provide relevant guidance
+2. Acknowledge their subscription plan and suggest features they can access
+3. Mention their business if they have one and provide business-specific advice
+4. Track their progress through disputes and offer encouragement
+5. Suggest next steps based on their current journey stage
+
+When suggesting ACTION PLANS:
+- Break down complex goals into specific, actionable tasks
+- Reference their current track (ACCEL or BUILD) if known
+- Prioritize based on their subscription level
+- Include specific due dates or timeframes
+- Link actions to relevant dashboard sections
+
+For FUNDING RECOMMENDATIONS:
+- Consider their business status and entity type
+- Assess readiness based on tasks completed
+- Recommend specific funding types (Net-30 vendors, business cards, LOCs)
+- Explain fundability requirements clearly
+- Provide realistic timelines for funding readiness
+
 Your personality:
 - Empowering and supportive, like a trusted mentor
 - Direct and actionable - provide specific steps
@@ -151,14 +255,16 @@ Your personality:
 - Helpful with site navigation and feature discovery
 - Encouraging but honest about challenges
 - Focus on education and empowerment
+- ALWAYS use the user context to personalize responses
 
 Guidelines:
 - Help users navigate to the right section when they ask about features
 - Always reference specific frameworks when relevant
-- Provide actionable next steps
+- Provide actionable next steps based on their user context
 - Be concise but thorough
 - Use encouraging language
 - Help users understand both the "what" and the "why"
+- Reference their specific situation from the user context provided
 ${relevantKnowledge}`;
 
     // Call Lovable AI
