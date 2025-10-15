@@ -2,10 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Loader2, Mic, MicOff, Volume2 } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { AudioRecorder, encodeAudioForAPI, AudioQueue, createWavFromPCM } from "@/utils/VoiceAudio";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -18,14 +19,131 @@ export const PaigeAIChat = () => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  
+  const wsRef = useRef<WebSocket | null>(null);
+  const recorderRef = useRef<AudioRecorder | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioQueueRef = useRef<AudioQueue | null>(null);
+  const currentTranscriptRef = useRef<string>("");
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Voice chat functions
+  const startVoiceChat = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+      audioQueueRef.current = new AudioQueue(audioContextRef.current);
+      
+      const wsUrl = `wss://bfmyebsjyuoecmjskqhs.supabase.co/functions/v1/paige-voice-chat`;
+      wsRef.current = new WebSocket(wsUrl);
+      
+      wsRef.current.onopen = () => {
+        console.log("Voice chat connected");
+        setIsVoiceActive(true);
+        toast({
+          title: "Voice chat started",
+          description: "You can now speak with Paige",
+        });
+      };
+      
+      wsRef.current.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === "response.audio.delta") {
+          const binaryString = atob(data.delta);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          await audioQueueRef.current?.addToQueue(bytes);
+          setIsSpeaking(true);
+        } else if (data.type === "response.audio.done") {
+          setIsSpeaking(false);
+        } else if (data.type === "response.audio_transcript.delta") {
+          currentTranscriptRef.current += data.delta;
+        } else if (data.type === "response.audio_transcript.done") {
+          if (currentTranscriptRef.current) {
+            setMessages(prev => [...prev, {
+              role: "assistant",
+              content: currentTranscriptRef.current
+            }]);
+            currentTranscriptRef.current = "";
+          }
+        } else if (data.type === "conversation.item.input_audio_transcription.completed") {
+          if (data.transcript) {
+            setMessages(prev => [...prev, {
+              role: "user",
+              content: data.transcript
+            }]);
+          }
+        } else if (data.type === "input_audio_buffer.speech_started") {
+          setIsListening(true);
+        } else if (data.type === "input_audio_buffer.speech_stopped") {
+          setIsListening(false);
+        }
+      };
+      
+      wsRef.current.onerror = () => {
+        toast({
+          title: "Connection error",
+          description: "Failed to connect to voice chat",
+          variant: "destructive",
+        });
+      };
+      
+      wsRef.current.onclose = () => {
+        setIsVoiceActive(false);
+        setIsSpeaking(false);
+        setIsListening(false);
+      };
+      
+      recorderRef.current = new AudioRecorder((audioData) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          const encoded = encodeAudioForAPI(audioData);
+          wsRef.current.send(JSON.stringify({
+            type: "input_audio_buffer.append",
+            audio: encoded
+          }));
+        }
+      });
+      
+      await recorderRef.current.start();
+      
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to start voice chat",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const stopVoiceChat = () => {
+    recorderRef.current?.stop();
+    wsRef.current?.close();
+    audioQueueRef.current?.clear();
+    audioContextRef.current?.close();
+    
+    wsRef.current = null;
+    recorderRef.current = null;
+    audioContextRef.current = null;
+    audioQueueRef.current = null;
+    
+    setIsVoiceActive(false);
+    setIsSpeaking(false);
+    setIsListening(false);
+  };
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -37,7 +155,6 @@ export const PaigeAIChat = () => {
     setIsLoading(true);
 
     try {
-      // Get the user's session token
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
@@ -83,7 +200,6 @@ export const PaigeAIChat = () => {
       let textBuffer = "";
       let streamDone = false;
 
-      // Add empty assistant message that we'll update
       setMessages([...newMessages, { role: "assistant", content: "" }]);
 
       while (reader && !streamDone) {
@@ -134,6 +250,12 @@ export const PaigeAIChat = () => {
     }
   };
 
+  useEffect(() => {
+    return () => {
+      stopVoiceChat();
+    };
+  }, []);
+
   return (
     <div className="max-w-4xl mx-auto h-[calc(100vh-4rem)]">
       <div className="flex flex-col h-full">
@@ -177,7 +299,27 @@ export const PaigeAIChat = () => {
             ))}
           </div>
 
-          <div className="border-t border-border p-4">
+          <div className="border-t border-border p-4 space-y-3">
+            {isVoiceActive && (
+              <div className="flex items-center justify-center gap-2 text-sm">
+                {isSpeaking && (
+                  <div className="flex items-center gap-2 text-primary">
+                    <Volume2 className="w-4 h-4 animate-pulse" />
+                    <span>Paige is speaking...</span>
+                  </div>
+                )}
+                {isListening && (
+                  <div className="flex items-center gap-2 text-primary">
+                    <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                    <span>Listening...</span>
+                  </div>
+                )}
+                {!isSpeaking && !isListening && (
+                  <span className="text-muted-foreground">Ready to listen</span>
+                )}
+              </div>
+            )}
+            
             <div className="flex gap-2">
               <Input
                 value={input}
@@ -185,16 +327,35 @@ export const PaigeAIChat = () => {
                 onKeyPress={(e) => e.key === "Enter" && handleSend()}
                 placeholder="Ask Paige about your credit journey..."
                 className="flex-1"
+                disabled={isLoading || isVoiceActive}
               />
               <Button 
                 onClick={handleSend} 
-                disabled={isLoading || !input.trim()}
+                disabled={isLoading || !input.trim() || isVoiceActive}
                 className="bg-gradient-gold hover:opacity-90"
                 size="icon"
               >
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </Button>
             </div>
+            
+            <Button
+              onClick={isVoiceActive ? stopVoiceChat : startVoiceChat}
+              variant={isVoiceActive ? "destructive" : "outline"}
+              className="w-full"
+            >
+              {isVoiceActive ? (
+                <>
+                  <MicOff className="w-4 h-4 mr-2" />
+                  End Voice Chat
+                </>
+              ) : (
+                <>
+                  <Mic className="w-4 h-4 mr-2" />
+                  Start Voice Chat
+                </>
+              )}
+            </Button>
           </div>
         </Card>
       </div>
