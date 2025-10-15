@@ -16,7 +16,7 @@ import { PersonalBuildProgramOutline } from "@/components/dashboard/PersonalBuil
 import { AccelProgramOutline } from "@/components/dashboard/AccelProgramOutline";
 import { PersonalSection } from "@/components/dashboard/PersonalSection";
 import { BusinessCreditSection } from "@/components/dashboard/BusinessCreditSection";
-import { BusinessOrganizationChart } from "@/components/dashboard/BusinessOrganizationChart";
+import { OrganizationChart } from "@/components/dashboard/OrganizationChart";
 import { BusinessDocumentsManager } from "@/components/dashboard/BusinessDocumentsManager";
 import { ProfileSettings } from "@/components/dashboard/ProfileSettings";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
@@ -194,7 +194,7 @@ const Dashboard = () => {
                 {activeSection === "business-organization" && (
                   <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
                     <div className="space-y-6">
-                      <BusinessOrganizationChart />
+                      <OrganizationChart />
                       <BusinessDocumentsManager />
                     </div>
                   </PlanGate>

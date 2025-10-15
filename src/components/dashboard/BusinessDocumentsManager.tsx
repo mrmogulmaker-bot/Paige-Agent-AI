@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FolderOpen, Upload, File, Building2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Upload, Folder, File, Trash2, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Business {
@@ -17,17 +23,17 @@ interface Document {
   id: string;
   file_name: string;
   file_path: string;
-  document_type: string;
   folder_path: string;
-  uploaded_at: string;
   file_size: number;
+  uploaded_at: string;
+  business_id: string | null;
 }
 
 export function BusinessDocumentsManager() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [selectedBusiness, setSelectedBusiness] = useState<string>("");
-  const [documents, setDocuments] = useState<Document[]>([]);
   const [currentFolder, setCurrentFolder] = useState("/");
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
 
@@ -42,82 +48,89 @@ export function BusinessDocumentsManager() {
   }, [selectedBusiness, currentFolder]);
 
   const loadBusinesses = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    const { data, error } = await supabase
-      .from("businesses")
-      .select("id, legal_name, business_type")
-      .eq("owner_user_id", user.id)
-      .order("legal_name");
+      const { data, error } = await supabase
+        .from("businesses")
+        .select("id, legal_name, business_type")
+        .eq("owner_user_id", user.id)
+        .order("legal_name");
 
-    if (!error && data) {
-      setBusinesses(data);
-      if (data.length > 0 && !selectedBusiness) {
-        setSelectedBusiness(data[0].id);
-      }
+      if (error) throw error;
+      setBusinesses(data || []);
+    } catch (error) {
+      console.error("Error loading businesses:", error);
     }
   };
 
   const loadDocuments = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !selectedBusiness) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-    const { data, error } = await supabase
-      .from("documents")
-      .select("*")
-      .eq("user_id", user.id)
-      .eq("business_id", selectedBusiness)
-      .eq("folder_path", currentFolder)
-      .order("uploaded_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("documents")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("business_id", selectedBusiness)
+        .eq("folder_path", currentFolder)
+        .order("uploaded_at", { ascending: false });
 
-    if (!error && data) {
-      setDocuments(data);
+      if (error) throw error;
+      setDocuments(data || []);
+    } catch (error) {
+      console.error("Error loading documents:", error);
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedBusiness) return;
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0 || !selectedBusiness) return;
 
     setUploading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const fileExt = file.name.split('.').pop();
-      const filePath = `${selectedBusiness}${currentFolder}${Date.now()}.${fileExt}`;
+      for (const file of Array.from(files)) {
+        const fileExt = file.name.split(".").pop();
+        const fileName = `${Date.now()}_${file.name}`;
+        const filePath = `${user.id}/${selectedBusiness}${currentFolder}${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("business-documents")
-        .upload(filePath, file);
+        const { error: uploadError } = await supabase.storage
+          .from("business-documents")
+          .upload(filePath, file);
 
-      if (uploadError) throw uploadError;
+        if (uploadError) throw uploadError;
 
-      const { error: dbError } = await supabase.from("documents").insert({
-        user_id: user.id,
-        business_id: selectedBusiness,
-        file_name: file.name,
-        file_path: filePath,
-        document_type: "business",
-        folder_path: currentFolder,
-        bucket_name: "business-documents",
-        mime_type: file.type,
-        file_size: file.size,
-      });
+        const { error: dbError } = await supabase.from("documents").insert({
+          user_id: user.id,
+          business_id: selectedBusiness,
+          file_name: file.name,
+          file_path: filePath,
+          folder_path: currentFolder,
+          mime_type: file.type,
+          file_size: file.size,
+          bucket_name: "business-documents",
+          document_type: "business",
+        });
 
-      if (dbError) throw dbError;
+        if (dbError) throw dbError;
+      }
 
       toast({
         title: "Success",
-        description: "File uploaded successfully",
+        description: "Files uploaded successfully",
       });
 
       loadDocuments();
-    } catch (error: any) {
+    } catch (error) {
+      console.error("Error uploading files:", error);
       toast({
-        title: "Upload failed",
-        description: error.message,
+        title: "Error",
+        description: "Failed to upload files",
         variant: "destructive",
       });
     } finally {
@@ -125,83 +138,169 @@ export function BusinessDocumentsManager() {
     }
   };
 
-  const selectedBusinessData = businesses.find(b => b.id === selectedBusiness);
+  const handleDelete = async (doc: Document) => {
+    try {
+      const { error: storageError } = await supabase.storage
+        .from("business-documents")
+        .remove([doc.file_path]);
+
+      if (storageError) throw storageError;
+
+      const { error: dbError } = await supabase
+        .from("documents")
+        .delete()
+        .eq("id", doc.id);
+
+      if (dbError) throw dbError;
+
+      toast({
+        title: "Success",
+        description: "File deleted",
+      });
+
+      loadDocuments();
+    } catch (error) {
+      console.error("Error deleting file:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDownload = async (doc: Document) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from("business-documents")
+        .download(doc.file_path);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.file_name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading file:", error);
+      toast({
+        title: "Error",
+        description: "Failed to download file",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <FolderOpen className="w-6 h-6 text-gold" />
-              Business Documents
-            </CardTitle>
-            <CardDescription>
-              Organize files by business entity
-            </CardDescription>
-          </div>
-          <div className="flex gap-2">
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+          Business Documents
+        </h2>
+        <p className="text-muted-foreground">
+          Organize files by business entity
+        </p>
+      </div>
+
+      <Card className="p-4">
+        <div className="flex gap-4 items-end">
+          <div className="flex-1">
+            <label className="text-sm font-medium mb-2 block">
+              Select Business
+            </label>
             <Select value={selectedBusiness} onValueChange={setSelectedBusiness}>
-              <SelectTrigger className="w-64">
-                <SelectValue placeholder="Select business" />
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a business entity" />
               </SelectTrigger>
               <SelectContent>
-                {businesses.map((business) => (
-                  <SelectItem key={business.id} value={business.id}>
-                    <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4" />
-                      {business.legal_name}
-                    </div>
+                {businesses.map((biz) => (
+                  <SelectItem key={biz.id} value={biz.id}>
+                    {biz.legal_name} ({biz.business_type})
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Button disabled={!selectedBusiness || uploading} asChild>
-              <label className="cursor-pointer">
-                <Upload className="w-4 h-4 mr-2" />
-                {uploading ? "Uploading..." : "Upload File"}
-                <Input
-                  type="file"
-                  className="hidden"
-                  onChange={handleFileUpload}
-                  disabled={!selectedBusiness || uploading}
-                />
-              </label>
-            </Button>
+          </div>
+
+          <div>
+            <Input
+              type="file"
+              multiple
+              onChange={handleFileUpload}
+              disabled={!selectedBusiness || uploading}
+              className="hidden"
+              id="file-upload"
+            />
+            <label htmlFor="file-upload">
+              <Button
+                asChild
+                disabled={!selectedBusiness || uploading}
+              >
+                <span>
+                  <Upload className="w-4 h-4 mr-2" />
+                  {uploading ? "Uploading..." : "Upload Files"}
+                </span>
+              </Button>
+            </label>
           </div>
         </div>
-      </CardHeader>
-      <CardContent>
-        {!selectedBusiness ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Building2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p>Select a business to view and manage its documents</p>
-          </div>
-        ) : documents.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <File className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p className="mb-2">No documents in this folder</p>
-            <p className="text-sm">Upload files to organize them for {selectedBusinessData?.legal_name}</p>
-          </div>
-        ) : (
+      </Card>
+
+      {selectedBusiness && (
+        <Card className="p-4">
           <div className="space-y-2">
-            {documents.map((doc) => (
-              <div
-                key={doc.id}
-                className="flex items-center gap-3 p-3 rounded-lg border hover:bg-accent/50 transition-colors"
-              >
-                <File className="w-5 h-5 text-muted-foreground" />
-                <div className="flex-1">
-                  <div className="font-medium">{doc.file_name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {new Date(doc.uploaded_at).toLocaleDateString()} • {(doc.file_size / 1024).toFixed(1)} KB
-                  </div>
-                </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+              <Folder className="w-4 h-4" />
+              <span>{currentFolder}</span>
+            </div>
+
+            {documents.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No documents in this folder
               </div>
-            ))}
+            ) : (
+              <div className="space-y-2">
+                {documents.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent"
+                  >
+                    <div className="flex items-center gap-3">
+                      <File className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">{doc.file_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(doc.uploaded_at).toLocaleDateString()} •{" "}
+                          {(doc.file_size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDownload(doc)}
+                      >
+                        <Download className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDelete(doc)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </Card>
+      )}
+    </div>
   );
 }

@@ -1,11 +1,41 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+
+const formSchema = z.object({
+  legal_name: z.string().min(1, "Legal name is required"),
+  business_type: z.enum(["holding", "parent", "subsidiary", "standalone"]),
+  entity_type: z.string().optional(),
+  ein: z.string().optional(),
+  dba: z.string().optional(),
+  state_of_formation: z.string().optional(),
+});
 
 interface AddBusinessDialogProps {
   open: boolean;
@@ -14,37 +44,49 @@ interface AddBusinessDialogProps {
   onSuccess: () => void;
 }
 
-export function AddBusinessDialog({ open, onOpenChange, parentBusinessId, onSuccess }: AddBusinessDialogProps) {
-  const [formData, setFormData] = useState({
-    legal_name: "",
-    dba: "",
-    entity_type: "",
-    business_type: parentBusinessId ? "subsidiary" : "standalone",
-    ein: "",
-    state_of_formation: "",
-  });
+export function AddBusinessDialog({
+  open,
+  onOpenChange,
+  parentBusinessId,
+  onSuccess,
+}: AddBusinessDialogProps) {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      legal_name: "",
+      business_type: parentBusinessId ? "subsidiary" : "holding",
+      entity_type: "",
+      ein: "",
+      dba: "",
+      state_of_formation: "",
+    },
+  });
 
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      const organizationalLevel = parentBusinessId ? 1 : 0;
+
       const insertData: any = {
-        legal_name: formData.legal_name,
-        dba: formData.dba || null,
-        entity_type: formData.entity_type,
-        business_type: formData.business_type,
-        ein: formData.ein || null,
-        state_of_formation: formData.state_of_formation || null,
         owner_user_id: user.id,
+        legal_name: values.legal_name,
+        business_type: values.business_type,
+        ein: values.ein || null,
+        dba: values.dba || null,
+        state_of_formation: values.state_of_formation || null,
         parent_business_id: parentBusinessId || null,
-        organizational_level: parentBusinessId ? 1 : 0,
+        organizational_level: organizationalLevel,
       };
+
+      if (values.entity_type) {
+        insertData.entity_type = values.entity_type;
+      }
 
       const { error } = await supabase.from("businesses").insert(insertData);
 
@@ -52,23 +94,17 @@ export function AddBusinessDialog({ open, onOpenChange, parentBusinessId, onSucc
 
       toast({
         title: "Success",
-        description: "Business added successfully",
+        description: "Business added to organization chart",
       });
 
-      onSuccess();
+      form.reset();
       onOpenChange(false);
-      setFormData({
-        legal_name: "",
-        dba: "",
-        entity_type: "",
-        business_type: parentBusinessId ? "subsidiary" : "standalone",
-        ein: "",
-        state_of_formation: "",
-      });
-    } catch (error: any) {
+      onSuccess();
+    } catch (error) {
+      console.error("Error adding business:", error);
       toast({
         title: "Error",
-        description: error.message,
+        description: "Failed to add business",
         variant: "destructive",
       });
     } finally {
@@ -81,112 +117,142 @@ export function AddBusinessDialog({ open, onOpenChange, parentBusinessId, onSucc
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {parentBusinessId ? "Add Subsidiary" : "Add Business Entity"}
+            {parentBusinessId ? "Add Subsidiary Business" : "Add Business Entity"}
           </DialogTitle>
-          <DialogDescription>
-            {parentBusinessId 
-              ? "Add a subsidiary company under the selected parent entity"
-              : "Add a new business entity to your organization"
-            }
-          </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="legal_name">Legal Name *</Label>
-              <Input
-                id="legal_name"
-                required
-                value={formData.legal_name}
-                onChange={(e) => setFormData({ ...formData, legal_name: e.target.value })}
-                placeholder="ABC Corporation"
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="legal_name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Legal Name *</FormLabel>
+                  <FormControl>
+                    <Input placeholder="ABC Holdings LLC" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="business_type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Business Type *</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                    disabled={!!parentBusinessId}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="holding">Holding Company</SelectItem>
+                      <SelectItem value="parent">Parent Company</SelectItem>
+                      <SelectItem value="subsidiary">Subsidiary</SelectItem>
+                      <SelectItem value="standalone">Standalone</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="entity_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Entity Type</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="llc">LLC</SelectItem>
+                        <SelectItem value="corporation">Corporation</SelectItem>
+                        <SelectItem value="s_corp">S-Corp</SelectItem>
+                        <SelectItem value="c_corp">C-Corp</SelectItem>
+                        <SelectItem value="partnership">Partnership</SelectItem>
+                        <SelectItem value="sole_proprietorship">
+                          Sole Proprietorship
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="state_of_formation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>State of Formation</FormLabel>
+                    <FormControl>
+                      <Input placeholder="DE" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="dba">DBA (Doing Business As)</Label>
-              <Input
-                id="dba"
-                value={formData.dba}
-                onChange={(e) => setFormData({ ...formData, dba: e.target.value })}
-                placeholder="ABC Company"
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="ein"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>EIN</FormLabel>
+                    <FormControl>
+                      <Input placeholder="XX-XXXXXXX" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="dba"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>DBA (Doing Business As)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Trade name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="entity_type">Entity Type *</Label>
-              <Select
-                required
-                value={formData.entity_type}
-                onValueChange={(value) => setFormData({ ...formData, entity_type: value })}
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select entity type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="LLC">LLC</SelectItem>
-                  <SelectItem value="Corporation">Corporation</SelectItem>
-                  <SelectItem value="S-Corp">S-Corp</SelectItem>
-                  <SelectItem value="C-Corp">C-Corp</SelectItem>
-                  <SelectItem value="Partnership">Partnership</SelectItem>
-                  <SelectItem value="Sole Proprietorship">Sole Proprietorship</SelectItem>
-                </SelectContent>
-              </Select>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "Adding..." : "Add Business"}
+              </Button>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="business_type">Business Type *</Label>
-              <Select
-                required
-                value={formData.business_type}
-                onValueChange={(value) => setFormData({ ...formData, business_type: value })}
-                disabled={!!parentBusinessId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select business type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="holding">Holding Company</SelectItem>
-                  <SelectItem value="parent">Parent Company</SelectItem>
-                  <SelectItem value="subsidiary">Subsidiary</SelectItem>
-                  <SelectItem value="standalone">Standalone</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ein">EIN (Employer ID Number)</Label>
-              <Input
-                id="ein"
-                value={formData.ein}
-                onChange={(e) => setFormData({ ...formData, ein: e.target.value })}
-                placeholder="12-3456789"
-                maxLength={10}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="state_of_formation">State of Formation</Label>
-              <Input
-                id="state_of_formation"
-                value={formData.state_of_formation}
-                onChange={(e) => setFormData({ ...formData, state_of_formation: e.target.value })}
-                placeholder="DE"
-                maxLength={2}
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Adding..." : "Add Business"}
-            </Button>
-          </div>
-        </form>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
