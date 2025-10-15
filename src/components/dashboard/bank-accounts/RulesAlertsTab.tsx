@@ -27,7 +27,11 @@ interface Rule {
   channels: string[];
 }
 
-export function RulesAlertsTab() {
+interface RulesAlertsTabProps {
+  businessMode?: boolean;
+}
+
+export function RulesAlertsTab({ businessMode = false }: RulesAlertsTabProps) {
   const [rules, setRules] = useState<Rule[]>([
     {
       id: "1",
@@ -61,12 +65,19 @@ export function RulesAlertsTab() {
     actionDetail: "",
   });
 
-  const fieldOptions = [
+  const fieldOptions = businessMode ? [
     { value: "avg_balance_90d", label: "Avg Balance (90d)" },
     { value: "dscr", label: "DSCR" },
     { value: "nsf_90d", label: "NSF Count (90d)" },
     { value: "inflows_30d", label: "Monthly Inflows" },
     { value: "outflows_30d", label: "Monthly Outflows" },
+  ] : [
+    { value: "avg_balance_90d", label: "Avg Balance (90d)" },
+    { value: "nsf_90d", label: "NSF Count (90d)" },
+    { value: "inflows_30d", label: "Income (30d)" },
+    { value: "outflows_30d", label: "Expenses (30d)" },
+    { value: "savings_rate_pct", label: "Savings Rate %" },
+    { value: "utilization_pct", label: "Credit Utilization %" },
   ];
 
   const operatorOptions = [
@@ -208,24 +219,49 @@ export function RulesAlertsTab() {
           <CardTitle className="text-base">Example Rules</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <div className="p-3 rounded-lg bg-card border border-accent/20">
-            <p className="font-mono text-xs">
-              <span className="text-accent">IF</span> avg_balance_90d &lt; $5,000 
-              <span className="text-gold mx-2">THEN</span> create_task: "Raise average balance $3k for 30 days"
-            </p>
-          </div>
-          <div className="p-3 rounded-lg bg-card border border-gold/20">
-            <p className="font-mono text-xs">
-              <span className="text-accent">IF</span> dscr &lt; 1.25 
-              <span className="text-gold mx-2">THEN</span> create_task: "Reduce obligations or increase NOI"
-            </p>
-          </div>
-          <div className="p-3 rounded-lg bg-card border border-primary/20">
-            <p className="font-mono text-xs">
-              <span className="text-accent">IF</span> nsf_90d &gt; 0 
-              <span className="text-gold mx-2">THEN</span> send_sms: "NSF detected. Bank hygiene alert."
-            </p>
-          </div>
+          {businessMode ? (
+            <>
+              <div className="p-3 rounded-lg bg-card border border-accent/20">
+                <p className="font-mono text-xs">
+                  <span className="text-accent">IF</span> avg_balance_90d &lt; $5,000 
+                  <span className="text-gold mx-2">THEN</span> create_task: "Raise average balance $3k for 30 days"
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-card border border-gold/20">
+                <p className="font-mono text-xs">
+                  <span className="text-accent">IF</span> dscr &lt; 1.25 
+                  <span className="text-gold mx-2">THEN</span> create_task: "Reduce obligations or increase NOI"
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-card border border-primary/20">
+                <p className="font-mono text-xs">
+                  <span className="text-accent">IF</span> nsf_90d &gt; 0 
+                  <span className="text-gold mx-2">THEN</span> send_sms: "NSF detected. Bank hygiene alert."
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="p-3 rounded-lg bg-card border border-accent/20">
+                <p className="font-mono text-xs">
+                  <span className="text-accent">IF</span> avg_balance_90d &lt; $1,500 
+                  <span className="text-gold mx-2">THEN</span> create_task: "Build a $1,000 emergency buffer"
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-card border border-gold/20">
+                <p className="font-mono text-xs">
+                  <span className="text-accent">IF</span> utilization_pct &gt; 30 
+                  <span className="text-gold mx-2">THEN</span> create_task: "Pay down revolving balances before statement cut"
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-card border border-primary/20">
+                <p className="font-mono text-xs">
+                  <span className="text-accent">IF</span> savings_rate_pct &lt; 10 
+                  <span className="text-gold mx-2">THEN</span> send_sms: "Low savings rate - review budget"
+                </p>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

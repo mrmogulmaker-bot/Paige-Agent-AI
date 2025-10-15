@@ -49,9 +49,10 @@ function KPICard({ title, value, change, trend, icon, subtitle }: KPICardProps) 
 interface OverviewTabProps {
   onConnectBank: () => void;
   onRefresh: () => void;
+  businessMode?: boolean;
 }
 
-export function OverviewTab({ onConnectBank, onRefresh }: OverviewTabProps) {
+export function OverviewTab({ onConnectBank, onRefresh, businessMode = false }: OverviewTabProps) {
   // Mock data - replace with real data from hooks
   const cashflowData = [
     { date: "Jan", inflow: 45000, outflow: 32000 },
@@ -65,7 +66,7 @@ export function OverviewTab({ onConnectBank, onRefresh }: OverviewTabProps) {
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <KPICard
           title="Total Balance"
           value="$127,450"
@@ -83,7 +84,7 @@ export function OverviewTab({ onConnectBank, onRefresh }: OverviewTabProps) {
           icon={<Activity className="h-5 w-5 text-primary" />}
         />
         <KPICard
-          title="Monthly Inflows"
+          title={businessMode ? "Monthly Inflows" : "Income (30d)"}
           value="$67,000"
           change="+15.2%"
           trend="up"
@@ -91,13 +92,32 @@ export function OverviewTab({ onConnectBank, onRefresh }: OverviewTabProps) {
           icon={<TrendingUp className="h-5 w-5 text-success" />}
         />
         <KPICard
-          title="Monthly Outflows"
+          title={businessMode ? "Monthly Outflows" : "Expenses (30d)"}
           value="$45,000"
           change="-5.1%"
           trend="down"
           subtitle="Current month"
           icon={<TrendingDown className="h-5 w-5 text-accent" />}
         />
+        {businessMode ? (
+          <KPICard
+            title="DSCR"
+            value="1.48"
+            change="+8.0%"
+            trend="up"
+            subtitle="Funding ready"
+            icon={<Activity className="h-5 w-5 text-primary" />}
+          />
+        ) : (
+          <KPICard
+            title="Savings Rate"
+            value="33%"
+            change="+5.0%"
+            trend="up"
+            subtitle="Monthly average"
+            icon={<Activity className="h-5 w-5 text-primary" />}
+          />
+        )}
       </div>
 
       {/* Action Bar */}
@@ -200,24 +220,46 @@ export function OverviewTab({ onConnectBank, onRefresh }: OverviewTabProps) {
         </CardContent>
       </Card>
 
-      {/* DSCR Indicator */}
+      {/* DSCR Indicator or Savings Health */}
       <Card className="border-border/50 shadow-card">
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Debt Service Coverage Ratio (DSCR)</CardTitle>
+          <CardTitle className="text-lg font-semibold">
+            {businessMode ? "Debt Service Coverage Ratio (DSCR)" : "Savings & Budget Health"}
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-baseline gap-3">
-              <p className="text-4xl font-bold text-primary">1.48</p>
-              <Badge className="bg-success/10 text-success">Strong</Badge>
+          {businessMode ? (
+            <div className="space-y-4">
+              <div className="flex items-baseline gap-3">
+                <p className="text-4xl font-bold text-primary">1.48</p>
+                <Badge className="bg-success/10 text-success">Strong</Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Lenders typically require DSCR ≥ 1.25. You're positioned well for funding.
+              </p>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-gold" style={{ width: "74%" }} />
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Lenders typically require DSCR ≥ 1.25. You're positioned well for funding.
-            </p>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-gold" style={{ width: "74%" }} />
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-baseline gap-3">
+                <p className="text-4xl font-bold text-primary">$22,000</p>
+                <Badge className="bg-success/10 text-success">33% saved</Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Excellent savings rate. Keep it up to build emergency fund and credit readiness.
+              </p>
+              <div className="grid grid-cols-3 gap-3 text-xs text-muted-foreground">
+                <div>• &lt;10%: Build fund</div>
+                <div>• 10-20%: Good</div>
+                <div>• &gt;20%: Excellent</div>
+              </div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-gold" style={{ width: "33%" }} />
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

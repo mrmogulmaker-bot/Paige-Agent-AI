@@ -14,6 +14,7 @@ import { RulesAlertsTab } from "./bank-accounts/RulesAlertsTab";
 import { StatementsTab } from "./bank-accounts/StatementsTab";
 import { ReconciliationTab } from "./bank-accounts/ReconciliationTab";
 import { ConnectionsTab } from "./bank-accounts/ConnectionsTab";
+import { CreditHealthTab } from "./bank-accounts/CreditHealthTab";
 
 interface BankAccountsManagerProps {
   businessMode?: boolean;
@@ -157,7 +158,7 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
             Reconciliation
           </TabsTrigger>
           <TabsTrigger value="funding" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
-            Funding Signals
+            {businessMode ? "Funding Signals" : "Credit Health"}
           </TabsTrigger>
           <TabsTrigger value="connections" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
             Connections
@@ -168,6 +169,7 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
           <OverviewTab
             onConnectBank={() => plaidReady && openPlaidLink()}
             onRefresh={() => refetch()}
+            businessMode={businessMode}
           />
         </TabsContent>
 
@@ -191,7 +193,7 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
         </TabsContent>
 
         <TabsContent value="rules" className="mt-6">
-          <RulesAlertsTab />
+          <RulesAlertsTab businessMode={businessMode} />
         </TabsContent>
 
         <TabsContent value="statements" className="mt-6">
@@ -203,7 +205,7 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
         </TabsContent>
 
         <TabsContent value="funding" className="mt-6">
-          <FundingSignalsTab />
+          {businessMode ? <FundingSignalsTab /> : <CreditHealthTab />}
         </TabsContent>
 
         <TabsContent value="connections" className="mt-6">
