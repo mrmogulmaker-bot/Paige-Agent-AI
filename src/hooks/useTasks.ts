@@ -140,65 +140,135 @@ export const useTasks = () => {
 
   const generateAccelTasks = async () => {
     const accelTaskTemplates = [
+      // ACCEL-A: Analyze Personal Credit
       {
         title: "Pull All Three Personal Credit Reports",
-        description: "Obtain your personal credit reports from Experian, Equifax, and TransUnion (use AnnualCreditReport.com)",
+        description: "Obtain your personal credit reports from Experian, Equifax, and TransUnion via AnnualCreditReport.com",
         track: "ACCEL-A",
         due_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#FCRA", "#CreditReports"] },
       },
       {
-        title: "Review Personal Reports for Errors",
-        description: "Identify inaccuracies, outdated personal accounts, late payments, or identity theft on your personal credit files",
+        title: "Review Personal Credit Reports for Errors",
+        description: "Identify inaccuracies, late payments, incorrect balances, or fraudulent accounts under FCRA guidelines",
         track: "ACCEL-A",
         due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#FCRA", "#ErrorIdentification"] },
       },
       {
-        title: "Prepare Personal Credit Dispute Letters",
-        description: "Document all personal credit errors under FCRA guidelines and prepare dispute letters",
+        title: "Analyze Personal FICO Score Factors",
+        description: "Understand payment history, utilization, credit age, credit mix, and new credit impact on your personal score",
+        track: "ACCEL-A",
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#FICOScore", "#PersonalFinance"] },
+      },
+      
+      // ACCEL-C1: Challenge (FCRA Disputes)
+      {
+        title: "Prepare FCRA Dispute Letters",
+        description: "Document all personal credit errors and prepare dispute letters citing specific FCRA violations",
         track: "ACCEL-C1",
         due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#FCRA", "#DisputeLetters"] },
       },
       {
-        title: "Submit Personal Credit Disputes",
-        description: "Send dispute letters to all three personal credit bureaus via certified mail",
+        title: "Submit Personal Credit Disputes to Bureaus",
+        description: "Mail dispute letters to Experian, Equifax, and TransUnion via certified mail with return receipt",
         track: "ACCEL-C1",
         due_date: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#FCRA", "#BureauDisputes"] },
       },
+      {
+        title: "Dispute Inaccurate Personal Hard Inquiries",
+        description: "Challenge unauthorized or inaccurate hard inquiries on your personal credit reports",
+        track: "ACCEL-C1",
+        due_date: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#FCRA", "#InquiryRemoval"] },
+      },
+      
+      // ACCEL-C2: Clean (Remove Negatives)
       {
         title: "Follow Up on Personal Dispute Responses",
-        description: "Review bureau responses for your personal credit disputes and prepare follow-up actions",
+        description: "Review bureau investigation results and prepare follow-up or escalation letters",
         track: "ACCEL-C2",
         due_date: new Date(Date.now() + 51 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#FCRA", "#DisputeFollowUp"] },
       },
       {
-        title: "Set Up Personal Bill Payment Reminders",
-        description: "Ensure all personal bills and credit cards are paid on time to build positive payment history",
+        title: "Request Goodwill Adjustments for Late Payments",
+        description: "Contact creditors to request goodwill deletion of late payments on personal accounts with good payment history",
+        track: "ACCEL-C2",
+        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#PersonalFinance", "#GoodwillLetters"] },
+      },
+      
+      // ACCEL-E: Elevate (Build Personal Credit Score)
+      {
+        title: "Optimize Personal Credit Card Utilization",
+        description: "Reduce personal credit card balances to below 30% (ideally under 10%) of total limits to improve FICO score",
+        track: "ACCEL-E",
+        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#UtilizationOptimization", "#FICOScore"] },
+      },
+      {
+        title: "Set Up Automatic Personal Bill Payments",
+        description: "Enable autopay for all personal credit cards, loans, and utilities to ensure 100% on-time payment history",
         track: "ACCEL-E",
         due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#PersonalFinance", "#PaymentHistory"] },
       },
       {
-        title: "Monitor Personal Credit Card Utilization",
-        description: "Keep personal credit card balances under 30% of limits to improve your FICO score",
+        title: "Create Personal Debt Payoff Plan",
+        description: "Use avalanche or snowball method to strategically pay down personal credit card debt",
         track: "ACCEL-E",
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#PersonalFinance", "#DebtPayoff"] },
       },
       {
-        title: "Pay Down Personal Debt",
-        description: "Create a strategy to reduce personal credit card debt and improve debt-to-income ratio",
+        title: "Request Personal Credit Limit Increases",
+        description: "Contact credit card issuers to request limit increases (without hard inquiry) to improve utilization ratio",
         track: "ACCEL-E",
-        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        due_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#UtilizationOptimization", "#CreditLimits"] },
+      },
+      
+      // Personal Finance & Budgeting
+      {
+        title: "Create Monthly Personal Budget",
+        description: "Track income and expenses, allocate funds for savings, debt payoff, and emergency fund building",
+        track: "ACCEL-E",
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalFinance", "#Budgeting", "#Savings"] },
       },
       {
-        title: "Enable Personal Credit Monitoring",
-        description: "Set up alerts for changes to your personal credit reports to protect against identity theft",
+        title: "Build Emergency Savings Fund",
+        description: "Save 3-6 months of expenses in a high-yield savings account for personal financial security",
+        track: "ACCEL-E",
+        due_date: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalFinance", "#Savings", "#EmergencyFund"] },
+      },
+      
+      // ACCEL-L: Lock (Protect Personal Credit)
+      {
+        title: "Enable Personal Credit Monitoring Alerts",
+        description: "Set up free monitoring via Credit Karma, Experian, or your credit card issuer for personal credit changes",
         track: "ACCEL-L",
         due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#CreditMonitoring", "#FCRA"] },
       },
       {
-        title: "Review Personal Credit Score Factors",
-        description: "Understand what's impacting your personal FICO score and create an improvement plan",
-        track: "ACCEL-A",
-        due_date: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
+        title: "Freeze Personal Credit Reports",
+        description: "Place security freezes with all three bureaus to prevent unauthorized personal credit inquiries and identity theft",
+        track: "ACCEL-L",
+        due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#CreditMonitoring", "#IdentityProtection"] },
+      },
+      {
+        title: "Review Personal Credit Reports Quarterly",
+        description: "Check all three personal credit reports every 90 days to catch errors or fraud early",
+        track: "ACCEL-L",
+        due_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: { tags: ["#PersonalCredit", "#CreditMonitoring", "#FCRA"] },
       },
     ];
 
@@ -216,12 +286,12 @@ export const useTasks = () => {
       if (existingTasks && existingTasks.length > 0) {
         toast({
           title: "Info",
-          description: "ACCEL tasks already generated",
+          description: "Personal credit tasks already generated",
         });
         return;
       }
 
-      // Create all tasks
+      // Create all tasks with metadata tags
       const { error } = await supabase.from("tasks").insert(
         accelTaskTemplates.map((task) => ({
           ...task,
@@ -236,13 +306,13 @@ export const useTasks = () => {
 
       toast({
         title: "Success! 🎯",
-        description: `Generated ${accelTaskTemplates.length} ACCEL framework tasks`,
+        description: `Generated ${accelTaskTemplates.length} personal credit & finance tasks`,
       });
     } catch (error) {
-      console.error("Error generating ACCEL tasks:", error);
+      console.error("Error generating personal credit tasks:", error);
       toast({
         title: "Error",
-        description: "Failed to generate ACCEL tasks",
+        description: "Failed to generate personal credit tasks",
         variant: "destructive",
       });
     }
