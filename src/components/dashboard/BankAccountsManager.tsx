@@ -15,6 +15,7 @@ import { StatementsTab } from "./bank-accounts/StatementsTab";
 import { ReconciliationTab } from "./bank-accounts/ReconciliationTab";
 import { ConnectionsTab } from "./bank-accounts/ConnectionsTab";
 import { CreditHealthTab } from "./bank-accounts/CreditHealthTab";
+import { EntityMappingTab } from "./bank-accounts/EntityMappingTab";
 
 interface BankAccountsManagerProps {
   businessMode?: boolean;
@@ -160,6 +161,11 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
           <TabsTrigger value="funding" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
             {businessMode ? "Funding Signals" : "Credit Health"}
           </TabsTrigger>
+          {businessMode && (
+            <TabsTrigger value="entity" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
+              Entity Mapping
+            </TabsTrigger>
+          )}
           <TabsTrigger value="connections" className="data-[state=active]:bg-gradient-gold data-[state=active]:text-primary">
             Connections
           </TabsTrigger>
@@ -207,6 +213,12 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
         <TabsContent value="funding" className="mt-6">
           {businessMode ? <FundingSignalsTab /> : <CreditHealthTab />}
         </TabsContent>
+
+        {businessMode && (
+          <TabsContent value="entity" className="mt-6">
+            <EntityMappingTab />
+          </TabsContent>
+        )}
 
         <TabsContent value="connections" className="mt-6">
           <ConnectionsTab />
