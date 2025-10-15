@@ -186,7 +186,32 @@ const AccountsList = ({ accounts }: { accounts: typeof personalAccounts }) => (
   </div>
 );
 
-export function AccountsOverview() {
+interface AccountsOverviewProps {
+  personalOnly?: boolean;
+  businessOnly?: boolean;
+}
+
+export function AccountsOverview({ personalOnly, businessOnly }: AccountsOverviewProps) {
+  // If personalOnly or businessOnly, show single view without tabs
+  if (personalOnly) {
+    return (
+      <div className="space-y-6">
+        <AccountStats accounts={personalAccounts} />
+        <AccountsList accounts={personalAccounts} />
+      </div>
+    );
+  }
+
+  if (businessOnly) {
+    return (
+      <div className="space-y-6">
+        <AccountStats accounts={businessAccounts} />
+        <AccountsList accounts={businessAccounts} />
+      </div>
+    );
+  }
+
+  // Default: show both with tabs
   return (
     <div className="space-y-6">
       <div>

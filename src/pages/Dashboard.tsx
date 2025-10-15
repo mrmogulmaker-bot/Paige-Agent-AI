@@ -13,9 +13,8 @@ import { DisputesManager } from "@/components/dashboard/DisputesManager";
 import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
 import { BuildSteps } from "@/components/dashboard/BuildSteps";
 import { BuildProgramOutline } from "@/components/dashboard/BuildProgramOutline";
-import { ReportsView } from "@/components/dashboard/ReportsView";
-import { ThreeBureauReport } from "@/components/dashboard/ThreeBureauReport";
-import { BusinessCreditReport } from "@/components/dashboard/BusinessCreditReport";
+import { PersonalSection } from "@/components/dashboard/PersonalSection";
+import { BusinessCreditSection } from "@/components/dashboard/BusinessCreditSection";
 import { ProfileSettings } from "@/components/dashboard/ProfileSettings";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
 import { DocumentsManager } from "@/components/dashboard/DocumentsManager";
@@ -118,16 +117,12 @@ const Dashboard = () => {
                 <SidebarTrigger className="-ml-2" />
                 <h1 className="text-xl font-semibold">
                   {activeSection === "dashboard" && "Dashboard"}
+                  {activeSection === "personal" && "Personal Credit"}
                   {activeSection === "paige-ai" && "PaigeAgent.ai"}
                   {activeSection === "learning-vault" && "Learning Vault"}
-                  {activeSection === "disputes" && "Personal Credit Disputes"}
-                  {activeSection === "accounts" && "Personal Credit Accounts"}
                   {activeSection === "business-credit" && "Business Credit"}
                   {activeSection === "build-steps" && "BUILD Program"}
-                  {activeSection === "business-tasks" && "Business Tasks"}
-                  {activeSection === "reports" && "Personal Credit Reports"}
                   {activeSection === "documents" && "Documents"}
-                  {activeSection === "tasks" && "Personal Tasks"}
                   {activeSection === "payments" && "Payment History"}
                   {activeSection === "affiliate" && "Affiliate Program"}
                   {activeSection === "settings" && "Settings"}
@@ -169,15 +164,12 @@ const Dashboard = () => {
                   </div>
                 )}
                 
+                {activeSection === "personal" && <PersonalSection />}
                 {activeSection === "paige-ai" && <PaigeAIChat />}
                 {activeSection === "learning-vault" && <LearningVault />}
-                {activeSection === "disputes" && <DisputesManager />}
-                {activeSection === "accounts" && <AccountsOverview />}
-                {activeSection === "reports" && <ThreeBureauReport />}
-                {activeSection === "tasks" && <TaskManager />}
                 {activeSection === "business-credit" && (
                   <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
-                    <BusinessCreditReport />
+                    <BusinessCreditSection />
                   </PlanGate>
                 )}
                 {activeSection === "build-steps" && (
@@ -186,11 +178,6 @@ const Dashboard = () => {
                       <BuildProgramOutline />
                       <BuildSteps />
                     </div>
-                  </PlanGate>
-                )}
-                {activeSection === "business-tasks" && (
-                  <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
-                    <TaskManager businessMode={true} />
                   </PlanGate>
                 )}
                 {activeSection === "documents" && <DocumentsManager />}

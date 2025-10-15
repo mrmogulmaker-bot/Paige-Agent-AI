@@ -59,6 +59,11 @@ const statusConfig = {
   rejected: { label: "Rejected", icon: XCircle, color: "bg-destructive" },
 };
 
+interface DisputesManagerProps {
+  personalOnly?: boolean;
+  businessOnly?: boolean;
+}
+
 const DisputesList = ({ disputes, type }: { disputes: typeof personalDisputes; type: string }) => (
   <div className="grid gap-4">
     {disputes.map((dispute) => {
@@ -118,7 +123,37 @@ const DisputesList = ({ disputes, type }: { disputes: typeof personalDisputes; t
   </div>
 );
 
-export function DisputesManager() {
+export function DisputesManager({ personalOnly, businessOnly }: DisputesManagerProps) {
+  // If personalOnly or businessOnly, show single view without tabs
+  if (personalOnly) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-end">
+          <Button className="bg-gradient-gold hover:opacity-90">
+            <Plus className="w-4 h-4 mr-2" />
+            New Personal Dispute
+          </Button>
+        </div>
+        <DisputesList disputes={personalDisputes} type="personal" />
+      </div>
+    );
+  }
+
+  if (businessOnly) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-end">
+          <Button className="bg-gradient-gold hover:opacity-90">
+            <Plus className="w-4 h-4 mr-2" />
+            New Business Dispute
+          </Button>
+        </div>
+        <DisputesList disputes={businessDisputes} type="business" />
+      </div>
+    );
+  }
+
+  // Default: show both with tabs
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div>

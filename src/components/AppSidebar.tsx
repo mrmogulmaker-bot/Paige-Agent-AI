@@ -13,16 +13,12 @@ import {
 
 const personalMenuItems = [
   { title: "Dashboard", icon: LayoutDashboard, id: "dashboard" },
-  { title: "Credit Disputes", icon: FileText, id: "disputes" },
-  { title: "Credit Accounts", icon: CreditCard, id: "accounts" },
-  { title: "Credit Reports", icon: BarChart3, id: "reports" },
-  { title: "Tasks", icon: CheckSquare, id: "tasks" },
+  { title: "Personal Credit", icon: CreditCard, id: "personal" },
 ];
 
 const businessMenuItems = [
   { title: "Business Credit", icon: Building2, id: "business-credit" },
   { title: "BUILD Program", icon: TrendingUp, id: "build-steps" },
-  { title: "Business Tasks", icon: CheckSquare, id: "business-tasks" },
 ];
 
 const generalMenuItems = [
