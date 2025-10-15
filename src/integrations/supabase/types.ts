@@ -1069,6 +1069,22 @@ export type Database = {
         }
         Returns: boolean
       }
+      update_profile_ssn: {
+        Args: {
+          _date_of_birth: string
+          _ssn_encrypted: string
+          _ssn_last_4: string
+          _user_id: string
+        }
+        Returns: undefined
+      }
+      validate_referral_code: {
+        Args: { _code: string }
+        Returns: {
+          affiliate_id: string
+          is_valid: boolean
+        }[]
+      }
     }
     Enums: {
       account_type:
