@@ -44,7 +44,7 @@ const Index = () => {
               </Badge>
               <h2 className="text-4xl lg:text-5xl font-bold mb-4">
                 The{" "}
-                <span className="bg-gradient-hero bg-clip-text text-transparent">
+                <span className="text-accent font-extrabold text-5xl lg:text-6xl">
                   A.C.C.E.L.
                 </span>{" "}
                 Framework
@@ -80,7 +80,7 @@ const Index = () => {
               </Badge>
               <h2 className="text-4xl lg:text-5xl font-bold mb-4">
                 The{" "}
-                <span className="bg-gradient-hero bg-clip-text text-transparent">
+                <span className="text-success font-extrabold text-5xl lg:text-6xl">
                   B.U.I.L.D.
                 </span>{" "}
                 Framework

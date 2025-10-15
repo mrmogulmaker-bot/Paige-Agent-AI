@@ -28,7 +28,7 @@ export function HeroSection() {
 
             <h1 className="text-5xl lg:text-6xl font-bold tracking-tight animate-fade-in" style={{ animationDelay: "0.1s" }}>
               Build Your Business Credit & Access{" "}
-              <span className="bg-gradient-hero bg-clip-text text-transparent">
+              <span className="text-accent font-extrabold">
                 Capital
               </span>
             </h1>

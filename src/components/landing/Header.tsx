@@ -13,7 +13,7 @@ export function Header() {
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
           <div className="flex items-center">
-            <h1 className="text-xl font-bold text-animated-gradient">
+            <h1 className="text-xl font-extrabold text-accent">
               PaigeAgent.ai
             </h1>
           </div>

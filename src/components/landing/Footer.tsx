@@ -30,7 +30,7 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
           {/* Brand */}
           <div className="col-span-1">
-            <h3 className="text-xl font-bold mb-4 bg-gradient-accent bg-clip-text text-transparent">
+            <h3 className="text-xl font-extrabold text-accent">
               PaigeAgent.ai
             </h3>
             <p className="text-sm opacity-80 leading-relaxed">

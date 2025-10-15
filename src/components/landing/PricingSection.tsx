@@ -86,7 +86,7 @@ export function PricingSection() {
           </Badge>
           <h2 className="text-4xl lg:text-5xl font-bold mb-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>
             Choose Your{" "}
-            <span className="bg-gradient-hero bg-clip-text text-transparent">
+            <span className="text-success font-extrabold">
               Success Path
             </span>
           </h2>
@@ -122,12 +122,19 @@ export function PricingSection() {
               </div>
 
               <ul className="space-y-3 mb-8">
-                {tier.features.map((feature, featureIndex) => (
-                  <li key={featureIndex} className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
-                    <span className="text-sm">{feature}</span>
-                  </li>
-                ))}
+                {tier.features.map((feature, featureIndex) => {
+                  const isHighlight = feature.includes("A.C.C.E.L.") || 
+                                    feature.includes("B.U.I.L.D.") || 
+                                    feature.includes("PaigeAgent.ai");
+                  return (
+                    <li key={featureIndex} className="flex items-start gap-3">
+                      <CheckCircle className="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
+                      <span className={`text-sm ${isHighlight ? "font-bold text-accent" : ""}`}>
+                        {feature}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
 
               <Button

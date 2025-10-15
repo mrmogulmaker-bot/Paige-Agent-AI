@@ -63,7 +63,7 @@ export function FeaturesSection() {
           </Badge>
           <h2 className="text-4xl lg:text-5xl font-bold mb-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>
             Comprehensive Credit{" "}
-            <span className="bg-gradient-hero bg-clip-text text-transparent">
+            <span className="text-primary font-extrabold">
               Transformation Tools
             </span>
           </h2>
@@ -82,7 +82,13 @@ export function FeaturesSection() {
               <div className="p-3 bg-gradient-primary rounded-lg w-fit mb-4 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300">
                 <feature.icon className="w-6 h-6 text-primary-foreground" />
               </div>
-              <h3 className="font-semibold text-lg mb-2 group-hover:text-accent transition-colors duration-300">{feature.title}</h3>
+              <h3 className="font-bold text-lg mb-2 group-hover:text-accent transition-colors duration-300">
+                {feature.title === "PaigeAgent.ai Coach" ? (
+                  <span className="text-accent font-extrabold">{feature.title}</span>
+                ) : (
+                  feature.title
+                )}
+              </h3>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {feature.description}
               </p>
