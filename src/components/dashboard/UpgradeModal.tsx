@@ -2,11 +2,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Crown } from "lucide-react";
+import { CheckCircle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 
 interface UpgradeModalProps {
   open: boolean;
@@ -16,7 +15,31 @@ interface UpgradeModalProps {
 export function UpgradeModal({ open, onClose }: UpgradeModalProps) {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
-  const { planSlug: currentPlanSlug } = useSubscription();
+  const [currentPlanSlug, setCurrentPlanSlug] = useState<string>("free");
+
+  useEffect(() => {
+    // Get current plan from subscription context if available
+    const checkCurrentPlan = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data: subscription } = await supabase
+          .from("user_subscriptions")
+          .select("plan_slug")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (subscription?.plan_slug) {
+          setCurrentPlanSlug(subscription.plan_slug);
+        }
+      } catch (error) {
+        console.error("Error fetching current plan:", error);
+      }
+    };
+
+    checkCurrentPlan();
+  }, []);
 
   useEffect(() => {
     if (open) {
