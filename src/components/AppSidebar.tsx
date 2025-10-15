@@ -23,6 +23,7 @@ const businessMenuItems = [
   { title: "Business Credit", icon: Building2, id: "business-credit" },
   { title: "BUILD Program", icon: TrendingUp, id: "build-steps" },
   { title: "Documents", icon: FolderOpen, id: "business-documents" },
+  { title: "Tasks", icon: CheckSquare, id: "business-tasks" },
   { title: "Organization Chart", icon: Building2, id: "business-organization" },
 ];
 

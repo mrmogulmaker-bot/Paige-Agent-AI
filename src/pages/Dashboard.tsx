@@ -129,12 +129,13 @@ const Dashboard = () => {
                   {activeSection === "personal" && "Personal Credit"}
                   {activeSection === "personal-build" && "BUILD Program - Personal"}
                   {activeSection === "personal-documents" && "Personal Documents"}
-                  {activeSection === "tasks" && "Tasks"}
+                  {activeSection === "tasks" && "Personal Tasks"}
                   {activeSection === "paige-ai" && "PaigeAgent.ai"}
                   {activeSection === "learning-vault" && "Learning Vault"}
                   {activeSection === "business-credit" && "Business Credit"}
                   {activeSection === "build-steps" && "BUILD Program - Business"}
                   {activeSection === "business-documents" && "Business Documents"}
+                  {activeSection === "business-tasks" && "Business Tasks"}
                   {activeSection === "business-organization" && "Business Organization"}
                   {activeSection === "payments" && "Payment History"}
                   {activeSection === "affiliate" && "Affiliate Program"}
@@ -201,6 +202,11 @@ const Dashboard = () => {
                 {activeSection === "business-documents" && (
                   <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
                     <BusinessDocuments />
+                  </PlanGate>
+                )}
+                {activeSection === "business-tasks" && (
+                  <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
+                    <TaskManager businessMode={true} />
                   </PlanGate>
                 )}
                 {activeSection === "business-organization" && (
