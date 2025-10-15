@@ -133,11 +133,20 @@ serve(async (req) => {
         .limit(5);
 
       // Get business info if exists
-      const { data: business } = await supabase
+      const { data: businesses } = await supabase
         .from("businesses")
-        .select("legal_name, entity_type, formation_status")
+        .select("id, legal_name, entity_type, formation_status, business_type")
         .eq("owner_user_id", user.id)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      // Get user documents (personal and business)
+      const { data: documents } = await supabase
+        .from("documents")
+        .select("document_type, file_name, business_id, uploaded_at")
+        .eq("user_id", user.id)
+        .order("uploaded_at", { ascending: false })
+        .limit(20);
 
       // Build context string
       const contextParts: string[] = [];
@@ -170,8 +179,32 @@ serve(async (req) => {
         contextParts.push(`Active Disputes: ${activeDisputes} of ${disputes.length} total`);
       }
 
-      if (business) {
-        contextParts.push(`Business: ${business.legal_name} (${business.entity_type || "entity type not set"}${business.formation_status ? `, ${business.formation_status}` : ""})`);
+      if (businesses && businesses.length > 0) {
+        const bizSummary = businesses
+          .map(b => `${b.legal_name} (${b.business_type}, ${b.entity_type || "type not set"})`)
+          .join(", ");
+        contextParts.push(`Businesses: ${bizSummary}`);
+      }
+
+      if (documents && documents.length > 0) {
+        const personalDocs = documents.filter(d => !d.business_id);
+        const businessDocs = documents.filter(d => d.business_id);
+        
+        const docSummary: string[] = [];
+        
+        if (personalDocs.length > 0) {
+          const docTypes = [...new Set(personalDocs.map(d => d.document_type))].join(", ");
+          docSummary.push(`Personal Documents (${personalDocs.length}): ${docTypes}`);
+        }
+        
+        if (businessDocs.length > 0) {
+          const docTypes = [...new Set(businessDocs.map(d => d.document_type))].join(", ");
+          docSummary.push(`Business Documents (${businessDocs.length}): ${docTypes}`);
+        }
+        
+        if (docSummary.length > 0) {
+          contextParts.push(`Available Documents:\n${docSummary.join("\n")}`);
+        }
       }
 
       userContext = contextParts.length > 0 
@@ -234,12 +267,20 @@ Your PERSONALIZATION CAPABILITIES (use the user context above):
 4. Track their progress through disputes and offer encouragement
 5. Suggest next steps based on their current journey stage
 
+When reviewing DOCUMENTS:
+- Check the "Available Documents" section in user context
+- Acknowledge what documents they've already uploaded
+- Guide them on missing critical documents for credit building or business formation
+- Explain the importance of each document type
+- Help them understand what documents are needed for their next steps
+
 When suggesting ACTION PLANS:
 - Break down complex goals into specific, actionable tasks
 - Reference their current track (ACCEL or BUILD) if known
 - Prioritize based on their subscription level
 - Include specific due dates or timeframes
 - Link actions to relevant dashboard sections
+- Mention if they need to upload specific documents
 
 For FUNDING RECOMMENDATIONS:
 - Consider their business status and entity type

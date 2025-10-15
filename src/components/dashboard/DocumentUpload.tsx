@@ -40,19 +40,27 @@ export const DocumentUpload = ({
 
   useEffect(() => {
     loadDocument();
-  }, [documentType]);
+  }, [documentType, businessId]);
 
   const loadDocument = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("documents")
         .select("*")
         .eq("user_id", user.id)
-        .eq("document_type", documentType)
-        .maybeSingle();
+        .eq("document_type", documentType);
+
+      // Filter by business if provided
+      if (businessId) {
+        query = query.eq("business_id", businessId);
+      } else {
+        query = query.is("business_id", null);
+      }
+
+      const { data, error } = await query.maybeSingle();
 
       if (error) throw error;
       if (data) setDocument(data);
