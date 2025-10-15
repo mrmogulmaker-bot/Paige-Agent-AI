@@ -13,6 +13,7 @@ import { DisputesManager } from "@/components/dashboard/DisputesManager";
 import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
 import { BuildSteps } from "@/components/dashboard/BuildSteps";
 import { BuildProgramOutline } from "@/components/dashboard/BuildProgramOutline";
+import { AccelProgramOutline } from "@/components/dashboard/AccelProgramOutline";
 import { PersonalSection } from "@/components/dashboard/PersonalSection";
 import { BusinessCreditSection } from "@/components/dashboard/BusinessCreditSection";
 import { ProfileSettings } from "@/components/dashboard/ProfileSettings";
@@ -118,6 +119,7 @@ const Dashboard = () => {
                 <h1 className="text-xl font-semibold">
                   {activeSection === "dashboard" && "Dashboard"}
                   {activeSection === "personal" && "Personal Credit"}
+                  {activeSection === "accel-program" && "ACCEL Program"}
                   {activeSection === "tasks" && "Tasks"}
                   {activeSection === "paige-ai" && "PaigeAgent.ai"}
                   {activeSection === "learning-vault" && "Learning Vault"}
@@ -166,6 +168,12 @@ const Dashboard = () => {
                 )}
                 
                 {activeSection === "personal" && <PersonalSection />}
+                {activeSection === "accel-program" && (
+                  <div className="space-y-8">
+                    <AccelProgramOutline />
+                    <AccelProgress onToggle={() => {}} />
+                  </div>
+                )}
                 {activeSection === "tasks" && <TaskManager businessMode={false} />}
                 {activeSection === "paige-ai" && <PaigeAIChat />}
                 {activeSection === "learning-vault" && <LearningVault />}
