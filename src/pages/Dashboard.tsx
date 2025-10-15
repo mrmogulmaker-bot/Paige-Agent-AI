@@ -23,6 +23,7 @@ import { DocumentsManager } from "@/components/dashboard/DocumentsManager";
 import { TaskManager } from "@/components/dashboard/TaskManager";
 import { PaymentHistory } from "@/components/dashboard/PaymentHistory";
 import { AffiliateTracking } from "@/components/dashboard/AffiliateTracking";
+import { Integrations } from "@/components/dashboard/Integrations";
 import { Button } from "@/components/ui/button";
 import { UpgradeBanner } from "@/components/dashboard/UpgradeBanner";
 import { UpgradeModal } from "@/components/dashboard/UpgradeModal";
@@ -129,6 +130,7 @@ const Dashboard = () => {
                   {activeSection === "documents" && "Documents"}
                   {activeSection === "payments" && "Payment History"}
                   {activeSection === "affiliate" && "Affiliate Program"}
+                  {activeSection === "integrations" && "Integrations"}
                   {activeSection === "settings" && "Settings"}
                 </h1>
               </div>
@@ -193,6 +195,7 @@ const Dashboard = () => {
                 {activeSection === "documents" && <DocumentsManager />}
                 {activeSection === "payments" && <PaymentHistory />}
                 {activeSection === "affiliate" && <AffiliateTracking />}
+                {activeSection === "integrations" && <Integrations />}
                 {activeSection === "settings" && <ProfileSettings />}
               </div>
             </main>
