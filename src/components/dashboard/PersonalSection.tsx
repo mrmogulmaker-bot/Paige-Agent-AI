@@ -16,11 +16,11 @@ export function PersonalSection() {
         </p>
       </div>
 
-      <Tabs defaultValue="disputes" className="w-full">
+      <Tabs defaultValue="accel" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="disputes" className="gap-2">
+          <TabsTrigger value="accel" className="gap-2">
             <FileText className="w-4 h-4" />
-            Credit Disputes
+            ACCEL
           </TabsTrigger>
           <TabsTrigger value="accounts" className="gap-2">
             <CreditCard className="w-4 h-4" />
@@ -32,7 +32,7 @@ export function PersonalSection() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="disputes" className="mt-6">
+        <TabsContent value="accel" className="mt-6">
           <DisputesManager personalOnly={true} />
         </TabsContent>
 

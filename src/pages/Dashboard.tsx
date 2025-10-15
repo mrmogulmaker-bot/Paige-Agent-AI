@@ -13,6 +13,7 @@ import { DisputesManager } from "@/components/dashboard/DisputesManager";
 import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
 import { BuildSteps } from "@/components/dashboard/BuildSteps";
 import { BuildProgramOutline } from "@/components/dashboard/BuildProgramOutline";
+import { PersonalBuildProgramOutline } from "@/components/dashboard/PersonalBuildProgramOutline";
 import { AccelProgramOutline } from "@/components/dashboard/AccelProgramOutline";
 import { PersonalSection } from "@/components/dashboard/PersonalSection";
 import { BusinessCreditSection } from "@/components/dashboard/BusinessCreditSection";
@@ -119,12 +120,12 @@ const Dashboard = () => {
                 <h1 className="text-xl font-semibold">
                   {activeSection === "dashboard" && "Dashboard"}
                   {activeSection === "personal" && "Personal Credit"}
-                  {activeSection === "accel-program" && "ACCEL Program"}
+                  {activeSection === "personal-build" && "BUILD Program - Personal"}
                   {activeSection === "tasks" && "Tasks"}
                   {activeSection === "paige-ai" && "PaigeAgent.ai"}
                   {activeSection === "learning-vault" && "Learning Vault"}
                   {activeSection === "business-credit" && "Business Credit"}
-                  {activeSection === "build-steps" && "BUILD Program"}
+                  {activeSection === "build-steps" && "BUILD Program - Business"}
                   {activeSection === "documents" && "Documents"}
                   {activeSection === "payments" && "Payment History"}
                   {activeSection === "affiliate" && "Affiliate Program"}
@@ -168,10 +169,9 @@ const Dashboard = () => {
                 )}
                 
                 {activeSection === "personal" && <PersonalSection />}
-                {activeSection === "accel-program" && (
+                {activeSection === "personal-build" && (
                   <div className="space-y-8">
-                    <AccelProgramOutline />
-                    <AccelProgress onToggle={() => {}} />
+                    <PersonalBuildProgramOutline />
                   </div>
                 )}
                 {activeSection === "tasks" && <TaskManager businessMode={false} />}
