@@ -1,50 +1,51 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AffiliateSignup } from "./AffiliateSignup";
+import { AffiliateApplications } from "./AffiliateApplications";
+import { ReferralCodeManager } from "./ReferralCodeManager";
+import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Copy, DollarSign, Users, TrendingUp, Link as LinkIcon, CheckCircle2 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { DollarSign, TrendingUp, Users } from "lucide-react";
 
 interface AffiliateStats {
-  totalReferrals: number;
-  activeReferrals: number;
   totalEarnings: number;
-  pendingEarnings: number;
-  conversionRate: number;
+  pendingCommissions: number;
+  totalConversions: number;
+  totalClicks: number;
 }
 
-interface Referral {
+interface Conversion {
   id: string;
-  referred_email: string;
-  status: string;
+  order_amount: number;
   commission_amount: number;
-  created_at: string;
-  converted_at: string | null;
+  status: string;
+  converted_at: string;
+  referral_codes: {
+    code: string;
+  };
+}
+
+interface AffiliateProfile {
+  status: string;
+  id: string;
+}
+
+interface UserRole {
+  role: string;
 }
 
 export function AffiliateTracking() {
+  const [affiliateProfile, setAffiliateProfile] = useState<AffiliateProfile | null>(null);
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [stats, setStats] = useState<AffiliateStats>({
-    totalReferrals: 0,
-    activeReferrals: 0,
     totalEarnings: 0,
-    pendingEarnings: 0,
-    conversionRate: 0,
+    pendingCommissions: 0,
+    totalConversions: 0,
+    totalClicks: 0,
   });
-  const [referrals, setReferrals] = useState<Referral[]>([]);
-  const [affiliateCode, setAffiliateCode] = useState("");
-  const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
+  const [conversions, setConversions] = useState<Conversion[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchAffiliateData();
@@ -55,293 +56,221 @@ export function AffiliateTracking() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Generate or fetch affiliate code
-      const code = `PAIGE-${user.id.slice(0, 8).toUpperCase()}`;
-      setAffiliateCode(code);
+      // Check if user is admin
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id);
 
-      // Fetch referrals (mock data for now - replace with actual table)
-      const mockReferrals: Referral[] = [
-        {
-          id: "1",
-          referred_email: "john@example.com",
-          status: "converted",
-          commission_amount: 25,
-          created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-          converted_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-        {
-          id: "2",
-          referred_email: "sarah@example.com",
-          status: "pending",
-          commission_amount: 0,
-          created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-          converted_at: null,
-        },
-      ];
+      const isAdmin = roles?.some((r) => r.role === "admin");
+      if (isAdmin) {
+        setUserRole({ role: "admin" });
+      }
 
-      setReferrals(mockReferrals);
+      // Get affiliate profile
+      const { data: profile } = await supabase
+        .from("affiliate_profiles")
+        .select("id, status")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      setAffiliateProfile(profile);
+
+      if (!profile || profile.status !== "approved") {
+        setIsLoading(false);
+        return;
+      }
+
+      // Get conversions
+      const { data: conversionsData } = await supabase
+        .from("referral_conversions")
+        .select(`
+          *,
+          referral_codes (code)
+        `)
+        .eq("affiliate_id", profile.id)
+        .order("converted_at", { ascending: false });
+
+      setConversions(conversionsData || []);
 
       // Calculate stats
-      const converted = mockReferrals.filter((r) => r.status === "converted");
+      const totalEarnings = conversionsData
+        ?.filter((c) => c.status === "paid")
+        .reduce((sum, c) => sum + Number(c.commission_amount), 0) || 0;
+
+      const pendingCommissions = conversionsData
+        ?.filter((c) => c.status === "pending" || c.status === "approved")
+        .reduce((sum, c) => sum + Number(c.commission_amount), 0) || 0;
+
+      const totalConversions = conversionsData?.length || 0;
+
+      // Get total clicks from referral codes
+      const { data: codes } = await supabase
+        .from("referral_codes")
+        .select("clicks")
+        .eq("affiliate_id", profile.id);
+
+      const totalClicks = codes?.reduce((sum, code) => sum + code.clicks, 0) || 0;
+
       setStats({
-        totalReferrals: mockReferrals.length,
-        activeReferrals: converted.length,
-        totalEarnings: converted.reduce((sum, r) => sum + r.commission_amount, 0),
-        pendingEarnings: mockReferrals
-          .filter((r) => r.status === "pending")
-          .reduce((sum, r) => sum + 25, 0), // Assume $25 per conversion
-        conversionRate:
-          mockReferrals.length > 0
-            ? (converted.length / mockReferrals.length) * 100
-            : 0,
+        totalEarnings,
+        pendingCommissions,
+        totalConversions,
+        totalClicks,
       });
     } catch (error) {
       console.error("Error fetching affiliate data:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load affiliate data",
-        variant: "destructive",
-      });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const copyAffiliateLink = () => {
-    const link = `${window.location.origin}?ref=${affiliateCode}`;
-    navigator.clipboard.writeText(link);
-    toast({
-      title: "Copied!",
-      description: "Affiliate link copied to clipboard",
-    });
-  };
-
-  const copyAffiliateCode = () => {
-    navigator.clipboard.writeText(affiliateCode);
-    toast({
-      title: "Copied!",
-      description: "Affiliate code copied to clipboard",
-    });
-  };
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
+      <Card>
+        <CardContent className="flex items-center justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </CardContent>
+      </Card>
     );
   }
 
-  return (
-    <div className="max-w-7xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-4xl font-bold bg-gradient-gold bg-clip-text text-transparent">
-          Affiliate Program
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          Earn 20% commission on every referral that converts
-        </p>
-      </div>
+  // Show admin view
+  if (userRole?.role === "admin") {
+    return (
+      <Tabs defaultValue="applications">
+        <TabsList>
+          <TabsTrigger value="applications">Applications</TabsTrigger>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+        </TabsList>
+        <TabsContent value="applications" className="mt-6">
+          <AffiliateApplications />
+        </TabsContent>
+        <TabsContent value="overview" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Affiliate Program Overview</CardTitle>
+              <CardDescription>Manage your affiliate program</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">Admin overview coming soon...</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    );
+  }
 
-      {/* Affiliate Code Card */}
-      <Card className="shadow-glow border-primary/20">
+  // Show application form if no profile
+  if (!affiliateProfile) {
+    return <AffiliateSignup />;
+  }
+
+  // Show pending/rejected status
+  if (affiliateProfile.status === "pending") {
+    return (
+      <Card>
         <CardHeader>
-          <CardTitle>Your Affiliate Link</CardTitle>
-          <CardDescription>
-            Share this link to earn commissions on referrals
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="affiliate-link">Affiliate Link</Label>
-            <div className="flex gap-2">
-              <Input
-                id="affiliate-link"
-                value={`${window.location.origin}?ref=${affiliateCode}`}
-                readOnly
-                className="font-mono text-sm"
-              />
-              <Button onClick={copyAffiliateLink} variant="outline">
-                <Copy className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="affiliate-code">Affiliate Code</Label>
-            <div className="flex gap-2">
-              <Input
-                id="affiliate-code"
-                value={affiliateCode}
-                readOnly
-                className="font-mono text-sm"
-              />
-              <Button onClick={copyAffiliateCode} variant="outline">
-                <Copy className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="shadow-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Total Referrals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <span className="text-3xl font-bold">{stats.totalReferrals}</span>
-              <Users className="w-8 h-8 text-primary opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Conversions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <span className="text-3xl font-bold text-success">
-                {stats.activeReferrals}
-              </span>
-              <CheckCircle2 className="w-8 h-8 text-success opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Total Earnings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <span className="text-3xl font-bold">
-                ${stats.totalEarnings.toFixed(2)}
-              </span>
-              <DollarSign className="w-8 h-8 text-primary opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <span className="text-3xl font-bold">
-                {stats.conversionRate.toFixed(1)}%
-              </span>
-              <TrendingUp className="w-8 h-8 text-primary opacity-50" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Referrals Table */}
-      <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle>Referral History</CardTitle>
-          <CardDescription>Track your referrals and earnings</CardDescription>
+          <CardTitle>Application Pending</CardTitle>
+          <CardDescription>Your affiliate application is under review</CardDescription>
         </CardHeader>
         <CardContent>
-          {referrals.length === 0 ? (
-            <div className="text-center py-12">
-              <LinkIcon className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <h3 className="text-lg font-semibold mb-2">No referrals yet</h3>
-              <p className="text-muted-foreground">
-                Start sharing your affiliate link to earn commissions
-              </p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Commission</TableHead>
-                  <TableHead>Referred Date</TableHead>
-                  <TableHead>Converted Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {referrals.map((referral) => (
-                  <TableRow key={referral.id}>
-                    <TableCell className="font-medium">
-                      {referral.referred_email}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          referral.status === "converted" ? "default" : "secondary"
-                        }
-                      >
-                        {referral.status.charAt(0).toUpperCase() +
-                          referral.status.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {referral.status === "converted"
-                        ? `$${referral.commission_amount.toFixed(2)}`
-                        : "Pending"}
-                    </TableCell>
-                    <TableCell>
-                      {new Date(referral.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      {referral.converted_at
-                        ? new Date(referral.converted_at).toLocaleDateString()
-                        : "-"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <p className="text-muted-foreground">
+            We'll notify you once your application has been reviewed. This typically takes 1-2 business days.
+          </p>
         </CardContent>
       </Card>
+    );
+  }
 
-      {/* Commission Info */}
-      <Card className="shadow-card border-primary/20">
+  if (affiliateProfile.status === "rejected") {
+    return (
+      <Card>
         <CardHeader>
-          <CardTitle>How It Works</CardTitle>
+          <CardTitle>Application Not Approved</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-1">
-              <span className="text-primary font-bold">1</span>
+        <CardContent>
+          <p className="text-muted-foreground">
+            Unfortunately, your affiliate application was not approved at this time. Please contact support for more information.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show affiliate dashboard for approved affiliates
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Earnings</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${stats.totalEarnings.toFixed(2)}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Pending Commissions</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">${stats.pendingCommissions.toFixed(2)}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Conversions</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalConversions}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Clicks</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalClicks}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <ReferralCodeManager />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Conversions</CardTitle>
+          <CardDescription>Your latest referral conversions</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {conversions.length === 0 ? (
+            <p className="text-center py-8 text-muted-foreground">No conversions yet</p>
+          ) : (
+            <div className="space-y-4">
+              {conversions.map((conversion) => (
+                <div key={conversion.id} className="flex items-center justify-between border-b pb-4">
+                  <div>
+                    <p className="font-medium">Code: {conversion.referral_codes.code}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(conversion.converted_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold">${Number(conversion.commission_amount).toFixed(2)}</p>
+                    <p className="text-sm text-muted-foreground capitalize">{conversion.status}</p>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div>
-              <h4 className="font-semibold mb-1">Share Your Link</h4>
-              <p className="text-sm text-muted-foreground">
-                Share your unique affiliate link with friends, clients, or your audience
-              </p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-1">
-              <span className="text-primary font-bold">2</span>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-1">They Sign Up</h4>
-              <p className="text-sm text-muted-foreground">
-                When someone signs up using your link, they become your referral
-              </p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-1">
-              <span className="text-primary font-bold">3</span>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-1">Earn Commission</h4>
-              <p className="text-sm text-muted-foreground">
-                Earn 20% commission when they upgrade to a paid plan
-              </p>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>
