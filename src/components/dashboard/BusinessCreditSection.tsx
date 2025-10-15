@@ -1,9 +1,14 @@
+import { useState, useEffect, useCallback } from "react";
+import { usePlaidLink } from "react-plaid-link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CreditCard, BarChart3, Building2 } from "lucide-react";
+import { CreditCard, BarChart3, Building2, Plus, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import { AccountsOverview } from "./AccountsOverview";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const mockBusinessCreditReport = {
   duns: "12-345-6789",
@@ -81,45 +86,189 @@ const BusinessCreditReportTab = () => (
   </div>
 );
 
-const BankAccountsTab = () => (
-  <div className="space-y-6">
-    <Card className="shadow-card">
-      <CardHeader>
-        <CardTitle>Business Bank Accounts</CardTitle>
-        <CardDescription>Monitor your business banking relationships</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div className="flex items-start justify-between p-4 rounded-lg border">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Building2 className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h4 className="font-semibold">Chase Business Checking</h4>
-                <p className="text-sm text-muted-foreground">Account ending in 4567</p>
-              </div>
-            </div>
-            <Badge variant="outline">Active</Badge>
-          </div>
+const BankAccountsTab = () => {
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [connectedAccounts, setConnectedAccounts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
-          <div className="flex items-start justify-between p-4 rounded-lg border">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Building2 className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h4 className="font-semibold">Bank of America Business Savings</h4>
-                <p className="text-sm text-muted-foreground">Account ending in 8901</p>
-              </div>
+  // Fetch connected accounts
+  const fetchConnectedAccounts = async () => {
+    const { data, error } = await supabase
+      .from('connected_bank_accounts')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching accounts:', error);
+    } else {
+      setConnectedAccounts(data || []);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchConnectedAccounts();
+  }, []);
+
+  // Create link token
+  const createLinkToken = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('plaid-create-link-token');
+      
+      if (error) throw error;
+      setLinkToken(data.link_token);
+    } catch (error) {
+      console.error('Error creating link token:', error);
+      toast({
+        title: "Connection Error",
+        description: "Failed to initialize bank connection. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle successful connection
+  const onSuccess = useCallback(async (public_token: string, metadata: any) => {
+    try {
+      const { error } = await supabase.functions.invoke('plaid-exchange-token', {
+        body: {
+          public_token,
+          institution: metadata.institution,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success!",
+        description: "Bank account connected successfully.",
+      });
+
+      fetchConnectedAccounts();
+      setLinkToken(null);
+    } catch (error) {
+      console.error('Error exchanging token:', error);
+      toast({
+        title: "Connection Error",
+        description: "Failed to connect bank account. Please try again.",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
+
+  const { open, ready } = usePlaidLink({
+    token: linkToken,
+    onSuccess,
+  });
+
+  // Handle disconnect
+  const handleDisconnect = async (accountId: string) => {
+    const { error } = await supabase
+      .from('connected_bank_accounts')
+      .update({ is_active: false })
+      .eq('id', accountId);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to disconnect account.",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Disconnected",
+        description: "Bank account disconnected successfully.",
+      });
+      fetchConnectedAccounts();
+    }
+  };
+
+  // Initialize link token on mount
+  useEffect(() => {
+    if (!linkToken && !ready) {
+      createLinkToken();
+    }
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <Card className="shadow-card">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Business Bank Accounts</CardTitle>
+              <CardDescription>Connect and manage your business banking relationships</CardDescription>
             </div>
-            <Badge variant="outline">Active</Badge>
+            <Button 
+              onClick={() => linkToken && ready ? open() : createLinkToken()}
+              className="bg-gradient-gold hover:opacity-90"
+              disabled={!ready}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Connect Bank Account
+            </Button>
           </div>
-        </div>
-      </CardContent>
-    </Card>
-  </div>
-);
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center p-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : connectedAccounts.length > 0 ? (
+            <div className="space-y-4">
+              {connectedAccounts.map((account) => (
+                <div key={account.id} className="flex items-start justify-between p-4 rounded-lg border">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary/10 rounded-lg">
+                      <Building2 className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold">{account.institution_name}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        {account.account_name} {account.account_mask ? `•••• ${account.account_mask}` : ''}
+                      </p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        {account.account_type} {account.account_subtype ? `• ${account.account_subtype}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">Active</Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDisconnect(account.id)}
+                    >
+                      <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
+              <h3 className="text-lg font-semibold mb-2">No bank accounts connected</h3>
+              <p className="text-muted-foreground mb-4">
+                Connect your business bank account to build credit and track financial health
+              </p>
+              <Button 
+                onClick={() => linkToken && ready ? open() : createLinkToken()}
+                className="bg-gradient-gold hover:opacity-90"
+                disabled={!ready}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Connect Your First Account
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
 
 export function BusinessCreditSection() {
   return (

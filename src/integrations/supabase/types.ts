@@ -220,6 +220,68 @@ export type Database = {
           },
         ]
       }
+      connected_bank_accounts: {
+        Row: {
+          account_id: string
+          account_mask: string | null
+          account_name: string | null
+          account_subtype: string | null
+          account_type: string | null
+          business_id: string | null
+          created_at: string | null
+          id: string
+          institution_id: string
+          institution_name: string
+          is_active: boolean | null
+          plaid_access_token: string
+          plaid_item_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          account_mask?: string | null
+          account_name?: string | null
+          account_subtype?: string | null
+          account_type?: string | null
+          business_id?: string | null
+          created_at?: string | null
+          id?: string
+          institution_id: string
+          institution_name: string
+          is_active?: boolean | null
+          plaid_access_token: string
+          plaid_item_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          account_mask?: string | null
+          account_name?: string | null
+          account_subtype?: string | null
+          account_type?: string | null
+          business_id?: string | null
+          created_at?: string | null
+          id?: string
+          institution_id?: string
+          institution_name?: string
+          is_active?: boolean | null
+          plaid_access_token?: string
+          plaid_item_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connected_bank_accounts_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_accounts: {
         Row: {
           balance: number | null
