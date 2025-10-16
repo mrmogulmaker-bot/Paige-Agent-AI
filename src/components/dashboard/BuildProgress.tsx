@@ -4,14 +4,14 @@ import { Progress } from "@/components/ui/progress";
 import { CheckCircle2, Circle, X, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
+
 
 interface BuildProgressProps {
   onToggle?: () => void;
+  onNavigate?: () => void;
 }
 
-export const BuildProgress = ({ onToggle }: BuildProgressProps) => {
-  const navigate = useNavigate();
+export const BuildProgress = ({ onToggle, onNavigate }: BuildProgressProps) => {
   const [creditMix, setCreditMix] = useState({
     secured_card: false,
     credit_builder_loan: false,
@@ -89,7 +89,7 @@ export const BuildProgress = ({ onToggle }: BuildProgressProps) => {
   const totalAccounts = Object.values(creditMix).filter(Boolean).length;
 
   return (
-    <Card className="p-6 bg-card border-border shadow-card relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate('/dashboard?section=personal-build')}>
+    <Card className="p-6 bg-card border-border shadow-card relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow" onClick={() => onNavigate?.()}>
       <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16" />
       
       <div className="relative">

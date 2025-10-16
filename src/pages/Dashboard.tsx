@@ -168,7 +168,7 @@ const Dashboard = () => {
                       
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {showAccel && <AccelProgress onToggle={() => setShowAccel(false)} />}
-                        {showBuild && <BuildProgress onToggle={() => setShowBuild(false)} />}
+                        {showBuild && <BuildProgress onToggle={() => setShowBuild(false)} onNavigate={() => setActiveSection('personal-build')} />}
                       </div>
                       
                       {/* Personal Overview Cards */}
