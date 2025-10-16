@@ -29,6 +29,7 @@ interface CreditMix {
   auto_loan: boolean;
   personal_loan: boolean;
   retail_card: boolean;
+  mortgage: boolean;
   [key: string]: boolean;
 }
 
@@ -56,6 +57,7 @@ export const PersonalBuildProgram = () => {
     auto_loan: false,
     personal_loan: false,
     retail_card: false,
+    mortgage: false,
   });
   const [loading, setLoading] = useState(true);
   const [fundingGoal, setFundingGoal] = useState<number>(0);
@@ -228,6 +230,27 @@ export const PersonalBuildProgram = () => {
       targetMetrics: {
         creditLimit: "$500-$2,000",
         utilization: "Keep under 10%"
+      }
+    },
+    {
+      key: "mortgage",
+      label: "Mortgage",
+      description: "Major installment loan - demonstrates maximum creditworthiness and fundability",
+      icon: Building2,
+      importance: "advanced",
+      buildPhase: "Phase 7: Maximum Fundability",
+      recommendations: [
+        "CRITICAL for max funding opportunity - shows you can handle large debt",
+        "Requires strong credit (typically 620+ FICO, 700+ for best rates)",
+        "Demonstrates long-term financial stability to lenders",
+        "Significantly increases total credit mix and average account balance",
+        "Consider after establishing 2+ years of solid credit history",
+        "FHA loans available with 580+ credit score and 3.5% down payment"
+      ],
+      targetMetrics: {
+        optimalAge: "2+ years for maximum impact",
+        creditLimit: "$100,000-$500,000+",
+        utilization: "N/A - installment loan"
       }
     }
   ];
