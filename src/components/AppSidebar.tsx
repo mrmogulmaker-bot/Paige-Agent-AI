@@ -11,8 +11,9 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 
+const mainMenuItem = { title: "Dashboard", icon: LayoutDashboard, id: "dashboard" };
+
 const personalMenuItems = [
-  { title: "Dashboard", icon: LayoutDashboard, id: "dashboard" },
   { title: "Personal Credit", icon: CreditCard, id: "personal" },
   { title: "BUILD Program", icon: TrendingUp, id: "personal-build" },
   { title: "Bank Accounts", icon: BarChart3, id: "personal-bank-accounts" },
@@ -59,6 +60,28 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
       </SidebarHeader>
       
       <SidebarContent className="px-3 py-4">
+        {/* Main Dashboard */}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-1">
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={() => setActiveSection(mainMenuItem.id)}
+                  isActive={activeSection === mainMenuItem.id}
+                  className={`w-full px-3 py-2 rounded-lg transition-all ${
+                    activeSection === mainMenuItem.id
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "hover:bg-muted text-muted-foreground"
+                  }`}
+                >
+                  <mainMenuItem.icon className="w-5 h-5" />
+                  <span className="text-sm">{mainMenuItem.title}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
         <SidebarGroup>
           <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
             Personal Credit
