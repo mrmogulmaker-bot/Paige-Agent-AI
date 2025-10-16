@@ -1,5 +1,8 @@
 project_id = "bfmyebsjyuoecmjskqhs"
 
+[functions.stripe-webhook]
+verify_jwt = false
+
 [functions.paige-voice-chat]
 verify_jwt = false
 
