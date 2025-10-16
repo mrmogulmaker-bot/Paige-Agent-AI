@@ -307,6 +307,17 @@ GUIDELINES:
                   },
                   required: ['path']
                 }
+              },
+              {
+                type: 'function',
+                name: 'build_assessment',
+                description: 'Run a BUILD framework assessment for business credit readiness',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    business_id: { type: 'string', description: 'Business ID (optional, uses primary if not specified)' }
+                  }
+                }
               }
             ],
             tool_choice: 'auto',
@@ -413,6 +424,42 @@ GUIDELINES:
                 path: args.path,
                 message: `Navigating to ${args.path}` 
               };
+              break;
+            
+            case 'build_assessment':
+              // Get BUILD score or trigger recalculation
+              const { data: buildScore } = await supabaseAdmin
+                .from('build_scores')
+                .select('*')
+                .eq('user_id', userId)
+                .maybeSingle();
+              
+              if (buildScore) {
+                result = { 
+                  success: true, 
+                  score: buildScore.build_score,
+                  tier: buildScore.current_tier,
+                  message: `BUILD Score: ${buildScore.build_score}, Current Tier: ${buildScore.current_tier}. Paydex: ${buildScore.paydex}, Intelliscore: ${buildScore.intelliscore}`
+                };
+              } else {
+                // Create initial BUILD score entry
+                const { data: newScore } = await supabaseAdmin
+                  .from('build_scores')
+                  .insert({
+                    user_id: userId,
+                    build_score: 0,
+                    current_tier: 'B'
+                  })
+                  .select()
+                  .single();
+                
+                result = { 
+                  success: true, 
+                  score: 0,
+                  tier: 'B',
+                  message: 'BUILD assessment initialized. Start by setting up your business profile and connecting vendors.'
+                };
+              }
               break;
             
             default:
