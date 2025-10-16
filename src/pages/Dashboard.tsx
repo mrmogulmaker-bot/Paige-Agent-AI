@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { CreditScoreOverview } from "@/components/dashboard/CreditScoreOverview";
 import { AccelProgress } from "@/components/dashboard/AccelProgress";
 import { BuildProgress } from "@/components/dashboard/BuildProgress";
@@ -153,6 +154,7 @@ const Dashboard = () => {
                 </h1>
               </div>
               <div className="flex items-center gap-2 md:gap-3">
+                <NotificationBell />
                 <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs md:text-sm">
                   {isMobile ? "Out" : "Logout"}
                 </Button>

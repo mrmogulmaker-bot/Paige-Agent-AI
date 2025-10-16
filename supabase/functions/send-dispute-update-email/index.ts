@@ -128,6 +128,22 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("Dispute update email sent successfully:", emailResponse);
 
+    // Create in-app notification
+    const { error: notifError } = await supabaseClient
+      .from("notifications")
+      .insert({
+        user_id: user.id,
+        type: "dispute_update",
+        title: `Dispute Update: ${creditorName}`,
+        message: `Your dispute with ${creditorName} status changed to ${status.replace('_', ' ')}`,
+        action_url: "/dashboard?section=personal",
+        metadata: { disputeId, bureau, creditorName, status },
+      });
+
+    if (notifError) {
+      console.error("Error creating notification:", notifError);
+    }
+
     return new Response(JSON.stringify({ success: true, data: emailResponse }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },

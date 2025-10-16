@@ -117,6 +117,21 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("Email sent successfully:", emailResponse);
 
+    // Create in-app notification
+    const { error: notifError } = await supabaseClient
+      .from("notifications")
+      .insert({
+        user_id: user.id,
+        type: "welcome",
+        title: "Welcome to PaigeAgent.ai! 🎉",
+        message: `Hi ${fullName}! We're excited to help you achieve your financial goals. Check out your dashboard to get started.`,
+        action_url: "/dashboard",
+      });
+
+    if (notifError) {
+      console.error("Error creating notification:", notifError);
+    }
+
     return new Response(JSON.stringify({ success: true, data: emailResponse }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
