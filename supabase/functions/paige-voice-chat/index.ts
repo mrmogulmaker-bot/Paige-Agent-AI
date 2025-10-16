@@ -266,13 +266,13 @@ GUIDELINES:
               {
                 type: 'function',
                 name: 'metrics_get',
-                description: 'Get financial metrics like Paydex, DSCR, average balance',
+                description: 'Get financial metrics like DSCR, average balance, NSF count, Paydex, Intelliscore',
                 parameters: {
                   type: 'object',
                   properties: {
                     metric_type: { 
                       type: 'string', 
-                      enum: ['paydex', 'intelliscore', 'dscr', 'avg_balance_90d', 'nsf_90d'],
+                      enum: ['paydex', 'intelliscore', 'dscr', 'avg_balance_90d', 'nsf_90d', 'avg_balance_30d', 'monthly_inflow', 'monthly_outflow'],
                       description: 'Type of metric to retrieve'
                     }
                   },
@@ -401,12 +401,59 @@ GUIDELINES:
               break;
             
             case 'metrics_get':
-              result = {
-                success: true,
-                metric: args.metric_type,
-                value: args.metric_type === 'paydex' ? 75 : args.metric_type === 'dscr' ? 1.35 : 5432.50,
-                message: `Current ${args.metric_type}: ${args.metric_type === 'paydex' ? '75' : args.metric_type === 'dscr' ? '1.35' : '$5,432.50'}`
-              };
+              // Fetch actual financial KPIs from database
+              const { data: kpis } = await supabaseAdmin
+                .from('financial_kpis')
+                .select('*')
+                .eq('user_id', userId)
+                .maybeSingle();
+              
+              if (!kpis) {
+                result = {
+                  success: false,
+                  error: 'No financial data available. Please connect your bank accounts first.',
+                  message: 'Connect your bank accounts to view financial metrics.'
+                };
+              } else {
+                let metricValue: number | null = null;
+                let metricLabel = '';
+                
+                switch (args.metric_type) {
+                  case 'dscr':
+                    metricValue = kpis.dscr;
+                    metricLabel = 'DSCR';
+                    break;
+                  case 'avg_balance_90d':
+                    metricValue = kpis.avg_balance_90d;
+                    metricLabel = '90-day Average Balance';
+                    break;
+                  case 'nsf_90d':
+                    metricValue = kpis.nsf_count;
+                    metricLabel = 'NSF Count (90 days)';
+                    break;
+                  default:
+                    metricValue = null;
+                }
+                
+                if (metricValue !== null) {
+                  const formattedValue = args.metric_type.includes('balance') 
+                    ? `$${metricValue.toLocaleString()}`
+                    : metricValue.toString();
+                  
+                  result = {
+                    success: true,
+                    metric: args.metric_type,
+                    value: metricValue,
+                    message: `${metricLabel}: ${formattedValue}`
+                  };
+                } else {
+                  result = {
+                    success: false,
+                    error: 'Metric not available',
+                    message: 'This metric is not currently tracked.'
+                  };
+                }
+              }
               break;
             
             case 'bank_action':
