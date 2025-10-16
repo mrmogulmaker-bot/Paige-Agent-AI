@@ -318,6 +318,18 @@ GUIDELINES:
                     business_id: { type: 'string', description: 'Business ID (optional, uses primary if not specified)' }
                   }
                 }
+              },
+              {
+                type: 'function',
+                name: 'bureaus_sync',
+                description: 'Sync credit data with bureaus (personal or business)',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Which bureaus to sync' }
+                  },
+                  required: ['scope']
+                }
               }
             ],
             tool_choice: 'auto',
@@ -505,6 +517,39 @@ GUIDELINES:
                   score: 0,
                   tier: 'B',
                   message: 'BUILD assessment initialized. Start by setting up your business profile and connecting vendors.'
+                };
+              }
+              break;
+            
+            case 'bureaus_sync':
+              // Check if user has verified credit reports
+              const { data: verification } = await supabaseAdmin
+                .from('credit_report_verifications')
+                .select('*')
+                .eq('user_id', userId)
+                .maybeSingle();
+              
+              if (!verification) {
+                result = {
+                  success: false,
+                  message: 'Please complete credit verification first before syncing bureaus.'
+                };
+              } else {
+                const bureaus = args.scope === 'business' 
+                  ? ['Dun & Bradstreet', 'Experian Business', 'Equifax Business']
+                  : ['Experian', 'Equifax', 'TransUnion'];
+                
+                const verifiedBureaus = bureaus.filter(bureau => {
+                  if (args.scope === 'business') return true; // Business verification handled differently
+                  const bureauKey = bureau.toLowerCase().replace(' ', '_');
+                  return verification[`${bureauKey}_verified`];
+                });
+                
+                result = {
+                  success: true,
+                  scope: args.scope,
+                  bureaus: verifiedBureaus,
+                  message: `Syncing ${args.scope} credit data from ${verifiedBureaus.length} bureau${verifiedBureaus.length > 1 ? 's' : ''}: ${verifiedBureaus.join(', ')}`
                 };
               }
               break;
