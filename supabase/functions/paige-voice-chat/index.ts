@@ -237,6 +237,22 @@ GUIDELINES:
               },
               {
                 type: 'function',
+                name: 'task_update',
+                description: 'Update an existing task (due date, priority, status, title)',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    task_id: { type: 'string', description: 'Task ID to update' },
+                    title: { type: 'string', description: 'New task title' },
+                    due_date: { type: 'string', description: 'New due date (YYYY-MM-DD)' },
+                    priority: { type: 'string', enum: ['low', 'medium', 'high', 'P1', 'P2', 'P3'], description: 'New priority' },
+                    status: { type: 'string', enum: ['pending', 'in_progress', 'completed'], description: 'New status' }
+                  },
+                  required: ['task_id']
+                }
+              },
+              {
+                type: 'function',
                 name: 'task_complete',
                 description: 'Mark a task as complete',
                 parameters: {
@@ -339,6 +355,27 @@ GUIDELINES:
               
               if (taskError) throw taskError;
               result = { success: true, task: taskData, message: `Created ${args.scope} task: ${args.title}` };
+              break;
+            
+            case 'task_update':
+              const updateData: any = {};
+              if (args.title) updateData.title = args.title;
+              if (args.due_date) updateData.due_date = args.due_date;
+              if (args.status) updateData.status = args.status;
+              if (args.priority) {
+                updateData.metadata = { priority: args.priority };
+              }
+              
+              const { data: updatedTask, error: updateError } = await supabaseAdmin
+                .from('tasks')
+                .update(updateData)
+                .eq('id', args.task_id)
+                .eq('user_id', userId)
+                .select()
+                .single();
+              
+              if (updateError) throw updateError;
+              result = { success: true, task: updatedTask, message: `Updated task: ${updatedTask.title}` };
               break;
             
             case 'task_complete':
