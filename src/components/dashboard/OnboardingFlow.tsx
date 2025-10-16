@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, ArrowRight, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowRight, ArrowLeft, Target, TrendingUp, DollarSign, CheckCircle2, Sparkles } from "lucide-react";
+import { Card } from "@/components/ui/card";
 
 interface OnboardingFlowProps {
   open: boolean;
@@ -15,9 +16,12 @@ interface OnboardingFlowProps {
 }
 
 export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+
+  // Goals
+  const [goals, setGoals] = useState<string[]>([]);
 
   // Personal Info
   const [fullName, setFullName] = useState("");
@@ -33,8 +37,14 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
   const [ein, setEin] = useState("");
   const [entityType, setEntityType] = useState("");
 
-  const totalSteps = hasBusinessCredit ? 3 : 2;
+  const totalSteps = hasBusinessCredit ? 5 : 4;
   const progress = (step / totalSteps) * 100;
+
+  const toggleGoal = (goal: string) => {
+    setGoals(prev => 
+      prev.includes(goal) ? prev.filter(g => g !== goal) : [...prev, goal]
+    );
+  };
 
   const usStates = [
     "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
@@ -45,7 +55,16 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
   ];
 
   const handleNext = () => {
-    if (step === 1 && !fullName.trim()) {
+    if (step === 1 && goals.length === 0) {
+      toast({
+        title: "Please Select Goals",
+        description: "Choose at least one goal to continue",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (step === 2 && !fullName.trim()) {
       toast({
         title: "Required Field",
         description: "Please enter your full name",
@@ -54,7 +73,7 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
       return;
     }
 
-    if (step === 2 && hasBusinessCredit === null) {
+    if (step === 3 && hasBusinessCredit === null) {
       toast({
         title: "Please Select",
         description: "Let us know if you have a business",
@@ -63,7 +82,7 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
       return;
     }
 
-    if (step === 3 && !legalName.trim()) {
+    if (step === 4 && hasBusinessCredit && !legalName.trim()) {
       toast({
         title: "Required Field",
         description: "Please enter your business name",
@@ -141,10 +160,105 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
           </DialogDescription>
         </DialogHeader>
 
-        <Progress value={progress} className="mb-6" />
+        {step > 0 && <Progress value={progress} className="mb-6" />}
 
-        {/* Step 1: Personal Information */}
+        {/* Step 0: Welcome */}
+        {step === 0 && (
+          <div className="space-y-6 py-4">
+            <div className="text-center space-y-4">
+              <div className="w-20 h-20 bg-gradient-gold rounded-full mx-auto flex items-center justify-center">
+                <Sparkles className="w-10 h-10 text-white" />
+              </div>
+              <h2 className="text-3xl font-bold">Welcome to PaigeAgent.ai!</h2>
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Your AI-powered credit building and business financing companion. Let's get you started on your journey to financial success.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-6">
+              <Card className="p-4 text-center space-y-2 border-primary/20">
+                <Target className="w-8 h-8 mx-auto text-primary" />
+                <h3 className="font-semibold">A.C.C.E.L.</h3>
+                <p className="text-xs text-muted-foreground">Personal credit repair & optimization</p>
+              </Card>
+              <Card className="p-4 text-center space-y-2 border-primary/20">
+                <TrendingUp className="w-8 h-8 mx-auto text-primary" />
+                <h3 className="font-semibold">B.U.I.L.D.</h3>
+                <p className="text-xs text-muted-foreground">Business credit building strategies</p>
+              </Card>
+              <Card className="p-4 text-center space-y-2 border-primary/20">
+                <DollarSign className="w-8 h-8 mx-auto text-primary" />
+                <h3 className="font-semibold">Funding</h3>
+                <p className="text-xs text-muted-foreground">Access to capital & financing</p>
+              </Card>
+            </div>
+
+            <div className="flex justify-center">
+              <Button onClick={() => setStep(1)} size="lg" className="bg-gradient-gold">
+                Get Started
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 1: Goal Selection */}
         {step === 1 && (
+          <div className="space-y-6">
+            <h3 className="font-semibold text-lg">What are your goals?</h3>
+            <p className="text-sm text-muted-foreground">Select all that apply - we'll customize your experience</p>
+
+            <div className="space-y-3">
+              <Card 
+                className={`p-4 cursor-pointer transition-all ${goals.includes('repair') ? 'border-primary bg-primary/5' : 'border-border'}`}
+                onClick={() => toggleGoal('repair')}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${goals.includes('repair') ? 'border-primary bg-primary' : 'border-muted-foreground'}`}>
+                    {goals.includes('repair') && <CheckCircle2 className="w-4 h-4 text-white" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Repair & Optimize Personal Credit</p>
+                    <p className="text-xs text-muted-foreground">Remove inaccuracies and improve your credit score</p>
+                  </div>
+                </div>
+              </Card>
+
+              <Card 
+                className={`p-4 cursor-pointer transition-all ${goals.includes('build') ? 'border-primary bg-primary/5' : 'border-border'}`}
+                onClick={() => toggleGoal('build')}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${goals.includes('build') ? 'border-primary bg-primary' : 'border-muted-foreground'}`}>
+                    {goals.includes('build') && <CheckCircle2 className="w-4 h-4 text-white" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Build Business Credit</p>
+                    <p className="text-xs text-muted-foreground">Establish and grow your business credit profile</p>
+                  </div>
+                </div>
+              </Card>
+
+              <Card 
+                className={`p-4 cursor-pointer transition-all ${goals.includes('funding') ? 'border-primary bg-primary/5' : 'border-border'}`}
+                onClick={() => toggleGoal('funding')}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${goals.includes('funding') ? 'border-primary bg-primary' : 'border-muted-foreground'}`}>
+                    {goals.includes('funding') && <CheckCircle2 className="w-4 h-4 text-white" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Access Funding & Financing</p>
+                    <p className="text-xs text-muted-foreground">Get approved for loans and credit lines</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Personal Information */}
+        {step === 2 && (
           <div className="space-y-4">
             <h3 className="font-semibold text-lg">Personal Information</h3>
             
@@ -216,8 +330,8 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
           </div>
         )}
 
-        {/* Step 2: Business Credit Question */}
-        {step === 2 && (
+        {/* Step 3: Business Credit Question */}
+        {step === 3 && (
           <div className="space-y-6">
             <h3 className="font-semibold text-lg">Do you have a business?</h3>
             <p className="text-sm text-muted-foreground">
@@ -254,8 +368,8 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
           </div>
         )}
 
-        {/* Step 3: Business Information (conditional) */}
-        {step === 3 && hasBusinessCredit && (
+        {/* Step 4: Business Information (conditional) */}
+        {step === 4 && hasBusinessCredit && (
           <div className="space-y-4">
             <h3 className="font-semibold text-lg">Business Information</h3>
 
@@ -297,38 +411,42 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
         )}
 
         {/* Navigation */}
-        <div className="flex justify-between pt-4">
-          {step > 1 && (
-            <Button variant="outline" onClick={() => setStep(step - 1)}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-          )}
+        {step > 0 && (
+          <>
+            <div className="flex justify-between pt-4">
+              {step > 1 && (
+                <Button variant="outline" onClick={() => setStep(step - 1)}>
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back
+                </Button>
+              )}
 
-          <Button
-            onClick={handleNext}
-            disabled={isLoading}
-            className="ml-auto bg-gradient-gold"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : step === totalSteps ? (
-              "Complete Setup"
-            ) : (
-              <>
-                Next
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </>
-            )}
-          </Button>
-        </div>
+              <Button
+                onClick={handleNext}
+                disabled={isLoading}
+                className="ml-auto bg-gradient-gold"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : step === totalSteps ? (
+                  "Complete Setup"
+                ) : (
+                  <>
+                    Next
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </>
+                )}
+              </Button>
+            </div>
 
-        <p className="text-xs text-center text-muted-foreground">
-          Step {step} of {totalSteps}
-        </p>
+            <p className="text-xs text-center text-muted-foreground">
+              Step {step} of {totalSteps}
+            </p>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
