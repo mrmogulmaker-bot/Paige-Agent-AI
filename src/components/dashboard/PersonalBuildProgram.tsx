@@ -15,7 +15,8 @@ import {
   Target,
   Upload,
   RefreshCw,
-  Info
+  Info,
+  Sparkles
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCreditVerification } from "@/hooks/useCreditVerification";
@@ -48,6 +49,17 @@ interface AccountType {
   };
 }
 
+interface AISuggestion {
+  title: string;
+  accountType: string;
+  priority: "high" | "medium" | "low";
+  phase: string;
+  approvalStrategy: string;
+  fundabilityImpact: string;
+  timeline: string;
+  specificProviders?: string[];
+}
+
 export const PersonalBuildProgram = () => {
   const [creditMix, setCreditMix] = useState<CreditMix>({
     secured_card: false,
@@ -60,7 +72,8 @@ export const PersonalBuildProgram = () => {
     mortgage: false,
   });
   const [loading, setLoading] = useState(true);
-  const [fundingGoal, setFundingGoal] = useState<number>(0);
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const { verificationStatus } = useCreditVerification();
   const { toast } = useToast();
 
@@ -100,6 +113,37 @@ export const PersonalBuildProgram = () => {
       console.error("Error fetching credit accounts:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getAISuggestions = async () => {
+    setLoadingSuggestions(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('personal-build-suggestions', {
+        body: { 
+          creditMix,
+          currentScore: 0 // Can be enhanced with actual score later
+        }
+      });
+
+      if (error) throw error;
+
+      console.log('AI Suggestions:', data);
+      setAiSuggestions(data.recommendations || []);
+      
+      toast({
+        title: "AI Recommendations Ready",
+        description: `Paige analyzed your profile and found ${data.recommendations?.length || 0} personalized recommendations.`,
+      });
+    } catch (error) {
+      console.error('Error getting AI suggestions:', error);
+      toast({
+        title: "Error",
+        description: "Failed to get AI recommendations. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingSuggestions(false);
     }
   };
 
@@ -288,6 +332,116 @@ export const PersonalBuildProgram = () => {
           </AlertDescription>
         </Alert>
       )}
+
+      {/* AI Suggestions Section */}
+      <Card className="p-6 bg-gradient-to-br from-primary/10 to-primary/5 border-primary/30">
+        <CardHeader className="px-0 pt-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-6 h-6 text-primary" />
+              <CardTitle>Paige's AI Recommendations</CardTitle>
+            </div>
+            <Button 
+              onClick={getAISuggestions}
+              disabled={loadingSuggestions}
+              className="gap-2"
+            >
+              {loadingSuggestions ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  Get AI Suggestions
+                </>
+              )}
+            </Button>
+          </div>
+          <CardDescription>
+            Get personalized, step-by-step recommendations for building fundable credit
+          </CardDescription>
+        </CardHeader>
+        
+        {aiSuggestions.length > 0 && (
+          <CardContent className="px-0">
+            <div className="space-y-4">
+              {aiSuggestions.map((suggestion, idx) => (
+                <div
+                  key={idx}
+                  className="p-4 rounded-lg bg-card border border-border hover:border-primary/30 transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`p-2 rounded-lg ${
+                      suggestion.priority === 'high' ? 'bg-destructive/10' :
+                      suggestion.priority === 'medium' ? 'bg-warning/10' :
+                      'bg-muted'
+                    }`}>
+                      <Target className={`w-5 h-5 ${
+                        suggestion.priority === 'high' ? 'text-destructive' :
+                        suggestion.priority === 'medium' ? 'text-warning' :
+                        'text-muted-foreground'
+                      }`} />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-semibold">{suggestion.title}</h4>
+                        <Badge variant={
+                          suggestion.priority === 'high' ? 'destructive' :
+                          suggestion.priority === 'medium' ? 'default' :
+                          'outline'
+                        } className="text-xs">
+                          {suggestion.priority} priority
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {suggestion.phase}
+                        </Badge>
+                      </div>
+                      
+                      <p className="text-sm font-medium text-primary">
+                        Account Type: {suggestion.accountType}
+                      </p>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div>
+                          <span className="font-medium">Approval Strategy:</span>
+                          <p className="text-muted-foreground mt-1">{suggestion.approvalStrategy}</p>
+                        </div>
+                        
+                        <div>
+                          <span className="font-medium">Fundability Impact:</span>
+                          <p className="text-muted-foreground mt-1">{suggestion.fundabilityImpact}</p>
+                        </div>
+                        
+                        <div className="flex items-center gap-4 flex-wrap">
+                          <div>
+                            <span className="font-medium">Timeline:</span>
+                            <span className="text-muted-foreground ml-2">{suggestion.timeline}</span>
+                          </div>
+                        </div>
+                        
+                        {suggestion.specificProviders && suggestion.specificProviders.length > 0 && (
+                          <div>
+                            <span className="font-medium">Recommended Providers:</span>
+                            <div className="flex gap-2 flex-wrap mt-1">
+                              {suggestion.specificProviders.map((provider, i) => (
+                                <Badge key={i} variant="secondary" className="text-xs">
+                                  {provider}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        )}
+      </Card>
 
 
       {/* Overall Progress Card */}
