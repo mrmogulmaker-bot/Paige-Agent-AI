@@ -245,16 +245,6 @@ export const PersonalBuildProgram = () => {
   const growthAccounts = accountTypes.filter(a => a.importance === "growth");
   const growthComplete = growthAccounts.every(a => creditMix[a.key]);
 
-  if (!verificationStatus.isVerified) {
-    return (
-      <Alert className="border-warning/50 bg-warning/10">
-        <Info className="h-4 w-4" />
-        <AlertDescription>
-          Import your personal credit report first to get personalized BUILD program recommendations.
-        </AlertDescription>
-      </Alert>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -266,6 +256,16 @@ export const PersonalBuildProgram = () => {
           Build fundable personal credit with strategic account placement
         </p>
       </div>
+
+      {!verificationStatus.isVerified && (
+        <Alert className="border-warning/50 bg-warning/10">
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            Import your personal credit report to unlock personalized recommendations. You can still review the BUILD roadmap below.
+          </AlertDescription>
+        </Alert>
+      )}
+
 
       {/* Overall Progress Card */}
       <Card className="p-6 border-primary/20 shadow-glow">
