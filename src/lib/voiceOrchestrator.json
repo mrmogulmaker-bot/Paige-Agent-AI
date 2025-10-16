@@ -1,0 +1,498 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "generated_at": "2025-10-16T14:22:23.803773Z",
+    "name": "Paige Voice Orchestrator",
+    "purpose": "Map speech transcripts to intents, extract entities, confirm if needed, then invoke Lovable actions."
+  },
+  "global": {
+    "default_scope": "business",
+    "date_defaults_days": [
+      3,
+      10
+    ],
+    "confirm_destructive": true,
+    "safety": {
+      "require_confirm_for": [
+        "disconnect_account",
+        "delete_task",
+        "disconnect_plaid_item"
+      ],
+      "mask_pii": true
+    },
+    "prompts": {
+      "system": "Act as Paige, a voice-first AI ops chief for PaigeAgent.ai. Parse transcripts into intents+slots, fill missing fields with smart defaults, confirm destructive actions, then return an action envelope."
+    }
+  },
+  "entities": {
+    "scope": {
+      "type": "enum",
+      "values": [
+        "personal",
+        "business"
+      ]
+    },
+    "priority": {
+      "type": "enum",
+      "values": [
+        "P0",
+        "P1",
+        "P2",
+        "P3"
+      ]
+    },
+    "category_personal": {
+      "type": "enum",
+      "values": [
+        "Personal Credit",
+        "Personal Finance"
+      ]
+    },
+    "category_business": {
+      "type": "enum",
+      "values": [
+        "Business Credit",
+        "Business Compliance",
+        "Funding"
+      ]
+    },
+    "due_date": {
+      "type": "date",
+      "formats": [
+        "YYYY-MM-DD",
+        "MM/DD",
+        "natural_language"
+      ]
+    },
+    "metrics": {
+      "type": "enum[]",
+      "values": [
+        "dscr",
+        "avg_balance_90d",
+        "paydex",
+        "intelliscore",
+        "inflows_30d",
+        "outflows_30d"
+      ]
+    }
+  },
+  "routing": {
+    "scope_rules": [
+      {
+        "if_contains": [
+          "paydex",
+          "dscr",
+          "vendor",
+          "d-u-n-s",
+          "ein",
+          "funding",
+          "tier"
+        ],
+        "scope": "business"
+      },
+      {
+        "if_contains": [
+          "utilization",
+          "budget",
+          "savings",
+          "credit card",
+          "personal"
+        ],
+        "scope": "personal"
+      }
+    ],
+    "fallback_on_ambiguous": "ask_scope_once"
+  },
+  "intents": [
+    {
+      "name": "task.add",
+      "utterances": [
+        "add a {scope} task {title} due {due_date} priority {priority} category {category}",
+        "create a {scope} task {title} due {due_date}",
+        "new task {title}"
+      ],
+      "required": [
+        "title"
+      ],
+      "optional": [
+        "scope",
+        "due_date",
+        "priority",
+        "category",
+        "tags"
+      ],
+      "defaults": {
+        "priority": "P2",
+        "scope": "$global.default_scope"
+      },
+      "confirm": false,
+      "actions": [
+        {
+          "when": "scope==personal",
+          "invoke": {
+            "type": "invoke",
+            "source": "tasks_personal",
+            "method": "create"
+          }
+        },
+        {
+          "when": "scope==business",
+          "invoke": {
+            "type": "invoke",
+            "source": "tasks_business",
+            "method": "create"
+          }
+        }
+      ]
+    },
+    {
+      "name": "task.update",
+      "utterances": [
+        "move task {task_ref} to {status}",
+        "reschedule task {task_ref} to {due_date}",
+        "make {task_ref} priority {priority}"
+      ],
+      "required": [
+        "task_ref"
+      ],
+      "optional": [
+        "status",
+        "due_date",
+        "priority"
+      ],
+      "confirm": false,
+      "actions": [
+        {
+          "when": "scope==personal",
+          "invoke": {
+            "type": "invoke",
+            "source": "tasks_personal",
+            "method": "update"
+          }
+        },
+        {
+          "when": "scope==business",
+          "invoke": {
+            "type": "invoke",
+            "source": "tasks_business",
+            "method": "update"
+          }
+        }
+      ]
+    },
+    {
+      "name": "task.complete",
+      "utterances": [
+        "mark {task_ref} done",
+        "complete {task_ref}",
+        "check off {task_ref}"
+      ],
+      "required": [
+        "task_ref"
+      ],
+      "optional": [],
+      "confirm": false,
+      "actions": [
+        {
+          "when": "scope==personal",
+          "invoke": {
+            "type": "invoke",
+            "source": "tasks_personal",
+            "method": "complete"
+          }
+        },
+        {
+          "when": "scope==business",
+          "invoke": {
+            "type": "invoke",
+            "source": "tasks_business",
+            "method": "complete"
+          }
+        }
+      ]
+    },
+    {
+      "name": "build.run_assessment",
+      "utterances": [
+        "run a build assessment",
+        "check my build status",
+        "recalculate build score"
+      ],
+      "required": [],
+      "optional": [],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_build_module",
+            "method": "assess"
+          }
+        }
+      ]
+    },
+    {
+      "name": "bureaus.sync",
+      "utterances": [
+        "sync bureaus",
+        "pull my business credit",
+        "refresh bureau data"
+      ],
+      "required": [],
+      "optional": [],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "bureau_connector",
+            "method": "sync_now"
+          }
+        }
+      ]
+    },
+    {
+      "name": "funding.create_plan",
+      "utterances": [
+        "create funding plan",
+        "start my funding plan",
+        "open funding plan"
+      ],
+      "required": [],
+      "optional": [],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "navigate",
+            "to": "/funding/plan"
+          }
+        }
+      ]
+    },
+    {
+      "name": "bank.connect",
+      "utterances": [
+        "connect a bank",
+        "link my account",
+        "add a checking account"
+      ],
+      "required": [],
+      "optional": [
+        "scope"
+      ],
+      "confirm": false,
+      "actions": [
+        {
+          "when": "scope==personal",
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_personal",
+            "method": "link"
+          }
+        },
+        {
+          "when": "scope==business",
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_business",
+            "method": "link"
+          }
+        }
+      ]
+    },
+    {
+      "name": "bank.refresh",
+      "utterances": [
+        "refresh balances",
+        "update my balances",
+        "check today\u2019s balance"
+      ],
+      "required": [],
+      "optional": [
+        "scope"
+      ],
+      "confirm": false,
+      "actions": [
+        {
+          "when": "scope==personal",
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_personal",
+            "method": "balances"
+          }
+        },
+        {
+          "when": "scope==business",
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_business",
+            "method": "balances"
+          }
+        }
+      ]
+    },
+    {
+      "name": "bank.sync",
+      "utterances": [
+        "sync transactions",
+        "update transactions",
+        "pull latest transactions"
+      ],
+      "required": [],
+      "optional": [
+        "scope"
+      ],
+      "confirm": false,
+      "actions": [
+        {
+          "when": "scope==personal",
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_personal",
+            "method": "sync"
+          }
+        },
+        {
+          "when": "scope==business",
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_business",
+            "method": "sync"
+          }
+        }
+      ]
+    },
+    {
+      "name": "metrics.get",
+      "utterances": [
+        "what is my {metrics}?",
+        "give me {metrics}",
+        "show {metrics}"
+      ],
+      "required": [
+        "metrics"
+      ],
+      "optional": [
+        "scope"
+      ],
+      "confirm": false,
+      "actions": [
+        {
+          "when": "scope==personal",
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_personal",
+            "method": "kpis"
+          }
+        },
+        {
+          "when": "scope==business",
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_business",
+            "method": "kpis"
+          }
+        }
+      ]
+    },
+    {
+      "name": "navigate.to",
+      "utterances": [
+        "go to {page}",
+        "open {page}",
+        "show me {page}"
+      ],
+      "required": [
+        "page"
+      ],
+      "optional": [],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "navigate",
+            "toBinding": "resolvePage(page)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "notify.send",
+      "utterances": [
+        "text me the update",
+        "send me a note",
+        "email me that"
+      ],
+      "required": [
+        "message"
+      ],
+      "optional": [
+        "channel"
+      ],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "notify",
+            "method": "send"
+          }
+        }
+      ]
+    },
+    {
+      "name": "account.disconnect",
+      "utterances": [
+        "disconnect {account_ref}",
+        "remove {account_ref} account"
+      ],
+      "required": [
+        "account_ref"
+      ],
+      "optional": [
+        "scope"
+      ],
+      "confirm": true,
+      "confirm_text": "Confirm disconnect of {account_ref}? Say 'confirm disconnect' to proceed.",
+      "actions": [
+        {
+          "when": "scope==personal",
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_personal",
+            "method": "disconnect"
+          }
+        },
+        {
+          "when": "scope==business",
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_business",
+            "method": "disconnect"
+          }
+        }
+      ]
+    }
+  ],
+  "fallbacks": {
+    "ask_scope_once": "Should I add that to Personal or Business?",
+    "ask_due_date": "When should that be due? I can set it 7 days from today.",
+    "unrecognized": "I didn't catch that. Try: 'Add a business task due Friday' or 'Sync bureaus'."
+  },
+  "output_contract": {
+    "envelope": {
+      "intent": "string",
+      "scope": "personal|business|null",
+      "slots": "object",
+      "action": {
+        "type": "invoke|navigate",
+        "source": "string?",
+        "method": "string?",
+        "to": "string?",
+        "payload": "object?"
+      },
+      "speech_back": "string"
+    }
+  }
+}
