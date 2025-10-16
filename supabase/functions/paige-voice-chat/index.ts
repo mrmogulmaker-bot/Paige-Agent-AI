@@ -228,8 +228,9 @@ GUIDELINES:
                     scope: { type: 'string', enum: ['personal', 'business'], description: 'Task scope' },
                     title: { type: 'string', description: 'Task title' },
                     due_date: { type: 'string', description: 'Due date (YYYY-MM-DD)' },
-                    priority: { type: 'string', enum: ['low', 'medium', 'high'], description: 'Task priority' },
-                    category: { type: 'string', description: 'Task category' }
+                    priority: { type: 'string', enum: ['low', 'medium', 'high', 'P1', 'P2', 'P3'], description: 'Task priority' },
+                    category: { type: 'string', description: 'Task category' },
+                    tags: { type: 'array', items: { type: 'string' }, description: 'Task tags' }
                   },
                   required: ['scope', 'title']
                 }
@@ -312,6 +313,16 @@ GUIDELINES:
           
           switch (data.name) {
             case 'task_add':
+              const taskMetadata: any = {
+                scope: args.scope,
+                priority: args.priority || 'medium',
+                created_via: 'voice'
+              };
+              
+              if (args.tags && args.tags.length > 0) {
+                taskMetadata.tags = args.tags;
+              }
+              
               const { data: taskData, error: taskError } = await supabaseAdmin
                 .from('tasks')
                 .insert({
@@ -320,11 +331,8 @@ GUIDELINES:
                   category: args.category || 'general',
                   status: 'pending',
                   due_date: args.due_date,
-                  metadata: {
-                    scope: args.scope,
-                    priority: args.priority || 'medium',
-                    created_via: 'voice'
-                  }
+                  track: args.scope === 'business' ? 'build' : 'accel',
+                  metadata: taskMetadata
                 })
                 .select()
                 .single();
