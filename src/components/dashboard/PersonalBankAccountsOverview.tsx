@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Building2, TrendingUp, ArrowRight, Wallet } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
+
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -11,8 +11,11 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-export const PersonalBankAccountsOverview = () => {
-  const navigate = useNavigate();
+interface PersonalBankAccountsOverviewProps {
+  onNavigate: () => void;
+}
+
+export const PersonalBankAccountsOverview = ({ onNavigate }: PersonalBankAccountsOverviewProps) => {
   const [accountsCount, setAccountsCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [totalBalance, setTotalBalance] = useState(0);
@@ -71,7 +74,7 @@ export const PersonalBankAccountsOverview = () => {
   return (
     <Card 
       className="p-6 bg-card border-border shadow-card relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow" 
-      onClick={() => navigate('/dashboard?section=personal-bank-accounts')}
+      onClick={onNavigate}
     >
       <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16" />
       

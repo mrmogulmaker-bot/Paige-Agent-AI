@@ -3,10 +3,12 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, Circle, AlertCircle, ArrowRight, ListTodo } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
 
-export const PersonalTasksOverview = () => {
-  const navigate = useNavigate();
+interface PersonalTasksOverviewProps {
+  onNavigate: () => void;
+}
+
+export const PersonalTasksOverview = ({ onNavigate }: PersonalTasksOverviewProps) => {
   const [stats, setStats] = useState({
     total: 0,
     completed: 0,
@@ -71,7 +73,7 @@ export const PersonalTasksOverview = () => {
   return (
     <Card 
       className="p-6 bg-card border-border shadow-card relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow" 
-      onClick={() => navigate('/dashboard?section=tasks')}
+      onClick={onNavigate}
     >
       <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16" />
       

@@ -173,8 +173,8 @@ const Dashboard = () => {
                       
                       {/* Personal Overview Cards */}
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <PersonalBankAccountsOverview />
-                        <PersonalTasksOverview />
+                        <PersonalBankAccountsOverview onNavigate={() => setActiveSection('personal-bank-accounts')} />
+                        <PersonalTasksOverview onNavigate={() => setActiveSection('tasks')} />
                       </div>
                       
                       {!showAccel && !showBuild && (
