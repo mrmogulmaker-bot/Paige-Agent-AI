@@ -71,7 +71,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
                   className={`w-full px-3 py-2 rounded-lg transition-all ${
                     activeSection === mainMenuItem.id
                       ? "bg-primary/10 text-primary font-medium"
-                      : "hover:bg-muted text-muted-foreground"
+                      : "hover:bg-muted text-foreground"
                   }`}
                 >
                   <mainMenuItem.icon className="w-5 h-5" />
@@ -83,7 +83,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <SidebarGroupLabel className="px-3 text-xs font-semibold text-foreground/70 uppercase tracking-wider">
             Personal Credit
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -96,7 +96,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
                     className={`w-full px-3 py-2 rounded-lg transition-all ${
                       activeSection === item.id
                         ? "bg-primary/10 text-primary font-medium"
-                        : "hover:bg-muted text-muted-foreground"
+                        : "hover:bg-muted text-foreground"
                     }`}
                   >
                     <item.icon className="w-5 h-5" />
@@ -109,7 +109,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <SidebarGroupLabel className="px-3 text-xs font-semibold text-foreground/70 uppercase tracking-wider">
             Business Credit
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -122,7 +122,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
                     className={`w-full px-3 py-2 rounded-lg transition-all ${
                       activeSection === item.id
                         ? "bg-primary/10 text-primary font-medium"
-                        : "hover:bg-muted text-muted-foreground"
+                        : "hover:bg-muted text-foreground"
                     }`}
                   >
                     <item.icon className="w-5 h-5" />
@@ -135,7 +135,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <SidebarGroupLabel className="px-3 text-xs font-semibold text-foreground/70 uppercase tracking-wider">
             General
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -148,7 +148,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
                     className={`w-full px-3 py-2 rounded-lg transition-all ${
                       activeSection === item.id
                         ? "bg-primary/10 text-primary font-medium"
-                        : "hover:bg-muted text-muted-foreground"
+                        : "hover:bg-muted text-foreground"
                     }`}
                   >
                     <item.icon className="w-5 h-5" />
