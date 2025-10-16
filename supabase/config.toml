@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.plaid-webhook]
 verify_jwt = false
+
+[functions.personal-build-suggestions]
+verify_jwt = true
