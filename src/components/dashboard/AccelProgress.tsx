@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 
 interface AccelProgressProps {
   onToggle?: () => void;
+  onNavigate?: () => void;
 }
 
-export const AccelProgress = ({ onToggle }: AccelProgressProps) => {
+export const AccelProgress = ({ onToggle, onNavigate }: AccelProgressProps) => {
   const steps = [
     { label: "Audit Reports", progress: 100, complete: true },
     { label: "Correct Inaccuracies", progress: 60, complete: false },
@@ -17,7 +18,7 @@ export const AccelProgress = ({ onToggle }: AccelProgressProps) => {
   ];
 
   return (
-    <Card className="p-6 bg-card border-border shadow-card">
+    <Card className="p-6 bg-card border-border shadow-card cursor-pointer hover:shadow-lg transition-shadow" onClick={() => onNavigate?.()}>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold">A.C.C.E.L.</h2>
@@ -29,7 +30,10 @@ export const AccelProgress = ({ onToggle }: AccelProgressProps) => {
             <p className="text-xs text-muted-foreground">Overall Progress</p>
           </div>
           {onToggle && (
-            <Button variant="ghost" size="icon" onClick={onToggle}>
+            <Button variant="ghost" size="icon" onClick={(e) => {
+              e.stopPropagation();
+              onToggle();
+            }}>
               <X className="w-4 h-4" />
             </Button>
           )}
