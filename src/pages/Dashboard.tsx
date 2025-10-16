@@ -13,7 +13,7 @@ import { DisputesManager } from "@/components/dashboard/DisputesManager";
 import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
 import { BuildProgramOutline } from "@/components/dashboard/BuildProgramOutline";
 import { BuildProgramBusinessWrapper } from "@/components/dashboard/BuildProgramBusinessWrapper";
-import { PersonalBuildProgramOutline } from "@/components/dashboard/PersonalBuildProgramOutline";
+import { PersonalBuildProgram } from "@/components/dashboard/PersonalBuildProgram";
 import { AccelProgramOutline } from "@/components/dashboard/AccelProgramOutline";
 import { PersonalSection } from "@/components/dashboard/PersonalSection";
 import { BusinessCreditSection } from "@/components/dashboard/BusinessCreditSection";
@@ -186,7 +186,7 @@ const Dashboard = () => {
                 {activeSection === "personal" && <PersonalSection />}
                 {activeSection === "personal-build" && (
                   <div className="space-y-8">
-                    <PersonalBuildProgramOutline />
+                    <PersonalBuildProgram />
                   </div>
                 )}
                 {activeSection === "personal-documents" && <PersonalDocuments />}
