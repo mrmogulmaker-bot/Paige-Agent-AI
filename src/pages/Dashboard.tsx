@@ -9,6 +9,9 @@ import { AccelProgress } from "@/components/dashboard/AccelProgress";
 import { BuildProgress } from "@/components/dashboard/BuildProgress";
 import { PersonalBankAccountsOverview } from "@/components/dashboard/PersonalBankAccountsOverview";
 import { PersonalTasksOverview } from "@/components/dashboard/PersonalTasksOverview";
+import { BusinessCreditOverview } from "@/components/dashboard/BusinessCreditOverview";
+import { BusinessBankAccountsOverview } from "@/components/dashboard/BusinessBankAccountsOverview";
+import { BusinessTasksOverview } from "@/components/dashboard/BusinessTasksOverview";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 import { LearningVault } from "@/components/dashboard/LearningVault";
 import { DisputesManager } from "@/components/dashboard/DisputesManager";
@@ -171,10 +174,36 @@ const Dashboard = () => {
                         {showBuild && <BuildProgress onToggle={() => setShowBuild(false)} onNavigate={() => setActiveSection('personal-build')} />}
                       </div>
                       
-                      {/* Personal Overview Cards */}
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <PersonalBankAccountsOverview onNavigate={() => setActiveSection('personal-bank-accounts')} />
-                        <PersonalTasksOverview onNavigate={() => setActiveSection('tasks')} />
+                      {/* Personal Section */}
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-px bg-border flex-1" />
+                          <h3 className="text-lg font-semibold text-foreground px-3">Personal Credit</h3>
+                          <div className="h-px bg-border flex-1" />
+                        </div>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          <PersonalBankAccountsOverview onNavigate={() => setActiveSection('personal-bank-accounts')} />
+                          <PersonalTasksOverview onNavigate={() => setActiveSection('tasks')} />
+                        </div>
+                      </div>
+                      
+                      {/* Business Section */}
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-px bg-border flex-1" />
+                          <h3 className="text-lg font-semibold text-foreground px-3">Business Credit</h3>
+                          <div className="h-px bg-border flex-1" />
+                        </div>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          <BusinessCreditOverview onNavigate={() => setActiveSection('business-credit')} />
+                          <BusinessBankAccountsOverview onNavigate={() => setActiveSection('business-bank-accounts')} />
+                        </div>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          <BusinessTasksOverview onNavigate={() => setActiveSection('business-tasks')} />
+                        </div>
                       </div>
                       
                       {!showAccel && !showBuild && (
