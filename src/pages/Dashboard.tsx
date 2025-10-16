@@ -7,6 +7,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { CreditScoreOverview } from "@/components/dashboard/CreditScoreOverview";
 import { AccelProgress } from "@/components/dashboard/AccelProgress";
 import { BuildProgress } from "@/components/dashboard/BuildProgress";
+import { PersonalBankAccountsOverview } from "@/components/dashboard/PersonalBankAccountsOverview";
+import { PersonalTasksOverview } from "@/components/dashboard/PersonalTasksOverview";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 import { LearningVault } from "@/components/dashboard/LearningVault";
 import { DisputesManager } from "@/components/dashboard/DisputesManager";
@@ -167,6 +169,12 @@ const Dashboard = () => {
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {showAccel && <AccelProgress onToggle={() => setShowAccel(false)} />}
                         {showBuild && <BuildProgress onToggle={() => setShowBuild(false)} />}
+                      </div>
+                      
+                      {/* Personal Overview Cards */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <PersonalBankAccountsOverview />
+                        <PersonalTasksOverview />
                       </div>
                       
                       {!showAccel && !showBuild && (
