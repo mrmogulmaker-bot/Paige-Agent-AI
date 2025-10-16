@@ -352,6 +352,8 @@ GUIDELINES:
           
           switch (data.name) {
             case 'task_add':
+              console.log('task_add called with args:', JSON.stringify(args));
+              
               const taskMetadata: any = {
                 scope: args.scope,
                 priority: args.priority || 'medium',
@@ -361,6 +363,8 @@ GUIDELINES:
               if (args.tags && args.tags.length > 0) {
                 taskMetadata.tags = args.tags;
               }
+              
+              console.log('Inserting task with user_id:', userId);
               
               const { data: taskData, error: taskError } = await supabaseAdmin
                 .from('tasks')
@@ -376,8 +380,17 @@ GUIDELINES:
                 .select()
                 .single();
               
-              if (taskError) throw taskError;
-              result = { success: true, task: taskData, message: `Created ${args.scope} task: ${args.title}` };
+              if (taskError) {
+                console.error('Task insert error:', taskError);
+                throw taskError;
+              }
+              
+              console.log('Task inserted successfully:', taskData);
+              result = { 
+                success: true, 
+                task: taskData, 
+                message: `I've added "${args.title}" to your ${args.scope} tasks${args.due_date ? ' due on ' + args.due_date : ''}.` 
+              };
               break;
             
             case 'task_update':
