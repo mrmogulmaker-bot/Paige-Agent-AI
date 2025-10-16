@@ -83,7 +83,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel className="px-3 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
+          <SidebarGroupLabel className="px-3 text-xs font-semibold text-gold uppercase tracking-wider">
             Personal Credit
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -109,7 +109,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel className="px-3 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
+          <SidebarGroupLabel className="px-3 text-xs font-semibold text-gold uppercase tracking-wider">
             Business Credit
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -135,7 +135,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel className="px-3 text-xs font-semibold text-sidebar-foreground/70 uppercase tracking-wider">
+          <SidebarGroupLabel className="px-3 text-xs font-semibold text-gold uppercase tracking-wider">
             General
           </SidebarGroupLabel>
           <SidebarGroupContent>
