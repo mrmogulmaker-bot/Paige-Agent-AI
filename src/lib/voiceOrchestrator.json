@@ -105,6 +105,167 @@
   },
   "intents": [
     {
+      "name": "insights.get",
+      "utterances": [
+        "what are my insights",
+        "show me business insights",
+        "give me personal insights",
+        "what should I focus on",
+        "analyze my {scope} performance",
+        "what's my credit health looking like",
+        "how am I doing on funding readiness"
+      ],
+      "required": [],
+      "optional": ["scope", "metric"],
+      "defaults": {
+        "scope": "$global.default_scope"
+      },
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_insights",
+            "method": "analyze"
+          }
+        }
+      ]
+    },
+    {
+      "name": "reports.generate",
+      "utterances": [
+        "generate a {report_type} report",
+        "create my {scope} credit report",
+        "pull my three bureau report",
+        "show me my business credit report",
+        "generate funding readiness report",
+        "create compliance report",
+        "show me my BUILD score report"
+      ],
+      "required": ["report_type"],
+      "optional": ["scope", "format"],
+      "defaults": {
+        "scope": "$global.default_scope",
+        "format": "pdf"
+      },
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_reports",
+            "method": "generate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "finance.analyze",
+      "utterances": [
+        "analyze my cash flow",
+        "what's my DSCR",
+        "show me my financial health",
+        "check my account balances",
+        "analyze spending patterns",
+        "what are my largest expenses",
+        "show me revenue trends",
+        "calculate my burn rate"
+      ],
+      "required": [],
+      "optional": ["scope", "timeframe", "metric"],
+      "defaults": {
+        "scope": "$global.default_scope",
+        "timeframe": "30d"
+      },
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_finance",
+            "method": "analyze"
+          }
+        }
+      ]
+    },
+    {
+      "name": "crm.manage",
+      "utterances": [
+        "add vendor {vendor_name}",
+        "track payment to {vendor_name}",
+        "show my vendor relationships",
+        "which vendors report to bureaus",
+        "update vendor {vendor_name} status",
+        "log payment to {vendor_name}",
+        "show me my trade lines"
+      ],
+      "required": [],
+      "optional": ["vendor_name", "action", "amount"],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_crm",
+            "method": "manage"
+          }
+        }
+      ]
+    },
+    {
+      "name": "funding.explore",
+      "utterances": [
+        "show me funding options",
+        "what funding am I eligible for",
+        "find business credit cards",
+        "search for term loans",
+        "show me SBA loans",
+        "what's my funding readiness score",
+        "create funding strategy",
+        "optimize my funding stack"
+      ],
+      "required": [],
+      "optional": ["product_type", "amount_range"],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_funding",
+            "method": "explore"
+          }
+        }
+      ]
+    },
+    {
+      "name": "coaching.get",
+      "utterances": [
+        "what should I do next",
+        "coach me on {topic}",
+        "how do I improve my {metric}",
+        "what's blocking my progress",
+        "give me credit building advice",
+        "help me with business credit",
+        "coach me through disputes",
+        "what's my next milestone"
+      ],
+      "required": [],
+      "optional": ["topic", "metric", "scope"],
+      "defaults": {
+        "scope": "$global.default_scope"
+      },
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_coaching",
+            "method": "guide"
+          }
+        }
+      ]
+    },
+    {
       "name": "task.add",
       "utterances": [
         "add a {scope} task {title} due {due_date} priority {priority} category {category}",

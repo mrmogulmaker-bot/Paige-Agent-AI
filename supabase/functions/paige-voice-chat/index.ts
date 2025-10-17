@@ -220,6 +220,84 @@ GUIDELINES:
             tools: [
               {
                 type: 'function',
+                name: 'insights_get',
+                description: 'Analyze user data and provide actionable insights about credit health, funding readiness, or financial performance',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Personal or business insights' },
+                    metric: { type: 'string', enum: ['credit_health', 'funding_readiness', 'build_score', 'financial_kpis', 'vendor_performance'], description: 'Specific metric to analyze' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'reports_generate',
+                description: 'Generate formatted reports including credit reports, funding readiness, compliance status, or BUILD score analysis',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    report_type: { type: 'string', enum: ['three_bureau', 'business_credit', 'funding_readiness', 'build_score', 'compliance', 'financial'], description: 'Type of report to generate' },
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Scope of the report' },
+                    format: { type: 'string', enum: ['pdf', 'json', 'summary'], description: 'Output format' }
+                  },
+                  required: ['report_type']
+                }
+              },
+              {
+                type: 'function',
+                name: 'finance_analyze',
+                description: 'Analyze financial data including cash flow, DSCR, balances, spending patterns, and revenue trends',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Personal or business finances' },
+                    timeframe: { type: 'string', enum: ['7d', '30d', '90d', '1y'], description: 'Time period for analysis' },
+                    metric: { type: 'string', enum: ['dscr', 'cash_flow', 'balances', 'spending', 'revenue', 'burn_rate'], description: 'Specific financial metric to analyze' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'crm_manage',
+                description: 'Manage vendor relationships, track trade lines, and log payments to vendors',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    vendor_name: { type: 'string', description: 'Name of the vendor' },
+                    action: { type: 'string', enum: ['add', 'update', 'log_payment', 'view'], description: 'Action to perform' },
+                    amount: { type: 'number', description: 'Payment amount if logging a payment' },
+                    payment_status: { type: 'string', enum: ['on_time', 'early', 'late'], description: 'Status of the payment' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'funding_explore',
+                description: 'Search for funding options, analyze eligibility, and create funding strategies based on BUILD score',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    product_type: { type: 'string', enum: ['credit_card', 'term_loan', 'line_of_credit', 'sba_loan', 'vendor_credit'], description: 'Type of funding product' },
+                    amount_range: { type: 'string', description: 'Desired funding amount range (e.g., "10k-50k")' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'coaching_get',
+                description: 'Provide personalized coaching and guidance on credit building, business development, disputes, or achieving milestones',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    topic: { type: 'string', enum: ['credit_building', 'business_credit', 'disputes', 'funding', 'compliance', 'vendor_relationships'], description: 'Coaching topic' },
+                    metric: { type: 'string', description: 'Specific metric user wants to improve' },
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Personal or business coaching' }
+                  }
+                }
+              },
+              {
+                type: 'function',
                 name: 'task_add',
                 description: 'Add a new task to personal or business workflow. Supports predefined templates like "funding checklist", "compliance checklist", "EIN registration", "D-U-N-S number", "business bank account", "dispute letter", "credit monitoring".',
                 parameters: {
@@ -380,6 +458,225 @@ GUIDELINES:
           const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
           
           switch (data.name) {
+            case 'insights_get': {
+              const scope = args.scope || 'business';
+              const metric = args.metric;
+              let insights: any = { scope, metric, data: {} };
+              
+              if (metric === 'credit_health' || !metric) {
+                const { data: accounts } = await supabaseAdmin
+                  .from('credit_accounts')
+                  .select('*')
+                  .eq('user_id', userId);
+                insights.data.credit_accounts = accounts;
+              }
+              
+              if (metric === 'funding_readiness' || metric === 'build_score' || !metric) {
+                const { data: buildScore } = await supabaseAdmin
+                  .from('build_scores')
+                  .select('*')
+                  .eq('user_id', userId)
+                  .maybeSingle();
+                insights.data.build_score = buildScore;
+              }
+              
+              if (metric === 'financial_kpis' || !metric) {
+                const { data: kpis } = await supabaseAdmin
+                  .from('financial_kpis')
+                  .select('*')
+                  .eq('user_id', userId)
+                  .maybeSingle();
+                insights.data.financial_kpis = kpis;
+              }
+              
+              result = {
+                success: true,
+                insights,
+                message: `${scope} ${metric || 'insights'} analyzed`
+              };
+              break;
+            }
+            
+            case 'reports_generate': {
+              const reportType = args.report_type;
+              const scope = args.scope || 'business';
+              let reportData: any = { type: reportType, scope };
+              
+              if (reportType === 'three_bureau' || reportType === 'business_credit') {
+                const { data: verification } = await supabaseAdmin
+                  .from('credit_report_verifications')
+                  .select('*')
+                  .eq('user_id', userId)
+                  .maybeSingle();
+                reportData.verification_status = verification;
+              }
+              
+              if (reportType === 'build_score' || reportType === 'funding_readiness') {
+                const { data: buildScore } = await supabaseAdmin
+                  .from('build_scores')
+                  .select('*')
+                  .eq('user_id', userId)
+                  .maybeSingle();
+                reportData.build_score = buildScore;
+              }
+              
+              result = {
+                success: true,
+                report: reportData,
+                message: `Generated ${reportType} report`
+              };
+              break;
+            }
+            
+            case 'finance_analyze': {
+              const scope = args.scope || 'business';
+              const timeframe = args.timeframe || '30d';
+              const metric = args.metric;
+              
+              const { data: kpis } = await supabaseAdmin
+                .from('financial_kpis')
+                .select('*')
+                .eq('user_id', userId)
+                .maybeSingle();
+              
+              const { data: accounts } = await supabaseAdmin
+                .from('connected_bank_accounts')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('is_active', true);
+              
+              result = {
+                success: true,
+                analysis: {
+                  scope,
+                  timeframe,
+                  metric,
+                  kpis,
+                  accounts_count: accounts?.length || 0
+                },
+                message: `Analyzed ${metric || 'financial data'} over ${timeframe}`
+              };
+              break;
+            }
+            
+            case 'crm_manage': {
+              const action = args.action || 'view';
+              const vendorName = args.vendor_name;
+              
+              if (action === 'add' && vendorName) {
+                const { data: vendor, error } = await supabaseAdmin
+                  .from('business_vendors')
+                  .insert({
+                    user_id: userId,
+                    vendor_name: vendorName,
+                    vendor_type: 'supplier',
+                    is_active: true
+                  })
+                  .select()
+                  .single();
+                
+                result = { success: !error, vendor, message: `Added ${vendorName}` };
+              } else if (action === 'log_payment' && vendorName) {
+                const { data: vendor } = await supabaseAdmin
+                  .from('business_vendors')
+                  .select('*')
+                  .eq('user_id', userId)
+                  .ilike('vendor_name', `%${vendorName}%`)
+                  .maybeSingle();
+                
+                if (vendor) {
+                  const paymentStatus = args.payment_status || 'on_time';
+                  const updateData: any = {
+                    total_payments: (vendor.total_payments || 0) + 1,
+                    last_payment_date: new Date().toISOString().split('T')[0]
+                  };
+                  
+                  if (paymentStatus === 'on_time') updateData.on_time_payments = (vendor.on_time_payments || 0) + 1;
+                  if (paymentStatus === 'early') updateData.early_payments = (vendor.early_payments || 0) + 1;
+                  if (paymentStatus === 'late') updateData.late_payments = (vendor.late_payments || 0) + 1;
+                  
+                  await supabaseAdmin
+                    .from('business_vendors')
+                    .update(updateData)
+                    .eq('id', vendor.id);
+                  
+                  result = { success: true, message: `Logged ${paymentStatus} payment to ${vendorName}` };
+                } else {
+                  result = { success: false, message: `Vendor ${vendorName} not found` };
+                }
+              } else {
+                const { data: vendors } = await supabaseAdmin
+                  .from('business_vendors')
+                  .select('*')
+                  .eq('user_id', userId);
+                
+                result = { success: true, vendors, message: `Found ${vendors?.length || 0} vendors` };
+              }
+              break;
+            }
+            
+            case 'funding_explore': {
+              const productType = args.product_type;
+              
+              const { data: buildScore } = await supabaseAdmin
+                .from('build_scores')
+                .select('*')
+                .eq('user_id', userId)
+                .maybeSingle();
+              
+              let query = supabaseAdmin
+                .from('funding_offers')
+                .select('*')
+                .eq('is_active', true);
+              
+              if (productType) query = query.eq('product_type', productType);
+              
+              const { data: offers } = await query;
+              
+              result = {
+                success: true,
+                funding: {
+                  build_score: buildScore?.build_score,
+                  tier: buildScore?.current_tier,
+                  offers: offers || []
+                },
+                message: `Found ${offers?.length || 0} funding options`
+              };
+              break;
+            }
+            
+            case 'coaching_get': {
+              const topic = args.topic;
+              const metric = args.metric;
+              const scope = args.scope || 'business';
+              
+              const { data: buildScore } = await supabaseAdmin
+                .from('build_scores')
+                .select('*')
+                .eq('user_id', userId)
+                .maybeSingle();
+              
+              const { data: tasks } = await supabaseAdmin
+                .from('tasks')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('status', 'pending')
+                .limit(5);
+              
+              result = {
+                success: true,
+                coaching: {
+                  topic,
+                  metric,
+                  scope,
+                  current_tier: buildScore?.current_tier,
+                  pending_tasks: tasks?.length || 0
+                },
+                message: `Coaching on ${topic || metric || 'your progress'}`
+              };
+              break;
+            }
+            
             case 'task_add':
               console.log('task_add called with args:', JSON.stringify(args));
               
