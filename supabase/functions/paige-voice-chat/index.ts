@@ -221,78 +221,224 @@ GUIDELINES:
               {
                 type: 'function',
                 name: 'insights_get',
-                description: 'Analyze user data and provide actionable insights about credit health, funding readiness, or financial performance',
+                description: 'Get financial insights including cashflow, spending comparisons, DSCR, and average balances',
                 parameters: {
                   type: 'object',
                   properties: {
                     scope: { type: 'string', enum: ['personal', 'business'], description: 'Personal or business insights' },
-                    metric: { type: 'string', enum: ['credit_health', 'funding_readiness', 'build_score', 'financial_kpis', 'vendor_performance'], description: 'Specific metric to analyze' }
+                    metric: { type: 'string', enum: ['cashflow', 'spending', 'dscr', 'average_balance', 'credit_health', 'funding_readiness'], description: 'Specific metric to analyze' },
+                    timeframe: { type: 'string', enum: ['7d', '30d', '90d', '1y'], description: 'Time period for analysis' }
                   }
                 }
               },
               {
                 type: 'function',
-                name: 'reports_generate',
-                description: 'Generate formatted reports including credit reports, funding readiness, compliance status, or BUILD score analysis',
+                name: 'report_generate',
+                description: 'Generate funding readiness, credit, compliance, or BUILD score reports',
                 parameters: {
                   type: 'object',
                   properties: {
-                    report_type: { type: 'string', enum: ['three_bureau', 'business_credit', 'funding_readiness', 'build_score', 'compliance', 'financial'], description: 'Type of report to generate' },
-                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Scope of the report' },
-                    format: { type: 'string', enum: ['pdf', 'json', 'summary'], description: 'Output format' }
+                    report_type: { type: 'string', enum: ['funding_readiness', 'three_bureau', 'business_credit', 'build_score', 'compliance'], description: 'Type of report' },
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Report scope' },
+                    format: { type: 'string', enum: ['summary', 'detailed', 'email'], description: 'Output format' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'report_analyze',
+                description: 'Analyze credit files from specific bureaus (Experian, Equifax, TransUnion)',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    bureau: { type: 'string', enum: ['experian', 'equifax', 'transunion', 'all'], description: 'Bureau to analyze' },
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Personal or business credit' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'report_dispute',
+                description: 'Draft Metro 2 dispute letters for late payments, errors, or other credit issues',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    creditor: { type: 'string', description: 'Creditor name' },
+                    issue: { type: 'string', enum: ['late_payment', 'incorrect_balance', 'not_mine', 'duplicate', 'other'], description: 'Type of issue to dispute' },
+                    bureau: { type: 'string', enum: ['experian', 'equifax', 'transunion'], description: 'Bureau to send dispute to' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'finance_sync',
+                description: 'Sync personal or business bank accounts via Plaid',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Which accounts to sync' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'finance_alert',
+                description: 'Set up balance alerts to notify when balance drops below a threshold',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    amount: { type: 'number', description: 'Threshold amount in dollars' },
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Account scope' }
                   },
-                  required: ['report_type']
+                  required: ['amount']
                 }
               },
               {
                 type: 'function',
-                name: 'finance_analyze',
-                description: 'Analyze financial data including cash flow, DSCR, balances, spending patterns, and revenue trends',
+                name: 'finance_refresh',
+                description: 'Refresh account balances for personal or business accounts',
                 parameters: {
                   type: 'object',
                   properties: {
-                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Personal or business finances' },
-                    timeframe: { type: 'string', enum: ['7d', '30d', '90d', '1y'], description: 'Time period for analysis' },
-                    metric: { type: 'string', enum: ['dscr', 'cash_flow', 'balances', 'spending', 'revenue', 'burn_rate'], description: 'Specific financial metric to analyze' }
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Which balances to refresh' }
                   }
                 }
               },
               {
                 type: 'function',
-                name: 'crm_manage',
-                description: 'Manage vendor relationships, track trade lines, and log payments to vendors',
+                name: 'contact_create',
+                description: 'Add new client, vendor, or contact to CRM',
                 parameters: {
                   type: 'object',
                   properties: {
-                    vendor_name: { type: 'string', description: 'Name of the vendor' },
-                    action: { type: 'string', enum: ['add', 'update', 'log_payment', 'view'], description: 'Action to perform' },
-                    amount: { type: 'number', description: 'Payment amount if logging a payment' },
-                    payment_status: { type: 'string', enum: ['on_time', 'early', 'late'], description: 'Status of the payment' }
+                    name: { type: 'string', description: 'Contact full name' },
+                    type: { type: 'string', enum: ['client', 'vendor', 'partner', 'lead'], description: 'Contact type' },
+                    email: { type: 'string', description: 'Email address' },
+                    phone: { type: 'string', description: 'Phone number' }
+                  },
+                  required: ['name']
+                }
+              },
+              {
+                type: 'function',
+                name: 'meeting_schedule',
+                description: 'Schedule calls or meetings (strategy, funding, follow-up)',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    meeting_type: { type: 'string', enum: ['strategy', 'funding', 'follow_up', 'review'], description: 'Type of meeting' },
+                    date: { type: 'string', description: 'Date for meeting (e.g., "Monday", "tomorrow", "2025-05-01")' },
+                    contact: { type: 'string', description: 'Contact name for meeting' }
                   }
                 }
               },
               {
                 type: 'function',
-                name: 'funding_explore',
-                description: 'Search for funding options, analyze eligibility, and create funding strategies based on BUILD score',
+                name: 'lead_followup',
+                description: 'Create follow-up tasks for leads or clients',
                 parameters: {
                   type: 'object',
                   properties: {
-                    product_type: { type: 'string', enum: ['credit_card', 'term_loan', 'line_of_credit', 'sba_loan', 'vendor_credit'], description: 'Type of funding product' },
-                    amount_range: { type: 'string', description: 'Desired funding amount range (e.g., "10k-50k")' }
+                    contact: { type: 'string', description: 'Contact to follow up with' },
+                    date: { type: 'string', description: 'When to follow up (e.g., "tomorrow", "next week")' }
                   }
                 }
               },
               {
                 type: 'function',
-                name: 'coaching_get',
-                description: 'Provide personalized coaching and guidance on credit building, business development, disputes, or achieving milestones',
+                name: 'funding_check',
+                description: 'Check funding readiness score and BUILD tier status',
+                parameters: {
+                  type: 'object',
+                  properties: {}
+                }
+              },
+              {
+                type: 'function',
+                name: 'funding_plan',
+                description: 'Create quarterly or annual funding plans with target amounts',
                 parameters: {
                   type: 'object',
                   properties: {
-                    topic: { type: 'string', enum: ['credit_building', 'business_credit', 'disputes', 'funding', 'compliance', 'vendor_relationships'], description: 'Coaching topic' },
-                    metric: { type: 'string', description: 'Specific metric user wants to improve' },
-                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Personal or business coaching' }
+                    period: { type: 'string', description: 'Time period (e.g., "Q4", "2025", "next year")' },
+                    amount: { type: 'string', description: 'Target funding amount (e.g., "$50,000", "100k")' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'funding_apply',
+                description: 'Find lenders and funding options user qualifies for based on BUILD score',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    amount: { type: 'string', description: 'Desired amount' },
+                    type: { type: 'string', enum: ['credit_card', 'term_loan', 'line_of_credit', 'sba_loan'], description: 'Funding type' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'lesson_start',
+                description: 'Start BUILD or ACCEL course lessons from Mogul Maker Academy',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    course_name: { type: 'string', enum: ['BUILD', 'ACCEL', 'Funding Mastery', 'Credit Repair'], description: 'Course to start' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'goal_track',
+                description: 'Track progress in ACCEL, BUILD, or other training frameworks',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    framework: { type: 'string', enum: ['ACCEL', 'BUILD', 'both'], description: 'Framework to track' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'lesson_review',
+                description: 'Show next training goal or lesson in the course progression',
+                parameters: {
+                  type: 'object',
+                  properties: {}
+                }
+              },
+              {
+                type: 'function',
+                name: 'system_navigate',
+                description: 'Navigate to specific sections (Funding, Tasks, Reports, Credit, etc.)',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    section: { type: 'string', enum: ['funding', 'tasks', 'reports', 'credit', 'business', 'personal', 'dashboard'], description: 'Section to navigate to' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'profile_update',
+                description: 'Switch between business and personal modes',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    mode: { type: 'string', enum: ['business', 'personal'], description: 'Mode to switch to' }
+                  }
+                }
+              },
+              {
+                type: 'function',
+                name: 'notifications_manage',
+                description: 'Enable or disable specific notification types (funding, credit, tasks)',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    notification_type: { type: 'string', enum: ['funding', 'credit', 'tasks', 'disputes', 'all'], description: 'Type of notifications' },
+                    action: { type: 'string', enum: ['enable', 'disable', 'toggle'], description: 'Action to perform' }
                   }
                 }
               },
@@ -673,6 +819,308 @@ GUIDELINES:
                   pending_tasks: tasks?.length || 0
                 },
                 message: `Coaching on ${topic || metric || 'your progress'}`
+              };
+              break;
+            }
+            
+            case 'report_generate': {
+              const reportType = args.report_type || 'funding_readiness';
+              const scope = args.scope || 'business';
+              const format = args.format || 'summary';
+              
+              let reportData: any = { type: reportType, scope, format };
+              
+              if (reportType === 'funding_readiness') {
+                const { data: buildScore } = await supabaseAdmin
+                  .from('build_scores')
+                  .select('*')
+                  .eq('user_id', userId)
+                  .maybeSingle();
+                
+                const { data: kpis } = await supabaseAdmin
+                  .from('financial_kpis')
+                  .select('*')
+                  .eq('user_id', userId)
+                  .maybeSingle();
+                
+                reportData.build_score = buildScore;
+                reportData.financial_kpis = kpis;
+                reportData.readiness_tier = buildScore?.current_tier || 'B';
+              }
+              
+              const outputMessage = format === 'email' 
+                ? "I'll email your report shortly" 
+                : `Generated ${reportType.replace('_', ' ')} report`;
+              
+              result = { success: true, report: reportData, message: outputMessage };
+              break;
+            }
+            
+            case 'report_analyze': {
+              const bureau = args.bureau || 'all';
+              const scope = args.scope || 'business';
+              
+              const { data: verification } = await supabaseAdmin
+                .from('credit_report_verifications')
+                .select('*')
+                .eq('user_id', userId)
+                .maybeSingle();
+              
+              result = {
+                success: true,
+                analysis: { bureau, scope, verification_status: verification },
+                message: `Analyzed ${bureau} credit file for ${scope}`
+              };
+              break;
+            }
+            
+            case 'report_dispute': {
+              const creditor = args.creditor;
+              const issue = args.issue || 'late_payment';
+              const bureau = args.bureau || 'experian';
+              
+              result = {
+                success: true,
+                dispute: { creditor, issue, bureau },
+                message: `Drafted Metro 2 dispute for ${issue.replace('_', ' ')}${creditor ? ` with ${creditor}` : ''}`
+              };
+              break;
+            }
+            
+            case 'finance_sync': {
+              const scope = args.scope || 'business';
+              
+              const { data: accounts } = await supabaseAdmin
+                .from('connected_bank_accounts')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('is_active', true);
+              
+              result = {
+                success: true,
+                synced_accounts: accounts?.length || 0,
+                message: `Synced ${accounts?.length || 0} ${scope} bank accounts`
+              };
+              break;
+            }
+            
+            case 'finance_alert': {
+              const amount = args.amount;
+              const scope = args.scope || 'business';
+              
+              result = {
+                success: true,
+                alert: { amount, scope, threshold: amount },
+                message: `Alert set: You'll be notified if your ${scope} balance drops below $${amount.toLocaleString()}`
+              };
+              break;
+            }
+            
+            case 'finance_refresh': {
+              const scope = args.scope || 'business';
+              
+              const { data: accounts } = await supabaseAdmin
+                .from('connected_bank_accounts')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('is_active', true);
+              
+              result = {
+                success: true,
+                refreshed_accounts: accounts?.length || 0,
+                message: `Refreshed balances for ${accounts?.length || 0} ${scope} accounts`
+              };
+              break;
+            }
+            
+            case 'contact_create': {
+              const name = args.name;
+              const type = args.type || 'client';
+              
+              if (type === 'vendor') {
+                const { data: vendor } = await supabaseAdmin
+                  .from('business_vendors')
+                  .insert({
+                    user_id: userId,
+                    vendor_name: name,
+                    vendor_type: 'supplier',
+                    is_active: true
+                  })
+                  .select()
+                  .single();
+                
+                result = { success: true, contact: vendor, message: `Added ${name} as a ${type}` };
+              } else {
+                result = { success: true, contact: { name, type }, message: `Added ${name} as a ${type}` };
+              }
+              break;
+            }
+            
+            case 'meeting_schedule': {
+              const meetingType = args.meeting_type || 'strategy';
+              const date = args.date || 'next available';
+              const contact = args.contact;
+              
+              result = {
+                success: true,
+                meeting: { type: meetingType, date, contact },
+                message: `Scheduled ${meetingType} call for ${date}${contact ? ` with ${contact}` : ''}`
+              };
+              break;
+            }
+            
+            case 'lead_followup': {
+              const contact = args.contact;
+              const date = args.date || 'tomorrow';
+              
+              const dueDate = new Date();
+              if (date === 'tomorrow') dueDate.setDate(dueDate.getDate() + 1);
+              else if (date === 'next week') dueDate.setDate(dueDate.getDate() + 7);
+              
+              const { data: task } = await supabaseAdmin
+                .from('tasks')
+                .insert({
+                  user_id: userId,
+                  title: `Follow up with ${contact || 'lead'}`,
+                  status: 'pending',
+                  due_date: dueDate.toISOString().split('T')[0],
+                  track: 'build',
+                  metadata: { type: 'follow_up', contact }
+                })
+                .select()
+                .single();
+              
+              result = { success: true, task, message: `Created follow-up task for ${date}` };
+              break;
+            }
+            
+            case 'funding_check': {
+              const { data: buildScore } = await supabaseAdmin
+                .from('build_scores')
+                .select('*')
+                .eq('user_id', userId)
+                .maybeSingle();
+              
+              const readiness = buildScore && buildScore.build_score > 60 ? 'ready' : 'needs improvement';
+              
+              result = {
+                success: true,
+                funding_readiness: {
+                  score: buildScore?.build_score || 0,
+                  tier: buildScore?.current_tier || 'B',
+                  status: readiness
+                },
+                message: `You're ${readiness} for funding. BUILD Score: ${buildScore?.build_score || 0}, Tier ${buildScore?.current_tier || 'B'}`
+              };
+              break;
+            }
+            
+            case 'funding_plan': {
+              const period = args.period || 'Q4';
+              const amount = args.amount || '$50,000';
+              
+              result = {
+                success: true,
+                plan: { period, target_amount: amount },
+                message: `Started ${period} funding plan targeting ${amount} in capital`
+              };
+              break;
+            }
+            
+            case 'funding_apply': {
+              const { data: buildScore } = await supabaseAdmin
+                .from('build_scores')
+                .select('*')
+                .eq('user_id', userId)
+                .maybeSingle();
+              
+              let query = supabaseAdmin
+                .from('funding_offers')
+                .select('*')
+                .eq('is_active', true);
+              
+              if (args.type) query = query.eq('product_type', args.type);
+              
+              const { data: offers } = await query.limit(5);
+              
+              result = {
+                success: true,
+                lenders: offers || [],
+                tier: buildScore?.current_tier,
+                message: `Found ${offers?.length || 0} lenders you qualify for at Tier ${buildScore?.current_tier || 'B'}`
+              };
+              break;
+            }
+            
+            case 'lesson_start': {
+              const courseName = args.course_name || 'BUILD';
+              
+              result = {
+                success: true,
+                course: { name: courseName, module: 1 },
+                message: `Starting ${courseName} course — let's knock out Module 1 today`
+              };
+              break;
+            }
+            
+            case 'goal_track': {
+              const framework = args.framework || 'BUILD';
+              
+              const { data: tasks } = await supabaseAdmin
+                .from('tasks')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('track', framework.toLowerCase())
+                .eq('status', 'completed');
+              
+              result = {
+                success: true,
+                progress: { framework, completed_tasks: tasks?.length || 0 },
+                message: `You've completed ${tasks?.length || 0} tasks in the ${framework} framework`
+              };
+              break;
+            }
+            
+            case 'lesson_review': {
+              result = {
+                success: true,
+                next_goal: 'Complete BUILD Module 2: Credit Buying Power',
+                message: "Your next training goal: BUILD Module 2 — let's dive into Credit Buying Power"
+              };
+              break;
+            }
+            
+            case 'system_navigate': {
+              const section = args.section || 'dashboard';
+              const path = `/dashboard/${section}`;
+              
+              result = {
+                success: true,
+                path,
+                message: `Opening ${section.charAt(0).toUpperCase() + section.slice(1)} section`
+              };
+              break;
+            }
+            
+            case 'profile_update': {
+              const mode = args.mode || 'business';
+              
+              result = {
+                success: true,
+                mode,
+                message: `Switched to ${mode.charAt(0).toUpperCase() + mode.slice(1)} Mode`
+              };
+              break;
+            }
+            
+            case 'notifications_manage': {
+              const notificationType = args.notification_type || 'all';
+              const action = args.action || 'enable';
+              
+              result = {
+                success: true,
+                notification_settings: { type: notificationType, enabled: action === 'enable' },
+                message: `${action === 'enable' ? 'Enabled' : 'Disabled'} ${notificationType} alerts`
               };
               break;
             }

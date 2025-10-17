@@ -107,18 +107,24 @@
     {
       "name": "insights.get",
       "utterances": [
+        "what's my {scope} cashflow for the last {timeframe}",
+        "compare my spending this month to last month",
+        "summarize my average balance and DSCR",
         "what are my insights",
         "show me business insights",
         "give me personal insights",
         "what should I focus on",
         "analyze my {scope} performance",
         "what's my credit health looking like",
-        "how am I doing on funding readiness"
+        "how am I doing on funding readiness",
+        "what's my average balance",
+        "show me my DSCR"
       ],
       "required": [],
-      "optional": ["scope", "metric"],
+      "optional": ["scope", "metric", "timeframe"],
       "defaults": {
-        "scope": "$global.default_scope"
+        "scope": "$global.default_scope",
+        "timeframe": "30d"
       },
       "confirm": false,
       "actions": [
@@ -132,21 +138,21 @@
       ]
     },
     {
-      "name": "reports.generate",
+      "name": "report.generate",
       "utterances": [
-        "generate a {report_type} report",
+        "generate my funding readiness report",
         "create my {scope} credit report",
         "pull my three bureau report",
         "show me my business credit report",
-        "generate funding readiness report",
         "create compliance report",
-        "show me my BUILD score report"
+        "show me my BUILD score report",
+        "generate a {report_type} report"
       ],
-      "required": ["report_type"],
-      "optional": ["scope", "format"],
+      "required": [],
+      "optional": ["report_type", "scope", "format"],
       "defaults": {
         "scope": "$global.default_scope",
-        "format": "pdf"
+        "format": "summary"
       },
       "confirm": false,
       "actions": [
@@ -160,97 +166,61 @@
       ]
     },
     {
-      "name": "finance.analyze",
+      "name": "report.analyze",
       "utterances": [
-        "analyze my cash flow",
-        "what's my DSCR",
-        "show me my financial health",
-        "check my account balances",
-        "analyze spending patterns",
-        "what are my largest expenses",
-        "show me revenue trends",
-        "calculate my burn rate"
+        "analyze my {bureau} business credit file",
+        "analyze my Experian business credit file",
+        "review my credit report",
+        "what's on my credit report"
       ],
       "required": [],
-      "optional": ["scope", "timeframe", "metric"],
+      "optional": ["bureau", "scope"],
       "defaults": {
-        "scope": "$global.default_scope",
-        "timeframe": "30d"
+        "scope": "business"
       },
       "confirm": false,
       "actions": [
         {
           "invoke": {
             "type": "invoke",
-            "source": "paige_finance",
+            "source": "paige_reports",
             "method": "analyze"
           }
         }
       ]
     },
     {
-      "name": "crm.manage",
+      "name": "report.dispute",
       "utterances": [
-        "add vendor {vendor_name}",
-        "track payment to {vendor_name}",
-        "show my vendor relationships",
-        "which vendors report to bureaus",
-        "update vendor {vendor_name} status",
-        "log payment to {vendor_name}",
-        "show me my trade lines"
+        "draft a Metro 2 dispute for late payments",
+        "create a dispute letter",
+        "draft dispute for {creditor}",
+        "generate dispute letter for {issue}"
       ],
       "required": [],
-      "optional": ["vendor_name", "action", "amount"],
-      "confirm": false,
+      "optional": ["creditor", "issue", "bureau"],
+      "confirm": true,
+      "confirm_text": "I'll draft a dispute letter for {issue}. Confirm?",
       "actions": [
         {
           "invoke": {
             "type": "invoke",
-            "source": "paige_crm",
-            "method": "manage"
+            "source": "paige_disputes",
+            "method": "draft"
           }
         }
       ]
     },
     {
-      "name": "funding.explore",
+      "name": "finance.sync",
       "utterances": [
-        "show me funding options",
-        "what funding am I eligible for",
-        "find business credit cards",
-        "search for term loans",
-        "show me SBA loans",
-        "what's my funding readiness score",
-        "create funding strategy",
-        "optimize my funding stack"
+        "sync my {scope} bank accounts",
+        "sync my personal bank accounts",
+        "sync my business accounts",
+        "sync transactions"
       ],
       "required": [],
-      "optional": ["product_type", "amount_range"],
-      "confirm": false,
-      "actions": [
-        {
-          "invoke": {
-            "type": "invoke",
-            "source": "paige_funding",
-            "method": "explore"
-          }
-        }
-      ]
-    },
-    {
-      "name": "coaching.get",
-      "utterances": [
-        "what should I do next",
-        "coach me on {topic}",
-        "how do I improve my {metric}",
-        "what's blocking my progress",
-        "give me credit building advice",
-        "help me with business credit",
-        "coach me through disputes",
-        "what's my next milestone"
-      ],
-      "required": [],
-      "optional": ["topic", "metric", "scope"],
+      "optional": ["scope"],
       "defaults": {
         "scope": "$global.default_scope"
       },
@@ -259,8 +229,314 @@
         {
           "invoke": {
             "type": "invoke",
-            "source": "paige_coaching",
-            "method": "guide"
+            "source": "plaid_sync",
+            "method": "sync"
+          }
+        }
+      ]
+    },
+    {
+      "name": "finance.alert",
+      "utterances": [
+        "alert me when my balance drops below {amount}",
+        "notify me if balance goes below {amount}",
+        "set up balance alert for {amount}",
+        "create low balance warning"
+      ],
+      "required": ["amount"],
+      "optional": ["scope"],
+      "defaults": {
+        "scope": "$global.default_scope"
+      },
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_alerts",
+            "method": "create"
+          }
+        }
+      ]
+    },
+    {
+      "name": "finance.refresh",
+      "utterances": [
+        "refresh my {scope} balances",
+        "refresh my business balances",
+        "update account balances",
+        "check current balance"
+      ],
+      "required": [],
+      "optional": ["scope"],
+      "defaults": {
+        "scope": "$global.default_scope"
+      },
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "plaid_balances",
+            "method": "refresh"
+          }
+        }
+      ]
+    },
+    {
+      "name": "contact.create",
+      "utterances": [
+        "add a new client {name}",
+        "create contact {name}",
+        "add vendor {name}",
+        "new client {name}"
+      ],
+      "required": ["name"],
+      "optional": ["type", "email", "phone"],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_crm",
+            "method": "create_contact"
+          }
+        }
+      ]
+    },
+    {
+      "name": "meeting.schedule",
+      "utterances": [
+        "schedule a {meeting_type} call for {date}",
+        "schedule a funding strategy call for Monday",
+        "book a meeting for {date}",
+        "set up call with {contact}"
+      ],
+      "required": [],
+      "optional": ["meeting_type", "date", "contact"],
+      "defaults": {
+        "meeting_type": "strategy"
+      },
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_calendar",
+            "method": "schedule"
+          }
+        }
+      ]
+    },
+    {
+      "name": "lead.followup",
+      "utterances": [
+        "create a follow-up task for {date}",
+        "remind me to follow up with {contact}",
+        "schedule follow-up for tomorrow",
+        "add follow-up task"
+      ],
+      "required": [],
+      "optional": ["contact", "date"],
+      "defaults": {
+        "date": "tomorrow"
+      },
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_crm",
+            "method": "followup"
+          }
+        }
+      ]
+    },
+    {
+      "name": "funding.check",
+      "utterances": [
+        "check my funding readiness",
+        "am I funding ready",
+        "what's my funding score",
+        "check my BUILD score"
+      ],
+      "required": [],
+      "optional": [],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_funding",
+            "method": "check_readiness"
+          }
+        }
+      ]
+    },
+    {
+      "name": "funding.plan",
+      "utterances": [
+        "create my {period} funding plan for {amount}",
+        "create my Q4 funding plan for $50,000",
+        "plan funding strategy",
+        "create capital plan"
+      ],
+      "required": [],
+      "optional": ["period", "amount"],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_funding",
+            "method": "create_plan"
+          }
+        }
+      ]
+    },
+    {
+      "name": "funding.apply",
+      "utterances": [
+        "show lenders I qualify for right now",
+        "what funding can I get",
+        "find lenders for me",
+        "show me funding options"
+      ],
+      "required": [],
+      "optional": ["amount", "type"],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_funding",
+            "method": "find_lenders"
+          }
+        }
+      ]
+    },
+    {
+      "name": "lesson.start",
+      "utterances": [
+        "start my BUILD course",
+        "begin {course_name} training",
+        "start the next lesson",
+        "continue my training"
+      ],
+      "required": [],
+      "optional": ["course_name"],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "mogul_academy",
+            "method": "start_lesson"
+          }
+        }
+      ]
+    },
+    {
+      "name": "goal.track",
+      "utterances": [
+        "track my progress in {framework}",
+        "track my progress in ACCEL",
+        "how am I progressing",
+        "show my training progress"
+      ],
+      "required": [],
+      "optional": ["framework"],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "mogul_academy",
+            "method": "track_progress"
+          }
+        }
+      ]
+    },
+    {
+      "name": "lesson.review",
+      "utterances": [
+        "show my next training goal",
+        "what's my next lesson",
+        "review my course progress",
+        "what should I study next"
+      ],
+      "required": [],
+      "optional": [],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "mogul_academy",
+            "method": "next_goal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "system.navigate",
+      "utterances": [
+        "open the {section} tab",
+        "open the Funding tab",
+        "go to {page}",
+        "show me {section}",
+        "navigate to {page}"
+      ],
+      "required": [],
+      "optional": ["section", "page"],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "navigate",
+            "toBinding": "resolvePage(section || page)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "profile.update",
+      "utterances": [
+        "switch to {mode} mode",
+        "switch to business mode",
+        "switch to personal mode",
+        "change to {mode}"
+      ],
+      "required": [],
+      "optional": ["mode"],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_profile",
+            "method": "switch_mode"
+          }
+        }
+      ]
+    },
+    {
+      "name": "notifications.manage",
+      "utterances": [
+        "turn on {notification_type} alerts",
+        "turn on funding alerts",
+        "enable notifications for {type}",
+        "disable {notification_type} alerts"
+      ],
+      "required": [],
+      "optional": ["notification_type", "action"],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "paige_notifications",
+            "method": "toggle"
           }
         }
       ]
