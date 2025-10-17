@@ -174,7 +174,26 @@ Parse user speech into intents and slots, then call platform actions via tool ca
 ROUTING RULES:
 - Personal scope: "personal", "my personal", "consumer", "me", "my credit"
 - Business scope: "business", "company", "EIN", "D-U-N-S", "Paydex", "DSCR", "Intelliscore", "BUILD"
-- If ambiguous: Ask once: "Do you want that in Personal or Business?"
+- If ambiguous (e.g., "add a task to call the bank"): Ask once: "Personal or Business?"
+- If user says fuzzy dates like "next Friday", normalize to absolute date and confirm: "Got it—due October 24. Correct?"
+
+MULTI-TURN MEMORY:
+- Remember context from last 5 turns (scope, priority, category)
+- If user says "make it P1" or "due Wednesday" in follow-up, apply to most recent task
+- DO NOT create duplicate tasks—idempotency by conversation turn
+
+CONFIRMATIONS:
+- Destructive ops (disconnect, delete) require verbatim: "Say 'confirm disconnect' to proceed"
+- Repeat key details back: "Got it—[task title] due [date], priority [P1/P2/P3]?"
+- After execution: "Done. [one-sentence summary]"
+
+EMPTY METRICS HANDLING:
+- If user asks "What's my score?" without specifying: Offer choices: "DSCR, average balance, or credit utilization?"
+- Always pull real data—never fabricate numbers
+
+OUT-OF-SCOPE DECLINE:
+- Finance is READ-ONLY. Cannot move money, transfer funds, or make payments.
+- If requested: "I can't move money. Want me to create a reminder instead?"
 
 USER CONTEXT:
 ${userContext}
@@ -182,10 +201,11 @@ ${userContext}
 KNOWLEDGE BASE:
 ${relevantKnowledge || "Use your expertise in credit repair, business credit, financial coaching."}
 
-CONFIRMATION FLOW:
-- Repeat key details back: "Got it—[task title] due [date]?"
-- For destructive ops: Require explicit "yes" or "confirm"
-- After execution: "Done. [one-sentence summary]"
+UX MICROCOPY RULES:
+- Success: "Done—business task created, P1, due Oct 24"
+- Clarify: "Personal or Business?"
+- Guardrail: "Say 'confirm disconnect' to proceed or 'cancel' to abort"
+- Decline: "I can't move money. Want me to create a reminder instead?"
 
 CRITICAL CONTENT FILTERING:
 - NEVER fabricate credit scores, bureau data, or financial metrics
@@ -197,7 +217,7 @@ GUIDELINES:
 - DO NOT introduce yourself unless asked
 - Suggest specific platform tools and sections
 - Be conversational, concise (2-3 sentences per response)
-- Default due dates to 3–10 days if missing
+- Default due dates to 7 days if missing
 - Always be encouraging and professional`;
         
         const sessionUpdate = {
@@ -596,11 +616,23 @@ GUIDELINES:
 
       // Handle function calls
       if (data.type === 'response.function_call_arguments.done') {
+        const startTime = Date.now();
         console.log('Function call:', data.name, data.arguments);
+        
+        let telemetryLog: any = {
+          ts: new Date().toISOString(),
+          user_id: userId,
+          turn_id: data.call_id,
+          intent: data.name,
+          status: 'pending',
+          confirmation_required: false
+        };
         
         try {
           const args = JSON.parse(data.arguments);
-          let result = {};
+          let result: any = {};
+          telemetryLog.slots = args;
+          
           const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
           
           switch (data.name) {
@@ -1471,22 +1503,48 @@ GUIDELINES:
             
             default:
               result = { success: false, error: 'Unknown function' };
+              telemetryLog.status = 'error';
+              telemetryLog.error = 'Unknown function';
           }
           
-          // Log the action (ignore errors if table doesn't exist yet)
+          // Complete telemetry log
+          const latencyMs = Date.now() - startTime;
+          telemetryLog.status = result.success ? 'success' : 'error';
+          telemetryLog.latency_ms = latencyMs;
+          telemetryLog.action = {
+            type: 'invoke',
+            source: data.name.split('_')[0],
+            method: data.name
+          };
+          
+          // Check if confirmation was required (destructive operations)
+          const destructiveOps = ['disconnect', 'delete', 'remove'];
+          telemetryLog.confirmation_required = destructiveOps.some(op => data.name.includes(op));
+          
+          // Log telemetry
+          console.log('TELEMETRY:', JSON.stringify(telemetryLog));
+          
+          // Log the action to database (ignore errors if table doesn't exist yet)
           try {
             await supabaseAdmin
               .from('voice_command_logs')
               .insert({
                 user_id: userId,
+                turn_id: data.call_id,
                 command: data.name,
+                intent: data.name,
+                utterance: args.title || args.metric || args.report_type || 'voice_command',
+                scope: args.scope || telemetryLog.slots?.scope || null,
                 arguments: args,
                 result: result,
+                status: telemetryLog.status,
+                latency_ms: latencyMs,
+                confirmation_required: telemetryLog.confirmation_required,
                 created_at: new Date().toISOString()
               });
-            console.log('Logged voice command');
+            console.log('Logged voice command to database');
           } catch (logError) {
-            console.log('Failed to log (table may not exist yet)');
+            console.log('Failed to log to database (table may not exist yet):', logError);
           }
           
           // Send function response back to OpenAI
@@ -1505,6 +1563,16 @@ GUIDELINES:
         } catch (error) {
           console.error('Function execution error:', error);
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          
+          // Log error telemetry
+          const latencyMs = Date.now() - startTime;
+          console.log('TELEMETRY_ERROR:', JSON.stringify({
+            ...telemetryLog,
+            status: 'error',
+            error: errorMessage,
+            latency_ms: latencyMs
+          }));
+          
           openAISocket?.send(JSON.stringify({
             type: 'conversation.item.create',
             item: {
