@@ -221,18 +221,47 @@ GUIDELINES:
               {
                 type: 'function',
                 name: 'task_add',
-                description: 'Add a new task to personal or business workflow',
+                description: 'Add a new task to personal or business workflow. Supports predefined templates like "funding checklist", "compliance checklist", "EIN registration", "D-U-N-S number", "business bank account", "dispute letter", "credit monitoring".',
                 parameters: {
                   type: 'object',
                   properties: {
-                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Task scope' },
-                    title: { type: 'string', description: 'Task title' },
-                    due_date: { type: 'string', description: 'Due date (YYYY-MM-DD)' },
-                    priority: { type: 'string', enum: ['low', 'medium', 'high', 'P1', 'P2', 'P3'], description: 'Task priority' },
-                    category: { type: 'string', description: 'Task category' },
-                    tags: { type: 'array', items: { type: 'string' }, description: 'Task tags' }
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Task scope - defaults to business for funding/compliance, personal for credit repair' },
+                    title: { type: 'string', description: 'Task title or template name (e.g., "funding checklist", "create EIN task")' },
+                    due_date: { type: 'string', description: 'Due date (YYYY-MM-DD) - defaults to 7 days from now' },
+                    priority: { type: 'string', enum: ['low', 'medium', 'high', 'P1', 'P2', 'P3'], description: 'Task priority - defaults to medium' },
+                    category: { type: 'string', description: 'Task category (Business Credit, Funding, Personal Credit, etc.)' },
+                    tags: { type: 'array', items: { type: 'string' }, description: 'Task tags for organization' },
+                    template_type: { type: 'string', enum: ['funding', 'compliance', 'ein', 'duns', 'bank_account', 'dispute', 'credit_monitoring', 'single'], description: 'Predefined template to use' }
                   },
-                  required: ['scope', 'title']
+                  required: ['title']
+                }
+              },
+              {
+                type: 'function',
+                name: 'task_assign',
+                description: 'Assign a task to a user or team member',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    task_id: { type: 'string', description: 'Task ID to assign' },
+                    assignee_id: { type: 'string', description: 'User ID to assign to' },
+                    assignee_name: { type: 'string', description: 'Assignee name for confirmation' }
+                  },
+                  required: ['task_id', 'assignee_id']
+                }
+              },
+              {
+                type: 'function',
+                name: 'task_remind',
+                description: 'Set a reminder for a task',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    task_id: { type: 'string', description: 'Task ID to set reminder for' },
+                    remind_at: { type: 'string', description: 'When to remind (ISO datetime or relative like "1 day before")' },
+                    notification_channel: { type: 'string', enum: ['app', 'email', 'sms'], description: 'How to deliver the reminder' }
+                  },
+                  required: ['task_id']
                 }
               },
               {
@@ -354,14 +383,83 @@ GUIDELINES:
             case 'task_add':
               console.log('task_add called with args:', JSON.stringify(args));
               
+              // Detect template type from title if not explicitly specified
+              let templateType = args.template_type;
+              const titleLower = args.title.toLowerCase();
+              
+              if (!templateType) {
+                if (titleLower.includes('funding') && titleLower.includes('checklist')) templateType = 'funding';
+                else if (titleLower.includes('compliance') && titleLower.includes('checklist')) templateType = 'compliance';
+                else if (titleLower.includes('ein')) templateType = 'ein';
+                else if (titleLower.includes('d-u-n-s') || titleLower.includes('duns')) templateType = 'duns';
+                else if (titleLower.includes('bank account')) templateType = 'bank_account';
+                else if (titleLower.includes('dispute')) templateType = 'dispute';
+                else if (titleLower.includes('credit monitoring')) templateType = 'credit_monitoring';
+                else templateType = 'single';
+              }
+              
+              // Infer scope if not provided
+              const inferredScope = args.scope || 
+                (['funding', 'compliance', 'ein', 'duns', 'bank_account'].includes(templateType) ? 'business' : 'personal');
+              
+              // Set default due date (7 days from now)
+              const defaultDueDate = new Date();
+              defaultDueDate.setDate(defaultDueDate.getDate() + 7);
+              const dueDate = args.due_date || defaultDueDate.toISOString().split('T')[0];
+              
               const taskMetadata: any = {
-                scope: args.scope,
+                scope: inferredScope,
                 priority: args.priority || 'medium',
-                created_via: 'voice'
+                created_via: 'voice',
+                template_type: templateType
               };
               
               if (args.tags && args.tags.length > 0) {
                 taskMetadata.tags = args.tags;
+              }
+              
+              // For template types, create a checklist of subtasks
+              if (templateType !== 'single') {
+                const templates: Record<string, string[]> = {
+                  funding: [
+                    'Review funding requirements and eligibility',
+                    'Gather financial documents (tax returns, bank statements)',
+                    'Complete business credit profile',
+                    'Apply for pre-qualification',
+                    'Submit formal funding application'
+                  ],
+                  compliance: [
+                    'Verify business registration and EIN',
+                    'Review state-specific compliance requirements',
+                    'Update operating agreements and bylaws',
+                    'Ensure proper licensing and permits',
+                    'Review insurance coverage'
+                  ],
+                  ein: [
+                    'Determine business entity type',
+                    'Gather required business information',
+                    'Apply for EIN via IRS website or Form SS-4',
+                    'Verify EIN receipt and save confirmation',
+                    'Update business records with EIN'
+                  ],
+                  duns: [
+                    'Gather business information (legal name, address, ownership)',
+                    'Apply for D-U-N-S number via Dun & Bradstreet',
+                    'Verify business contact information',
+                    'Monitor D-U-N-S registration status',
+                    'Update business credit profile with D-U-N-S'
+                  ],
+                  bank_account: [
+                    'Choose appropriate business bank',
+                    'Gather required documents (EIN, formation docs, ID)',
+                    'Complete bank account application',
+                    'Fund initial deposit',
+                    'Set up online banking and alerts'
+                  ]
+                };
+                
+                const subtasks = templates[templateType] || [];
+                taskMetadata.checklist = subtasks.map((item: string) => ({ title: item, completed: false }));
               }
               
               console.log('Inserting task with user_id:', userId);
@@ -370,11 +468,11 @@ GUIDELINES:
                 .from('tasks')
                 .insert({
                   user_id: userId,
-                  title: args.title,
-                  category: args.category || 'general',
+                  title: templateType === 'single' ? args.title : `${args.title.charAt(0).toUpperCase() + args.title.slice(1)} Checklist`,
+                  category: args.category || (inferredScope === 'business' ? 'Business Credit' : 'Personal Credit'),
                   status: 'pending',
-                  due_date: args.due_date,
-                  track: args.scope === 'business' ? 'build' : 'accel',
+                  due_date: dueDate,
+                  track: inferredScope === 'business' ? 'build' : 'accel',
                   metadata: taskMetadata
                 })
                 .select()
@@ -386,10 +484,69 @@ GUIDELINES:
               }
               
               console.log('Task inserted successfully:', taskData);
+              
+              const checklistMsg = taskMetadata.checklist 
+                ? ` with ${taskMetadata.checklist.length} checklist items`
+                : '';
+              
               result = { 
                 success: true, 
                 task: taskData, 
-                message: `I've added "${args.title}" to your ${args.scope} tasks${args.due_date ? ' due on ' + args.due_date : ''}.` 
+                message: `I've created "${taskData.title}" in your ${inferredScope} tasks${checklistMsg}, due ${dueDate}.` 
+              };
+              break;
+            
+            case 'task_assign':
+              const { data: assignedTask, error: assignError } = await supabaseAdmin
+                .from('tasks')
+                .update({ 
+                  assigned_to: args.assignee_id,
+                  metadata: { assigned_by: userId, assigned_at: new Date().toISOString() }
+                })
+                .eq('id', args.task_id)
+                .select()
+                .single();
+              
+              if (assignError) throw assignError;
+              result = { 
+                success: true, 
+                task: assignedTask,
+                message: `Assigned task to ${args.assignee_name || 'team member'}` 
+              };
+              break;
+            
+            case 'task_remind':
+              // Calculate reminder time
+              let remindAt = args.remind_at;
+              if (!remindAt || remindAt.includes('before')) {
+                // Get task due date and set reminder 1 day before
+                const { data: task } = await supabaseAdmin
+                  .from('tasks')
+                  .select('due_date')
+                  .eq('id', args.task_id)
+                  .single();
+                
+                if (task?.due_date) {
+                  const dueDate = new Date(task.due_date);
+                  dueDate.setDate(dueDate.getDate() - 1);
+                  remindAt = dueDate.toISOString();
+                }
+              }
+              
+              const { error: reminderError } = await supabaseAdmin
+                .from('tasks')
+                .update({ 
+                  metadata: { 
+                    reminder_at: remindAt,
+                    reminder_channel: args.notification_channel || 'app'
+                  }
+                })
+                .eq('id', args.task_id);
+              
+              if (reminderError) throw reminderError;
+              result = { 
+                success: true,
+                message: `Reminder set for ${remindAt} via ${args.notification_channel || 'app'}` 
               };
               break;
             

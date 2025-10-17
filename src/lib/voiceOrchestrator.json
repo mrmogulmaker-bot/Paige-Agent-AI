@@ -109,7 +109,17 @@
       "utterances": [
         "add a {scope} task {title} due {due_date} priority {priority} category {category}",
         "create a {scope} task {title} due {due_date}",
-        "new task {title}"
+        "new task {title}",
+        "add {title} to my list",
+        "remind me to {title}",
+        "I need to {title}",
+        "create funding checklist",
+        "create compliance checklist",
+        "add EIN registration task",
+        "add D-U-N-S task",
+        "set up business bank account task",
+        "create dispute letter task",
+        "add credit monitoring task"
       ],
       "required": [
         "title"
@@ -119,7 +129,8 @@
         "due_date",
         "priority",
         "category",
-        "tags"
+        "tags",
+        "template_type"
       ],
       "defaults": {
         "priority": "P2",
@@ -141,6 +152,61 @@
             "type": "invoke",
             "source": "tasks_business",
             "method": "create"
+          }
+        }
+      ]
+    },
+    {
+      "name": "task.assign",
+      "utterances": [
+        "assign {task_ref} to {assignee}",
+        "give {task_ref} to {assignee}",
+        "delegate {task_ref} to {assignee}"
+      ],
+      "required": [
+        "task_ref",
+        "assignee"
+      ],
+      "optional": [
+        "due_date",
+        "priority"
+      ],
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "tasks",
+            "method": "assign"
+          }
+        }
+      ]
+    },
+    {
+      "name": "task.remind",
+      "utterances": [
+        "remind me about {task_ref} at {time}",
+        "set reminder for {task_ref}",
+        "notify me when {task_ref} is due",
+        "remind me to {title} at {time}"
+      ],
+      "required": [
+        "task_ref"
+      ],
+      "optional": [
+        "time",
+        "notification_channel"
+      ],
+      "defaults": {
+        "notification_channel": "app"
+      },
+      "confirm": false,
+      "actions": [
+        {
+          "invoke": {
+            "type": "invoke",
+            "source": "tasks",
+            "method": "set_reminder"
           }
         }
       ]
