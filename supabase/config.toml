@@ -17,3 +17,15 @@ verify_jwt = true
 
 [functions.send-funding-report]
 verify_jwt = true
+
+[functions.voice-command-processor]
+verify_jwt = true
+
+[functions.schedule-automated-tasks]
+verify_jwt = true
+
+[functions.enroll-user-in-course]
+verify_jwt = true
+
+[functions.track-lesson-progress]
+verify_jwt = true
