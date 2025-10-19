@@ -501,6 +501,90 @@ export type Database = {
           },
         ]
       }
+      conversation_context: {
+        Row: {
+          active_scope: string | null
+          context_stack: Json | null
+          created_at: string | null
+          entities: Json | null
+          expires_at: string | null
+          id: string
+          intent: string | null
+          session_id: string
+          turn_number: number
+          user_id: string
+          utterance: string
+        }
+        Insert: {
+          active_scope?: string | null
+          context_stack?: Json | null
+          created_at?: string | null
+          entities?: Json | null
+          expires_at?: string | null
+          id?: string
+          intent?: string | null
+          session_id: string
+          turn_number?: number
+          user_id: string
+          utterance: string
+        }
+        Update: {
+          active_scope?: string | null
+          context_stack?: Json | null
+          created_at?: string | null
+          entities?: Json | null
+          expires_at?: string | null
+          id?: string
+          intent?: string | null
+          session_id?: string
+          turn_number?: number
+          user_id?: string
+          utterance?: string
+        }
+        Relationships: []
+      }
+      courses: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          difficulty_level: string | null
+          duration_minutes: number | null
+          framework: string
+          id: string
+          is_active: boolean | null
+          module_count: number | null
+          sort_order: number | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          difficulty_level?: string | null
+          duration_minutes?: number | null
+          framework: string
+          id?: string
+          is_active?: boolean | null
+          module_count?: number | null
+          sort_order?: number | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          difficulty_level?: string | null
+          duration_minutes?: number | null
+          framework?: string
+          id?: string
+          is_active?: boolean | null
+          module_count?: number | null
+          sort_order?: number | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       credit_accounts: {
         Row: {
           balance: number | null
@@ -842,6 +926,56 @@ export type Database = {
         }
         Relationships: []
       }
+      funding_plans: {
+        Row: {
+          business_id: string | null
+          created_at: string | null
+          current_tier: string | null
+          id: string
+          plan_steps: Json | null
+          readiness_score: number | null
+          status: string
+          target_amount: number
+          timeline: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          business_id?: string | null
+          created_at?: string | null
+          current_tier?: string | null
+          id?: string
+          plan_steps?: Json | null
+          readiness_score?: number | null
+          status?: string
+          target_amount: number
+          timeline?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          business_id?: string | null
+          created_at?: string | null
+          current_tier?: string | null
+          id?: string
+          plan_steps?: Json | null
+          readiness_score?: number | null
+          status?: string
+          target_amount?: number
+          timeline?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funding_plans_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_base: {
         Row: {
           category: Database["public"]["Enums"]["knowledge_category"]
@@ -880,6 +1014,59 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      lessons: {
+        Row: {
+          content_markdown: string | null
+          content_type: string | null
+          content_url: string | null
+          course_id: string
+          created_at: string | null
+          duration_minutes: number | null
+          id: string
+          is_required: boolean | null
+          module_number: number
+          sort_order: number | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          content_markdown?: string | null
+          content_type?: string | null
+          content_url?: string | null
+          course_id: string
+          created_at?: string | null
+          duration_minutes?: number | null
+          id?: string
+          is_required?: boolean | null
+          module_number: number
+          sort_order?: number | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          content_markdown?: string | null
+          content_type?: string | null
+          content_url?: string | null
+          course_id?: string
+          created_at?: string | null
+          duration_minutes?: number | null
+          id?: string
+          is_required?: boolean | null
+          module_number?: number
+          sort_order?: number | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lessons_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       letters: {
         Row: {
@@ -924,6 +1111,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notification_preferences: {
+        Row: {
+          alert_type: string
+          channel: string
+          created_at: string | null
+          enabled: boolean | null
+          id: string
+          metadata: Json | null
+          threshold_operator: string | null
+          threshold_value: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          alert_type: string
+          channel: string
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          metadata?: Json | null
+          threshold_operator?: string | null
+          threshold_value?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          alert_type?: string
+          channel?: string
+          created_at?: string | null
+          enabled?: boolean | null
+          id?: string
+          metadata?: Json | null
+          threshold_operator?: string | null
+          threshold_value?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       notifications: {
         Row: {
@@ -1412,6 +1638,60 @@ export type Database = {
           },
         ]
       }
+      user_progress: {
+        Row: {
+          completed_at: string | null
+          course_id: string
+          created_at: string | null
+          id: string
+          lesson_id: string | null
+          notes: string | null
+          progress_percentage: number | null
+          status: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          course_id: string
+          created_at?: string | null
+          id?: string
+          lesson_id?: string | null
+          notes?: string | null
+          progress_percentage?: number | null
+          status?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          course_id?: string
+          created_at?: string | null
+          id?: string
+          lesson_id?: string | null
+          notes?: string | null
+          progress_percentage?: number | null
+          status?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_progress_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -1538,6 +1818,51 @@ export type Database = {
           name?: string
           requirements?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      voice_command_logs: {
+        Row: {
+          action: Json | null
+          confirmation_required: boolean | null
+          created_at: string | null
+          id: string
+          intent: string | null
+          latency_ms: number | null
+          scope: string | null
+          slots: Json | null
+          status: string
+          turn_id: string
+          user_id: string
+          utterance: string
+        }
+        Insert: {
+          action?: Json | null
+          confirmation_required?: boolean | null
+          created_at?: string | null
+          id?: string
+          intent?: string | null
+          latency_ms?: number | null
+          scope?: string | null
+          slots?: Json | null
+          status: string
+          turn_id: string
+          user_id: string
+          utterance: string
+        }
+        Update: {
+          action?: Json | null
+          confirmation_required?: boolean | null
+          created_at?: string | null
+          id?: string
+          intent?: string | null
+          latency_ms?: number | null
+          scope?: string | null
+          slots?: Json | null
+          status?: string
+          turn_id?: string
+          user_id?: string
+          utterance?: string
         }
         Relationships: []
       }
