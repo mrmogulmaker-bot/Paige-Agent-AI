@@ -1973,6 +1973,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      trigger_business_credit_sync: {
+        Args: { _user_id: string }
+        Returns: Json
+      }
       update_profile_ssn: {
         Args: {
           _date_of_birth: string
