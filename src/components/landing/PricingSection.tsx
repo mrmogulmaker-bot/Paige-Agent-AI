@@ -57,9 +57,9 @@ const tiers = [
   },
   {
     name: "Enterprise",
-    price: "$497",
-    period: "/month",
-    description: "For serious entrepreneurs scaling fast",
+    price: "Let's Talk",
+    period: "",
+    description: "Customized yearly plans for your organization",
     features: [
       "Everything in Premium",
       "3M Framework (Make, Manage, Multiply)",
@@ -68,8 +68,10 @@ const tiers = [
       "Custom integration support",
       "Team collaboration tools",
       "Personalized training sessions",
+      "Fractional CFO & CPA services",
+      "Bookkeeping & full implementation",
     ],
-    cta: "Schedule Consultation",
+    cta: "Contact Sales",
     popular: false,
   },
 ];
