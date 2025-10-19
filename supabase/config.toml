@@ -11,3 +11,9 @@ verify_jwt = false
 
 [functions.personal-build-suggestions]
 verify_jwt = true
+
+[functions.send-sms-reminder]
+verify_jwt = true
+
+[functions.send-funding-report]
+verify_jwt = true
