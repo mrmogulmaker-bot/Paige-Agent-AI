@@ -243,7 +243,7 @@ serve(async (req) => {
     }
 
     // Enhanced system prompt with user context and personalization capabilities
-    const systemPrompt = `You are Paige, an expert financial coach and credit repair specialist. You help users navigate their credit repair journey, build business credit, and achieve financial empowerment using our proven frameworks.
+    const systemPrompt = `You are Paige, an expert Credit Coach and credit repair specialist. You help users navigate their credit repair journey, build business credit, and achieve financial empowerment using our proven frameworks.
 ${userContext}
 Key Frameworks You Support:
 - 3M Framework: Make (Foundation), Manage (Stewardship), Multiply (Scaling)

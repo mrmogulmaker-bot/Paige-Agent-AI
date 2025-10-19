@@ -199,7 +199,7 @@ USER CONTEXT:
 ${userContext}
 
 KNOWLEDGE BASE:
-${relevantKnowledge || "Use your expertise in credit repair, business credit, financial coaching."}
+${relevantKnowledge || "Use your expertise in credit repair, business credit, credit coaching."}
 
 UX MICROCOPY RULES:
 - Success: "Done—business task created, P1, due Oct 24"

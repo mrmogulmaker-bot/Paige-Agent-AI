@@ -288,7 +288,7 @@ export const FloatingChatbot = () => {
               <img src={paigeAvatar} alt="PaigeAgent.ai" className="w-8 h-8 rounded-full" />
               <div>
                 <h3 className="font-semibold">PaigeAgent.ai</h3>
-                <p className="text-xs text-muted-foreground">Your Financial Coach</p>
+                <p className="text-xs text-muted-foreground">Your Credit Coach</p>
               </div>
             </div>
             <Button
