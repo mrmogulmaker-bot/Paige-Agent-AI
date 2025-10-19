@@ -35,3 +35,6 @@ verify_jwt = true
 
 [functions.vapi-create-session]
 verify_jwt = true
+
+[functions.create-trial-checkout]
+verify_jwt = true

@@ -154,7 +154,7 @@ export function PricingSection() {
 
         <div className="mt-12 text-center">
           <p className="text-sm text-muted-foreground">
-            All plans include 14-day free trial • No credit card required • Cancel anytime
+            All plans include 14-day free trial • Payment method required • Auto-charges after trial • Cancel anytime
           </p>
         </div>
       </div>

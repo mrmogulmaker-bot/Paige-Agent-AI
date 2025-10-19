@@ -122,10 +122,47 @@ const Auth = () => {
           return;
         }
 
+        // Redirect to payment authorization for 14-day trial
         toast({
           title: "Account created!",
-          description: "Welcome to PaigeAgent.ai. Redirecting to dashboard...",
+          description: "Setting up your 14-day free trial...",
         });
+        
+        // Wait for session to be established
+        setTimeout(async () => {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+              toast({
+                title: "Error",
+                description: "Session not found. Please login to continue.",
+                variant: "destructive",
+              });
+              return;
+            }
+
+            // Create trial checkout session
+            const { data, error } = await supabase.functions.invoke('create-trial-checkout', {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            });
+
+            if (error) throw error;
+
+            if (data?.url) {
+              // Redirect to Stripe Checkout
+              window.location.href = data.url;
+            }
+          } catch (error) {
+            console.error('Trial setup error:', error);
+            toast({
+              title: "Error",
+              description: "Failed to set up trial. Please contact support.",
+              variant: "destructive",
+            });
+          }
+        }, 1000);
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
