@@ -1937,7 +1937,7 @@ export type Database = {
         | "personal_loan"
         | "student_loan"
         | "collections"
-      app_role: "admin" | "moderator" | "user" | "affiliate"
+      app_role: "admin" | "moderator" | "user" | "affiliate" | "coach"
       business_hierarchy_type:
         | "holding"
         | "parent"
@@ -2103,7 +2103,7 @@ export const Constants = {
         "student_loan",
         "collections",
       ],
-      app_role: ["admin", "moderator", "user", "affiliate"],
+      app_role: ["admin", "moderator", "user", "affiliate", "coach"],
       business_hierarchy_type: [
         "holding",
         "parent",
