@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AffiliateApplications } from "@/components/dashboard/AffiliateApplications";
 import { UserManagement } from "@/components/dashboard/UserManagement";
+import { UserPerformance } from "@/components/dashboard/UserPerformance";
 import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
@@ -130,12 +131,17 @@ const Admin = () => {
           </Card>
         </div>
 
-        <Tabs defaultValue="applications" className="space-y-4">
+        <Tabs defaultValue="performance" className="space-y-4">
           <TabsList>
+            <TabsTrigger value="performance">Performance</TabsTrigger>
             <TabsTrigger value="applications">Affiliate Applications</TabsTrigger>
             <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="performance" className="space-y-4">
+            <UserPerformance />
+          </TabsContent>
 
           <TabsContent value="applications" className="space-y-4">
             <AffiliateApplications />
