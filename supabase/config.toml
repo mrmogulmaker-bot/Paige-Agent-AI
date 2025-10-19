@@ -29,3 +29,6 @@ verify_jwt = true
 
 [functions.track-lesson-progress]
 verify_jwt = true
+
+[functions.vapi-create-session]
+verify_jwt = true

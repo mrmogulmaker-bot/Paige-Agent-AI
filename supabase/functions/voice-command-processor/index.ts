@@ -7,11 +7,26 @@ const corsHeaders = {
 };
 
 interface CommandRequest {
-  userId: string;
+  userId?: string;
   functionName: string;
   parameters: Record<string, any>;
   requiresConfirmation?: boolean;
   sessionId?: string;
+}
+
+interface VapiRequest {
+  message: {
+    type: string;
+    functionCall?: {
+      name: string;
+      parameters: Record<string, any>;
+    };
+  };
+  call?: {
+    customer?: {
+      number?: string;
+    };
+  };
 }
 
 serve(async (req) => {
@@ -24,10 +39,50 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { userId, functionName, parameters, requiresConfirmation, sessionId }: CommandRequest = await req.json();
+    const body = await req.json();
+    
+    // Handle both direct calls and Vapi webhook calls
+    let userId: string;
+    let functionName: string;
+    let parameters: Record<string, any>;
+    let sessionId: string | undefined;
 
-    if (!userId || !functionName) {
-      throw new Error('Missing userId or functionName');
+    if ('message' in body && body.message?.type === 'function-call') {
+      // Vapi webhook format
+      const vapiReq = body as VapiRequest;
+      const funcCall = vapiReq.message.functionCall;
+      
+      if (!funcCall) {
+        throw new Error('Missing function call in Vapi request');
+      }
+
+      functionName = funcCall.name;
+      parameters = funcCall.parameters;
+      sessionId = body.call?.id;
+
+      // Extract userId from session context
+      const { data: session } = await supabase
+        .from('conversation_context')
+        .select('user_id')
+        .eq('session_id', sessionId)
+        .single();
+
+      if (!session?.user_id) {
+        throw new Error('Session not found');
+      }
+
+      userId = session.user_id;
+    } else {
+      // Direct call format
+      const cmdReq = body as CommandRequest;
+      userId = cmdReq.userId!;
+      functionName = cmdReq.functionName;
+      parameters = cmdReq.parameters;
+      sessionId = cmdReq.sessionId;
+
+      if (!userId || !functionName) {
+        throw new Error('Missing userId or functionName');
+      }
     }
 
     console.log(`Processing command: ${functionName} for user ${userId}`);
