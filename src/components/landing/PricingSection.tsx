@@ -9,11 +9,11 @@ const tiers = [
     name: "Starter",
     price: "$47",
     period: "/month",
-    description: "Perfect for getting started with credit repair",
+    description: "Perfect for personal credit repair",
     features: [
+      "ACCEL Personal Credit Repair",
       "Personal credit monitoring",
       "Basic dispute tools",
-      "A.C.C.E.L. Framework access",
       "PaigeAgent.ai coaching",
       "Email support",
       "Credit score tracking",
@@ -25,11 +25,11 @@ const tiers = [
     name: "Professional",
     price: "$97",
     period: "/month",
-    description: "Complete credit and business building solution",
+    description: "Personal credit building and funding",
     features: [
       "Everything in Starter",
-      "Business credit building",
-      "B.U.I.L.D. Framework access",
+      "BUILD Personal Program",
+      "Personal funding strategies",
       "Priority PaigeAgent.ai coaching",
       "Priority support",
       "Fundability assessment",
@@ -42,11 +42,11 @@ const tiers = [
     name: "Premium",
     price: "$197",
     period: "/month",
-    description: "Advanced tools for serious credit builders",
+    description: "Business credit building and funding",
     features: [
       "Everything in Professional",
-      "Advanced analytics dashboard",
-      "Custom funding strategies",
+      "BUILD Business Program",
+      "Business credit building",
       "Dedicated account manager",
       "Unlimited disputes",
       "Unlimited AI coaching",
@@ -123,8 +123,8 @@ export function PricingSection() {
 
               <ul className="space-y-3 mb-8">
                 {tier.features.map((feature, featureIndex) => {
-                  const isHighlight = feature.includes("A.C.C.E.L.") || 
-                                    feature.includes("B.U.I.L.D.") || 
+                  const isHighlight = feature.includes("ACCEL") || 
+                                    feature.includes("BUILD") || 
                                     feature.includes("PaigeAgent.ai");
                   return (
                     <li key={featureIndex} className="flex items-start gap-3">

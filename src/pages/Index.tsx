@@ -40,7 +40,7 @@ const Index = () => {
           <div>
             <div className="text-center mb-12">
               <Badge className="mb-4 bg-accent/10 text-accent border-accent/20">
-                Personal Credit Repair
+                Personal Credit Repair Program
               </Badge>
               <h2 className="text-4xl lg:text-5xl font-bold mb-4">
                 The{" "}
@@ -50,7 +50,7 @@ const Index = () => {
                 Framework
               </h2>
               <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                Your systematic path to credit repair and score optimization
+                Repair your credit and optimize your personal credit score
               </p>
             </div>
 
@@ -76,7 +76,7 @@ const Index = () => {
           <div>
             <div className="text-center mb-12">
               <Badge className="mb-4 bg-success/10 text-success border-success/20">
-                Business Credit Building
+                Personal & Business Credit Building
               </Badge>
               <h2 className="text-4xl lg:text-5xl font-bold mb-4">
                 The{" "}
@@ -86,7 +86,7 @@ const Index = () => {
                 Framework
               </h2>
               <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-                Build business credit and unlock funding opportunities
+                Build personal or business credit and unlock funding opportunities
               </p>
             </div>
 
