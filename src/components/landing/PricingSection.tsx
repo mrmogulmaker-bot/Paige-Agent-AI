@@ -163,9 +163,12 @@ export function PricingSection() {
           ))}
         </div>
 
-        <div className="mt-12 text-center">
+        <div className="mt-12 text-center space-y-2">
           <p className="text-sm text-muted-foreground">
-            All plans include 14-day free trial • Payment method required • Auto-charges after trial • Cancel anytime
+            Start your <span className="font-semibold text-foreground">14-day free trial</span> • Payment authorization required upfront
+          </p>
+          <p className="text-xs text-muted-foreground">
+            You won't be charged during your trial • Auto-charges after 14 days • Cancel anytime before trial ends
           </p>
         </div>
       </div>
