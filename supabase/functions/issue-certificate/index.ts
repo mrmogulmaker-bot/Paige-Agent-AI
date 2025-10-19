@@ -6,11 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface CertificateRequest {
-  userId: string;
-  courseId: string;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -21,32 +16,33 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { userId, courseId }: CertificateRequest = await req.json();
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) throw new Error('No authorization header');
 
-    if (!userId || !courseId) {
-      throw new Error('Missing required fields: userId and courseId');
-    }
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) throw new Error('Unauthorized');
 
-    console.log('Issuing certificate for user:', userId, 'course:', courseId);
+    const { courseId } = await req.json();
 
-    // Check if course is completed
+    // Check if user completed the course
     const { data: progress, error: progressError } = await supabase
       .from('user_progress')
-      .select('*')
-      .eq('user_id', userId)
+      .select('course_status, progress_percentage')
+      .eq('user_id', user.id)
       .eq('course_id', courseId)
-      .eq('status', 'completed')
       .single();
 
-    if (progressError || !progress) {
-      throw new Error('Course not completed or not found');
+    if (progressError) throw progressError;
+    if (progress.course_status !== 'completed' || progress.progress_percentage < 100) {
+      throw new Error('Course not completed');
     }
 
     // Check if certificate already exists
     const { data: existing } = await supabase
       .from('course_certificates')
-      .select('*')
-      .eq('user_id', userId)
+      .select('id, verification_code')
+      .eq('user_id', user.id)
       .eq('course_id', courseId)
       .single();
 
@@ -54,56 +50,48 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: 'Certificate already issued',
-          certificate: existing 
+          certificate: existing,
+          message: 'Certificate already issued'
         }),
-        {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        { 
+          status: 200, 
+          headers: { 'Content-Type': 'application/json', ...corsHeaders } 
         }
       );
     }
 
-    // Create certificate
+    // Issue new certificate
     const { data: certificate, error: certError } = await supabase
       .from('course_certificates')
       .insert({
-        user_id: userId,
-        course_id: courseId,
+        user_id: user.id,
+        course_id: courseId
       })
       .select()
       .single();
 
     if (certError) throw certError;
 
-    console.log('Certificate issued successfully:', certificate.id);
-
-    // Create notification
-    await supabase.from('notifications').insert({
-      user_id: userId,
-      type: 'achievement',
-      title: 'Certificate Earned!',
-      message: 'Congratulations! Your course certificate is ready.',
-      metadata: { certificate_id: certificate.id, course_id: courseId }
-    });
+    console.log(`Certificate issued: ${certificate.id} for user ${user.id}, course ${courseId}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        certificate 
+        certificate,
+        message: 'Certificate issued successfully'
       }),
-      {
-        status: 200,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      { 
+        status: 200, 
+        headers: { 'Content-Type': 'application/json', ...corsHeaders } 
       }
     );
   } catch (error: any) {
     console.error('Error in issue-certificate:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      { 
+        status: 500, 
+        headers: { 'Content-Type': 'application/json', ...corsHeaders } 
       }
     );
   }
