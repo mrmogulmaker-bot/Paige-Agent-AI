@@ -27,30 +27,29 @@ export function HeroSection() {
             </Badge>
 
             <h1 className="text-5xl lg:text-6xl font-bold tracking-tight animate-fade-in" style={{ animationDelay: "0.1s" }}>
-              Build Your Business Credit & Access{" "}
+              Repair Your Credit, Build Fundability & Access{" "}
               <span className="text-accent font-extrabold">
                 Capital
               </span>
             </h1>
 
             <p className="text-xl text-muted-foreground leading-relaxed animate-fade-in" style={{ animationDelay: "0.2s" }}>
-              Transform your credit profile and unlock funding opportunities with our proven 
-              frameworks. Guided by AI-powered coaching every step of the way.
+              From credit repair to business funding—transform your financial future with ACCEL personal credit repair, BUILD personal credit building, and BUILD business credit programs. AI-powered guidance every step of the way.
             </p>
 
             {/* Benefits */}
             <div className="space-y-3 animate-fade-in" style={{ animationDelay: "0.3s" }}>
               <div className="flex items-center gap-3 hover:translate-x-2 transition-transform duration-300">
                 <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
-                <span className="text-foreground">FCRA-compliant credit repair strategies</span>
+                <span className="text-foreground">Repair personal credit with FCRA-compliant strategies</span>
               </div>
               <div className="flex items-center gap-3 hover:translate-x-2 transition-transform duration-300">
                 <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
-                <span className="text-foreground">Build business credit from $0 to fundable</span>
+                <span className="text-foreground">Build personal credit and unlock funding opportunities</span>
               </div>
               <div className="flex items-center gap-3 hover:translate-x-2 transition-transform duration-300">
                 <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
-                <span className="text-foreground">AI coach trained on proven methodologies</span>
+                <span className="text-foreground">Establish business credit from $0 to fundable</span>
               </div>
             </div>
 
