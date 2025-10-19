@@ -69,7 +69,7 @@ const tiers = [
       "Team collaboration tools",
       "Personalized training sessions",
     ],
-    cta: "Contact Sales",
+    cta: "Schedule Consultation",
     popular: false,
   },
 ];
@@ -141,10 +141,19 @@ export function PricingSection() {
                 className={`w-full ${
                   tier.popular
                     ? "bg-gradient-primary text-primary-foreground shadow-glow hover:shadow-glow-lg hover:scale-110 hover:brightness-125"
+                    : tier.name === "Enterprise"
+                    ? "bg-gradient-accent text-accent-foreground shadow-glow hover:shadow-glow-lg hover:scale-110 hover:brightness-125"
                     : "bg-muted text-foreground hover:bg-accent hover:text-accent-foreground hover:scale-105"
                 } transition-all duration-300`}
                 size="lg"
-                onClick={() => navigate("/auth?mode=signup")}
+                onClick={() => {
+                  if (tier.name === "Enterprise") {
+                    // Navigate to contact page for Enterprise
+                    navigate("/auth?mode=signup&plan=enterprise");
+                  } else {
+                    navigate("/auth?mode=signup");
+                  }
+                }}
               >
                 {tier.cta}
               </Button>

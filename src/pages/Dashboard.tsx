@@ -26,6 +26,7 @@ import { BusinessCreditSection } from "@/components/dashboard/BusinessCreditSect
 import { OrganizationChart } from "@/components/dashboard/OrganizationChart";
 import { BusinessDocumentsManager } from "@/components/dashboard/BusinessDocumentsManager";
 import { ProfileSettings } from "@/components/dashboard/ProfileSettings";
+import { ContactSupport } from "@/components/dashboard/ContactSupport";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
 import { PersonalDocuments } from "@/components/dashboard/PersonalDocuments";
 import { BusinessDocuments } from "@/components/dashboard/BusinessDocuments";
@@ -151,6 +152,7 @@ const Dashboard = () => {
                   {activeSection === "affiliate" && "Affiliate Program"}
                   {activeSection === "integrations" && "Integrations"}
                   {activeSection === "settings" && "Settings"}
+                  {activeSection === "contact" && "Contact & Support"}
                 </h1>
               </div>
               <div className="flex items-center gap-2 md:gap-3">
@@ -270,6 +272,7 @@ const Dashboard = () => {
                 {activeSection === "affiliate" && <AffiliateTracking />}
                   {activeSection === "integrations" && <Integrations />}
                 {activeSection === "settings" && <ProfileSettings />}
+                {activeSection === "contact" && <ContactSupport />}
               </div>
             </main>
           </div>

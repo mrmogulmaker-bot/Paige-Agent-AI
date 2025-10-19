@@ -38,3 +38,6 @@ verify_jwt = true
 
 [functions.create-trial-checkout]
 verify_jwt = true
+
+[functions.send-support-request]
+verify_jwt = true
