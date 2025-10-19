@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AffiliateApplications } from "@/components/dashboard/AffiliateApplications";
+import { UserManagement } from "@/components/dashboard/UserManagement";
 import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
@@ -141,15 +142,7 @@ const Admin = () => {
           </TabsContent>
 
           <TabsContent value="users" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>User Management</CardTitle>
-                <CardDescription>Manage user accounts and roles</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">User management interface coming soon...</p>
-              </CardContent>
-            </Card>
+            <UserManagement />
           </TabsContent>
 
           <TabsContent value="audit" className="space-y-4">
