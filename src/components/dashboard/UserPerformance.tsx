@@ -19,13 +19,17 @@ interface UserMetrics {
   personal_credit_score: number | null;
   business_credit_score: number | null;
   
-  // ACCEL program (Personal)
-  accel_progress: number | null;
-  accel_stage: string | null;
+  // ACCEL - Personal Credit Repair
+  accel_disputes: number;
+  accel_active_disputes: number;
   
-  // BUILD program (Business)
-  build_score: number | null;
-  current_tier: string | null;
+  // BUILD Personal - Personal Funding
+  build_personal_progress: number | null;
+  build_personal_tier: string | null;
+  
+  // BUILD Business - Business Funding
+  build_business_score: number | null;
+  build_business_tier: string | null;
   
   // Activity
   total_tasks: number;
@@ -71,10 +75,15 @@ export const UserPerformance = () => {
         .from("credit_accounts")
         .select("user_id");
 
-      // Get BUILD scores (business)
+      // Get BUILD Business scores
       const { data: buildScores } = await supabase
         .from("build_scores")
         .select("user_id, build_score, current_tier");
+      
+      // Get BUILD Personal progress (funding plans for personal)
+      const { data: personalFundingPlans } = await supabase
+        .from("funding_plans")
+        .select("user_id, readiness_score, current_tier, business_id");
 
       // Get tasks
       const { data: tasks } = await supabase
@@ -100,18 +109,21 @@ export const UserPerformance = () => {
       const metricsData: UserMetrics[] = authData.users.map((user) => {
         const profile = profiles?.find((p) => p.user_id === user.id);
         const subscription = subscriptions?.find((s) => s.user_id === user.id);
-        const buildScore = buildScores?.find((b) => b.user_id === user.id);
+        const buildBusinessScore = buildScores?.find((b) => b.user_id === user.id);
         
         const userTasks = tasks?.filter((t) => t.user_id === user.id) || [];
         const userDisputes = disputes?.filter((d) => d.user_id === user.id) || [];
         const userDocs = documents?.filter((d) => d.user_id === user.id) || [];
         const userBusinesses = businesses?.filter((b) => b.owner_user_id === user.id) || [];
         
-        // Calculate ACCEL progress - assume all tasks contribute to overall progress
-        const completedTasks = userTasks.filter((t) => t.status === "completed");
-        const accelProgress = userTasks.length > 0 
-          ? Math.round((completedTasks.length / userTasks.length) * 100) 
-          : null;
+        // ACCEL - Personal Credit Repair (disputes)
+        const activeDisputes = userDisputes.filter((d) => d.status === "submitted" || d.status === "under_review");
+        
+        // BUILD Personal - Personal funding plan (no business_id)
+        const personalFundingPlan = personalFundingPlans?.find((p) => p.user_id === user.id && !p.business_id);
+        
+        // BUILD Business - Business credit score
+        const businessCreditScore = buildBusinessScore?.build_score || null;
         
         
         const userAccounts = creditAccounts?.filter((a) => a.user_id === user.id) || [];
@@ -125,13 +137,19 @@ export const UserPerformance = () => {
           subscription_status: subscription?.status || "inactive",
           
           personal_credit_score: personalScore ? Math.round(personalScore) : null,
-          business_credit_score: buildScore?.build_score || null,
+          business_credit_score: businessCreditScore ? Math.round(businessCreditScore) : null,
           
-          accel_progress: accelProgress,
-          accel_stage: accelProgress === 100 ? "Completed" : accelProgress ? "In Progress" : null,
+          // ACCEL - Credit Repair
+          accel_disputes: userDisputes.length,
+          accel_active_disputes: activeDisputes.length,
           
-          build_score: buildScore?.build_score || null,
-          current_tier: buildScore?.current_tier || null,
+          // BUILD Personal
+          build_personal_progress: personalFundingPlan?.readiness_score || null,
+          build_personal_tier: personalFundingPlan?.current_tier || null,
+          
+          // BUILD Business
+          build_business_score: buildBusinessScore?.build_score || null,
+          build_business_tier: buildBusinessScore?.current_tier || null,
           
           total_tasks: userTasks.length,
           completed_tasks: userTasks.filter((t) => t.status === "completed").length,
@@ -255,11 +273,11 @@ export const UserPerformance = () => {
                 <TableHead>User</TableHead>
                 <TableHead>Plan</TableHead>
                 <TableHead>Personal Credit</TableHead>
-                <TableHead>ACCEL Progress</TableHead>
+                <TableHead>ACCEL (Repair)</TableHead>
+                <TableHead>BUILD Personal</TableHead>
                 <TableHead>Business Credit</TableHead>
-                <TableHead>BUILD Tier</TableHead>
+                <TableHead>BUILD Business</TableHead>
                 <TableHead>Tasks</TableHead>
-                <TableHead>Disputes</TableHead>
                 <TableHead>Activity</TableHead>
               </TableRow>
             </TableHeader>
@@ -291,15 +309,22 @@ export const UserPerformance = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      {user.accel_progress ? (
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-medium">{Math.round(user.accel_progress)}%</span>
-                          </div>
-                          <Progress value={user.accel_progress} className="h-1" />
-                          {user.accel_stage && (
+                      {user.accel_disputes > 0 ? (
+                        <div className="text-sm">
+                          <div className="font-medium">{user.accel_active_disputes} active</div>
+                          <div className="text-muted-foreground text-xs">{user.accel_disputes} total</div>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">No disputes</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {user.build_personal_progress ? (
+                        <div>
+                          <div className="font-medium">{Math.round(user.build_personal_progress)}%</div>
+                          {user.build_personal_tier && (
                             <Badge variant="outline" className="text-xs mt-1">
-                              {user.accel_stage}
+                              {user.build_personal_tier}
                             </Badge>
                           )}
                         </div>
@@ -318,11 +343,11 @@ export const UserPerformance = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      {user.build_score ? (
+                      {user.build_business_score ? (
                         <div>
-                          <div className="font-medium">{Math.round(user.build_score)}</div>
+                          <div className="font-medium">{Math.round(user.build_business_score)}</div>
                           <Badge variant="outline" className="text-xs">
-                            Tier {user.current_tier}
+                            Tier {user.build_business_tier}
                           </Badge>
                         </div>
                       ) : (
@@ -336,12 +361,6 @@ export const UserPerformance = () => {
                           <span className="text-muted-foreground">{taskRate}%</span>
                         </div>
                         <Progress value={taskRate} className="h-1" />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div>{user.active_disputes} active</div>
-                        <div className="text-muted-foreground text-xs">{user.total_disputes} total</div>
                       </div>
                     </TableCell>
                     <TableCell>
