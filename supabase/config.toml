@@ -21,6 +21,9 @@ verify_jwt = true
 [functions.voice-command-processor]
 verify_jwt = true
 
+[functions.issue-certificate]
+verify_jwt = true
+
 [functions.schedule-automated-tasks]
 verify_jwt = true
 

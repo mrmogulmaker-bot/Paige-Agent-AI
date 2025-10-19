@@ -386,6 +386,36 @@ export type Database = {
           },
         ]
       }
+      coach_clients: {
+        Row: {
+          client_user_id: string
+          coach_user_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          client_user_id: string
+          coach_user_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          client_user_id?: string
+          coach_user_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       commission_payments: {
         Row: {
           affiliate_id: string
@@ -542,6 +572,44 @@ export type Database = {
           utterance?: string
         }
         Relationships: []
+      }
+      course_certificates: {
+        Row: {
+          certificate_url: string | null
+          course_id: string
+          created_at: string
+          id: string
+          issued_at: string
+          user_id: string
+          verification_code: string
+        }
+        Insert: {
+          certificate_url?: string | null
+          course_id: string
+          created_at?: string
+          id?: string
+          issued_at?: string
+          user_id: string
+          verification_code?: string
+        }
+        Update: {
+          certificate_url?: string | null
+          course_id?: string
+          created_at?: string
+          id?: string
+          issued_at?: string
+          user_id?: string
+          verification_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_certificates_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       courses: {
         Row: {

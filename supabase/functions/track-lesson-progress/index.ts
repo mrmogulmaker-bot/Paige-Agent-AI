@@ -118,7 +118,7 @@ serve(async (req) => {
 
     if (updateError) throw updateError;
 
-    // If course just completed, send notification
+    // If course just completed, send notification and issue certificate
     if (status === 'completed' && progress.status !== 'completed') {
       await supabase.from('notifications').insert({
         user_id: userId,
@@ -131,6 +131,24 @@ serve(async (req) => {
           completion_date: new Date().toISOString(),
         },
       });
+
+      // Issue certificate
+      try {
+        const certResponse = await fetch(`${supabaseUrl}/functions/v1/issue-certificate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`
+          },
+          body: JSON.stringify({ userId, courseId })
+        });
+
+        if (!certResponse.ok) {
+          console.error('Failed to issue certificate:', await certResponse.text());
+        }
+      } catch (certError) {
+        console.error('Error issuing certificate:', certError);
+      }
     }
 
     console.log(`Progress updated: ${completedLessons.length}/${totalLessons} lessons (${progressPercentage}%)`);
