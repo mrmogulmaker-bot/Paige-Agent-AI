@@ -19,7 +19,11 @@ interface UserMetrics {
   personal_credit_score: number | null;
   business_credit_score: number | null;
   
-  // BUILD program
+  // ACCEL program (Personal)
+  accel_progress: number | null;
+  accel_stage: string | null;
+  
+  // BUILD program (Business)
   build_score: number | null;
   current_tier: string | null;
   
@@ -67,7 +71,7 @@ export const UserPerformance = () => {
         .from("credit_accounts")
         .select("user_id");
 
-      // Get BUILD scores
+      // Get BUILD scores (business)
       const { data: buildScores } = await supabase
         .from("build_scores")
         .select("user_id, build_score, current_tier");
@@ -103,7 +107,13 @@ export const UserPerformance = () => {
         const userDocs = documents?.filter((d) => d.user_id === user.id) || [];
         const userBusinesses = businesses?.filter((b) => b.owner_user_id === user.id) || [];
         
-        // Calculate average personal credit score (simplified)
+        // Calculate ACCEL progress - assume all tasks contribute to overall progress
+        const completedTasks = userTasks.filter((t) => t.status === "completed");
+        const accelProgress = userTasks.length > 0 
+          ? Math.round((completedTasks.length / userTasks.length) * 100) 
+          : null;
+        
+        
         const userAccounts = creditAccounts?.filter((a) => a.user_id === user.id) || [];
         const personalScore = userAccounts.length > 0 ? 650 + Math.random() * 200 : null;
 
@@ -116,6 +126,9 @@ export const UserPerformance = () => {
           
           personal_credit_score: personalScore ? Math.round(personalScore) : null,
           business_credit_score: buildScore?.build_score || null,
+          
+          accel_progress: accelProgress,
+          accel_stage: accelProgress === 100 ? "Completed" : accelProgress ? "In Progress" : null,
           
           build_score: buildScore?.build_score || null,
           current_tier: buildScore?.current_tier || null,
@@ -242,7 +255,9 @@ export const UserPerformance = () => {
                 <TableHead>User</TableHead>
                 <TableHead>Plan</TableHead>
                 <TableHead>Personal Credit</TableHead>
-                <TableHead>BUILD Score</TableHead>
+                <TableHead>ACCEL Progress</TableHead>
+                <TableHead>Business Credit</TableHead>
+                <TableHead>BUILD Tier</TableHead>
                 <TableHead>Tasks</TableHead>
                 <TableHead>Disputes</TableHead>
                 <TableHead>Activity</TableHead>
@@ -276,6 +291,33 @@ export const UserPerformance = () => {
                       )}
                     </TableCell>
                     <TableCell>
+                      {user.accel_progress ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-medium">{Math.round(user.accel_progress)}%</span>
+                          </div>
+                          <Progress value={user.accel_progress} className="h-1" />
+                          {user.accel_stage && (
+                            <Badge variant="outline" className="text-xs mt-1">
+                              {user.accel_stage}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">Not started</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {user.business_credit_score ? (
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{Math.round(user.business_credit_score)}</span>
+                          {getCreditTrend(user.business_credit_score)}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       {user.build_score ? (
                         <div>
                           <div className="font-medium">{Math.round(user.build_score)}</div>
@@ -284,7 +326,7 @@ export const UserPerformance = () => {
                           </Badge>
                         </div>
                       ) : (
-                        <span className="text-muted-foreground">-</span>
+                        <span className="text-muted-foreground">Not started</span>
                       )}
                     </TableCell>
                     <TableCell>
