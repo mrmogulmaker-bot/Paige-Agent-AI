@@ -26,62 +26,21 @@ export function PlanGate({ feature, children, onUpgradeClick }: PlanGateProps) {
       return;
     }
 
-    // Check if user is admin - admins get full access
-    const { data: adminRole } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("role", "admin")
-      .maybeSingle();
+    // Use server-side function for feature access check (includes admin check)
+    const { data: hasFeatureAccess, error } = await supabase
+      .rpc('check_feature_access', {
+        _user_id: user.id,
+        _feature: feature
+      });
 
-    if (adminRole) {
-      setHasAccess(true);
-      setLoading(false);
-      return;
-    }
-
-    const { data: subscription } = await supabase
-      .from("user_subscriptions")
-      .select("plan_slug")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (!subscription) {
+    if (error) {
+      console.error('Error checking feature access:', error);
       setHasAccess(false);
       setLoading(false);
       return;
     }
 
-    const { data: plan } = await supabase
-      .from("subscription_plans")
-      .select("*")
-      .eq("slug", subscription.plan_slug)
-      .maybeSingle();
-
-    if (!plan) {
-      setHasAccess(false);
-      setLoading(false);
-      return;
-    }
-
-    // Check feature access based on plan
-    let access = false;
-    switch (feature) {
-      case "business_credit":
-      case "funding_tools":
-        access = plan.has_business_credit || plan.has_funding_tools;
-        break;
-      case "unlimited_disputes":
-        access = plan.dispute_limit === null;
-        break;
-      case "advanced_analytics":
-        access = plan.slug === "premium" || plan.slug === "enterprise";
-        break;
-      default:
-        access = false;
-    }
-
-    setHasAccess(access);
+    setHasAccess(hasFeatureAccess || false);
     setLoading(false);
   };
 

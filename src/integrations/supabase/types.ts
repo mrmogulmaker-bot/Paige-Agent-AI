@@ -1871,6 +1871,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_feature_access: {
+        Args: { _feature: string; _user_id: string }
+        Returns: boolean
+      }
       check_rate_limit: {
         Args: {
           _function_name: string
@@ -1911,6 +1915,13 @@ export type Database = {
         Returns: undefined
       }
       validate_referral_code: {
+        Args: { _code: string }
+        Returns: {
+          affiliate_id: string
+          is_valid: boolean
+        }[]
+      }
+      validate_referral_code_secure: {
         Args: { _code: string }
         Returns: {
           affiliate_id: string

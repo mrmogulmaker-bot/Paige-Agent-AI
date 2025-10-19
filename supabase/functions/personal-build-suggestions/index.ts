@@ -12,6 +12,43 @@ serve(async (req) => {
   }
 
   try {
+    // Authenticate user and check rate limit
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabase.auth.getUser(token);
+      
+      if (user) {
+        const { data: rateLimitCheck } = await supabase.rpc('check_rate_limit', {
+          _user_id: user.id,
+          _function_name: 'personal-build-suggestions',
+          _max_requests: 30,
+          _window_minutes: 1
+        });
+
+        if (!rateLimitCheck) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Rate limit exceeded. Please try again later.',
+              retryAfter: 60
+            }),
+            { 
+              status: 429,
+              headers: { 
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                'Retry-After': '60'
+              }
+            }
+          );
+        }
+      }
+    }
+
     const { creditMix, currentScore } = await req.json();
     
     console.log('Analyzing credit mix:', creditMix);

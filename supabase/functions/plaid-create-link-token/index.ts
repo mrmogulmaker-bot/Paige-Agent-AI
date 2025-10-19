@@ -30,6 +30,37 @@ serve(async (req) => {
 
     console.log('Creating Plaid link token for user:', user.id);
 
+    // Check rate limit
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const { data: rateLimitCheck } = await supabaseAdmin.rpc('check_rate_limit', {
+      _user_id: user.id,
+      _function_name: 'plaid-create-link-token',
+      _max_requests: 60,
+      _window_minutes: 1
+    });
+
+    if (!rateLimitCheck) {
+      console.log('Rate limit exceeded for user:', user.id);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Rate limit exceeded. Please try again later.',
+          retryAfter: 60
+        }),
+        { 
+          status: 429,
+          headers: { 
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Retry-After': '60'
+          }
+        }
+      );
+    }
+
     const PLAID_CLIENT_ID = Deno.env.get('PLAID_CLIENT_ID');
     const PLAID_SECRET = Deno.env.get('PLAID_SECRET');
     const PLAID_ENV = 'sandbox'; // Use 'development', 'sandbox', or 'production'
