@@ -7,12 +7,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Plan configuration with Stripe price IDs - TEST MODE ($1/month)
+// Plan configuration with Stripe price IDs (PRODUCTION)
 const PLAN_PRICES = {
-  "starter": "price_1SIy3yKPsmWO0z4OVDGhmKal", // $1/month test
-  "professional": "price_1SIy4BKPsmWO0z4O1LENZwyc", // $1/month test
-  "premium": "price_1SIy4NKPsmWO0z4OAL7P6jC4", // $1/month test
-  "enterprise": "price_1SIy4YKPsmWO0z4Oly2z65Vd", // $1/month test
+  "starter": "price_1SIHEnKPsmWO0z4Ov62sBqVg",       // $47/month
+  "professional": "price_1SIHEyKPsmWO0z4OaFaUwl58",  // $97/month
+  "premium": "price_1SIHF7KPsmWO0z4OXier2L7d",       // $197/month
+  "enterprise": "price_1SIHFGKPsmWO0z4O268FATQ8",    // $497/month
 };
 
 const logStep = (step: string, details?: any) => {

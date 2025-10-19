@@ -7,8 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Default plan for trial signup - maps to Starter plan
-const DEFAULT_TRIAL_PRICE_ID = "price_1SIy3yKPsmWO0z4OVDGhmKal"; // Starter plan
+// Default plan for trial signup - maps to Starter plan (PRODUCTION)
+const DEFAULT_TRIAL_PRICE_ID = "price_1SIHEnKPsmWO0z4Ov62sBqVg"; // Starter plan $47/mo
 
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';

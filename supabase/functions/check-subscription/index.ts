@@ -9,10 +9,10 @@ const corsHeaders = {
 
 // Map Stripe product IDs to plan slugs
 const PRODUCT_TO_PLAN = {
-  "prod_TEkkzqf6jscnks": "starter",
-  "prod_TEkk3Vr0rtOzrW": "professional",
-  "prod_TEkk1OV31G4sSk": "premium",
-  "prod_TEkkY2JB9BWsth": "enterprise",
+  "prod_TEkkzqf6jscnks": "starter",      // $47/mo
+  "prod_TEkk3Vr0rtOzrW": "professional", // $97/mo
+  "prod_TEkk1OV31G4sSk": "premium",      // $197/mo
+  "prod_TEkkY2JB9BWsth": "enterprise",   // $497/mo (custom pricing)
 };
 
 const logStep = (step: string, details?: any) => {
