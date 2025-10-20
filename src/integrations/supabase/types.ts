@@ -1690,8 +1690,10 @@ export type Database = {
           dispute_limit: number | null
           features: Json
           has_business_credit: boolean | null
+          has_business_document_upload: boolean
           has_document_upload: boolean
           has_funding_tools: boolean | null
+          has_personal_document_upload: boolean
           id: string
           name: string
           price: number
@@ -1704,8 +1706,10 @@ export type Database = {
           dispute_limit?: number | null
           features?: Json
           has_business_credit?: boolean | null
+          has_business_document_upload?: boolean
           has_document_upload?: boolean
           has_funding_tools?: boolean | null
+          has_personal_document_upload?: boolean
           id?: string
           name: string
           price: number
@@ -1718,8 +1722,10 @@ export type Database = {
           dispute_limit?: number | null
           features?: Json
           has_business_credit?: boolean | null
+          has_business_document_upload?: boolean
           has_document_upload?: boolean
           has_funding_tools?: boolean | null
+          has_personal_document_upload?: boolean
           id?: string
           name?: string
           price?: number
