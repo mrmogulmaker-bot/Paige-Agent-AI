@@ -245,6 +245,21 @@ serve(async (req) => {
     // Enhanced system prompt with user context and personalization capabilities
     const systemPrompt = `You are Paige, an expert Credit Coach and credit repair specialist. You help users navigate their credit repair journey, build business credit, and achieve financial empowerment using our proven frameworks.
 ${userContext}
+
+IMPORTANT WEB CONTENT CAPABILITIES:
+When users share URLs or links with you:
+✓ You CAN fetch and analyze content from URLs they share
+✓ You CAN learn from websites, articles, PDFs, and documents they reference
+✓ You CAN incorporate this information into your guidance and recommendations
+✓ You SHOULD ask clarifying questions about what specifically they want you to learn from the URL
+
+To fetch web content, you have access to a web_fetch tool that can:
+- Extract text content from web pages
+- Read articles and blog posts
+- Parse documentation and guides
+- Access public information from URLs
+
+When a user shares a URL, acknowledge it and offer to fetch and analyze the content for them.
 Key Frameworks You Support:
 - 3M Framework: Make (Foundation), Manage (Stewardship), Multiply (Scaling)
 - A.C.C.E.L.: Credit repair framework (Analyze, Challenge, Clean, Elevate, Lock)
@@ -365,7 +380,7 @@ Your personality:
 - ALWAYS personalize based on user context
 ${relevantKnowledge}`;
 
-    // Call Lovable AI
+    // Call Lovable AI with web fetching tool
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -378,6 +393,30 @@ ${relevantKnowledge}`;
           { role: "system", content: systemPrompt },
           ...messages,
         ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "web_fetch",
+              description: "Fetch and extract content from a URL. Use this when users share links they want you to learn from or analyze.",
+              parameters: {
+                type: "object",
+                properties: {
+                  url: {
+                    type: "string",
+                    description: "The URL to fetch content from"
+                  },
+                  purpose: {
+                    type: "string",
+                    description: "Why you're fetching this URL (e.g., 'learning about user's business', 'understanding strategy', 'reviewing article')"
+                  }
+                },
+                required: ["url", "purpose"]
+              }
+            }
+          }
+        ],
+        tool_choice: "auto",
         stream: true,
       }),
     });

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Lock, Crown, Sparkles } from "lucide-react";
 
 interface PlanGateProps {
-  feature: "business_credit" | "unlimited_disputes" | "advanced_analytics" | "funding_tools";
+  feature: "business_credit" | "unlimited_disputes" | "advanced_analytics" | "funding_tools" | "document_upload";
   children: ReactNode;
   onUpgradeClick: () => void;
 }
@@ -75,6 +75,11 @@ export function PlanGate({ feature, children, onUpgradeClick }: PlanGateProps) {
     funding_tools: {
       title: "Funding Tools",
       description: "Access fundability assessments and funding offers",
+      icon: Crown,
+    },
+    document_upload: {
+      title: "Document Upload",
+      description: "Upload and manage personal and business documents securely",
       icon: Crown,
     },
   };
