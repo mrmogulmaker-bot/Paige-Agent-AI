@@ -110,6 +110,13 @@ export const PaigeAIChat = () => {
           setIsListening(true);
         } else if (data.type === "input_audio_buffer.speech_stopped") {
           setIsListening(false);
+          try {
+            // Explicitly commit audio and request a response to improve transcription reliability
+            wsRef.current?.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+            wsRef.current?.send(JSON.stringify({ type: "response.create" }));
+          } catch (e) {
+            console.error("Failed to commit audio buffer:", e);
+          }
         }
       };
       
