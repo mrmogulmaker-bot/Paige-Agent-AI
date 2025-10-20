@@ -25,7 +25,7 @@ export const PaigeAIChat = () => {
   // ElevenLabs conversation hook
   const conversation = useConversation({
     onConnect: () => {
-      console.log("ElevenLabs connected");
+      console.log("ElevenLabs connected - conversation ready");
       toast({
         title: "Voice chat started",
         description: "You can now speak with Paige",
@@ -33,6 +33,10 @@ export const PaigeAIChat = () => {
     },
     onDisconnect: () => {
       console.log("ElevenLabs disconnected");
+      toast({
+        title: "Voice chat ended",
+        description: "The conversation has been closed",
+      });
     },
     onMessage: (message) => {
       console.log("Received message:", message);
