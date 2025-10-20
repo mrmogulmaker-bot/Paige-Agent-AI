@@ -5,6 +5,7 @@ import type { User, Session } from "@supabase/supabase-js";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
+import { CurrentDateTime } from "@/components/dashboard/CurrentDateTime";
 import { CreditScoreOverview } from "@/components/dashboard/CreditScoreOverview";
 import { AccelProgress } from "@/components/dashboard/AccelProgress";
 import { BuildProgress } from "@/components/dashboard/BuildProgress";
@@ -157,7 +158,8 @@ const Dashboard = () => {
                   {activeSection === "contact" && "Contact & Support"}
                 </h1>
               </div>
-              <div className="flex items-center gap-2 md:gap-3">
+              <div className="flex items-center gap-2 md:gap-4">
+                <CurrentDateTime />
                 <NotificationBell />
                 <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs md:text-sm">
                   {isMobile ? "Out" : "Logout"}
