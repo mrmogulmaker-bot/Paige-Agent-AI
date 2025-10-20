@@ -35,6 +35,7 @@ import { PaymentHistory } from "@/components/dashboard/PaymentHistory";
 import { AffiliateTracking } from "@/components/dashboard/AffiliateTracking";
 import { Integrations } from "@/components/dashboard/Integrations";
 import { BankAccountsManager } from "@/components/dashboard/BankAccountsManager";
+import { FundingMarketplace } from "@/components/dashboard/FundingMarketplace";
 import { Button } from "@/components/ui/button";
 import { UpgradeBanner } from "@/components/dashboard/UpgradeBanner";
 import { UpgradeModal } from "@/components/dashboard/UpgradeModal";
@@ -142,6 +143,7 @@ const Dashboard = () => {
                   {activeSection === "tasks" && "Personal Tasks"}
                   {activeSection === "paige-ai" && "PaigeAgent.ai"}
                   {activeSection === "learning-vault" && "Learning Vault"}
+                  {activeSection === "funding-marketplace" && "Funding Marketplace"}
                   {activeSection === "business-credit" && "Business Credit"}
                   {activeSection === "build-steps" && "BUILD Program - Business"}
                   {activeSection === "business-bank-accounts" && "Business Bank Accounts"}
@@ -268,9 +270,14 @@ const Dashboard = () => {
                     </div>
                   </PlanGate>
                 )}
+                {activeSection === "funding-marketplace" && (
+                  <PlanGate feature="funding_tools" onUpgradeClick={() => setShowUpgradeModal(true)}>
+                    <FundingMarketplace />
+                  </PlanGate>
+                )}
                 {activeSection === "payments" && <PaymentHistory />}
                 {activeSection === "affiliate" && <AffiliateTracking />}
-                  {activeSection === "integrations" && <Integrations />}
+                {activeSection === "integrations" && <Integrations />}
                 {activeSection === "settings" && <ProfileSettings />}
                 {activeSection === "contact" && <ContactSupport />}
               </div>

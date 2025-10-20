@@ -1,7 +1,9 @@
-import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Plug, Shield, PhoneCall } from "lucide-react";
+import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Plug, Shield, PhoneCall, DollarSign } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useSubscription } from "@/contexts/SubscriptionContext";
+import { Lock } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -34,6 +36,7 @@ const businessMenuItems = [
 ];
 
 const generalMenuItems = [
+  { title: "Funding Marketplace", icon: DollarSign, id: "funding-marketplace", requiresProfessional: true },
   { title: "Payments", icon: Receipt, id: "payments" },
   { title: "Affiliate", icon: Users, id: "affiliate" },
   { title: "Integrations", icon: Plug, id: "integrations" },
@@ -51,6 +54,7 @@ interface AppSidebarProps {
 export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps) {
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
+  const { planSlug } = useSubscription();
 
   useEffect(() => {
     checkAdminStatus();
@@ -169,22 +173,31 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
-              {generalMenuItems.map((item) => (
-                <SidebarMenuItem key={item.id}>
-                  <SidebarMenuButton
-                    onClick={() => setActiveSection(item.id)}
-                    isActive={activeSection === item.id}
-                    className={`w-full px-3 py-2 rounded-lg transition-all ${
-                      activeSection === item.id
-                        ? "bg-primary/10 text-primary font-medium"
-                        : "hover:bg-muted text-sidebar-foreground"
-                    }`}
-                  >
-                    <item.icon className="w-5 h-5" />
-                    <span className="text-sm">{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {generalMenuItems.map((item) => {
+                const isLocked = item.requiresProfessional && planSlug !== "professional" && planSlug !== "premium" && planSlug !== "enterprise";
+                
+                return (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton
+                      onClick={() => !isLocked && setActiveSection(item.id)}
+                      isActive={activeSection === item.id}
+                      className={`w-full px-3 py-2 rounded-lg transition-all ${
+                        isLocked
+                          ? "opacity-60 cursor-not-allowed"
+                          : activeSection === item.id
+                          ? "bg-primary/10 text-primary font-medium"
+                          : "hover:bg-muted text-sidebar-foreground"
+                      }`}
+                    >
+                      <item.icon className="w-5 h-5" />
+                      <span className="text-sm flex items-center gap-2">
+                        {item.title}
+                        {isLocked && <Lock className="w-3 h-3" />}
+                      </span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
