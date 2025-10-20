@@ -99,6 +99,42 @@ serve(async (req) => {
 
     const { messages } = validatedData;
 
+    // Check if the last user message contains a URL
+    const lastUserMessage = messages.filter((m: any) => m.role === "user").pop();
+    let fetchedUrlContent = "";
+    
+    if (lastUserMessage) {
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const urls = lastUserMessage.content.match(urlRegex);
+      
+      if (urls && urls.length > 0) {
+        console.log('Found URLs in message:', urls);
+        
+        // Fetch content from the first URL found
+        try {
+          const urlResponse = await fetch(`${supabaseUrl}/functions/v1/fetch-url-content`, {
+            method: 'POST',
+            headers: {
+              'Authorization': authHeader,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url: urls[0] })
+          });
+
+          if (urlResponse.ok) {
+            const urlData = await urlResponse.json();
+            if (urlData.success) {
+              fetchedUrlContent = `\n\n=== FETCHED URL CONTENT ===\nURL: ${urlData.url}\nContent:\n${urlData.content}\n===========================\n`;
+              console.log('Successfully fetched URL content');
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching URL content:', error);
+          // Continue without URL content if fetch fails
+        }
+      }
+    }
+
     // Fetch comprehensive user context for personalized responses
     let userContext = "";
     try {
@@ -215,8 +251,7 @@ serve(async (req) => {
       // Continue without context if fetch fails
     }
 
-    // Extract the last user message to search for relevant knowledge
-    const lastUserMessage = messages.filter((m: any) => m.role === "user").pop();
+    // Search for relevant knowledge using the last user message
     let relevantKnowledge = "";
 
     if (lastUserMessage) {
@@ -244,7 +279,7 @@ serve(async (req) => {
 
     // Enhanced system prompt with user context and personalization capabilities
     const systemPrompt = `You are Paige, an expert Credit Coach and credit repair specialist. You help users navigate their credit repair journey, build business credit, and achieve financial empowerment using our proven frameworks.
-${userContext}
+${userContext}${fetchedUrlContent}
 
 IMPORTANT WEB CONTENT CAPABILITIES:
 When users share URLs or links with you:

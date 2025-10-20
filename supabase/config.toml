@@ -44,3 +44,6 @@ verify_jwt = true
 
 [functions.send-support-request]
 verify_jwt = true
+
+[functions.fetch-url-content]
+verify_jwt = true
