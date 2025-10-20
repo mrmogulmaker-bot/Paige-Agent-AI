@@ -92,6 +92,18 @@ export type Database = {
         }
         Relationships: []
       }
+      app_settings_owner: {
+        Row: {
+          owner_email: string
+        }
+        Insert: {
+          owner_email: string
+        }
+        Update: {
+          owner_email?: string
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action: string
@@ -2449,6 +2461,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      ensure_owner_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       get_business_hierarchy: {
         Args: { _user_id: string }
         Returns: {
@@ -2468,6 +2484,10 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      is_platform_owner: {
+        Args: Record<PropertyKey, never>
         Returns: boolean
       }
       trigger_business_credit_sync: {
