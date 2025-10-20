@@ -2,11 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2, Mic, MicOff, Volume2 } from "lucide-react";
+import { Send, Loader2, Mic, MicOff } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { AudioRecorder, encodeAudioForAPI, AudioQueue, createWavFromPCM } from "@/utils/VoiceAudio";
+import { useConversation } from "@11labs/react";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -19,20 +19,46 @@ export const PaigeAIChat = () => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isVoiceActive, setIsVoiceActive] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isListening, setIsListening] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   
-  const wsRef = useRef<WebSocket | null>(null);
-  const recorderRef = useRef<AudioRecorder | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioQueueRef = useRef<AudioQueue | null>(null);
-  const currentTranscriptRef = useRef<string>("");
-  const lastCancelAtRef = useRef<number>(0);
-  const lastCommitAtRef = useRef<number>(0);
-  const cooldownUntilRef = useRef<number>(0);
+  // ElevenLabs conversation hook
+  const conversation = useConversation({
+    onConnect: () => {
+      console.log("ElevenLabs connected");
+      toast({
+        title: "Voice chat started",
+        description: "You can now speak with Paige",
+      });
+    },
+    onDisconnect: () => {
+      console.log("ElevenLabs disconnected");
+    },
+    onMessage: (message) => {
+      console.log("Received message:", message);
+      
+      // Handle different message types
+      if (message.type === "agent_response") {
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: message.text || ""
+        }]);
+      } else if (message.type === "user_transcript") {
+        setMessages(prev => [...prev, {
+          role: "user",
+          content: message.text || ""
+        }]);
+      }
+    },
+    onError: (error) => {
+      console.error("ElevenLabs error:", error);
+      toast({
+        title: "Voice chat error",
+        description: error.message || "Failed to connect to voice chat",
+        variant: "destructive",
+      });
+    },
+  });
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -43,149 +69,26 @@ export const PaigeAIChat = () => {
   // Voice chat functions
   const startVoiceChat = async () => {
     try {
+      // Request microphone permission
       await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-      audioQueueRef.current = new AudioQueue(audioContextRef.current);
-      
+      // Get signed URL from backend
       const { data: { session } } = await supabase.auth.getSession();
-      let wsUrl = `wss://bfmyebsjyuoecmjskqhs.functions.supabase.co/functions/v1/paige-voice-chat`;
-      if (session?.access_token) {
-        wsUrl += `?token=${session.access_token}`;
-      }
-      wsRef.current = new WebSocket(wsUrl);
-      
-      wsRef.current.onopen = () => {
-        console.log("Voice chat connected");
-        setIsVoiceActive(true);
-        toast({
-          title: "Voice chat started",
-          description: "You can now speak with Paige",
-        });
-      };
-      
-      wsRef.current.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-        
-        if (data.type === "response.audio.delta") {
-          const binaryString = atob(data.delta);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          await audioQueueRef.current?.addToQueue(bytes);
-          setIsSpeaking(true);
-        } else if (data.type === "response.audio.done") {
-          setIsSpeaking(false);
-        } else if (data.type === "response.audio_transcript.delta") {
-          currentTranscriptRef.current += data.delta;
-        } else if (data.type === "response.audio_transcript.done") {
-          if (currentTranscriptRef.current) {
-            setMessages(prev => [...prev, {
-              role: "assistant",
-              content: currentTranscriptRef.current
-            }]);
-            currentTranscriptRef.current = "";
-          }
-        } else if (data.type === "conversation.item.input_audio_transcription.completed") {
-          const transcript = data.transcript 
-            || data.item?.content?.find((c: any) => c.type === 'input_text')?.text 
-            || data.item?.transcript 
-            || data.text;
-          if (transcript) {
-            setMessages(prev => [...prev, {
-              role: "user",
-              content: transcript
-            }]);
-          }
-        } else if (data.type === "conversation.item.input_audio_transcription.failed") {
-          console.warn("Transcription failed:", data);
-          const errMsg = data?.error?.message || "";
-          const isRateLimited = errMsg.includes("429") || data?.error?.code === 429;
-          if (isRateLimited) {
-            // brief backoff to avoid spamming STT
-            cooldownUntilRef.current = Date.now() + 2000;
-          }
-          toast({
-            title: isRateLimited ? "Rate limited" : "Couldn't hear you",
-            description: isRateLimited
-              ? "Too many transcription requests. Pause for a second and try again."
-              : "No clear speech detected. Try speaking closer to the mic.",
-            variant: "destructive",
-          });
-        } else if (data.type === 'response.function_call_arguments.done') {
-          console.log('Function executed:', data.name, data.arguments);
-          try {
-            const result = JSON.parse(data.arguments);
-            
-            if (data.name === 'navigate_to' && result.path) {
-              window.location.href = result.path;
-            }
-            
-            if (result.success && result.message) {
-              toast({
-                title: "Action Complete",
-                description: result.message,
-              });
-            }
-          } catch (e) {
-            console.error('Error parsing function result:', e);
-          }
-        } else if (data.type === "input_audio_buffer.speech_started") {
-          setIsListening(true);
-        } else if (data.type === "input_audio_buffer.speech_stopped") {
-          setIsListening(false);
-          // Using server VAD; avoid manual commit/response.create to prevent rate limits
-        }
-      };
-      
-      wsRef.current.onerror = () => {
-        toast({
-          title: "Connection error",
-          description: "Failed to connect to voice chat",
-          variant: "destructive",
-        });
-      };
-      
-      wsRef.current.onclose = () => {
-        setIsVoiceActive(false);
-        setIsSpeaking(false);
-        setIsListening(false);
-      };
-      
-      recorderRef.current = new AudioRecorder((audioData) => {
-        // Compute RMS to detect when the user starts speaking (barge-in detection)
-        let sumSquares = 0;
-        for (let i = 0; i < audioData.length; i++) sumSquares += audioData[i] * audioData[i];
-        const rms = Math.sqrt(sumSquares / audioData.length);
-
-        // If AI is speaking and the user starts talking, cancel current response immediately
-        if (isSpeaking && rms > 0.02) {
-          const now = Date.now();
-          if (wsRef.current?.readyState === WebSocket.OPEN && now - lastCancelAtRef.current > 800) {
-            console.log('Barge-in detected: cancelling current response');
-            wsRef.current.send(JSON.stringify({ type: 'response.cancel' }));
-            audioQueueRef.current?.clear();
-            setIsSpeaking(false);
-            lastCancelAtRef.current = now;
-          }
-        }
-
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          const nowCheck = Date.now();
-          if (nowCheck < cooldownUntilRef.current) return; // backoff after 429
-          if (rms <= 0.004) return; // gate low-signal frames to reduce noise-triggered turns
-          const encoded = encodeAudioForAPI(audioData);
-          wsRef.current.send(JSON.stringify({
-            type: "input_audio_buffer.append",
-            audio: encoded
-          }));
-        }
+      const { data, error } = await supabase.functions.invoke("elevenlabs-signed-url", {
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+        },
       });
-      
-      await recorderRef.current.start();
-      
+
+      if (error) throw error;
+
+      // Start conversation with signed URL
+      await conversation.startSession({ 
+        url: data.signedUrl 
+      });
+
     } catch (error) {
+      console.error("Error starting voice chat:", error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to start voice chat",
@@ -194,20 +97,8 @@ export const PaigeAIChat = () => {
     }
   };
   
-  const stopVoiceChat = () => {
-    recorderRef.current?.stop();
-    wsRef.current?.close();
-    audioQueueRef.current?.clear();
-    audioContextRef.current?.close();
-    
-    wsRef.current = null;
-    recorderRef.current = null;
-    audioContextRef.current = null;
-    audioQueueRef.current = null;
-    
-    setIsVoiceActive(false);
-    setIsSpeaking(false);
-    setIsListening(false);
+  const stopVoiceChat = async () => {
+    await conversation.endSession();
   };
 
   const handleSend = async () => {
@@ -317,9 +208,11 @@ export const PaigeAIChat = () => {
 
   useEffect(() => {
     return () => {
-      stopVoiceChat();
+      if (conversation.status === "connected") {
+        conversation.endSession();
+      }
     };
-  }, []);
+  }, [conversation]);
 
   return (
     <div className="max-w-4xl mx-auto h-[calc(100vh-4rem)]">
@@ -365,22 +258,15 @@ export const PaigeAIChat = () => {
           </div>
 
           <div className="border-t border-border p-4 space-y-3">
-            {isVoiceActive && (
+            {conversation.status === "connected" && (
               <div className="flex items-center justify-center gap-2 text-sm">
-                {isSpeaking && (
-                  <div className="flex items-center gap-2 text-primary">
-                    <Volume2 className="w-4 h-4 animate-pulse" />
-                    <span>Paige is speaking...</span>
-                  </div>
-                )}
-                {isListening && (
+                {conversation.isSpeaking ? (
                   <div className="flex items-center gap-2 text-primary">
                     <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                    <span>Listening...</span>
+                    <span>Paige is speaking...</span>
                   </div>
-                )}
-                {!isSpeaking && !isListening && (
-                  <span className="text-muted-foreground">Ready to listen</span>
+                ) : (
+                  <span className="text-muted-foreground">Listening...</span>
                 )}
               </div>
             )}
@@ -392,11 +278,11 @@ export const PaigeAIChat = () => {
                 onKeyPress={(e) => e.key === "Enter" && handleSend()}
                 placeholder="Ask Paige about your credit journey..."
                 className="flex-1"
-                disabled={isLoading || isVoiceActive}
+                disabled={isLoading || conversation.status === "connected"}
               />
               <Button 
                 onClick={handleSend} 
-                disabled={isLoading || !input.trim() || isVoiceActive}
+                disabled={isLoading || !input.trim() || conversation.status === "connected"}
                 className="bg-gradient-gold hover:opacity-90"
                 size="icon"
               >
@@ -405,11 +291,11 @@ export const PaigeAIChat = () => {
             </div>
             
             <Button
-              onClick={isVoiceActive ? stopVoiceChat : startVoiceChat}
-              variant={isVoiceActive ? "destructive" : "outline"}
+              onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat}
+              variant={conversation.status === "connected" ? "destructive" : "outline"}
               className="w-full"
             >
-              {isVoiceActive ? (
+              {conversation.status === "connected" ? (
                 <>
                   <MicOff className="w-4 h-4 mr-2" />
                   End Voice Chat
