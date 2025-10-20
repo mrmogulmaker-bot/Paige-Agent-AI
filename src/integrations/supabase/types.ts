@@ -499,6 +499,50 @@ export type Database = {
           },
         ]
       }
+      compliance_checkpoints: {
+        Row: {
+          api_endpoint: string | null
+          checkpoint_type: string
+          consent_event_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          status: string
+          user_id: string
+          validation_result: Json | null
+        }
+        Insert: {
+          api_endpoint?: string | null
+          checkpoint_type: string
+          consent_event_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          status?: string
+          user_id: string
+          validation_result?: Json | null
+        }
+        Update: {
+          api_endpoint?: string | null
+          checkpoint_type?: string
+          consent_event_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          status?: string
+          user_id?: string
+          validation_result?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "compliance_checkpoints_consent_event_id_fkey"
+            columns: ["consent_event_id"]
+            isOneToOne: false
+            referencedRelation: "consent_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       connected_bank_accounts: {
         Row: {
           account_id: string
@@ -566,6 +610,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      consent_events: {
+        Row: {
+          consent_type: Database["public"]["Enums"]["consent_type"]
+          created_at: string
+          disclosure_version: string
+          granted: boolean
+          id: string
+          ip_address: string | null
+          metadata: Json | null
+          session_id: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          consent_type: Database["public"]["Enums"]["consent_type"]
+          created_at?: string
+          disclosure_version: string
+          granted?: boolean
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          session_id?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          consent_type?: Database["public"]["Enums"]["consent_type"]
+          created_at?: string
+          disclosure_version?: string
+          granted?: boolean
+          id?: string
+          ip_address?: string | null
+          metadata?: Json | null
+          session_id?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       conversation_context: {
         Row: {
@@ -803,6 +886,75 @@ export type Database = {
         }
         Relationships: []
       }
+      data_deletion_requests: {
+        Row: {
+          completed_at: string | null
+          id: string
+          metadata: Json | null
+          requested_at: string
+          status: string
+          user_id: string
+          verification_code: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          id?: string
+          metadata?: Json | null
+          requested_at?: string
+          status?: string
+          user_id: string
+          verification_code?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          id?: string
+          metadata?: Json | null
+          requested_at?: string
+          status?: string
+          user_id?: string
+          verification_code?: string | null
+        }
+        Relationships: []
+      }
+      disclosure_templates: {
+        Row: {
+          content: string
+          created_at: string | null
+          disclosure_type: Database["public"]["Enums"]["disclosure_type"]
+          effective_date: string
+          id: string
+          is_active: boolean | null
+          metadata: Json | null
+          title: string
+          updated_at: string | null
+          version: string
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          disclosure_type: Database["public"]["Enums"]["disclosure_type"]
+          effective_date?: string
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          title: string
+          updated_at?: string | null
+          version: string
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          disclosure_type?: Database["public"]["Enums"]["disclosure_type"]
+          effective_date?: string
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          title?: string
+          updated_at?: string | null
+          version?: string
+        }
+        Relationships: []
+      }
       dispute_letters: {
         Row: {
           account_number: string | null
@@ -942,6 +1094,56 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      financial_api_logs: {
+        Row: {
+          api_endpoint: string
+          api_provider: string
+          consent_event_id: string | null
+          created_at: string
+          id: string
+          lenders_displayed: Json | null
+          metadata: Json | null
+          request_type: string
+          response_status: number | null
+          session_id: string | null
+          user_id: string
+        }
+        Insert: {
+          api_endpoint: string
+          api_provider: string
+          consent_event_id?: string | null
+          created_at?: string
+          id?: string
+          lenders_displayed?: Json | null
+          metadata?: Json | null
+          request_type: string
+          response_status?: number | null
+          session_id?: string | null
+          user_id: string
+        }
+        Update: {
+          api_endpoint?: string
+          api_provider?: string
+          consent_event_id?: string | null
+          created_at?: string
+          id?: string
+          lenders_displayed?: Json | null
+          metadata?: Json | null
+          request_type?: string
+          response_status?: number | null
+          session_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_api_logs_consent_event_id_fkey"
+            columns: ["consent_event_id"]
+            isOneToOne: false
+            referencedRelation: "consent_events"
             referencedColumns: ["id"]
           },
         ]
@@ -2310,6 +2512,19 @@ export type Database = {
         | "parent"
         | "subsidiary"
         | "standalone"
+      consent_type:
+        | "credit_report_access"
+        | "croa_rights"
+        | "data_sharing"
+        | "offer_display"
+        | "adverse_action"
+      disclosure_type:
+        | "credit_report_access"
+        | "croa_rights_notice"
+        | "data_sharing_consent"
+        | "offer_display_disclaimer"
+        | "adverse_action_routing"
+        | "educational_purposes"
       dispute_status:
         | "draft"
         | "submitted"
@@ -2481,6 +2696,21 @@ export const Constants = {
         "parent",
         "subsidiary",
         "standalone",
+      ],
+      consent_type: [
+        "credit_report_access",
+        "croa_rights",
+        "data_sharing",
+        "offer_display",
+        "adverse_action",
+      ],
+      disclosure_type: [
+        "credit_report_access",
+        "croa_rights_notice",
+        "data_sharing_consent",
+        "offer_display_disclaimer",
+        "adverse_action_routing",
+        "educational_purposes",
       ],
       dispute_status: [
         "draft",

@@ -47,3 +47,9 @@ verify_jwt = true
 
 [functions.fetch-url-content]
 verify_jwt = true
+
+[functions.log-consent]
+verify_jwt = true
+
+[functions.request-data-deletion]
+verify_jwt = true
