@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar as CalendarIcon, CheckCircle2, Clock, AlertCircle, Sparkles, Plus, Trash2, CalendarDays, ListTodo } from "lucide-react";
-import { format, isPast, differenceInDays, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth } from "date-fns";
+import { format, isPast, differenceInDays, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, startOfWeek, endOfWeek, addMonths, subMonths } from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -104,7 +104,9 @@ export function TaskManager({ businessMode = false }: TaskManagerProps) {
   const renderCalendarView = () => {
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
-    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+    const calendarStart = startOfWeek(monthStart);
+    const calendarEnd = endOfWeek(monthEnd);
+    const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
     return (
       <div className="space-y-4">
@@ -116,7 +118,7 @@ export function TaskManager({ businessMode = false }: TaskManagerProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))}
+              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
             >
               Previous
             </Button>
@@ -130,7 +132,7 @@ export function TaskManager({ businessMode = false }: TaskManagerProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))}
+              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
             >
               Next
             </Button>
@@ -143,7 +145,7 @@ export function TaskManager({ businessMode = false }: TaskManagerProps) {
               {day}
             </div>
           ))}
-          {daysInMonth.map((day) => {
+          {calendarDays.map((day) => {
             const dayTasks = getTasksForDay(day);
             const isToday = isSameDay(day, new Date());
             
