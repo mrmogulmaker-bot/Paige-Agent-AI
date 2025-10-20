@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
-import { AudioRecorder, encodeAudioForAPI, AudioQueue, createWavFromPCM } from "@/utils/VoiceAudio";
+import { useConversation } from "@11labs/react";
 
 type Message = {
   role: "user" | "assistant";
@@ -24,16 +24,37 @@ export const FloatingChatbot = () => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isVoiceActive, setIsVoiceActive] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const recorderRef = useRef<AudioRecorder | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioQueueRef = useRef<AudioQueue | null>(null);
-  const lastCancelAtRef = useRef<number>(0);
   const { toast } = useToast();
+
+  // ElevenLabs conversation hook (unified with Dashboard Paige)
+  const conversation = useConversation({
+    overrides: {
+      agent: {
+        prompt: {
+          prompt: `You are Paige, a concise and focused credit coaching assistant. Keep responses brief (2-3 sentences), ask clarifying questions first, and only go deep if the user confirms.`
+        }
+      }
+    },
+    onConnect: () => {
+      toast({ title: "Voice chat started", description: "You can now speak with Paige" });
+    },
+    onDisconnect: () => {
+      toast({ title: "Voice chat ended", description: "The conversation has been closed" });
+    },
+    onMessage: (message) => {
+      if (message.source === "ai") {
+        setMessages(prev => [...prev, { role: "assistant", content: message.message || "" }]);
+      } else if (message.source === "user") {
+        setMessages(prev => [...prev, { role: "user", content: message.message || "" }]);
+      }
+    },
+    onError: (error) => {
+      console.error("ElevenLabs error:", error);
+      toast({ title: "Voice chat error", description: typeof error === 'string' ? error : "Failed to connect to voice chat", variant: "destructive" });
+    },
+  });
+
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -43,138 +64,29 @@ export const FloatingChatbot = () => {
 
   const startVoiceChat = async () => {
     try {
-      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-      audioQueueRef.current = new AudioQueue(audioContextRef.current);
+      console.log("Starting widget voice chat...");
+      await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const wsUrl = `wss://${projectId}.functions.supabase.co/functions/v1/paige-voice-chat`;
-      wsRef.current = new WebSocket(wsUrl);
-
-      wsRef.current.onopen = () => {
-        console.log('Voice chat WebSocket connected');
-        setIsVoiceActive(true);
-      };
-
-      wsRef.current.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
-        console.log('Received:', data.type);
-
-        if (data.type === 'response.audio.delta' && data.delta) {
-          setIsSpeaking(true);
-          const binaryString = atob(data.delta);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          await audioQueueRef.current?.addToQueue(bytes);
-        } else if (data.type === 'response.audio.done') {
-          setIsSpeaking(false);
-        } else if (data.type === 'response.audio_transcript.delta') {
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastMsg = newMessages[newMessages.length - 1];
-            if (lastMsg?.role === 'assistant') {
-              lastMsg.content += data.delta;
-            } else {
-              newMessages.push({ role: 'assistant', content: data.delta });
-            }
-            return newMessages;
-          });
-        } else if (data.type === 'conversation.item.input_audio_transcription.completed') {
-          setMessages(prev => [...prev, { role: 'user', content: data.transcript }]);
-        } else if (data.type === 'response.function_call_arguments.done') {
-          console.log('Function executed:', data.name, data.arguments);
-          try {
-            const result = JSON.parse(data.arguments);
-            
-            if (data.name === 'navigate_to' && result.path) {
-              window.location.href = result.path;
-            }
-            
-            if (result.success && result.message) {
-              toast({
-                title: "Action Complete",
-                description: result.message,
-              });
-            }
-          } catch (e) {
-            console.error('Error parsing function result:', e);
-          }
-        } else if (data.type === 'input_audio_buffer.speech_started') {
-          setIsListening(true);
-        } else if (data.type === 'input_audio_buffer.speech_stopped') {
-          setIsListening(false);
-        }
-      };
-
-      wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        toast({
-          title: "Connection Error",
-          description: "Failed to connect to voice chat",
-          variant: "destructive",
-        });
-      };
-
-      wsRef.current.onclose = () => {
-        console.log('Voice chat WebSocket closed');
-        setIsVoiceActive(false);
-        setIsSpeaking(false);
-        setIsListening(false);
-      };
-
-      recorderRef.current = new AudioRecorder((audioData) => {
-        // Compute RMS to detect when the user starts speaking (barge-in detection)
-        let sumSquares = 0;
-        for (let i = 0; i < audioData.length; i++) sumSquares += audioData[i] * audioData[i];
-        const rms = Math.sqrt(sumSquares / audioData.length);
-
-        // If AI is speaking and the user starts talking, cancel current response immediately
-        if (isSpeaking && rms > 0.02) {
-          const now = Date.now();
-          if (wsRef.current?.readyState === WebSocket.OPEN && now - lastCancelAtRef.current > 800) {
-            console.log('Barge-in detected: cancelling current response');
-            wsRef.current.send(JSON.stringify({ type: 'response.cancel' }));
-            audioQueueRef.current?.clear();
-            setIsSpeaking(false);
-            lastCancelAtRef.current = now;
-          }
-        }
-
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          const encoded = encodeAudioForAPI(audioData);
-          wsRef.current.send(JSON.stringify({
-            type: 'input_audio_buffer.append',
-            audio: encoded
-          }));
-        }
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke("elevenlabs-signed-url", {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
       });
+      if (error) throw error;
 
-      await recorderRef.current.start();
-    } catch (error) {
-      console.error('Error starting voice chat:', error);
-      toast({
-        title: "Error",
-        description: "Failed to start voice chat. Please check microphone permissions.",
-        variant: "destructive",
-      });
+      await conversation.startSession({ signedUrl: data.signedUrl });
+      console.log("Widget voice chat started");
+    } catch (err) {
+      console.error("Error starting widget voice chat:", err);
+      toast({ title: "Error", description: "Failed to start voice chat.", variant: "destructive" });
     }
   };
 
-  const stopVoiceChat = () => {
-    recorderRef.current?.stop();
-    wsRef.current?.close();
-    audioQueueRef.current?.clear();
-    audioContextRef.current?.close();
-    
-    recorderRef.current = null;
-    wsRef.current = null;
-    audioQueueRef.current = null;
-    audioContextRef.current = null;
-    
-    setIsVoiceActive(false);
-    setIsSpeaking(false);
-    setIsListening(false);
+  const stopVoiceChat = async () => {
+    try {
+      await conversation.endSession();
+    } catch (e) {
+      console.warn("Error ending session (ignored)", e);
+    }
   };
 
   const handleSend = async () => {
@@ -186,13 +98,14 @@ export const FloatingChatbot = () => {
     setIsLoading(true);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            Authorization: `Bearer ${session?.access_token}`,
           },
           body: JSON.stringify({
             messages: [...messages, userMessage],
@@ -332,15 +245,15 @@ export const FloatingChatbot = () => {
 
           {/* Input */}
           <div className="p-4 border-t border-border">
-            {isVoiceActive && (
+            {conversation.status === "connected" && (
               <div className="mb-3 flex items-center justify-center gap-4 text-sm">
-                {isSpeaking && (
+                {conversation.isSpeaking && (
                   <div className="flex items-center gap-2 text-primary">
                     <Volume2 className="h-4 w-4 animate-pulse" />
                     <span>Speaking...</span>
                   </div>
                 )}
-                {isListening && (
+                {!conversation.isSpeaking && (
                   <div className="flex items-center gap-2 text-primary">
                     <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
                     <span>Listening...</span>
@@ -354,11 +267,11 @@ export const FloatingChatbot = () => {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleSend()}
                 placeholder="Ask me anything..."
-                disabled={isLoading || isVoiceActive}
+                disabled={isLoading || conversation.status === "connected"}
               />
               <Button
                 onClick={handleSend}
-                disabled={isLoading || !input.trim() || isVoiceActive}
+                disabled={isLoading || !input.trim() || conversation.status === "connected"}
                 size="icon"
               >
                 {isLoading ? (
@@ -368,11 +281,11 @@ export const FloatingChatbot = () => {
                 )}
               </Button>
               <Button
-                onClick={isVoiceActive ? stopVoiceChat : startVoiceChat}
-                variant={isVoiceActive ? "destructive" : "secondary"}
+                onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat}
+                variant={conversation.status === "connected" ? "destructive" : "secondary"}
                 size="icon"
               >
-                {isVoiceActive ? (
+                {conversation.status === "connected" ? (
                   <MicOff className="h-4 w-4" />
                 ) : (
                   <Mic className="h-4 w-4" />
