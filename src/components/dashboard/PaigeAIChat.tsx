@@ -99,9 +99,13 @@ export const PaigeAIChat = () => {
           }
         } else if (data.type === "conversation.item.input_audio_transcription.failed") {
           console.warn("Transcription failed:", data);
+          const errMsg = data?.error?.message || "";
+          const isRateLimited = errMsg.includes("429") || data?.error?.code === 429;
           toast({
-            title: "Couldn't hear you",
-            description: "No clear speech detected. Try speaking closer to the mic.",
+            title: isRateLimited ? "Rate limited" : "Couldn't hear you",
+            description: isRateLimited
+              ? "Too many transcription requests. Pause for a second and try again."
+              : "No clear speech detected. Try speaking closer to the mic.",
             variant: "destructive",
           });
         } else if (data.type === 'response.function_call_arguments.done') {
@@ -126,13 +130,7 @@ export const PaigeAIChat = () => {
           setIsListening(true);
         } else if (data.type === "input_audio_buffer.speech_stopped") {
           setIsListening(false);
-          try {
-            // Explicitly commit audio and request a response to improve transcription reliability
-            wsRef.current?.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
-            wsRef.current?.send(JSON.stringify({ type: "response.create" }));
-          } catch (e) {
-            console.error("Failed to commit audio buffer:", e);
-          }
+          // Using server VAD; avoid manual commit/response.create to prevent rate limits
         }
       };
       
@@ -175,17 +173,7 @@ export const PaigeAIChat = () => {
             audio: encoded
           }));
 
-          // Safety commit: if we've been sending audio for >1.5s without a commit, commit now
-          const now = Date.now();
-          if (now - lastCommitAtRef.current > 1500 && rms > 0.005) {
-            try {
-              wsRef.current.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
-              wsRef.current.send(JSON.stringify({ type: 'response.create' }));
-              lastCommitAtRef.current = now;
-            } catch (e) {
-              console.warn('Commit throttle failed', e);
-            }
-          }
+          // Server VAD manages commits; avoid manual commit to reduce API usage and prevent 429s
         }
       });
       
