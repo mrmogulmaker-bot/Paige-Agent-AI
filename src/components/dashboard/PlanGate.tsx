@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Lock, Crown, Sparkles } from "lucide-react";
 
 interface PlanGateProps {
-  feature: "business_credit" | "unlimited_disputes" | "advanced_analytics" | "funding_tools" | "document_upload";
+  feature: "business_credit" | "unlimited_disputes" | "advanced_analytics" | "funding_tools" | "document_upload" | "personal_document_upload" | "business_document_upload";
   children: ReactNode;
   onUpgradeClick: () => void;
 }
@@ -80,6 +80,16 @@ export function PlanGate({ feature, children, onUpgradeClick }: PlanGateProps) {
     document_upload: {
       title: "Document Upload",
       description: "Upload and manage personal and business documents securely",
+      icon: Crown,
+    },
+    personal_document_upload: {
+      title: "Personal Document Upload",
+      description: "Upload and organize personal verification documents with AI assistance",
+      icon: Crown,
+    },
+    business_document_upload: {
+      title: "Business Document Upload",
+      description: "Upload and manage business documents with automatic classification",
       icon: Crown,
     },
   };

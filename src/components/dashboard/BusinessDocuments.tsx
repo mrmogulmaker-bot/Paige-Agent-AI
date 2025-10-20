@@ -9,7 +9,7 @@ export function BusinessDocuments() {
   return (
     <>
       <PlanGate 
-        feature="document_upload"
+        feature="business_document_upload"
         onUpgradeClick={() => setShowUpgradeModal(true)}
       >
         <div className="space-y-6">
