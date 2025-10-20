@@ -28,7 +28,24 @@ export class AudioRecorder {
       
       this.processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
-        this.onAudioData(new Float32Array(inputData));
+        const sourceRate = this.audioContext?.sampleRate || 24000;
+        let outputData: Float32Array;
+        if (sourceRate !== 24000) {
+          const ratio = 24000 / sourceRate;
+          const newLength = Math.max(1, Math.floor(inputData.length * ratio));
+          const resampled = new Float32Array(newLength);
+          for (let i = 0; i < newLength; i++) {
+            const srcIndex = i / ratio;
+            const i0 = Math.floor(srcIndex);
+            const i1 = Math.min(i0 + 1, inputData.length - 1);
+            const t = srcIndex - i0;
+            resampled[i] = (1 - t) * inputData[i0] + t * inputData[i1];
+          }
+          outputData = resampled;
+        } else {
+          outputData = new Float32Array(inputData);
+        }
+        this.onAudioData(outputData);
       };
       
       this.source.connect(this.processor);

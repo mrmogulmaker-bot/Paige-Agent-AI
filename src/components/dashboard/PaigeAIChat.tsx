@@ -46,7 +46,7 @@ export const PaigeAIChat = () => {
       audioContextRef.current = new AudioContext({ sampleRate: 24000 });
       audioQueueRef.current = new AudioQueue(audioContextRef.current);
       
-      const wsUrl = `wss://bfmyebsjyuoecmjskqhs.supabase.co/functions/v1/paige-voice-chat`;
+      const wsUrl = `wss://bfmyebsjyuoecmjskqhs.functions.supabase.co/functions/v1/paige-voice-chat`;
       wsRef.current = new WebSocket(wsUrl);
       
       wsRef.current.onopen = () => {

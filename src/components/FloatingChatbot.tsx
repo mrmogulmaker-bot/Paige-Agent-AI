@@ -47,8 +47,7 @@ export const FloatingChatbot = () => {
       audioQueueRef.current = new AudioQueue(audioContextRef.current);
 
       const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const wsUrl = `wss://${projectId}.supabase.co/functions/v1/paige-voice-chat`;
-      
+      const wsUrl = `wss://${projectId}.functions.supabase.co/functions/v1/paige-voice-chat`;
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
