@@ -87,8 +87,8 @@ export const PaigeAIChat = () => {
       if (error) throw error;
 
       // Start conversation with signed URL
-      await conversation.startSession({ 
-        signedUrl: data.signedUrl 
+      await conversation.startSession({
+        signedUrl: data.signedUrl
       });
 
 
@@ -217,7 +217,7 @@ export const PaigeAIChat = () => {
         conversation.endSession();
       }
     };
-  }, [conversation]);
+  }, []); // cleanup only on unmount
 
   return (
     <div className="max-w-4xl mx-auto h-[calc(100vh-4rem)]">
