@@ -37,16 +37,16 @@ export const PaigeAIChat = () => {
     onMessage: (message) => {
       console.log("Received message:", message);
       
-      // Handle different message types
-      if (message.type === "agent_response") {
+      // ElevenLabs message format: { message: string, source: 'user' | 'ai' }
+      if (message.source === "ai") {
         setMessages(prev => [...prev, {
           role: "assistant",
-          content: message.text || ""
+          content: message.message || ""
         }]);
-      } else if (message.type === "user_transcript") {
+      } else if (message.source === "user") {
         setMessages(prev => [...prev, {
           role: "user",
-          content: message.text || ""
+          content: message.message || ""
         }]);
       }
     },
@@ -54,7 +54,7 @@ export const PaigeAIChat = () => {
       console.error("ElevenLabs error:", error);
       toast({
         title: "Voice chat error",
-        description: error.message || "Failed to connect to voice chat",
+        description: typeof error === 'string' ? error : "Failed to connect to voice chat",
         variant: "destructive",
       });
     },
@@ -84,8 +84,9 @@ export const PaigeAIChat = () => {
 
       // Start conversation with signed URL
       await conversation.startSession({ 
-        url: data.signedUrl 
+        signedUrl: data.signedUrl 
       });
+
 
     } catch (error) {
       console.error("Error starting voice chat:", error);
