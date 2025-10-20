@@ -11,9 +11,12 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  console.log("elevenlabs-signed-url function invoked");
+
   try {
     const ELEVENLABS_API_KEY = Deno.env.get("ELEVENLABS_API_KEY");
     if (!ELEVENLABS_API_KEY) {
+      console.error("ELEVENLABS_API_KEY not configured");
       return new Response(JSON.stringify({ error: "ELEVENLABS_API_KEY not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -30,7 +33,10 @@ serve(async (req) => {
     }
 
     const agentId = agentIdFromBody || Deno.env.get("ELEVENLABS_AGENT_ID");
+    console.log("Agent ID:", agentId ? "found" : "missing");
+    
     if (!agentId) {
+      console.error("Missing ElevenLabs Agent ID");
       return new Response(JSON.stringify({ error: "Missing ElevenLabs Agent ID. Set ELEVENLABS_AGENT_ID secret or pass { agentId } in request body." }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -62,6 +68,7 @@ serve(async (req) => {
     }
 
     // Request signed URL from ElevenLabs
+    console.log("Requesting signed URL from ElevenLabs...");
     const response = await fetch(
       `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${agentId}`,
       {
@@ -81,6 +88,7 @@ serve(async (req) => {
     }
 
     const data = await response.json();
+    console.log("Successfully got signed URL");
 
     return new Response(
       JSON.stringify({ signedUrl: data.signed_url, userName }),

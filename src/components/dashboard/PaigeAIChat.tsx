@@ -89,24 +89,35 @@ Your goal is conversation, not monologue. Be helpful but concise. Respect the us
   // Voice chat functions
   const startVoiceChat = async () => {
     try {
+      console.log("Starting voice chat...");
+      
       // Request microphone permission
       await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("Microphone access granted");
       
       // Get signed URL from backend
       const { data: { session } } = await supabase.auth.getSession();
+      console.log("Got session, invoking elevenlabs-signed-url...");
+      
       const { data, error } = await supabase.functions.invoke("elevenlabs-signed-url", {
         headers: {
           Authorization: `Bearer ${session?.access_token}`,
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Edge function error:", error);
+        throw error;
+      }
+      
+      console.log("Got signed URL, starting session...");
 
       // Start conversation with signed URL
       await conversation.startSession({
         signedUrl: data.signedUrl
       });
 
+      console.log("Voice chat started successfully");
 
     } catch (error) {
       console.error("Error starting voice chat:", error);
