@@ -82,12 +82,23 @@ export const PaigeAIChat = () => {
             currentTranscriptRef.current = "";
           }
         } else if (data.type === "conversation.item.input_audio_transcription.completed") {
-          if (data.transcript) {
+          const transcript = data.transcript 
+            || data.item?.content?.find((c: any) => c.type === 'input_text')?.text 
+            || data.item?.transcript 
+            || data.text;
+          if (transcript) {
             setMessages(prev => [...prev, {
               role: "user",
-              content: data.transcript
+              content: transcript
             }]);
           }
+        } else if (data.type === "conversation.item.input_audio_transcription.failed") {
+          console.warn("Transcription failed:", data);
+          toast({
+            title: "Couldn't hear you",
+            description: "No clear speech detected. Try speaking closer to the mic.",
+            variant: "destructive",
+          });
         } else if (data.type === 'response.function_call_arguments.done') {
           console.log('Function executed:', data.name, data.arguments);
           try {

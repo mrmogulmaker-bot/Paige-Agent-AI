@@ -665,30 +665,48 @@ GUIDELINES:
           openAISocket?.send(JSON.stringify(greeting));
           openAISocket?.send(JSON.stringify({type: 'response.create'}));
           
-          // Save greeting to history
-          const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
-          await supabaseAdmin.from('chat_messages').insert({
-            user_id: userId,
-            session_id: sessionId,
-            role: 'assistant',
-            content: greeting.item.content[0].text
-          });
+          // Save greeting to history (guard if userId is available)
+          if (userId) {
+            try {
+              const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+              await supabaseAdmin.from('chat_messages').insert({
+                user_id: userId,
+                session_id: sessionId,
+                role: 'assistant',
+                content: greeting.item.content[0].text
+              });
+            } catch (e) {
+              console.error('Failed to save greeting:', e);
+            }
+          }
         }
       }
 
       // Handle user transcripts and save to history
       if (data.type === "conversation.item.input_audio_transcription.completed") {
-        const transcript = data.transcript;
+        const transcript = data.transcript
+          || (data.item?.content?.find((c: any) => c.type === 'input_text')?.text)
+          || data.item?.transcript
+          || data.text
+          || '';
         console.log("User said:", transcript);
         
-        const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
-        await supabaseAdmin.from('chat_messages').insert({
-          user_id: userId,
-          session_id: sessionId,
-          role: 'user',
-          content: transcript,
-          audio_transcript: transcript
-        });
+        if (transcript) {
+          if (userId) {
+            try {
+              const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+              await supabaseAdmin.from('chat_messages').insert({
+                user_id: userId,
+                session_id: sessionId,
+                role: 'user',
+                content: transcript,
+                audio_transcript: transcript
+              });
+            } catch (e) {
+              console.error('Failed to save user transcript:', e);
+            }
+          }
+        }
       }
 
       // Handle assistant responses and save to history
@@ -696,13 +714,19 @@ GUIDELINES:
         const assistantResponse = data.transcript;
         console.log("Assistant said:", assistantResponse);
         
-        const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
-        await supabaseAdmin.from('chat_messages').insert({
-          user_id: userId,
-          session_id: sessionId,
-          role: 'assistant',
-          content: assistantResponse
-        });
+        if (userId && assistantResponse) {
+          try {
+            const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+            await supabaseAdmin.from('chat_messages').insert({
+              user_id: userId,
+              session_id: sessionId,
+              role: 'assistant',
+              content: assistantResponse
+            });
+          } catch (e) {
+            console.error('Failed to save assistant response:', e);
+          }
+        }
       }
 
       // Handle function calls
