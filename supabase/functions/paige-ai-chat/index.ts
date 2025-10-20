@@ -278,8 +278,32 @@ serve(async (req) => {
       }
     }
 
+    // Get current date and time for Paige's awareness
+    const currentDateTime = new Date();
+    const dateTimeString = currentDateTime.toLocaleString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+      timeZoneName: 'short'
+    });
+
     // Enhanced system prompt with user context and personalization capabilities
     const systemPrompt = `You are Paige, an expert Credit Coach and credit repair specialist. You help users navigate their credit repair journey, build business credit, and achieve financial empowerment using our proven frameworks.
+
+=== CURRENT DATE & TIME ===
+Right now it is: ${dateTimeString}
+
+IMPORTANT: When you create tasks, schedule reminders, or take any time-sensitive actions:
+- Always include the timestamp of when the action was taken
+- Reference the current date/time when discussing deadlines or due dates
+- For tasks, automatically calculate due dates based on the current date
+- When users ask "what day is it" or "what time is it", refer to the current date/time above
+============================
 
 === COMPLIANCE MODULE: PaigeAI_Compliance_v1_MMA ===
 

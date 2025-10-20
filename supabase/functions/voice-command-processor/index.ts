@@ -197,6 +197,7 @@ serve(async (req) => {
 
 // Handler functions
 async function handleCreateDispute(supabase: any, userId: string, params: any) {
+  const currentTime = new Date().toISOString();
   const { data, error } = await supabase.from('disputes').insert({
     user_id: userId,
     creditor_name: params.creditorName,
@@ -208,7 +209,18 @@ async function handleCreateDispute(supabase: any, userId: string, params: any) {
   }).select().single();
 
   if (error) throw error;
-  return { disputeId: data.id, message: 'Dispute created successfully' };
+  return { 
+    disputeId: data.id, 
+    message: `Dispute against ${params.creditorName} created successfully at ${new Date(currentTime).toLocaleString('en-US', { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    })}`,
+    timestamp: currentTime
+  };
 }
 
 async function handleSendSMS(supabaseUrl: string, userId: string, params: any) {
@@ -273,6 +285,7 @@ async function handleLessonProgress(supabaseUrl: string, userId: string, params:
 }
 
 async function handleCreateTask(supabase: any, userId: string, params: any) {
+  const currentTime = new Date().toISOString();
   const { data, error } = await supabase.from('tasks').insert({
     user_id: userId,
     title: params.title,
@@ -284,7 +297,19 @@ async function handleCreateTask(supabase: any, userId: string, params: any) {
   }).select().single();
 
   if (error) throw error;
-  return { taskId: data.id, message: 'Task created successfully' };
+  return { 
+    taskId: data.id, 
+    message: `Task "${params.title}" created successfully at ${new Date(currentTime).toLocaleString('en-US', { 
+      weekday: 'short', 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    })}`,
+    timestamp: currentTime
+  };
 }
 
 async function handleScheduleReminder(supabaseUrl: string, userId: string, params: any) {
@@ -361,6 +386,7 @@ async function handleListBusinesses(supabase: any, userId: string) {
 }
 
 async function handleAddBusiness(supabase: any, userId: string, params: any) {
+  const currentTime = new Date().toISOString();
   const { data, error } = await supabase.from('businesses').insert({
     owner_user_id: userId,
     legal_name: params.legalName,
@@ -370,5 +396,16 @@ async function handleAddBusiness(supabase: any, userId: string, params: any) {
   }).select().single();
 
   if (error) throw error;
-  return { businessId: data.id, message: `Business "${params.legalName}" added successfully` };
+  return { 
+    businessId: data.id, 
+    message: `Business "${params.legalName}" added successfully at ${new Date(currentTime).toLocaleString('en-US', { 
+      weekday: 'short', 
+      month: 'short', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    })}`,
+    timestamp: currentTime
+  };
 }
