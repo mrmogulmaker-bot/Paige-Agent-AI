@@ -31,6 +31,7 @@ export const PaigeAIChat = () => {
   const audioQueueRef = useRef<AudioQueue | null>(null);
   const currentTranscriptRef = useRef<string>("");
   const lastCancelAtRef = useRef<number>(0);
+  const lastCommitAtRef = useRef<number>(0);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -173,6 +174,18 @@ export const PaigeAIChat = () => {
             type: "input_audio_buffer.append",
             audio: encoded
           }));
+
+          // Safety commit: if we've been sending audio for >1.5s without a commit, commit now
+          const now = Date.now();
+          if (now - lastCommitAtRef.current > 1500 && rms > 0.005) {
+            try {
+              wsRef.current.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+              wsRef.current.send(JSON.stringify({ type: 'response.create' }));
+              lastCommitAtRef.current = now;
+            } catch (e) {
+              console.warn('Commit throttle failed', e);
+            }
+          }
         }
       });
       
