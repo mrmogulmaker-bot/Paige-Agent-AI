@@ -386,6 +386,42 @@ export type Database = {
           },
         ]
       }
+      chat_messages: {
+        Row: {
+          audio_transcript: string | null
+          content: string
+          created_at: string
+          function_call: Json | null
+          id: string
+          metadata: Json | null
+          role: string
+          session_id: string
+          user_id: string
+        }
+        Insert: {
+          audio_transcript?: string | null
+          content: string
+          created_at?: string
+          function_call?: Json | null
+          id?: string
+          metadata?: Json | null
+          role: string
+          session_id: string
+          user_id: string
+        }
+        Update: {
+          audio_transcript?: string | null
+          content?: string
+          created_at?: string
+          function_call?: Json | null
+          id?: string
+          metadata?: Json | null
+          role?: string
+          session_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       coach_clients: {
         Row: {
           client_user_id: string

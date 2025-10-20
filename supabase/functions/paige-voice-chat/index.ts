@@ -46,9 +46,14 @@ serve(async (req) => {
   let userContext = "";
   let relevantKnowledge = "";
   let userId: string = "";
+  let sessionId: string = "";
+  let conversationHistory: Array<{role: string, content: string}> = [];
 
   socket.onopen = async () => {
     console.log("Client WebSocket connected");
+    
+    // Generate unique session ID
+    sessionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     // Fetch user context and knowledge base
     try {
@@ -130,6 +135,22 @@ serve(async (req) => {
 
         userContext = contextParts.length > 0 ? contextParts.join(" | ") : "";
 
+        // Load recent conversation history (last 10 messages)
+        const { data: recentMessages } = await supabaseAdmin
+          .from("chat_messages")
+          .select("role, content, created_at")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(10);
+
+        if (recentMessages && recentMessages.length > 0) {
+          conversationHistory = recentMessages.reverse().map(msg => ({
+            role: msg.role,
+            content: msg.content
+          }));
+          console.log(`Loaded ${conversationHistory.length} previous messages`);
+        }
+
         // Search knowledge base
         const { data: knowledge } = await supabase
           .from("knowledge_base")
@@ -166,7 +187,15 @@ serve(async (req) => {
         sessionCreated = true;
         console.log("Session created, sending session update");
         
+        // Build conversation summary from history
+        let conversationSummary = "";
+        if (conversationHistory.length > 0) {
+          conversationSummary = `\n\nPREVIOUS CONVERSATION CONTEXT:\n${conversationHistory.map(m => `${m.role}: ${m.content.substring(0, 200)}`).join('\n')}`;
+        }
+        
         const enhancedInstructions = `You are Paige, a voice-first AI operations chief for Paige AI—a credit rebuilding and business funding platform.
+
+${conversationHistory.length > 0 ? `RETURNING USER: This user has chatted with you before. Review the conversation history and continue naturally without repeating information you've already covered. Be aware of their journey and build on previous conversations.${conversationSummary}` : `NEW USER: This is a first-time conversation. Start with a warm, personalized greeting.`}
 
 VOICE-FIRST INTENT PARSING:
 Parse user speech into intents and slots, then call platform actions via tool calls. Never fabricate data. Always confirm before destructive actions.
@@ -213,7 +242,7 @@ CRITICAL CONTENT FILTERING:
 - ALWAYS clarify you guide users through platform tools
 
 GUIDELINES:
-- Start with: "Hey, how can I help?"
+- ${conversationHistory.length === 0 ? 'Start with a personalized greeting using their name and current context' : 'Continue the conversation naturally, building on what you previously discussed'}
 - DO NOT introduce yourself unless asked
 - Suggest specific platform tools and sections
 - Be conversational, concise (2-3 sentences per response)
@@ -612,6 +641,68 @@ GUIDELINES:
         };
 
         openAISocket?.send(JSON.stringify(sessionUpdate));
+        
+        // Send initial greeting for new conversations
+        if (conversationHistory.length === 0) {
+          const userName = userContext.includes('User:') 
+            ? userContext.split('User:')[1].split(' from ')[0].trim() 
+            : 'there';
+          
+          const greeting = {
+            type: 'conversation.item.create',
+            item: {
+              type: 'message',
+              role: 'assistant',
+              content: [
+                {
+                  type: 'input_text',
+                  text: `Hey ${userName}! I'm Paige, your AI operations chief. I'm here to help with your credit journey and business funding. What can I help you with today?`
+                }
+              ]
+            }
+          };
+          
+          openAISocket?.send(JSON.stringify(greeting));
+          openAISocket?.send(JSON.stringify({type: 'response.create'}));
+          
+          // Save greeting to history
+          const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+          await supabaseAdmin.from('chat_messages').insert({
+            user_id: userId,
+            session_id: sessionId,
+            role: 'assistant',
+            content: greeting.item.content[0].text
+          });
+        }
+      }
+
+      // Handle user transcripts and save to history
+      if (data.type === "conversation.item.input_audio_transcription.completed") {
+        const transcript = data.transcript;
+        console.log("User said:", transcript);
+        
+        const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+        await supabaseAdmin.from('chat_messages').insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'user',
+          content: transcript,
+          audio_transcript: transcript
+        });
+      }
+
+      // Handle assistant responses and save to history
+      if (data.type === "response.audio_transcript.done") {
+        const assistantResponse = data.transcript;
+        console.log("Assistant said:", assistantResponse);
+        
+        const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+        await supabaseAdmin.from('chat_messages').insert({
+          user_id: userId,
+          session_id: sessionId,
+          role: 'assistant',
+          content: assistantResponse
+        });
       }
 
       // Handle function calls
