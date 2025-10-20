@@ -1690,6 +1690,7 @@ export type Database = {
           dispute_limit: number | null
           features: Json
           has_business_credit: boolean | null
+          has_document_upload: boolean
           has_funding_tools: boolean | null
           id: string
           name: string
@@ -1703,6 +1704,7 @@ export type Database = {
           dispute_limit?: number | null
           features?: Json
           has_business_credit?: boolean | null
+          has_document_upload?: boolean
           has_funding_tools?: boolean | null
           id?: string
           name: string
@@ -1716,6 +1718,7 @@ export type Database = {
           dispute_limit?: number | null
           features?: Json
           has_business_credit?: boolean | null
+          has_document_upload?: boolean
           has_funding_tools?: boolean | null
           id?: string
           name?: string
