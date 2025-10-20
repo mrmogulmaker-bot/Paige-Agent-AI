@@ -73,6 +73,8 @@ export const FloatingChatbot = () => {
       });
       if (error) throw error;
 
+      console.log("Using ElevenLabs Agent ID:", data.agentId);
+
       await conversation.startSession({ signedUrl: data.signedUrl });
       console.log("Widget voice chat started");
     } catch (err) {

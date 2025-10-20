@@ -111,6 +111,7 @@ Your goal is conversation, not monologue. Be helpful but concise. Respect the us
       }
       
       console.log("Got signed URL, starting session...");
+      console.log("Using ElevenLabs Agent ID:", data.agentId);
 
       // Start conversation with signed URL
       await conversation.startSession({

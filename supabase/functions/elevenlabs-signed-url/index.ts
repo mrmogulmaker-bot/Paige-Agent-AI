@@ -33,8 +33,7 @@ serve(async (req) => {
     }
 
     const agentId = agentIdFromBody || Deno.env.get("ELEVENLABS_AGENT_ID");
-    console.log("Agent ID:", agentId ? "found" : "missing");
-    
+    console.log("Agent ID used:", agentId || "missing");
     if (!agentId) {
       console.error("Missing ElevenLabs Agent ID");
       return new Response(JSON.stringify({ error: "Missing ElevenLabs Agent ID. Set ELEVENLABS_AGENT_ID secret or pass { agentId } in request body." }), {
@@ -91,7 +90,7 @@ serve(async (req) => {
     console.log("Successfully got signed URL");
 
     return new Response(
-      JSON.stringify({ signedUrl: data.signed_url, userName }),
+      JSON.stringify({ signedUrl: data.signed_url, userName, agentId }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
