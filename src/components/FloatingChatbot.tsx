@@ -28,13 +28,6 @@ export const FloatingChatbot = () => {
 
   // ElevenLabs conversation hook (unified with Dashboard Paige)
   const conversation = useConversation({
-    overrides: {
-      agent: {
-        prompt: {
-          prompt: `You are Paige, a concise and focused credit coaching assistant. Keep responses brief (2-3 sentences), ask clarifying questions first, and only go deep if the user confirms.`
-        }
-      }
-    },
     onConnect: () => {
       toast({ title: "Voice chat started", description: "You can now speak with Paige" });
     },
