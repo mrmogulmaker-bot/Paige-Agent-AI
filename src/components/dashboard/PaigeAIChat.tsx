@@ -32,6 +32,7 @@ export const PaigeAIChat = () => {
   const currentTranscriptRef = useRef<string>("");
   const lastCancelAtRef = useRef<number>(0);
   const lastCommitAtRef = useRef<number>(0);
+  const cooldownUntilRef = useRef<number>(0);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -101,6 +102,10 @@ export const PaigeAIChat = () => {
           console.warn("Transcription failed:", data);
           const errMsg = data?.error?.message || "";
           const isRateLimited = errMsg.includes("429") || data?.error?.code === 429;
+          if (isRateLimited) {
+            // brief backoff to avoid spamming STT
+            cooldownUntilRef.current = Date.now() + 2000;
+          }
           toast({
             title: isRateLimited ? "Rate limited" : "Couldn't hear you",
             description: isRateLimited
@@ -167,13 +172,14 @@ export const PaigeAIChat = () => {
         }
 
         if (wsRef.current?.readyState === WebSocket.OPEN) {
+          const nowCheck = Date.now();
+          if (nowCheck < cooldownUntilRef.current) return; // backoff after 429
+          if (rms <= 0.004) return; // gate low-signal frames to reduce noise-triggered turns
           const encoded = encodeAudioForAPI(audioData);
           wsRef.current.send(JSON.stringify({
             type: "input_audio_buffer.append",
             audio: encoded
           }));
-
-          // Server VAD manages commits; avoid manual commit to reduce API usage and prevent 429s
         }
       });
       
