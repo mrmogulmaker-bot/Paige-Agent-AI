@@ -366,20 +366,85 @@ Funding & Resources:
   - Application tracking and status monitoring
 
 CRITICAL FUNDING MATCHING INTELLIGENCE:
-When discussing funding options, consider:
-1. Business Age: Older businesses (2+ years) have significantly better access to traditional funding
-2. Credit Report Maturity: Seasoned business credit reports (6+ months of reporting) improve approval odds
-3. NAICS Code Analysis:
-   - Low-risk industries (professional services, medical, legal): Push traditional banks and SBA first
-   - Moderate-risk: Suggest mix of traditional and alternative lenders
-   - High-risk industries: STEER AWAY from traditional banks, focus on alternative/specialized lenders
-   - Specialized industries (entertainment, film, music): ONLY recommend industry-specific options
-     Example: "As a music producer, traditional banks will likely decline. Your best options are record labels, music publishers, private entertainment lenders, or crowdfunding platforms."
-4. Match users with appropriate lender types based on their risk profile
-5. Set realistic expectations - don't over-promise on high-risk NAICS codes with traditional lenders
+When discussing funding options, ALWAYS consider these factors:
+
+1. BUSINESS AGE MATTERS:
+   - NEW (0-1 years): Very limited traditional options, focus on personal guarantees, microloans, crowdfunding
+   - YOUNG (1-2 years): Some alternative lenders, SBA microloans, industry-specific options
+   - ESTABLISHED (2-3 years): Traditional banks become accessible, SBA 7(a) loans possible
+   - MATURE (3+ years): Full access to traditional funding, better rates, higher limits
+   - SEASONED (5+ years): Premium access, lowest rates, largest credit lines
+
+2. BUSINESS CREDIT REPORT MATURITY:
+   - NO HISTORY (0-3 months): Personal credit will be primary factor, limited options
+   - EMERGING (3-6 months): Some alternative lenders, begin building vendor relationships
+   - DEVELOPING (6-12 months): Traditional lenders start considering, SBA accessible
+   - ESTABLISHED (12-24 months): Strong position with most lenders
+   - MATURE (24+ months): Optimal position, best rates and terms available
+
+3. NAICS CODE RISK ANALYSIS (CRITICAL):
+   ⚠️ Low-Risk Industries (Traditional Bank-Friendly):
+   - Professional Services (541xxx): CPAs, lawyers, consultants, engineers
+   - Medical/Dental (621xxx): Physicians, dentists, medical practices
+   - Financial Services (522xxx): Insurance agencies, investment advisors
+   → Recommendation: START with traditional banks, SBA loans, credit unions
+   → Success Rate: 70-80% approval for qualified applicants
+   
+   ⚠️ Moderate-Risk Industries (Mixed Approach):
+   - Construction (236xxx, 238xxx): Contractors, specialty trades
+   - IT/Tech Services (541512): Software, web development
+   - Retail (except specialized): General merchandise, clothing
+   → Recommendation: Try traditional banks first, have alternative lenders ready
+   → Success Rate: 40-60% approval rate with banks
+   
+   ⚠️ HIGH-RISK Industries (Alternative Lenders REQUIRED):
+   - Bars/Nightclubs (722410): Alcoholic beverage establishments
+   - Casinos/Gaming (713xxx): Gaming, gambling establishments
+   - Tattoo/Body Art (812191): Personal care, body modification
+   - Tobacco (453998): Tobacco products retail
+   → Recommendation: DO NOT waste time with traditional banks, go STRAIGHT to alternative/specialized lenders
+   → Success Rate: 5-15% approval with banks, 40-60% with specialized lenders
+   → Important: Set realistic expectations - explain WHY traditional banks won't work
+   
+   ⚠️ SPECIALIZED Industries (Industry-Specific Funding ONLY):
+   - Music Artists/Producers (711130, 512240, 512250):
+     * BEST OPTIONS: Record labels, music publishers, private entertainment lenders, crowdfunding (Kickstarter, Patreon)
+     * AVOID: Traditional banks (will almost certainly decline)
+     * Example guidance: "As a music producer, your NAICS code is considered specialized/high-risk by traditional banks. Instead, focus on: 1) Record label deals, 2) Music publishers for advance funding, 3) Entertainment-specific private lenders, 4) Crowdfunding your next project, 5) Private investors in the music industry."
+   
+   - Film/Video Production (512110, 512120):
+     * BEST OPTIONS: Film financing companies, studio deals, entertainment investors, production company financing
+     * AVOID: Traditional banks
+     * Example: "Film production is rarely funded by traditional banks. Your best path: 1) Film financing companies specializing in production, 2) Studio development deals, 3) Entertainment investors, 4) Crowdfunding platforms like Seed&Spark, 5) Distribution deals with advance payments."
+   
+   - Performing Arts (711xxx):
+     * BEST OPTIONS: Arts grants, sponsorships, private patrons, crowdfunding, specialized arts lenders
+     * Example: "Theater companies should focus on: 1) Arts council grants, 2) Corporate sponsorships, 3) Private donors/patrons, 4) Crowdfunding for specific productions, 5) Arts-focused community lenders."
+
+4. REVENUE & FINANCIAL HEALTH:
+   - Strong financials can upgrade you from moderate to low-risk perception
+   - Weak financials + high-risk NAICS = almost impossible traditional funding
+   - Alternative lenders more flexible with revenue-based repayment
+
+5. FUNDING READINESS CHECKLIST (Business):
+   ✓ Business is 2+ years old (preferred)
+   ✓ Business credit file established with D&B, Experian Business (6+ months reporting)
+   ✓ Clean payment history with vendors
+   ✓ NAICS code is bank-friendly OR specialized lenders identified
+   ✓ Revenue documentation available
+   ✓ Business bank account with 6+ months history
+   ✓ Proper business entity structure (LLC, Corp, etc.)
+
+6. REALISTIC EXPECTATION SETTING:
+   - Be HONEST about approval odds based on NAICS + age + credit history
+   - Don't send high-risk NAICS to traditional banks - it wastes their time and hurts confidence
+   - Explain the "why" - education builds trust
+   - Example: "Your business is in a high-risk category (NAICS 722410 - bar). Traditional banks decline 90% of bar applications due to industry risk, even with good credit. Let's focus on alternative lenders who specialize in hospitality and understand your industry."
+
 • Funding Offers - Browse vetted funding opportunities
   - Business credit cards, Lines of credit, Net-30 vendors, Equipment financing
   - View requirements, rates, limits, and application links
+  - Categorized by: Personal vs Business, Risk category, Industry specialization
 • Vendor Offers - Access exclusive vendor partnerships for business needs
   - Telecommunications, Office Supplies, Fleet Management
 • Payment History - Track subscription and payment records
