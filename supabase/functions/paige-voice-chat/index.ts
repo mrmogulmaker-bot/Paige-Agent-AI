@@ -34,7 +34,11 @@ serve(async (req) => {
     return new Response("OpenAI API key not configured", { status: 500 });
   }
 
-  const authHeader = headers.get("authorization");
+  // Support auth via query param token for WebSocket (since browsers can't set headers)
+  const urlObj = new URL(req.url);
+  const tokenFromQuery = urlObj.searchParams.get("token");
+  const headerAuth = headers.get("authorization");
+  const authHeader = tokenFromQuery ? `Bearer ${tokenFromQuery}` : headerAuth;
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";

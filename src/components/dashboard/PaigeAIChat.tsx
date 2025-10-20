@@ -46,7 +46,11 @@ export const PaigeAIChat = () => {
       audioContextRef.current = new AudioContext({ sampleRate: 24000 });
       audioQueueRef.current = new AudioQueue(audioContextRef.current);
       
-      const wsUrl = `wss://bfmyebsjyuoecmjskqhs.functions.supabase.co/functions/v1/paige-voice-chat`;
+      const { data: { session } } = await supabase.auth.getSession();
+      let wsUrl = `wss://bfmyebsjyuoecmjskqhs.functions.supabase.co/functions/v1/paige-voice-chat`;
+      if (session?.access_token) {
+        wsUrl += `?token=${session.access_token}`;
+      }
       wsRef.current = new WebSocket(wsUrl);
       
       wsRef.current.onopen = () => {
