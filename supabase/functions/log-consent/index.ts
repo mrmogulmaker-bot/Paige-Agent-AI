@@ -3,7 +3,51 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { logConsentEvent, type ConsentEventData } from "../compliance-utils/index.ts";
+// Inline minimal compliance helpers to avoid cross-function imports
+// Types
+type ConsentEventData = {
+  userId: string;
+  consentType: 'credit_report_access' | 'croa_rights' | 'data_sharing' | 'offer_display' | 'adverse_action';
+  disclosureVersion: string;
+  ipAddress?: string;
+  sessionId?: string;
+  userAgent?: string;
+  granted: boolean;
+  metadata?: Record<string, any>;
+};
+
+// Logger
+async function logConsentEvent(
+  supabase: any,
+  data: ConsentEventData
+): Promise<{ success: boolean; consentId?: string; error?: string }> {
+  try {
+    const { data: consent, error } = await supabase
+      .from('consent_events')
+      .insert({
+        user_id: data.userId,
+        consent_type: data.consentType,
+        disclosure_version: data.disclosureVersion,
+        ip_address: data.ipAddress,
+        session_id: data.sessionId,
+        user_agent: data.userAgent,
+        granted: data.granted,
+        metadata: data.metadata || {}
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error logging consent:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, consentId: consent.id };
+  } catch (error) {
+    console.error('Exception logging consent:', error);
+    return { success: false, error: String(error) };
+  }
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

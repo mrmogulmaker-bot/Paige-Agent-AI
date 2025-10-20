@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
-import { appendEducationalDisclaimer } from "../compliance-utils/index.ts";
+// Removed shared import to keep function self-contained (no cross-function imports)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

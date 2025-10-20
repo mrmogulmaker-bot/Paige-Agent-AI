@@ -3,7 +3,39 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { requestDataDeletion } from "../compliance-utils/index.ts";
+// Inline minimal function to avoid cross-function imports
+async function requestDataDeletion(
+  supabase: any,
+  userId: string
+): Promise<{ success: boolean; requestId?: string; error?: string }> {
+  try {
+    const verificationCode = crypto.randomUUID().substring(0, 8).toUpperCase();
+
+    const { data, error } = await supabase
+      .from('data_deletion_requests')
+      .insert({
+        user_id: userId,
+        status: 'pending',
+        verification_code: verificationCode,
+        metadata: {
+          requested_via: 'paige_ai_chat',
+          timestamp: new Date().toISOString()
+        }
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error creating deletion request:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, requestId: data.id };
+  } catch (error) {
+    console.error('Exception creating deletion request:', error);
+    return { success: false, error: String(error) };
+  }
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
