@@ -988,44 +988,224 @@ export type Database = {
         }
         Relationships: []
       }
+      funding_applications: {
+        Row: {
+          amount_requested: number
+          application_type: string
+          business_id: string | null
+          created_at: string | null
+          funded_at: string | null
+          id: string
+          metadata: Json | null
+          notes: string | null
+          offer_id: string
+          rejection_reason: string | null
+          reviewed_at: string | null
+          status: string
+          submitted_at: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          amount_requested: number
+          application_type: string
+          business_id?: string | null
+          created_at?: string | null
+          funded_at?: string | null
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          offer_id: string
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          status?: string
+          submitted_at?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          amount_requested?: number
+          application_type?: string
+          business_id?: string | null
+          created_at?: string | null
+          funded_at?: string | null
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          offer_id?: string
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          status?: string
+          submitted_at?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funding_applications_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funding_applications_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "funding_offers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      funding_matches: {
+        Row: {
+          ai_generated: boolean | null
+          applied: boolean | null
+          business_id: string | null
+          created_at: string | null
+          dismissed: boolean | null
+          id: string
+          match_reasons: Json | null
+          match_score: number | null
+          match_type: string
+          offer_id: string
+          updated_at: string | null
+          user_id: string
+          viewed: boolean | null
+        }
+        Insert: {
+          ai_generated?: boolean | null
+          applied?: boolean | null
+          business_id?: string | null
+          created_at?: string | null
+          dismissed?: boolean | null
+          id?: string
+          match_reasons?: Json | null
+          match_score?: number | null
+          match_type: string
+          offer_id: string
+          updated_at?: string | null
+          user_id: string
+          viewed?: boolean | null
+        }
+        Update: {
+          ai_generated?: boolean | null
+          applied?: boolean | null
+          business_id?: string | null
+          created_at?: string | null
+          dismissed?: boolean | null
+          id?: string
+          match_reasons?: Json | null
+          match_score?: number | null
+          match_type?: string
+          offer_id?: string
+          updated_at?: string | null
+          user_id?: string
+          viewed?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funding_matches_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funding_matches_offer_id_fkey"
+            columns: ["offer_id"]
+            isOneToOne: false
+            referencedRelation: "funding_offers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funding_offers: {
         Row: {
+          accepted_naics_risk_categories:
+            | Database["public"]["Enums"]["naics_risk_category"][]
+            | null
           affiliate_tag: string | null
           apply_url: string
+          approval_timeframe: string | null
           apr_range: string | null
           created_at: string | null
+          funding_category: string | null
+          funding_speed: string | null
           id: string
+          industry_specialization: string[] | null
           is_active: boolean | null
+          lender_type: string | null
           limits_range: string | null
+          max_business_age_months: number | null
+          max_credit_score: number | null
+          max_revenue: number | null
+          min_business_age_months: number | null
+          min_credit_score: number | null
+          min_revenue: number | null
           name: string
           product_type: string
           requirements: string | null
+          requires_collateral: boolean | null
+          specific_naics_codes: string[] | null
           updated_at: string | null
         }
         Insert: {
+          accepted_naics_risk_categories?:
+            | Database["public"]["Enums"]["naics_risk_category"][]
+            | null
           affiliate_tag?: string | null
           apply_url: string
+          approval_timeframe?: string | null
           apr_range?: string | null
           created_at?: string | null
+          funding_category?: string | null
+          funding_speed?: string | null
           id?: string
+          industry_specialization?: string[] | null
           is_active?: boolean | null
+          lender_type?: string | null
           limits_range?: string | null
+          max_business_age_months?: number | null
+          max_credit_score?: number | null
+          max_revenue?: number | null
+          min_business_age_months?: number | null
+          min_credit_score?: number | null
+          min_revenue?: number | null
           name: string
           product_type: string
           requirements?: string | null
+          requires_collateral?: boolean | null
+          specific_naics_codes?: string[] | null
           updated_at?: string | null
         }
         Update: {
+          accepted_naics_risk_categories?:
+            | Database["public"]["Enums"]["naics_risk_category"][]
+            | null
           affiliate_tag?: string | null
           apply_url?: string
+          approval_timeframe?: string | null
           apr_range?: string | null
           created_at?: string | null
+          funding_category?: string | null
+          funding_speed?: string | null
           id?: string
+          industry_specialization?: string[] | null
           is_active?: boolean | null
+          lender_type?: string | null
           limits_range?: string | null
+          max_business_age_months?: number | null
+          max_credit_score?: number | null
+          max_revenue?: number | null
+          min_business_age_months?: number | null
+          min_credit_score?: number | null
+          min_revenue?: number | null
           name?: string
           product_type?: string
           requirements?: string | null
+          requires_collateral?: boolean | null
+          specific_naics_codes?: string[] | null
           updated_at?: string | null
         }
         Relationships: []
@@ -1248,6 +1428,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      naics_codes: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          funding_notes: string | null
+          id: string
+          industry_title: string
+          naics_code: string
+          risk_category: Database["public"]["Enums"]["naics_risk_category"]
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          funding_notes?: string | null
+          id?: string
+          industry_title: string
+          naics_code: string
+          risk_category?: Database["public"]["Enums"]["naics_risk_category"]
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          funding_notes?: string | null
+          id?: string
+          industry_title?: string
+          naics_code?: string
+          risk_category?: Database["public"]["Enums"]["naics_risk_category"]
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       notification_preferences: {
         Row: {
@@ -2112,6 +2325,11 @@ export type Database = {
         | "stage"
         | "implementation"
       letter_status: "draft" | "generated" | "sent" | "delivered"
+      naics_risk_category:
+        | "low_risk"
+        | "moderate_risk"
+        | "high_risk"
+        | "specialized"
       notification_type:
         | "dispute_update"
         | "payment_success"
@@ -2281,6 +2499,12 @@ export const Constants = {
         "implementation",
       ],
       letter_status: ["draft", "generated", "sent", "delivered"],
+      naics_risk_category: [
+        "low_risk",
+        "moderate_risk",
+        "high_risk",
+        "specialized",
+      ],
       notification_type: [
         "dispute_update",
         "payment_success",

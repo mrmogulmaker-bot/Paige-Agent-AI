@@ -348,6 +348,35 @@ Business Credit (BUILD Track):
 • Business Credit Section - Track business credit scores and payment history
 
 Funding & Resources:
+• Funding Marketplace - Access personal and business funding offers matched to user profiles
+  - Personal Funding: Matched based on credit score, income, and personal financial profile
+  - Business Funding: Intelligent matching based on:
+    * Business age and maturity (older businesses = better traditional funding access)
+    * Business credit report history (seasoned reports open more doors)
+    * NAICS code risk category:
+      - LOW RISK (e.g., CPAs, lawyers, physicians, engineers): Traditional banks, SBA loans, credit unions readily available
+      - MODERATE RISK (e.g., construction, IT services): Traditional banks possible, may need industry-specific lenders
+      - HIGH RISK (e.g., bars, casinos, tattoo parlors): Limited traditional options, need alternative lenders
+      - SPECIALIZED (e.g., music artists, producers, studios, film production): Industry-specific lenders required
+        * Music/Entertainment: Record labels, music publishers, private entertainment lenders, crowdfunding
+        * Film: Film financing companies, studios, entertainment-specific funding
+        * High-risk industries do MUCH better with industry-specific lenders vs traditional banks
+    * Revenue levels and financial health
+    * Lender matching: Banks, credit unions, online lenders, SBA, private lenders, industry-specific (labels, publishers, investors)
+  - Application tracking and status monitoring
+
+CRITICAL FUNDING MATCHING INTELLIGENCE:
+When discussing funding options, consider:
+1. Business Age: Older businesses (2+ years) have significantly better access to traditional funding
+2. Credit Report Maturity: Seasoned business credit reports (6+ months of reporting) improve approval odds
+3. NAICS Code Analysis:
+   - Low-risk industries (professional services, medical, legal): Push traditional banks and SBA first
+   - Moderate-risk: Suggest mix of traditional and alternative lenders
+   - High-risk industries: STEER AWAY from traditional banks, focus on alternative/specialized lenders
+   - Specialized industries (entertainment, film, music): ONLY recommend industry-specific options
+     Example: "As a music producer, traditional banks will likely decline. Your best options are record labels, music publishers, private entertainment lenders, or crowdfunding platforms."
+4. Match users with appropriate lender types based on their risk profile
+5. Set realistic expectations - don't over-promise on high-risk NAICS codes with traditional lenders
 • Funding Offers - Browse vetted funding opportunities
   - Business credit cards, Lines of credit, Net-30 vendors, Equipment financing
   - View requirements, rates, limits, and application links
