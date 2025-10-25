@@ -6,6 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { AffiliateApplications } from "@/components/dashboard/AffiliateApplications";
 import { UserManagement } from "@/components/dashboard/UserManagement";
 import { UserPerformance } from "@/components/dashboard/UserPerformance";
+import { AuditLogsViewer } from "@/components/dashboard/admin/AuditLogsViewer";
+import { ComplianceMonitor } from "@/components/dashboard/admin/ComplianceMonitor";
+import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
 import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
@@ -132,11 +135,13 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="performance" className="space-y-4">
-          <TabsList>
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="performance">Performance</TabsTrigger>
-            <TabsTrigger value="applications">Affiliate Applications</TabsTrigger>
-            <TabsTrigger value="users">User Management</TabsTrigger>
-            <TabsTrigger value="audit">Audit Logs</TabsTrigger>
+            <TabsTrigger value="applications">Affiliates</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="compliance">Compliance</TabsTrigger>
+            <TabsTrigger value="system">System</TabsTrigger>
+            <TabsTrigger value="audit">Audit</TabsTrigger>
           </TabsList>
 
           <TabsContent value="performance" className="space-y-4">
@@ -151,16 +156,16 @@ const Admin = () => {
             <UserManagement />
           </TabsContent>
 
+          <TabsContent value="compliance" className="space-y-4">
+            <ComplianceMonitor />
+          </TabsContent>
+
+          <TabsContent value="system" className="space-y-4">
+            <SystemMetrics />
+          </TabsContent>
+
           <TabsContent value="audit" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Audit Logs</CardTitle>
-                <CardDescription>View system activity and changes</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Audit log viewer coming soon...</p>
-              </CardContent>
-            </Card>
+            <AuditLogsViewer />
           </TabsContent>
         </Tabs>
       </div>
