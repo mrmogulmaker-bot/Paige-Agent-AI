@@ -43,6 +43,7 @@ import { UpgradeModal } from "@/components/dashboard/UpgradeModal";
 import { PlanGate } from "@/components/dashboard/PlanGate";
 import { InstallPWA } from "@/components/InstallPWA";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { PageTransition } from "@/components/PageTransition";
 
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -169,8 +170,9 @@ const Dashboard = () => {
 
             {/* Main Content Area */}
             <main className="flex-1 overflow-auto">
-              <div className="p-3 md:p-6 max-w-7xl mx-auto w-full">
-                {activeSection === "dashboard" && (
+              <PageTransition>
+                <div className="p-3 md:p-6 max-w-7xl mx-auto w-full">
+                  {activeSection === "dashboard" && (
                   <div className="space-y-6">
                     <UpgradeBanner onUpgradeClick={() => setShowUpgradeModal(true)} />
                     
@@ -280,9 +282,10 @@ const Dashboard = () => {
                 {activeSection === "payments" && <PaymentHistory />}
                 {activeSection === "affiliate" && <AffiliateTracking />}
                 {activeSection === "integrations" && <Integrations />}
-                {activeSection === "settings" && <ProfileSettings />}
-                {activeSection === "contact" && <ContactSupport />}
-              </div>
+                  {activeSection === "settings" && <ProfileSettings />}
+                  {activeSection === "contact" && <ContactSupport />}
+                </div>
+              </PageTransition>
             </main>
           </div>
         </div>
