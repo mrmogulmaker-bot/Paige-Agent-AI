@@ -17,7 +17,7 @@ export const CreditScoreOverview = () => {
         
         <div className="space-y-6">
           <div className="text-center">
-            <div className="text-6xl font-bold bg-gradient-gold bg-clip-text text-transparent mb-2">
+            <div className="text-6xl font-bold text-foreground mb-2">
               {currentScore}
             </div>
             <p className="text-muted-foreground">Current Score</p>
