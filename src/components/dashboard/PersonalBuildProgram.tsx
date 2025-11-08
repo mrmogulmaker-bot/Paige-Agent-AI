@@ -316,7 +316,7 @@ export const PersonalBuildProgram = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+        <h2 className="text-3xl font-bold text-foreground">
           Personal BUILD Program
         </h2>
         <p className="text-muted-foreground mt-2">

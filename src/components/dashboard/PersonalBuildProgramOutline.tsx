@@ -211,7 +211,7 @@ export function PersonalBuildProgramOutline() {
         <CardHeader>
           <div className="flex items-start justify-between">
             <div>
-              <CardTitle className="text-3xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+              <CardTitle className="text-3xl font-bold text-foreground">
                 Personal BUILD Program
               </CardTitle>
               <CardDescription className="mt-2 text-base">
