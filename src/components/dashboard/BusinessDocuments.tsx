@@ -14,7 +14,7 @@ export function BusinessDocuments() {
       >
         <div className="space-y-6">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+            <h1 className="text-4xl font-bold text-foreground">
               Business Documents
             </h1>
             <p className="text-muted-foreground mt-2">
