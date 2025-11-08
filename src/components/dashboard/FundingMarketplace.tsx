@@ -83,7 +83,7 @@ export const FundingMarketplace = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+        <h2 className="text-3xl font-bold text-foreground">
           Funding Marketplace
         </h2>
         <p className="text-muted-foreground mt-2">

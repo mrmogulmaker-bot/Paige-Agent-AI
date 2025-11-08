@@ -235,7 +235,7 @@ export const PaigeAIChat = () => {
     <div className="max-w-4xl mx-auto h-[calc(100vh-4rem)]">
       <div className="flex flex-col h-full">
         <div className="mb-6">
-          <h2 className="text-3xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+          <h2 className="text-3xl font-bold text-foreground">
             Chat with PaigeAgent.ai
           </h2>
           <p className="text-muted-foreground mt-2">

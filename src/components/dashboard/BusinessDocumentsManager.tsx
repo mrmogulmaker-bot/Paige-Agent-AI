@@ -196,7 +196,7 @@ export function BusinessDocumentsManager() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+        <h2 className="text-2xl font-bold text-foreground">
           Business Documents
         </h2>
         <p className="text-muted-foreground">

@@ -126,7 +126,7 @@ export function ReportsView() {
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold text-foreground">
             Credit Reports
           </h1>
           <p className="text-muted-foreground mt-2">Monitor your credit reports from all three bureaus</p>

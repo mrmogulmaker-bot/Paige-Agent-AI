@@ -377,7 +377,7 @@ export function PersonalCreditDashboard() {
 
       {/* Tone Lines */}
       <div className="text-center space-y-2 py-6">
-        <p className="text-lg font-semibold bg-gradient-gold bg-clip-text text-transparent">
+        <p className="text-lg font-semibold text-gold">
           From borrower to banker.
         </p>
         <p className="text-sm text-muted-foreground">

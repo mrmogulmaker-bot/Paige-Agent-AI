@@ -108,7 +108,7 @@ export function ThreeBureauReport() {
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold text-foreground">
             3-Bureau Credit Report
           </h1>
           <p className="text-muted-foreground mt-2">
@@ -130,7 +130,7 @@ export function ThreeBureauReport() {
           {bureauData.map((bureau) => (
             <div key={bureau.name} className="text-center">
               <div className="text-sm text-muted-foreground mb-2">{bureau.name}</div>
-              <div className="text-5xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+              <div className="text-5xl font-bold text-foreground">
                 {bureau.score}
               </div>
             </div>

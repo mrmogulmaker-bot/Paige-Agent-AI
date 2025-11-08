@@ -179,7 +179,7 @@ export function OrganizationChart() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+          <h2 className="text-2xl font-bold text-foreground">
             Organization Chart
           </h2>
           <p className="text-muted-foreground">

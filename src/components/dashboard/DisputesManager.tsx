@@ -157,7 +157,7 @@ export function DisputesManager({ personalOnly, businessOnly }: DisputesManagerP
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div>
-        <h1 className="text-4xl font-bold bg-gradient-gold bg-clip-text text-transparent">
+        <h1 className="text-4xl font-bold text-foreground">
           Credit Disputes
         </h1>
         <p className="text-muted-foreground mt-2">Manage and track your personal and business credit disputes</p>
