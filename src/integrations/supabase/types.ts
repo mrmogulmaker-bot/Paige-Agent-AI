@@ -826,6 +826,226 @@ export type Database = {
         }
         Relationships: []
       }
+      credit_factor_scores: {
+        Row: {
+          active_negatives: number | null
+          aggregate_utilization: number | null
+          average_account_age_months: number | null
+          calculated_at: string | null
+          cards_over_30_pct: number | null
+          cards_over_50_pct: number | null
+          cards_over_70_pct: number | null
+          credit_age_score: number | null
+          credit_mix_score: number | null
+          data_sources: Json | null
+          id: string
+          inquiry_budget_remaining: number | null
+          inquiry_score: number | null
+          installment_count: number | null
+          mortgage_count: number | null
+          newest_account_age_months: number | null
+          oldest_account_age_months: number | null
+          oldest_negative_date: string | null
+          overall_fundability_score: number | null
+          payment_history_score: number | null
+          removed_negatives: number | null
+          revolving_count: number | null
+          total_balance: number | null
+          total_credit_limit: number | null
+          total_inquiries_eq: number | null
+          total_inquiries_ex: number | null
+          total_inquiries_tu: number | null
+          total_negatives: number | null
+          user_id: string
+          utilization_score: number | null
+        }
+        Insert: {
+          active_negatives?: number | null
+          aggregate_utilization?: number | null
+          average_account_age_months?: number | null
+          calculated_at?: string | null
+          cards_over_30_pct?: number | null
+          cards_over_50_pct?: number | null
+          cards_over_70_pct?: number | null
+          credit_age_score?: number | null
+          credit_mix_score?: number | null
+          data_sources?: Json | null
+          id?: string
+          inquiry_budget_remaining?: number | null
+          inquiry_score?: number | null
+          installment_count?: number | null
+          mortgage_count?: number | null
+          newest_account_age_months?: number | null
+          oldest_account_age_months?: number | null
+          oldest_negative_date?: string | null
+          overall_fundability_score?: number | null
+          payment_history_score?: number | null
+          removed_negatives?: number | null
+          revolving_count?: number | null
+          total_balance?: number | null
+          total_credit_limit?: number | null
+          total_inquiries_eq?: number | null
+          total_inquiries_ex?: number | null
+          total_inquiries_tu?: number | null
+          total_negatives?: number | null
+          user_id: string
+          utilization_score?: number | null
+        }
+        Update: {
+          active_negatives?: number | null
+          aggregate_utilization?: number | null
+          average_account_age_months?: number | null
+          calculated_at?: string | null
+          cards_over_30_pct?: number | null
+          cards_over_50_pct?: number | null
+          cards_over_70_pct?: number | null
+          credit_age_score?: number | null
+          credit_mix_score?: number | null
+          data_sources?: Json | null
+          id?: string
+          inquiry_budget_remaining?: number | null
+          inquiry_score?: number | null
+          installment_count?: number | null
+          mortgage_count?: number | null
+          newest_account_age_months?: number | null
+          oldest_account_age_months?: number | null
+          oldest_negative_date?: string | null
+          overall_fundability_score?: number | null
+          payment_history_score?: number | null
+          removed_negatives?: number | null
+          revolving_count?: number | null
+          total_balance?: number | null
+          total_credit_limit?: number | null
+          total_inquiries_eq?: number | null
+          total_inquiries_ex?: number | null
+          total_inquiries_tu?: number | null
+          total_negatives?: number | null
+          user_id?: string
+          utilization_score?: number | null
+        }
+        Relationships: []
+      }
+      credit_inquiries: {
+        Row: {
+          bureau: string
+          created_at: string | null
+          creditor_name: string
+          dispute_id: string | null
+          fall_off_date: string | null
+          id: string
+          inquiry_date: string
+          is_authorized: boolean | null
+          is_rate_shopping: boolean | null
+          rate_shopping_group_id: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          bureau: string
+          created_at?: string | null
+          creditor_name: string
+          dispute_id?: string | null
+          fall_off_date?: string | null
+          id?: string
+          inquiry_date: string
+          is_authorized?: boolean | null
+          is_rate_shopping?: boolean | null
+          rate_shopping_group_id?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          bureau?: string
+          created_at?: string | null
+          creditor_name?: string
+          dispute_id?: string | null
+          fall_off_date?: string | null
+          id?: string
+          inquiry_date?: string
+          is_authorized?: boolean | null
+          is_rate_shopping?: boolean | null
+          rate_shopping_group_id?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_inquiries_dispute_id_fkey"
+            columns: ["dispute_id"]
+            isOneToOne: false
+            referencedRelation: "disputes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_negative_items: {
+        Row: {
+          account_number_masked: string | null
+          amount: number | null
+          bureau: string
+          created_at: string | null
+          creditor_name: string | null
+          date_of_occurrence: string | null
+          date_reported: string | null
+          dispute_id: string | null
+          id: string
+          is_removable: boolean | null
+          item_type: string
+          notes: string | null
+          removal_probability: number | null
+          removal_reason: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          account_number_masked?: string | null
+          amount?: number | null
+          bureau: string
+          created_at?: string | null
+          creditor_name?: string | null
+          date_of_occurrence?: string | null
+          date_reported?: string | null
+          dispute_id?: string | null
+          id?: string
+          is_removable?: boolean | null
+          item_type: string
+          notes?: string | null
+          removal_probability?: number | null
+          removal_reason?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          account_number_masked?: string | null
+          amount?: number | null
+          bureau?: string
+          created_at?: string | null
+          creditor_name?: string | null
+          date_of_occurrence?: string | null
+          date_reported?: string | null
+          dispute_id?: string | null
+          id?: string
+          is_removable?: boolean | null
+          item_type?: string
+          notes?: string | null
+          removal_probability?: number | null
+          removal_reason?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_negative_items_dispute_id_fkey"
+            columns: ["dispute_id"]
+            isOneToOne: false
+            referencedRelation: "disputes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_report_verifications: {
         Row: {
           created_at: string | null
@@ -897,6 +1117,50 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      credit_utilization_snapshots: {
+        Row: {
+          balance: number | null
+          created_at: string | null
+          credit_account_id: string | null
+          credit_limit: number | null
+          id: string
+          snapshot_date: string | null
+          source: string | null
+          user_id: string
+          utilization_pct: number | null
+        }
+        Insert: {
+          balance?: number | null
+          created_at?: string | null
+          credit_account_id?: string | null
+          credit_limit?: number | null
+          id?: string
+          snapshot_date?: string | null
+          source?: string | null
+          user_id: string
+          utilization_pct?: number | null
+        }
+        Update: {
+          balance?: number | null
+          created_at?: string | null
+          credit_account_id?: string | null
+          credit_limit?: number | null
+          id?: string
+          snapshot_date?: string | null
+          source?: string | null
+          user_id?: string
+          utilization_pct?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_utilization_snapshots_credit_account_id_fkey"
+            columns: ["credit_account_id"]
+            isOneToOne: false
+            referencedRelation: "credit_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       data_deletion_requests: {
         Row: {
