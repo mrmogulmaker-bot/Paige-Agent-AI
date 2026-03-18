@@ -3,9 +3,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
+import AppShell from "./pages/AppShell";
+import CreditIntelligence from "./pages/CreditIntelligence";
+import FundingMatches from "./pages/FundingMatches";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
@@ -14,14 +17,27 @@ import Privacy from "./pages/Privacy";
 import { FloatingChatbot } from "./components/FloatingChatbot";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 
+// Lazy-load existing dashboard sections for /app/* routes
+const DisputesManager = React.lazy(() => import("./components/dashboard/DisputesManager").then(m => ({ default: m.DisputesManager })));
+const LearningVault = React.lazy(() => import("./components/dashboard/LearningVault").then(m => ({ default: m.LearningVault })));
+const BusinessCreditSection = React.lazy(() => import("./components/dashboard/BusinessCreditSection").then(m => ({ default: m.BusinessCreditSection })));
+const ProfileSettings = React.lazy(() => import("./components/dashboard/ProfileSettings").then(m => ({ default: m.ProfileSettings })));
+const AffiliateTracking = React.lazy(() => import("./components/dashboard/AffiliateTracking").then(m => ({ default: m.AffiliateTracking })));
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000,
       refetchOnWindowFocus: false,
     },
   },
 });
+
+const SuspenseFallback = () => (
+  <div className="flex items-center justify-center py-12">
+    <div className="animate-pulse text-muted-foreground">Loading...</div>
+  </div>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -33,7 +49,42 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+
+            {/* New agent-first dashboard */}
+            <Route path="/app" element={<AppShell />}>
+              <Route index element={null} />
+              <Route path="credit" element={<CreditIntelligence />} />
+              <Route path="funding" element={<FundingMatches />} />
+              <Route path="disputes" element={
+                <React.Suspense fallback={<SuspenseFallback />}>
+                  <DisputesManager />
+                </React.Suspense>
+              } />
+              <Route path="learn" element={
+                <React.Suspense fallback={<SuspenseFallback />}>
+                  <LearningVault />
+                </React.Suspense>
+              } />
+              <Route path="business" element={
+                <React.Suspense fallback={<SuspenseFallback />}>
+                  <BusinessCreditSection />
+                </React.Suspense>
+              } />
+              <Route path="settings" element={
+                <React.Suspense fallback={<SuspenseFallback />}>
+                  <ProfileSettings />
+                </React.Suspense>
+              } />
+              <Route path="affiliate" element={
+                <React.Suspense fallback={<SuspenseFallback />}>
+                  <AffiliateTracking />
+                </React.Suspense>
+              } />
+            </Route>
+
+            {/* Backward compat redirect */}
+            <Route path="/dashboard" element={<Navigate to="/app" replace />} />
+
             <Route path="/admin" element={<Admin />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
