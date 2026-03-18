@@ -71,6 +71,12 @@ export default {
         },
         warning: "hsl(var(--warning))",
         info: "hsl(var(--info))",
+        fundability: {
+          excellent: "hsl(var(--fundability-excellent))",
+          good: "hsl(var(--fundability-good))",
+          fair: "hsl(var(--fundability-fair))",
+          poor: "hsl(var(--fundability-poor))",
+        },
       },
       backgroundImage: {
         'gradient-hero': 'var(--gradient-hero)',
