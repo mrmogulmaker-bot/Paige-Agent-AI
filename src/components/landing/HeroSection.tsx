@@ -1,156 +1,179 @@
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Play, TrendingUp, Award, DollarSign, Shield, Sparkles, Target } from "lucide-react";
+import { ArrowRight, Mic } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import paigeAvatar from "@/assets/paige-ai-avatar.png";
+
+const chatLines = [
+  { role: "user" as const, text: "What's my credit looking like?" },
+  {
+    role: "assistant" as const,
+    text: "Your Fundability Score is 62/100. Utilization at 68% — that's costing you 35 points. Here's the protocol: pay Capital One down to $1,500. That one move? 25-35 point boost and 3 new funding products unlock.",
+  },
+  { role: "user" as const, text: "How do I get to $100K in funding?" },
+  {
+    role: "assistant" as const,
+    text: "$100K is a formula, not a dream. Drop utilization to 25%, remove 2 collections, wait 90 days. Projected score: 720. Projected funding: $135K across 14 products. That's not theory — that's math.",
+  },
+];
 
 export function HeroSection() {
   const navigate = useNavigate();
+  const [visibleLines, setVisibleLines] = useState(0);
+
+  useEffect(() => {
+    if (visibleLines < chatLines.length) {
+      const timer = setTimeout(
+        () => setVisibleLines((v) => v + 1),
+        visibleLines === 0 ? 1200 : 2200
+      );
+      return () => clearTimeout(timer);
+    }
+  }, [visibleLines]);
 
   return (
-    <section className="relative overflow-hidden py-20 lg:py-32">
-      {/* Background gradient - stays behind everything */}
+    <section className="relative overflow-hidden py-20 lg:py-28">
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-accent/5 to-background -z-20" />
-      
-      {/* Floating background elements - stays behind all text */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
         <div className="absolute top-20 right-1/4 w-72 h-72 bg-accent/10 rounded-full blur-3xl animate-float" />
-        <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-float-slow" />
+        <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-gold/10 rounded-full blur-3xl animate-float-slow" />
       </div>
-      
+
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
-          {/* Left Column */}
+          {/* Left */}
           <div className="space-y-8 animate-fade-in">
-            <Badge className="bg-accent/10 text-accent border-accent/20 hover:bg-accent/20 animate-fade-in">
-              Trusted by 10,000+ Business Owners
+            <Badge className="bg-gold/10 text-gold-dark border-gold/20">
+              Built by Mr. Mogul Maker
             </Badge>
 
-            <h1 className="text-5xl lg:text-6xl font-bold tracking-tight animate-fade-in" style={{ animationDelay: "0.1s" }}>
-              Repair Your Credit, Build Fundability & Access{" "}
-              <span className="text-accent font-extrabold">
-                Capital
-              </span>
+            <h1 className="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]">
+              Stop Begging Banks.{" "}
+              <span className="text-accent">Start Commanding Capital.</span>
             </h1>
 
-            <p className="text-xl text-muted-foreground leading-relaxed animate-fade-in" style={{ animationDelay: "0.2s" }}>
-              From credit repair to business funding—transform your financial future with ACCEL personal credit repair, BUILD personal credit building, and BUILD business credit programs. AI-powered guidance every step of the way.
+            <p className="text-xl text-muted-foreground leading-relaxed max-w-lg">
+              Paige is your AI-powered credit strategist. She analyzes your
+              profile, matches you to real lenders, and builds your buying
+              power. No more guessing. Just the protocol.
             </p>
 
-            {/* Benefits */}
-            <div className="space-y-3 animate-fade-in" style={{ animationDelay: "0.3s" }}>
-              <div className="flex items-center gap-3 hover:translate-x-2 transition-transform duration-300">
-                <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
-                <span className="text-foreground">Repair personal credit with FCRA-compliant strategies</span>
+            {/* Social proof stats */}
+            <div className="grid grid-cols-3 gap-6 py-4 border-t border-border">
+              <div>
+                <div className="text-2xl font-bold text-foreground">$1.2M+</div>
+                <div className="text-xs text-muted-foreground">Funding Raised</div>
               </div>
-              <div className="flex items-center gap-3 hover:translate-x-2 transition-transform duration-300">
-                <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
-                <span className="text-foreground">Build personal credit and unlock funding opportunities</span>
+              <div>
+                <div className="text-2xl font-bold text-foreground">720+</div>
+                <div className="text-xs text-muted-foreground">Avg Score in 6mo</div>
               </div>
-              <div className="flex items-center gap-3 hover:translate-x-2 transition-transform duration-300">
-                <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
-                <span className="text-foreground">Establish business credit from $0 to fundable</span>
-              </div>
-            </div>
-
-            {/* Social Proof Stats */}
-            <div className="grid grid-cols-2 gap-6 py-6 border-t border-border animate-fade-in" style={{ animationDelay: "0.4s" }}>
-              <div className="hover-scale cursor-default">
-                <div className="text-3xl font-bold text-foreground">120+</div>
-                <div className="text-sm text-muted-foreground">Avg Credit Score Increase</div>
-              </div>
-              <div className="hover-scale cursor-default">
-                <div className="text-3xl font-bold text-foreground">89%</div>
-                <div className="text-sm text-muted-foreground">Funding Success Rate</div>
+              <div>
+                <div className="text-2xl font-bold text-foreground">89%</div>
+                <div className="text-xs text-muted-foreground">Success Rate</div>
               </div>
             </div>
 
-            {/* CTAs */}
-            <div className="flex flex-col sm:flex-row gap-4 animate-fade-in" style={{ animationDelay: "0.5s" }}>
-              <Button 
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button
                 size="lg"
-                className="bg-gradient-primary text-primary-foreground hover:shadow-glow-lg hover:scale-110 hover:brightness-125 transition-all duration-300"
-                onClick={() => navigate("/dashboard")}
+                className="bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold"
+                onClick={() => navigate("/auth")}
               >
-                Start Building Now
+                Build My Buying Power — Free
+                <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
-              <Button 
+              <Button
                 size="lg"
                 variant="outline"
                 className="group hover:scale-105 transition-all duration-300"
+                onClick={() => {
+                  document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" });
+                }}
               >
-                <Play className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform" />
-                Watch Demo
+                See How It Works
               </Button>
             </div>
           </div>
 
-          {/* Right Column - Dashboard Preview with floating icons */}
+          {/* Right — animated chat demo */}
           <div className="relative animate-fade-in" style={{ animationDelay: "0.3s" }}>
-            {/* Floating badges removed to prevent overlap */}
-            {/* Floating badges removed to prevent overlap */}
-            
-            <Card className="p-6 bg-card border-border shadow-lg relative overflow-hidden hover:shadow-glow-lg transition-shadow duration-500">
-              {/* Gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent pointer-events-none" />
-              
-              <div className="relative space-y-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Credit Overview</h3>
-                  <Badge className="bg-success/10 text-success border-success/20">
-                    On Track
-                  </Badge>
+            <div className="bg-card border border-border rounded-xl shadow-card overflow-hidden">
+              {/* Chat header */}
+              <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-primary/5">
+                <img
+                  src={paigeAvatar}
+                  alt="Paige AI"
+                  className="w-8 h-8 rounded-full border-2 border-accent"
+                />
+                <div>
+                  <div className="font-bold text-sm text-foreground">PaigeAgent.ai</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Your credit & funding strategist
+                  </div>
                 </div>
-
-                {/* Floating stat cards */}
-                <div className="space-y-4">
-                  <Card className="p-4 bg-gradient-to-r from-primary to-primary-light text-primary-foreground shadow-glow animate-fade-in hover:scale-105 transition-all duration-300 cursor-default">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm opacity-90">Personal Credit</div>
-                        <div className="text-3xl font-bold mt-1">720</div>
-                        <div className="text-xs opacity-75 mt-1 flex items-center gap-1">
-                          <TrendingUp className="w-3 h-3" />
-                          +45 this month
-                        </div>
-                      </div>
-                      <div className="p-3 bg-primary-foreground/10 rounded-full">
-                        <Award className="w-6 h-6" />
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card className="p-4 bg-gradient-accent text-accent-foreground shadow-glow-lg animate-fade-in hover:scale-105 transition-all duration-300 cursor-default" style={{ animationDelay: "0.1s" }}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm opacity-90">Business Credit</div>
-                        <div className="text-3xl font-bold mt-1">85</div>
-                        <div className="text-xs opacity-75 mt-1 flex items-center gap-1">
-                          <TrendingUp className="w-3 h-3" />
-                          Excellent
-                        </div>
-                      </div>
-                      <div className="p-3 bg-accent-foreground/10 rounded-full">
-                        <TrendingUp className="w-6 h-6" />
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card className="p-4 bg-gradient-to-r from-success to-success-light text-white shadow-md animate-fade-in hover:scale-105 transition-all duration-300 cursor-default" style={{ animationDelay: "0.2s" }}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm opacity-90">Funding Approved</div>
-                        <div className="text-3xl font-bold mt-1">$150K</div>
-                        <div className="text-xs opacity-75 mt-1">Ready to deploy</div>
-                      </div>
-                      <div className="p-3 bg-white/10 rounded-full">
-                        <DollarSign className="w-6 h-6" />
-                      </div>
-                    </div>
-                  </Card>
+                <div className="ml-auto flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-fundability-excellent animate-pulse" />
+                  <span className="text-[10px] text-muted-foreground">Online</span>
                 </div>
               </div>
-            </Card>
+
+              {/* Chat body */}
+              <div className="p-4 space-y-3 min-h-[280px]">
+                {chatLines.slice(0, visibleLines).map((line, i) => (
+                  <div
+                    key={i}
+                    className={`flex gap-2.5 animate-slide-up ${
+                      line.role === "user" ? "flex-row-reverse" : "flex-row"
+                    }`}
+                  >
+                    {line.role === "assistant" && (
+                      <img
+                        src={paigeAvatar}
+                        alt="Paige"
+                        className="w-7 h-7 rounded-full border border-accent flex-shrink-0 mt-0.5"
+                      />
+                    )}
+                    <div
+                      className={`max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed ${
+                        line.role === "user"
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-muted/40 border border-border text-foreground"
+                      }`}
+                    >
+                      {line.text}
+                    </div>
+                  </div>
+                ))}
+                {visibleLines < chatLines.length && (
+                  <div className="flex gap-2.5">
+                    <img
+                      src={paigeAvatar}
+                      alt="Paige"
+                      className="w-7 h-7 rounded-full border border-accent flex-shrink-0"
+                    />
+                    <div className="bg-muted/40 border border-border rounded-lg px-3 py-2.5">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
+                        <div className="w-2 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
+                        <div className="w-2 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Chat input mock */}
+              <div className="px-4 py-3 border-t border-border flex items-center gap-2">
+                <div className="flex-1 h-9 rounded-md bg-muted/30 border border-border px-3 flex items-center text-sm text-muted-foreground">
+                  Ask Paige anything...
+                </div>
+                <div className="w-9 h-9 rounded-md bg-gradient-gold flex items-center justify-center">
+                  <Mic className="w-4 h-4 text-primary" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
