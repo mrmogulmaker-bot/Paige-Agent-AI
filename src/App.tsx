@@ -9,6 +9,8 @@ import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
+import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
 import { FloatingChatbot } from "./components/FloatingChatbot";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 
