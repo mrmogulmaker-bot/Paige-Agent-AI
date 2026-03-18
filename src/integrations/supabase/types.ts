@@ -786,12 +786,20 @@ export type Database = {
       }
       credit_accounts: {
         Row: {
+          account_close_date: string | null
+          account_open_date: string | null
           balance: number | null
           created_at: string | null
+          credit_limit: number | null
           creditor: string
+          current_balance: number | null
           id: string
+          is_authorized_user: boolean | null
+          is_open: boolean | null
+          last_reported_date: string | null
           limit_amount: number | null
           opened_on: string | null
+          payment_history_json: Json | null
           status: string | null
           type: Database["public"]["Enums"]["account_type"]
           updated_at: string | null
@@ -799,12 +807,20 @@ export type Database = {
           utilization: number | null
         }
         Insert: {
+          account_close_date?: string | null
+          account_open_date?: string | null
           balance?: number | null
           created_at?: string | null
+          credit_limit?: number | null
           creditor: string
+          current_balance?: number | null
           id?: string
+          is_authorized_user?: boolean | null
+          is_open?: boolean | null
+          last_reported_date?: string | null
           limit_amount?: number | null
           opened_on?: string | null
+          payment_history_json?: Json | null
           status?: string | null
           type: Database["public"]["Enums"]["account_type"]
           updated_at?: string | null
@@ -812,12 +828,20 @@ export type Database = {
           utilization?: number | null
         }
         Update: {
+          account_close_date?: string | null
+          account_open_date?: string | null
           balance?: number | null
           created_at?: string | null
+          credit_limit?: number | null
           creditor?: string
+          current_balance?: number | null
           id?: string
+          is_authorized_user?: boolean | null
+          is_open?: boolean | null
+          last_reported_date?: string | null
           limit_amount?: number | null
           opened_on?: string | null
+          payment_history_json?: Json | null
           status?: string | null
           type?: Database["public"]["Enums"]["account_type"]
           updated_at?: string | null
@@ -2475,10 +2499,17 @@ export type Database = {
           avatar_url: string | null
           city: string | null
           created_at: string | null
+          credit_goals: Json | null
           date_of_birth: string | null
           dob_last4: string | null
+          estimated_fico_eq: number | null
+          estimated_fico_ex: number | null
+          estimated_fico_tu: number | null
           full_name: string | null
+          funding_goals: Json | null
           id: string
+          onboarding_completed: boolean | null
+          onboarding_step: string | null
           phone: string | null
           postal_code: string | null
           ssn_encrypted: string | null
@@ -2491,10 +2522,17 @@ export type Database = {
           avatar_url?: string | null
           city?: string | null
           created_at?: string | null
+          credit_goals?: Json | null
           date_of_birth?: string | null
           dob_last4?: string | null
+          estimated_fico_eq?: number | null
+          estimated_fico_ex?: number | null
+          estimated_fico_tu?: number | null
           full_name?: string | null
+          funding_goals?: Json | null
           id?: string
+          onboarding_completed?: boolean | null
+          onboarding_step?: string | null
           phone?: string | null
           postal_code?: string | null
           ssn_encrypted?: string | null
@@ -2507,10 +2545,17 @@ export type Database = {
           avatar_url?: string | null
           city?: string | null
           created_at?: string | null
+          credit_goals?: Json | null
           date_of_birth?: string | null
           dob_last4?: string | null
+          estimated_fico_eq?: number | null
+          estimated_fico_ex?: number | null
+          estimated_fico_tu?: number | null
           full_name?: string | null
+          funding_goals?: Json | null
           id?: string
+          onboarding_completed?: boolean | null
+          onboarding_step?: string | null
           phone?: string | null
           postal_code?: string | null
           ssn_encrypted?: string | null
