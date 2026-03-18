@@ -6,73 +6,73 @@ import { useNavigate } from "react-router-dom";
 
 const tiers = [
   {
-    name: "Starter",
-    price: "$47",
-    period: "/month",
-    description: "Perfect for personal credit repair",
+    name: "Free",
+    price: "$0",
+    period: "",
+    description: "See where you stand",
     features: [
-      "ACCEL Personal Credit Repair",
-      "Personal credit monitoring",
-      "Basic dispute tools",
-      "PaigeAgent.ai coaching",
-      "Email support",
-      "Credit score tracking",
+      "Basic credit factor overview",
+      "5 Paige messages/day",
+      "View-only fundability score",
+      "Credit education articles",
     ],
-    cta: "Start Free Trial",
+    cta: "Get Started Free",
     popular: false,
+    highlight: false,
   },
   {
-    name: "Professional",
-    price: "$97",
+    name: "Starter",
+    price: "$29",
     period: "/month",
-    description: "Personal credit building and funding",
+    description: "Start repairing and building",
+    features: [
+      "Full Paige AI access",
+      "5 dispute letters/month",
+      "Basic funding matches",
+      "Utilization alerts",
+      "ACCEL framework access",
+      "Email support",
+    ],
+    cta: "Start Building",
+    popular: false,
+    highlight: false,
+  },
+  {
+    name: "Pro",
+    price: "$49",
+    period: "/month",
+    description: "Unlock your buying power",
     features: [
       "Everything in Starter",
-      "BUILD Personal Program",
-      "Personal funding strategies",
-      "Priority PaigeAgent.ai coaching",
+      "Unlimited Paige AI",
+      "Unlimited dispute letters",
+      "Full funding match engine",
+      '"What If" projections',
+      "Inquiry tracking & alerts",
+      "Voice chat with Paige",
       "Priority support",
-      "Fundability assessment",
-      "Dispute letter automation",
     ],
-    cta: "Get Started",
+    cta: "Go Pro",
     popular: true,
-  },
-  {
-    name: "Premium",
-    price: "$197",
-    period: "/month",
-    description: "Business credit building and funding",
-    features: [
-      "Everything in Professional",
-      "BUILD Business Program",
-      "Business credit building",
-      "Dedicated account manager",
-      "Unlimited disputes",
-      "Unlimited AI coaching",
-      "Monthly strategy sessions",
-    ],
-    cta: "Get Started",
-    popular: false,
+    highlight: true,
   },
   {
     name: "Enterprise",
-    price: "Let's Talk",
-    period: "",
-    description: "Customized yearly plans for your organization",
+    price: "$99",
+    period: "/month",
+    description: "Business credit + funding mastery",
     features: [
-      "Everything in Premium",
-      "3M Framework (Make, Manage, Multiply)",
-      "Dedicated success manager",
-      "White-glove service",
-      "Custom integration support",
-      "Team collaboration tools",
-      "Personalized training sessions",
-      "Fractional CFO & CPA services",
-      "Bookkeeping & full implementation",
+      "Everything in Pro",
+      "BUILD Business program",
+      "Business funding matches",
+      "Monthly strategy session",
+      "API access",
+      "Team collaboration",
+      "Dedicated account manager",
     ],
-    cta: "Contact Sales",
+    cta: "Go Enterprise",
     popular: false,
+    highlight: false,
   },
 ];
 
@@ -82,31 +82,28 @@ export function PricingSection() {
   return (
     <section id="pricing" className="py-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16 animate-fade-in">
-          <Badge className="mb-4 bg-accent/10 text-accent border-accent/20">
+        <div className="text-center mb-16">
+          <Badge className="mb-4 bg-gold/10 text-gold-dark border-gold/20">
             Simple Pricing
           </Badge>
-          <h2 className="text-4xl lg:text-5xl font-bold mb-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>
-            Choose Your{" "}
-            <span className="text-success font-extrabold">
-              Success Path
-            </span>
+          <h2 className="text-4xl lg:text-5xl font-bold mb-4">
+            Invest in Your{" "}
+            <span className="text-accent font-extrabold">Buying Power</span>
           </h2>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.2s" }}>
-            Transparent pricing with no hidden fees. Start with a 14-day free trial.
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            No hidden fees. No contracts. Cancel anytime.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {tiers.map((tier, index) => (
             <Card
               key={index}
-              className={`p-8 bg-card relative ${
+              className={`p-7 bg-card relative ${
                 tier.popular
-                  ? "border-accent shadow-glow-lg scale-105 animate-fade-in"
-                  : "border-border shadow-md animate-fade-in"
-              } transition-all duration-300 hover:shadow-glow hover:-translate-y-2`}
-              style={{ animationDelay: `${index * 0.1}s` }}
+                  ? "border-accent shadow-glow-lg scale-[1.03]"
+                  : "border-border"
+              } transition-all duration-300 hover:shadow-glow hover:-translate-y-1`}
             >
               {tier.popular && (
                 <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-accent text-accent-foreground border-0">
@@ -114,48 +111,38 @@ export function PricingSection() {
                 </Badge>
               )}
 
-              <div className="text-center mb-8">
-                <h3 className="text-2xl font-bold mb-2">{tier.name}</h3>
-                <p className="text-sm text-muted-foreground mb-4">{tier.description}</p>
+              <div className="text-center mb-6">
+                <h3 className="text-xl font-bold mb-1">{tier.name}</h3>
+                <p className="text-xs text-muted-foreground mb-3">
+                  {tier.description}
+                </p>
                 <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-5xl font-bold">{tier.price}</span>
-                  <span className="text-muted-foreground">{tier.period}</span>
+                  <span className="text-4xl font-bold">{tier.price}</span>
+                  <span className="text-muted-foreground text-sm">
+                    {tier.period}
+                  </span>
                 </div>
               </div>
 
-              <ul className="space-y-3 mb-8">
-                {tier.features.map((feature, featureIndex) => {
-                  const isHighlight = feature.includes("ACCEL") || 
-                                    feature.includes("BUILD") || 
-                                    feature.includes("PaigeAgent.ai");
-                  return (
-                    <li key={featureIndex} className="flex items-start gap-3">
-                      <CheckCircle className="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
-                      <span className={`text-sm ${isHighlight ? "font-bold text-accent" : ""}`}>
-                        {feature}
-                      </span>
-                    </li>
-                  );
-                })}
+              <ul className="space-y-2.5 mb-6">
+                {tier.features.map((feature, fi) => (
+                  <li key={fi} className="flex items-start gap-2.5">
+                    <CheckCircle className="w-4 h-4 text-fundability-excellent flex-shrink-0 mt-0.5" />
+                    <span className="text-sm">{feature}</span>
+                  </li>
+                ))}
               </ul>
 
               <Button
                 className={`w-full ${
                   tier.popular
-                    ? "bg-gradient-primary text-primary-foreground shadow-glow hover:shadow-glow-lg hover:scale-110 hover:brightness-125"
+                    ? "bg-gradient-accent text-accent-foreground shadow-glow hover:shadow-glow-lg hover:scale-105"
                     : tier.name === "Enterprise"
-                    ? "bg-gradient-accent text-accent-foreground shadow-glow hover:shadow-glow-lg hover:scale-110 hover:brightness-125"
+                    ? "bg-gradient-gold text-primary hover:shadow-glow hover:scale-105"
                     : "bg-muted text-foreground hover:bg-accent hover:text-accent-foreground hover:scale-105"
                 } transition-all duration-300`}
                 size="lg"
-                onClick={() => {
-                  if (tier.name === "Enterprise") {
-                    // Navigate to contact page for Enterprise
-                    navigate("/auth?mode=signup&plan=enterprise");
-                  } else {
-                    navigate("/auth?mode=signup");
-                  }
-                }}
+                onClick={() => navigate("/auth")}
               >
                 {tier.cta}
               </Button>
@@ -163,14 +150,11 @@ export function PricingSection() {
           ))}
         </div>
 
-        <div className="mt-12 text-center space-y-2">
-          <p className="text-sm text-muted-foreground">
-            Start your <span className="font-semibold text-foreground">14-day free trial</span> • Payment authorization required upfront
-          </p>
-          <p className="text-xs text-muted-foreground">
-            You won't be charged during your trial • Auto-charges after 14 days • Cancel anytime before trial ends
-          </p>
-        </div>
+        <p className="text-center text-xs text-muted-foreground mt-8">
+          We don't have next. We got{" "}
+          <span className="font-bold text-accent">NOW.</span> — See you on the
+          other side.
+        </p>
       </div>
     </section>
   );

@@ -14,113 +14,93 @@ export function Header() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
-    
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => setUser(session?.user ?? null)
     );
-
     return () => subscription.unsubscribe();
   }, []);
+
+  const navLinks = [
+    { label: "Features", href: "#features" },
+    { label: "How It Works", href: "#how-it-works" },
+    { label: "Pricing", href: "#pricing" },
+  ];
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
-          {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
             <img src={paigeLogo} alt="Paige Agent AI" className="h-10 w-auto" />
             <span className="text-xl font-extrabold text-accent">PaigeAgent.ai</span>
           </Link>
 
-          {/* Desktop Navigation */}
           <div className="hidden md:flex md:items-center md:space-x-8">
-            <a href="#features" className="text-sm font-medium text-foreground hover:text-accent transition-colors">
-              Features
-            </a>
-            <a href="#frameworks" className="text-sm font-medium text-foreground hover:text-accent transition-colors">
-              Frameworks
-            </a>
-            <a href="#pricing" className="text-sm font-medium text-foreground hover:text-accent transition-colors">
-              Pricing
-            </a>
+            {navLinks.map((l) => (
+              <a key={l.label} href={l.href} className="text-sm font-medium text-foreground hover:text-accent transition-colors">
+                {l.label}
+              </a>
+            ))}
           </div>
 
-          {/* Auth Buttons */}
           <div className="hidden md:flex md:items-center md:space-x-4">
             {user ? (
               <>
                 <NotificationBell />
-                <Button onClick={() => navigate("/dashboard")}>
-                  Go to Dashboard
-                </Button>
+                <Button onClick={() => navigate("/app")}>Go to Dashboard</Button>
               </>
             ) : (
               <>
-                <Button variant="ghost" onClick={() => navigate("/auth")}>
-                  Sign In
-                </Button>
-                <Button 
-                  className="bg-gradient-primary text-primary-foreground hover:shadow-glow-lg hover:scale-110 hover:brightness-125 transition-all duration-300"
+                <Button variant="ghost" onClick={() => navigate("/auth")}>Sign In</Button>
+                <Button
+                  className="bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold"
                   onClick={() => navigate("/auth")}
                 >
-                  Get Started
+                  Get Started Free
                 </Button>
               </>
             )}
           </div>
 
-          {/* Mobile menu button */}
           <button
             type="button"
             className="md:hidden inline-flex items-center justify-center p-2 rounded-md text-foreground hover:bg-muted"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
-            {mobileMenuOpen ? (
-              <X className="h-6 w-6" aria-hidden="true" />
-            ) : (
-              <Menu className="h-6 w-6" aria-hidden="true" />
-            )}
+            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
 
-        {/* Mobile menu */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-border py-4 space-y-4">
-            <a
-              href="#features"
-              className="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Features
-            </a>
-            <a
-              href="#frameworks"
-              className="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Frameworks
-            </a>
-            <a
-              href="#pricing"
-              className="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Pricing
-            </a>
+            {navLinks.map((l) => (
+              <a
+                key={l.label}
+                href={l.href}
+                className="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {l.label}
+              </a>
+            ))}
             <div className="px-3 pt-4 space-y-2">
-              <Button 
-                variant="outline" 
-                className="w-full"
-                onClick={() => navigate("/auth")}
-              >
-                Sign In
-              </Button>
-              <Button 
-                className="w-full bg-gradient-primary text-primary-foreground hover:shadow-glow-lg hover:scale-105 hover:brightness-125 transition-all duration-300"
-                onClick={() => navigate("/auth")}
-              >
-                Get Started
-              </Button>
+              {user ? (
+                <Button className="w-full" onClick={() => navigate("/app")}>
+                  Go to Dashboard
+                </Button>
+              ) : (
+                <>
+                  <Button variant="outline" className="w-full" onClick={() => navigate("/auth")}>
+                    Sign In
+                  </Button>
+                  <Button
+                    className="w-full bg-gradient-gold text-primary hover:shadow-glow-lg font-bold"
+                    onClick={() => navigate("/auth")}
+                  >
+                    Get Started Free
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         )}
