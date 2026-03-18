@@ -786,12 +786,20 @@ export type Database = {
       }
       credit_accounts: {
         Row: {
+          account_close_date: string | null
+          account_open_date: string | null
           balance: number | null
           created_at: string | null
+          credit_limit: number | null
           creditor: string
+          current_balance: number | null
           id: string
+          is_authorized_user: boolean | null
+          is_open: boolean | null
+          last_reported_date: string | null
           limit_amount: number | null
           opened_on: string | null
+          payment_history_json: Json | null
           status: string | null
           type: Database["public"]["Enums"]["account_type"]
           updated_at: string | null
@@ -799,12 +807,20 @@ export type Database = {
           utilization: number | null
         }
         Insert: {
+          account_close_date?: string | null
+          account_open_date?: string | null
           balance?: number | null
           created_at?: string | null
+          credit_limit?: number | null
           creditor: string
+          current_balance?: number | null
           id?: string
+          is_authorized_user?: boolean | null
+          is_open?: boolean | null
+          last_reported_date?: string | null
           limit_amount?: number | null
           opened_on?: string | null
+          payment_history_json?: Json | null
           status?: string | null
           type: Database["public"]["Enums"]["account_type"]
           updated_at?: string | null
@@ -812,12 +828,20 @@ export type Database = {
           utilization?: number | null
         }
         Update: {
+          account_close_date?: string | null
+          account_open_date?: string | null
           balance?: number | null
           created_at?: string | null
+          credit_limit?: number | null
           creditor?: string
+          current_balance?: number | null
           id?: string
+          is_authorized_user?: boolean | null
+          is_open?: boolean | null
+          last_reported_date?: string | null
           limit_amount?: number | null
           opened_on?: string | null
+          payment_history_json?: Json | null
           status?: string | null
           type?: Database["public"]["Enums"]["account_type"]
           updated_at?: string | null
@@ -825,6 +849,226 @@ export type Database = {
           utilization?: number | null
         }
         Relationships: []
+      }
+      credit_factor_scores: {
+        Row: {
+          active_negatives: number | null
+          aggregate_utilization: number | null
+          average_account_age_months: number | null
+          calculated_at: string | null
+          cards_over_30_pct: number | null
+          cards_over_50_pct: number | null
+          cards_over_70_pct: number | null
+          credit_age_score: number | null
+          credit_mix_score: number | null
+          data_sources: Json | null
+          id: string
+          inquiry_budget_remaining: number | null
+          inquiry_score: number | null
+          installment_count: number | null
+          mortgage_count: number | null
+          newest_account_age_months: number | null
+          oldest_account_age_months: number | null
+          oldest_negative_date: string | null
+          overall_fundability_score: number | null
+          payment_history_score: number | null
+          removed_negatives: number | null
+          revolving_count: number | null
+          total_balance: number | null
+          total_credit_limit: number | null
+          total_inquiries_eq: number | null
+          total_inquiries_ex: number | null
+          total_inquiries_tu: number | null
+          total_negatives: number | null
+          user_id: string
+          utilization_score: number | null
+        }
+        Insert: {
+          active_negatives?: number | null
+          aggregate_utilization?: number | null
+          average_account_age_months?: number | null
+          calculated_at?: string | null
+          cards_over_30_pct?: number | null
+          cards_over_50_pct?: number | null
+          cards_over_70_pct?: number | null
+          credit_age_score?: number | null
+          credit_mix_score?: number | null
+          data_sources?: Json | null
+          id?: string
+          inquiry_budget_remaining?: number | null
+          inquiry_score?: number | null
+          installment_count?: number | null
+          mortgage_count?: number | null
+          newest_account_age_months?: number | null
+          oldest_account_age_months?: number | null
+          oldest_negative_date?: string | null
+          overall_fundability_score?: number | null
+          payment_history_score?: number | null
+          removed_negatives?: number | null
+          revolving_count?: number | null
+          total_balance?: number | null
+          total_credit_limit?: number | null
+          total_inquiries_eq?: number | null
+          total_inquiries_ex?: number | null
+          total_inquiries_tu?: number | null
+          total_negatives?: number | null
+          user_id: string
+          utilization_score?: number | null
+        }
+        Update: {
+          active_negatives?: number | null
+          aggregate_utilization?: number | null
+          average_account_age_months?: number | null
+          calculated_at?: string | null
+          cards_over_30_pct?: number | null
+          cards_over_50_pct?: number | null
+          cards_over_70_pct?: number | null
+          credit_age_score?: number | null
+          credit_mix_score?: number | null
+          data_sources?: Json | null
+          id?: string
+          inquiry_budget_remaining?: number | null
+          inquiry_score?: number | null
+          installment_count?: number | null
+          mortgage_count?: number | null
+          newest_account_age_months?: number | null
+          oldest_account_age_months?: number | null
+          oldest_negative_date?: string | null
+          overall_fundability_score?: number | null
+          payment_history_score?: number | null
+          removed_negatives?: number | null
+          revolving_count?: number | null
+          total_balance?: number | null
+          total_credit_limit?: number | null
+          total_inquiries_eq?: number | null
+          total_inquiries_ex?: number | null
+          total_inquiries_tu?: number | null
+          total_negatives?: number | null
+          user_id?: string
+          utilization_score?: number | null
+        }
+        Relationships: []
+      }
+      credit_inquiries: {
+        Row: {
+          bureau: string
+          created_at: string | null
+          creditor_name: string
+          dispute_id: string | null
+          fall_off_date: string | null
+          id: string
+          inquiry_date: string
+          is_authorized: boolean | null
+          is_rate_shopping: boolean | null
+          rate_shopping_group_id: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          bureau: string
+          created_at?: string | null
+          creditor_name: string
+          dispute_id?: string | null
+          fall_off_date?: string | null
+          id?: string
+          inquiry_date: string
+          is_authorized?: boolean | null
+          is_rate_shopping?: boolean | null
+          rate_shopping_group_id?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          bureau?: string
+          created_at?: string | null
+          creditor_name?: string
+          dispute_id?: string | null
+          fall_off_date?: string | null
+          id?: string
+          inquiry_date?: string
+          is_authorized?: boolean | null
+          is_rate_shopping?: boolean | null
+          rate_shopping_group_id?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_inquiries_dispute_id_fkey"
+            columns: ["dispute_id"]
+            isOneToOne: false
+            referencedRelation: "disputes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_negative_items: {
+        Row: {
+          account_number_masked: string | null
+          amount: number | null
+          bureau: string
+          created_at: string | null
+          creditor_name: string | null
+          date_of_occurrence: string | null
+          date_reported: string | null
+          dispute_id: string | null
+          id: string
+          is_removable: boolean | null
+          item_type: string
+          notes: string | null
+          removal_probability: number | null
+          removal_reason: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          account_number_masked?: string | null
+          amount?: number | null
+          bureau: string
+          created_at?: string | null
+          creditor_name?: string | null
+          date_of_occurrence?: string | null
+          date_reported?: string | null
+          dispute_id?: string | null
+          id?: string
+          is_removable?: boolean | null
+          item_type: string
+          notes?: string | null
+          removal_probability?: number | null
+          removal_reason?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          account_number_masked?: string | null
+          amount?: number | null
+          bureau?: string
+          created_at?: string | null
+          creditor_name?: string | null
+          date_of_occurrence?: string | null
+          date_reported?: string | null
+          dispute_id?: string | null
+          id?: string
+          is_removable?: boolean | null
+          item_type?: string
+          notes?: string | null
+          removal_probability?: number | null
+          removal_reason?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_negative_items_dispute_id_fkey"
+            columns: ["dispute_id"]
+            isOneToOne: false
+            referencedRelation: "disputes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       credit_report_verifications: {
         Row: {
@@ -897,6 +1141,50 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      credit_utilization_snapshots: {
+        Row: {
+          balance: number | null
+          created_at: string | null
+          credit_account_id: string | null
+          credit_limit: number | null
+          id: string
+          snapshot_date: string | null
+          source: string | null
+          user_id: string
+          utilization_pct: number | null
+        }
+        Insert: {
+          balance?: number | null
+          created_at?: string | null
+          credit_account_id?: string | null
+          credit_limit?: number | null
+          id?: string
+          snapshot_date?: string | null
+          source?: string | null
+          user_id: string
+          utilization_pct?: number | null
+        }
+        Update: {
+          balance?: number | null
+          created_at?: string | null
+          credit_account_id?: string | null
+          credit_limit?: number | null
+          id?: string
+          snapshot_date?: string | null
+          source?: string | null
+          user_id?: string
+          utilization_pct?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_utilization_snapshots_credit_account_id_fkey"
+            columns: ["credit_account_id"]
+            isOneToOne: false
+            referencedRelation: "credit_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       data_deletion_requests: {
         Row: {
@@ -1289,6 +1577,44 @@ export type Database = {
         }
         Relationships: []
       }
+      funding_application_sequence: {
+        Row: {
+          created_at: string | null
+          estimated_amount: number | null
+          id: string
+          lender_product_id: string | null
+          reason: string | null
+          sequence_order: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          estimated_amount?: number | null
+          id?: string
+          lender_product_id?: string | null
+          reason?: string | null
+          sequence_order: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          estimated_amount?: number | null
+          id?: string
+          lender_product_id?: string | null
+          reason?: string | null
+          sequence_order?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funding_application_sequence_lender_product_id_fkey"
+            columns: ["lender_product_id"]
+            isOneToOne: false
+            referencedRelation: "lender_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funding_applications: {
         Row: {
           amount_requested: number
@@ -1561,6 +1887,42 @@ export type Database = {
           },
         ]
       }
+      funding_projections: {
+        Row: {
+          calculated_at: string | null
+          id: string
+          new_products_unlocked: Json | null
+          projected_matches: number | null
+          projected_score: number | null
+          projected_total_funding: number | null
+          scenario_name: string
+          scenario_params: Json
+          user_id: string
+        }
+        Insert: {
+          calculated_at?: string | null
+          id?: string
+          new_products_unlocked?: Json | null
+          projected_matches?: number | null
+          projected_score?: number | null
+          projected_total_funding?: number | null
+          scenario_name: string
+          scenario_params?: Json
+          user_id: string
+        }
+        Update: {
+          calculated_at?: string | null
+          id?: string
+          new_products_unlocked?: Json | null
+          projected_matches?: number | null
+          projected_score?: number | null
+          projected_total_funding?: number | null
+          scenario_name?: string
+          scenario_params?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
       invitations: {
         Row: {
           accepted_at: string | null
@@ -1629,6 +1991,99 @@ export type Database = {
           summary?: string | null
           tags?: string[] | null
           title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      lender_products: {
+        Row: {
+          affiliate_commission_pct: number | null
+          affiliate_url: string | null
+          application_url: string | null
+          apr_range_high: number | null
+          apr_range_low: number | null
+          created_at: string | null
+          ein_only: boolean | null
+          id: string
+          is_active: boolean | null
+          last_verified: string | null
+          lender_name: string
+          max_amount: number | null
+          max_derogatory_items: number | null
+          max_inquiries_12mo: number | null
+          max_inquiries_6mo: number | null
+          max_utilization_pct: number | null
+          min_account_age_months: number | null
+          min_amount: number | null
+          min_annual_revenue: number | null
+          min_business_age_months: number | null
+          min_fico_score: number | null
+          min_open_accounts: number | null
+          notes: string | null
+          product_name: string
+          product_type: string
+          requires_pg: boolean | null
+          term_months: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          affiliate_commission_pct?: number | null
+          affiliate_url?: string | null
+          application_url?: string | null
+          apr_range_high?: number | null
+          apr_range_low?: number | null
+          created_at?: string | null
+          ein_only?: boolean | null
+          id?: string
+          is_active?: boolean | null
+          last_verified?: string | null
+          lender_name: string
+          max_amount?: number | null
+          max_derogatory_items?: number | null
+          max_inquiries_12mo?: number | null
+          max_inquiries_6mo?: number | null
+          max_utilization_pct?: number | null
+          min_account_age_months?: number | null
+          min_amount?: number | null
+          min_annual_revenue?: number | null
+          min_business_age_months?: number | null
+          min_fico_score?: number | null
+          min_open_accounts?: number | null
+          notes?: string | null
+          product_name: string
+          product_type: string
+          requires_pg?: boolean | null
+          term_months?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          affiliate_commission_pct?: number | null
+          affiliate_url?: string | null
+          application_url?: string | null
+          apr_range_high?: number | null
+          apr_range_low?: number | null
+          created_at?: string | null
+          ein_only?: boolean | null
+          id?: string
+          is_active?: boolean | null
+          last_verified?: string | null
+          lender_name?: string
+          max_amount?: number | null
+          max_derogatory_items?: number | null
+          max_inquiries_12mo?: number | null
+          max_inquiries_6mo?: number | null
+          max_utilization_pct?: number | null
+          min_account_age_months?: number | null
+          min_amount?: number | null
+          min_annual_revenue?: number | null
+          min_business_age_months?: number | null
+          min_fico_score?: number | null
+          min_open_accounts?: number | null
+          notes?: string | null
+          product_name?: string
+          product_type?: string
+          requires_pg?: boolean | null
+          term_months?: number | null
           updated_at?: string | null
         }
         Relationships: []
@@ -2044,10 +2499,17 @@ export type Database = {
           avatar_url: string | null
           city: string | null
           created_at: string | null
+          credit_goals: Json | null
           date_of_birth: string | null
           dob_last4: string | null
+          estimated_fico_eq: number | null
+          estimated_fico_ex: number | null
+          estimated_fico_tu: number | null
           full_name: string | null
+          funding_goals: Json | null
           id: string
+          onboarding_completed: boolean | null
+          onboarding_step: string | null
           phone: string | null
           postal_code: string | null
           ssn_encrypted: string | null
@@ -2060,10 +2522,17 @@ export type Database = {
           avatar_url?: string | null
           city?: string | null
           created_at?: string | null
+          credit_goals?: Json | null
           date_of_birth?: string | null
           dob_last4?: string | null
+          estimated_fico_eq?: number | null
+          estimated_fico_ex?: number | null
+          estimated_fico_tu?: number | null
           full_name?: string | null
+          funding_goals?: Json | null
           id?: string
+          onboarding_completed?: boolean | null
+          onboarding_step?: string | null
           phone?: string | null
           postal_code?: string | null
           ssn_encrypted?: string | null
@@ -2076,10 +2545,17 @@ export type Database = {
           avatar_url?: string | null
           city?: string | null
           created_at?: string | null
+          credit_goals?: Json | null
           date_of_birth?: string | null
           dob_last4?: string | null
+          estimated_fico_eq?: number | null
+          estimated_fico_ex?: number | null
+          estimated_fico_tu?: number | null
           full_name?: string | null
+          funding_goals?: Json | null
           id?: string
+          onboarding_completed?: boolean | null
+          onboarding_step?: string | null
           phone?: string | null
           postal_code?: string | null
           ssn_encrypted?: string | null
@@ -2318,6 +2794,56 @@ export type Database = {
             columns: ["biz_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_funding_matches: {
+        Row: {
+          applied_at: string | null
+          blocking_factors: Json | null
+          calculated_at: string | null
+          estimated_approval_amount: number | null
+          id: string
+          improvement_path: Json | null
+          lender_product_id: string | null
+          match_score: number | null
+          match_status: string | null
+          notified_at: string | null
+          user_id: string
+        }
+        Insert: {
+          applied_at?: string | null
+          blocking_factors?: Json | null
+          calculated_at?: string | null
+          estimated_approval_amount?: number | null
+          id?: string
+          improvement_path?: Json | null
+          lender_product_id?: string | null
+          match_score?: number | null
+          match_status?: string | null
+          notified_at?: string | null
+          user_id: string
+        }
+        Update: {
+          applied_at?: string | null
+          blocking_factors?: Json | null
+          calculated_at?: string | null
+          estimated_approval_amount?: number | null
+          id?: string
+          improvement_path?: Json | null
+          lender_product_id?: string | null
+          match_score?: number | null
+          match_status?: string | null
+          notified_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_funding_matches_lender_product_id_fkey"
+            columns: ["lender_product_id"]
+            isOneToOne: false
+            referencedRelation: "lender_products"
             referencedColumns: ["id"]
           },
         ]

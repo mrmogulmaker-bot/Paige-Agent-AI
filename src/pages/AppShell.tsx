@@ -1,0 +1,200 @@
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import type { User, Session } from "@supabase/supabase-js";
+import { Outlet, useLocation } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { PaigeChat } from "@/components/app/PaigeChat";
+import { AppNav } from "@/components/app/AppNav";
+import { QuickStatsBar } from "@/components/app/QuickStatsBar";
+import { useCreditFactors } from "@/hooks/useCreditFactors";
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/ui/resizable";
+
+const AppShell = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const isMobile = useIsMobile();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { factors } = useCreditFactors();
+
+  // Show context panel on non-root /app routes
+  const showContextPanel = location.pathname !== "/app" || !isMobile;
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setIsLoading(false);
+
+        if (!session) {
+          navigate("/auth");
+        }
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+
+      if (!session) {
+        navigate("/auth");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
+  // Mobile layout: full-screen chat with bottom nav
+  if (isMobile) {
+    return (
+      <div className="h-screen flex flex-col bg-background">
+        <AppNav user={user} />
+        <div className="flex-1 overflow-hidden">
+          {location.pathname === "/app" ? (
+            <PaigeChat user={user} session={session} />
+          ) : (
+            <div className="h-full overflow-y-auto p-4">
+              <Outlet context={{ user, session }} />
+            </div>
+          )}
+        </div>
+        <QuickStatsBar factors={factors} />
+      </div>
+    );
+  }
+
+  // Desktop layout: resizable panels
+  return (
+    <div className="h-screen flex flex-col bg-background">
+      <AppNav user={user} />
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
+        <ResizablePanel defaultSize={40} minSize={30} maxSize={60}>
+          <PaigeChat user={user} session={session} />
+        </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel defaultSize={60}>
+          <div className="h-full overflow-y-auto p-6">
+            {location.pathname === "/app" ? (
+              <AppDashboardHome factors={factors} />
+            ) : (
+              <Outlet context={{ user, session }} />
+            )}
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+      <QuickStatsBar factors={factors} />
+    </div>
+  );
+};
+
+// Default home content when on /app
+function AppDashboardHome({ factors }: { factors: any }) {
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto">
+      <div>
+        <h1 className="text-3xl font-bold text-foreground">Welcome Back</h1>
+        <p className="text-muted-foreground mt-1">
+          Ask Paige anything about your credit, funding, or next steps.
+        </p>
+      </div>
+
+      {factors && (
+        <div className="grid grid-cols-5 gap-4">
+          {[
+            { label: "Payment History", score: factors.payment_history_score, weight: "35%" },
+            { label: "Utilization", score: factors.utilization_score, weight: "30%" },
+            { label: "Credit Age", score: factors.credit_age_score, weight: "15%" },
+            { label: "Credit Mix", score: factors.credit_mix_score, weight: "10%" },
+            { label: "Inquiries", score: factors.inquiry_score, weight: "10%" },
+          ].map((f) => (
+            <div
+              key={f.label}
+              className="bg-card border border-border rounded-lg p-4 text-center hover:border-accent/50 transition-colors"
+            >
+              <div className={`text-2xl font-bold ${getScoreColor(f.score)}`}>
+                {f.score ?? "—"}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">{f.label}</div>
+              <div className="text-[10px] text-muted-foreground/60">{f.weight}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        <QuickActionCard
+          title="Run Credit Analysis"
+          description="Calculate your FICO factor scores"
+          icon="📊"
+          href="/app/credit"
+        />
+        <QuickActionCard
+          title="Find Funding Matches"
+          description="See what you qualify for today"
+          icon="💰"
+          href="/app/funding"
+        />
+        <QuickActionCard
+          title="Start a Dispute"
+          description="Challenge inaccurate items"
+          icon="📝"
+          href="/app/disputes"
+        />
+        <QuickActionCard
+          title="Learn & Earn"
+          description="Credit education courses"
+          icon="📚"
+          href="/app/learn"
+        />
+      </div>
+    </div>
+  );
+}
+
+function QuickActionCard({ title, description, icon, href }: {
+  title: string;
+  description: string;
+  icon: string;
+  href: string;
+}) {
+  const navigate = useNavigate();
+  return (
+    <button
+      onClick={() => navigate(href)}
+      className="bg-card border border-border rounded-lg p-5 text-left hover:border-accent/50 hover:shadow-glow-teal transition-all group"
+    >
+      <span className="text-2xl">{icon}</span>
+      <h3 className="font-semibold mt-2 group-hover:text-accent transition-colors">{title}</h3>
+      <p className="text-sm text-muted-foreground mt-1">{description}</p>
+    </button>
+  );
+}
+
+function getScoreColor(score: number | null): string {
+  if (score === null || score === undefined) return "text-muted-foreground";
+  if (score >= 80) return "text-fundability-excellent";
+  if (score >= 60) return "text-fundability-good";
+  if (score >= 40) return "text-fundability-fair";
+  return "text-fundability-poor";
+}
+
+export default AppShell;
