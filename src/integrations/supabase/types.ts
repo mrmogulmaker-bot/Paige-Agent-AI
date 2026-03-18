@@ -1798,7 +1798,7 @@ export type Database = {
           accessor_user_id: string
           field_names: string[]
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           table_name: string
           user_agent: string | null
         }
@@ -1809,7 +1809,7 @@ export type Database = {
           accessor_user_id: string
           field_names: string[]
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           table_name: string
           user_agent?: string | null
         }
@@ -1820,7 +1820,7 @@ export type Database = {
           accessor_user_id?: string
           field_names?: string[]
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           table_name?: string
           user_agent?: string | null
         }
@@ -2461,10 +2461,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      ensure_owner_admin: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      ensure_owner_admin: { Args: never; Returns: undefined }
       get_business_hierarchy: {
         Args: { _user_id: string }
         Returns: {
@@ -2486,10 +2483,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      is_platform_owner: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
+      is_platform_owner: { Args: never; Returns: boolean }
       trigger_business_credit_sync: {
         Args: { _user_id: string }
         Returns: Json
