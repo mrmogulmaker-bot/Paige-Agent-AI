@@ -72,13 +72,13 @@ const AppShell = () => {
   if (isMobile) {
     return (
       <div className="h-screen flex flex-col bg-background">
-        <AppNav user={user} />
+        <AppNav user={activeUser} />
         <div className="flex-1 overflow-hidden">
           {location.pathname === "/app" ? (
-            <PaigeChat user={user} session={session} />
+            <PaigeChat user={activeUser} session={session} />
           ) : (
             <div className="h-full overflow-y-auto p-4">
-              <Outlet context={{ user, session }} />
+              <Outlet context={{ user: activeUser, session }} />
             </div>
           )}
         </div>
@@ -90,10 +90,10 @@ const AppShell = () => {
   // Desktop layout: resizable panels
   return (
     <div className="h-screen flex flex-col bg-background">
-      <AppNav user={user} />
+      <AppNav user={activeUser} />
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         <ResizablePanel defaultSize={40} minSize={30} maxSize={60}>
-          <PaigeChat user={user} session={session} />
+          <PaigeChat user={activeUser} session={session} />
         </ResizablePanel>
         <ResizableHandle withHandle />
         <ResizablePanel defaultSize={60}>
@@ -101,7 +101,7 @@ const AppShell = () => {
             {location.pathname === "/app" ? (
               <AppDashboardHome factors={factors} />
             ) : (
-              <Outlet context={{ user, session }} />
+              <Outlet context={{ user: activeUser, session }} />
             )}
           </div>
         </ResizablePanel>
