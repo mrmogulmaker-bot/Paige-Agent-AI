@@ -142,7 +142,7 @@ export function PricingSection() {
                     : "bg-muted text-foreground hover:bg-accent hover:text-accent-foreground hover:scale-105"
                 } transition-all duration-300`}
                 size="lg"
-                onClick={() => navigate("/auth")}
+                onClick={() => navigate("/auth?mode=signup")}
               >
                 {tier.cta}
               </Button>

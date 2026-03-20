@@ -79,7 +79,7 @@ export function HeroSection() {
               <Button
                 size="lg"
                 className="bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold"
-                onClick={() => navigate("/auth")}
+                onClick={() => navigate("/auth?mode=signup")}
               >
                 Build My Buying Power — Free
                 <ArrowRight className="w-4 h-4 ml-2" />
