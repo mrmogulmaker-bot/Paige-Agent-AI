@@ -10,6 +10,7 @@ import { AuditLogsViewer } from "@/components/dashboard/admin/AuditLogsViewer";
 import { ComplianceMonitor } from "@/components/dashboard/admin/ComplianceMonitor";
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
 import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
+import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
 import { toast } from "sonner";
 
 const Admin = () => {
