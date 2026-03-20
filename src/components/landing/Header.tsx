@@ -51,7 +51,7 @@ export function Header() {
               </>
             ) : (
               <>
-                <Button variant="ghost" onClick={() => navigate("/auth")}>Sign In</Button>
+                <Button variant="ghost" onClick={() => navigate("/auth?mode=login")}>Sign In</Button>
                 <Button
                   className="bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold"
                   onClick={() => navigate("/auth?mode=signup")}
@@ -90,7 +90,7 @@ export function Header() {
                 </Button>
               ) : (
                 <>
-                  <Button variant="outline" className="w-full" onClick={() => navigate("/auth")}>
+                  <Button variant="outline" className="w-full" onClick={() => navigate("/auth?mode=login")}>
                     Sign In
                   </Button>
                   <Button
