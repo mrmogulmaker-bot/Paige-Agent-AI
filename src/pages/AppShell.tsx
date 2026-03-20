@@ -28,18 +28,7 @@ const AppShell = () => {
   const showContextPanel = location.pathname !== "/app" || !isMobile;
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setIsLoading(false);
-
-        if (!session) {
-          navigate("/auth");
-        }
-      }
-    );
-
+    // Restore session from storage FIRST, then listen for changes
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -49,6 +38,18 @@ const AppShell = () => {
         navigate("/auth");
       }
     });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+
+        // Only redirect to auth on explicit sign-out (not on initial load)
+        if (!session && !isLoading) {
+          navigate("/auth");
+        }
+      }
+    );
 
     return () => subscription.unsubscribe();
   }, [navigate]);
