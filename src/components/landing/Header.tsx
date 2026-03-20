@@ -90,7 +90,7 @@ export function Header() {
                 </Button>
               ) : (
                 <>
-                  <Button variant="outline" className="w-full" onClick={() => navigate("/auth")}>
+                  <Button variant="outline" className="w-full" onClick={() => navigate("/auth?mode=login")}>
                     Sign In
                   </Button>
                   <Button

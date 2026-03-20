@@ -1,14 +1,15 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 import { z } from "zod";
 import type { User, Session } from "@supabase/supabase-js";
+import paigeLogo from "@/assets/paige-logo-transparent.png";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -28,26 +29,27 @@ const Auth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Sync mode when search params change
   useEffect(() => {
-    // Set up auth state listener
+    setIsLogin(searchParams.get("mode") !== "signup");
+  }, [searchParams]);
+
+  useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        
         if (session?.user) {
-          navigate("/dashboard");
+          navigate("/app");
         }
       }
     );
 
-    // Check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      
       if (session?.user) {
-        navigate("/dashboard");
+        navigate("/app");
       }
     });
 
@@ -59,214 +61,208 @@ const Auth = () => {
     setIsLoading(true);
 
     try {
-      // Validate input
-      const validationData = isLogin 
+      const validationData = isLogin
         ? { email, password }
         : { email, password, fullName };
-      
+
       authSchema.parse(validationData);
 
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
 
         if (error) {
-          if (error.message.includes("Invalid login credentials")) {
-            toast({
-              title: "Login failed",
-              description: "Invalid email or password. Please try again.",
-              variant: "destructive",
-            });
-          } else {
-            toast({
-              title: "Error",
-              description: error.message,
-              variant: "destructive",
-            });
-          }
+          toast({
+            title: "Login failed",
+            description: error.message.includes("Invalid login credentials")
+              ? "Invalid email or password. Please try again."
+              : error.message,
+            variant: "destructive",
+          });
           return;
         }
 
-        toast({
-          title: "Welcome back!",
-          description: "You've successfully logged in.",
-        });
+        toast({ title: "Welcome back!", description: "You've successfully logged in." });
       } else {
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/dashboard`,
-            data: {
-              full_name: fullName,
-            },
+            emailRedirectTo: `${window.location.origin}/app`,
+            data: { full_name: fullName },
           },
         });
 
         if (error) {
-          if (error.message.includes("User already registered")) {
-            toast({
-              title: "Account exists",
-              description: "An account with this email already exists. Please login instead.",
-              variant: "destructive",
-            });
-          } else {
-            toast({
-              title: "Error",
-              description: error.message,
-              variant: "destructive",
-            });
-          }
+          toast({
+            title: error.message.includes("User already registered") ? "Account exists" : "Error",
+            description: error.message.includes("User already registered")
+              ? "An account with this email already exists. Please login instead."
+              : error.message,
+            variant: "destructive",
+          });
           return;
         }
 
-        // Redirect to payment authorization for 14-day trial
         toast({
           title: "Account created!",
           description: "Setting up your 14-day free trial...",
         });
-        
-        // Wait for session to be established
+
         setTimeout(async () => {
           try {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
-              toast({
-                title: "Error",
-                description: "Session not found. Please login to continue.",
-                variant: "destructive",
-              });
+              toast({ title: "Error", description: "Session not found. Please login to continue.", variant: "destructive" });
               return;
             }
-
-            // Create trial checkout session
             const { data, error } = await supabase.functions.invoke('create-trial-checkout', {
-              headers: {
-                Authorization: `Bearer ${session.access_token}`,
-              },
+              headers: { Authorization: `Bearer ${session.access_token}` },
             });
-
             if (error) throw error;
-
-            if (data?.url) {
-              // Redirect to Stripe Checkout
-              window.location.href = data.url;
-            }
+            if (data?.url) window.location.href = data.url;
           } catch (error) {
             console.error('Trial setup error:', error);
-            toast({
-              title: "Error",
-              description: "Failed to set up trial. Please contact support.",
-              variant: "destructive",
-            });
+            toast({ title: "Error", description: "Failed to set up trial. Please contact support.", variant: "destructive" });
           }
         }, 1000);
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
-        toast({
-          title: "Validation error",
-          description: error.issues[0].message,
-          variant: "destructive",
-        });
+        toast({ title: "Validation error", description: error.issues[0].message, variant: "destructive" });
       } else {
-        toast({
-          title: "Error",
-          description: "An unexpected error occurred. Please try again.",
-          variant: "destructive",
-        });
+        toast({ title: "Error", description: "An unexpected error occurred. Please try again.", variant: "destructive" });
       }
     } finally {
       setIsLoading(false);
     }
   };
 
+  const toggleMode = () => {
+    const newMode = isLogin ? "signup" : "login";
+    navigate(`/auth?mode=${newMode}`, { replace: true });
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md p-8 shadow-glow">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-gold bg-clip-text text-transparent mb-2">
-            PaigeAgent.ai
-          </h1>
-          <p className="text-muted-foreground">
-            {isLogin ? "Welcome back" : "Create your account"}
+    <div className="min-h-screen flex flex-col bg-background relative overflow-hidden">
+      {/* Background accents matching landing page */}
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-accent/5 to-background -z-10" />
+      <div className="absolute top-20 right-1/4 w-72 h-72 bg-accent/10 rounded-full blur-3xl -z-10 animate-float" />
+      <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-gold/10 rounded-full blur-3xl -z-10 animate-float-slow" />
+
+      {/* Top bar */}
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+        <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+          Back to home
+        </Link>
+      </div>
+
+      {/* Centered auth card */}
+      <div className="flex-1 flex items-center justify-center px-4 pb-12">
+        <div className="w-full max-w-md">
+          {/* Logo & tagline */}
+          <div className="text-center mb-8">
+            <Link to="/" className="inline-flex items-center gap-2 mb-4">
+              <img src={paigeLogo} alt="PaigeAgent.ai" className="h-12 w-auto" />
+              <span className="text-2xl font-extrabold text-accent">PaigeAgent.ai</span>
+            </Link>
+            <h1 className="text-2xl font-bold text-foreground">
+              {isLogin ? "Welcome back" : "Start Building Your Buying Power"}
+            </h1>
+            <p className="text-muted-foreground mt-1 text-sm">
+              {isLogin
+                ? "Sign in to continue your credit journey"
+                : "Create your free account — no credit card required"}
+            </p>
+          </div>
+
+          <Card className="p-8 border-border shadow-card bg-card/80 backdrop-blur-sm">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {!isLogin && (
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    type="text"
+                    placeholder="John Doe"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={isLoading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  minLength={6}
+                />
+              </div>
+
+              <Button
+                type="submit"
+                className={`w-full font-semibold text-base h-11 transition-all duration-300 ${
+                  isLogin
+                    ? "bg-primary hover:bg-primary-light text-primary-foreground"
+                    : "bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-[1.02]"
+                }`}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {isLogin ? "Signing in..." : "Creating account..."}
+                  </>
+                ) : (
+                  <>{isLogin ? "Sign In" : "Get Started Free"}</>
+                )}
+              </Button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={toggleMode}
+                className="text-sm text-muted-foreground hover:text-accent transition-colors"
+                disabled={isLoading}
+              >
+                {isLogin
+                  ? "Don't have an account? Sign up free"
+                  : "Already have an account? Sign in"}
+              </button>
+            </div>
+          </Card>
+
+          {/* Trust footer */}
+          <p className="text-center text-xs text-muted-foreground mt-6">
+            By continuing you agree to our{" "}
+            <Link to="/terms" className="underline hover:text-foreground">Terms of Service</Link>{" "}
+            and{" "}
+            <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>.
           </p>
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name</Label>
-              <Input
-                id="fullName"
-                type="text"
-                placeholder="John Doe"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-                disabled={isLoading}
-              />
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              disabled={isLoading}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              disabled={isLoading}
-              minLength={6}
-            />
-          </div>
-
-          <Button
-            type="submit"
-            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {isLogin ? "Logging in..." : "Creating account..."}
-              </>
-            ) : (
-              <>{isLogin ? "Login" : "Sign Up"}</>
-            )}
-          </Button>
-        </form>
-
-        <div className="mt-6 text-center">
-          <button
-            type="button"
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-sm text-primary hover:underline"
-            disabled={isLoading}
-          >
-            {isLogin
-              ? "Don't have an account? Sign up"
-              : "Already have an account? Login"}
-          </button>
-        </div>
-      </Card>
+      </div>
     </div>
   );
 };
