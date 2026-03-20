@@ -14,10 +14,12 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 
+const DEV_MODE = true; // Set to false to require authentication
+
 const AppShell = () => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!DEV_MODE);
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const isMobile = useIsMobile();
   const navigate = useNavigate();
@@ -28,7 +30,8 @@ const AppShell = () => {
   const showContextPanel = location.pathname !== "/app" || !isMobile;
 
   useEffect(() => {
-    // Restore session from storage FIRST, then listen for changes
+    if (DEV_MODE) return;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -44,7 +47,6 @@ const AppShell = () => {
         setSession(session);
         setUser(session?.user ?? null);
 
-        // Only redirect to auth on explicit sign-out (not on initial load)
         if (!session && !isLoading) {
           navigate("/auth");
         }
@@ -62,7 +64,9 @@ const AppShell = () => {
     );
   }
 
-  if (!user) return null;
+  // In dev mode, create a mock user object
+  const activeUser = user || (DEV_MODE ? { id: 'dev-user', email: 'dev@paigeagent.ai' } as User : null);
+  if (!activeUser) return null;
 
   // Mobile layout: full-screen chat with bottom nav
   if (isMobile) {
