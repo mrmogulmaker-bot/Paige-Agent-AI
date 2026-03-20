@@ -10,6 +10,7 @@ import { AuditLogsViewer } from "@/components/dashboard/admin/AuditLogsViewer";
 import { ComplianceMonitor } from "@/components/dashboard/admin/ComplianceMonitor";
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
 import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
+import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
 import { toast } from "sonner";
 
 const Admin = () => {
@@ -90,7 +91,10 @@ const Admin = () => {
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold mb-8">Admin Panel</h1>
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-4xl font-bold">Admin Panel</h1>
+          <ExportClientsButton />
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <Card>
