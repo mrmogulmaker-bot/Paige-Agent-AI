@@ -95,7 +95,7 @@ export function Header() {
                   </Button>
                   <Button
                     className="w-full bg-gradient-gold text-primary hover:shadow-glow-lg font-bold"
-                    onClick={() => navigate("/auth")}
+                    onClick={() => navigate("/auth?mode=signup")}
                   >
                     Get Started Free
                   </Button>
