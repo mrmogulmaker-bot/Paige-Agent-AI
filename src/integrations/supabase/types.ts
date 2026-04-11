@@ -436,6 +436,7 @@ export type Database = {
       }
       client_memory: {
         Row: {
+          client_id: string | null
           client_user_id: string
           content: string
           created_at: string
@@ -446,6 +447,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          client_id?: string | null
           client_user_id: string
           content: string
           created_at?: string
@@ -456,6 +458,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          client_id?: string | null
           client_user_id?: string
           content?: string
           created_at?: string
@@ -463,6 +466,68 @@ export type Database = {
           is_active?: boolean
           memory_type?: string
           source_session_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_memory_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clients: {
+        Row: {
+          created_at: string
+          created_by: string
+          current_notes: string | null
+          email: string | null
+          entity_name: string | null
+          entity_type: string | null
+          first_name: string
+          funding_goal: number | null
+          id: string
+          last_name: string
+          linked_user_id: string | null
+          monthly_revenue: number | null
+          phone: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          current_notes?: string | null
+          email?: string | null
+          entity_name?: string | null
+          entity_type?: string | null
+          first_name: string
+          funding_goal?: number | null
+          id?: string
+          last_name: string
+          linked_user_id?: string | null
+          monthly_revenue?: number | null
+          phone?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          current_notes?: string | null
+          email?: string | null
+          entity_name?: string | null
+          entity_type?: string | null
+          first_name?: string
+          funding_goal?: number | null
+          id?: string
+          last_name?: string
+          linked_user_id?: string | null
+          monthly_revenue?: number | null
+          phone?: string | null
+          status?: string
           updated_at?: string
         }
         Relationships: []
@@ -822,6 +887,7 @@ export type Database = {
           account_close_date: string | null
           account_open_date: string | null
           balance: number | null
+          client_id: string | null
           created_at: string | null
           credit_limit: number | null
           creditor: string
@@ -843,6 +909,7 @@ export type Database = {
           account_close_date?: string | null
           account_open_date?: string | null
           balance?: number | null
+          client_id?: string | null
           created_at?: string | null
           credit_limit?: number | null
           creditor: string
@@ -864,6 +931,7 @@ export type Database = {
           account_close_date?: string | null
           account_open_date?: string | null
           balance?: number | null
+          client_id?: string | null
           created_at?: string | null
           credit_limit?: number | null
           creditor?: string
@@ -881,7 +949,15 @@ export type Database = {
           user_id?: string
           utilization?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "credit_accounts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       credit_factor_scores: {
         Row: {
@@ -892,6 +968,7 @@ export type Database = {
           cards_over_30_pct: number | null
           cards_over_50_pct: number | null
           cards_over_70_pct: number | null
+          client_id: string | null
           credit_age_score: number | null
           credit_mix_score: number | null
           data_sources: Json | null
@@ -924,6 +1001,7 @@ export type Database = {
           cards_over_30_pct?: number | null
           cards_over_50_pct?: number | null
           cards_over_70_pct?: number | null
+          client_id?: string | null
           credit_age_score?: number | null
           credit_mix_score?: number | null
           data_sources?: Json | null
@@ -956,6 +1034,7 @@ export type Database = {
           cards_over_30_pct?: number | null
           cards_over_50_pct?: number | null
           cards_over_70_pct?: number | null
+          client_id?: string | null
           credit_age_score?: number | null
           credit_mix_score?: number | null
           data_sources?: Json | null
@@ -980,7 +1059,15 @@ export type Database = {
           user_id?: string
           utilization_score?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "credit_factor_scores_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       credit_inquiries: {
         Row: {
@@ -1040,6 +1127,7 @@ export type Database = {
           account_number_masked: string | null
           amount: number | null
           bureau: string
+          client_id: string | null
           created_at: string | null
           creditor_name: string | null
           date_of_occurrence: string | null
@@ -1059,6 +1147,7 @@ export type Database = {
           account_number_masked?: string | null
           amount?: number | null
           bureau: string
+          client_id?: string | null
           created_at?: string | null
           creditor_name?: string | null
           date_of_occurrence?: string | null
@@ -1078,6 +1167,7 @@ export type Database = {
           account_number_masked?: string | null
           amount?: number | null
           bureau?: string
+          client_id?: string | null
           created_at?: string | null
           creditor_name?: string | null
           date_of_occurrence?: string | null
@@ -1095,6 +1185,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "credit_negative_items_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "credit_negative_items_dispute_id_fkey"
             columns: ["dispute_id"]
             isOneToOne: false
@@ -1108,6 +1205,7 @@ export type Database = {
           analysis_result: Json | null
           analysis_status: string
           bureau_detected: string | null
+          client_id: string | null
           created_at: string
           error_message: string | null
           estimated_score_impact: number | null
@@ -1127,6 +1225,7 @@ export type Database = {
           analysis_result?: Json | null
           analysis_status?: string
           bureau_detected?: string | null
+          client_id?: string | null
           created_at?: string
           error_message?: string | null
           estimated_score_impact?: number | null
@@ -1146,6 +1245,7 @@ export type Database = {
           analysis_result?: Json | null
           analysis_status?: string
           bureau_detected?: string | null
+          client_id?: string | null
           created_at?: string
           error_message?: string | null
           estimated_score_impact?: number | null
@@ -1161,7 +1261,15 @@ export type Database = {
           uploaded_by?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "credit_report_uploads_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       credit_report_verifications: {
         Row: {
@@ -1388,6 +1496,7 @@ export type Database = {
         Row: {
           account_number_masked: string | null
           bureau: string
+          client_id: string | null
           created_at: string | null
           creditor_name: string
           due_date: string | null
@@ -1403,6 +1512,7 @@ export type Database = {
         Insert: {
           account_number_masked?: string | null
           bureau: string
+          client_id?: string | null
           created_at?: string | null
           creditor_name: string
           due_date?: string | null
@@ -1418,6 +1528,7 @@ export type Database = {
         Update: {
           account_number_masked?: string | null
           bureau?: string
+          client_id?: string | null
           created_at?: string | null
           creditor_name?: string
           due_date?: string | null
@@ -1430,12 +1541,21 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "disputes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       documents: {
         Row: {
           bucket_name: string
           business_id: string | null
+          client_id: string | null
           document_type: string
           file_name: string
           file_path: string
@@ -1452,6 +1572,7 @@ export type Database = {
         Insert: {
           bucket_name: string
           business_id?: string | null
+          client_id?: string | null
           document_type: string
           file_name: string
           file_path: string
@@ -1468,6 +1589,7 @@ export type Database = {
         Update: {
           bucket_name?: string
           business_id?: string | null
+          client_id?: string | null
           document_type?: string
           file_name?: string
           file_path?: string
@@ -1487,6 +1609,13 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
         ]
@@ -1875,6 +2004,7 @@ export type Database = {
           ai_generated: boolean | null
           applied: boolean | null
           business_id: string | null
+          client_id: string | null
           created_at: string | null
           dismissed: boolean | null
           id: string
@@ -1890,6 +2020,7 @@ export type Database = {
           ai_generated?: boolean | null
           applied?: boolean | null
           business_id?: string | null
+          client_id?: string | null
           created_at?: string | null
           dismissed?: boolean | null
           id?: string
@@ -1905,6 +2036,7 @@ export type Database = {
           ai_generated?: boolean | null
           applied?: boolean | null
           business_id?: string | null
+          client_id?: string | null
           created_at?: string | null
           dismissed?: boolean | null
           id?: string
@@ -1922,6 +2054,13 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funding_matches_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
           {
