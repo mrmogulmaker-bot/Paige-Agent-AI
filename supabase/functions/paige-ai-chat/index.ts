@@ -222,12 +222,14 @@ SUMMARY:`;
       const summaryContent = summaryData.choices?.[0]?.message?.content || "";
 
       if (summaryContent.trim()) {
-        await supabase.from("client_memory").insert({
-          client_user_id: user.id,
+        const memoryInsert: any = {
+          client_user_id: payloadClientId || user.id,
           memory_type: "session_summary",
           content: summaryContent.trim(),
           source_session_id: rawData.sessionId || null,
-        });
+        };
+        if (payloadClientId) memoryInsert.client_id = payloadClientId;
+        await supabase.from("client_memory").insert(memoryInsert);
       }
 
       return new Response(
