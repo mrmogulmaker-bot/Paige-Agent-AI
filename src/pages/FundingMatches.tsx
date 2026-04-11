@@ -27,12 +27,21 @@ export default function FundingMatches() {
   });
 
   // Calculate the lowest bureau score for What-If baseline
+  // Use MIDDLE score (how lenders actually qualify borrowers)
   const syncedScores = [
     profileScores?.estimated_fico_eq,
     profileScores?.estimated_fico_ex,
     profileScores?.estimated_fico_tu,
   ].filter(Boolean) as number[];
-  const lowestScore = syncedScores.length > 0 ? Math.min(...syncedScores) : null;
+  
+  const getMiddleScore = (scores: number[]) => {
+    if (scores.length === 0) return null;
+    if (scores.length === 1) return scores[0];
+    if (scores.length === 2) return Math.min(...scores);
+    const sorted = [...scores].sort((a, b) => a - b);
+    return sorted[1];
+  };
+  const middleScore = getMiddleScore(syncedScores);
 
   // Auto-run match when synced scores exist but no matches yet
   const [autoRanMatch, setAutoRanMatch] = useState(false);
