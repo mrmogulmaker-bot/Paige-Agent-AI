@@ -24,41 +24,56 @@ serve(async (req) => {
   }
 
   try {
-    // Authenticate user and check rate limit
+    // SECURITY: Require authentication — reject all unauthenticated requests
     const authHeader = req.headers.get('Authorization');
-    if (authHeader) {
-      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      
-      const token = authHeader.replace("Bearer ", "");
-      const { data: { user } } = await supabase.auth.getUser(token);
-      
-      if (user) {
-        const { data: rateLimitCheck } = await supabase.rpc('check_rate_limit', {
-          _user_id: user.id,
-          _function_name: 'generate-dispute-letter',
-          _max_requests: 5,
-          _window_minutes: 60
-        });
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-        if (!rateLimitCheck) {
-          return new Response(
-            JSON.stringify({ 
-              error: 'Rate limit exceeded. Please try again in an hour.',
-              retryAfter: 3600
-            }),
-            { 
-              status: 429,
-              headers: { 
-                ...corsHeaders,
-                'Content-Type': 'application/json',
-                'Retry-After': '3600'
-              }
-            }
-          );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    // Validate session using user-context client
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid or expired session' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Rate limit check using admin client
+    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
+    const { data: rateLimitCheck } = await adminClient.rpc('check_rate_limit', {
+      _user_id: user.id,
+      _function_name: 'generate-dispute-letter',
+      _max_requests: 5,
+      _window_minutes: 60
+    });
+
+    if (!rateLimitCheck) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Rate limit exceeded. Please try again in an hour.',
+          retryAfter: 3600
+        }),
+        { 
+          status: 429,
+          headers: { 
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Retry-After': '3600'
+          }
         }
-      }
+      );
     }
 
     // Validate input
@@ -87,7 +102,7 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    console.log('Generating dispute letter');
+    console.log('Generating dispute letter for user:', user.id);
 
     const systemPrompt = `You are an expert credit dispute letter writer specializing in FCRA (Fair Credit Reporting Act) compliance. 
 Your role is to create professional, legally sound dispute letters that help clients address inaccuracies on their credit reports.
@@ -141,34 +156,22 @@ Format the letter with proper paragraphs and spacing.`;
     if (!response.ok) {
       const errorId = crypto.randomUUID();
       if (response.status === 429) {
-        console.error(`[DISPUTE-LETTER-ERROR-${errorId}] Rate limit from AI service:`, response.status);
+        console.error(`[DISPUTE-LETTER-ERROR-${errorId}] Rate limit from AI service`);
         return new Response(
-          JSON.stringify({ 
-            error: "Rate limits exceeded, please try again later.",
-            errorId
-          }),
+          JSON.stringify({ error: "Rate limits exceeded, please try again later.", errorId }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       if (response.status === 402) {
-        console.error(`[DISPUTE-LETTER-ERROR-${errorId}] Payment required:`, response.status);
+        console.error(`[DISPUTE-LETTER-ERROR-${errorId}] Payment required`);
         return new Response(
-          JSON.stringify({ 
-            error: "Payment required, please add funds to your Lovable AI workspace.",
-            errorId
-          }),
+          JSON.stringify({ error: "Payment required, please add funds to your Lovable AI workspace.", errorId }),
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      console.error(`[DISPUTE-LETTER-ERROR-${errorId}] AI gateway error:`, {
-        status: response.status,
-        timestamp: new Date().toISOString()
-      });
+      console.error(`[DISPUTE-LETTER-ERROR-${errorId}] AI gateway error:`, { status: response.status });
       return new Response(
-        JSON.stringify({ 
-          error: "An error occurred while processing your request",
-          errorId
-        }),
+        JSON.stringify({ error: "An error occurred while processing your request", errorId }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -176,7 +179,7 @@ Format the letter with proper paragraphs and spacing.`;
     const data = await response.json();
     const letter = data.choices[0].message.content;
 
-    console.log('Successfully generated dispute letter');
+    console.log('Successfully generated dispute letter for user:', user.id);
 
     return new Response(
       JSON.stringify({ letter }),
@@ -186,14 +189,10 @@ Format the letter with proper paragraphs and spacing.`;
     const errorId = crypto.randomUUID();
     console.error(`[DISPUTE-LETTER-ERROR-${errorId}] Function error:`, {
       message: error instanceof Error ? error.message : 'Unknown',
-      stack: error instanceof Error ? error.stack : undefined,
       timestamp: new Date().toISOString()
     });
     return new Response(
-      JSON.stringify({ 
-        error: "An error occurred while processing your request",
-        errorId
-      }),
+      JSON.stringify({ error: "An error occurred while processing your request", errorId }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
