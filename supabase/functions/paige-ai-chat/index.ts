@@ -431,8 +431,8 @@ ${relevantKnowledge}`;
       if (attachedDocument && msg.role === "user" && i === messages.length - 1) {
         const contentParts: any[] = [
           {
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: attachedDocument.base64 },
+            type: "image_url",
+            image_url: { url: `data:application/pdf;base64,${attachedDocument.base64}` },
           },
           {
             type: "text",
@@ -664,7 +664,7 @@ async function runDocumentReadCheck(base64: string, lovableApiKey: string) {
           role: "user",
           content: [
             { type: "text", text: "Run the read-check on this uploaded PDF credit report before any analysis." },
-            { type: "file", file: { data: base64, mime_type: "application/pdf" } },
+            { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64}` } },
           ],
         },
       ],
