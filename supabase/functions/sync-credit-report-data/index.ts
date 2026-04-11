@@ -228,6 +228,9 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
     currentStep = "negative_items";
     let negativeItemsInserted = 0;
     let negativeItemsUpdated = 0;
+    let negativeItemsFailed = 0;
+
+    console.log(`=== NEGATIVE ITEMS: ${payload.negative_items.length} items to process ===`);
 
     // Normalize bureau and item_type to match CHECK constraints
     const normalizeBureau = (b: string): string => {
@@ -256,21 +259,45 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       return "active";
     };
 
-    for (const item of payload.negative_items) {
+    for (let idx = 0; idx < payload.negative_items.length; idx++) {
+      const item = payload.negative_items[idx];
       const bureau = normalizeBureau(item.bureau);
       const itemType = normalizeItemType(item.item_type);
       const status = normalizeStatus(item.status);
       const removalProb = item.estimated_score_impact != null ? Math.max(0, Math.min(100, Math.round(item.estimated_score_impact))) : null;
 
-      const matchQuery = supabase
+      const itemLog: any = {
+        index: idx,
+        raw_creditor: item.creditor_name,
+        raw_bureau: item.bureau,
+        raw_item_type: item.item_type,
+        normalized_bureau: bureau,
+        normalized_item_type: itemType,
+        normalized_status: status,
+        account_number_masked: item.account_number_masked || null,
+        amount: item.amount,
+        identifier: clientId ? `client:${clientId}` : `user:${targetUserId}`,
+      };
+
+      console.log(`[NEG ${idx + 1}/${payload.negative_items.length}] PRE-INSERT:`, JSON.stringify(itemLog));
+
+      // Check for existing record — use .select() without maybeSingle to avoid error on multiple matches
+      const { data: existingRows, error: matchErr } = await supabase
         .from("credit_negative_items").select("id")
         .eq("user_id", targetUserId)
         .eq("creditor_name", item.creditor_name)
         .eq("bureau", bureau);
 
-      if (item.account_number_masked) matchQuery.eq("account_number_masked", item.account_number_masked);
+      if (matchErr) {
+        console.error(`[NEG ${idx + 1}] Match query error:`, matchErr);
+        itemLog.result = "match_error";
+        itemLog.error = matchErr.message;
+        negativeItemLogs.push(itemLog);
+        negativeItemsFailed++;
+        continue;
+      }
 
-      const { data: existing } = await matchQuery.maybeSingle();
+      const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
 
       if (existing) {
         const { error: updateErr } = await supabase.from("credit_negative_items").update({
@@ -284,10 +311,19 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
           is_removable: true,
           updated_at: new Date().toISOString(),
         }).eq("id", existing.id);
-        if (updateErr) console.error("Negative item update error:", updateErr);
-        else negativeItemsUpdated++;
+        if (updateErr) {
+          console.error(`[NEG ${idx + 1}] Update error:`, updateErr);
+          itemLog.result = "update_error";
+          itemLog.error = updateErr.message;
+          negativeItemsFailed++;
+        } else {
+          console.log(`[NEG ${idx + 1}] Updated existing record ${existing.id}`);
+          itemLog.result = "updated";
+          itemLog.existing_id = existing.id;
+          negativeItemsUpdated++;
+        }
       } else {
-        const { error: insertErr } = await supabase.from("credit_negative_items").insert(withClientId({
+        const insertPayload = withClientId({
           user_id: targetUserId,
           creditor_name: item.creditor_name,
           account_number_masked: item.account_number_masked,
@@ -300,12 +336,25 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
           notes: item.dispute_basis,
           removal_probability: removalProb,
           is_removable: true,
-        }));
-        if (insertErr) console.error("Negative item insert error:", insertErr);
-        else negativeItemsInserted++;
+        });
+        const { data: insertedRow, error: insertErr } = await supabase
+          .from("credit_negative_items").insert(insertPayload).select("id").single();
+        if (insertErr) {
+          console.error(`[NEG ${idx + 1}] Insert error:`, JSON.stringify(insertErr));
+          itemLog.result = "insert_error";
+          itemLog.error = insertErr.message;
+          itemLog.pg_code = insertErr.code;
+          negativeItemsFailed++;
+        } else {
+          console.log(`[NEG ${idx + 1}] Inserted new record ${insertedRow?.id}`);
+          itemLog.result = "inserted";
+          itemLog.new_id = insertedRow?.id;
+          negativeItemsInserted++;
+        }
       }
+      negativeItemLogs.push(itemLog);
     }
-    results.negative_items = { inserted: negativeItemsInserted, updated: negativeItemsUpdated };
+    results.negative_items = { inserted: negativeItemsInserted, updated: negativeItemsUpdated, failed: negativeItemsFailed, logs: negativeItemLogs };
 
     // ========== STEP 3: HARD INQUIRIES ==========
     currentStep = "hard_inquiries";
