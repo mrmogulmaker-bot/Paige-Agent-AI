@@ -236,6 +236,20 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
                     <span className="text-sm">Lender Research</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => setActiveSection("funding-secured")}
+                    isActive={activeSection === "funding-secured"}
+                    className={`w-full px-3 py-2 rounded-lg transition-all ${
+                      activeSection === "funding-secured"
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "hover:bg-muted text-sidebar-foreground"
+                    }`}
+                  >
+                    <DollarSign className="w-5 h-5" />
+                    <span className="text-sm">Funding Secured</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
