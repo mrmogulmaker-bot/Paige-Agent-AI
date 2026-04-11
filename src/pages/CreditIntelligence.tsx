@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
+import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
 
 export default function CreditIntelligence() {
   const { factors, isLoading, recalculate } = useCreditFactors();
@@ -116,6 +117,9 @@ export default function CreditIntelligence() {
           </Button>
         )}
       </div>
+
+      {/* Bureau Score Panel — lead with familiar numbers */}
+      <BureauScorePanel />
 
       {/* Fundability Score Ring */}
       {hasData && (

@@ -37,6 +37,14 @@ const CREDIT_REPORT_EXTRACTION_PROMPT = `${DOCUMENT_SOURCE_INSTRUCTION}
 
 You are extracting a consumer tri-merge credit report into structured JSON.
 
+=== SCORE MODEL DETECTION ===
+Determine the scoring model used in this report. Look at the document header, footer, and score section for explicit mentions of "FICO", "VantageScore", or the provider name.
+- MyFreeScoreNow, myFICO, Experian FICO → score_model = "FICO"
+- Credit Karma, Credit Sesame, NerdWallet, VantageScore → score_model = "VantageScore"
+- If the report explicitly says "FICO Score" or "FICO® Score" → "FICO"
+- If the report explicitly says "VantageScore" → "VantageScore"
+- If the model cannot be determined → "Unknown"
+
 === TRI-MERGE FORMAT RECOGNITION ===
 Tri-merge reports present each account in a three-column format: TransUnion (left), Experian (middle), Equifax (right). Each account section shows which bureaus report it. Dashes (--) in a column mean the account is NOT reported at that bureau. You MUST read each column independently and correctly identify which bureaus report each account. An account with data in one column and dashes in the other two reports to only ONE bureau. This bureau-specific reporting is critical for dispute targeting.
 
@@ -101,6 +109,7 @@ Return ONLY valid JSON with this exact structure:
     "experian": number or null,
     "transunion": number or null
   },
+  "score_model": "FICO" | "VantageScore" | "Unknown",
   "profile_summary": "string",
   "estimated_total_score_impact": number,
   "negative_items": [

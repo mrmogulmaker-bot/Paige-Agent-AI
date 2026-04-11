@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { CurrentDateTime } from "@/components/dashboard/CurrentDateTime";
 import { CreditScoreOverview } from "@/components/dashboard/CreditScoreOverview";
+import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
 import { AccelProgress } from "@/components/dashboard/AccelProgress";
 import { BuildProgress } from "@/components/dashboard/BuildProgress";
 import { PersonalBankAccountsOverview } from "@/components/dashboard/PersonalBankAccountsOverview";
@@ -211,6 +212,8 @@ const Dashboard = () => {
                   {activeSection === "dashboard" && (mode !== "internal" || !isCoachOrAdmin) && (
                   <div className="space-y-6">
                     <UpgradeBanner onUpgradeClick={() => setShowUpgradeModal(true)} />
+                    
+                    <BureauScorePanel />
                     
                     <div className="grid gap-6">
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
