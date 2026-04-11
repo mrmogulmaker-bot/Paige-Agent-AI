@@ -86,15 +86,39 @@ function useNegativeItems(clientId?: string) {
   });
 }
 
-// Get client name for letter generation
-function useClientName(clientId?: string) {
+// Get client info for letter generation
+function useClientInfo(clientId?: string) {
   return useQuery({
-    queryKey: ["client-name", clientId],
+    queryKey: ["client-info", clientId],
     enabled: !!clientId,
     queryFn: async () => {
       if (!clientId) return null;
-      const { data } = await supabase.from("clients").select("first_name, last_name").eq("id", clientId).single();
-      return data ? `${data.first_name} ${data.last_name}` : "Consumer";
+      const { data } = await supabase.from("clients").select("first_name, last_name, street_address, city, state, zip_code" as any).eq("id", clientId).single();
+      if (!data) return null;
+      const d = data as any;
+      const name = `${d.first_name} ${d.last_name}`;
+      const hasAddress = d.street_address && d.city && d.state && d.zip_code;
+      const address = hasAddress ? `${d.street_address}\n${d.city}, ${d.state} ${d.zip_code}` : null;
+      return { name, address, hasAddress };
+    },
+  });
+}
+
+// Get auth user profile info for letter generation (non-internal mode)
+function useProfileInfo(clientId?: string) {
+  return useQuery({
+    queryKey: ["profile-info-for-letters"],
+    enabled: !clientId,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase.from("profiles").select("full_name, street_address, city, state, zip_code").eq("user_id", user.id).single();
+      if (!data) return { name: user.email || "Consumer", address: null, hasAddress: false };
+      const d = data as any;
+      const name = d.full_name || user.email || "Consumer";
+      const hasAddress = d.street_address && d.city && d.state && d.zip_code;
+      const address = hasAddress ? `${d.street_address}\n${d.city}, ${d.state} ${d.zip_code}` : null;
+      return { name, address, hasAddress };
     },
   });
 }
@@ -227,6 +251,8 @@ function RoundLettersDialog({
   disputes,
   clientId,
   clientName,
+  clientAddress,
+  hasAddress,
   open,
   onOpenChange,
   onComplete,
@@ -234,6 +260,8 @@ function RoundLettersDialog({
   disputes: any[];
   clientId?: string;
   clientName: string;
+  clientAddress: string | null;
+  hasAddress: boolean;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onComplete: () => void;
@@ -283,7 +311,7 @@ function RoundLettersDialog({
         }));
 
         const { data, error: fnError } = await supabase.functions.invoke("generate-dispute-letter", {
-          body: { mode: "combined", bureau: bureau.charAt(0).toUpperCase() + bureau.slice(1), clientName, clientAddress: null, items, round: nextRound },
+          body: { mode: "combined", bureau: bureau.charAt(0).toUpperCase() + bureau.slice(1), clientName, clientAddress: clientAddress || null, items, round: nextRound },
         });
 
         if (fnError) throw new Error(`${bureau}: ${fnError.message}`);
