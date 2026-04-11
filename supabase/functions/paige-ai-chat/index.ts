@@ -780,8 +780,9 @@ async function runStructuredExtractionAndSync(
     }
 
     // Step 3: Build sync payload and call sync-credit-report-data
-    const syncPayload = {
+    const syncPayload: any = {
       target_user_id: callerUserId,
+      client_id: clientId || null,
       report_type: structured.report_type || "consumer",
       scores: structured.scores,
       negative_items: (structured.negative_items || []).map((n: any) => ({
@@ -850,11 +851,13 @@ async function runStructuredExtractionAndSync(
     const scores = structured.scores || {};
     const memoryContent = `Credit report analyzed (${structured.report_type || 'consumer'}). Scores: EQ ${scores.equifax || 'N/A'}, EX ${scores.experian || 'N/A'}, TU ${scores.transunion || 'N/A'}. Found ${negCount} negative items, ${(structured.hard_inquiries || []).length} hard inquiries, ${posCount} positive accounts.`;
     
-    await supabase.from("client_memory").insert({
-      client_user_id: callerUserId,
+    const memoryInsert: any = {
+      client_user_id: clientId || callerUserId,
       memory_type: "report_upload",
       content: memoryContent,
-    });
+    };
+    if (clientId) memoryInsert.client_id = clientId;
+    await supabase.from("client_memory").insert(memoryInsert);
 
     return {
       success: true,
