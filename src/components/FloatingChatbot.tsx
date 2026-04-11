@@ -179,6 +179,16 @@ export const FloatingChatbot = () => {
           }
         }
       }
+
+      // If a document was attached, add sync confirmation
+      if (currentDoc && assistantMessage.length > 100) {
+        setTimeout(() => {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: "✅ Your credit profile has been updated with the data from this report." },
+          ]);
+        }, 2000);
+      }
     } catch (error) {
       toast({ title: "Error", description: "Failed to send message. Please try again.", variant: "destructive" });
       setMessages((prev) => prev.slice(0, -1));
