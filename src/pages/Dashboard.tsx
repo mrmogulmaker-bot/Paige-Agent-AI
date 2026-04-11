@@ -49,12 +49,14 @@ import { PageTransition } from "@/components/PageTransition";
 import { PMEFundingReadiness } from "@/components/dashboard/PMEFundingReadiness";
 import { FundingSecuredTracker } from "@/components/dashboard/FundingSecuredTracker";
 import { WebhooksIntegrations } from "@/components/dashboard/WebhooksIntegrations";
+import { OutreachCenter } from "@/components/dashboard/OutreachCenter";
 import { ClientManagementDashboard } from "@/components/dashboard/ClientManagementDashboard";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 
 const Dashboard = () => {
   const { mode, isCoachOrAdmin } = useDashboardMode();
   const [activeSection, setActiveSection] = useState("dashboard");
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAccel, setShowAccel] = useState(true);
   const [showBuild, setShowBuild] = useState(true);
   const [user, setUser] = useState<User | null>(null);
@@ -169,6 +171,7 @@ const Dashboard = () => {
                   {activeSection === "lender-research" && "Lender Research"}
                   {activeSection === "funding-secured" && "Funding Secured"}
                   {activeSection === "webhooks" && "Webhooks & Integrations"}
+                  {activeSection === "outreach" && "Outreach Draft Center"}
                 </h1>
               </div>
               <div className="flex items-center gap-2 md:gap-4">
@@ -249,8 +252,7 @@ const Dashboard = () => {
                       )}
                     </div>
                   </div>
-                )}
-                
+                  )}
                 {activeSection === "personal" && <PersonalSection />}
                 {activeSection === "personal-build" && (
                   <div className="space-y-8">
@@ -310,6 +312,14 @@ const Dashboard = () => {
                 {activeSection === "lender-research" && <LenderResearch />}
                 {activeSection === "funding-secured" && <FundingSecuredTracker />}
                 {activeSection === "webhooks" && <WebhooksIntegrations />}
+                {activeSection === "outreach" && selectedClientId && <OutreachCenter clientUserId={selectedClientId} />}
+                {activeSection === "outreach" && !selectedClientId && (
+                  <div className="p-8 text-center border border-border rounded-lg">
+                    <p className="text-muted-foreground">Select a client from the Client Management dashboard first to generate outreach drafts.</p>
+                    <Button variant="outline" className="mt-4" onClick={() => setActiveSection("dashboard")}>Go to Client Management</Button>
+                  </div>
+                )}
+
                   {activeSection === "settings" && <ProfileSettings />}
                   {activeSection === "contact" && <ContactSupport />}
                 </div>

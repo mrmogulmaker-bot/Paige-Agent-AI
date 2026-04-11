@@ -2653,6 +2653,63 @@ export type Database = {
         }
         Relationships: []
       }
+      outreach_drafts: {
+        Row: {
+          admin_edited: boolean
+          client_user_id: string
+          compliance_flag_count: number
+          compliance_flags: Json | null
+          compliance_status: string
+          created_at: string
+          created_by: string
+          downloaded_at: string | null
+          edited_content: string | null
+          funding_product: string | null
+          generated_content: string
+          id: string
+          lender_name: string | null
+          metadata: Json | null
+          outreach_type: string
+          updated_at: string
+        }
+        Insert: {
+          admin_edited?: boolean
+          client_user_id: string
+          compliance_flag_count?: number
+          compliance_flags?: Json | null
+          compliance_status?: string
+          created_at?: string
+          created_by: string
+          downloaded_at?: string | null
+          edited_content?: string | null
+          funding_product?: string | null
+          generated_content: string
+          id?: string
+          lender_name?: string | null
+          metadata?: Json | null
+          outreach_type: string
+          updated_at?: string
+        }
+        Update: {
+          admin_edited?: boolean
+          client_user_id?: string
+          compliance_flag_count?: number
+          compliance_flags?: Json | null
+          compliance_status?: string
+          created_at?: string
+          created_by?: string
+          downloaded_at?: string | null
+          edited_content?: string | null
+          funding_product?: string | null
+          generated_content?: string
+          id?: string
+          lender_name?: string | null
+          metadata?: Json | null
+          outreach_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       pii_access_log: {
         Row: {
           access_type: string

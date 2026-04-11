@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Plug, Shield, PhoneCall, DollarSign, Upload, Landmark, Monitor, Webhook } from "lucide-react";
+import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Plug, Shield, PhoneCall, DollarSign, Upload, Landmark, Monitor, Webhook, Mail } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -270,6 +270,20 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 )}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => setActiveSection("outreach")}
+                    isActive={activeSection === "outreach"}
+                    className={`w-full px-3 py-2 rounded-lg transition-all ${
+                      activeSection === "outreach"
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "hover:bg-muted text-sidebar-foreground"
+                    }`}
+                  >
+                    <Mail className="w-5 h-5" />
+                    <span className="text-sm">Outreach</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
