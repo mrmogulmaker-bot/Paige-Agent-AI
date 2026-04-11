@@ -22,6 +22,10 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
     last_name: "",
     email: "",
     phone: "",
+    street_address: "",
+    city: "",
+    state: "",
+    zip_code: "",
     entity_name: "",
     entity_type: "",
     funding_goal: "",
@@ -49,6 +53,10 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
         last_name: form.last_name.trim(),
         email: form.email.trim() || null,
         phone: form.phone.trim() || null,
+        street_address: form.street_address.trim() || null,
+        city: form.city.trim() || null,
+        state: form.state.trim() || null,
+        zip_code: form.zip_code.trim() || null,
         entity_name: form.entity_name.trim() || null,
         entity_type: form.entity_type || null,
         funding_goal: form.funding_goal ? Number(form.funding_goal) : null,
@@ -63,6 +71,7 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
       onOpenChange(false);
       setForm({
         first_name: "", last_name: "", email: "", phone: "",
+        street_address: "", city: "", state: "", zip_code: "",
         entity_name: "", entity_type: "", funding_goal: "",
         monthly_revenue: "", current_notes: "",
       });
@@ -101,6 +110,26 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
             <div>
               <Label htmlFor="phone">Phone</Label>
               <Input id="phone" type="tel" value={form.phone} onChange={(e) => update("phone", e.target.value)} />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="street_address">Street Address</Label>
+            <Input id="street_address" value={form.street_address} onChange={(e) => update("street_address", e.target.value)} placeholder="123 Main Street, Apt 4B" />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label htmlFor="city">City</Label>
+              <Input id="city" value={form.city} onChange={(e) => update("city", e.target.value)} placeholder="Atlanta" />
+            </div>
+            <div>
+              <Label htmlFor="state">State</Label>
+              <Input id="state" value={form.state} onChange={(e) => update("state", e.target.value)} placeholder="GA" maxLength={2} />
+            </div>
+            <div>
+              <Label htmlFor="zip_code">Zip Code</Label>
+              <Input id="zip_code" value={form.zip_code} onChange={(e) => update("zip_code", e.target.value)} placeholder="30301" maxLength={10} />
             </div>
           </div>
 
