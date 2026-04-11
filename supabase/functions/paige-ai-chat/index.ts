@@ -187,7 +187,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages } = validatedData;
+    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId } = validatedData;
 
     // === SESSION SUMMARY GENERATION MODE ===
     if (generateSessionSummary && sessionMessages && sessionMessages.length > 0) {
