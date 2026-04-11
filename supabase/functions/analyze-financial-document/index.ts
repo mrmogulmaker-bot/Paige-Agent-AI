@@ -1,0 +1,269 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Invalid token' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: rateLimitOk } = await supabase.rpc('check_rate_limit', {
+      _user_id: user.id, _function_name: 'analyze-financial-document', _max_requests: 10, _window_minutes: 60,
+    });
+    if (!rateLimitOk) {
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded. Try again in an hour.', retryAfter: 3600 }), {
+        status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '3600' },
+      });
+    }
+
+    const { documentId, businessId } = await req.json();
+    if (!documentId) {
+      return new Response(JSON.stringify({ error: 'documentId is required' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Get the document record
+    const { data: doc, error: docError } = await supabase
+      .from('documents')
+      .select('*')
+      .eq('id', documentId)
+      .single();
+
+    if (docError || !doc) {
+      return new Response(JSON.stringify({ error: 'Document not found' }), {
+        status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Create or update analysis record
+    const { data: analysisRecord, error: insertError } = await supabase
+      .from('financial_document_analyses')
+      .upsert({
+        document_id: documentId,
+        user_id: doc.user_id,
+        business_id: businessId || doc.business_id,
+        analysis_status: 'processing',
+      }, { onConflict: 'document_id' })
+      .select()
+      .single();
+
+    if (insertError) {
+      // If upsert fails due to no unique constraint, try insert
+      const { data: newRecord, error: newError } = await supabase
+        .from('financial_document_analyses')
+        .insert({
+          document_id: documentId,
+          user_id: doc.user_id,
+          business_id: businessId || doc.business_id,
+          analysis_status: 'processing',
+        })
+        .select()
+        .single();
+      
+      if (newError) throw newError;
+    }
+
+    // Download the file
+    const { data: fileData, error: downloadError } = await supabase.storage
+      .from(doc.bucket_name)
+      .download(doc.file_path);
+
+    if (downloadError || !fileData) {
+      await supabase.from('financial_document_analyses')
+        .update({ analysis_status: 'failed', error_message: 'Failed to download file' })
+        .eq('document_id', documentId);
+      return new Response(JSON.stringify({ error: 'Failed to download file' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const arrayBuffer = await fileData.arrayBuffer();
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+    const systemPrompt = `You are a financial document analysis expert working for a business credit and funding platform.
+You will receive a financial document (bank statement, P&L statement, tax return, balance sheet, or similar).
+Your job is to extract ALL relevant financial data into structured JSON.
+
+IMPORTANT: Detect the document type and adapt your extraction accordingly.
+
+Return ONLY valid JSON with this structure:
+{
+  "doc_type": "bank_statement" | "profit_and_loss" | "tax_return" | "balance_sheet" | "income_statement" | "other",
+  "institution_name": "string or null",
+  "account_holder": "string or null",
+  "period_start": "YYYY-MM-DD or null",
+  "period_end": "YYYY-MM-DD or null",
+  "avg_monthly_revenue": number or null,
+  "avg_daily_balance": number or null,
+  "total_deposits": number or null,
+  "total_withdrawals": number or null,
+  "ending_balance": number or null,
+  "revenue_trend": "increasing" | "decreasing" | "stable" | "volatile" | "insufficient_data",
+  "revenue_trend_detail": "string explaining the trend",
+  "nsf_count": number (0 if none found),
+  "overdraft_count": number (0 if none found),
+  "largest_deposit": { "amount": number, "date": "YYYY-MM-DD or null", "description": "string" },
+  "largest_withdrawal": { "amount": number, "date": "YYYY-MM-DD or null", "description": "string" },
+  "monthly_breakdown": [
+    { "month": "YYYY-MM", "revenue": number, "expenses": number, "net": number }
+  ],
+  "lender_red_flags": [
+    { "flag": "string description", "severity": "high" | "medium" | "low", "recommendation": "string" }
+  ],
+  "lender_green_flags": [
+    { "flag": "string description" }
+  ],
+  "key_metrics": {
+    "debt_service_coverage_ratio": number or null,
+    "profit_margin": number or null,
+    "monthly_burn_rate": number or null,
+    "runway_months": number or null
+  },
+  "summary": "2-3 sentence plain-language summary of financial health from a lender's perspective"
+}
+
+Be thorough. Look for NSF fees, overdraft charges, negative balances, irregular large deposits, and any patterns that would concern a lender. Also identify positive signals like consistent revenue growth, healthy balances, and low debt.`;
+
+    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-pro",
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Analyze this financial document and extract all relevant data into the structured JSON format. Be thorough — identify every red flag and positive signal." },
+              { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64}` } },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!aiResponse.ok) {
+      const errorId = crypto.randomUUID();
+      const statusMessage = aiResponse.status === 429
+        ? "Rate limits exceeded, please try again later."
+        : aiResponse.status === 402
+          ? "Payment required, please add funds to your Lovable AI workspace."
+          : "AI analysis failed. Please try again.";
+
+      await supabase.from('financial_document_analyses')
+        .update({ analysis_status: 'failed', error_message: statusMessage })
+        .eq('document_id', documentId);
+
+      return new Response(JSON.stringify({ error: statusMessage, errorId }), {
+        status: aiResponse.status === 429 || aiResponse.status === 402 ? aiResponse.status : 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const aiData = await aiResponse.json();
+    let rawContent = aiData.choices?.[0]?.message?.content || '';
+    rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+    let analysis;
+    try {
+      analysis = JSON.parse(rawContent);
+    } catch {
+      await supabase.from('financial_document_analyses')
+        .update({ analysis_status: 'failed', error_message: 'Failed to parse AI response' })
+        .eq('document_id', documentId);
+      return new Response(JSON.stringify({ error: 'Failed to parse analysis' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Save results
+    await supabase.from('financial_document_analyses')
+      .update({
+        analysis_status: 'completed',
+        doc_type_detected: analysis.doc_type,
+        period_start: analysis.period_start,
+        period_end: analysis.period_end,
+        avg_monthly_revenue: analysis.avg_monthly_revenue,
+        avg_daily_balance: analysis.avg_daily_balance,
+        revenue_trend: analysis.revenue_trend,
+        nsf_count: analysis.nsf_count || 0,
+        overdraft_count: analysis.overdraft_count || 0,
+        largest_deposit: analysis.largest_deposit?.amount,
+        largest_deposit_description: analysis.largest_deposit?.description,
+        largest_withdrawal: analysis.largest_withdrawal?.amount,
+        largest_withdrawal_description: analysis.largest_withdrawal?.description,
+        lender_red_flags: analysis.lender_red_flags || [],
+        full_analysis: analysis,
+      })
+      .eq('document_id', documentId);
+
+    // Also update the financial_kpis table if relevant
+    if (analysis.avg_monthly_revenue || analysis.avg_daily_balance) {
+      await supabase.from('financial_kpis').upsert({
+        user_id: doc.user_id,
+        avg_balance_30d: analysis.avg_daily_balance,
+        avg_balance_90d: analysis.avg_daily_balance,
+        monthly_inflow: analysis.total_deposits || analysis.avg_monthly_revenue,
+        monthly_outflow: analysis.total_withdrawals,
+        nsf_count: analysis.nsf_count || 0,
+        dscr: analysis.key_metrics?.debt_service_coverage_ratio,
+        last_calculated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+    }
+
+    // Audit log
+    await supabase.from('audit_logs').insert({
+      user_id: user.id,
+      entity: 'financial_document_analysis',
+      action: 'ai_analysis_completed',
+      entity_id: documentId,
+      data: {
+        doc_type: analysis.doc_type,
+        red_flags_count: analysis.lender_red_flags?.length || 0,
+        avg_monthly_revenue: analysis.avg_monthly_revenue,
+      },
+    });
+
+    return new Response(JSON.stringify({ success: true, analysis }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    const errorId = crypto.randomUUID();
+    console.error(`[FINANCIAL-ANALYSIS-ERROR-${errorId}]`, error instanceof Error ? error.message : 'Unknown');
+    return new Response(JSON.stringify({ error: 'An error occurred', errorId }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});
