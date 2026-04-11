@@ -2289,6 +2289,45 @@ export type Database = {
         }
         Relationships: []
       }
+      lender_research_results: {
+        Row: {
+          client_user_id: string | null
+          created_at: string
+          id: string
+          is_deep_research: boolean
+          market_commentary: string | null
+          results: Json
+          search_criteria: Json
+          search_status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          client_user_id?: string | null
+          created_at?: string
+          id?: string
+          is_deep_research?: boolean
+          market_commentary?: string | null
+          results?: Json
+          search_criteria?: Json
+          search_status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          client_user_id?: string | null
+          created_at?: string
+          id?: string
+          is_deep_research?: boolean
+          market_commentary?: string | null
+          results?: Json
+          search_criteria?: Json
+          search_status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       lessons: {
         Row: {
           content_markdown: string | null

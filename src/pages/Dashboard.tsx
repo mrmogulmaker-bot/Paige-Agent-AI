@@ -38,6 +38,7 @@ import { ReportUploadTab } from "@/components/dashboard/ReportUploadTab";
 import { Integrations } from "@/components/dashboard/Integrations";
 import { BankAccountsManager } from "@/components/dashboard/BankAccountsManager";
 import { FundingMarketplace } from "@/components/dashboard/FundingMarketplace";
+import { LenderResearch } from "@/components/dashboard/LenderResearch";
 import { Button } from "@/components/ui/button";
 import { UpgradeBanner } from "@/components/dashboard/UpgradeBanner";
 import { UpgradeModal } from "@/components/dashboard/UpgradeModal";
@@ -160,6 +161,7 @@ const Dashboard = () => {
                   {activeSection === "settings" && "Settings"}
                   {activeSection === "contact" && "Contact & Support"}
                   {activeSection === "report-upload" && "Report Upload & AI Analysis"}
+                  {activeSection === "lender-research" && "Lender Research"}
                 </h1>
               </div>
               <div className="flex items-center gap-2 md:gap-4">
@@ -289,6 +291,7 @@ const Dashboard = () => {
                 {activeSection === "report-upload" && <ReportUploadTab />}
                 {activeSection === "affiliate" && <AffiliateTracking />}
                 {activeSection === "integrations" && <Integrations />}
+                {activeSection === "lender-research" && <LenderResearch />}
                   {activeSection === "settings" && <ProfileSettings />}
                   {activeSection === "contact" && <ContactSupport />}
                 </div>
