@@ -53,13 +53,19 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Creating invitation for ${email} with role ${role}`);
 
-    // Create invitation
+    // Generate plaintext token to include in email URL
+    // The DB trigger will hash it and clear the plaintext on insert
+    const rawToken = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+
+    // Create invitation - token will be hashed by trigger, plaintext cleared
     const { data: invitation, error: inviteError } = await supabase
       .from("invitations")
       .insert({
         email,
         role,
         invited_by: user.id,
+        token: rawToken,
       })
       .select()
       .single();
@@ -70,13 +76,13 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("Invitation created:", invitation.id);
 
-    // Get app URL for the invitation link
+    // Get app URL for the invitation link - use the raw token (not the hash stored in DB)
     const appUrl = Deno.env.get("SUPABASE_URL")?.replace(
       "supabase.co",
       "lovableproject.com"
     ) || "https://your-app.lovableproject.com";
     
-    const inviteUrl = `${appUrl}/auth?invite=${invitation.token}`;
+    const inviteUrl = `${appUrl}/auth?invite=${rawToken}`;
 
     // Send invitation email
     const emailResponse = await resend.emails.send({
