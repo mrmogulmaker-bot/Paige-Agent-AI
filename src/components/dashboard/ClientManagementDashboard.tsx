@@ -232,7 +232,10 @@ export function ClientManagementDashboard({ onViewClient }: ClientManagementDash
                 className="pl-9"
               />
             </div>
-            <AddClientDialog onClientAdded={fetchClients} />
+            <Button size="sm" onClick={() => setAddClientOpen(true)}>
+              <UserPlus className="w-4 h-4 mr-1" /> Add Client
+            </Button>
+            <AddClientDialog open={addClientOpen} onOpenChange={setAddClientOpen} onClientAdded={fetchClients} />
           </div>
         </CardHeader>
         <CardContent>
