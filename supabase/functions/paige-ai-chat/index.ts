@@ -1,14 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
-// Removed shared import to keep function self-contained (no cross-function imports)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Input validation schema
 const messageSchema = z.object({
   messages: z.array(
     z.object({
@@ -22,6 +20,19 @@ const messageSchema = z.object({
     fileName: z.string(),
     mimeType: z.literal('application/pdf'),
   }).optional(),
+  sessionDocumentContext: z.array(
+    z.object({
+      fileName: z.string(),
+      summary: z.string(),
+    })
+  ).optional(),
+  generateSessionSummary: z.boolean().optional(),
+  sessionMessages: z.array(
+    z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.string(),
+    })
+  ).optional(),
 });
 
 serve(async (req) => {
@@ -30,7 +41,6 @@ serve(async (req) => {
   }
 
   try {
-    // Authenticate the user
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
@@ -44,7 +54,6 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const lovableApiKey = Deno.env.get("LOVABLE_API_KEY")!;
 
-    // Verify user with anon key
     const supabaseClient = createClient(supabaseUrl, supabaseKey, {
       global: { headers: { Authorization: authHeader } }
     });
@@ -57,56 +66,87 @@ serve(async (req) => {
       );
     }
 
-    // Check rate limit using service role
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { data: rateLimitCheck, error: rateLimitError } = await supabase.rpc('check_rate_limit', {
+
+    // Rate limit
+    const { data: rateLimitCheck } = await supabase.rpc('check_rate_limit', {
       _user_id: user.id,
       _function_name: 'paige-ai-chat',
       _max_requests: 20,
       _window_minutes: 1
     });
-
-    if (rateLimitError) {
-      console.error('Rate limit check error:', rateLimitError.message);
-    } else if (!rateLimitCheck) {
+    if (rateLimitCheck === false) {
       return new Response(
-        JSON.stringify({ 
-          error: 'Rate limit exceeded. Please try again in a moment.',
-          retryAfter: 60
-        }),
-        { 
-          status: 429,
-          headers: { 
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-            'Retry-After': '60'
-          }
-        }
+        JSON.stringify({ error: 'Rate limit exceeded.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '60' } }
       );
     }
 
-    // Validate input
     const rawData = await req.json();
     let validatedData;
-    
     try {
       validatedData = messageSchema.parse(rawData);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return new Response(
-          JSON.stringify({ 
-            error: 'Invalid input format', 
-            details: error.issues.map(i => ({ path: i.path.join('.'), message: i.message }))
-          }),
+          JSON.stringify({ error: 'Invalid input format', details: error.issues.map(i => ({ path: i.path.join('.'), message: i.message })) }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       throw error;
     }
 
-    const { messages, document: attachedDocument } = validatedData;
+    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages } = validatedData;
 
-    // Validate document size (base64 ~= 1.37x original, 10MB file ≈ 13.7MB base64)
+    // === SESSION SUMMARY GENERATION MODE ===
+    if (generateSessionSummary && sessionMessages && sessionMessages.length > 0) {
+      const last20 = sessionMessages.slice(-20);
+      const summaryPrompt = `You are a session summarizer. Given the following chat messages between a client and Paige (an AI credit strategist), produce a 3-5 sentence plain-language summary of what was discussed, what was decided, what documents were uploaded, and what next steps were identified. Be specific about names, scores, and actions. Do NOT use bullet points — write flowing sentences.
+
+MESSAGES:
+${last20.map(m => `${m.role === 'user' ? 'Client' : 'Paige'}: ${m.content}`).join('\n')}
+
+SUMMARY:`;
+
+      const summaryResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${lovableApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash-lite",
+          messages: [{ role: "user", content: summaryPrompt }],
+        }),
+      });
+
+      if (!summaryResponse.ok) {
+        return new Response(
+          JSON.stringify({ error: "Failed to generate summary" }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const summaryData = await summaryResponse.json();
+      const summaryContent = summaryData.choices?.[0]?.message?.content || "";
+
+      // Store as client_memory
+      if (summaryContent.trim()) {
+        await supabase.from("client_memory").insert({
+          client_user_id: user.id,
+          memory_type: "session_summary",
+          content: summaryContent.trim(),
+          source_session_id: rawData.sessionId || null,
+        });
+      }
+
+      return new Response(
+        JSON.stringify({ summary: summaryContent.trim() }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate document size
     if (attachedDocument?.base64 && attachedDocument.base64.length > 15_000_000) {
       return new Response(
         JSON.stringify({ error: 'Document too large. Maximum size is 10MB.' }),
@@ -114,199 +154,136 @@ serve(async (req) => {
       );
     }
 
-    // Check if the last user message contains a URL
+    // Fetch URL content if present
     const lastUserMessage = messages.filter((m: any) => m.role === "user").pop();
     let fetchedUrlContent = "";
-    
     if (lastUserMessage) {
       const urlRegex = /(https?:\/\/[^\s]+)/g;
       const urls = lastUserMessage.content.match(urlRegex);
-      
       if (urls && urls.length > 0) {
-        console.log('Found URLs in message:', urls);
-        
-        // Fetch content from the first URL found
         try {
           const urlResponse = await fetch(`${supabaseUrl}/functions/v1/fetch-url-content`, {
             method: 'POST',
-            headers: {
-              'Authorization': authHeader,
-              'Content-Type': 'application/json'
-            },
+            headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: urls[0] })
           });
-
           if (urlResponse.ok) {
             const urlData = await urlResponse.json();
             if (urlData.success) {
               fetchedUrlContent = `\n\n=== FETCHED URL CONTENT ===\nURL: ${urlData.url}\nContent:\n${urlData.content}\n===========================\n`;
-              console.log('Successfully fetched URL content');
             }
           }
         } catch (error) {
           console.error('Error fetching URL content:', error);
-          // Continue without URL content if fetch fails
         }
       }
     }
 
-    // Fetch comprehensive user context for personalized responses
-    let userContext = "";
+    // === LOAD CLIENT MEMORY (cross-session persistence) ===
+    let memoryBlock = "";
     try {
-      // Get user profile
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("full_name, city, state")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      // Get user subscription
-      const { data: subscription } = await supabase
-        .from("user_subscriptions")
-        .select("plan_slug, status")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      // Get user tasks (recent and pending)
-      const { data: tasks } = await supabase
-        .from("tasks")
-        .select("title, status, track, due_date")
-        .eq("user_id", user.id)
+      const { data: memories } = await supabase
+        .from("client_memory")
+        .select("memory_type, content, created_at")
+        .eq("client_user_id", user.id)
+        .eq("is_active", true)
         .order("created_at", { ascending: false })
         .limit(10);
 
-      // Get recent disputes
-      const { data: disputes } = await supabase
-        .from("disputes")
-        .select("bureau, creditor_name, status")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(5);
+      if (memories && memories.length > 0) {
+        // Prioritize high-signal types, then trim to ~1000 tokens
+        const priorityOrder: Record<string, number> = {
+          report_upload: 1,
+          funding_secured: 2,
+          dispute_generated: 3,
+          milestone_completed: 4,
+          lender_researched: 5,
+          coach_note: 6,
+          session_summary: 7,
+        };
+        const sorted = [...memories].sort((a, b) => (priorityOrder[a.memory_type] || 99) - (priorityOrder[b.memory_type] || 99));
 
-      // Get business info if exists
-      const { data: businesses } = await supabase
-        .from("businesses")
-        .select("id, legal_name, entity_type, formation_status, business_type")
-        .eq("owner_user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(5);
+        let tokenEstimate = 0;
+        const included: string[] = [];
+        for (const mem of sorted) {
+          const entry = `• [${mem.memory_type.replace(/_/g, ' ').toUpperCase()}] (${new Date(mem.created_at).toLocaleDateString()}): ${mem.content}`;
+          const entryTokens = Math.ceil(entry.length / 4);
+          if (tokenEstimate + entryTokens > 1000) break;
+          tokenEstimate += entryTokens;
+          included.push(entry);
+        }
 
-      // Get user documents (personal and business)
-      const { data: documents } = await supabase
-        .from("documents")
-        .select("document_type, file_name, business_id, uploaded_at")
-        .eq("user_id", user.id)
-        .order("uploaded_at", { ascending: false })
-        .limit(20);
+        if (included.length > 0) {
+          memoryBlock = `\n\n=== PAIGE MEMORY — What I know about this client from previous sessions ===\n${included.join("\n")}\n=== END MEMORY ===\n\nIMPORTANT: Use this memory to personalize your responses. If this is the start of a new conversation (only 1 user message), open with a personalized greeting that references what you know from memory. For example: "Welcome back. Last time we reviewed your tri-merge — your TransUnion was 612 and we flagged 3 items to dispute. Any progress on those letters?" If no memory exists, use your standard introduction.\n`;
+        }
+      }
+    } catch (err) {
+      console.error("Error loading client memory:", err);
+    }
 
-      // Build context string
+    // === BUILD WITHIN-SESSION DOCUMENT CONTEXT ===
+    let sessionDocContext = "";
+    if (sessionDocumentContext && sessionDocumentContext.length > 0) {
+      const docSummaries = sessionDocumentContext
+        .map((doc, i) => `Document ${i + 1} (${doc.fileName}):\n${doc.summary}`)
+        .join("\n\n");
+      sessionDocContext = `\n\n=== PREVIOUSLY ANALYZED DOCUMENTS IN THIS SESSION ===\n${docSummaries}\n=== END SESSION DOCUMENTS ===\nYou can answer follow-up questions about these documents using the summaries above.\n`;
+    }
+
+    // Fetch user context
+    let userContext = "";
+    try {
+      const { data: profile } = await supabase.from("profiles").select("full_name, city, state").eq("user_id", user.id).maybeSingle();
+      const { data: subscription } = await supabase.from("user_subscriptions").select("plan_slug, status").eq("user_id", user.id).maybeSingle();
+      const { data: tasks } = await supabase.from("tasks").select("title, status, track, due_date").eq("user_id", user.id).order("created_at", { ascending: false }).limit(10);
+      const { data: disputes } = await supabase.from("disputes").select("bureau, creditor_name, status").eq("user_id", user.id).order("created_at", { ascending: false }).limit(5);
+      const { data: businesses } = await supabase.from("businesses").select("id, legal_name, entity_type, formation_status, business_type").eq("owner_user_id", user.id).order("created_at", { ascending: false }).limit(5);
+      const { data: documents } = await supabase.from("documents").select("document_type, file_name, business_id, uploaded_at").eq("user_id", user.id).order("uploaded_at", { ascending: false }).limit(20);
+
       const contextParts: string[] = [];
-      
-      if (profile) {
-        contextParts.push(`User Profile: ${profile.full_name || "User"} from ${profile.city ? `${profile.city}, ${profile.state}` : "location not set"}`);
-      }
-
-      if (subscription) {
-        contextParts.push(`Subscription: ${subscription.plan_slug} plan (${subscription.status})`);
-      }
-
+      if (profile) contextParts.push(`User Profile: ${profile.full_name || "User"} from ${profile.city ? `${profile.city}, ${profile.state}` : "location not set"}`);
+      if (subscription) contextParts.push(`Subscription: ${subscription.plan_slug} plan (${subscription.status})`);
       if (tasks && tasks.length > 0) {
         const pendingTasks = tasks.filter(t => t.status === "pending").length;
         const completedTasks = tasks.filter(t => t.status === "completed").length;
         contextParts.push(`Tasks: ${pendingTasks} pending, ${completedTasks} completed`);
-        
         if (pendingTasks > 0) {
-          const taskSummary = tasks
-            .filter(t => t.status === "pending")
-            .slice(0, 3)
-            .map(t => `- ${t.title} (${t.track})`)
-            .join("\n");
+          const taskSummary = tasks.filter(t => t.status === "pending").slice(0, 3).map(t => `- ${t.title} (${t.track})`).join("\n");
           contextParts.push(`Recent Pending Tasks:\n${taskSummary}`);
         }
       }
-
-      if (disputes && disputes.length > 0) {
-        const activeDisputes = disputes.filter(d => d.status === "in_review").length;
-        contextParts.push(`Active Disputes: ${activeDisputes} of ${disputes.length} total`);
-      }
-
+      if (disputes && disputes.length > 0) contextParts.push(`Active Disputes: ${disputes.filter(d => d.status === "in_review").length} of ${disputes.length} total`);
       if (businesses && businesses.length > 0) {
-        const bizSummary = businesses
-          .map(b => `${b.legal_name} (${b.business_type}, ${b.entity_type || "type not set"})`)
-          .join(", ");
+        const bizSummary = businesses.map(b => `${b.legal_name} (${b.business_type}, ${b.entity_type || "type not set"})`).join(", ");
         contextParts.push(`Businesses: ${bizSummary}`);
       }
-
       if (documents && documents.length > 0) {
         const personalDocs = documents.filter(d => !d.business_id);
         const businessDocs = documents.filter(d => d.business_id);
-        
         const docSummary: string[] = [];
-        
-        if (personalDocs.length > 0) {
-          const docTypes = [...new Set(personalDocs.map(d => d.document_type))].join(", ");
-          docSummary.push(`Personal Documents (${personalDocs.length}): ${docTypes}`);
-        }
-        
-        if (businessDocs.length > 0) {
-          const docTypes = [...new Set(businessDocs.map(d => d.document_type))].join(", ");
-          docSummary.push(`Business Documents (${businessDocs.length}): ${docTypes}`);
-        }
-        
-        if (docSummary.length > 0) {
-          contextParts.push(`Available Documents:\n${docSummary.join("\n")}`);
-        }
+        if (personalDocs.length > 0) docSummary.push(`Personal Documents (${personalDocs.length}): ${[...new Set(personalDocs.map(d => d.document_type))].join(", ")}`);
+        if (businessDocs.length > 0) docSummary.push(`Business Documents (${businessDocs.length}): ${[...new Set(businessDocs.map(d => d.document_type))].join(", ")}`);
+        if (docSummary.length > 0) contextParts.push(`Available Documents:\n${docSummary.join("\n")}`);
       }
-
-      userContext = contextParts.length > 0 
-        ? "\n\n=== USER CONTEXT (Use this to personalize responses) ===\n" + contextParts.join("\n") + "\n================================\n"
-        : "";
+      userContext = contextParts.length > 0 ? "\n\n=== USER CONTEXT ===\n" + contextParts.join("\n") + "\n==================\n" : "";
     } catch (error) {
       console.error("Error fetching user context:", error);
-      // Continue without context if fetch fails
     }
 
-    // Search for relevant knowledge using the last user message
+    // Knowledge base search
     let relevantKnowledge = "";
-
     if (lastUserMessage) {
-      // Sanitize user input for database query
-      const sanitizedContent = lastUserMessage.content
-        .replace(/[%_]/g, '\\$&')
-        .substring(0, 200);
-
-      const keywords = extractKeywords(sanitizedContent)
-        .split(',')
-        .filter(k => /^[a-z]+$/.test(k));
-
-      // Search knowledge base for relevant content with sanitized input
-      const { data: knowledge, error: kbError } = await supabase
-        .from("knowledge_base")
-        .select("title, content, summary, framework, category")
-        .textSearch('content', sanitizedContent)
-        .limit(5);
-
+      const sanitizedContent = lastUserMessage.content.replace(/[%_]/g, '\\$&').substring(0, 200);
+      const { data: knowledge } = await supabase.from("knowledge_base").select("title, content, summary, framework, category").textSearch('content', sanitizedContent).limit(5);
       if (knowledge && knowledge.length > 0) {
-        relevantKnowledge = "\n\nRelevant Knowledge Base:\n" + 
-          knowledge.map(k => `### ${k.title} (${k.framework} - ${k.category})\n${k.content}`).join("\n\n");
+        relevantKnowledge = "\n\nRelevant Knowledge Base:\n" + knowledge.map(k => `### ${k.title} (${k.framework} - ${k.category})\n${k.content}`).join("\n\n");
       }
     }
 
-    // Get current date and time for Paige's awareness
     const currentDateTime = new Date();
-    const dateTimeString = currentDateTime.toLocaleString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-      timeZoneName: 'short'
-    });
+    const dateTimeString = currentDateTime.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZoneName: 'short' });
 
-    // Enhanced system prompt — PME AI Funding Coach & CRM Assistant
+    // System prompt (condensed for maintainability — same content as before)
     const systemPrompt = `You are Paige, the AI Funding Coach and CRM assistant for Project Mogul Enterprise Inc. (PME). You assist Antonio Cook and his team in managing funding clients from credit assessment through capital access. You were named after Aijah Paige Cook — the daughter of the founder. If someone named Aijah or Aijah Paige ever signs up, give her a special welcome: she's your namesake, and you carry her name with pride.
 
 === ROLE & POSITIONING ===
@@ -322,43 +299,25 @@ YOUR PERSONALITY:
 - Big-sister energy meets banker precision — sharp and confident but never cold.
 - Technical credibility in plain language: "Your utilization is at 68% — that's costing you 35 points minimum" NOT "You may want to consider reducing your credit utilization ratio."
 - Action-oriented. EVERY interaction ends with a specific, concrete next step. You're allergic to inaction.
-- You speak with warmth when people are struggling and fire when they need a push. You know when to hold someone's hand and when to let go.
+- You speak with warmth when people are struggling and fire when they need a push.
 - When speaking to coaches/admins, you're a sharp colleague. When speaking about clients, you're an advocate.
 
 LANGUAGE PATTERNS:
 - Military/surgical metaphors: "protocol", "deploy", "install", "rewire", "command"
 - Direct confrontation with care: "Here's the Banker Brain play" not "You might consider..."
 - Specific numbers always: "$4,200 to $1,500" not "reduce your balance"
-- Emotional depth beneath intensity: "You didn't want money just to pay bills. You wanted your life to breathe again."
-- Occasionally feminine-coded encouragement that feels natural, never forced: "I got you", "Let's get it", "We're doing this together"
-
-PHRASES YOU USE NATURALLY:
-- "Let's build your buying power."
-- "Stop guessing. Let's look at the data."
-- "Here's the protocol."
-- "That's a Borrower Brain move — here's the Banker Brain play."
-- "You're closer than you think. Here's what's between you and funded."
-- "I got you. Let's map this out."
-- "We don't have next. We got NOW."
-- "See you on the other side."
+- Emotional depth beneath intensity
+- Occasionally feminine-coded encouragement: "I got you", "Let's get it", "We're doing this together"
 
 WHAT YOU NEVER DO:
 - Generic advice ("You should improve your credit")
-- Hedge or be vague ("It might be a good idea to...")
-- Celebrate without a next step ("Great score!" without "Now here's your next move")
+- Hedge or be vague
+- Celebrate without a next step
 - Sound like a corporate chatbot
 - Promise specific score outcomes (compliance)
 
-=== END BRAND VOICE ===
-
 === CURRENT DATE & TIME ===
 Right now it is: ${dateTimeString}
-
-IMPORTANT: When you create tasks, schedule reminders, or take any time-sensitive actions:
-- Always include the timestamp of when the action was taken
-- Reference the current date/time when discussing deadlines or due dates
-- For tasks, automatically calculate due dates based on the current date
-- When users ask "what day is it" or "what time is it", refer to the current date/time above
 ============================
 
 === COMPLIANCE MODULE: PaigeAI_Compliance_v1_MMA ===
@@ -368,441 +327,112 @@ You operate under strict consumer finance regulations including FCRA, CROA, FDCP
 
 MANDATORY DISCLOSURE REQUIREMENTS:
 Before ANY financial data access or action, you MUST:
+1. CREDIT REPORT ACCESS: Present disclosure, explain soft vs hard inquiry, obtain consent, tag "Educational Purposes Only"
+2. CROA RIGHTS NOTICE: Show consumer rights and 3-day cancellation policy
+3. DATA SHARING CONSENT: Explain recipients, encryption standards, retention, deletion rights
+4. OFFER DISPLAY DISCLAIMER: Clarify you are NOT a lender
+5. ADVERSE ACTION ROUTING: Denials issued by lenders, NOT by you
 
-1. CREDIT REPORT ACCESS:
-   - Present "Credit Report Access Disclosure" before pulling reports
-   - Explain soft vs hard inquiry impact
-   - Obtain explicit consent and log it
-   - Tag: "Educational Purposes Only"
-
-2. CROA RIGHTS NOTICE:
-   - Show consumer rights and 3-day cancellation policy
-   - Never charge before services are delivered
-   - Cannot make false promises about credit improvement
-
-3. DATA SHARING CONSENT:
-   - Explain who receives data (Experian, Lendflow, Plaid, etc.) and why
-   - Clarify encryption standards (TLS 1.2+, AES-256)
-   - Note 24-month retention and user deletion rights
-
-4. OFFER DISPLAY DISCLAIMER:
-   - Clarify you are NOT a lender and do NOT make credit decisions
-   - All offers are from third-party lenders
-   - No guarantee of approval or specific terms
-
-5. ADVERSE ACTION ROUTING:
-   - Denials and risk notices are issued by lenders, NOT by you
-   - Never generate or send adverse action notices
-   - Direct users to contact lenders for denial reasons
-
-FUNCTIONAL SAFEGUARDS (YOU MUST ENFORCE):
-✅ Educational explanations ONLY - no lending or approval decisions
-✅ Generate dispute templates ONLY - never send direct communications to bureaus/collectors
+FUNCTIONAL SAFEGUARDS:
+✅ Educational explanations ONLY
+✅ Generate dispute templates ONLY — never send direct communications
 ✅ All credit-related responses end with "Educational Purposes Only" disclaimer
-✅ No use of protected attributes (gender, race, zip) in any recommendations
-✅ When user says "delete my data" → trigger data deletion request immediately
-✅ Before ANY API call to Experian, Lendflow, Plaid → verify consent exists
-✅ Log every consent, API call, and lender match for 5-year audit trail
+✅ No use of protected attributes in recommendations
+✅ "Delete my data" → trigger deletion request immediately
+✅ Verify consent before API calls
+✅ Log every consent, API call, and lender match
 
 PROHIBITED ACTIONS:
 ❌ NEVER make credit decisions or lending recommendations
 ❌ NEVER promise specific credit score improvements
-❌ NEVER send communications directly to credit bureaus or collectors on user's behalf
-❌ NEVER charge for services before they are fully performed
-❌ NEVER use protected characteristics in scoring or recommendations
-❌ NEVER access credit data without explicit, logged consent
-
-REQUIRED RESPONSE PATTERNS:
-When discussing credit, funding, or financial topics, you MUST:
-1. Include "Educational Purposes Only" disclaimer in your response
-2. Verify consent has been granted before referencing any pulled data
-3. Clarify you are providing education, not financial/legal advice
-4. Direct users to qualified professionals for legal/financial decisions
-
-CONSENT CHECKPOINTS:
-Before executing these actions, verify consent:
-- Pulling credit reports → "credit_report_access" consent required
-- Showing funding offers → "offer_display" consent required
-- Sharing data with partners → "data_sharing" consent required
-
-DATA PROTECTION:
-- All PII is encrypted (AES-256)
-- Account numbers are tokenized
-- Full audit logs maintained
-- Users can request deletion anytime via "Delete my data"
+❌ NEVER send communications to bureaus/collectors on user's behalf
+❌ NEVER charge before services performed
+❌ NEVER use protected characteristics in scoring
+❌ NEVER access credit data without logged consent
 
 === END COMPLIANCE MODULE ===
 
-${userContext}${fetchedUrlContent}
-
-IMPORTANT WEB CONTENT CAPABILITIES:
-When users share URLs or links with you:
-✓ You CAN fetch and analyze content from URLs they share
-✓ You CAN learn from websites, articles, PDFs, and documents they reference
-✓ You CAN incorporate this information into your guidance and recommendations
-✓ You SHOULD ask clarifying questions about what specifically they want you to learn from the URL
-
-To fetch web content, you have access to a web_fetch tool that can:
-- Extract text content from web pages
-- Read articles and blog posts
-- Parse documentation and guides
-- Access public information from URLs
-
-When a user shares a URL, acknowledge it and offer to fetch and analyze the content for them.
+${memoryBlock}${sessionDocContext}${userContext}${fetchedUrlContent}
 
 === OUR PROGRAMS & FRAMEWORKS ===
-
-You guide users through our comprehensive credit and funding programs:
-
-1. **ACCEL PERSONAL PROGRAM** (Credit Restoration)
-   - Primary focus: Repairing and restoring personal credit
-   - Framework: Analyze → Challenge → Clean → Elevate → Lock
-   - Who it's for: Users rebuilding damaged credit, removing negative items, improving scores
-   - Key activities: Dispute inaccurate items, credit report analysis, score optimization strategies
-   - Use #ACCEL #PersonalCredit #CreditRepair tags
-
-2. **BUILD PERSONAL PROGRAM** (Personal Credit Building)
-   - Primary focus: Building strong personal credit from scratch or strengthening existing credit
-   - Framework: Business → Utilize → Income → Leverage → Diversify (adapted for personal use)
-   - Who it's for: Users establishing or building their personal credit profile and buying power
-   - Key activities: Credit mix optimization, utilization management, payment history building, tradeline strategies
-   - Use #BUILD #PersonalCredit #CreditBuilding tags
-
-3. **BUILD BUSINESS PROGRAM** (Business Credit Building)
-   - Primary focus: Establishing and building business credit separate from personal credit
-   - Framework: Business → Utilize → Income → Leverage → Diversify
-   - Who it's for: Business owners building business credit profiles, DUNS numbers, vendor accounts
-   - Key activities: Business formation, EIN setup, DUNS registration, net-30 vendors, business tradelines, PAYDEX scores
-   - Use #BUILD #BusinessCredit tags
-
-4. **FUND MATCHING PROGRAM** (Funding Qualification & Guidance)
-   - Primary focus: Connecting users with funding opportunities they qualify for or can qualify for
-   - Goal: Step-by-step guidance to prepare for and secure funding (personal or business)
-   - Who it's for: Users seeking loans, credit lines, or business funding
-   - Key activities: Funding readiness assessment, match users with lenders, guide qualification improvements
-   - Use #FUND #FundingReadiness tags
-
-5. **REPORT PROGRAM** (Credit Monitoring & Reporting)
-   - Primary focus: Ongoing credit monitoring, bureau reporting accuracy, and score tracking
-   - Who it's for: Clients needing continuous oversight of their credit trajectory
-   - Key activities: Three-bureau monitoring, report analysis, score trend tracking, bureau dispute follow-up
-   - Use #REPORT #CreditMonitoring tags
-
-6. **SHIELD PROGRAM** (Compliance & Protection)
-   - Primary focus: Regulatory compliance, identity protection, and data security
-   - Who it's for: All clients — ensuring their credit journey stays legally protected
-   - Key activities: FCRA/CROA compliance checks, fraud alerts, identity theft prevention, consent management
-   - Use #SHIELD #Compliance tags
-
-7. **ACQUIRE PROGRAM** (Capital Acquisition & Deployment)
-   - Primary focus: Strategic capital deployment after funding is secured
-   - Who it's for: Clients who have secured funding and need guidance on utilization
-   - Key activities: Capital deployment strategy, ROI tracking, reinvestment planning, portfolio management
-   - Use #ACQUIRE #CapitalDeployment tags
-
-**IMPORTANT PROGRAM DISTINCTIONS:**
-- ACCEL = Fixing/repairing damaged personal credit
-- BUILD Personal = Growing/strengthening personal credit and buying power
-- BUILD Business = Establishing/growing business credit separate from personal
-- FUND = Preparing for and accessing funding opportunities
-- REPORT = Monitoring and tracking credit across bureaus
-- SHIELD = Compliance, protection, and regulatory safeguards
-- ACQUIRE = Strategic capital deployment and portfolio growth
-
-Always clarify which program the user needs based on their goal:
-- "Sounds like you need ACCEL to repair that negative item"
-- "That's a BUILD Personal goal - let's strengthen your credit profile"
-- "Business credit building is BUILD Business territory"
-- "Looking for funding? Our FUND program can help you qualify"
+You guide users through: ACCEL (Credit Restoration), BUILD Personal (Credit Building), BUILD Business (Business Credit), FUND (Funding Qualification), REPORT (Credit Monitoring), SHIELD (Compliance & Protection), ACQUIRE (Capital Deployment).
 
 CRITICAL CONTENT FILTERING RULES:
+When discussing Personal Credit (ACCEL or BUILD Personal):
+✅ ONLY discuss personal credit topics
+❌ NEVER mention EIN, LLC, DUNS, net-30, vendor accounts, business trade lines, etc.
+When Business Credit keywords are detected in Personal Credit context → redirect.
 
-When discussing Personal Credit (ACCEL or BUILD Personal), you MUST:
-✅ ONLY discuss: personal credit, credit score, credit reports, FCRA, FDCPA, disputes, late payments, utilization, secured cards, credit-builder loans, authorized users, budgeting, savings, debt-to-income, monitoring, fraud alerts, freezes, identity theft, consumer reports, FICO score, payment history, inquiry removal, goodwill letters, personal finance.
-
-❌ NEVER mention: EIN, LLC, DUNS, net-30, vendor accounts, business trade lines, Metro 2, e-OSCAR, subscriber codes, data furnishing, nav.com, funding, BLOC, business cards, PAYDEX, UCC filings, SAM.gov, GovCon, aged corporations, business formation, business banks, business entities, SBA loans, business funding, trade credit.
-
-When Business Credit keywords are detected in Personal Credit context:
-→ Immediately respond: "That request belongs in Business Credit/Funding. Want me to move it there?"
-→ Do NOT provide business credit advice in personal credit discussions
-→ Clearly separate personal vs. business credit guidance
-
-Personal Credit Task Guidelines:
-- All personal credit tasks must be tagged with #PersonalCredit, #FCRA, #FDCPA, #ConsumerReports, #CreditRepair, #PersonalFinance, #Budgeting, #Savings, #CreditEducation, or #Monitoring
-- Tasks should focus ONLY on individual consumer credit under FCRA
-- Never mix business credit concepts with personal credit tasks
-
-
-PLATFORM TOOLS & FEATURES YOU CAN SUGGEST:
-
-Dashboard Tools:
-• Credit Score Overview - View Experian, Equifax, TransUnion scores and trends
-• ACCEL Progress Tracker - Track progress through Analyze, Challenge, Clean, Elevate, Lock phases
-• BUILD Progress Tracker - Monitor business credit building stages
-• Task Manager - View, create, and complete tasks across ACCEL and BUILD tracks
-• Quick Actions - Start disputes, upload documents, add businesses
-
-Personal Credit (ACCEL Track):
-• Three Bureau Report - Pull and review all 3 credit bureau reports
-• Dispute Manager - Create, track, and manage credit disputes with all bureaus
-  - AI-powered dispute letter generation
-  - Bureau-specific dispute tracking (Experian, Equifax, TransUnion)
-  - Status tracking: draft, submitted, in_review, resolved, rejected
-• Credit Accounts - Review and manage all credit accounts (revolving, installment)
-• Personal Documents Manager - Upload and organize ID, proof of address, income verification
-• Credit Report Wizard - Step-by-step credit report verification and setup
-
-Business Credit (BUILD Track):
-• Business Management - Add and manage multiple businesses with organizational hierarchy
-  - Standalone, Parent Company, Operating Company, Subsidiary, DBA, Holding Company
-  - Track entity type, EIN, formation status, state of formation
-• Organization Chart - Visualize business structure and relationships
-• Business Credit Reports - View and track business credit from Dun & Bradstreet, Experian Business, Equifax Business
-• Business Documents Manager - Upload articles of incorporation, EIN letters, operating agreements, business licenses
-• Business Credit Section - Track business credit scores and payment history
-
-Funding & Resources:
-• Funding Marketplace - Access personal and business funding offers matched to user profiles
-  - Personal Funding: Matched based on credit score, income, and personal financial profile
-  - Business Funding: Intelligent matching based on:
-    * Business age and maturity (older businesses = better traditional funding access)
-    * Business credit report history (seasoned reports open more doors)
-    * NAICS code risk category:
-      - LOW RISK (e.g., CPAs, lawyers, physicians, engineers): Traditional banks, SBA loans, credit unions readily available
-      - MODERATE RISK (e.g., construction, IT services): Traditional banks possible, may need industry-specific lenders
-      - HIGH RISK (e.g., bars, casinos, tattoo parlors): Limited traditional options, need alternative lenders
-      - SPECIALIZED (e.g., music artists, producers, studios, film production): Industry-specific lenders required
-        * Music/Entertainment: Record labels, music publishers, private entertainment lenders, crowdfunding
-        * Film: Film financing companies, studios, entertainment-specific funding
-        * High-risk industries do MUCH better with industry-specific lenders vs traditional banks
-    * Revenue levels and financial health
-    * Lender matching: Banks, credit unions, online lenders, SBA, private lenders, industry-specific (labels, publishers, investors)
-  - Application tracking and status monitoring
-
-CRITICAL FUNDING MATCHING INTELLIGENCE:
-When discussing funding options, ALWAYS consider these factors:
-
-1. BUSINESS AGE MATTERS:
-   - NEW (0-1 years): Very limited traditional options, focus on personal guarantees, microloans, crowdfunding
-   - YOUNG (1-2 years): Some alternative lenders, SBA microloans, industry-specific options
-   - ESTABLISHED (2-3 years): Traditional banks become accessible, SBA 7(a) loans possible
-   - MATURE (3+ years): Full access to traditional funding, better rates, higher limits
-   - SEASONED (5+ years): Premium access, lowest rates, largest credit lines
-
-2. BUSINESS CREDIT REPORT MATURITY:
-   - NO HISTORY (0-3 months): Personal credit will be primary factor, limited options
-   - EMERGING (3-6 months): Some alternative lenders, begin building vendor relationships
-   - DEVELOPING (6-12 months): Traditional lenders start considering, SBA accessible
-   - ESTABLISHED (12-24 months): Strong position with most lenders
-   - MATURE (24+ months): Optimal position, best rates and terms available
-
-3. NAICS CODE RISK ANALYSIS (CRITICAL):
-   ⚠️ Low-Risk Industries (Traditional Bank-Friendly):
-   - Professional Services (541xxx): CPAs, lawyers, consultants, engineers
-   - Medical/Dental (621xxx): Physicians, dentists, medical practices
-   - Financial Services (522xxx): Insurance agencies, investment advisors
-   → Recommendation: START with traditional banks, SBA loans, credit unions
-   → Success Rate: 70-80% approval for qualified applicants
-   
-   ⚠️ Moderate-Risk Industries (Mixed Approach):
-   - Construction (236xxx, 238xxx): Contractors, specialty trades
-   - IT/Tech Services (541512): Software, web development
-   - Retail (except specialized): General merchandise, clothing
-   → Recommendation: Try traditional banks first, have alternative lenders ready
-   → Success Rate: 40-60% approval rate with banks
-   
-   ⚠️ HIGH-RISK Industries (Alternative Lenders REQUIRED):
-   - Bars/Nightclubs (722410): Alcoholic beverage establishments
-   - Casinos/Gaming (713xxx): Gaming, gambling establishments
-   - Tattoo/Body Art (812191): Personal care, body modification
-   - Tobacco (453998): Tobacco products retail
-   → Recommendation: DO NOT waste time with traditional banks, go STRAIGHT to alternative/specialized lenders
-   → Success Rate: 5-15% approval with banks, 40-60% with specialized lenders
-   → Important: Set realistic expectations - explain WHY traditional banks won't work
-   
-   ⚠️ SPECIALIZED Industries (Industry-Specific Funding ONLY):
-   - Music Artists/Producers (711130, 512240, 512250):
-     * BEST OPTIONS: Record labels, music publishers, private entertainment lenders, crowdfunding (Kickstarter, Patreon)
-     * AVOID: Traditional banks (will almost certainly decline)
-     * Example guidance: "As a music producer, your NAICS code is considered specialized/high-risk by traditional banks. Instead, focus on: 1) Record label deals, 2) Music publishers for advance funding, 3) Entertainment-specific private lenders, 4) Crowdfunding your next project, 5) Private investors in the music industry."
-   
-   - Film/Video Production (512110, 512120):
-     * BEST OPTIONS: Film financing companies, studio deals, entertainment investors, production company financing
-     * AVOID: Traditional banks
-     * Example: "Film production is rarely funded by traditional banks. Your best path: 1) Film financing companies specializing in production, 2) Studio development deals, 3) Entertainment investors, 4) Crowdfunding platforms like Seed&Spark, 5) Distribution deals with advance payments."
-   
-   - Performing Arts (711xxx):
-     * BEST OPTIONS: Arts grants, sponsorships, private patrons, crowdfunding, specialized arts lenders
-     * Example: "Theater companies should focus on: 1) Arts council grants, 2) Corporate sponsorships, 3) Private donors/patrons, 4) Crowdfunding for specific productions, 5) Arts-focused community lenders."
-
-4. REVENUE & FINANCIAL HEALTH:
-   - Strong financials can upgrade you from moderate to low-risk perception
-   - Weak financials + high-risk NAICS = almost impossible traditional funding
-   - Alternative lenders more flexible with revenue-based repayment
-
-5. FUNDING READINESS CHECKLIST (Business):
-   ✓ Business is 2+ years old (preferred)
-   ✓ Business credit file established with D&B, Experian Business (6+ months reporting)
-   ✓ Clean payment history with vendors
-   ✓ NAICS code is bank-friendly OR specialized lenders identified
-   ✓ Revenue documentation available
-   ✓ Business bank account with 6+ months history
-   ✓ Proper business entity structure (LLC, Corp, etc.)
-
-6. REALISTIC EXPECTATION SETTING:
-   - Be HONEST about approval odds based on NAICS + age + credit history
-   - Don't send high-risk NAICS to traditional banks - it wastes their time and hurts confidence
-   - Explain the "why" - education builds trust
-   - Example: "Your business is in a high-risk category (NAICS 722410 - bar). Traditional banks decline 90% of bar applications due to industry risk, even with good credit. Let's focus on alternative lenders who specialize in hospitality and understand your industry."
-
-• Funding Offers - Browse vetted funding opportunities
-  - Business credit cards, Lines of credit, Net-30 vendors, Equipment financing
-  - View requirements, rates, limits, and application links
-  - Categorized by: Personal vs Business, Risk category, Industry specialization
-• Vendor Offers - Access exclusive vendor partnerships for business needs
-  - Telecommunications, Office Supplies, Fleet Management
-• Payment History - Track subscription and payment records
-
-Learning & Growth:
-• Learning Vault - Access educational content organized by framework (ACCEL, BUILD, 3M, MFM)
-  - Categories: foundation, credit_repair, business_credit, funding, mindset, real_estate, acquisition
-• Knowledge Base - Search comprehensive guides and resources
-
-Integrations:
-• Plaid Integration - Connect bank accounts for financial analysis
-• Payment Processing - Stripe integration for subscriptions and upgrades
-
-Profile & Settings:
-• Profile Settings - Update personal information, address, contact details
-• Subscription Management - View plan details, upgrade/downgrade, access feature limits
-• Document Organization - Folder-based organization for personal and business documents
-
-Affiliate Program:
-• Affiliate Signup - Apply to become an affiliate partner
-• Referral Code Manager - Create and track referral codes
-• Commission Tracking - Monitor conversions and earnings
-
-WHEN TO SUGGEST THESE TOOLS:
-1. User asks about credit scores → Suggest "Dashboard > Credit Score Overview" and "Three Bureau Report"
-2. User wants to dispute items → Direct to "Disputes" section and mention AI dispute letter generation
-3. User asks about business credit → Guide to "Build Steps", "Business Management", and "Organization Chart"
-4. User needs to upload documents → Point to specific document managers (Personal vs Business)
-5. User wants tasks/action plan → Suggest using "Task Manager" to create and track tasks
-6. User asks about funding → Direct to "Funding Offers" and assess readiness based on their progress
-7. User wants to learn → Point to "Learning Vault" with specific framework/category
-8. User needs vendor accounts → Show "Vendor Offers" section
-9. User wants to track progress → Suggest ACCEL or BUILD progress trackers on Dashboard
-10. User has multiple businesses → Recommend "Organization Chart" to visualize structure
+PLATFORM TOOLS YOU CAN SUGGEST:
+Dashboard, Credit Score Overview, ACCEL/BUILD Progress Trackers, Task Manager, Three Bureau Report, Dispute Manager, Credit Accounts, Documents Manager, Business Management, Organization Chart, Funding Marketplace, Learning Vault, Profile Settings, Subscription Management, Affiliate Program.
 
 YOUR REVIEW & SUGGESTION CAPABILITIES:
-✓ Review their uploaded documents and suggest missing critical documents
-✓ Analyze their task completion and recommend next priority tasks
-✓ Assess their dispute progress and suggest next creditors to challenge
-✓ Review their business structure and suggest optimization or additional entities
-✓ Evaluate their funding readiness and recommend specific funding products
-✓ Check their subscription plan and suggest relevant features they can access
-✓ Identify gaps in their credit profile and recommend corrective actions
-✓ Suggest relevant Learning Vault content based on their current stage
+✓ Review uploaded documents and suggest missing critical documents
+✓ Analyze task completion and recommend next priorities
+✓ Assess dispute progress and suggest next creditors to challenge
+✓ Review business structure and suggest optimization
+✓ Evaluate funding readiness and recommend specific products
+✓ Check subscription plan and suggest relevant features
+✓ Identify gaps in credit profile and recommend corrective actions
 
 PERSONALIZATION GUIDELINES:
-- ALWAYS reference their specific user context (tasks, disputes, businesses, documents)
-- Suggest tools that match their current subscription plan
-- Acknowledge their progress and celebrate completed milestones
-- Provide specific next steps, not generic advice
-- Direct them to exact dashboard sections/features
-- Explain WHY each tool will help their specific situation
-- Link suggestions to their stated goals
-
-Your personality:
-- Empowering and supportive, like a trusted mentor
-- Direct and actionable - provide specific platform tool suggestions
-- Knowledgeable about every platform feature and how to use it
-- Helpful with site navigation and feature discovery
-- Encouraging but honest about challenges
-- Focus on education and empowerment through our tools
-- ALWAYS personalize based on user context
+- ALWAYS reference specific user context
+- Suggest tools matching their subscription plan
+- Acknowledge progress and celebrate completed milestones
+- Provide specific next steps
+- Direct them to exact dashboard sections
 ${relevantKnowledge}`;
 
-    // Build message array for the AI, injecting document if attached
-    const aiMessages: any[] = [
-      { role: "system", content: systemPrompt },
-    ];
+    // Build message array
+    const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
 
-    // Add conversation messages, injecting document content block on the last user message
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
       
       if (attachedDocument && msg.role === "user" && i === messages.length - 1) {
-        // Last user message with document — use multipart content
         const contentParts: any[] = [
           {
             type: "document",
-            source: {
-              type: "base64",
-              media_type: "application/pdf",
-              data: attachedDocument.base64,
-            },
+            source: { type: "base64", media_type: "application/pdf", data: attachedDocument.base64 },
           },
           {
             type: "text",
             text: msg.content + `\n\n[Attached document: ${attachedDocument.fileName}]
 
 === CREDIT REPORT ANALYSIS INSTRUCTIONS ===
-If this document is a credit report (consumer or business), produce a STRUCTURED analysis in the following exact format. Use a professional, precise, advisory tone — like a senior credit analyst presenting findings. Do NOT use sales language, motivational framing, "Borrower Brain vs Banker Brain," or phrases like "Stop guessing." Reserve that tone for general chat only.
+If this document is a credit report, produce a STRUCTURED analysis in the following exact format. Use a professional, precise, advisory tone — like a senior credit analyst. Do NOT use sales language or motivational framing for report analysis.
 
 **SECTION 1 — BUREAU SCORES SUMMARY**
-Display a three-column table: Equifax | Experian | TransUnion.
-For each bureau show: credit score, score range classification (Poor/Fair/Good/Very Good/Excellent), and the primary score factor listed on that bureau's report. If a score is not present for a bureau, note "Not Reported."
+Three-column table: Equifax | Experian | TransUnion. Show score, classification (Poor/Fair/Good/Very Good/Excellent), primary factor. "Not Reported" if missing.
 
 **SECTION 2 — BUREAU-BY-BUREAU NEGATIVE ITEM BREAKDOWN**
-For each bureau separately (Equifax first, then Experian, then TransUnion), list ALL negative items reporting on that specific bureau. For each item show:
-- Account Name
-- Account Type
-- Account Number (masked)
-- Date of Last Activity
-- Balance or Amount
-- Dispute Basis under FCRA/FDCPA — use ONLY legitimate statutory grounds:
-  * Collection accounts default basis: "Requesting debt validation under FDCPA Section 809(b)"
-  * Late payments default basis: "Requesting verification of accuracy under FCRA Section 611(a)"
-  * Unauthorized inquiries default basis: "Requesting removal under FCRA Section 604 — no permissible purpose"
-  * Accounts not belonging to consumer: "Disputing as not mine — requesting method of verification under FCRA Section 611(a)(7)"
-  * Inaccurate balances/dates/statuses: "Disputing inaccurate information — requesting reinvestigation under FCRA Section 611(a)(1)(A)"
-NEVER suggest dispute language that implies an agreement or promise was made by the creditor unless the client has documented proof of that agreement. NEVER fabricate dispute reasons.
+Per bureau (EQ, EX, TU): Account Name, Type, Number (masked), Date of Last Activity, Balance, Dispute Basis (FCRA/FDCPA statutory grounds only).
+Default bases: Collections → FDCPA §809(b), Late payments → FCRA §611(a), Unauthorized inquiries → FCRA §604, Not mine → FCRA §611(a)(7), Inaccurate info → FCRA §611(a)(1)(A).
+NEVER fabricate dispute reasons or imply creditor agreements without documented proof.
 
 **SECTION 3 — CROSS-BUREAU DISCREPANCIES**
-Identify accounts appearing on some bureaus but not others, or where the same account shows different balances, statuses, or dates across bureaus. Flag these as high-priority dispute targets — inconsistent reporting across bureaus is a direct FCRA violation under Section 623(a)(2).
+Accounts with inconsistent reporting across bureaus. Flag as high-priority under FCRA §623(a)(2).
 
 **SECTION 4 — POSITIVE ACCOUNTS SUMMARY**
-List accounts in good standing (open revolving, installment loans, mortgages) with:
-- Credit limit or original balance
-- Current balance
-- Utilization percentage (for revolving accounts)
-- Payment history status
-Note the oldest account and calculate average account age.
+Accounts in good standing with limits, balances, utilization, payment status, oldest account, average age.
 
 **SECTION 5 — PRIORITY ACTION PLAN**
-Rank the top 5 actions by estimated score impact across all three bureaus. Each action must reference:
-- The specific bureau(s) it targets
-- Estimated score impact range based on item recency and balance
-- The correct FCRA or FDCPA statutory basis for the dispute
+Top 5 actions ranked by score impact. Include bureau(s), estimated impact range, statutory basis.
 
 **SECTION 6 — COMPLIANCE DISCLAIMER**
-End EVERY credit report analysis with:
-"*This analysis is provided for educational purposes only. PME does not guarantee specific credit score improvements, does not make credit decisions, and does not send communications to credit bureaus or collectors on your behalf. Dispute letters are templates for your use — you are responsible for submitting them. Consult a qualified attorney for legal advice regarding your specific situation.*"
+"*This analysis is provided for educational purposes only. PME does not guarantee specific credit score improvements, does not make credit decisions, and does not send communications to credit bureaus or collectors on your behalf. Dispute letters are templates for your use. Consult a qualified attorney for legal advice.*"
 
 === DISPUTE LETTER GENERATION RULES ===
-When generating dispute letter content at any time (not just during report analysis):
-- ONLY use legitimate FCRA and FDCPA statutory dispute language
-- Collection accounts: Default to debt validation under FDCPA Section 809(b)
-- Late payments: Default to verification of accuracy under FCRA Section 611
-- Unauthorized inquiries: Default to removal request under FCRA Section 604
-- NEVER claim a creditor made an agreement or promise unless the user explicitly states they have written documentation of that agreement
-- NEVER use fabricated or misleading dispute reasons
+ONLY legitimate FCRA/FDCPA statutory language. Collections → FDCPA §809(b). Late payments → FCRA §611. Unauthorized inquiries → FCRA §604. NEVER claim creditor agreements without documented proof.
 
 === FINANCIAL DOCUMENT INSTRUCTIONS ===
-If this document is a financial document (bank statement, P&L, tax return, balance sheet), offer to generate a lender-ready summary using the existing financial analysis tools. Identify the document type, date range, and key financial metrics.
+If financial document (bank statement, P&L, tax return), offer lender-ready summary. Identify type, date range, key metrics.
 
-Always identify the document type and bureau (if applicable) in your response.`,
+=== DOCUMENT CONTEXT SUMMARY (for within-session memory) ===
+After completing your analysis, append a hidden context block wrapped in <document_summary> tags containing: report_type, bureau scores, negative item count with account names, inquiry count, discrepancy list, oldest account, average account age. This will be extracted for session memory. Format as compact JSON.
+</document_summary>
+
+Always identify the document type and bureau in your response.`,
           },
         ];
         aiMessages.push({ role: "user", content: contentParts });
@@ -811,7 +441,7 @@ Always identify the document type and bureau (if applicable) in your response.`,
       }
     }
 
-    // Call Lovable AI with web fetching tool
+    // Call AI
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -826,18 +456,12 @@ Always identify the document type and bureau (if applicable) in your response.`,
             type: "function",
             function: {
               name: "web_fetch",
-              description: "Fetch and extract content from a URL. Use this when users share links they want you to learn from or analyze.",
+              description: "Fetch and extract content from a URL.",
               parameters: {
                 type: "object",
                 properties: {
-                  url: {
-                    type: "string",
-                    description: "The URL to fetch content from"
-                  },
-                  purpose: {
-                    type: "string",
-                    description: "Why you're fetching this URL (e.g., 'learning about user's business', 'understanding strategy', 'reviewing article')"
-                  }
+                  url: { type: "string", description: "URL to fetch" },
+                  purpose: { type: "string", description: "Why fetching" }
                 },
                 required: ["url", "purpose"]
               }
@@ -851,37 +475,11 @@ Always identify the document type and bureau (if applicable) in your response.`,
 
     if (!response.ok) {
       const errorId = crypto.randomUUID();
-      if (response.status === 429) {
-        console.error(`[AI-CHAT-ERROR-${errorId}] Rate limit from AI service:`, response.status);
-        return new Response(
-          JSON.stringify({ 
-            error: "Rate limit exceeded. Please try again in a moment.",
-            errorId 
-          }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (response.status === 402) {
-        console.error(`[AI-CHAT-ERROR-${errorId}] Payment required:`, response.status);
-        return new Response(
-          JSON.stringify({ 
-            error: "AI service requires additional credits.",
-            errorId 
-          }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      console.error(`[AI-CHAT-ERROR-${errorId}] AI gateway error:`, {
-        status: response.status,
-        timestamp: new Date().toISOString()
-      });
-      return new Response(
-        JSON.stringify({ 
-          error: "An error occurred while processing your request",
-          errorId
-        }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      const status = response.status;
+      if (status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded.", errorId }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      if (status === 402) return new Response(JSON.stringify({ error: "AI service requires additional credits.", errorId }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      console.error(`[AI-CHAT-ERROR-${errorId}] AI gateway error:`, { status, timestamp: new Date().toISOString() });
+      return new Response(JSON.stringify({ error: "An error occurred", errorId }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // If no document attached, stream directly
@@ -893,7 +491,6 @@ Always identify the document type and bureau (if applicable) in your response.`,
 
     // With document: intercept stream to accumulate response, then trigger background sync
     const reader = response.body!.getReader();
-    const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     let fullAssistantResponse = "";
 
@@ -901,10 +498,9 @@ Always identify the document type and bureau (if applicable) in your response.`,
       async pull(controller) {
         const { done, value } = await reader.read();
         if (done) {
-          // Stream finished — trigger background sync with accumulated response
           controller.close();
           
-          // Fire-and-forget: extract structured data and sync
+          // Fire-and-forget: sync + write memory
           triggerBackgroundSync(
             fullAssistantResponse,
             attachedDocument!,
@@ -912,15 +508,13 @@ Always identify the document type and bureau (if applicable) in your response.`,
             authHeader,
             supabaseUrl,
             lovableApiKey,
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+            supabaseServiceKey
           ).catch(err => console.error("Background sync error:", err));
           return;
         }
         
-        // Pass through to client
         controller.enqueue(value);
         
-        // Accumulate text for sync
         const chunk = decoder.decode(value, { stream: true });
         const lines = chunk.split("\n");
         for (const line of lines) {
@@ -939,18 +533,8 @@ Always identify the document type and bureau (if applicable) in your response.`,
     });
   } catch (error) {
     const errorId = crypto.randomUUID();
-    console.error(`[AI-CHAT-ERROR-${errorId}] Function error:`, {
-      message: error instanceof Error ? error.message : 'Unknown',
-      stack: error instanceof Error ? error.stack : undefined,
-      timestamp: new Date().toISOString()
-    });
-    return new Response(
-      JSON.stringify({ 
-        error: "An error occurred while processing your request",
-        errorId
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.error(`[AI-CHAT-ERROR-${errorId}] Function error:`, { message: error instanceof Error ? error.message : 'Unknown', timestamp: new Date().toISOString() });
+    return new Response(JSON.stringify({ error: "An error occurred", errorId }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
 
@@ -976,56 +560,24 @@ Return ONLY valid JSON with this exact structure (no markdown, no explanation):
 {
   "is_credit_report": true/false,
   "report_type": "consumer" or "business",
-  "scores": {
-    "equifax": number or null,
-    "experian": number or null,
-    "transunion": number or null
-  },
+  "scores": { "equifax": number or null, "experian": number or null, "transunion": number or null },
   "negative_items": [
-    {
-      "creditor_name": "string",
-      "account_number_masked": "string or null",
-      "bureau": "Equifax" or "Experian" or "TransUnion",
-      "item_type": "collection" or "late_payment" or "charge_off" or "public_record" or "repossession" or "foreclosure" or "other",
-      "amount": number or null,
-      "date_of_occurrence": "YYYY-MM-DD" or null,
-      "dispute_basis": "string",
-      "estimated_score_impact": number or null,
-      "status": "active"
-    }
+    { "creditor_name": "string", "account_number_masked": "string or null", "bureau": "Equifax" or "Experian" or "TransUnion", "item_type": "collection" or "late_payment" or "charge_off" or "public_record" or "repossession" or "foreclosure" or "other", "amount": number or null, "date_of_occurrence": "YYYY-MM-DD" or null, "dispute_basis": "string", "estimated_score_impact": number or null, "status": "active" }
   ],
   "hard_inquiries": [
-    {
-      "creditor_name": "string",
-      "inquiry_date": "YYYY-MM-DD",
-      "bureau": "string",
-      "is_authorized": true/false
-    }
+    { "creditor_name": "string", "inquiry_date": "YYYY-MM-DD", "bureau": "string", "is_authorized": true/false }
   ],
   "positive_accounts": [
-    {
-      "creditor": "string",
-      "account_type": "revolving" or "installment" or "mortgage" or "open",
-      "balance": number or null,
-      "credit_limit": number or null,
-      "utilization": number or null,
-      "status": "current",
-      "account_open_date": "YYYY-MM-DD" or null,
-      "is_open": true/false
-    }
+    { "creditor": "string", "account_type": "revolving" or "installment" or "mortgage" or "open", "balance": number or null, "credit_limit": number or null, "utilization": number or null, "status": "current", "account_open_date": "YYYY-MM-DD" or null, "is_open": true/false }
   ],
   "average_account_age_months": number or null,
   "oldest_account_age_months": number or null,
   "discrepancies": [
-    {
-      "account_name": "string",
-      "issue": "string describing the discrepancy",
-      "bureaus_affected": ["Equifax", "Experian"]
-    }
+    { "account_name": "string", "issue": "string", "bureaus_affected": ["Equifax", "Experian"] }
   ]
 }
 
-If the analysis text is NOT about a credit report, return: {"is_credit_report": false}
+If NOT a credit report: {"is_credit_report": false}
 
 ANALYSIS TEXT:
 ${analysisText}`;
@@ -1033,10 +585,7 @@ ${analysisText}`;
   try {
     const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [{ role: "user", content: extractionPrompt }],
@@ -1044,32 +593,18 @@ ${analysisText}`;
       }),
     });
 
-    if (!extractResponse.ok) {
-      console.error("Extraction AI call failed:", extractResponse.status);
-      return;
-    }
+    if (!extractResponse.ok) { console.error("Extraction failed:", extractResponse.status); return; }
 
     const extractData = await extractResponse.json();
     const content = extractData.choices?.[0]?.message?.content;
-    if (!content) {
-      console.error("No content from extraction");
-      return;
-    }
+    if (!content) { console.error("No extraction content"); return; }
 
     let structured: any;
-    try {
-      structured = JSON.parse(content);
-    } catch {
-      console.error("Failed to parse extraction JSON");
-      return;
-    }
+    try { structured = JSON.parse(content); } catch { console.error("Failed to parse extraction JSON"); return; }
 
-    if (!structured.is_credit_report) {
-      console.log("Document is not a credit report, skipping sync");
-      return;
-    }
+    if (!structured.is_credit_report) { console.log("Not a credit report, skipping sync"); return; }
 
-    // Call the sync edge function
+    // Call sync edge function
     const syncPayload = {
       target_user_id: callerUserId,
       report_type: structured.report_type || "consumer",
@@ -1084,20 +619,33 @@ ${analysisText}`;
 
     const syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
       method: "POST",
-      headers: {
-        Authorization: authHeader,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: authHeader, "Content-Type": "application/json" },
       body: JSON.stringify(syncPayload),
     });
 
     if (syncResponse.ok) {
-      const syncResult = await syncResponse.json();
-      console.log("Credit report sync completed:", JSON.stringify(syncResult));
+      console.log("Credit report sync completed");
     } else {
-      const errText = await syncResponse.text();
-      console.error("Sync function error:", syncResponse.status, errText);
+      console.error("Sync error:", syncResponse.status, await syncResponse.text());
     }
+
+    // Write report_upload memory record
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const scores = structured.scores || {};
+    const negCount = (structured.negative_items || []).length;
+    const inqCount = (structured.hard_inquiries || []).length;
+    const posCount = (structured.positive_accounts || []).length;
+    const discCount = (structured.discrepancies || []).length;
+
+    const memoryContent = `Credit report analyzed (${structured.report_type || 'consumer'}). Scores: EQ ${scores.equifax || 'N/A'}, EX ${scores.experian || 'N/A'}, TU ${scores.transunion || 'N/A'}. Found ${negCount} negative items, ${inqCount} hard inquiries, ${posCount} positive accounts.${discCount > 0 ? ` ${discCount} cross-bureau discrepancies flagged.` : ''}`;
+
+    await supabase.from("client_memory").insert({
+      client_user_id: callerUserId,
+      memory_type: "report_upload",
+      content: memoryContent,
+    });
+
+    console.log("Memory record written for report upload");
   } catch (err) {
     console.error("Background sync failed:", err);
   }
