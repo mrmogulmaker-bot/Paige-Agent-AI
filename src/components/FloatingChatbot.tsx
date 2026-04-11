@@ -31,6 +31,7 @@ export const FloatingChatbot = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const sessionIdRef = useRef<string>(crypto.randomUUID());
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
