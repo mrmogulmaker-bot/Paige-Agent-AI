@@ -319,7 +319,7 @@ const Dashboard = () => {
                     <Button variant="outline" className="mt-4" onClick={() => setActiveSection("dashboard")}>Go to Client Management</Button>
                   </div>
                 )}
-                )}
+
                   {activeSection === "settings" && <ProfileSettings />}
                   {activeSection === "contact" && <ContactSupport />}
                 </div>
