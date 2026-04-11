@@ -242,7 +242,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
         }).eq("id", existing.id);
         negativeItemsUpdated++;
       } else {
-        await supabase.from("credit_negative_items").insert({
+        await supabase.from("credit_negative_items").insert(withClientId({
           user_id: targetUserId,
           creditor_name: item.creditor_name,
           account_number_masked: item.account_number_masked,
@@ -255,7 +255,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
           notes: item.dispute_basis,
           removal_probability: item.estimated_score_impact,
           is_removable: true,
-        });
+        }));
         negativeItemsInserted++;
       }
     }
