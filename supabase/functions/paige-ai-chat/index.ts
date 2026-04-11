@@ -681,13 +681,11 @@ async function runDocumentReadCheck(base64: string, lovableApiKey: string) {
 }
 
 function cleanJsonResponse(content: string) {
-  return content.replace(/```json
-?/g, "").replace(/```
-?/g, "").trim();
+  return content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 }
 
 function extractTaggedJson(source: string, tagName: string) {
-  const match = source.match(new RegExp(`<${tagName}>([\s\S]*?)<\/${tagName}>`));
+  const match = source.match(new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`));
   if (!match) return null;
   try {
     return JSON.parse(match[1].trim());
