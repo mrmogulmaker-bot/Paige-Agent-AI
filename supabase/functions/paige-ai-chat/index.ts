@@ -884,8 +884,57 @@ Always identify the document type and bureau (if applicable) in your response.`,
       );
     }
 
-    // Stream the response back
-    return new Response(response.body, {
+    // If no document attached, stream directly
+    if (!attachedDocument) {
+      return new Response(response.body, {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+      });
+    }
+
+    // With document: intercept stream to accumulate response, then trigger background sync
+    const reader = response.body!.getReader();
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    let fullAssistantResponse = "";
+
+    const stream = new ReadableStream({
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (done) {
+          // Stream finished — trigger background sync with accumulated response
+          controller.close();
+          
+          // Fire-and-forget: extract structured data and sync
+          triggerBackgroundSync(
+            fullAssistantResponse,
+            attachedDocument!,
+            user.id,
+            authHeader,
+            supabaseUrl,
+            lovableApiKey,
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+          ).catch(err => console.error("Background sync error:", err));
+          return;
+        }
+        
+        // Pass through to client
+        controller.enqueue(value);
+        
+        // Accumulate text for sync
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+        for (const line of lines) {
+          if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) fullAssistantResponse += content;
+          } catch { /* skip */ }
+        }
+      },
+    });
+
+    return new Response(stream, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {
