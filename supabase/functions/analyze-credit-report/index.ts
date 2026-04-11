@@ -101,6 +101,7 @@ Return ONLY valid JSON with this exact structure:
     "experian": number or null,
     "transunion": number or null
   },
+  "score_model": "FICO" | "VantageScore" | "Unknown",
   "profile_summary": "string",
   "estimated_total_score_impact": number,
   "negative_items": [
