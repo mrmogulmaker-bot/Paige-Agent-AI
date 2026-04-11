@@ -141,12 +141,9 @@ export default function CreditIntelligence() {
               </div>
             </div>
             <h2 className="text-xl font-bold mt-4">Fundability Score</h2>
-            <p className="text-sm text-muted-foreground">
-              {(factors.overall_fundability_score ?? 0) >= 80 ? "Excellent — you're fundable" :
-               (factors.overall_fundability_score ?? 0) >= 60 ? "Good — getting closer" :
-               (factors.overall_fundability_score ?? 0) >= 40 ? "Fair — work to do" :
-               "Needs attention — here's the protocol"}
-            </p>
+             <p className="text-sm text-muted-foreground">
+               {getFundabilityLabel(factors.overall_fundability_score ?? 0)}
+             </p>
           </div>
         </Card>
       )}
@@ -209,4 +206,13 @@ function getScoreHSL(score: number): string {
   if (score >= 60) return "hsl(174, 62%, 47%)";
   if (score >= 40) return "hsl(38, 92%, 50%)";
   return "hsl(0, 72%, 51%)";
+}
+
+function getFundabilityLabel(score: number): string {
+  if (score >= 90) return "Ready for funding.";
+  if (score >= 80) return "Nearly fundable.";
+  if (score >= 66) return "Getting closer.";
+  if (score >= 51) return "Making progress.";
+  if (score >= 31) return "Building foundation.";
+  return "Needs significant work.";
 }
