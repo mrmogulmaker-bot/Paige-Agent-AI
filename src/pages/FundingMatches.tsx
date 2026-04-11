@@ -27,12 +27,21 @@ export default function FundingMatches() {
   });
 
   // Calculate the lowest bureau score for What-If baseline
+  // Use MIDDLE score (how lenders actually qualify borrowers)
   const syncedScores = [
     profileScores?.estimated_fico_eq,
     profileScores?.estimated_fico_ex,
     profileScores?.estimated_fico_tu,
   ].filter(Boolean) as number[];
-  const lowestScore = syncedScores.length > 0 ? Math.min(...syncedScores) : null;
+  
+  const getMiddleScore = (scores: number[]) => {
+    if (scores.length === 0) return null;
+    if (scores.length === 1) return scores[0];
+    if (scores.length === 2) return Math.min(...scores);
+    const sorted = [...scores].sort((a, b) => a - b);
+    return sorted[1];
+  };
+  const middleScore = getMiddleScore(syncedScores);
 
   // Auto-run match when synced scores exist but no matches yet
   const [autoRanMatch, setAutoRanMatch] = useState(false);
@@ -57,9 +66,9 @@ export default function FundingMatches() {
           <p className="text-muted-foreground mt-1">
             Products matched to your real profile — not guesswork.
           </p>
-          {lowestScore && (
+          {middleScore && (
             <p className="text-xs text-muted-foreground mt-1">
-              Matching against your synced FICO scores (lowest: {lowestScore})
+              Matching against middle bureau score: {middleScore})
             </p>
           )}
         </div>
@@ -138,9 +147,9 @@ export default function FundingMatches() {
             <p className="text-sm text-muted-foreground mt-1 mb-2">
               See how score improvements would unlock new funding
             </p>
-            {lowestScore && (
+            {middleScore && (
               <p className="text-xs text-muted-foreground mb-4">
-                Baseline: {lowestScore} (lowest bureau score from your synced report)
+                Baseline: {middleScore} (middle bureau score — how lenders qualify you)
               </p>
             )}
             <Button
@@ -148,7 +157,7 @@ export default function FundingMatches() {
                 createProjection.mutate({
                   scenario_name: "Score +40, Remove Collections",
                   scenario_params: {
-                    baseline_score: lowestScore || 600,
+                    baseline_score: middleScore || 600,
                     score_change: 40,
                     remove_collections: 2,
                     reduce_utilization_to: 25,
@@ -203,7 +212,7 @@ export default function FundingMatches() {
           {(!matches || matches.length === 0) && !runMatch.isPending && (
             <Card className="p-8 text-center">
               <p className="text-muted-foreground">
-                {lowestScore
+                {middleScore
                   ? "No matches yet. Click \"Run Match\" to scan lender products against your synced profile."
                   : "Upload a credit report via Paige chat first, then run a match to see eligible products."}
               </p>
