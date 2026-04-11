@@ -2473,6 +2473,39 @@ export type Database = {
           },
         ]
       }
+      manual_banking_entries: {
+        Row: {
+          accounts_separated: boolean | null
+          avg_daily_balance: number | null
+          avg_monthly_revenue: number | null
+          created_at: string
+          id: string
+          monthly_nsf_count: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          accounts_separated?: boolean | null
+          avg_daily_balance?: number | null
+          avg_monthly_revenue?: number | null
+          created_at?: string
+          id?: string
+          monthly_nsf_count?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          accounts_separated?: boolean | null
+          avg_daily_balance?: number | null
+          avg_monthly_revenue?: number | null
+          created_at?: string
+          id?: string
+          monthly_nsf_count?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       naics_codes: {
         Row: {
           created_at: string | null

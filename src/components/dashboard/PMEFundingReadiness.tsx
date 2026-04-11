@@ -7,6 +7,7 @@ import { useFundingReadiness, FundingReadinessBreakdown } from "@/hooks/useFundi
 import { Gauge, TrendingUp, Lightbulb, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { BankingSourceBadge } from "./bank-accounts/BankingSourceBadge";
 
 function ScoreGauge({ score }: { score: number }) {
   const radius = 80;
@@ -188,7 +189,14 @@ export function PMEFundingReadiness() {
         {showBreakdown && (
           <div className="space-y-4">
             {result.breakdown.map((item) => (
-              <CategoryRow key={item.label} item={item} />
+              <div key={item.label}>
+                <CategoryRow item={item} />
+                {item.label === "Banking History" && result.bankingDataSource && (
+                  <div className="mt-1 ml-0.5">
+                    <BankingSourceBadge source={result.bankingDataSource} />
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}

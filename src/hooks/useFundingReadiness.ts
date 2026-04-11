@@ -4,6 +4,7 @@ import { useCreditFactors } from "./useCreditFactors";
 import { useBuildScore } from "./useBuildScore";
 import { useFinancialKPIs } from "./useFinancialKPIs";
 import { useFundingMatches } from "./useFundingMatches";
+import type { BankingDataSource } from "@/components/dashboard/bank-accounts/BankingSourceBadge";
 
 export interface FundingReadinessBreakdown {
   label: string;
@@ -17,6 +18,7 @@ export interface FundingReadinessResult {
   overallScore: number;
   breakdown: FundingReadinessBreakdown[];
   topBlockers: string[];
+  bankingDataSource: BankingDataSource;
 }
 
 function calcPersonalCreditScore(factors: any): { score: number; explanation: string } {
@@ -38,42 +40,93 @@ function calcBusinessCreditScore(buildData: any): { score: number; explanation: 
 
 function calcEntityStructureScore(docCount: number, businessCount: number): { score: number; explanation: string } {
   if (businessCount === 0) return { score: 0, explanation: "No business entities registered. Add your business to start building your entity structure." };
-  // Simple heuristic: more docs = more complete
   const docsPerBiz = docCount / businessCount;
-  let score = Math.min(100, docsPerBiz * 10); // ~10 docs per business = 100%
-  if (businessCount > 0 && docCount === 0) score = 15; // Entity exists but no docs
+  let score = Math.min(100, docsPerBiz * 10);
+  if (businessCount > 0 && docCount === 0) score = 15;
   if (score >= 80) return { score, explanation: "Entity documentation is comprehensive and lender-ready." };
   if (score >= 40) return { score, explanation: "Some entity documents present. Upload EIN letter, articles, and operating agreement." };
   return { score, explanation: "Entity structure incomplete. Lenders require formation docs, EIN, and operating agreements." };
 }
 
-function calcBankingScore(kpis: any): { score: number; explanation: string } {
-  if (!kpis) return { score: 0, explanation: "No banking data connected. Link your bank accounts via Plaid to build banking history." };
-  let score = 0;
-  const balance = kpis.avg_balance_90d ?? 0;
-  if (balance >= 25000) score += 40;
-  else if (balance >= 10000) score += 25;
-  else if (balance >= 5000) score += 15;
-  else score += Math.round((balance / 5000) * 15);
+function calcBankingScore(kpis: any, manualEntry: any, hasStatementAnalysis: boolean, statementRevenue: number | null): { score: number; explanation: string; source: BankingDataSource } {
+  // Priority: Plaid > Statement Upload > Manual
+  if (kpis && (kpis.avg_balance_90d || kpis.monthly_inflow)) {
+    let score = 0;
+    const balance = kpis.avg_balance_90d ?? 0;
+    if (balance >= 25000) score += 40;
+    else if (balance >= 10000) score += 25;
+    else if (balance >= 5000) score += 15;
+    else score += Math.round((balance / 5000) * 15);
 
-  const dscr = kpis.dscr ?? 0;
-  if (dscr >= 1.5) score += 30;
-  else if (dscr >= 1.25) score += 20;
-  else score += Math.round(dscr * 13);
+    const dscr = kpis.dscr ?? 0;
+    if (dscr >= 1.5) score += 30;
+    else if (dscr >= 1.25) score += 20;
+    else score += Math.round(dscr * 13);
 
-  const nsf = kpis.nsf_count ?? 0;
-  if (nsf === 0) score += 30;
-  else if (nsf <= 2) score += 15;
+    const nsf = kpis.nsf_count ?? 0;
+    if (nsf === 0) score += 30;
+    else if (nsf <= 2) score += 15;
 
-  score = Math.min(100, score);
-  if (score >= 70) return { score, explanation: "Banking history is strong with healthy balances and no overdrafts." };
-  if (score >= 40) return { score, explanation: "Banking is adequate. Increase average balances and avoid NSF/overdraft events." };
-  return { score, explanation: "Banking history needs work. Maintain consistent balances and eliminate NSF activity." };
+    score = Math.min(100, score);
+    const explanation = score >= 70
+      ? "Banking history is strong with healthy balances and no overdrafts."
+      : score >= 40
+        ? "Banking is adequate. Increase average balances and avoid NSF/overdraft events."
+        : "Banking history needs work. Maintain consistent balances and eliminate NSF activity.";
+    return { score, explanation, source: "plaid" };
+  }
+
+  if (hasStatementAnalysis && statementRevenue !== null) {
+    let score = 20;
+    if (statementRevenue >= 50000) score = 85;
+    else if (statementRevenue >= 25000) score = 65;
+    else if (statementRevenue >= 10000) score = 45;
+    else score = 30;
+
+    const explanation = score >= 70
+      ? "Statement-verified banking data shows strong revenue and cashflow."
+      : score >= 40
+        ? "Statement data shows moderate banking activity. Upload additional months for better accuracy."
+        : "Statement data indicates limited banking activity. Consider uploading more statements.";
+    return { score, explanation, source: "statement" };
+  }
+
+  if (manualEntry) {
+    let score = 0;
+    const balance = Number(manualEntry.avg_daily_balance) || 0;
+    if (balance >= 25000) score += 30;
+    else if (balance >= 10000) score += 20;
+    else if (balance >= 5000) score += 12;
+    else score += Math.round((balance / 5000) * 12);
+
+    const revenue = Number(manualEntry.avg_monthly_revenue) || 0;
+    if (revenue >= 50000) score += 25;
+    else if (revenue >= 25000) score += 18;
+    else if (revenue >= 10000) score += 10;
+
+    const nsf = manualEntry.monthly_nsf_count ?? 0;
+    if (nsf === 0) score += 20;
+    else if (nsf <= 2) score += 10;
+
+    if (manualEntry.accounts_separated) score += 10;
+
+    // Cap lower for self-reported data (max 85)
+    score = Math.min(85, score);
+
+    const explanation = score >= 60
+      ? "Self-reported banking data indicates adequate financials (upgrade to statement upload for higher confidence)."
+      : score >= 30
+        ? "Self-reported data shows developing banking profile. Upload statements for verified scoring."
+        : "Self-reported banking data is limited. Consider uploading bank statements for better accuracy.";
+    return { score, explanation, source: "manual" };
+  }
+
+  return { score: 0, explanation: "No banking data available. Connect your bank, upload statements, or enter data manually.", source: "none" };
 }
 
 function calcRevenueDocScore(hasAnalysis: boolean, avgRevenue: number | null): { score: number; explanation: string } {
   if (!hasAnalysis) return { score: 0, explanation: "No revenue documentation analyzed. Upload bank statements or P&L for AI extraction." };
-  let score = 20; // Base for having any analysis
+  let score = 20;
   if (avgRevenue && avgRevenue >= 50000) score = 100;
   else if (avgRevenue && avgRevenue >= 25000) score = 75;
   else if (avgRevenue && avgRevenue >= 10000) score = 50;
@@ -104,10 +157,11 @@ export function useFundingReadiness() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const [docsRes, bizRes, analysisRes] = await Promise.all([
+      const [docsRes, bizRes, analysisRes, manualRes] = await Promise.all([
         supabase.from("documents").select("id", { count: "exact", head: true }).eq("user_id", user.id),
         supabase.from("businesses").select("id", { count: "exact", head: true }).eq("owner_user_id", user.id),
         supabase.from("financial_document_analyses").select("avg_monthly_revenue").eq("user_id", user.id).eq("analysis_status", "completed").order("created_at", { ascending: false }).limit(1),
+        supabase.from("manual_banking_entries").select("*").eq("user_id", user.id).maybeSingle(),
       ]);
 
       return {
@@ -115,6 +169,7 @@ export function useFundingReadiness() {
         businessCount: bizRes.count ?? 0,
         latestRevenue: (analysisRes.data as any)?.[0]?.avg_monthly_revenue ?? null,
         hasAnalysis: (analysisRes.data?.length ?? 0) > 0,
+        manualEntry: manualRes.data,
       };
     },
   });
@@ -125,7 +180,7 @@ export function useFundingReadiness() {
     const personal = calcPersonalCreditScore(factors);
     const business = calcBusinessCreditScore(buildData);
     const entity = calcEntityStructureScore(supplemental.docCount, supplemental.businessCount);
-    const banking = calcBankingScore(kpis);
+    const banking = calcBankingScore(kpis, supplemental.manualEntry, supplemental.hasAnalysis, supplemental.latestRevenue);
     const revenue = calcRevenueDocScore(supplemental.hasAnalysis, supplemental.latestRevenue);
     const lender = calcLenderAlignmentScore(matches?.length ?? 0, eligible?.length ?? 0);
 
@@ -146,10 +201,9 @@ export function useFundingReadiness() {
       .slice(0, 3)
       .map(c => c.explanation);
 
-    return { overallScore, breakdown: categories, topBlockers };
+    return { overallScore, breakdown: categories, topBlockers, bankingDataSource: banking.source };
   })();
 
-  // Save score to DB
   const saveScore = useMutation({
     mutationFn: async (data: FundingReadinessResult) => {
       const { data: { user } } = await supabase.auth.getUser();
