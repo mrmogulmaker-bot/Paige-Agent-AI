@@ -56,6 +56,7 @@ import { useDashboardMode } from "@/contexts/DashboardModeContext";
 const Dashboard = () => {
   const { mode, isCoachOrAdmin } = useDashboardMode();
   const [activeSection, setActiveSection] = useState("dashboard");
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [showAccel, setShowAccel] = useState(true);
   const [showBuild, setShowBuild] = useState(true);
   const [user, setUser] = useState<User | null>(null);
