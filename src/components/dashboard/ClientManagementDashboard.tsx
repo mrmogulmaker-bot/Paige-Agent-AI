@@ -36,6 +36,7 @@ export function ClientManagementDashboard({ onViewClient }: ClientManagementDash
   const [clients, setClients] = useState<ClientWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [addClientOpen, setAddClientOpen] = useState(false);
 
   useEffect(() => {
     fetchClients();
