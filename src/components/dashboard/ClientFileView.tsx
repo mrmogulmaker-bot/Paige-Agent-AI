@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, User, DollarSign, FileText, CheckSquare, Landmark, Mail, StickyNote, Upload } from "lucide-react";
+import { ArrowLeft, User, DollarSign, FileText, CheckSquare, Landmark, Mail, StickyNote, Upload, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
 import { OutreachCenter } from "./OutreachCenter";
@@ -22,6 +22,9 @@ interface ClientProfile {
   estimated_fico_ex: number | null;
   estimated_fico_tu: number | null;
   onboarding_completed: boolean | null;
+  has_discrepancies: boolean | null;
+  cross_bureau_discrepancies: any[] | null;
+  last_report_analyzed_at: string | null;
 }
 
 export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
@@ -35,10 +38,10 @@ export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
   const fetchProfile = async () => {
     const { data } = await supabase
       .from("profiles")
-      .select("full_name, city, state, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed")
+      .select("full_name, city, state, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed, has_discrepancies, cross_bureau_discrepancies, last_report_analyzed_at")
       .eq("user_id", clientUserId)
       .maybeSingle();
-    if (data) setProfile(data as ClientProfile);
+    if (data) setProfile(data as unknown as ClientProfile);
   };
 
   const bestFICO = Math.max(
@@ -70,6 +73,12 @@ export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
             <Badge variant={profile?.onboarding_completed ? "default" : "outline"}>
               {profile?.onboarding_completed ? "Active" : "Pending"}
             </Badge>
+            {profile?.has_discrepancies && (
+              <Badge variant="destructive" className="flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                Cross-Bureau Discrepancies
+              </Badge>
+            )}
           </div>
         </div>
       </div>

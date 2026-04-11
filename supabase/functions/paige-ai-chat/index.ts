@@ -884,8 +884,57 @@ Always identify the document type and bureau (if applicable) in your response.`,
       );
     }
 
-    // Stream the response back
-    return new Response(response.body, {
+    // If no document attached, stream directly
+    if (!attachedDocument) {
+      return new Response(response.body, {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+      });
+    }
+
+    // With document: intercept stream to accumulate response, then trigger background sync
+    const reader = response.body!.getReader();
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    let fullAssistantResponse = "";
+
+    const stream = new ReadableStream({
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (done) {
+          // Stream finished — trigger background sync with accumulated response
+          controller.close();
+          
+          // Fire-and-forget: extract structured data and sync
+          triggerBackgroundSync(
+            fullAssistantResponse,
+            attachedDocument!,
+            user.id,
+            authHeader,
+            supabaseUrl,
+            lovableApiKey,
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+          ).catch(err => console.error("Background sync error:", err));
+          return;
+        }
+        
+        // Pass through to client
+        controller.enqueue(value);
+        
+        // Accumulate text for sync
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+        for (const line of lines) {
+          if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) fullAssistantResponse += content;
+          } catch { /* skip */ }
+        }
+      },
+    });
+
+    return new Response(stream, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {
@@ -906,7 +955,150 @@ Always identify the document type and bureau (if applicable) in your response.`,
 });
 
 function extractKeywords(text: string): string {
-  // Extract potential keywords for tag matching
   const keywords = text.toLowerCase().match(/\b(build|make|manage|multiply|credit|business|mfm|accel|fund|real|keys|acquire|framework|mindset|leadership)\b/g);
   return keywords ? keywords.join(",") : "";
+}
+
+async function triggerBackgroundSync(
+  analysisText: string,
+  document: { base64: string; fileName: string },
+  callerUserId: string,
+  authHeader: string,
+  supabaseUrl: string,
+  lovableApiKey: string,
+  serviceRoleKey: string,
+) {
+  console.log("Starting background credit report sync...");
+
+  const extractionPrompt = `You are a data extraction assistant. Given the following credit report analysis text, extract structured data as JSON.
+
+Return ONLY valid JSON with this exact structure (no markdown, no explanation):
+{
+  "is_credit_report": true/false,
+  "report_type": "consumer" or "business",
+  "scores": {
+    "equifax": number or null,
+    "experian": number or null,
+    "transunion": number or null
+  },
+  "negative_items": [
+    {
+      "creditor_name": "string",
+      "account_number_masked": "string or null",
+      "bureau": "Equifax" or "Experian" or "TransUnion",
+      "item_type": "collection" or "late_payment" or "charge_off" or "public_record" or "repossession" or "foreclosure" or "other",
+      "amount": number or null,
+      "date_of_occurrence": "YYYY-MM-DD" or null,
+      "dispute_basis": "string",
+      "estimated_score_impact": number or null,
+      "status": "active"
+    }
+  ],
+  "hard_inquiries": [
+    {
+      "creditor_name": "string",
+      "inquiry_date": "YYYY-MM-DD",
+      "bureau": "string",
+      "is_authorized": true/false
+    }
+  ],
+  "positive_accounts": [
+    {
+      "creditor": "string",
+      "account_type": "revolving" or "installment" or "mortgage" or "open",
+      "balance": number or null,
+      "credit_limit": number or null,
+      "utilization": number or null,
+      "status": "current",
+      "account_open_date": "YYYY-MM-DD" or null,
+      "is_open": true/false
+    }
+  ],
+  "average_account_age_months": number or null,
+  "oldest_account_age_months": number or null,
+  "discrepancies": [
+    {
+      "account_name": "string",
+      "issue": "string describing the discrepancy",
+      "bureaus_affected": ["Equifax", "Experian"]
+    }
+  ]
+}
+
+If the analysis text is NOT about a credit report, return: {"is_credit_report": false}
+
+ANALYSIS TEXT:
+${analysisText}`;
+
+  try {
+    const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${lovableApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [{ role: "user", content: extractionPrompt }],
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    if (!extractResponse.ok) {
+      console.error("Extraction AI call failed:", extractResponse.status);
+      return;
+    }
+
+    const extractData = await extractResponse.json();
+    const content = extractData.choices?.[0]?.message?.content;
+    if (!content) {
+      console.error("No content from extraction");
+      return;
+    }
+
+    let structured: any;
+    try {
+      structured = JSON.parse(content);
+    } catch {
+      console.error("Failed to parse extraction JSON");
+      return;
+    }
+
+    if (!structured.is_credit_report) {
+      console.log("Document is not a credit report, skipping sync");
+      return;
+    }
+
+    // Call the sync edge function
+    const syncPayload = {
+      target_user_id: callerUserId,
+      report_type: structured.report_type || "consumer",
+      scores: structured.scores,
+      negative_items: structured.negative_items || [],
+      hard_inquiries: structured.hard_inquiries || [],
+      positive_accounts: structured.positive_accounts || [],
+      average_account_age_months: structured.average_account_age_months,
+      oldest_account_age_months: structured.oldest_account_age_months,
+      discrepancies: structured.discrepancies || [],
+    };
+
+    const syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(syncPayload),
+    });
+
+    if (syncResponse.ok) {
+      const syncResult = await syncResponse.json();
+      console.log("Credit report sync completed:", JSON.stringify(syncResult));
+    } else {
+      const errText = await syncResponse.text();
+      console.error("Sync function error:", syncResponse.status, errText);
+    }
+  } catch (err) {
+    console.error("Background sync failed:", err);
+  }
 }
