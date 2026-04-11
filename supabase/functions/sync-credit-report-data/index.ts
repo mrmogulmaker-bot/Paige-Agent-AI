@@ -238,7 +238,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       if (lower.includes("trans")) return "transunion";
       if (lower.includes("exper")) return "experian";
       if (lower.includes("equi")) return "equifax";
-      return lower;
+      return ""; // unrecognized — caught by validation guard below
     };
     const normalizeItemType = (t: string): string => {
       const lower = (t || "").toLowerCase().trim().replace(/-/g, "_");
@@ -281,12 +281,33 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
 
       console.log(`[NEG ${idx + 1}/${payload.negative_items.length}] PRE-INSERT:`, JSON.stringify(itemLog));
 
-      // Check for existing record — use .select() without maybeSingle to avoid error on multiple matches
-      const { data: existingRows, error: matchErr } = await supabase
+      // Reject items whose bureau didn't normalize to a known value
+      if (!["transunion", "experian", "equifax"].includes(bureau)) {
+        console.warn(`[NEG ${idx + 1}] Skipping — unrecognized bureau: '${item.bureau}' (normalized: '${bureau}')`);
+        itemLog.result = "skipped_invalid_bureau";
+        itemLog.error = `Unrecognized bureau value: '${item.bureau}'. Must resolve to transunion, experian, or equifax.`;
+        negativeItemLogs.push(itemLog);
+        negativeItemsFailed++;
+        continue;
+      }
+
+      // Check for existing record — scope by (user_id, creditor_name, bureau, item_type, account_number_masked)
+      // and by client_id to avoid cross-contaminating personal vs. client-scoped records.
+      let dedupeQuery = supabase
         .from("credit_negative_items").select("id")
         .eq("user_id", targetUserId)
         .eq("creditor_name", item.creditor_name)
-        .eq("bureau", bureau);
+        .eq("bureau", bureau)
+        .eq("item_type", itemType)
+        .eq("account_number_masked", item.account_number_masked ?? "");
+
+      if (clientId) {
+        dedupeQuery = dedupeQuery.eq("client_id", clientId);
+      } else {
+        dedupeQuery = dedupeQuery.is("client_id", null);
+      }
+
+      const { data: existingRows, error: matchErr } = await dedupeQuery;
 
       if (matchErr) {
         console.error(`[NEG ${idx + 1}] Match query error:`, matchErr);
