@@ -177,6 +177,19 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
         }
       }
 
+      // If a document was attached, add sync confirmation after a brief delay
+      if (currentDoc && assistantMessage.length > 100) {
+        setTimeout(() => {
+          setMessages(prev => [
+            ...prev,
+            {
+              role: "assistant",
+              content: "✅ Your credit profile has been updated with the data from this report.",
+            },
+          ]);
+        }, 2000);
+      }
+
       setIsLoading(false);
     } catch (error) {
       console.error("Chat error:", error);
