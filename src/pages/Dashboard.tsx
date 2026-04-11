@@ -51,6 +51,9 @@ import { FundingSecuredTracker } from "@/components/dashboard/FundingSecuredTrac
 import { WebhooksIntegrations } from "@/components/dashboard/WebhooksIntegrations";
 import { OutreachCenter } from "@/components/dashboard/OutreachCenter";
 import { ClientManagementDashboard } from "@/components/dashboard/ClientManagementDashboard";
+import { ClientFileView } from "@/components/dashboard/ClientFileView";
+import { AllCreditReportsView } from "@/components/dashboard/AllCreditReportsView";
+import { QuickUploadReportModal } from "@/components/dashboard/QuickUploadReportModal";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 
 const Dashboard = () => {
@@ -64,6 +67,7 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showQuickUpload, setShowQuickUpload] = useState(false);
   const isMobile = useIsMobile();
   const navigate = useNavigate();
 
@@ -135,6 +139,7 @@ const Dashboard = () => {
     <>
       <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
       <UpgradeModal open={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} />
+      <QuickUploadReportModal open={showQuickUpload} onOpenChange={setShowQuickUpload} />
       
       <SidebarProvider defaultOpen={!isMobile}>
         <div className="min-h-screen flex w-full bg-background">
@@ -172,6 +177,8 @@ const Dashboard = () => {
                   {activeSection === "funding-secured" && "Funding Secured"}
                   {activeSection === "webhooks" && "Webhooks & Integrations"}
                   {activeSection === "outreach" && "Outreach Draft Center"}
+                  {activeSection === "credit-reports-all" && "Credit Reports"}
+                  {activeSection === "client-file" && "Client File"}
                 </h1>
               </div>
               <div className="flex items-center gap-2 md:gap-4">
@@ -189,8 +196,8 @@ const Dashboard = () => {
                 <div className="p-3 md:p-6 max-w-7xl mx-auto w-full">
                   {activeSection === "dashboard" && mode === "internal" && isCoachOrAdmin && (
                     <ClientManagementDashboard onViewClient={(clientId) => {
-                      // For now, navigate to funding-secured with client context
-                      setActiveSection("funding-secured");
+                      setSelectedClientId(clientId);
+                      setActiveSection("client-file");
                     }} />
                   )}
                   {activeSection === "dashboard" && (mode !== "internal" || !isCoachOrAdmin) && (
@@ -318,6 +325,18 @@ const Dashboard = () => {
                     <p className="text-muted-foreground">Select a client from the Client Management dashboard first to generate outreach drafts.</p>
                     <Button variant="outline" className="mt-4" onClick={() => setActiveSection("dashboard")}>Go to Client Management</Button>
                   </div>
+                )}
+                {activeSection === "credit-reports-all" && (
+                  <AllCreditReportsView onViewClient={(clientId) => {
+                    setSelectedClientId(clientId);
+                    setActiveSection("client-file");
+                  }} />
+                )}
+                {activeSection === "client-file" && selectedClientId && (
+                  <ClientFileView
+                    clientUserId={selectedClientId}
+                    onBack={() => setActiveSection("dashboard")}
+                  />
                 )}
 
                   {activeSection === "settings" && <ProfileSettings />}

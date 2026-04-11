@@ -228,6 +228,20 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
                 )}
                 <SidebarMenuItem>
                   <SidebarMenuButton
+                    onClick={() => setActiveSection("credit-reports-all")}
+                    isActive={activeSection === "credit-reports-all"}
+                    className={`w-full px-3 py-2 rounded-lg transition-all ${
+                      activeSection === "credit-reports-all"
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "hover:bg-muted text-sidebar-foreground"
+                    }`}
+                  >
+                    <FileText className="w-5 h-5" />
+                    <span className="text-sm">Credit Reports</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
                     onClick={() => setActiveSection("lender-research")}
                     isActive={activeSection === "lender-research"}
                     className={`w-full px-3 py-2 rounded-lg transition-all ${
