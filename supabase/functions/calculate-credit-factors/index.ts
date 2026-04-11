@@ -26,10 +26,25 @@ Deno.serve(async (req) => {
 
     const userId = user.id;
 
-    // Fetch all user credit data in parallel
+    // Check for optional client_id in request body
+    let clientId: string | null = null;
+    try {
+      const body = await req.json();
+      clientId = body?.client_id || null;
+    } catch {
+      // No body or invalid JSON — calculate for user's own data
+    }
+
+    // Build query filter: use client_id if provided, otherwise user_id
+    const buildFilter = (query: any) => {
+      if (clientId) return query.eq("client_id", clientId);
+      return query.eq("user_id", userId);
+    };
+
+    // Fetch all credit data in parallel
     const [accountsRes, negativesRes, inquiriesRes] = await Promise.all([
-      supabase.from("credit_accounts").select("*").eq("user_id", userId),
-      supabase.from("credit_negative_items").select("*").eq("user_id", userId),
+      buildFilter(supabase.from("credit_accounts").select("*")),
+      buildFilter(supabase.from("credit_negative_items").select("*")),
       supabase.from("credit_inquiries").select("*").eq("user_id", userId),
     ]);
 
@@ -38,64 +53,76 @@ Deno.serve(async (req) => {
     const inquiries = inquiriesRes.data || [];
 
     // === PAYMENT HISTORY (35%) ===
-    const activeNegatives = negatives.filter((n) => n.status === "active").length;
-    const removedNegatives = negatives.filter((n) => n.status === "removed").length;
+    const chargeOffs = negatives.filter((n: any) => {
+      const t = (n.item_type || "").toLowerCase();
+      return t.includes("charge") || t === "charge_off";
+    });
+    const collections = negatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("collection"));
+    const latePayments = negatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("late"));
+    const activeNegatives = negatives.filter((n: any) => n.status === "active");
+    const removedNegatives = negatives.filter((n: any) => n.status === "removed");
+
+    let paymentHistoryScore = 100;
+    // Charge-offs: -15 each, max -75
+    paymentHistoryScore -= Math.min(chargeOffs.filter((n: any) => n.status === "active").length * 15, 75);
+    // Collections: -12 each, max -60
+    paymentHistoryScore -= Math.min(collections.filter((n: any) => n.status === "active").length * 12, 60);
+    // Late payments: -5 each, max -25
+    paymentHistoryScore -= Math.min(latePayments.filter((n: any) => n.status === "active").length * 5, 25);
+    // High-balance negatives (>$1000): -3 each, max -15
+    const highBalanceNegs = activeNegatives.filter((n: any) => (n.amount || 0) > 1000);
+    paymentHistoryScore -= Math.min(highBalanceNegs.length * 3, 15);
+    paymentHistoryScore = Math.max(0, paymentHistoryScore);
+
     const totalNegatives = negatives.length;
     const oldestNegativeDate = negatives.length > 0
-      ? negatives.reduce((oldest, n) => {
+      ? negatives.reduce((oldest: string | null, n: any) => {
           const d = n.date_of_occurrence || n.date_reported;
           return d && (!oldest || d < oldest) ? d : oldest;
         }, null as string | null)
       : null;
 
-    let paymentHistoryScore = 100;
-    if (activeNegatives > 0) {
-      paymentHistoryScore = Math.max(0, 100 - activeNegatives * 15);
-    }
-    if (totalNegatives > 0 && activeNegatives === 0) {
-      paymentHistoryScore = Math.max(70, 100 - totalNegatives * 5);
-    }
-
     // === UTILIZATION (30%) ===
     const revolvingAccounts = accounts.filter(
-      (a) => a.type === "revolving" || a.type === "credit_card"
+      (a: any) => a.type === "revolving" || a.type === "credit_card"
     );
     const totalLimit = revolvingAccounts.reduce(
-      (sum, a) => sum + (Number(a.credit_limit) || Number(a.limit_amount) || 0), 0
+      (sum: number, a: any) => sum + (Number(a.credit_limit) || Number(a.limit_amount) || 0), 0
     );
     const totalBalance = revolvingAccounts.reduce(
-      (sum, a) => sum + (Number(a.current_balance) || Number(a.balance) || 0), 0
+      (sum: number, a: any) => sum + (Number(a.current_balance) || Number(a.balance) || 0), 0
     );
     const aggregateUtilization = totalLimit > 0 ? (totalBalance / totalLimit) * 100 : 0;
 
-    const cardsOver30 = revolvingAccounts.filter((a) => {
+    const cardsOver30 = revolvingAccounts.filter((a: any) => {
       const limit = Number(a.credit_limit) || Number(a.limit_amount) || 0;
       const bal = Number(a.current_balance) || Number(a.balance) || 0;
       return limit > 0 && (bal / limit) * 100 > 30;
     }).length;
-    const cardsOver50 = revolvingAccounts.filter((a) => {
+    const cardsOver50 = revolvingAccounts.filter((a: any) => {
       const limit = Number(a.credit_limit) || Number(a.limit_amount) || 0;
       const bal = Number(a.current_balance) || Number(a.balance) || 0;
       return limit > 0 && (bal / limit) * 100 > 50;
     }).length;
-    const cardsOver70 = revolvingAccounts.filter((a) => {
+    const cardsOver70 = revolvingAccounts.filter((a: any) => {
       const limit = Number(a.credit_limit) || Number(a.limit_amount) || 0;
       const bal = Number(a.current_balance) || Number(a.balance) || 0;
       return limit > 0 && (bal / limit) * 100 > 70;
     }).length;
 
     let utilizationScore = 100;
-    if (aggregateUtilization > 70) utilizationScore = 20;
-    else if (aggregateUtilization > 50) utilizationScore = 40;
-    else if (aggregateUtilization > 30) utilizationScore = 60;
-    else if (aggregateUtilization > 10) utilizationScore = 85;
-    else if (aggregateUtilization > 0) utilizationScore = 95;
+    if (aggregateUtilization > 70) utilizationScore = 15;
+    else if (aggregateUtilization > 50) utilizationScore = 35;
+    else if (aggregateUtilization > 30) utilizationScore = 55;
+    else if (aggregateUtilization > 10) utilizationScore = 80;
+    utilizationScore -= Math.min(cardsOver70 * 10, 30);
+    utilizationScore = Math.max(0, utilizationScore);
 
     // === CREDIT AGE (15%) ===
     const now = new Date();
-    const openAccounts = accounts.filter((a) => a.is_open !== false);
+    const openAccounts = accounts.filter((a: any) => a.is_open !== false);
     const accountAges = openAccounts
-      .map((a) => {
+      .map((a: any) => {
         const opened = a.account_open_date || a.opened_on;
         if (!opened) return null;
         const months = Math.floor(
@@ -103,45 +130,46 @@ Deno.serve(async (req) => {
         );
         return months;
       })
-      .filter((a): a is number => a !== null);
+      .filter((a: any): a is number => a !== null);
 
     const avgAge = accountAges.length > 0
-      ? Math.round(accountAges.reduce((s, a) => s + a, 0) / accountAges.length)
+      ? Math.round(accountAges.reduce((s: number, a: number) => s + a, 0) / accountAges.length)
       : 0;
     const oldestAge = accountAges.length > 0 ? Math.max(...accountAges) : 0;
     const newestAge = accountAges.length > 0 ? Math.min(...accountAges) : 0;
 
     let creditAgeScore = 0;
-    if (avgAge >= 84) creditAgeScore = 95;
+    if (avgAge >= 84) creditAgeScore = 100;
     else if (avgAge >= 60) creditAgeScore = 80;
-    else if (avgAge >= 36) creditAgeScore = 65;
-    else if (avgAge >= 24) creditAgeScore = 50;
-    else if (avgAge >= 12) creditAgeScore = 35;
-    else creditAgeScore = 20;
+    else if (avgAge >= 36) creditAgeScore = 60;
+    else if (avgAge >= 24) creditAgeScore = 45;
+    else if (avgAge >= 12) creditAgeScore = 30;
+    else creditAgeScore = 15;
 
     // === CREDIT MIX (10%) ===
     const revolvingCount = accounts.filter(
-      (a) => a.type === "revolving" || a.type === "credit_card"
+      (a: any) => a.type === "revolving" || a.type === "credit_card"
     ).length;
-    const installmentCount = accounts.filter((a) => a.type === "installment").length;
-    const mortgageCount = accounts.filter((a) => a.type === "mortgage").length;
+    const installmentCount = accounts.filter((a: any) =>
+      ["installment", "personal_loan", "auto_loan", "student_loan"].includes(a.type)
+    ).length;
+    const mortgageCount = accounts.filter((a: any) => a.type === "mortgage").length;
 
     const typesPresent = [revolvingCount > 0, installmentCount > 0, mortgageCount > 0].filter(Boolean).length;
-    let creditMixScore = typesPresent >= 3 ? 90 : typesPresent === 2 ? 70 : typesPresent === 1 ? 45 : 10;
+    let creditMixScore = typesPresent >= 3 ? 100 : typesPresent === 2 ? 70 : typesPresent === 1 ? 40 : 10;
+    if (accounts.length >= 10) creditMixScore = Math.min(100, creditMixScore + 10);
 
     // === INQUIRIES (10%) ===
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    const twelveMonthsAgo = new Date();
-    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
-    const activeInquiries = inquiries.filter((i) => i.status === "active");
-    const tuInquiries = activeInquiries.filter((i) => i.bureau === "transunion").length;
-    const exInquiries = activeInquiries.filter((i) => i.bureau === "experian").length;
-    const eqInquiries = activeInquiries.filter((i) => i.bureau === "equifax").length;
+    const activeInquiries = inquiries.filter((i: any) => i.status === "active");
+    const tuInquiries = activeInquiries.filter((i: any) => (i.bureau || "").toLowerCase().includes("trans")).length;
+    const exInquiries = activeInquiries.filter((i: any) => (i.bureau || "").toLowerCase().includes("exper")).length;
+    const eqInquiries = activeInquiries.filter((i: any) => (i.bureau || "").toLowerCase().includes("equi")).length;
 
     const recentInquiries = activeInquiries.filter(
-      (i) => new Date(i.inquiry_date) >= sixMonthsAgo
+      (i: any) => new Date(i.inquiry_date) >= sixMonthsAgo
     ).length;
 
     let inquiryScore = 100;
@@ -163,13 +191,13 @@ Deno.serve(async (req) => {
     );
 
     // Upsert the factor scores
-    const factorData = {
+    const factorData: Record<string, any> = {
       user_id: userId,
       calculated_at: new Date().toISOString(),
       payment_history_score: paymentHistoryScore,
       total_negatives: totalNegatives,
-      active_negatives: activeNegatives,
-      removed_negatives: removedNegatives,
+      active_negatives: activeNegatives.length,
+      removed_negatives: removedNegatives.length,
       oldest_negative_date: oldestNegativeDate,
       utilization_score: utilizationScore,
       aggregate_utilization: Math.round(aggregateUtilization * 100) / 100,
@@ -199,6 +227,8 @@ Deno.serve(async (req) => {
       },
     };
 
+    if (clientId) factorData.client_id = clientId;
+
     const { data, error } = await supabase
       .from("credit_factor_scores")
       .insert(factorData)
@@ -212,7 +242,7 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
