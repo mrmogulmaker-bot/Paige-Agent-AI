@@ -723,6 +723,37 @@ Your personality:
 - ALWAYS personalize based on user context
 ${relevantKnowledge}`;
 
+    // Build message array for the AI, injecting document if attached
+    const aiMessages: any[] = [
+      { role: "system", content: systemPrompt },
+    ];
+
+    // Add conversation messages, injecting document content block on the last user message
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      
+      if (attachedDocument && msg.role === "user" && i === messages.length - 1) {
+        // Last user message with document — use multipart content
+        const contentParts: any[] = [
+          {
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: attachedDocument.base64,
+            },
+          },
+          {
+            type: "text",
+            text: msg.content + `\n\n[Attached document: ${attachedDocument.fileName}]\n\nIMPORTANT DOCUMENT ANALYSIS INSTRUCTIONS:\n- If this is a credit report, identify all negative items (late payments, collections, charge-offs, inquiries, public records) and offer to generate dispute letters for each one. For each negative item, provide: creditor name, bureau, account number (masked), issue type, and a suggested dispute reason.\n- If this is a financial document (bank statement, P&L, tax return), offer to generate a lender-ready summary using the existing financial analysis tools.\n- Always identify the document type and bureau (if applicable) in your response.`,
+          },
+        ];
+        aiMessages.push({ role: "user", content: contentParts });
+      } else {
+        aiMessages.push({ role: msg.role, content: msg.content });
+      }
+    }
+
     // Call Lovable AI with web fetching tool
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -731,11 +762,8 @@ ${relevantKnowledge}`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
+        model: attachedDocument ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
+        messages: aiMessages,
         tools: [
           {
             type: "function",
