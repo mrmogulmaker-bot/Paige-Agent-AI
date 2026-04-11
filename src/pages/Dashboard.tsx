@@ -180,7 +180,10 @@ const Dashboard = () => {
                     <UpgradeBanner onUpgradeClick={() => setShowUpgradeModal(true)} />
                     
                     <div className="grid gap-6">
-                      <CreditScoreOverview />
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <CreditScoreOverview />
+                        <PMEFundingReadiness />
+                      </div>
                       
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {showAccel && <AccelProgress onToggle={() => setShowAccel(false)} onNavigate={() => setActiveSection('personal')} />}
