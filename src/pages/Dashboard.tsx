@@ -51,6 +51,9 @@ import { FundingSecuredTracker } from "@/components/dashboard/FundingSecuredTrac
 import { WebhooksIntegrations } from "@/components/dashboard/WebhooksIntegrations";
 import { OutreachCenter } from "@/components/dashboard/OutreachCenter";
 import { ClientManagementDashboard } from "@/components/dashboard/ClientManagementDashboard";
+import { ClientFileView } from "@/components/dashboard/ClientFileView";
+import { AllCreditReportsView } from "@/components/dashboard/AllCreditReportsView";
+import { QuickUploadReportModal } from "@/components/dashboard/QuickUploadReportModal";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 
 const Dashboard = () => {
@@ -64,6 +67,7 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showQuickUpload, setShowQuickUpload] = useState(false);
   const isMobile = useIsMobile();
   const navigate = useNavigate();
 
