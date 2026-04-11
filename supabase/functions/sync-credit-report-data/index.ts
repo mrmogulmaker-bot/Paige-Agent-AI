@@ -175,6 +175,17 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
   const results: Record<string, any> = {};
   let currentStep = "init";
   const clientId = payload.client_id || null;
+  const negativeItemLogs: any[] = [];
+
+  // Log raw payload counts
+  console.log("=== SYNC PAYLOAD COUNTS ===", {
+    negative_items: payload.negative_items?.length ?? 0,
+    positive_accounts: payload.positive_accounts?.length ?? 0,
+    hard_inquiries: payload.hard_inquiries?.length ?? 0,
+    priority_disputes: payload.priority_disputes?.length ?? 0,
+    client_id: clientId,
+    target_user_id: targetUserId,
+  });
 
   // Helper: add client_id to insert payloads when in internal mode
   const withClientId = (obj: any) => clientId ? { ...obj, client_id: clientId } : obj;
