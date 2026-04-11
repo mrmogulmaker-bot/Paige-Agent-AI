@@ -1,34 +1,43 @@
 import { useCreditFactors } from "@/hooks/useCreditFactors";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { Loader2, RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { format } from "date-fns";
 
 export default function CreditIntelligence() {
   const { factors, isLoading, recalculate } = useCreditFactors();
   const navigate = useNavigate();
 
-  const factorCards = factors
+  const hasData = factors && (
+    factors.payment_history_score != null ||
+    factors.utilization_score != null ||
+    factors.credit_age_score != null ||
+    factors.credit_mix_score != null ||
+    factors.inquiry_score != null
+  );
+
+  const factorCards = hasData
     ? [
         {
           label: "Payment History",
           weight: "35%",
-          score: factors.payment_history_score,
+          score: factors.payment_history_score ?? 0,
           details: [
-            `${factors.active_negatives} active negatives`,
-            `${factors.removed_negatives} removed`,
-            `${factors.total_negatives} total tracked`,
+            `${factors.active_negatives ?? 0} active negatives`,
+            `${factors.removed_negatives ?? 0} removed`,
+            `${factors.total_negatives ?? 0} total tracked`,
           ],
           action: "Dispute negative items",
         },
         {
           label: "Utilization",
           weight: "30%",
-          score: factors.utilization_score,
+          score: factors.utilization_score ?? 0,
           details: [
             `${Math.round(factors.aggregate_utilization || 0)}% aggregate`,
-            `${factors.cards_over_30_pct} cards over 30%`,
-            `${factors.cards_over_70_pct} cards over 70%`,
+            `${factors.cards_over_30_pct ?? 0} cards over 30%`,
+            `${factors.cards_over_70_pct ?? 0} cards over 70%`,
             `$${Number(factors.total_balance || 0).toLocaleString()} / $${Number(factors.total_credit_limit || 0).toLocaleString()}`,
           ],
           action: "Optimize paydown strategy",
@@ -36,37 +45,39 @@ export default function CreditIntelligence() {
         {
           label: "Credit Age",
           weight: "15%",
-          score: factors.credit_age_score,
+          score: factors.credit_age_score ?? 0,
           details: [
-            `${factors.average_account_age_months || 0} months average`,
-            `${factors.oldest_account_age_months || 0} months oldest`,
-            `${factors.newest_account_age_months || 0} months newest`,
+            `${factors.average_account_age_months ?? 0} months average`,
+            `${factors.oldest_account_age_months ?? 0} months oldest`,
+            `${factors.newest_account_age_months ?? 0} months newest`,
           ],
           action: "Don't close old accounts",
         },
         {
           label: "Credit Mix",
           weight: "10%",
-          score: factors.credit_mix_score,
+          score: factors.credit_mix_score ?? 0,
           details: [
-            `${factors.revolving_count} revolving`,
-            `${factors.installment_count} installment`,
-            `${factors.mortgage_count} mortgage`,
+            `${factors.revolving_count ?? 0} revolving`,
+            `${factors.installment_count ?? 0} installment`,
+            `${factors.mortgage_count ?? 0} mortgage`,
           ],
           action: "Diversify account types",
         },
         {
           label: "Inquiries",
           weight: "10%",
-          score: factors.inquiry_score,
+          score: factors.inquiry_score ?? 0,
           details: [
-            `TU: ${factors.total_inquiries_tu} | EX: ${factors.total_inquiries_ex} | EQ: ${factors.total_inquiries_eq}`,
-            `${factors.inquiry_budget_remaining} safe inquiries remaining`,
+            `TU: ${factors.total_inquiries_tu ?? 0} | EX: ${factors.total_inquiries_ex ?? 0} | EQ: ${factors.total_inquiries_eq ?? 0}`,
+            `${factors.inquiry_budget_remaining ?? 0} safe inquiries remaining`,
           ],
           action: "Manage inquiry timing",
         },
       ]
     : [];
+
+  const lastCalculated = factors?.calculated_at;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -76,23 +87,38 @@ export default function CreditIntelligence() {
           <p className="text-muted-foreground mt-1">
             Your 5-factor FICO breakdown — stop guessing, see the data.
           </p>
-        </div>
-        <Button
-          onClick={() => recalculate.mutate()}
-          disabled={recalculate.isPending}
-          className="bg-gradient-gold hover:opacity-90"
-        >
-          {recalculate.isPending ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          ) : (
-            <RefreshCw className="w-4 h-4 mr-2" />
+          {hasData && lastCalculated && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Last synced: {format(new Date(lastCalculated), "MMM d, yyyy 'at' h:mm a")}
+            </p>
           )}
-          Recalculate
-        </Button>
+        </div>
+        {hasData ? (
+          <Button
+            onClick={() => recalculate.mutate()}
+            disabled={recalculate.isPending}
+            className="bg-gradient-gold hover:opacity-90"
+          >
+            {recalculate.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4 mr-2" />
+            )}
+            Refresh Credit Analysis
+          </Button>
+        ) : (
+          <Button
+            onClick={() => navigate("/app")}
+            className="bg-gradient-gold hover:opacity-90"
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            Upload a Credit Report
+          </Button>
+        )}
       </div>
 
       {/* Fundability Score Ring */}
-      {factors && (
+      {hasData && (
         <Card className="p-8 bg-card border-border text-center">
           <div className="inline-flex flex-col items-center">
             <div className="relative w-36 h-36">
@@ -100,25 +126,25 @@ export default function CreditIntelligence() {
                 <circle cx="60" cy="60" r="50" fill="none" stroke="hsl(var(--border))" strokeWidth="10" />
                 <circle
                   cx="60" cy="60" r="50" fill="none"
-                  stroke={getScoreHSL(factors.overall_fundability_score)}
+                  stroke={getScoreHSL(factors.overall_fundability_score ?? 0)}
                   strokeWidth="10"
                   strokeLinecap="round"
-                  strokeDasharray={`${(factors.overall_fundability_score / 100) * 314} 314`}
+                  strokeDasharray={`${((factors.overall_fundability_score ?? 0) / 100) * 314} 314`}
                   className="transition-all duration-1000"
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className={`text-3xl font-bold ${getScoreTextColor(factors.overall_fundability_score)}`}>
-                  {factors.overall_fundability_score}
+                <span className={`text-3xl font-bold ${getScoreTextColor(factors.overall_fundability_score ?? 0)}`}>
+                  {factors.overall_fundability_score ?? 0}
                 </span>
                 <span className="text-xs text-muted-foreground">/100</span>
               </div>
             </div>
             <h2 className="text-xl font-bold mt-4">Fundability Score</h2>
             <p className="text-sm text-muted-foreground">
-              {factors.overall_fundability_score >= 80 ? "Excellent — you're fundable" :
-               factors.overall_fundability_score >= 60 ? "Good — getting closer" :
-               factors.overall_fundability_score >= 40 ? "Fair — work to do" :
+              {(factors.overall_fundability_score ?? 0) >= 80 ? "Excellent — you're fundable" :
+               (factors.overall_fundability_score ?? 0) >= 60 ? "Good — getting closer" :
+               (factors.overall_fundability_score ?? 0) >= 40 ? "Fair — work to do" :
                "Needs attention — here's the protocol"}
             </p>
           </div>
@@ -130,7 +156,7 @@ export default function CreditIntelligence() {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-accent" />
         </div>
-      ) : factors ? (
+      ) : hasData ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           {factorCards.map((fc) => (
             <Card key={fc.label} className="p-5 bg-card border-border hover:border-accent/50 transition-colors">
@@ -153,7 +179,11 @@ export default function CreditIntelligence() {
         </div>
       ) : (
         <Card className="p-8 text-center">
-          <p className="text-muted-foreground">No credit data yet. Click "Recalculate" to analyze your profile.</p>
+          <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+          <h3 className="font-semibold text-lg">Upload a credit report to see your FICO breakdown</h3>
+          <p className="text-muted-foreground text-sm mt-2">
+            Open Paige chat and attach a PDF credit report. She'll analyze it and your factor scores will appear here automatically.
+          </p>
         </Card>
       )}
     </div>

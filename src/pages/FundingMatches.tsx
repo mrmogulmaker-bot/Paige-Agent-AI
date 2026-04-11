@@ -3,12 +3,51 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, RefreshCw, ExternalLink, Lock, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function FundingMatches() {
   const { matches, eligible, nearEligible, totalEstimated, isLoading, runMatch } = useFundingMatches();
   const { projections, createProjection } = useFundingProjections();
-  const [showProjection, setShowProjection] = useState(false);
+
+  // Fetch real synced scores for the What-If baseline
+  const { data: profileScores } = useQuery({
+    queryKey: ["funding-matches-profile-scores"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, last_report_analyzed_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      return data;
+    },
+  });
+
+  // Calculate the lowest bureau score for What-If baseline
+  const syncedScores = [
+    profileScores?.estimated_fico_eq,
+    profileScores?.estimated_fico_ex,
+    profileScores?.estimated_fico_tu,
+  ].filter(Boolean) as number[];
+  const lowestScore = syncedScores.length > 0 ? Math.min(...syncedScores) : null;
+
+  // Auto-run match when synced scores exist but no matches yet
+  const [autoRanMatch, setAutoRanMatch] = useState(false);
+  useEffect(() => {
+    if (
+      !autoRanMatch &&
+      profileScores?.last_report_analyzed_at &&
+      !isLoading &&
+      (!matches || matches.length === 0) &&
+      !runMatch.isPending
+    ) {
+      setAutoRanMatch(true);
+      runMatch.mutate();
+    }
+  }, [profileScores, isLoading, matches, autoRanMatch, runMatch]);
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -18,6 +57,11 @@ export default function FundingMatches() {
           <p className="text-muted-foreground mt-1">
             Products matched to your real profile — not guesswork.
           </p>
+          {lowestScore && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Matching against your synced FICO scores (lowest: {lowestScore})
+            </p>
+          )}
         </div>
         <Button
           onClick={() => runMatch.mutate()}
@@ -91,14 +135,20 @@ export default function FundingMatches() {
           <Card className="p-6 bg-card border-border text-center">
             <Sparkles className="w-8 h-8 text-gold mx-auto mb-3" />
             <h3 className="font-bold text-lg">What If Projection</h3>
-            <p className="text-sm text-muted-foreground mt-1 mb-4">
+            <p className="text-sm text-muted-foreground mt-1 mb-2">
               See how score improvements would unlock new funding
             </p>
+            {lowestScore && (
+              <p className="text-xs text-muted-foreground mb-4">
+                Baseline: {lowestScore} (lowest bureau score from your synced report)
+              </p>
+            )}
             <Button
               onClick={() => {
                 createProjection.mutate({
                   scenario_name: "Score +40, Remove Collections",
                   scenario_params: {
+                    baseline_score: lowestScore || 600,
                     score_change: 40,
                     remove_collections: 2,
                     reduce_utilization_to: 25,
@@ -150,10 +200,12 @@ export default function FundingMatches() {
             )}
           </Card>
 
-          {(!matches || matches.length === 0) && (
+          {(!matches || matches.length === 0) && !runMatch.isPending && (
             <Card className="p-8 text-center">
               <p className="text-muted-foreground">
-                No matches yet. Click "Run Match" to scan lender products against your profile.
+                {lowestScore
+                  ? "No matches yet. Click \"Run Match\" to scan lender products against your synced profile."
+                  : "Upload a credit report via Paige chat first, then run a match to see eligible products."}
               </p>
             </Card>
           )}
