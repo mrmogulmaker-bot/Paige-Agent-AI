@@ -745,7 +745,64 @@ ${relevantKnowledge}`;
           },
           {
             type: "text",
-            text: msg.content + `\n\n[Attached document: ${attachedDocument.fileName}]\n\nIMPORTANT DOCUMENT ANALYSIS INSTRUCTIONS:\n- If this is a credit report, identify all negative items (late payments, collections, charge-offs, inquiries, public records) and offer to generate dispute letters for each one. For each negative item, provide: creditor name, bureau, account number (masked), issue type, and a suggested dispute reason.\n- If this is a financial document (bank statement, P&L, tax return), offer to generate a lender-ready summary using the existing financial analysis tools.\n- Always identify the document type and bureau (if applicable) in your response.`,
+            text: msg.content + `\n\n[Attached document: ${attachedDocument.fileName}]
+
+=== CREDIT REPORT ANALYSIS INSTRUCTIONS ===
+If this document is a credit report (consumer or business), produce a STRUCTURED analysis in the following exact format. Use a professional, precise, advisory tone — like a senior credit analyst presenting findings. Do NOT use sales language, motivational framing, "Borrower Brain vs Banker Brain," or phrases like "Stop guessing." Reserve that tone for general chat only.
+
+**SECTION 1 — BUREAU SCORES SUMMARY**
+Display a three-column table: Equifax | Experian | TransUnion.
+For each bureau show: credit score, score range classification (Poor/Fair/Good/Very Good/Excellent), and the primary score factor listed on that bureau's report. If a score is not present for a bureau, note "Not Reported."
+
+**SECTION 2 — BUREAU-BY-BUREAU NEGATIVE ITEM BREAKDOWN**
+For each bureau separately (Equifax first, then Experian, then TransUnion), list ALL negative items reporting on that specific bureau. For each item show:
+- Account Name
+- Account Type
+- Account Number (masked)
+- Date of Last Activity
+- Balance or Amount
+- Dispute Basis under FCRA/FDCPA — use ONLY legitimate statutory grounds:
+  * Collection accounts default basis: "Requesting debt validation under FDCPA Section 809(b)"
+  * Late payments default basis: "Requesting verification of accuracy under FCRA Section 611(a)"
+  * Unauthorized inquiries default basis: "Requesting removal under FCRA Section 604 — no permissible purpose"
+  * Accounts not belonging to consumer: "Disputing as not mine — requesting method of verification under FCRA Section 611(a)(7)"
+  * Inaccurate balances/dates/statuses: "Disputing inaccurate information — requesting reinvestigation under FCRA Section 611(a)(1)(A)"
+NEVER suggest dispute language that implies an agreement or promise was made by the creditor unless the client has documented proof of that agreement. NEVER fabricate dispute reasons.
+
+**SECTION 3 — CROSS-BUREAU DISCREPANCIES**
+Identify accounts appearing on some bureaus but not others, or where the same account shows different balances, statuses, or dates across bureaus. Flag these as high-priority dispute targets — inconsistent reporting across bureaus is a direct FCRA violation under Section 623(a)(2).
+
+**SECTION 4 — POSITIVE ACCOUNTS SUMMARY**
+List accounts in good standing (open revolving, installment loans, mortgages) with:
+- Credit limit or original balance
+- Current balance
+- Utilization percentage (for revolving accounts)
+- Payment history status
+Note the oldest account and calculate average account age.
+
+**SECTION 5 — PRIORITY ACTION PLAN**
+Rank the top 5 actions by estimated score impact across all three bureaus. Each action must reference:
+- The specific bureau(s) it targets
+- Estimated score impact range based on item recency and balance
+- The correct FCRA or FDCPA statutory basis for the dispute
+
+**SECTION 6 — COMPLIANCE DISCLAIMER**
+End EVERY credit report analysis with:
+"*This analysis is provided for educational purposes only. PME does not guarantee specific credit score improvements, does not make credit decisions, and does not send communications to credit bureaus or collectors on your behalf. Dispute letters are templates for your use — you are responsible for submitting them. Consult a qualified attorney for legal advice regarding your specific situation.*"
+
+=== DISPUTE LETTER GENERATION RULES ===
+When generating dispute letter content at any time (not just during report analysis):
+- ONLY use legitimate FCRA and FDCPA statutory dispute language
+- Collection accounts: Default to debt validation under FDCPA Section 809(b)
+- Late payments: Default to verification of accuracy under FCRA Section 611
+- Unauthorized inquiries: Default to removal request under FCRA Section 604
+- NEVER claim a creditor made an agreement or promise unless the user explicitly states they have written documentation of that agreement
+- NEVER use fabricated or misleading dispute reasons
+
+=== FINANCIAL DOCUMENT INSTRUCTIONS ===
+If this document is a financial document (bank statement, P&L, tax return, balance sheet), offer to generate a lender-ready summary using the existing financial analysis tools. Identify the document type, date range, and key financial metrics.
+
+Always identify the document type and bureau (if applicable) in your response.`,
           },
         ];
         aiMessages.push({ role: "user", content: contentParts });
