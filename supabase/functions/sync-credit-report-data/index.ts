@@ -55,6 +55,7 @@ const DiscrepancySchema = z.object({
 
 const SyncPayloadSchema = z.object({
   target_user_id: z.string().uuid(),
+  client_id: z.string().uuid().nullable().optional(),
   report_type: z.string().optional().default("consumer"),
   scores: ScoreSchema.optional(),
   negative_items: z.array(NegativeItemSchema).optional().default([]),
@@ -173,6 +174,10 @@ serve(async (req) => {
 async function processSync(supabase: any, payload: any, targetUserId: string, callerUserId: string) {
   const results: Record<string, any> = {};
   let currentStep = "init";
+  const clientId = payload.client_id || null;
+
+  // Helper: add client_id to insert payloads when in internal mode
+  const withClientId = (obj: any) => clientId ? { ...obj, client_id: clientId } : obj;
 
   try {
     // ========== STEP 1: CREDIT SCORES ==========
