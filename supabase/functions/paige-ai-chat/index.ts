@@ -35,6 +35,33 @@ const messageSchema = z.object({
   ).optional(),
 });
 
+const DOCUMENT_SOURCE_INSTRUCTION = `You are analyzing a specific PDF document that has been provided to you. You must ONLY report information that you can directly read from this document. Do not use your training data or prior knowledge to fill in account details, creditor names, balances, or scores. If you cannot read a specific piece of information from the document, state "Not visible in document" rather than providing an estimate or assumption. Every account name, balance, score, and date you report must be directly extractable from the uploaded document text.`;
+
+const DOCUMENT_READ_CHECK_PROMPT = `${DOCUMENT_SOURCE_INSTRUCTION}
+
+Before any analysis, verify that you can literally read the PDF. Return ONLY valid JSON with this exact structure:
+{
+  "document_kind": "credit_report" | "financial_document" | "other",
+  "can_read_document": boolean,
+  "parse_error": "string or null",
+  "visible_text_excerpt": "string",
+  "first_five_account_names": ["string"],
+  "directly_read_account_count": number,
+  "confidence_statement": "I was able to directly read N accounts from this document",
+  "fraud_alerts_visible": boolean,
+  "visible_scores": {
+    "equifax": number or null,
+    "experian": number or null,
+    "transunion": number or null
+  }
+}
+
+Rules:
+- The account names must be literal names visible in the PDF, not guesses.
+- If this is a tri-merge credit report, identify the first five tradeline or collection account names you can actually read.
+- If you cannot read any account names from a credit report, set can_read_document to false and parse_error to "Unable to parse document content — please ensure the uploaded file is a readable PDF credit report".
+- Do not include markdown.`;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -152,6 +179,18 @@ SUMMARY:`;
         JSON.stringify({ error: 'Document too large. Maximum size is 10MB.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    let documentReadCheck: any = null;
+    if (attachedDocument) {
+      documentReadCheck = await runDocumentReadCheck(attachedDocument.base64, lovableApiKey);
+      if (!documentReadCheck?.can_read_document || documentReadCheck?.document_kind !== 'credit_report' || (documentReadCheck?.first_five_account_names || []).length < 1) {
+        const message = documentReadCheck?.parse_error || 'Unable to parse document content — please ensure the uploaded file is a readable PDF credit report';
+        return new Response(
+          JSON.stringify({ error: message }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Fetch URL content if present
@@ -475,6 +514,31 @@ If financial document (bank statement, P&L, tax return), offer lender-ready summ
 After completing your analysis, append a hidden context block wrapped in <document_summary> tags containing: report_type, bureau scores, fraud_alerts (if any), security_freezes (if any), negative item count with account names and bureaus, inquiry count, discrepancy list with specific accounts, oldest account, average account age, funding strategy summary. Format as compact JSON.
 </document_summary>
 
+=== VERIFIED SYNC PAYLOAD (hidden) ===
+Append a second hidden block wrapped in <document_sync_payload> tags containing compact JSON with this structure:
+{
+  "is_credit_report": true,
+  "extraction_verified": true,
+  "report_type": "consumer" | "business",
+  "scores": { "equifax": number or null, "experian": number or null, "transunion": number or null },
+  "fraud_alerts_visible": boolean,
+  "fraud_alerts": [ { "alert_type": "string", "bureaus": ["string"], "expiration_date": "string or null" } ],
+  "account_names_extracted": ["string"],
+  "directly_read_account_count": number,
+  "confidence_statement": "I was able to directly read N accounts from this document",
+  "negative_items": [
+    { "creditor_name": "string", "account_number_masked": "string or null", "bureau": "Equifax" | "Experian" | "TransUnion", "item_type": "collection" | "late_payment" | "charge_off" | "public_record" | "repossession" | "foreclosure" | "other", "amount": number or null, "date_of_occurrence": "YYYY-MM-DD" | null, "date_reported": "YYYY-MM-DD" | null, "dispute_basis": "string", "estimated_score_impact": number or null, "status": "active" },
+    { "creditor_name": "string", "account_number_masked": "string or null", "bureau": "Equifax" | "Experian" | "TransUnion", "item_type": "collection" | "late_payment" | "charge_off" | "public_record" | "repossession" | "foreclosure" | "other", "amount": number or null, "date_of_occurrence": "YYYY-MM-DD" | null, "date_reported": "YYYY-MM-DD" | null, "dispute_basis": "string", "estimated_score_impact": number or null, "status": "active" }
+  ],
+  "hard_inquiries": [ { "creditor_name": "string", "inquiry_date": "YYYY-MM-DD", "bureau": "string", "is_authorized": true | false } ],
+  "positive_accounts": [ { "creditor": "string", "account_type": "revolving" | "installment" | "mortgage" | "open", "balance": number or null, "credit_limit": number or null, "utilization": number or null, "status": "current", "account_open_date": "YYYY-MM-DD" | null, "is_open": true | false } ],
+  "average_account_age_months": number or null,
+  "oldest_account_age_months": number or null,
+  "discrepancies": [ { "account_name": "string", "issue": "string", "bureaus_affected": ["string"] } ]
+}
+Use only document-visible facts. If verification fails, set extraction_verified to false and return no fabricated fields.
+</document_sync_payload>
+
 Always identify the document type and bureau in your response.`,
           },
         ];
@@ -546,11 +610,9 @@ Always identify the document type and bureau in your response.`,
           // Fire-and-forget: sync + write memory
           triggerBackgroundSync(
             fullAssistantResponse,
-            attachedDocument!,
             user.id,
             authHeader,
             supabaseUrl,
-            lovableApiKey,
             supabaseServiceKey
           ).catch(err => console.error("Background sync error:", err));
           return;
@@ -586,68 +648,118 @@ function extractKeywords(text: string): string {
   return keywords ? keywords.join(",") : "";
 }
 
+async function runDocumentReadCheck(base64: string, lovableApiKey: string) {
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${lovableApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-pro",
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: DOCUMENT_READ_CHECK_PROMPT },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Run the read-check on this uploaded PDF credit report before any analysis." },
+            { type: "file", file: { data: base64, mime_type: "application/pdf" } },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to verify document readability before analysis.");
+  }
+
+  const data = await response.json();
+  const content = cleanJsonResponse(data.choices?.[0]?.message?.content || "");
+  return JSON.parse(content);
+}
+
+function cleanJsonResponse(content: string) {
+  return content.replace(/```json
+?/g, "").replace(/```
+?/g, "").trim();
+}
+
+function extractTaggedJson(source: string, tagName: string) {
+  const match = source.match(new RegExp(`<${tagName}>([\s\S]*?)<\/${tagName}>`));
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1].trim());
+  } catch (error) {
+    console.error(`Failed to parse ${tagName}:`, error);
+    return null;
+  }
+}
+
+function isScoreInRange(value: unknown) {
+  return typeof value === "number" && value >= 300 && value <= 850;
+}
+
+function validateVerifiedSyncPayload(structured: any) {
+  const errors: string[] = [];
+  if (!structured?.is_credit_report) errors.push("Document analysis did not confirm a credit report.");
+  if (!structured?.extraction_verified) errors.push("Document extraction was not verified as document-sourced.");
+  if (!Array.isArray(structured?.account_names_extracted) || structured.account_names_extracted.length < 1) {
+    errors.push("No verified account names were extracted from the document.");
+  }
+  if ((structured?.directly_read_account_count || 0) < 1) {
+    errors.push("The document read-check did not confirm any readable accounts.");
+  }
+
+  for (const bureau of ["equifax", "experian", "transunion"]) {
+    const score = structured?.scores?.[bureau];
+    if (score != null && !isScoreInRange(score)) {
+      errors.push(`The ${bureau} score failed validation.`);
+    }
+  }
+
+  if (structured?.fraud_alerts_visible && (!Array.isArray(structured?.fraud_alerts) || structured.fraud_alerts.length === 0)) {
+    errors.push("Fraud alerts were visible in the document but missing from the verified sync payload.");
+  }
+
+  return errors;
+}
+
 async function triggerBackgroundSync(
   analysisText: string,
-  document: { base64: string; fileName: string },
   callerUserId: string,
   authHeader: string,
   supabaseUrl: string,
-  lovableApiKey: string,
   serviceRoleKey: string,
 ) {
   console.log("Starting background credit report sync...");
 
-  const extractionPrompt = `You are a data extraction assistant. Given the following credit report analysis text, extract structured data as JSON.
-
-Return ONLY valid JSON with this exact structure (no markdown, no explanation):
-{
-  "is_credit_report": true/false,
-  "report_type": "consumer" or "business",
-  "scores": { "equifax": number or null, "experian": number or null, "transunion": number or null },
-  "negative_items": [
-    { "creditor_name": "string", "account_number_masked": "string or null", "bureau": "Equifax" or "Experian" or "TransUnion", "item_type": "collection" or "late_payment" or "charge_off" or "public_record" or "repossession" or "foreclosure" or "other", "amount": number or null, "date_of_occurrence": "YYYY-MM-DD" or null, "dispute_basis": "string", "estimated_score_impact": number or null, "status": "active" }
-  ],
-  "hard_inquiries": [
-    { "creditor_name": "string", "inquiry_date": "YYYY-MM-DD", "bureau": "string", "is_authorized": true/false }
-  ],
-  "positive_accounts": [
-    { "creditor": "string", "account_type": "revolving" or "installment" or "mortgage" or "open", "balance": number or null, "credit_limit": number or null, "utilization": number or null, "status": "current", "account_open_date": "YYYY-MM-DD" or null, "is_open": true/false }
-  ],
-  "average_account_age_months": number or null,
-  "oldest_account_age_months": number or null,
-  "discrepancies": [
-    { "account_name": "string", "issue": "string", "bureaus_affected": ["Equifax", "Experian"] }
-  ]
-}
-
-If NOT a credit report: {"is_credit_report": false}
-
-ANALYSIS TEXT:
-${analysisText}`;
-
   try {
-    const extractResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [{ role: "user", content: extractionPrompt }],
-        response_format: { type: "json_object" },
-      }),
-    });
+    const structured = extractTaggedJson(analysisText, "document_sync_payload");
+    if (!structured) {
+      console.error("No document_sync_payload found in analysis response");
+      return;
+    }
 
-    if (!extractResponse.ok) { console.error("Extraction failed:", extractResponse.status); return; }
+    const validationErrors = validateVerifiedSyncPayload(structured);
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    const extractData = await extractResponse.json();
-    const content = extractData.choices?.[0]?.message?.content;
-    if (!content) { console.error("No extraction content"); return; }
+    if (validationErrors.length > 0) {
+      await supabase.from("audit_logs").insert({
+        user_id: callerUserId,
+        entity: "credit_report",
+        action: "chat_report_sync_validation_failed",
+        data: {
+          source: "chat_document_upload",
+          validation_errors: validationErrors,
+          sync_payload: structured,
+        },
+      });
+      console.error("Sync payload validation failed:", validationErrors.join(" | "));
+      return;
+    }
 
-    let structured: any;
-    try { structured = JSON.parse(content); } catch { console.error("Failed to parse extraction JSON"); return; }
-
-    if (!structured.is_credit_report) { console.log("Not a credit report, skipping sync"); return; }
-
-    // Call sync edge function
     const syncPayload = {
       target_user_id: callerUserId,
       report_type: structured.report_type || "consumer",
@@ -658,6 +770,11 @@ ${analysisText}`;
       average_account_age_months: structured.average_account_age_months,
       oldest_account_age_months: structured.oldest_account_age_months,
       discrepancies: structured.discrepancies || [],
+      fraud_alerts_visible: structured.fraud_alerts_visible || false,
+      fraud_alerts: structured.fraud_alerts || [],
+      extraction_verified: structured.extraction_verified === true,
+      account_names_extracted: structured.account_names_extracted || [],
+      confidence_statement: structured.confidence_statement || null,
     };
 
     const syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
@@ -670,10 +787,9 @@ ${analysisText}`;
       console.log("Credit report sync completed");
     } else {
       console.error("Sync error:", syncResponse.status, await syncResponse.text());
+      return;
     }
 
-    // Write report_upload memory record
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
     const scores = structured.scores || {};
     const negCount = (structured.negative_items || []).length;
     const inqCount = (structured.hard_inquiries || []).length;
