@@ -14,7 +14,7 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 
-const DEV_MODE = true; // Set to false to require authentication
+const DEV_MODE = false; // Require authentication
 
 const AppShell = () => {
   const [user, setUser] = useState<User | null>(null);
