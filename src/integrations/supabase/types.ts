@@ -2076,6 +2076,54 @@ export type Database = {
         }
         Relationships: []
       }
+      funding_readiness_scores: {
+        Row: {
+          banking_history_score: number
+          business_credit_score: number
+          created_at: string
+          entity_structure_score: number
+          id: string
+          last_calculated_at: string | null
+          lender_alignment_score: number
+          overall_score: number
+          personal_credit_score: number
+          revenue_documentation_score: number
+          score_explanations: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          banking_history_score?: number
+          business_credit_score?: number
+          created_at?: string
+          entity_structure_score?: number
+          id?: string
+          last_calculated_at?: string | null
+          lender_alignment_score?: number
+          overall_score?: number
+          personal_credit_score?: number
+          revenue_documentation_score?: number
+          score_explanations?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          banking_history_score?: number
+          business_credit_score?: number
+          created_at?: string
+          entity_structure_score?: number
+          id?: string
+          last_calculated_at?: string | null
+          lender_alignment_score?: number
+          overall_score?: number
+          personal_credit_score?: number
+          revenue_documentation_score?: number
+          score_explanations?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       invitations: {
         Row: {
           accepted_at: string | null
