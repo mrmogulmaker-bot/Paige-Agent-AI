@@ -2620,6 +2620,39 @@ export type Database = {
         }
         Relationships: []
       }
+      outbound_webhook_configs: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          is_active: boolean
+          label: string
+          subscribed_events: string[]
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          is_active?: boolean
+          label: string
+          subscribed_events?: string[]
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          subscribed_events?: string[]
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
+      }
       pii_access_log: {
         Row: {
           access_type: string
@@ -2778,6 +2811,39 @@ export type Database = {
           user_id?: string | null
           webhook_code?: string
           webhook_type?: string
+        }
+        Relationships: []
+      }
+      platform_api_keys: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          is_active: boolean
+          key_hash: string
+          key_prefix: string
+          label: string
+          revoked_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          is_active?: boolean
+          key_hash: string
+          key_prefix: string
+          label?: string
+          revoked_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          is_active?: boolean
+          key_hash?: string
+          key_prefix?: string
+          label?: string
+          revoked_at?: string | null
         }
         Relationships: []
       }
@@ -3364,6 +3430,48 @@ export type Database = {
           turn_id?: string
           user_id?: string
           utterance?: string
+        }
+        Relationships: []
+      }
+      webhook_event_log: {
+        Row: {
+          created_at: string
+          direction: string
+          event_type: string
+          http_status: number | null
+          id: string
+          payload_summary: Json | null
+          request_payload: Json | null
+          response_body: string | null
+          retry_count: number
+          status: string
+          target_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          direction: string
+          event_type: string
+          http_status?: number | null
+          id?: string
+          payload_summary?: Json | null
+          request_payload?: Json | null
+          response_body?: string | null
+          retry_count?: number
+          status?: string
+          target_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          direction?: string
+          event_type?: string
+          http_status?: number | null
+          id?: string
+          payload_summary?: Json | null
+          request_payload?: Json | null
+          response_body?: string | null
+          retry_count?: number
+          status?: string
+          target_url?: string | null
         }
         Relationships: []
       }
