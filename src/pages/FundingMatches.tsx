@@ -66,9 +66,9 @@ export default function FundingMatches() {
           <p className="text-muted-foreground mt-1">
             Products matched to your real profile — not guesswork.
           </p>
-          {lowestScore && (
+          {middleScore && (
             <p className="text-xs text-muted-foreground mt-1">
-              Matching against your synced FICO scores (lowest: {lowestScore})
+              Matching against your synced FICO scores (lowest: {middleScore})
             </p>
           )}
         </div>
@@ -147,9 +147,9 @@ export default function FundingMatches() {
             <p className="text-sm text-muted-foreground mt-1 mb-2">
               See how score improvements would unlock new funding
             </p>
-            {lowestScore && (
+            {middleScore && (
               <p className="text-xs text-muted-foreground mb-4">
-                Baseline: {lowestScore} (lowest bureau score from your synced report)
+                Baseline: {middleScore} (lowest bureau score from your synced report)
               </p>
             )}
             <Button
@@ -157,7 +157,7 @@ export default function FundingMatches() {
                 createProjection.mutate({
                   scenario_name: "Score +40, Remove Collections",
                   scenario_params: {
-                    baseline_score: lowestScore || 600,
+                    baseline_score: middleScore || 600,
                     score_change: 40,
                     remove_collections: 2,
                     reduce_utilization_to: 25,
@@ -212,7 +212,7 @@ export default function FundingMatches() {
           {(!matches || matches.length === 0) && !runMatch.isPending && (
             <Card className="p-8 text-center">
               <p className="text-muted-foreground">
-                {lowestScore
+                {middleScore
                   ? "No matches yet. Click \"Run Match\" to scan lender products against your synced profile."
                   : "Upload a credit report via Paige chat first, then run a match to see eligible products."}
               </p>
