@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Download, Copy } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { writeDisputeMemory } from "@/lib/clientMemory";
 
 interface DisputeLetterDialogProps {
   open: boolean;
@@ -56,6 +57,14 @@ export function DisputeLetterDialog({ open, onOpenChange, bureauData }: DisputeL
 
       if (data?.letter) {
         setLetter(data.letter);
+
+        // Write memory record for this dispute generation
+        supabase.auth.getUser().then(({ data: userData }) => {
+          if (userData?.user) {
+            writeDisputeMemory(userData.user.id, bureauData.name, bureauData.name, issueType);
+          }
+        });
+
         toast({
           title: "Letter Generated",
           description: "Your dispute letter has been created successfully.",

@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, User, DollarSign, FileText, CheckSquare, Landmark, Mail, StickyNote, Upload, AlertTriangle } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
 import { OutreachCenter } from "./OutreachCenter";
 import { PMEFundingReadiness } from "./PMEFundingReadiness";
+import { ClientMemoryTab } from "./ClientMemoryTab";
 
 interface ClientFileViewProps {
   clientUserId: string;
@@ -52,7 +53,6 @@ export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={onBack}>
           <ArrowLeft className="w-4 h-4 mr-1" /> Back
@@ -61,7 +61,7 @@ export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
           <h2 className="text-2xl font-bold text-foreground">
             {profile?.full_name || "Client File"}
           </h2>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             {profile?.city && profile?.state && (
               <span className="text-sm text-muted-foreground">{profile.city}, {profile.state}</span>
             )}
@@ -83,7 +83,6 @@ export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
         </div>
       </div>
 
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="credit-reports" className="text-xs">
@@ -97,6 +96,9 @@ export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
           </TabsTrigger>
           <TabsTrigger value="outreach" className="text-xs">
             <Mail className="w-3 h-3 mr-1" /> Outreach
+          </TabsTrigger>
+          <TabsTrigger value="memory" className="text-xs">
+            <Brain className="w-3 h-3 mr-1" /> Memory
           </TabsTrigger>
           <TabsTrigger value="notes" className="text-xs">
             <StickyNote className="w-3 h-3 mr-1" /> Notes
@@ -121,6 +123,10 @@ export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
 
         <TabsContent value="outreach" className="mt-4">
           <OutreachCenter clientUserId={clientUserId} />
+        </TabsContent>
+
+        <TabsContent value="memory" className="mt-4">
+          <ClientMemoryTab clientUserId={clientUserId} />
         </TabsContent>
 
         <TabsContent value="notes" className="mt-4">
