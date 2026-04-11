@@ -400,36 +400,79 @@ ${relevantKnowledge}`;
             text: msg.content + `\n\n[Attached document: ${attachedDocument.fileName}]
 
 === CREDIT REPORT ANALYSIS INSTRUCTIONS ===
-If this document is a credit report, produce a STRUCTURED analysis in the following exact format. Use a professional, precise, advisory tone — like a senior credit analyst. Do NOT use sales language or motivational framing for report analysis.
+If this document is a credit report (especially a tri-merge report from MyFreeScoreNow, IdentityIQ, SmartCredit, or similar), produce a STRUCTURED analysis in the following exact format. Use a professional, precise, advisory tone — like a senior credit analyst.
+
+**TRI-MERGE FORMAT**: These reports present each account in three columns — TransUnion (left), Experian (middle), Equifax (right). Dashes (--) mean NOT reported at that bureau. Read each column independently. An account with data in one column and dashes in others reports to only ONE bureau — this is critical for dispute targeting.
+
+**SECTION 0 — FRAUD ALERTS & SECURITY FREEZES (if present)**
+Check the Consumer Statement section FIRST. If fraud alerts or security freezes exist, display them BEFORE any other content:
+- Alert type (Initial Fraud Alert, Extended Fraud Alert, ID Security Alert)
+- Which bureaus have the alert active
+- Expiration date if listed
+- Plain-language note: "Any lender approached must take additional identity verification steps before extending credit."
+- For security freezes: Note which bureaus have active freezes and instruct that the freeze must be temporarily lifted before any lender applications at that bureau.
 
 **SECTION 1 — BUREAU SCORES SUMMARY**
-Three-column table: Equifax | Experian | TransUnion. Show score, classification (Poor/Fair/Good/Very Good/Excellent), primary factor. "Not Reported" if missing.
+Three-column table: Equifax | Experian | TransUnion. Show score, classification (Poor/Fair/Good/Very Good/Excellent), primary suppressing factor. "Not Reported" if missing.
 
 **SECTION 2 — BUREAU-BY-BUREAU NEGATIVE ITEM BREAKDOWN**
-Per bureau (EQ, EX, TU): Account Name, Type, Number (masked), Date of Last Activity, Balance, Dispute Basis (FCRA/FDCPA statutory grounds only).
-Default bases: Collections → FDCPA §809(b), Late payments → FCRA §611(a), Unauthorized inquiries → FCRA §604, Not mine → FCRA §611(a)(7), Inaccurate info → FCRA §611(a)(1)(A).
-NEVER fabricate dispute reasons or imply creditor agreements without documented proof.
+Per bureau (EQ, EX, TU): Account Name, Original Creditor (if different), Type, Account Number (masked), Date of Last Activity, Balance, Creditor Remarks (exact text), Dispute Basis.
 
-**SECTION 3 — CROSS-BUREAU DISCREPANCIES**
-Accounts with inconsistent reporting across bureaus. Flag as high-priority under FCRA §623(a)(2).
+Extract ALL negative types:
+- Collection/Charge-off accounts with current balance and original creditor
+- Late payment history (30/60/90/120/150 days) even if account is now current — extract from Days Late section and Two-Year Payment History grid
+- Accounts with "Profit and Loss Write-Off", "Unpaid Balance Reported as Loss", "Charged Off as Bad Debt" remarks
+- Public records: bankruptcies, tax liens, judgments
+
+Dispute bases (LEGITIMATE STATUTORY LANGUAGE ONLY):
+- Charge-offs: "Requesting verification of accuracy and completeness pursuant to FCRA Section 611. Please provide original account agreement and payment history."
+- Collections: "Requesting full validation pursuant to FDCPA Section 809(b). Provide verification of original creditor, original amount, and authority to collect."
+- Cross-bureau discrepancies: "Account reported inconsistently across bureaus in violation of FCRA Section 623(a)(1). Requesting correction of inaccurate information."
+- Unknown/not mine: "No knowledge of this account. Requesting removal pursuant to FCRA Section 611 and method of verification used."
+- Unauthorized inquiries: "Did not authorize this inquiry. Requesting removal pursuant to FCRA Section 604."
+NEVER fabricate creditor agreements or promises. NEVER claim a creditor made an agreement unless the client explicitly states they have written documentation.
+
+Priority ranking:
+1. Single-bureau items with large balances (highest success rate)
+2. Cross-bureau discrepancies (strongest FCRA basis)
+3. Recent charge-offs with highest balances (most score impact)
+4. Older items with smaller balances
+5. Third-party collection accounts
+
+**SECTION 3 — CROSS-BUREAU DISCREPANCIES — DISPUTE PRIORITY ITEMS**
+Compare the same debt across all three bureaus. Flag:
+- Same debt under different tradeline names (e.g., "JEFFERSON CAPITAL SYST" at one bureau vs "JEFFCAPSYS" at another)
+- Same debt appearing at some bureaus but not others (especially large balances)
+- Same account showing different balances across bureaus
+- Same account showing different dates or status across bureaus
+Each is an FCRA Section 611/623 dispute target. List the account, the specific inconsistency, and which bureaus are affected.
 
 **SECTION 4 — POSITIVE ACCOUNTS SUMMARY**
-Accounts in good standing with limits, balances, utilization, payment status, oldest account, average age.
+Accounts in good standing: creditor, type, limit, balance, utilization %, payment status, age, bureaus reporting.
 
-**SECTION 5 — PRIORITY ACTION PLAN**
+**SECTION 5 — HARD INQUIRIES**
+List all hard inquiries with creditor name, date, bureau. Flag any that appear potentially unauthorized.
+
+**SECTION 6 — FUNDING STRATEGY IMPACT**
+This section MUST be specific to the actual scores and negatives found — NOT generic advice. Address:
+- What the current score range qualifies for (e.g., "606-622 range: most traditional banks require 680+ for unsecured business credit")
+- Which product categories are accessible now (secured cards, credit builders, etc.)
+- Which charge-offs or negatives must be addressed before higher-tier lending is realistic
+- If fraud alerts exist, note they must be disclosed to any lender
+- The next 2-3 concrete milestones before funding options expand
+Give the client a realistic picture — not motivational fluff.
+
+**SECTION 7 — PRIORITY ACTION PLAN**
 Top 5 actions ranked by score impact. Include bureau(s), estimated impact range, statutory basis.
 
-**SECTION 6 — COMPLIANCE DISCLAIMER**
+**SECTION 8 — COMPLIANCE DISCLAIMER**
 "*This analysis is provided for educational purposes only. PME does not guarantee specific credit score improvements, does not make credit decisions, and does not send communications to credit bureaus or collectors on your behalf. Dispute letters are templates for your use. Consult a qualified attorney for legal advice.*"
-
-=== DISPUTE LETTER GENERATION RULES ===
-ONLY legitimate FCRA/FDCPA statutory language. Collections → FDCPA §809(b). Late payments → FCRA §611. Unauthorized inquiries → FCRA §604. NEVER claim creditor agreements without documented proof.
 
 === FINANCIAL DOCUMENT INSTRUCTIONS ===
 If financial document (bank statement, P&L, tax return), offer lender-ready summary. Identify type, date range, key metrics.
 
 === DOCUMENT CONTEXT SUMMARY (for within-session memory) ===
-After completing your analysis, append a hidden context block wrapped in <document_summary> tags containing: report_type, bureau scores, negative item count with account names, inquiry count, discrepancy list, oldest account, average account age. This will be extracted for session memory. Format as compact JSON.
+After completing your analysis, append a hidden context block wrapped in <document_summary> tags containing: report_type, bureau scores, fraud_alerts (if any), security_freezes (if any), negative item count with account names and bureaus, inquiry count, discrepancy list with specific accounts, oldest account, average account age, funding strategy summary. Format as compact JSON.
 </document_summary>
 
 Always identify the document type and bureau in your response.`,
