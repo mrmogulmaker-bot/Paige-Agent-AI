@@ -83,8 +83,7 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -92,14 +91,39 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+    // Auth: accept either user token or service role key
+    let targetUserId: string;
+    let callerUserId: string;
+
+    if (authHeader.includes(supabaseServiceKey)) {
+      // Called internally with service role key - trust target_user_id from payload
+      const rawData = await req.json();
+      let payload;
+      try {
+        payload = SyncPayloadSchema.parse(rawData);
+      } catch (err) {
+        if (err instanceof z.ZodError) {
+          return new Response(JSON.stringify({ error: "Invalid payload", details: err.issues }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        throw err;
+      }
+      targetUserId = payload.target_user_id;
+      callerUserId = "service_role";
+
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      return await processSync(supabase, payload, targetUserId, callerUserId);
+    }
+
+    // User token auth
     const supabaseClient = createClient(supabaseUrl, supabaseKey, {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Invalid auth" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -110,17 +134,18 @@ serve(async (req) => {
     } catch (err) {
       if (err instanceof z.ZodError) {
         return new Response(JSON.stringify({ error: "Invalid payload", details: err.issues }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       throw err;
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const targetUserId = payload.target_user_id;
+    targetUserId = payload.target_user_id;
+    callerUserId = user.id;
 
-    // === Authorization check ===
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Authorization check
     if (user.id !== targetUserId) {
       const { data: isAdmin } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" });
       if (!isAdmin) {
@@ -136,9 +161,22 @@ serve(async (req) => {
       }
     }
 
-    const results: Record<string, any> = {};
+    return await processSync(supabase, payload, targetUserId, callerUserId);
+  } catch (error) {
+    console.error("Sync error:", error);
+    return new Response(JSON.stringify({ error: "Internal error", message: error instanceof Error ? error.message : "Unknown" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
 
-    // ========== 1. CREDIT SCORES ==========
+async function processSync(supabase: any, payload: any, targetUserId: string, callerUserId: string) {
+  const results: Record<string, any> = {};
+  let currentStep = "init";
+
+  try {
+    // ========== STEP 1: CREDIT SCORES ==========
+    currentStep = "scores";
     if (payload.scores) {
       const { equifax, experian, transunion } = payload.scores;
       const { data: prevProfile } = await supabase
@@ -152,8 +190,10 @@ serve(async (req) => {
       if (transunion != null) updateFields.estimated_fico_tu = transunion;
 
       const { error: scoreErr } = await supabase.from("profiles").update(updateFields).eq("user_id", targetUserId);
-      if (scoreErr) console.error("Score update error:", scoreErr);
-      else {
+      if (scoreErr) {
+        console.error("Score update error:", scoreErr);
+        results.scores_error = scoreErr.message;
+      } else {
         results.scores_updated = true;
         if (prevProfile) {
           await supabase.from("audit_logs").insert({
@@ -161,26 +201,25 @@ serve(async (req) => {
             data: {
               previous: { equifax: prevProfile.estimated_fico_eq, experian: prevProfile.estimated_fico_ex, transunion: prevProfile.estimated_fico_tu },
               new: { equifax, experian, transunion },
-              source: "chat_report_upload", updated_by: user.id,
+              source: "chat_report_upload", updated_by: callerUserId,
             },
           });
         }
       }
     }
 
-    // ========== 2. NEGATIVE ITEMS (Fix 1) ==========
+    // ========== STEP 2: NEGATIVE ITEMS ==========
+    currentStep = "negative_items";
     let negativeItemsInserted = 0;
     let negativeItemsUpdated = 0;
     for (const item of payload.negative_items) {
       const matchQuery = supabase
         .from("credit_negative_items").select("id")
         .eq("user_id", targetUserId)
-        .eq("item_type", item.item_type);
+        .eq("creditor_name", item.creditor_name)
+        .eq("bureau", item.bureau);
 
-      // Match on creditor_name
-      if (item.creditor_name) matchQuery.eq("creditor_name", item.creditor_name);
       if (item.account_number_masked) matchQuery.eq("account_number_masked", item.account_number_masked);
-      else matchQuery.eq("bureau", item.bureau);
 
       const { data: existing } = await matchQuery.maybeSingle();
 
@@ -188,11 +227,12 @@ serve(async (req) => {
         await supabase.from("credit_negative_items").update({
           status: item.status,
           amount: item.amount,
+          item_type: item.item_type,
           notes: item.dispute_basis,
           removal_probability: item.estimated_score_impact,
-          bureau: item.bureau,
           date_of_occurrence: item.date_of_occurrence || null,
           date_reported: item.date_reported || null,
+          is_removable: true,
           updated_at: new Date().toISOString(),
         }).eq("id", existing.id);
         negativeItemsUpdated++;
@@ -216,19 +256,16 @@ serve(async (req) => {
     }
     results.negative_items = { inserted: negativeItemsInserted, updated: negativeItemsUpdated };
 
-    // ========== 3. HARD INQUIRIES ==========
+    // ========== STEP 3: HARD INQUIRIES ==========
+    currentStep = "hard_inquiries";
     let inquiriesInserted = 0;
-    let inquiriesUpdated = 0;
     for (const inq of payload.hard_inquiries) {
       const { data: existing } = await supabase
         .from("credit_inquiries").select("id")
         .eq("user_id", targetUserId).eq("creditor_name", inq.creditor_name).eq("inquiry_date", inq.inquiry_date)
         .maybeSingle();
 
-      if (existing) {
-        await supabase.from("credit_inquiries").update({ bureau: inq.bureau, is_authorized: inq.is_authorized }).eq("id", existing.id);
-        inquiriesUpdated++;
-      } else {
+      if (!existing) {
         await supabase.from("credit_inquiries").insert({
           user_id: targetUserId, creditor_name: inq.creditor_name, inquiry_date: inq.inquiry_date,
           bureau: inq.bureau, is_authorized: inq.is_authorized,
@@ -237,28 +274,18 @@ serve(async (req) => {
         inquiriesInserted++;
       }
     }
-    results.hard_inquiries = { inserted: inquiriesInserted, updated: inquiriesUpdated };
+    results.hard_inquiries = { inserted: inquiriesInserted };
 
-    // ========== 4. POSITIVE ACCOUNTS (Fix 2) ==========
+    // ========== STEP 4: POSITIVE ACCOUNTS ==========
+    currentStep = "positive_accounts";
     let accountsInserted = 0;
     let accountsUpdated = 0;
     const accountTypeMap: Record<string, string> = {
-      revolving: "credit_card",
-      "credit card": "credit_card",
-      "credit_card": "credit_card",
-      installment: "personal_loan",
-      "auto loan": "auto_loan",
-      "auto": "auto_loan",
-      auto_loan: "auto_loan",
-      mortgage: "mortgage",
-      "student loan": "student_loan",
-      student_loan: "student_loan",
-      collections: "collections",
-      "personal loan": "personal_loan",
-      personal_loan: "personal_loan",
-      "secured card": "credit_card",
-      rental: "personal_loan",
-      open: "credit_card",
+      revolving: "credit_card", "credit card": "credit_card", credit_card: "credit_card",
+      installment: "personal_loan", "auto loan": "auto_loan", auto: "auto_loan", auto_loan: "auto_loan",
+      mortgage: "mortgage", "student loan": "student_loan", student_loan: "student_loan",
+      collections: "collections", "personal loan": "personal_loan", personal_loan: "personal_loan",
+      "secured card": "credit_card", rental: "personal_loan", open: "credit_card",
     };
 
     for (const acct of payload.positive_accounts) {
@@ -268,7 +295,6 @@ serve(async (req) => {
         .maybeSingle();
 
       const mappedType = accountTypeMap[acct.account_type?.toLowerCase()] || "credit_card";
-
       const acctData = {
         balance: acct.balance,
         current_balance: acct.balance,
@@ -286,24 +312,20 @@ serve(async (req) => {
         accountsUpdated++;
       } else {
         await supabase.from("credit_accounts").insert({
-          user_id: targetUserId,
-          creditor: acct.creditor,
-          type: mappedType,
-          ...acctData,
+          user_id: targetUserId, creditor: acct.creditor, type: mappedType, ...acctData,
         });
         accountsInserted++;
       }
     }
     results.positive_accounts = { inserted: accountsInserted, updated: accountsUpdated };
 
-    // ========== 5. RECALCULATE CREDIT FACTOR SCORES (Fix 3) ==========
+    // ========== STEP 5: RECALCULATE CREDIT FACTOR SCORES ==========
+    currentStep = "credit_factors";
     try {
-      // Fetch all data for this user from the tables we just populated
-      const [negRes, acctRes, inqRes, profileRes] = await Promise.all([
+      const [negRes, acctRes, inqRes] = await Promise.all([
         supabase.from("credit_negative_items").select("*").eq("user_id", targetUserId).eq("status", "active"),
         supabase.from("credit_accounts").select("*").eq("user_id", targetUserId),
         supabase.from("credit_inquiries").select("*").eq("user_id", targetUserId).eq("status", "active"),
-        supabase.from("profiles").select("estimated_fico_eq, estimated_fico_ex, estimated_fico_tu").eq("user_id", targetUserId).maybeSingle(),
       ]);
 
       const negatives = negRes.data || [];
@@ -311,109 +333,84 @@ serve(async (req) => {
       const inquiries = inqRes.data || [];
 
       // --- Payment History Score ---
-      const chargeOffs = negatives.filter(n => n.item_type?.toLowerCase().includes("charge") || n.item_type?.toLowerCase().includes("chargeoff") || n.item_type?.toLowerCase() === "charge-off");
-      const collections = negatives.filter(n => n.item_type?.toLowerCase().includes("collection"));
-      const latePayments = negatives.filter(n => n.item_type?.toLowerCase().includes("late"));
+      const chargeOffs = negatives.filter((n: any) => {
+        const t = (n.item_type || "").toLowerCase();
+        return t.includes("charge") || t === "charge-off" || t === "charge_off";
+      });
+      const collections = negatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("collection"));
+      const latePayments = negatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("late"));
       
       let paymentHistoryScore = 100;
-      // Each charge-off costs 15 points (max loss 75)
       paymentHistoryScore -= Math.min(chargeOffs.length * 15, 75);
-      // Each collection costs 12 points (max loss 60)
       paymentHistoryScore -= Math.min(collections.length * 12, 60);
-      // Each late payment costs 5 points (max loss 25)
       paymentHistoryScore -= Math.min(latePayments.length * 5, 25);
-      // High-balance negatives cost extra
-      const highBalanceNegs = negatives.filter(n => (n.amount || 0) > 1000);
+      const highBalanceNegs = negatives.filter((n: any) => (n.amount || 0) > 1000);
       paymentHistoryScore -= Math.min(highBalanceNegs.length * 3, 15);
       paymentHistoryScore = Math.max(0, paymentHistoryScore);
 
       // --- Utilization Score ---
-      const revolvingAccounts = accounts.filter(a => a.type === "credit_card" && a.is_open !== false);
-      const totalRevolvingBalance = revolvingAccounts.reduce((s, a) => s + (Number(a.current_balance || a.balance) || 0), 0);
-      const totalRevolvingLimit = revolvingAccounts.reduce((s, a) => s + (Number(a.credit_limit || a.limit_amount) || 0), 0);
+      const revolvingAccounts = accounts.filter((a: any) => a.type === "credit_card" && a.is_open !== false);
+      const totalRevolvingBalance = revolvingAccounts.reduce((s: number, a: any) => s + (Number(a.current_balance || a.balance) || 0), 0);
+      const totalRevolvingLimit = revolvingAccounts.reduce((s: number, a: any) => s + (Number(a.credit_limit || a.limit_amount) || 0), 0);
       const aggregateUtilization = totalRevolvingLimit > 0 ? (totalRevolvingBalance / totalRevolvingLimit) * 100 : 0;
       
-      const cardsOver30 = revolvingAccounts.filter(a => {
-        const limit = Number(a.credit_limit || a.limit_amount) || 0;
-        const bal = Number(a.current_balance || a.balance) || 0;
-        return limit > 0 && (bal / limit) > 0.3;
-      }).length;
-      const cardsOver50 = revolvingAccounts.filter(a => {
-        const limit = Number(a.credit_limit || a.limit_amount) || 0;
-        const bal = Number(a.current_balance || a.balance) || 0;
-        return limit > 0 && (bal / limit) > 0.5;
-      }).length;
-      const cardsOver70 = revolvingAccounts.filter(a => {
-        const limit = Number(a.credit_limit || a.limit_amount) || 0;
-        const bal = Number(a.current_balance || a.balance) || 0;
-        return limit > 0 && (bal / limit) > 0.7;
-      }).length;
+      const cardsOver30 = revolvingAccounts.filter((a: any) => { const l = Number(a.credit_limit || a.limit_amount) || 0; const b = Number(a.current_balance || a.balance) || 0; return l > 0 && (b / l) > 0.3; }).length;
+      const cardsOver50 = revolvingAccounts.filter((a: any) => { const l = Number(a.credit_limit || a.limit_amount) || 0; const b = Number(a.current_balance || a.balance) || 0; return l > 0 && (b / l) > 0.5; }).length;
+      const cardsOver70 = revolvingAccounts.filter((a: any) => { const l = Number(a.credit_limit || a.limit_amount) || 0; const b = Number(a.current_balance || a.balance) || 0; return l > 0 && (b / l) > 0.7; }).length;
 
       let utilizationScore = 100;
       if (aggregateUtilization > 70) utilizationScore = 15;
       else if (aggregateUtilization > 50) utilizationScore = 35;
       else if (aggregateUtilization > 30) utilizationScore = 55;
       else if (aggregateUtilization > 10) utilizationScore = 80;
-      // Penalize individual cards over limits
       utilizationScore -= Math.min(cardsOver70 * 10, 30);
       utilizationScore = Math.max(0, utilizationScore);
 
       // --- Credit Age Score ---
-      const accountsWithDates = accounts.filter(a => a.account_open_date);
+      const accountsWithDates = accounts.filter((a: any) => a.account_open_date);
       const now = new Date();
-      let oldestAgeMonths = 0;
-      let newestAgeMonths = 0;
-      let avgAgeMonths = 0;
+      let oldestAgeMonths = 0, newestAgeMonths = 0, avgAgeMonths = 0;
 
       if (accountsWithDates.length > 0) {
-        const ages = accountsWithDates.map(a => {
+        const ages = accountsWithDates.map((a: any) => {
           const opened = new Date(a.account_open_date!);
           return Math.round((now.getTime() - opened.getTime()) / (1000 * 60 * 60 * 24 * 30.44));
         });
         oldestAgeMonths = Math.max(...ages);
         newestAgeMonths = Math.min(...ages);
-        avgAgeMonths = Math.round(ages.reduce((s, a) => s + a, 0) / ages.length);
+        avgAgeMonths = Math.round(ages.reduce((s: number, a: number) => s + a, 0) / ages.length);
       } else if (payload.oldest_account_age_months != null) {
         oldestAgeMonths = payload.oldest_account_age_months;
         avgAgeMonths = payload.average_account_age_months || oldestAgeMonths;
       }
 
       let creditAgeScore = 0;
-      if (avgAgeMonths >= 84) creditAgeScore = 100;       // 7+ years
-      else if (avgAgeMonths >= 60) creditAgeScore = 80;    // 5+ years
-      else if (avgAgeMonths >= 36) creditAgeScore = 60;    // 3+ years
-      else if (avgAgeMonths >= 24) creditAgeScore = 45;    // 2+ years
-      else if (avgAgeMonths >= 12) creditAgeScore = 30;    // 1+ year
+      if (avgAgeMonths >= 84) creditAgeScore = 100;
+      else if (avgAgeMonths >= 60) creditAgeScore = 80;
+      else if (avgAgeMonths >= 36) creditAgeScore = 60;
+      else if (avgAgeMonths >= 24) creditAgeScore = 45;
+      else if (avgAgeMonths >= 12) creditAgeScore = 30;
       else creditAgeScore = 15;
 
       // --- Credit Mix Score ---
-      const revolvingCount = accounts.filter(a => a.type === "credit_card").length;
-      const installmentCount = accounts.filter(a => ["personal_loan", "auto_loan", "student_loan"].includes(a.type)).length;
-      const mortgageCount = accounts.filter(a => a.type === "mortgage").length;
+      const revolvingCount = accounts.filter((a: any) => a.type === "credit_card").length;
+      const installmentCount = accounts.filter((a: any) => ["personal_loan", "auto_loan", "student_loan"].includes(a.type)).length;
+      const mortgageCount = accounts.filter((a: any) => a.type === "mortgage").length;
       const typeCount = [revolvingCount > 0, installmentCount > 0, mortgageCount > 0].filter(Boolean).length;
       
-      let creditMixScore = 0;
-      if (typeCount >= 3) creditMixScore = 100;
-      else if (typeCount === 2) creditMixScore = 70;
-      else if (typeCount === 1) creditMixScore = 40;
-      else creditMixScore = 10;
-      // Bonus for having many accounts
+      let creditMixScore = typeCount >= 3 ? 100 : typeCount === 2 ? 70 : typeCount === 1 ? 40 : 10;
       if (accounts.length >= 10) creditMixScore = Math.min(100, creditMixScore + 10);
 
       // --- Inquiry Score ---
       const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-      const twelveMonthsAgo = new Date(); twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
-      
       const inqByBureau = { tu: 0, ex: 0, eq: 0 };
       for (const inq of inquiries) {
-        const b = inq.bureau?.toLowerCase() || "";
+        const b = (inq.bureau || "").toLowerCase();
         if (b.includes("trans")) inqByBureau.tu++;
         else if (b.includes("exper")) inqByBureau.ex++;
         else if (b.includes("equi")) inqByBureau.eq++;
       }
-      const totalInquiries = inquiries.length;
-      const recentInquiries = inquiries.filter(i => new Date(i.inquiry_date) >= sixMonthsAgo).length;
-
+      const recentInquiries = inquiries.filter((i: any) => new Date(i.inquiry_date) >= sixMonthsAgo).length;
       let inquiryScore = 100;
       if (recentInquiries > 6) inquiryScore = 20;
       else if (recentInquiries > 4) inquiryScore = 40;
@@ -421,13 +418,8 @@ serve(async (req) => {
       else if (recentInquiries > 0) inquiryScore = 80;
       const inquiryBudgetRemaining = Math.max(0, 6 - recentInquiries);
 
-      // --- Overall Fundability Score (weighted) ---
       const overallScore = Math.round(
-        paymentHistoryScore * 0.35 +
-        utilizationScore * 0.30 +
-        creditAgeScore * 0.15 +
-        creditMixScore * 0.10 +
-        inquiryScore * 0.10
+        paymentHistoryScore * 0.35 + utilizationScore * 0.30 + creditAgeScore * 0.15 + creditMixScore * 0.10 + inquiryScore * 0.10
       );
 
       const factorData = {
@@ -457,7 +449,7 @@ serve(async (req) => {
         total_inquiries_ex: inqByBureau.ex,
         total_inquiries_eq: inqByBureau.eq,
         inquiry_budget_remaining: inquiryBudgetRemaining,
-        oldest_negative_date: negatives.length > 0 ? negatives.reduce((oldest, n) => {
+        oldest_negative_date: negatives.length > 0 ? negatives.reduce((oldest: string | null, n: any) => {
           const d = n.date_of_occurrence || n.date_reported;
           return d && (!oldest || d < oldest) ? d : oldest;
         }, null as string | null) : null,
@@ -475,35 +467,30 @@ serve(async (req) => {
       }
       results.credit_factors_recalculated = true;
       results.factor_scores = {
-        payment_history: paymentHistoryScore,
-        utilization: utilizationScore,
-        credit_age: creditAgeScore,
-        credit_mix: creditMixScore,
-        inquiries: inquiryScore,
-        overall: overallScore,
+        payment_history: paymentHistoryScore, utilization: utilizationScore,
+        credit_age: creditAgeScore, credit_mix: creditMixScore, inquiries: inquiryScore, overall: overallScore,
       };
     } catch (factorErr) {
       console.error("Factor score calc error:", factorErr);
       results.factor_score_error = String(factorErr);
     }
 
-    // ========== 6. AUTO-CREATE DISPUTE DRAFTS (Fix 6) ==========
+    // ========== STEP 6: AUTO-CREATE DISPUTE DRAFTS ==========
+    currentStep = "disputes";
     let disputesCreated = 0;
-    // Create disputes from priority_disputes if provided, otherwise from all negative items
     const disputeSources = payload.priority_disputes.length > 0
-      ? payload.priority_disputes.map(d => ({
+      ? payload.priority_disputes.map((d: any) => ({
           creditor_name: d.account_name,
           bureau: d.bureau,
           reason_code: d.dispute_basis,
         }))
-      : payload.negative_items.map(n => ({
+      : payload.negative_items.map((n: any) => ({
           creditor_name: n.creditor_name,
           bureau: n.bureau,
           reason_code: n.dispute_basis || `Dispute: ${n.item_type}`,
         }));
 
     for (const ds of disputeSources) {
-      // Check for existing dispute with same creditor and bureau
       const { data: existingDispute } = await supabase
         .from("disputes").select("id")
         .eq("user_id", targetUserId)
@@ -511,7 +498,13 @@ serve(async (req) => {
         .eq("bureau", ds.bureau)
         .maybeSingle();
 
-      if (!existingDispute) {
+      if (existingDispute) {
+        await supabase.from("disputes").update({
+          reason_code: ds.reason_code,
+          narrative: `Auto-generated from credit report analysis. Dispute basis: ${ds.reason_code}`,
+          updated_at: new Date().toISOString(),
+        }).eq("id", existingDispute.id);
+      } else {
         await supabase.from("disputes").insert({
           user_id: targetUserId,
           creditor_name: ds.creditor_name,
@@ -525,7 +518,8 @@ serve(async (req) => {
     }
     results.disputes_auto_created = disputesCreated;
 
-    // ========== 7. CROSS-BUREAU DISCREPANCIES ==========
+    // ========== STEP 7: CROSS-BUREAU DISCREPANCIES ==========
+    currentStep = "discrepancies";
     const hasDiscrepancies = payload.discrepancies.length > 0;
     await supabase.from("profiles").update({
       has_discrepancies: hasDiscrepancies,
@@ -535,7 +529,8 @@ serve(async (req) => {
     }).eq("user_id", targetUserId);
     results.discrepancies_flagged = hasDiscrepancies;
 
-    // ========== 8. PME FUNDING READINESS RECALCULATION ==========
+    // ========== STEP 8: PME FUNDING READINESS RECALCULATION ==========
+    currentStep = "funding_readiness";
     try {
       const { data: profile } = await supabase
         .from("profiles")
@@ -544,7 +539,7 @@ serve(async (req) => {
 
       if (profile) {
         const scores = [profile.estimated_fico_eq, profile.estimated_fico_ex, profile.estimated_fico_tu].filter(Boolean) as number[];
-        const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+        const avgScore = scores.length > 0 ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length) : 0;
         const personalCreditScore = avgScore > 0 ? Math.round(((avgScore - 300) / 550) * 250) : 0;
 
         const { data: existingReadiness } = await supabase
@@ -573,7 +568,8 @@ serve(async (req) => {
       console.error("Funding readiness recalc error:", frErr);
     }
 
-    // ========== 9. ACTIVITY LOG ==========
+    // ========== STEP 9: ACTIVITY LOG ==========
+    currentStep = "audit_log";
     await supabase.from("audit_logs").insert({
       user_id: targetUserId, entity: "credit_report", action: "chat_report_analyzed",
       data: {
@@ -584,7 +580,7 @@ serve(async (req) => {
         positive_accounts_count: payload.positive_accounts.length,
         discrepancies_count: payload.discrepancies.length,
         disputes_auto_created: disputesCreated,
-        synced_by: user.id, source: "chat_document_upload",
+        synced_by: callerUserId, source: "chat_document_upload",
         sync_results: results,
       },
     });
@@ -593,9 +589,9 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("Sync error:", error);
-    return new Response(JSON.stringify({ error: "Internal error" }), {
+    console.error(`Sync error at step '${currentStep}':`, error);
+    return new Response(JSON.stringify({ error: "Internal error", failed_step: currentStep, message: error instanceof Error ? error.message : "Unknown" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+}

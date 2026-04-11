@@ -12,11 +12,14 @@ import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
 import { usePaigeMemory } from "@/hooks/usePaigeMemory";
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
+import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
+import { useQueryClient } from "@tanstack/react-query";
 
 type Message = {
   role: "user" | "assistant";
   content: string;
   documentFileName?: string;
+  syncStatus?: any;
 };
 
 export const FloatingChatbot = () => {
@@ -27,6 +30,7 @@ export const FloatingChatbot = () => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const sessionIdRef = useRef<string>(crypto.randomUUID());
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -167,6 +171,7 @@ export const FloatingChatbot = () => {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let assistantMessage = "";
+      let syncStatus: any = null;
 
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
@@ -183,6 +188,10 @@ export const FloatingChatbot = () => {
             if (data === "[DONE]") continue;
             try {
               const parsed = JSON.parse(data);
+              if (parsed.sync_status) {
+                syncStatus = parsed.sync_status;
+                continue;
+              }
               const content = parsed.choices?.[0]?.delta?.content;
               if (content) {
                 assistantMessage += content;
@@ -197,15 +206,18 @@ export const FloatingChatbot = () => {
         }
       }
 
-      // Extract document summary for within-session context
       if (currentDoc && assistantMessage.length > 100) {
         extractDocumentSummary(assistantMessage, currentDoc.name);
-        setTimeout(() => {
+        if (syncStatus) {
           setMessages((prev) => [
             ...prev,
-            { role: "assistant", content: "✅ Your credit profile has been updated with the data from this report." },
+            { role: "assistant", content: "", syncStatus },
           ]);
-        }, 2000);
+          queryClient.invalidateQueries({ queryKey: ["credit-factors"] });
+          queryClient.invalidateQueries({ queryKey: ["credit-factors-history"] });
+          queryClient.invalidateQueries({ queryKey: ["funding-matches"] });
+          queryClient.invalidateQueries({ queryKey: ["funding-matches-profile-scores"] });
+        }
       }
     } catch (error) {
       toast({ title: "Error", description: "Failed to send message. Please try again.", variant: "destructive" });
@@ -255,7 +267,8 @@ export const FloatingChatbot = () => {
                   )}
                   <div className={`rounded-lg px-4 py-2 max-w-[80%] ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
                     {message.documentFileName && <DocumentMessageBubble fileName={message.documentFileName} />}
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    {message.content && <p className="text-sm whitespace-pre-wrap">{message.content}</p>}
+                    {message.syncStatus && <SyncStatusPanel syncStatus={message.syncStatus} />}
                   </div>
                 </div>
               ))}

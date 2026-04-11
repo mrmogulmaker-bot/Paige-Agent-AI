@@ -62,6 +62,69 @@ Rules:
 - If you cannot read any account names from a credit report, set can_read_document to false and parse_error to "Unable to parse document content — please ensure the uploaded file is a readable PDF credit report".
 - Do not include markdown.`;
 
+// Structured extraction prompt - used after analysis to extract clean JSON for sync
+const STRUCTURED_EXTRACTION_PROMPT = `${DOCUMENT_SOURCE_INSTRUCTION}
+
+You have just analyzed a credit report. Now extract the structured data from your own analysis above into a precise JSON object. Return ONLY valid JSON — no markdown, no explanation.
+
+Required structure:
+{
+  "is_credit_report": true,
+  "extraction_verified": true,
+  "report_type": "consumer",
+  "scores": { "equifax": integer_or_null, "experian": integer_or_null, "transunion": integer_or_null },
+  "fraud_alerts_visible": boolean,
+  "fraud_alerts": [{ "alert_type": "string", "bureaus": ["string"], "expiration_date": "string_or_null" }],
+  "security_freezes": [{ "bureau": "string" }],
+  "account_names_extracted": ["string"],
+  "directly_read_account_count": integer,
+  "confidence_statement": "string",
+  "negative_items": [{
+    "creditor_name": "string",
+    "account_number_masked": "string_or_null",
+    "bureau": "Equifax" | "Experian" | "TransUnion",
+    "item_type": "collection" | "late_payment" | "charge_off" | "public_record" | "repossession" | "foreclosure" | "other",
+    "amount": number_or_null,
+    "date_of_occurrence": "YYYY-MM-DD_or_null",
+    "date_reported": "YYYY-MM-DD_or_null",
+    "dispute_basis": "string",
+    "estimated_score_impact": number_or_null,
+    "status": "active",
+    "is_cross_bureau_discrepancy": boolean
+  }],
+  "hard_inquiries": [{ "creditor_name": "string", "inquiry_date": "YYYY-MM-DD", "bureau": "string", "is_authorized": boolean }],
+  "positive_accounts": [{
+    "creditor": "string",
+    "account_number_masked": "string_or_null",
+    "account_type": "revolving" | "installment" | "mortgage" | "auto_loan" | "student_loan" | "open",
+    "balance": number_or_null,
+    "credit_limit": number_or_null,
+    "utilization": number_or_null,
+    "payment_status": "string_or_null",
+    "status": "current",
+    "account_open_date": "YYYY-MM-DD_or_null",
+    "is_open": boolean,
+    "bureaus": ["string"]
+  }],
+  "inquiry_count": { "transunion": integer, "experian": integer, "equifax": integer },
+  "oldest_account_date": "YYYY-MM-DD_or_null",
+  "average_account_age_months": integer_or_null,
+  "oldest_account_age_months": integer_or_null,
+  "discrepancies": [{ "account_name": "string", "issue": "string", "bureaus_affected": ["string"] }],
+  "priority_disputes": [{
+    "account_name": "string",
+    "bureau": "string",
+    "dispute_basis": "string"
+  }]
+}
+
+Rules:
+- Only include data you directly read from the document analysis above
+- Each negative item that appears on multiple bureaus should be listed as separate entries per bureau
+- priority_disputes should contain the top 5-7 dispute targets from your Priority Action Plan
+- All scores must be between 300-850 or null
+- Set extraction_verified to false if you cannot confidently extract the data`;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -157,7 +220,6 @@ SUMMARY:`;
       const summaryData = await summaryResponse.json();
       const summaryContent = summaryData.choices?.[0]?.message?.content || "";
 
-      // Store as client_memory
       if (summaryContent.trim()) {
         await supabase.from("client_memory").insert({
           client_user_id: user.id,
@@ -218,7 +280,7 @@ SUMMARY:`;
       }
     }
 
-    // === LOAD CLIENT MEMORY (cross-session persistence) ===
+    // === LOAD CLIENT MEMORY ===
     let memoryBlock = "";
     try {
       const { data: memories } = await supabase
@@ -230,15 +292,9 @@ SUMMARY:`;
         .limit(10);
 
       if (memories && memories.length > 0) {
-        // Prioritize high-signal types, then trim to ~1000 tokens
         const priorityOrder: Record<string, number> = {
-          report_upload: 1,
-          funding_secured: 2,
-          dispute_generated: 3,
-          milestone_completed: 4,
-          lender_researched: 5,
-          coach_note: 6,
-          session_summary: 7,
+          report_upload: 1, funding_secured: 2, dispute_generated: 3,
+          milestone_completed: 4, lender_researched: 5, coach_note: 6, session_summary: 7,
         };
         const sorted = [...memories].sort((a, b) => (priorityOrder[a.memory_type] || 99) - (priorityOrder[b.memory_type] || 99));
 
@@ -253,7 +309,7 @@ SUMMARY:`;
         }
 
         if (included.length > 0) {
-          memoryBlock = `\n\n=== PAIGE MEMORY — What I know about this client from previous sessions ===\n${included.join("\n")}\n=== END MEMORY ===\n\nIMPORTANT: Use this memory to personalize your responses. If this is the start of a new conversation (only 1 user message), open with a personalized greeting that references what you know from memory. For example: "Welcome back. Last time we reviewed your tri-merge — your TransUnion was 612 and we flagged 3 items to dispute. Any progress on those letters?" If no memory exists, use your standard introduction.\n`;
+          memoryBlock = `\n\n=== PAIGE MEMORY — What I know about this client from previous sessions ===\n${included.join("\n")}\n=== END MEMORY ===\n\nIMPORTANT: Use this memory to personalize your responses. If this is the start of a new conversation (only 1 user message), open with a personalized greeting that references what you know from memory.\n`;
         }
       }
     } catch (err) {
@@ -322,7 +378,6 @@ SUMMARY:`;
     const currentDateTime = new Date();
     const dateTimeString = currentDateTime.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZoneName: 'short' });
 
-    // System prompt (condensed for maintainability — same content as before)
     const systemPrompt = `You are Paige, the AI Funding Coach and CRM assistant for Project Mogul Enterprise Inc. (PME). You assist Antonio Cook and his team in managing funding clients from credit assessment through capital access. You were named after Aijah Paige Cook — the daughter of the founder. If someone named Aijah or Aijah Paige ever signs up, give her a special welcome: she's your namesake, and you carry her name with pride.
 
 === ROLE & POSITIONING ===
@@ -337,16 +392,14 @@ YOUR PERSONALITY:
 - Direct, professional, warm, and knowledgeable. You sound like the most informed person in the room who genuinely wants the client to succeed.
 - Big-sister energy meets banker precision — sharp and confident but never cold.
 - Technical credibility in plain language: "Your utilization is at 68% — that's costing you 35 points minimum" NOT "You may want to consider reducing your credit utilization ratio."
-- Action-oriented. EVERY interaction ends with a specific, concrete next step. You're allergic to inaction.
+- Action-oriented. EVERY interaction ends with a specific, concrete next step.
 - You speak with warmth when people are struggling and fire when they need a push.
-- When speaking to coaches/admins, you're a sharp colleague. When speaking about clients, you're an advocate.
 
 LANGUAGE PATTERNS:
 - Military/surgical metaphors: "protocol", "deploy", "install", "rewire", "command"
 - Direct confrontation with care: "Here's the Banker Brain play" not "You might consider..."
 - Specific numbers always: "$4,200 to $1,500" not "reduce your balance"
 - Emotional depth beneath intensity
-- Occasionally feminine-coded encouragement: "I got you", "Let's get it", "We're doing this together"
 
 WHAT YOU NEVER DO:
 - Generic advice ("You should improve your credit")
@@ -373,21 +426,22 @@ Before ANY financial data access or action, you MUST:
 5. ADVERSE ACTION ROUTING: Denials issued by lenders, NOT by you
 
 FUNCTIONAL SAFEGUARDS:
-✅ Educational explanations ONLY
-✅ Generate dispute templates ONLY — never send direct communications
-✅ All credit-related responses end with "Educational Purposes Only" disclaimer
-✅ No use of protected attributes in recommendations
-✅ "Delete my data" → trigger deletion request immediately
-✅ Verify consent before API calls
-✅ Log every consent, API call, and lender match
+- Educational explanations ONLY
+- Generate dispute templates ONLY — never send direct communications
+- All credit-related responses end with "Educational Purposes Only" disclaimer
+- No use of protected attributes in recommendations
+- "Delete my data" triggers deletion request immediately
+- Verify consent before API calls
+- Log every consent, API call, and lender match
 
 PROHIBITED ACTIONS:
-❌ NEVER make credit decisions or lending recommendations
-❌ NEVER promise specific credit score improvements
-❌ NEVER send communications to bureaus/collectors on user's behalf
-❌ NEVER charge before services performed
-❌ NEVER use protected characteristics in scoring
-❌ NEVER access credit data without logged consent
+- NEVER make credit decisions or lending recommendations
+- NEVER promise specific credit score improvements
+- NEVER send communications to bureaus/collectors on user's behalf
+- NEVER charge before services performed
+- NEVER use protected characteristics in scoring
+- NEVER access credit data without logged consent
+- NEVER fabricate creditor agreements or promises
 
 === END COMPLIANCE MODULE ===
 
@@ -398,21 +452,21 @@ You guide users through: ACCEL (Credit Restoration), BUILD Personal (Credit Buil
 
 CRITICAL CONTENT FILTERING RULES:
 When discussing Personal Credit (ACCEL or BUILD Personal):
-✅ ONLY discuss personal credit topics
-❌ NEVER mention EIN, LLC, DUNS, net-30, vendor accounts, business trade lines, etc.
-When Business Credit keywords are detected in Personal Credit context → redirect.
+- ONLY discuss personal credit topics
+- NEVER mention EIN, LLC, DUNS, net-30, vendor accounts, business trade lines, etc.
+When Business Credit keywords are detected in Personal Credit context, redirect.
 
 PLATFORM TOOLS YOU CAN SUGGEST:
 Dashboard, Credit Score Overview, ACCEL/BUILD Progress Trackers, Task Manager, Three Bureau Report, Dispute Manager, Credit Accounts, Documents Manager, Business Management, Organization Chart, Funding Marketplace, Learning Vault, Profile Settings, Subscription Management, Affiliate Program.
 
 YOUR REVIEW & SUGGESTION CAPABILITIES:
-✓ Review uploaded documents and suggest missing critical documents
-✓ Analyze task completion and recommend next priorities
-✓ Assess dispute progress and suggest next creditors to challenge
-✓ Review business structure and suggest optimization
-✓ Evaluate funding readiness and recommend specific products
-✓ Check subscription plan and suggest relevant features
-✓ Identify gaps in credit profile and recommend corrective actions
+- Review uploaded documents and suggest missing critical documents
+- Analyze task completion and recommend next priorities
+- Assess dispute progress and suggest next creditors to challenge
+- Review business structure and suggest optimization
+- Evaluate funding readiness and recommend specific products
+- Check subscription plan and suggest relevant features
+- Identify gaps in credit profile and recommend corrective actions
 
 PERSONALIZATION GUIDELINES:
 - ALWAYS reference specific user context
@@ -441,103 +495,40 @@ ${relevantKnowledge}`;
 === CREDIT REPORT ANALYSIS INSTRUCTIONS ===
 If this document is a credit report (especially a tri-merge report from MyFreeScoreNow, IdentityIQ, SmartCredit, or similar), produce a STRUCTURED analysis in the following exact format. Use a professional, precise, advisory tone — like a senior credit analyst.
 
-**TRI-MERGE FORMAT**: These reports present each account in three columns — TransUnion (left), Experian (middle), Equifax (right). Dashes (--) mean NOT reported at that bureau. Read each column independently. An account with data in one column and dashes in others reports to only ONE bureau — this is critical for dispute targeting.
+**TRI-MERGE FORMAT**: These reports present each account in three columns — TransUnion (left), Experian (middle), Equifax (right). Dashes (--) mean NOT reported at that bureau. Read each column independently.
 
 **SECTION 0 — FRAUD ALERTS & SECURITY FREEZES (if present)**
-Check the Consumer Statement section FIRST. If fraud alerts or security freezes exist, display them BEFORE any other content:
-- Alert type (Initial Fraud Alert, Extended Fraud Alert, ID Security Alert)
-- Which bureaus have the alert active
-- Expiration date if listed
-- Plain-language note: "Any lender approached must take additional identity verification steps before extending credit."
-- For security freezes: Note which bureaus have active freezes and instruct that the freeze must be temporarily lifted before any lender applications at that bureau.
+Check the Consumer Statement section FIRST. If fraud alerts or security freezes exist, display them BEFORE any other content.
 
 **SECTION 1 — BUREAU SCORES SUMMARY**
-Three-column table: Equifax | Experian | TransUnion. Show score, classification (Poor/Fair/Good/Very Good/Excellent), primary suppressing factor. "Not Reported" if missing.
+Three-column table: Equifax | Experian | TransUnion. Show score, classification, primary suppressing factor.
 
 **SECTION 2 — BUREAU-BY-BUREAU NEGATIVE ITEM BREAKDOWN**
-Per bureau (EQ, EX, TU): Account Name, Original Creditor (if different), Type, Account Number (masked), Date of Last Activity, Balance, Creditor Remarks (exact text), Dispute Basis.
-
-Extract ALL negative types:
-- Collection/Charge-off accounts with current balance and original creditor
-- Late payment history (30/60/90/120/150 days) even if account is now current — extract from Days Late section and Two-Year Payment History grid
-- Accounts with "Profit and Loss Write-Off", "Unpaid Balance Reported as Loss", "Charged Off as Bad Debt" remarks
-- Public records: bankruptcies, tax liens, judgments
-
-Dispute bases (LEGITIMATE STATUTORY LANGUAGE ONLY):
-- Charge-offs: "Requesting verification of accuracy and completeness pursuant to FCRA Section 611. Please provide original account agreement and payment history."
-- Collections: "Requesting full validation pursuant to FDCPA Section 809(b). Provide verification of original creditor, original amount, and authority to collect."
-- Cross-bureau discrepancies: "Account reported inconsistently across bureaus in violation of FCRA Section 623(a)(1). Requesting correction of inaccurate information."
-- Unknown/not mine: "No knowledge of this account. Requesting removal pursuant to FCRA Section 611 and method of verification used."
-- Unauthorized inquiries: "Did not authorize this inquiry. Requesting removal pursuant to FCRA Section 604."
-NEVER fabricate creditor agreements or promises. NEVER claim a creditor made an agreement unless the client explicitly states they have written documentation.
-
-Priority ranking:
-1. Single-bureau items with large balances (highest success rate)
-2. Cross-bureau discrepancies (strongest FCRA basis)
-3. Recent charge-offs with highest balances (most score impact)
-4. Older items with smaller balances
-5. Third-party collection accounts
+Per bureau: Account Name, Original Creditor, Type, Account Number (masked), Date of Last Activity, Balance, Creditor Remarks, Dispute Basis.
+Extract ALL negative types including charge-offs, collections, late payments, public records.
+Use LEGITIMATE STATUTORY LANGUAGE ONLY for dispute bases.
+NEVER fabricate creditor agreements or promises.
 
 **SECTION 3 — CROSS-BUREAU DISCREPANCIES — DISPUTE PRIORITY ITEMS**
-Compare the same debt across all three bureaus. Flag:
-- Same debt under different tradeline names (e.g., "JEFFERSON CAPITAL SYST" at one bureau vs "JEFFCAPSYS" at another)
-- Same debt appearing at some bureaus but not others (especially large balances)
-- Same account showing different balances across bureaus
-- Same account showing different dates or status across bureaus
-Each is an FCRA Section 611/623 dispute target. List the account, the specific inconsistency, and which bureaus are affected.
+Compare the same debt across all three bureaus. Flag inconsistencies.
 
 **SECTION 4 — POSITIVE ACCOUNTS SUMMARY**
-Accounts in good standing: creditor, type, limit, balance, utilization %, payment status, age, bureaus reporting.
+Accounts in good standing: creditor, type, limit, balance, utilization %, payment status, age, bureaus.
 
 **SECTION 5 — HARD INQUIRIES**
-List all hard inquiries with creditor name, date, bureau. Flag any that appear potentially unauthorized.
+List all hard inquiries with creditor name, date, bureau.
 
 **SECTION 6 — FUNDING STRATEGY IMPACT**
-This section MUST be specific to the actual scores and negatives found — NOT generic advice. Address:
-- What the current score range qualifies for (e.g., "606-622 range: most traditional banks require 680+ for unsecured business credit")
-- Which product categories are accessible now (secured cards, credit builders, etc.)
-- Which charge-offs or negatives must be addressed before higher-tier lending is realistic
-- If fraud alerts exist, note they must be disclosed to any lender
-- The next 2-3 concrete milestones before funding options expand
-Give the client a realistic picture — not motivational fluff.
+Specific to actual scores and negatives found.
 
 **SECTION 7 — PRIORITY ACTION PLAN**
-Top 5 actions ranked by score impact. Include bureau(s), estimated impact range, statutory basis.
+Top 5-7 actions ranked by score impact. Include bureau(s), estimated impact range, statutory basis.
 
 **SECTION 8 — COMPLIANCE DISCLAIMER**
-"*This analysis is provided for educational purposes only. PME does not guarantee specific credit score improvements, does not make credit decisions, and does not send communications to credit bureaus or collectors on your behalf. Dispute letters are templates for your use. Consult a qualified attorney for legal advice.*"
+"*This analysis is provided for educational purposes only...*"
 
 === FINANCIAL DOCUMENT INSTRUCTIONS ===
-If financial document (bank statement, P&L, tax return), offer lender-ready summary. Identify type, date range, key metrics.
-
-=== DOCUMENT CONTEXT SUMMARY (for within-session memory) ===
-After completing your analysis, append a hidden context block wrapped in <document_summary> tags containing: report_type, bureau scores, fraud_alerts (if any), security_freezes (if any), negative item count with account names and bureaus, inquiry count, discrepancy list with specific accounts, oldest account, average account age, funding strategy summary. Format as compact JSON.
-</document_summary>
-
-=== VERIFIED SYNC PAYLOAD (hidden) ===
-Append a second hidden block wrapped in <document_sync_payload> tags containing compact JSON with this structure:
-{
-  "is_credit_report": true,
-  "extraction_verified": true,
-  "report_type": "consumer" | "business",
-  "scores": { "equifax": number or null, "experian": number or null, "transunion": number or null },
-  "fraud_alerts_visible": boolean,
-  "fraud_alerts": [ { "alert_type": "string", "bureaus": ["string"], "expiration_date": "string or null" } ],
-  "account_names_extracted": ["string"],
-  "directly_read_account_count": number,
-  "confidence_statement": "I was able to directly read N accounts from this document",
-  "negative_items": [
-    { "creditor_name": "string", "account_number_masked": "string or null", "bureau": "Equifax" | "Experian" | "TransUnion", "item_type": "collection" | "late_payment" | "charge_off" | "public_record" | "repossession" | "foreclosure" | "other", "amount": number or null, "date_of_occurrence": "YYYY-MM-DD" | null, "date_reported": "YYYY-MM-DD" | null, "dispute_basis": "string", "estimated_score_impact": number or null, "status": "active" },
-    { "creditor_name": "string", "account_number_masked": "string or null", "bureau": "Equifax" | "Experian" | "TransUnion", "item_type": "collection" | "late_payment" | "charge_off" | "public_record" | "repossession" | "foreclosure" | "other", "amount": number or null, "date_of_occurrence": "YYYY-MM-DD" | null, "date_reported": "YYYY-MM-DD" | null, "dispute_basis": "string", "estimated_score_impact": number or null, "status": "active" }
-  ],
-  "hard_inquiries": [ { "creditor_name": "string", "inquiry_date": "YYYY-MM-DD", "bureau": "string", "is_authorized": true | false } ],
-  "positive_accounts": [ { "creditor": "string", "account_type": "revolving" | "installment" | "mortgage" | "open", "balance": number or null, "credit_limit": number or null, "utilization": number or null, "status": "current", "account_open_date": "YYYY-MM-DD" | null, "is_open": true | false } ],
-  "average_account_age_months": number or null,
-  "oldest_account_age_months": number or null,
-  "discrepancies": [ { "account_name": "string", "issue": "string", "bureaus_affected": ["string"] } ]
-}
-Use only document-visible facts. If verification fails, set extraction_verified to false and return no fabricated fields.
-</document_sync_payload>
+If financial document (bank statement, P&L, tax return), offer lender-ready summary.
 
 Always identify the document type and bureau in your response.`,
           },
@@ -605,16 +596,30 @@ Always identify the document type and bureau in your response.`,
       async pull(controller) {
         const { done, value } = await reader.read();
         if (done) {
+          // After stream ends, run structured extraction + sync, then send sync status as final SSE event
+          try {
+            const syncResult = await runStructuredExtractionAndSync(
+              fullAssistantResponse,
+              attachedDocument.base64,
+              user.id,
+              authHeader,
+              supabaseUrl,
+              supabaseServiceKey,
+              lovableApiKey,
+              supabase
+            );
+
+            // Send sync status as a final SSE data event before closing
+            const syncEvent = `data: ${JSON.stringify({ sync_status: syncResult })}\n\n`;
+            controller.enqueue(new TextEncoder().encode(syncEvent));
+          } catch (err) {
+            console.error("Sync pipeline error:", err);
+            const errorEvent = `data: ${JSON.stringify({ sync_status: { success: false, error: err instanceof Error ? err.message : "Unknown sync error" } })}\n\n`;
+            controller.enqueue(new TextEncoder().encode(errorEvent));
+          }
+
+          controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
           controller.close();
-          
-          // Fire-and-forget: sync + write memory
-          triggerBackgroundSync(
-            fullAssistantResponse,
-            user.id,
-            authHeader,
-            supabaseUrl,
-            supabaseServiceKey
-          ).catch(err => console.error("Background sync error:", err));
           return;
         }
         
@@ -688,126 +693,198 @@ function cleanJsonResponse(content: string) {
   return content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 }
 
-function extractTaggedJson(source: string, tagName: string) {
-  const match = source.match(new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`));
-  if (!match) return null;
-  try {
-    return JSON.parse(match[1].trim());
-  } catch (error) {
-    console.error(`Failed to parse ${tagName}:`, error);
-    return null;
-  }
-}
-
 function isScoreInRange(value: unknown) {
   return typeof value === "number" && value >= 300 && value <= 850;
 }
 
-function validateVerifiedSyncPayload(structured: any) {
-  const errors: string[] = [];
-  if (!structured?.is_credit_report) errors.push("Document analysis did not confirm a credit report.");
-  if (!structured?.extraction_verified) errors.push("Document extraction was not verified as document-sourced.");
-  if (!Array.isArray(structured?.account_names_extracted) || structured.account_names_extracted.length < 1) {
-    errors.push("No verified account names were extracted from the document.");
-  }
-  if ((structured?.directly_read_account_count || 0) < 1) {
-    errors.push("The document read-check did not confirm any readable accounts.");
-  }
-
-  for (const bureau of ["equifax", "experian", "transunion"]) {
-    const score = structured?.scores?.[bureau];
-    if (score != null && !isScoreInRange(score)) {
-      errors.push(`The ${bureau} score failed validation.`);
-    }
-  }
-
-  if (structured?.fraud_alerts_visible && (!Array.isArray(structured?.fraud_alerts) || structured.fraud_alerts.length === 0)) {
-    errors.push("Fraud alerts were visible in the document but missing from the verified sync payload.");
-  }
-
-  return errors;
-}
-
-async function triggerBackgroundSync(
+// New: Run a second AI call to extract structured JSON from the analysis, then call sync
+async function runStructuredExtractionAndSync(
   analysisText: string,
+  documentBase64: string,
   callerUserId: string,
   authHeader: string,
   supabaseUrl: string,
   serviceRoleKey: string,
-) {
-  console.log("Starting background credit report sync...");
+  lovableApiKey: string,
+  supabase: any
+): Promise<any> {
+  console.log("Starting structured extraction from analysis...");
 
   try {
-    const structured = extractTaggedJson(analysisText, "document_sync_payload");
-    if (!structured) {
-      console.error("No document_sync_payload found in analysis response");
-      return;
+    // Step 1: Extract structured JSON from the analysis via a second AI call
+    const extractionResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${lovableApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: STRUCTURED_EXTRACTION_PROMPT },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: `Here is the credit report analysis I just produced. Extract the structured data into the required JSON format:\n\n${analysisText}` },
+              { type: "image_url", image_url: { url: `data:application/pdf;base64,${documentBase64}` } },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!extractionResponse.ok) {
+      const errorBody = await extractionResponse.text();
+      console.error(`Structured extraction failed: status=${extractionResponse.status} body=${errorBody}`);
+      await logSyncFailure(supabase, callerUserId, `Structured extraction API failed: ${extractionResponse.status}`, null);
+      return { success: false, error: "Failed to extract structured data from analysis", step: "extraction" };
     }
 
-    const validationErrors = validateVerifiedSyncPayload(structured);
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const extractionData = await extractionResponse.json();
+    const rawJson = extractionData.choices?.[0]?.message?.content || "";
+    let structured: any;
+    try {
+      structured = JSON.parse(cleanJsonResponse(rawJson));
+    } catch (parseErr) {
+      console.error("Failed to parse structured extraction:", parseErr);
+      await logSyncFailure(supabase, callerUserId, "Failed to parse structured extraction JSON", { raw_length: rawJson.length });
+      return { success: false, error: "Failed to parse extracted data", step: "extraction_parse" };
+    }
+
+    console.log(`Extraction complete: ${(structured.negative_items || []).length} negatives, ${(structured.positive_accounts || []).length} positives`);
+
+    // Step 2: Validate the extraction
+    const validationErrors: string[] = [];
+    if (!structured.is_credit_report) validationErrors.push("Not identified as credit report");
+    if (!structured.extraction_verified) validationErrors.push("Extraction not verified");
+    
+    const negCount = (structured.negative_items || []).length;
+    const posCount = (structured.positive_accounts || []).length;
+    const totalAccounts = negCount + posCount;
+    if (totalAccounts < 1) validationErrors.push("No accounts extracted");
+
+    for (const bureau of ["equifax", "experian", "transunion"]) {
+      const score = structured.scores?.[bureau];
+      if (score != null && !isScoreInRange(score)) {
+        validationErrors.push(`Invalid ${bureau} score: ${score}`);
+      }
+    }
 
     if (validationErrors.length > 0) {
-      await supabase.from("audit_logs").insert({
-        user_id: callerUserId,
-        entity: "credit_report",
-        action: "chat_report_sync_validation_failed",
-        data: {
-          source: "chat_document_upload",
-          validation_errors: validationErrors,
-          sync_payload: structured,
-        },
-      });
-      console.error("Sync payload validation failed:", validationErrors.join(" | "));
-      return;
+      console.error("Extraction validation failed:", validationErrors);
+      await logSyncFailure(supabase, callerUserId, `Validation failed: ${validationErrors.join("; ")}`, structured);
+      return { success: false, error: `Validation failed: ${validationErrors.join("; ")}`, step: "validation", validationErrors };
     }
 
+    // Step 3: Build sync payload and call sync-credit-report-data
     const syncPayload = {
       target_user_id: callerUserId,
       report_type: structured.report_type || "consumer",
       scores: structured.scores,
-      negative_items: structured.negative_items || [],
-      hard_inquiries: structured.hard_inquiries || [],
-      positive_accounts: structured.positive_accounts || [],
-      average_account_age_months: structured.average_account_age_months,
-      oldest_account_age_months: structured.oldest_account_age_months,
+      negative_items: (structured.negative_items || []).map((n: any) => ({
+        creditor_name: n.creditor_name || n.account_name || "Unknown",
+        account_number_masked: n.account_number_masked || n.account_number || null,
+        bureau: n.bureau || "TransUnion",
+        item_type: n.item_type || "other",
+        amount: n.amount || n.balance || null,
+        date_of_occurrence: n.date_of_occurrence || n.date_of_last_activity || null,
+        date_reported: n.date_reported || null,
+        dispute_basis: n.dispute_basis || null,
+        estimated_score_impact: n.estimated_score_impact || null,
+        status: n.status || "active",
+        is_cross_bureau_discrepancy: n.is_cross_bureau_discrepancy || false,
+      })),
+      hard_inquiries: (structured.hard_inquiries || []).map((i: any) => ({
+        creditor_name: i.creditor_name,
+        inquiry_date: i.inquiry_date,
+        bureau: i.bureau,
+        is_authorized: i.is_authorized ?? true,
+      })),
+      positive_accounts: (structured.positive_accounts || []).map((a: any) => ({
+        creditor: a.creditor || a.account_name || "Unknown",
+        account_type: a.account_type || "revolving",
+        balance: a.balance || a.current_balance || null,
+        credit_limit: a.credit_limit || null,
+        utilization: a.utilization || null,
+        status: a.status || "current",
+        account_open_date: a.account_open_date || a.date_opened || null,
+        is_open: a.is_open ?? true,
+        payment_status: a.payment_status || null,
+        account_number_masked: a.account_number_masked || a.account_number || null,
+      })),
+      average_account_age_months: structured.average_account_age_months || null,
+      oldest_account_age_months: structured.oldest_account_age_months || null,
+      oldest_account_date: structured.oldest_account_date || null,
       discrepancies: structured.discrepancies || [],
-      fraud_alerts_visible: structured.fraud_alerts_visible || false,
+      priority_disputes: (structured.priority_disputes || []).map((d: any) => ({
+        account_name: d.account_name,
+        bureau: d.bureau,
+        dispute_basis: d.dispute_basis,
+      })),
       fraud_alerts: structured.fraud_alerts || [],
-      extraction_verified: structured.extraction_verified === true,
-      account_names_extracted: structured.account_names_extracted || [],
-      confidence_statement: structured.confidence_statement || null,
+      security_freezes: structured.security_freezes || [],
     };
+
+    console.log(`Calling sync-credit-report-data with ${syncPayload.negative_items.length} negatives, ${syncPayload.positive_accounts.length} positives, ${syncPayload.priority_disputes.length} priority disputes`);
 
     const syncResponse = await fetch(`${supabaseUrl}/functions/v1/sync-credit-report-data`, {
       method: "POST",
-      headers: { Authorization: authHeader, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
       body: JSON.stringify(syncPayload),
     });
 
-    if (syncResponse.ok) {
-      console.log("Credit report sync completed");
-    } else {
-      console.error("Sync error:", syncResponse.status, await syncResponse.text());
-      return;
+    const syncBody = await syncResponse.json().catch(() => ({ error: "Could not parse sync response" }));
+
+    if (!syncResponse.ok) {
+      console.error("Sync failed:", syncResponse.status, syncBody);
+      await logSyncFailure(supabase, callerUserId, `Sync returned ${syncResponse.status}: ${JSON.stringify(syncBody)}`, syncPayload);
+      return { success: false, error: `Sync failed: ${syncBody.error || syncResponse.status}`, step: "sync_call", details: syncBody };
     }
 
+    console.log("Sync completed successfully:", syncBody);
+
+    // Step 4: Write memory record
     const scores = structured.scores || {};
-    const negCount = (structured.negative_items || []).length;
-    const inqCount = (structured.hard_inquiries || []).length;
-    const posCount = (structured.positive_accounts || []).length;
-    const discCount = (structured.discrepancies || []).length;
-
-    const memoryContent = `Credit report analyzed (${structured.report_type || 'consumer'}). Scores: EQ ${scores.equifax || 'N/A'}, EX ${scores.experian || 'N/A'}, TU ${scores.transunion || 'N/A'}. Found ${negCount} negative items, ${inqCount} hard inquiries, ${posCount} positive accounts.${discCount > 0 ? ` ${discCount} cross-bureau discrepancies flagged.` : ''}`;
-
+    const memoryContent = `Credit report analyzed (${structured.report_type || 'consumer'}). Scores: EQ ${scores.equifax || 'N/A'}, EX ${scores.experian || 'N/A'}, TU ${scores.transunion || 'N/A'}. Found ${negCount} negative items, ${(structured.hard_inquiries || []).length} hard inquiries, ${posCount} positive accounts.`;
+    
     await supabase.from("client_memory").insert({
       client_user_id: callerUserId,
       memory_type: "report_upload",
       content: memoryContent,
     });
 
-    console.log("Memory record written for report upload");
+    return {
+      success: true,
+      scores_synced: scores,
+      negative_items_synced: negCount,
+      positive_accounts_synced: posCount,
+      disputes_created: syncBody.results?.disputes_auto_created || 0,
+      credit_factors_recalculated: syncBody.results?.credit_factors_recalculated || false,
+      funding_readiness_recalculated: syncBody.results?.funding_readiness_recalculated || false,
+      sync_details: syncBody.results,
+    };
   } catch (err) {
-    console.error("Background sync failed:", err);
+    console.error("Structured extraction and sync pipeline failed:", err);
+    await logSyncFailure(supabase, callerUserId, err instanceof Error ? err.message : "Unknown pipeline error", null);
+    return { success: false, error: err instanceof Error ? err.message : "Unknown error", step: "pipeline" };
+  }
+}
+
+async function logSyncFailure(supabase: any, userId: string, errorMessage: string, payload: any) {
+  try {
+    await supabase.from("audit_logs").insert({
+      user_id: userId,
+      entity: "credit_report",
+      action: "sync_failed",
+      data: {
+        error_message: errorMessage,
+        timestamp: new Date().toISOString(),
+        source: "chat_document_upload",
+        payload_snapshot: payload ? JSON.stringify(payload).substring(0, 2000) : null,
+      },
+    });
+  } catch (logErr) {
+    console.error("Failed to log sync failure to audit_logs:", logErr);
   }
 }
