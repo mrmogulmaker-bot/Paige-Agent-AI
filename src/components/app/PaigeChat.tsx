@@ -24,6 +24,7 @@ type Message = {
 interface PaigeChatProps {
   user: User;
   session: Session | null;
+  clientId?: string;
 }
 
 const quickActions = [
@@ -33,7 +34,7 @@ const quickActions = [
   { label: "What Should I Do Next?", prompt: "What's the highest impact action I should take right now?" },
 ];
 
-export function PaigeChat({ user, session }: PaigeChatProps) {
+export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -140,6 +141,7 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
           ...(m.documentFileName ? { documentFileName: m.documentFileName } : {}),
         })),
         sessionDocumentContext: getSessionDocumentContext(),
+        ...(clientId ? { clientId } : {}),
       };
 
       if (currentDoc) {
