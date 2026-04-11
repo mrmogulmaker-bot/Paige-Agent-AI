@@ -48,8 +48,11 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { PageTransition } from "@/components/PageTransition";
 import { PMEFundingReadiness } from "@/components/dashboard/PMEFundingReadiness";
 import { FundingSecuredTracker } from "@/components/dashboard/FundingSecuredTracker";
+import { ClientManagementDashboard } from "@/components/dashboard/ClientManagementDashboard";
+import { useDashboardMode } from "@/contexts/DashboardModeContext";
 
 const Dashboard = () => {
+  const { mode, isCoachOrAdmin } = useDashboardMode();
   const [activeSection, setActiveSection] = useState("dashboard");
   const [showAccel, setShowAccel] = useState(true);
   const [showBuild, setShowBuild] = useState(true);
