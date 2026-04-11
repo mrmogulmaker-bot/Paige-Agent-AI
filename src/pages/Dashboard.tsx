@@ -47,6 +47,7 @@ import { InstallPWA } from "@/components/InstallPWA";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PageTransition } from "@/components/PageTransition";
 import { PMEFundingReadiness } from "@/components/dashboard/PMEFundingReadiness";
+import { FundingSecuredTracker } from "@/components/dashboard/FundingSecuredTracker";
 
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -162,6 +163,7 @@ const Dashboard = () => {
                   {activeSection === "contact" && "Contact & Support"}
                   {activeSection === "report-upload" && "Report Upload & AI Analysis"}
                   {activeSection === "lender-research" && "Lender Research"}
+                  {activeSection === "funding-secured" && "Funding Secured"}
                 </h1>
               </div>
               <div className="flex items-center gap-2 md:gap-4">
@@ -284,7 +286,10 @@ const Dashboard = () => {
                 )}
                 {activeSection === "funding-marketplace" && (
                   <PlanGate feature="funding_tools" onUpgradeClick={() => setShowUpgradeModal(true)}>
-                    <FundingMarketplace />
+                    <div className="space-y-8">
+                      <FundingMarketplace />
+                      <FundingSecuredTracker />
+                    </div>
                   </PlanGate>
                 )}
                 {activeSection === "payments" && <PaymentHistory />}
@@ -292,6 +297,7 @@ const Dashboard = () => {
                 {activeSection === "affiliate" && <AffiliateTracking />}
                 {activeSection === "integrations" && <Integrations />}
                 {activeSection === "lender-research" && <LenderResearch />}
+                {activeSection === "funding-secured" && <FundingSecuredTracker />}
                   {activeSection === "settings" && <ProfileSettings />}
                   {activeSection === "contact" && <ContactSupport />}
                 </div>
