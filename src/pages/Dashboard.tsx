@@ -170,6 +170,7 @@ const Dashboard = () => {
                   {activeSection === "lender-research" && "Lender Research"}
                   {activeSection === "funding-secured" && "Funding Secured"}
                   {activeSection === "webhooks" && "Webhooks & Integrations"}
+                  {activeSection === "outreach" && "Outreach Draft Center"}
                 </h1>
               </div>
               <div className="flex items-center gap-2 md:gap-4">
