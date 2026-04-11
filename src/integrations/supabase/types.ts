@@ -3160,6 +3160,7 @@ export type Database = {
           onboarding_step: string | null
           phone: string | null
           postal_code: string | null
+          score_model: string | null
           ssn_encrypted: string | null
           state: string | null
           updated_at: string | null
@@ -3188,6 +3189,7 @@ export type Database = {
           onboarding_step?: string | null
           phone?: string | null
           postal_code?: string | null
+          score_model?: string | null
           ssn_encrypted?: string | null
           state?: string | null
           updated_at?: string | null
@@ -3216,6 +3218,7 @@ export type Database = {
           onboarding_step?: string | null
           phone?: string | null
           postal_code?: string | null
+          score_model?: string | null
           ssn_encrypted?: string | null
           state?: string | null
           updated_at?: string | null
