@@ -49,6 +49,7 @@ import { PageTransition } from "@/components/PageTransition";
 import { PMEFundingReadiness } from "@/components/dashboard/PMEFundingReadiness";
 import { FundingSecuredTracker } from "@/components/dashboard/FundingSecuredTracker";
 import { WebhooksIntegrations } from "@/components/dashboard/WebhooksIntegrations";
+import { OutreachCenter } from "@/components/dashboard/OutreachCenter";
 import { ClientManagementDashboard } from "@/components/dashboard/ClientManagementDashboard";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 
