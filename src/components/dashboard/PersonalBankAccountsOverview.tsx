@@ -34,7 +34,7 @@ export const PersonalBankAccountsOverview = ({ onNavigate }: PersonalBankAccount
 
       const { data: accounts } = await supabase
         .from("connected_bank_accounts")
-        .select("*")
+        .select("id, account_id, account_name, account_mask, account_type, account_subtype, institution_id, institution_name, is_active, last_sync_at, created_at")
         .eq("user_id", user.id)
         .eq("is_active", true);
 

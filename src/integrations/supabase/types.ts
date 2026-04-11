@@ -3662,6 +3662,15 @@ export type Database = {
           is_valid: boolean
         }[]
       }
+      verify_certificate_by_code: {
+        Args: { _verification_code: string }
+        Returns: {
+          certificate_url: string
+          course_id: string
+          issued_at: string
+          verification_code: string
+        }[]
+      }
     }
     Enums: {
       account_type:
