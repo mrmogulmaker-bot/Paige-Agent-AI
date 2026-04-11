@@ -7,15 +7,32 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Input validation schema
-const disputeLetterSchema = z.object({
+// Support both single-item (legacy) and combined multi-item format
+const disputeItemSchema = z.object({
+  creditorName: z.string().min(1).max(200),
+  accountNumber: z.string().max(100).optional().nullable(),
+  amount: z.number().optional().nullable(),
+  itemType: z.string().max(100).optional().nullable(),
+  disputeBasis: z.string().min(1).max(1000),
+});
+
+const combinedLetterSchema = z.object({
+  mode: z.literal("combined"),
+  bureau: z.string().min(1).max(100),
+  clientName: z.string().min(1).max(200),
+  clientAddress: z.string().max(500).optional().nullable(),
+  items: z.array(disputeItemSchema).min(1).max(50),
+  round: z.number().int().min(1).max(10).optional(),
+});
+
+const legacySchema = z.object({
   bureauData: z.object({
     name: z.string().min(1).max(100),
     totalAccounts: z.number().int().min(0).max(10000),
     derogatoryItems: z.number().int().min(0).max(10000),
-    delinquentItems: z.number().int().min(0).max(10000)
+    delinquentItems: z.number().int().min(0).max(10000),
   }),
-  issueType: z.string().min(1).max(200)
+  issueType: z.string().min(1).max(500),
 });
 
 serve(async (req) => {
@@ -24,7 +41,6 @@ serve(async (req) => {
   }
 
   try {
-    // SECURITY: Require authentication — reject all unauthenticated requests
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
@@ -37,7 +53,6 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Validate session using user-context client
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
@@ -50,93 +65,105 @@ serve(async (req) => {
       );
     }
 
-    // Rate limit check using admin client
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
     const { data: rateLimitCheck } = await adminClient.rpc('check_rate_limit', {
       _user_id: user.id,
       _function_name: 'generate-dispute-letter',
-      _max_requests: 5,
+      _max_requests: 10,
       _window_minutes: 60
     });
 
     if (!rateLimitCheck) {
       return new Response(
-        JSON.stringify({ 
-          error: 'Rate limit exceeded. Please try again in an hour.',
-          retryAfter: 3600
-        }),
-        { 
-          status: 429,
-          headers: { 
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-            'Retry-After': '3600'
-          }
-        }
+        JSON.stringify({ error: 'Rate limit exceeded. Please try again in an hour.', retryAfter: 3600 }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '3600' } }
       );
     }
 
-    // Validate input
     const rawData = await req.json();
-    let validatedData;
-    
-    try {
-      validatedData = disputeLetterSchema.parse(rawData);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return new Response(
-          JSON.stringify({ 
-            error: 'Invalid input format', 
-            details: error.issues.map(i => ({ path: i.path.join('.'), message: i.message }))
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      throw error;
-    }
-
-    const { bureauData, issueType } = validatedData;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    console.log('Generating dispute letter for user:', user.id);
+    // Determine mode
+    const isCombined = rawData.mode === "combined";
 
-    const systemPrompt = `You are an expert credit dispute letter writer specializing in FCRA (Fair Credit Reporting Act) compliance. 
-Your role is to create professional, legally sound dispute letters that help clients address inaccuracies on their credit reports.
+    let systemPrompt: string;
+    let userPrompt: string;
 
+    if (isCombined) {
+      const validated = combinedLetterSchema.parse(rawData);
+      const { bureau, clientName, clientAddress, items, round } = validated;
+
+      const bureauAddresses: Record<string, string> = {
+        equifax: "Equifax Information Services LLC\\nP.O. Box 740256\\nAtlanta, GA 30374",
+        experian: "Experian\\nP.O. Box 4500\\nAllen, TX 75013",
+        transunion: "TransUnion Consumer Solutions\\nP.O. Box 2000\\nChester, PA 19016",
+      };
+      const bureauKey = bureau.toLowerCase().trim();
+      const bureauAddr = bureauAddresses[bureauKey] || `${bureau} Credit Bureau`;
+
+      const itemsList = items.map((item, i) => {
+        const amountStr = item.amount ? ` — Balance: $${item.amount.toLocaleString()}` : "";
+        const acctStr = item.accountNumber ? ` (Account: ${item.accountNumber})` : "";
+        return `${i + 1}. ${item.creditorName}${acctStr}${amountStr}\n   Type: ${item.itemType || "Unknown"}\n   Dispute Basis: ${item.disputeBasis}`;
+      }).join("\\n\\n");
+
+      const roundLabel = round && round > 1 ? ` (Round ${round} — Follow-Up)` : "";
+      const escalation = round && round > 1
+        ? "\\n\\nIMPORTANT: This is a follow-up dispute. The consumer previously disputed these items and the investigation was inadequate or the items remain unverified. Use stronger language referencing the bureau's obligation under FCRA Section 611(a)(5) to provide the method of verification and noting that failure to properly investigate may result in legal action under FCRA Section 616 and 617."
+        : "";
+
+      systemPrompt = `You are an expert credit dispute letter writer for Project Mogul Enterprise Inc. (PME), specializing in FCRA compliance.
+
+Write a SINGLE professional dispute letter addressed to ${bureau} that disputes ALL listed items in one organized letter.${escalation}
+
+FORMAT REQUIREMENTS:
+- Start with [DATE] placeholder
+- Bureau address block
+- Client name: ${clientName}
+- Client address: ${clientAddress || "[CLIENT ADDRESS]"}
+- Subject line: "Re: Formal Dispute of Inaccurate Credit Report Items${roundLabel}"
+- Professional opening paragraph citing FCRA rights
+- Numbered list of ALL disputed items with their specific statutory basis
+- Each item must include the creditor name, account number if available, balance, and the specific FCRA/FDCPA section being cited
+- Closing paragraph requesting investigation within 30 days per FCRA Section 611(a)
+- Statement reserving all rights under FCRA including right to seek damages
+- Signature block with client name and signature line
+- Footer: "This letter should be sent via USPS Certified Mail, Return Receipt Requested. Keep a copy for your records."
+- Footer: "Prepared with PaigeAgent AI — Project Mogul Enterprise Inc."
+
+Do NOT fabricate any agreements or promises between creditors and consumers.
+Keep the letter between 400-800 words depending on item count.`;
+
+      userPrompt = `Generate the combined dispute letter for ${bureau} with the following ${items.length} disputed items:\n\n${itemsList}`;
+
+    } else {
+      const validated = legacySchema.parse(rawData);
+      const { bureauData, issueType } = validated;
+
+      systemPrompt = `You are an expert credit dispute letter writer specializing in FCRA compliance.
 Guidelines:
 - Use formal business letter format
-- Reference specific FCRA rights (15 U.S.C. § 1681)
+- Reference specific FCRA rights (15 U.S.C. \\u00a7 1681)
 - Be clear and concise about the disputed items
 - Request investigation and correction
 - Include a 30-day timeline reference
 - Maintain professional tone
-- Focus on facts and specific inaccuracies
 - Do not make false claims or threats
-- Keep letters between 250-400 words`;
+- Keep letters between 250-400 words
+- Footer: "Prepared with PaigeAgent AI \\u2014 Project Mogul Enterprise Inc."`;
 
-    const userPrompt = `Create a dispute letter for the following credit bureau information:
-
+      userPrompt = `Create a dispute letter for:
 Bureau: ${bureauData.name}
 Issue Type: ${issueType}
 Total Accounts: ${bureauData.totalAccounts}
 Derogatory Items: ${bureauData.derogatoryItems}
 Delinquent Items: ${bureauData.delinquentItems}
 
-Please create a professional dispute letter that addresses the ${issueType} found on the ${bureauData.name} credit report. 
-Include proper formatting with:
-1. Date (use [DATE] as placeholder)
-2. Credit bureau address
-3. Consumer information placeholder
-4. Clear description of disputed items
-5. Request for investigation
-6. Reference to FCRA rights
-7. Professional closing
+Include: date placeholder, bureau address, consumer info placeholder, disputed items, investigation request, FCRA rights reference, professional closing.`;
+    }
 
-Format the letter with proper paragraphs and spacing.`;
+    console.log('Generating dispute letter for user:', user.id, 'mode:', isCombined ? 'combined' : 'legacy');
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -148,7 +175,7 @@ Format the letter with proper paragraphs and spacing.`;
         model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
+          { role: "user", content: userPrompt },
         ],
       }),
     });
@@ -156,24 +183,16 @@ Format the letter with proper paragraphs and spacing.`;
     if (!response.ok) {
       const errorId = crypto.randomUUID();
       if (response.status === 429) {
-        console.error(`[DISPUTE-LETTER-ERROR-${errorId}] Rate limit from AI service`);
-        return new Response(
-          JSON.stringify({ error: "Rate limits exceeded, please try again later.", errorId }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ error: "Rate limits exceeded, please try again later.", errorId }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       if (response.status === 402) {
-        console.error(`[DISPUTE-LETTER-ERROR-${errorId}] Payment required`);
-        return new Response(
-          JSON.stringify({ error: "Payment required, please add funds to your Lovable AI workspace.", errorId }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ error: "Payment required.", errorId }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       console.error(`[DISPUTE-LETTER-ERROR-${errorId}] AI gateway error:`, { status: response.status });
-      return new Response(
-        JSON.stringify({ error: "An error occurred while processing your request", errorId }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "An error occurred while processing your request", errorId }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const data = await response.json();
@@ -187,10 +206,16 @@ Format the letter with proper paragraphs and spacing.`;
     );
   } catch (error) {
     const errorId = crypto.randomUUID();
-    console.error(`[DISPUTE-LETTER-ERROR-${errorId}] Function error:`, {
+    console.error(`[DISPUTE-LETTER-ERROR-${errorId}]`, {
       message: error instanceof Error ? error.message : 'Unknown',
       timestamp: new Date().toISOString()
     });
+    if (error instanceof z.ZodError) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid input format', details: error.issues.map(i => ({ path: i.path.join('.'), message: i.message })) }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     return new Response(
       JSON.stringify({ error: "An error occurred while processing your request", errorId }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
