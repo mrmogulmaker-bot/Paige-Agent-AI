@@ -1,14 +1,21 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Loader2, Mic, MicOff } from "lucide-react";
+import { Send, Loader2, Mic, MicOff, Paperclip } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import type { User, Session } from "@supabase/supabase-js";
+import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
+import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
+import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  documentFileName?: string;
+};
 
 interface PaigeChatProps {
   user: User;
@@ -35,6 +42,19 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  const {
+    attachedDoc,
+    isDragOver,
+    fileInputRef,
+    handleFileSelect,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    removeAttachment,
+    openFilePicker,
+    setAttachedDoc,
+  } = useChatDocumentUpload();
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -43,18 +63,24 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
 
   const handleSend = async (overrideInput?: string) => {
     const messageText = overrideInput || input;
-    if (!messageText.trim() || isLoading) return;
+    if ((!messageText.trim() && !attachedDoc) || isLoading) return;
 
-    const userMessage: Message = { role: "user", content: messageText };
+    const userMessage: Message = {
+      role: "user",
+      content: messageText.trim() || (attachedDoc ? `Analyze this document: ${attachedDoc.name}` : ""),
+      documentFileName: attachedDoc?.name,
+    };
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput("");
+
+    const currentDoc = attachedDoc;
+    setAttachedDoc(null);
     setIsLoading(true);
 
     try {
-      // Always get a fresh session to handle token refresh
       const { data: { session: freshSession } } = await supabase.auth.getSession();
-      
+
       if (!freshSession) {
         toast({
           title: "Session Expired",
@@ -66,6 +92,22 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
         return;
       }
 
+      const payload: any = {
+        messages: newMessages.map(m => ({
+          role: m.role,
+          content: m.content,
+          ...(m.documentFileName ? { documentFileName: m.documentFileName } : {}),
+        })),
+      };
+
+      if (currentDoc) {
+        payload.document = {
+          base64: currentDoc.base64,
+          fileName: currentDoc.name,
+          mimeType: "application/pdf",
+        };
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,
         {
@@ -74,7 +116,7 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
             "Content-Type": "application/json",
             Authorization: `Bearer ${freshSession.access_token}`,
           },
-          body: JSON.stringify({ messages: newMessages }),
+          body: JSON.stringify(payload),
         }
       );
 
@@ -149,7 +191,30 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-card border-r border-border">
+    <div
+      className={`flex flex-col h-full bg-card border-r border-border relative ${isDragOver ? "ring-2 ring-primary ring-inset" : ""}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-primary/10 z-10 flex items-center justify-center pointer-events-none">
+          <div className="bg-card border-2 border-dashed border-primary rounded-xl px-6 py-4 text-center">
+            <p className="text-sm font-medium text-primary">Drop PDF here to attach</p>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+
       {/* Chat header */}
       <div className="px-4 py-3 border-b border-border">
         <div className="flex items-center gap-3">
@@ -178,6 +243,9 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
                   : "bg-muted/40 border border-border"
               }`}
             >
+              {message.documentFileName && (
+                <DocumentMessageBubble fileName={message.documentFileName} />
+              )}
               <p className={`text-sm leading-relaxed whitespace-pre-wrap ${message.role === "assistant" ? "text-foreground" : ""}`}>
                 {message.content}
               </p>
@@ -214,20 +282,37 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
         </div>
       </div>
 
+      {/* Attachment preview */}
+      {attachedDoc && (
+        <div className="px-3 pt-2">
+          <DocumentAttachmentChip fileName={attachedDoc.name} onRemove={removeAttachment} />
+        </div>
+      )}
+
       {/* Input */}
       <div className="p-3 border-t border-border">
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary"
+            onClick={openFilePicker}
+            disabled={isLoading}
+            title="Attach credit report or financial document (PDF)"
+          >
+            <Paperclip className="w-4 h-4" />
+          </Button>
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-            placeholder="Ask Paige anything..."
+            placeholder={attachedDoc ? "Add a message or send document..." : "Ask Paige anything..."}
             className="flex-1 text-sm"
             disabled={isLoading}
           />
           <Button
             onClick={() => handleSend()}
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || (!input.trim() && !attachedDoc)}
             className="bg-gradient-gold hover:opacity-90"
             size="icon"
           >
