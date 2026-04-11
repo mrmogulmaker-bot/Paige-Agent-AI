@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
+import { PME_KNOWLEDGE_BASE } from "../_shared/pme-knowledge-base.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -474,7 +475,11 @@ PERSONALIZATION GUIDELINES:
 - Acknowledge progress and celebrate completed milestones
 - Provide specific next steps
 - Direct them to exact dashboard sections
-${relevantKnowledge}`;
+${relevantKnowledge}
+
+=== PME FUNDING KNOWLEDGE BASE ===
+${PME_KNOWLEDGE_BASE}
+=== END PME FUNDING KNOWLEDGE BASE ===`;
 
     // Build message array
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { PME_KNOWLEDGE_BASE } from "../_shared/pme-knowledge-base.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -192,6 +193,10 @@ Return ONLY valid JSON with this exact structure:
 }
 
 Use the verified read-check below as hard evidence. If your extraction conflicts with the verified read-check, leave the conflicting field null instead of inventing a value.
+
+=== PME FUNDING KNOWLEDGE BASE ===
+${PME_KNOWLEDGE_BASE}
+=== END PME FUNDING KNOWLEDGE BASE ===
 `;
 
 class AIRequestError extends Error {
