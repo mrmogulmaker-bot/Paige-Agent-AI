@@ -1459,8 +1459,11 @@ export type Database = {
       dispute_letters: {
         Row: {
           account_number: string | null
+          bureau: string | null
           business_name: string | null
           created_at: string | null
+          dispute_ids: string[] | null
+          dispute_round: number | null
           dispute_type: string
           id: string
           letter_content: string | null
@@ -1470,8 +1473,11 @@ export type Database = {
         }
         Insert: {
           account_number?: string | null
+          bureau?: string | null
           business_name?: string | null
           created_at?: string | null
+          dispute_ids?: string[] | null
+          dispute_round?: number | null
           dispute_type: string
           id?: string
           letter_content?: string | null
@@ -1481,8 +1487,11 @@ export type Database = {
         }
         Update: {
           account_number?: string | null
+          bureau?: string | null
           business_name?: string | null
           created_at?: string | null
+          dispute_ids?: string[] | null
+          dispute_round?: number | null
           dispute_type?: string
           id?: string
           letter_content?: string | null
@@ -1499,12 +1508,14 @@ export type Database = {
           client_id: string | null
           created_at: string | null
           creditor_name: string
+          dispute_round: number | null
           due_date: string | null
           id: string
           narrative: string | null
           open_date: string | null
           reason_code: string
           resolution_note: string | null
+          round_submitted_at: string | null
           status: Database["public"]["Enums"]["dispute_status"]
           updated_at: string | null
           user_id: string
@@ -1515,12 +1526,14 @@ export type Database = {
           client_id?: string | null
           created_at?: string | null
           creditor_name: string
+          dispute_round?: number | null
           due_date?: string | null
           id?: string
           narrative?: string | null
           open_date?: string | null
           reason_code: string
           resolution_note?: string | null
+          round_submitted_at?: string | null
           status?: Database["public"]["Enums"]["dispute_status"]
           updated_at?: string | null
           user_id: string
@@ -1531,12 +1544,14 @@ export type Database = {
           client_id?: string | null
           created_at?: string | null
           creditor_name?: string
+          dispute_round?: number | null
           due_date?: string | null
           id?: string
           narrative?: string | null
           open_date?: string | null
           reason_code?: string
           resolution_note?: string | null
+          round_submitted_at?: string | null
           status?: Database["public"]["Enums"]["dispute_status"]
           updated_at?: string | null
           user_id?: string
