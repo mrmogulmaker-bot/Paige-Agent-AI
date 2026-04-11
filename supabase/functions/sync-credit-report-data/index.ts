@@ -217,46 +217,81 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
     currentStep = "negative_items";
     let negativeItemsInserted = 0;
     let negativeItemsUpdated = 0;
+
+    // Normalize bureau and item_type to match CHECK constraints
+    const normalizeBureau = (b: string): string => {
+      const lower = (b || "").toLowerCase().trim();
+      if (lower.includes("trans")) return "transunion";
+      if (lower.includes("exper")) return "experian";
+      if (lower.includes("equi")) return "equifax";
+      return lower;
+    };
+    const normalizeItemType = (t: string): string => {
+      const lower = (t || "").toLowerCase().trim().replace(/-/g, "_");
+      const map: Record<string, string> = {
+        charge_off: "charge_off", chargeoff: "charge_off", "charged off": "charge_off",
+        collection: "collection", collections: "collection",
+        late_payment: "late_payment", "late payment": "late_payment", late: "late_payment",
+        bankruptcy: "bankruptcy", repossession: "repossession", foreclosure: "foreclosure",
+        tax_lien: "tax_lien", "tax lien": "tax_lien",
+        civil_judgment: "civil_judgment", "civil judgment": "civil_judgment",
+        student_loan_default: "student_loan_default",
+      };
+      return map[lower] || "collection";
+    };
+    const normalizeStatus = (s: string): string => {
+      const lower = (s || "active").toLowerCase().trim();
+      if (["active", "disputed", "removed", "verified", "updated"].includes(lower)) return lower;
+      return "active";
+    };
+
     for (const item of payload.negative_items) {
+      const bureau = normalizeBureau(item.bureau);
+      const itemType = normalizeItemType(item.item_type);
+      const status = normalizeStatus(item.status);
+      const removalProb = item.estimated_score_impact != null ? Math.max(0, Math.min(100, Math.round(item.estimated_score_impact))) : null;
+
       const matchQuery = supabase
         .from("credit_negative_items").select("id")
         .eq("user_id", targetUserId)
         .eq("creditor_name", item.creditor_name)
-        .eq("bureau", item.bureau);
+        .eq("bureau", bureau);
 
       if (item.account_number_masked) matchQuery.eq("account_number_masked", item.account_number_masked);
 
       const { data: existing } = await matchQuery.maybeSingle();
 
       if (existing) {
-        await supabase.from("credit_negative_items").update({
-          status: item.status,
+        const { error: updateErr } = await supabase.from("credit_negative_items").update({
+          status,
           amount: item.amount,
-          item_type: item.item_type,
+          item_type: itemType,
           notes: item.dispute_basis,
-          removal_probability: item.estimated_score_impact,
+          removal_probability: removalProb,
           date_of_occurrence: item.date_of_occurrence || null,
           date_reported: item.date_reported || null,
           is_removable: true,
           updated_at: new Date().toISOString(),
         }).eq("id", existing.id);
-        negativeItemsUpdated++;
+        if (updateErr) console.error("Negative item update error:", updateErr);
+        else negativeItemsUpdated++;
       } else {
-        await supabase.from("credit_negative_items").insert(withClientId({
+        const { error: insertErr } = await supabase.from("credit_negative_items").insert(withClientId({
           user_id: targetUserId,
           creditor_name: item.creditor_name,
           account_number_masked: item.account_number_masked,
-          bureau: item.bureau,
-          item_type: item.item_type,
+          bureau,
+          item_type: itemType,
           amount: item.amount,
           date_of_occurrence: item.date_of_occurrence || null,
           date_reported: item.date_reported || null,
-          status: item.status || "active",
+          status,
           notes: item.dispute_basis,
-          removal_probability: item.estimated_score_impact,
+          removal_probability: removalProb,
           is_removable: true,
         }));
-        negativeItemsInserted++;
+        if (insertErr) console.error("Negative item insert error:", insertErr);
+        else negativeItemsInserted++;
       }
     }
     results.negative_items = { inserted: negativeItemsInserted, updated: negativeItemsUpdated };
