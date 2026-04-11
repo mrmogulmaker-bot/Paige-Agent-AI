@@ -52,6 +52,7 @@ import { WebhooksIntegrations } from "@/components/dashboard/WebhooksIntegration
 import { OutreachCenter } from "@/components/dashboard/OutreachCenter";
 import { ClientManagementDashboard } from "@/components/dashboard/ClientManagementDashboard";
 import { ClientFileView } from "@/components/dashboard/ClientFileView";
+import { InternalClientFileView } from "@/components/dashboard/InternalClientFileView";
 import { AllCreditReportsView } from "@/components/dashboard/AllCreditReportsView";
 import { QuickUploadReportModal } from "@/components/dashboard/QuickUploadReportModal";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
