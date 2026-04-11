@@ -52,6 +52,7 @@ import { WebhooksIntegrations } from "@/components/dashboard/WebhooksIntegration
 import { OutreachCenter } from "@/components/dashboard/OutreachCenter";
 import { ClientManagementDashboard } from "@/components/dashboard/ClientManagementDashboard";
 import { ClientFileView } from "@/components/dashboard/ClientFileView";
+import { InternalClientFileView } from "@/components/dashboard/InternalClientFileView";
 import { AllCreditReportsView } from "@/components/dashboard/AllCreditReportsView";
 import { QuickUploadReportModal } from "@/components/dashboard/QuickUploadReportModal";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
@@ -60,6 +61,7 @@ const Dashboard = () => {
   const { mode, isCoachOrAdmin } = useDashboardMode();
   const [activeSection, setActiveSection] = useState("dashboard");
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [selectedInternalClientId, setSelectedInternalClientId] = useState<string | null>(null);
   const [showAccel, setShowAccel] = useState(true);
   const [showBuild, setShowBuild] = useState(true);
   const [user, setUser] = useState<User | null>(null);
@@ -195,10 +197,16 @@ const Dashboard = () => {
               <PageTransition>
                 <div className="p-3 md:p-6 max-w-7xl mx-auto w-full">
                   {activeSection === "dashboard" && mode === "internal" && isCoachOrAdmin && (
-                    <ClientManagementDashboard onViewClient={(clientId) => {
-                      setSelectedClientId(clientId);
-                      setActiveSection("client-file");
-                    }} />
+                    <ClientManagementDashboard
+                      onViewClient={(clientId) => {
+                        setSelectedClientId(clientId);
+                        setActiveSection("client-file");
+                      }}
+                      onViewInternalClient={(clientId) => {
+                        setSelectedInternalClientId(clientId);
+                        setActiveSection("internal-client-file");
+                      }}
+                    />
                   )}
                   {activeSection === "dashboard" && (mode !== "internal" || !isCoachOrAdmin) && (
                   <div className="space-y-6">
@@ -336,6 +344,12 @@ const Dashboard = () => {
                   <ClientFileView
                     clientUserId={selectedClientId}
                     onBack={() => setActiveSection("dashboard")}
+                  />
+                )}
+                {activeSection === "internal-client-file" && selectedInternalClientId && (
+                  <InternalClientFileView
+                    clientId={selectedInternalClientId}
+                    onBack={() => { setSelectedInternalClientId(null); setActiveSection("dashboard"); }}
                   />
                 )}
 
