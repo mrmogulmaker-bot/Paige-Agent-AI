@@ -9,6 +9,7 @@ import { UserPerformance } from "@/components/dashboard/UserPerformance";
 import { AuditLogsViewer } from "@/components/dashboard/admin/AuditLogsViewer";
 import { ComplianceMonitor } from "@/components/dashboard/admin/ComplianceMonitor";
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
+import { FundingPortfolioView } from "@/components/dashboard/admin/FundingPortfolioView";
 import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
 import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
 import { toast } from "sonner";
@@ -139,8 +140,9 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="performance" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="performance">Performance</TabsTrigger>
+            <TabsTrigger value="funding">Funding</TabsTrigger>
             <TabsTrigger value="applications">Affiliates</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="compliance">Compliance</TabsTrigger>
@@ -150,6 +152,10 @@ const Admin = () => {
 
           <TabsContent value="performance" className="space-y-4">
             <UserPerformance />
+          </TabsContent>
+
+          <TabsContent value="funding" className="space-y-4">
+            <FundingPortfolioView />
           </TabsContent>
 
           <TabsContent value="applications" className="space-y-4">
