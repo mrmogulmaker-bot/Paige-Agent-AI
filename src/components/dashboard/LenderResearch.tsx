@@ -245,7 +245,7 @@ export function LenderResearch() {
               <Select value={criteria.timeInBusiness} onValueChange={v => setCriteria(prev => ({ ...prev, timeInBusiness: v }))}>
                 <SelectTrigger><SelectValue placeholder="Any" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="startup">Startup (< 1 year)</SelectItem>
+                  <SelectItem value="startup">{"Startup (< 1 year)"}</SelectItem>
                   <SelectItem value="1-2">1-2 years</SelectItem>
                   <SelectItem value="2-5">2-5 years</SelectItem>
                   <SelectItem value="5+">5+ years</SelectItem>
