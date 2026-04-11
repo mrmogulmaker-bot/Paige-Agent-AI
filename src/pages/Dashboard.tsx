@@ -34,6 +34,7 @@ import { BusinessDocuments } from "@/components/dashboard/BusinessDocuments";
 import { TaskManager } from "@/components/dashboard/TaskManager";
 import { PaymentHistory } from "@/components/dashboard/PaymentHistory";
 import { AffiliateTracking } from "@/components/dashboard/AffiliateTracking";
+import { ReportUploadTab } from "@/components/dashboard/ReportUploadTab";
 import { Integrations } from "@/components/dashboard/Integrations";
 import { BankAccountsManager } from "@/components/dashboard/BankAccountsManager";
 import { FundingMarketplace } from "@/components/dashboard/FundingMarketplace";
@@ -157,6 +158,7 @@ const Dashboard = () => {
                   {activeSection === "integrations" && "Integrations"}
                   {activeSection === "settings" && "Settings"}
                   {activeSection === "contact" && "Contact & Support"}
+                  {activeSection === "report-upload" && "Report Upload & AI Analysis"}
                 </h1>
               </div>
               <div className="flex items-center gap-2 md:gap-4">
@@ -280,6 +282,7 @@ const Dashboard = () => {
                   </PlanGate>
                 )}
                 {activeSection === "payments" && <PaymentHistory />}
+                {activeSection === "report-upload" && <ReportUploadTab />}
                 {activeSection === "affiliate" && <AffiliateTracking />}
                 {activeSection === "integrations" && <Integrations />}
                   {activeSection === "settings" && <ProfileSettings />}
