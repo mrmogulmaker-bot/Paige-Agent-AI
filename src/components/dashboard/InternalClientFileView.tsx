@@ -1,0 +1,355 @@
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  ArrowLeft, DollarSign, FileText, Mail, Brain, Upload,
+  AlertTriangle, User, Building2, Phone, AtSign, Save, Archive, ArchiveRestore
+} from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { ReportUploadTab } from "./ReportUploadTab";
+import { OutreachCenter } from "./OutreachCenter";
+import { PMEFundingReadiness } from "./PMEFundingReadiness";
+import { ClientMemoryTab } from "./ClientMemoryTab";
+import { DisputesManager } from "./DisputesManager";
+import { toast } from "sonner";
+
+interface InternalClientFileViewProps {
+  clientId: string;
+  onBack: () => void;
+}
+
+interface ClientRecord {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  entity_name: string | null;
+  entity_type: string | null;
+  funding_goal: number | null;
+  monthly_revenue: number | null;
+  current_notes: string | null;
+  status: string;
+  linked_user_id: string | null;
+  created_at: string;
+}
+
+export function InternalClientFileView({ clientId, onBack }: InternalClientFileViewProps) {
+  const [client, setClient] = useState<ClientRecord | null>(null);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState<Partial<ClientRecord>>({});
+  const [saving, setSaving] = useState(false);
+
+  // Credit scores from profiles (if linked) or credit_factor_scores
+  const [scores, setScores] = useState<{ eq: number; ex: number; tu: number }>({ eq: 0, ex: 0, tu: 0 });
+  const [negativeCount, setNegativeCount] = useState(0);
+  const [disputeCount, setDisputeCount] = useState(0);
+
+  useEffect(() => {
+    fetchClient();
+    fetchClientData();
+  }, [clientId]);
+
+  const fetchClient = async () => {
+    const { data } = await supabase
+      .from("clients" as any)
+      .select("*")
+      .eq("id", clientId)
+      .maybeSingle();
+    if (data) {
+      setClient(data as any);
+      setEditForm(data as any);
+    }
+  };
+
+  const fetchClientData = async () => {
+    // Fetch scores from profiles if linked, or from credit_factor_scores by client_id
+    const [negRes, dispRes] = await Promise.all([
+      supabase.from("credit_negative_items").select("id", { count: "exact" }).eq("client_id" as any, clientId),
+      supabase.from("disputes").select("id", { count: "exact" }).eq("client_id" as any, clientId),
+    ]);
+    setNegativeCount(negRes.count || 0);
+    setDisputeCount(dispRes.count || 0);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("clients" as any)
+        .update({
+          first_name: editForm.first_name,
+          last_name: editForm.last_name,
+          email: editForm.email || null,
+          phone: editForm.phone || null,
+          entity_name: editForm.entity_name || null,
+          entity_type: editForm.entity_type || null,
+          funding_goal: editForm.funding_goal,
+          monthly_revenue: editForm.monthly_revenue,
+          current_notes: editForm.current_notes || null,
+        } as any)
+        .eq("id", clientId);
+      if (error) throw error;
+      toast.success("Client record updated");
+      setEditing(false);
+      fetchClient();
+    } catch (err: any) {
+      toast.error("Failed to save", { description: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleArchive = async () => {
+    const newStatus = client?.status === "archived" ? "active" : "archived";
+    const { error } = await supabase
+      .from("clients" as any)
+      .update({ status: newStatus } as any)
+      .eq("id", clientId);
+    if (error) {
+      toast.error("Failed to update status");
+    } else {
+      toast.success(newStatus === "archived" ? "Client archived" : "Client restored");
+      fetchClient();
+    }
+  };
+
+  if (!client) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  const fullName = `${client.first_name} ${client.last_name}`;
+  // Use linked_user_id for components that need a user_id, or fall back to a placeholder
+  const effectiveUserId = client.linked_user_id || clientId;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="sm" onClick={onBack}>
+          <ArrowLeft className="w-4 h-4 mr-1" /> Back
+        </Button>
+        <div className="flex-1">
+          <h2 className="text-2xl font-bold text-foreground">{fullName}</h2>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {client.entity_name && (
+              <span className="text-sm text-muted-foreground flex items-center gap-1">
+                <Building2 className="w-3 h-3" /> {client.entity_name}
+              </span>
+            )}
+            {client.email && (
+              <span className="text-sm text-muted-foreground flex items-center gap-1">
+                <AtSign className="w-3 h-3" /> {client.email}
+              </span>
+            )}
+            <Badge variant={client.status === "active" ? "default" : "secondary"}>
+              {client.status}
+            </Badge>
+            {client.linked_user_id && (
+              <Badge variant="outline" className="text-xs">Portal Linked</Badge>
+            )}
+            {negativeCount > 0 && (
+              <Badge variant="destructive" className="flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> {negativeCount} Negative Items
+              </Badge>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={toggleArchive}>
+            {client.status === "archived" ? (
+              <><ArchiveRestore className="w-4 h-4 mr-1" /> Restore</>
+            ) : (
+              <><Archive className="w-4 h-4 mr-1" /> Archive</>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="flex flex-wrap h-auto gap-1">
+          <TabsTrigger value="overview" className="text-xs">
+            <User className="w-3 h-3 mr-1" /> Overview
+          </TabsTrigger>
+          <TabsTrigger value="credit-reports" className="text-xs">
+            <Upload className="w-3 h-3 mr-1" /> Credit Reports
+          </TabsTrigger>
+          <TabsTrigger value="disputes" className="text-xs">
+            <AlertTriangle className="w-3 h-3 mr-1" /> Disputes
+            {disputeCount > 0 && <span className="ml-1 text-[10px] bg-primary/20 rounded-full px-1.5">{disputeCount}</span>}
+          </TabsTrigger>
+          <TabsTrigger value="funding" className="text-xs">
+            <DollarSign className="w-3 h-3 mr-1" /> Funding
+          </TabsTrigger>
+          <TabsTrigger value="documents" className="text-xs">
+            <FileText className="w-3 h-3 mr-1" /> Documents
+          </TabsTrigger>
+          <TabsTrigger value="outreach" className="text-xs">
+            <Mail className="w-3 h-3 mr-1" /> Outreach
+          </TabsTrigger>
+          <TabsTrigger value="memory" className="text-xs">
+            <Brain className="w-3 h-3 mr-1" /> Memory
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Client Info Card */}
+            <Card className="lg:col-span-2">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-lg">Client Information</CardTitle>
+                {!editing ? (
+                  <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setEditForm(client); }}>Cancel</Button>
+                    <Button size="sm" onClick={handleSave} disabled={saving}>
+                      <Save className="w-3 h-3 mr-1" /> {saving ? "Saving..." : "Save"}
+                    </Button>
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">First Name</Label>
+                    {editing ? (
+                      <Input value={editForm.first_name || ""} onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })} />
+                    ) : (
+                      <p className="font-medium">{client.first_name}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Last Name</Label>
+                    {editing ? (
+                      <Input value={editForm.last_name || ""} onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })} />
+                    ) : (
+                      <p className="font-medium">{client.last_name}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Email</Label>
+                    {editing ? (
+                      <Input type="email" value={editForm.email || ""} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+                    ) : (
+                      <p>{client.email || "—"}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Phone</Label>
+                    {editing ? (
+                      <Input type="tel" value={editForm.phone || ""} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+                    ) : (
+                      <p>{client.phone || "—"}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Entity Name</Label>
+                    {editing ? (
+                      <Input value={editForm.entity_name || ""} onChange={(e) => setEditForm({ ...editForm, entity_name: e.target.value })} />
+                    ) : (
+                      <p>{client.entity_name || "—"}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Entity Type</Label>
+                    <p>{client.entity_type || "—"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Funding Goal</Label>
+                    <p>{client.funding_goal ? `$${Number(client.funding_goal).toLocaleString()}` : "—"}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Monthly Revenue</Label>
+                    <p>{client.monthly_revenue ? `$${Number(client.monthly_revenue).toLocaleString()}` : "—"}</p>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Notes</Label>
+                  {editing ? (
+                    <Textarea value={editForm.current_notes || ""} onChange={(e) => setEditForm({ ...editForm, current_notes: e.target.value })} rows={3} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{client.current_notes || "No notes yet."}</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Quick Stats */}
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="pt-6 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Negative Items</span>
+                    <Badge variant={negativeCount > 0 ? "destructive" : "default"}>{negativeCount}</Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Active Disputes</span>
+                    <Badge variant="secondary">{disputeCount}</Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Portal Access</span>
+                    <Badge variant={client.linked_user_id ? "default" : "outline"}>
+                      {client.linked_user_id ? "Linked" : "Not Invited"}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Created</span>
+                    <span className="text-sm">{new Date(client.created_at).toLocaleDateString()}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Credit Reports — uses linked_user_id if available, otherwise client_id */}
+        <TabsContent value="credit-reports" className="mt-4">
+          <ReportUploadTab clientUserId={effectiveUserId} />
+        </TabsContent>
+
+        {/* Disputes */}
+        <TabsContent value="disputes" className="mt-4">
+          <DisputesManager />
+        </TabsContent>
+
+        {/* Funding */}
+        <TabsContent value="funding" className="mt-4">
+          <PMEFundingReadiness />
+        </TabsContent>
+
+        {/* Documents */}
+        <TabsContent value="documents" className="mt-4">
+          <Card>
+            <CardContent className="py-12 text-center">
+              <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-muted-foreground">Upload and manage client documents</p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Outreach */}
+        <TabsContent value="outreach" className="mt-4">
+          <OutreachCenter clientUserId={effectiveUserId} />
+        </TabsContent>
+
+        {/* Memory */}
+        <TabsContent value="memory" className="mt-4">
+          <ClientMemoryTab clientUserId={effectiveUserId} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
