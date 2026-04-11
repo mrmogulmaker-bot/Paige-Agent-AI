@@ -2788,6 +2788,7 @@ export type Database = {
           city: string | null
           created_at: string | null
           credit_goals: Json | null
+          dashboard_mode: string
           date_of_birth: string | null
           dob_last4: string | null
           estimated_fico_eq: number | null
@@ -2811,6 +2812,7 @@ export type Database = {
           city?: string | null
           created_at?: string | null
           credit_goals?: Json | null
+          dashboard_mode?: string
           date_of_birth?: string | null
           dob_last4?: string | null
           estimated_fico_eq?: number | null
@@ -2834,6 +2836,7 @@ export type Database = {
           city?: string | null
           created_at?: string | null
           credit_goals?: Json | null
+          dashboard_mode?: string
           date_of_birth?: string | null
           dob_last4?: string | null
           estimated_fico_eq?: number | null
