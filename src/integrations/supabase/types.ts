@@ -1070,6 +1070,66 @@ export type Database = {
           },
         ]
       }
+      credit_report_uploads: {
+        Row: {
+          analysis_result: Json | null
+          analysis_status: string
+          bureau_detected: string | null
+          created_at: string
+          error_message: string | null
+          estimated_score_impact: number | null
+          file_name: string
+          file_path: string
+          file_size: number | null
+          id: string
+          negative_items_extracted: Json | null
+          positive_accounts_extracted: Json | null
+          profile_summary: string | null
+          report_type: string
+          updated_at: string
+          uploaded_by: string
+          user_id: string
+        }
+        Insert: {
+          analysis_result?: Json | null
+          analysis_status?: string
+          bureau_detected?: string | null
+          created_at?: string
+          error_message?: string | null
+          estimated_score_impact?: number | null
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          id?: string
+          negative_items_extracted?: Json | null
+          positive_accounts_extracted?: Json | null
+          profile_summary?: string | null
+          report_type?: string
+          updated_at?: string
+          uploaded_by: string
+          user_id: string
+        }
+        Update: {
+          analysis_result?: Json | null
+          analysis_status?: string
+          bureau_detected?: string | null
+          created_at?: string
+          error_message?: string | null
+          estimated_score_impact?: number | null
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          id?: string
+          negative_items_extracted?: Json | null
+          positive_accounts_extracted?: Json | null
+          profile_summary?: string | null
+          report_type?: string
+          updated_at?: string
+          uploaded_by?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       credit_report_verifications: {
         Row: {
           created_at: string | null

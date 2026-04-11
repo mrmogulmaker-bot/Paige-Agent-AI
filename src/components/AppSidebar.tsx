@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Plug, Shield, PhoneCall, DollarSign } from "lucide-react";
+import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Plug, Shield, PhoneCall, DollarSign, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -36,6 +36,7 @@ const businessMenuItems = [
 ];
 
 const generalMenuItems = [
+  { title: "Report Upload", icon: Upload, id: "report-upload" },
   { title: "Funding Marketplace", icon: DollarSign, id: "funding-marketplace", requiresProfessional: true },
   { title: "Payments", icon: Receipt, id: "payments" },
   { title: "Affiliate", icon: Users, id: "affiliate" },
