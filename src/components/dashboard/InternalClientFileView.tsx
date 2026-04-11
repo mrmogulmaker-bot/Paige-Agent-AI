@@ -69,11 +69,15 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
   };
 
   const fetchClientData = async () => {
-    // Fetch scores from profiles if linked, or from credit_factor_scores by client_id
-    const [negRes, dispRes] = await Promise.all([
-      supabase.from("credit_negative_items").select("id", { count: "exact" }).eq("client_id" as any, clientId),
-      supabase.from("disputes").select("id", { count: "exact" }).eq("client_id" as any, clientId),
-    ]);
+    // Fetch counts using separate queries to avoid deep type instantiation
+    const negRes = await supabase
+      .from("credit_negative_items")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", clientId as any);
+    const dispRes = await supabase
+      .from("disputes")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", clientId as any);
     setNegativeCount(negRes.count || 0);
     setDisputeCount(dispRes.count || 0);
   };
