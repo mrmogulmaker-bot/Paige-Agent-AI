@@ -291,6 +291,7 @@ const Dashboard = () => {
                 {activeSection === "report-upload" && <ReportUploadTab />}
                 {activeSection === "affiliate" && <AffiliateTracking />}
                 {activeSection === "integrations" && <Integrations />}
+                {activeSection === "lender-research" && <LenderResearch />}
                   {activeSection === "settings" && <ProfileSettings />}
                   {activeSection === "contact" && <ContactSupport />}
                 </div>
