@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, Loader2, Mic, MicOff, Paperclip } from "lucide-react";
@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import type { User, Session } from "@supabase/supabase-js";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
+import { usePaigeMemory } from "@/hooks/usePaigeMemory";
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 
@@ -41,6 +42,16 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const sessionIdRef = useRef<string>(crypto.randomUUID());
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const {
+    extractDocumentSummary,
+    getSessionDocumentContext,
+    trackActivity,
+    generateSessionSummary,
+    resetSession,
+  } = usePaigeMemory();
 
   const {
     attachedDoc,
@@ -61,9 +72,39 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
     }
   }, [messages]);
 
+  // Reset inactivity timer on each message
+  const resetInactivityTimer = useCallback(() => {
+    trackActivity();
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    inactivityTimerRef.current = setTimeout(() => {
+      // 30 min inactivity — generate session summary
+      if (messages.length > 2) {
+        generateSessionSummary(
+          messages.map(m => ({ role: m.role, content: m.content })),
+          sessionIdRef.current
+        );
+      }
+    }, 30 * 60 * 1000);
+  }, [messages, trackActivity, generateSessionSummary]);
+
+  // Cleanup: generate summary on unmount
+  useEffect(() => {
+    return () => {
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+      if (messages.length > 2) {
+        generateSessionSummary(
+          messages.map(m => ({ role: m.role, content: m.content })),
+          sessionIdRef.current
+        );
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSend = async (overrideInput?: string) => {
     const messageText = overrideInput || input;
     if ((!messageText.trim() && !attachedDoc) || isLoading) return;
+
+    resetInactivityTimer();
 
     const userMessage: Message = {
       role: "user",
@@ -82,11 +123,7 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
       const { data: { session: freshSession } } = await supabase.auth.getSession();
 
       if (!freshSession) {
-        toast({
-          title: "Session Expired",
-          description: "Your session has expired. Please sign in again.",
-          variant: "destructive",
-        });
+        toast({ title: "Session Expired", description: "Please sign in again.", variant: "destructive" });
         setMessages(messages);
         setIsLoading(false);
         return;
@@ -98,6 +135,7 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
           content: m.content,
           ...(m.documentFileName ? { documentFileName: m.documentFileName } : {}),
         })),
+        sessionDocumentContext: getSessionDocumentContext(),
       };
 
       if (currentDoc) {
@@ -122,11 +160,7 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
 
       if (!response.ok) {
         if (response.status === 429) {
-          toast({
-            title: "Rate Limit Reached",
-            description: "Please wait a moment before sending another message.",
-            variant: "destructive",
-          });
+          toast({ title: "Rate Limit Reached", description: "Please wait a moment.", variant: "destructive" });
           setMessages(messages);
           setIsLoading(false);
           return;
@@ -158,10 +192,7 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
           if (!line.startsWith("data: ")) continue;
 
           const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") {
-            streamDone = true;
-            break;
-          }
+          if (jsonStr === "[DONE]") { streamDone = true; break; }
 
           try {
             const parsed = JSON.parse(jsonStr);
@@ -177,15 +208,14 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
         }
       }
 
-      // If a document was attached, add sync confirmation after a brief delay
+      // If document was attached, extract summary for within-session context
       if (currentDoc && assistantMessage.length > 100) {
+        extractDocumentSummary(assistantMessage, currentDoc.name);
+
         setTimeout(() => {
           setMessages(prev => [
             ...prev,
-            {
-              role: "assistant",
-              content: "✅ Your credit profile has been updated with the data from this report.",
-            },
+            { role: "assistant", content: "✅ Your credit profile has been updated with the data from this report." },
           ]);
         }, 2000);
       }
@@ -193,11 +223,7 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
       setIsLoading(false);
     } catch (error) {
       console.error("Chat error:", error);
-      toast({
-        title: "Error",
-        description: "Failed to send message. Please try again.",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to send message. Please try again.", variant: "destructive" });
       setMessages(messages);
       setIsLoading(false);
     }
@@ -210,7 +236,6 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Drag overlay */}
       {isDragOver && (
         <div className="absolute inset-0 bg-primary/10 z-10 flex items-center justify-center pointer-events-none">
           <div className="bg-card border-2 border-dashed border-primary rounded-xl px-6 py-4 text-center">
@@ -219,16 +244,8 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
         </div>
       )}
 
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/pdf"
-        onChange={handleFileSelect}
-        className="hidden"
-      />
+      <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handleFileSelect} className="hidden" />
 
-      {/* Chat header */}
       <div className="px-4 py-3 border-b border-border">
         <div className="flex items-center gap-3">
           <img src={paigeAvatar} alt="Paige" className="w-9 h-9 rounded-full border-2 border-accent" />
@@ -239,26 +256,14 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
         </div>
       </div>
 
-      {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-          >
+          <div key={index} className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
             {message.role === "assistant" && (
               <img src={paigeAvatar} alt="Paige" className="w-8 h-8 rounded-full border border-accent flex-shrink-0" />
             )}
-            <div
-              className={`max-w-[85%] rounded-lg px-3.5 py-2.5 ${
-                message.role === "user"
-                  ? "bg-accent text-accent-foreground"
-                  : "bg-muted/40 border border-border"
-              }`}
-            >
-              {message.documentFileName && (
-                <DocumentMessageBubble fileName={message.documentFileName} />
-              )}
+            <div className={`max-w-[85%] rounded-lg px-3.5 py-2.5 ${message.role === "user" ? "bg-accent text-accent-foreground" : "bg-muted/40 border border-border"}`}>
+              {message.documentFileName && <DocumentMessageBubble fileName={message.documentFileName} />}
               <p className={`text-sm leading-relaxed whitespace-pre-wrap ${message.role === "assistant" ? "text-foreground" : ""}`}>
                 {message.content}
               </p>
@@ -279,7 +284,6 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
         )}
       </div>
 
-      {/* Quick actions */}
       <div className="px-4 pb-2">
         <div className="flex flex-wrap gap-1.5">
           {quickActions.map((action) => (
@@ -295,40 +299,19 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
         </div>
       </div>
 
-      {/* Attachment preview */}
       {attachedDoc && (
         <div className="px-3 pt-2">
           <DocumentAttachmentChip fileName={attachedDoc.name} onRemove={removeAttachment} />
         </div>
       )}
 
-      {/* Input */}
       <div className="p-3 border-t border-border">
         <div className="flex gap-2 items-center">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary"
-            onClick={openFilePicker}
-            disabled={isLoading}
-            title="Attach credit report or financial document (PDF)"
-          >
+          <Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading} title="Attach credit report or financial document (PDF)">
             <Paperclip className="w-4 h-4" />
           </Button>
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-            placeholder={attachedDoc ? "Add a message or send document..." : "Ask Paige anything..."}
-            className="flex-1 text-sm"
-            disabled={isLoading}
-          />
-          <Button
-            onClick={() => handleSend()}
-            disabled={isLoading || (!input.trim() && !attachedDoc)}
-            className="bg-gradient-gold hover:opacity-90"
-            size="icon"
-          >
+          <Input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()} placeholder={attachedDoc ? "Add a message or send document..." : "Ask Paige anything..."} className="flex-1 text-sm" disabled={isLoading} />
+          <Button onClick={() => handleSend()} disabled={isLoading || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90" size="icon">
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </div>
