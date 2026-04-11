@@ -16,6 +16,7 @@ import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import { FloatingChatbot } from "./components/FloatingChatbot";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
+import { DashboardModeProvider } from "./contexts/DashboardModeContext";
 
 // Lazy-load existing dashboard sections for /app/* routes
 const DisputesManager = React.lazy(() => import("./components/dashboard/DisputesManager").then(m => ({ default: m.DisputesManager })));
@@ -43,6 +44,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <SubscriptionProvider>
+        <DashboardModeProvider>
         <Toaster />
         <Sonner />
         <BrowserRouter>
@@ -93,6 +95,7 @@ const App = () => (
           </Routes>
           <FloatingChatbot />
         </BrowserRouter>
+        </DashboardModeProvider>
       </SubscriptionProvider>
     </TooltipProvider>
   </QueryClientProvider>
