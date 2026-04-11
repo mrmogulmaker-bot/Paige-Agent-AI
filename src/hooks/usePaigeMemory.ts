@@ -15,7 +15,7 @@ export function usePaigeMemory() {
   const sessionDocuments = useRef<DocumentSummary[]>([]);
   const sessionStartTime = useRef<number>(Date.now());
   const lastActivityTime = useRef<number>(Date.now());
-  const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
+  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Extract a compressed summary from Paige's analysis response
   const extractDocumentSummary = useCallback((analysisText: string, fileName: string) => {
