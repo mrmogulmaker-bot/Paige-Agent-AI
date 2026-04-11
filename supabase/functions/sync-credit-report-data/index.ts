@@ -204,6 +204,10 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       if (equifax != null) updateFields.estimated_fico_eq = equifax;
       if (experian != null) updateFields.estimated_fico_ex = experian;
       if (transunion != null) updateFields.estimated_fico_tu = transunion;
+      // Persist score model (FICO / VantageScore / Unknown)
+      if (payload.score_model && ["FICO", "VantageScore", "Unknown"].includes(payload.score_model)) {
+        updateFields.score_model = payload.score_model;
+      }
 
       const { error: scoreErr } = await supabase.from("profiles").update(updateFields).eq("user_id", targetUserId);
       if (scoreErr) {
