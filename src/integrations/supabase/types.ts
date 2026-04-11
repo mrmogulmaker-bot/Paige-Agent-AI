@@ -2124,6 +2124,54 @@ export type Database = {
         }
         Relationships: []
       }
+      funding_secured: {
+        Row: {
+          amount: number
+          client_user_id: string
+          created_at: string
+          date_secured: string
+          factor_rate: number | null
+          id: string
+          interest_rate: number | null
+          lender_name: string
+          notes: string | null
+          product_type: string
+          term_length_months: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount?: number
+          client_user_id: string
+          created_at?: string
+          date_secured?: string
+          factor_rate?: number | null
+          id?: string
+          interest_rate?: number | null
+          lender_name: string
+          notes?: string | null
+          product_type: string
+          term_length_months?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          client_user_id?: string
+          created_at?: string
+          date_secured?: string
+          factor_rate?: number | null
+          id?: string
+          interest_rate?: number | null
+          lender_name?: string
+          notes?: string | null
+          product_type?: string
+          term_length_months?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       invitations: {
         Row: {
           accepted_at: string | null
