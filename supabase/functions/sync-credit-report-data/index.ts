@@ -468,7 +468,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       if (existingFactors) {
         await supabase.from("credit_factor_scores").update(factorData).eq("id", existingFactors.id);
       } else {
-        await supabase.from("credit_factor_scores").insert(factorData);
+        await supabase.from("credit_factor_scores").insert(withClientId(factorData));
       }
       results.credit_factors_recalculated = true;
       results.factor_scores = {
@@ -510,14 +510,14 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
           updated_at: new Date().toISOString(),
         }).eq("id", existingDispute.id);
       } else {
-        await supabase.from("disputes").insert({
+        await supabase.from("disputes").insert(withClientId({
           user_id: targetUserId,
           creditor_name: ds.creditor_name,
           bureau: ds.bureau,
           reason_code: ds.reason_code,
           status: "draft",
           narrative: `Auto-generated from credit report analysis. Dispute basis: ${ds.reason_code}`,
-        });
+        }));
         disputesCreated++;
       }
     }
