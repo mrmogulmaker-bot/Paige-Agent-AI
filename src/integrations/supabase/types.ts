@@ -480,6 +480,7 @@ export type Database = {
       }
       clients: {
         Row: {
+          city: string | null
           created_at: string
           created_by: string
           current_notes: string | null
@@ -493,10 +494,14 @@ export type Database = {
           linked_user_id: string | null
           monthly_revenue: number | null
           phone: string | null
+          state: string | null
           status: string
+          street_address: string | null
           updated_at: string
+          zip_code: string | null
         }
         Insert: {
+          city?: string | null
           created_at?: string
           created_by: string
           current_notes?: string | null
@@ -510,10 +515,14 @@ export type Database = {
           linked_user_id?: string | null
           monthly_revenue?: number | null
           phone?: string | null
+          state?: string | null
           status?: string
+          street_address?: string | null
           updated_at?: string
+          zip_code?: string | null
         }
         Update: {
+          city?: string | null
           created_at?: string
           created_by?: string
           current_notes?: string | null
@@ -527,8 +536,11 @@ export type Database = {
           linked_user_id?: string | null
           monthly_revenue?: number | null
           phone?: string | null
+          state?: string | null
           status?: string
+          street_address?: string | null
           updated_at?: string
+          zip_code?: string | null
         }
         Relationships: []
       }
