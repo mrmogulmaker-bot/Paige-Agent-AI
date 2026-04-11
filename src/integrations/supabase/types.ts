@@ -2944,6 +2944,7 @@ export type Database = {
           city: string | null
           created_at: string | null
           credit_goals: Json | null
+          cross_bureau_discrepancies: Json | null
           dashboard_mode: string
           date_of_birth: string | null
           dob_last4: string | null
@@ -2952,7 +2953,10 @@ export type Database = {
           estimated_fico_tu: number | null
           full_name: string | null
           funding_goals: Json | null
+          has_discrepancies: boolean | null
           id: string
+          last_report_analyzed_at: string | null
+          last_report_source: string | null
           onboarding_completed: boolean | null
           onboarding_step: string | null
           phone: string | null
@@ -2968,6 +2972,7 @@ export type Database = {
           city?: string | null
           created_at?: string | null
           credit_goals?: Json | null
+          cross_bureau_discrepancies?: Json | null
           dashboard_mode?: string
           date_of_birth?: string | null
           dob_last4?: string | null
@@ -2976,7 +2981,10 @@ export type Database = {
           estimated_fico_tu?: number | null
           full_name?: string | null
           funding_goals?: Json | null
+          has_discrepancies?: boolean | null
           id?: string
+          last_report_analyzed_at?: string | null
+          last_report_source?: string | null
           onboarding_completed?: boolean | null
           onboarding_step?: string | null
           phone?: string | null
@@ -2992,6 +3000,7 @@ export type Database = {
           city?: string | null
           created_at?: string | null
           credit_goals?: Json | null
+          cross_bureau_discrepancies?: Json | null
           dashboard_mode?: string
           date_of_birth?: string | null
           dob_last4?: string | null
@@ -3000,7 +3009,10 @@ export type Database = {
           estimated_fico_tu?: number | null
           full_name?: string | null
           funding_goals?: Json | null
+          has_discrepancies?: boolean | null
           id?: string
+          last_report_analyzed_at?: string | null
+          last_report_source?: string | null
           onboarding_completed?: boolean | null
           onboarding_step?: string | null
           phone?: string | null
