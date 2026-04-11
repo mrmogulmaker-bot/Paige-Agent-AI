@@ -55,13 +55,14 @@ interface AppSidebarProps {
 export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps) {
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isCoachOrAdmin, setIsCoachOrAdmin] = useState(false);
   const { planSlug } = useSubscription();
 
   useEffect(() => {
-    checkAdminStatus();
+    checkRoles();
   }, []);
 
-  const checkAdminStatus = async () => {
+  const checkRoles = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -69,13 +70,13 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
       const { data } = await supabase
         .from("user_roles")
         .select("role")
-        .eq("user_id", user.id)
-        .eq("role", "admin")
-        .single();
+        .eq("user_id", user.id);
 
-      setIsAdmin(!!data);
+      const roles = data?.map((r: any) => r.role) || [];
+      setIsAdmin(roles.includes("admin"));
+      setIsCoachOrAdmin(roles.includes("admin") || roles.includes("coach"));
     } catch (error) {
-      console.error("Error checking admin status:", error);
+      console.error("Error checking roles:", error);
     }
   };
 
