@@ -5,8 +5,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Users, Search, TrendingUp, DollarSign, UserCheck, UserPlus } from "lucide-react";
+import { Users, Search, TrendingUp, DollarSign, UserCheck, UserPlus, Upload } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
+import { QuickUploadReportModal } from "./QuickUploadReportModal";
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 
 interface ClientRow {
@@ -37,6 +38,7 @@ export function ClientManagementDashboard({ onViewClient }: ClientManagementDash
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [addClientOpen, setAddClientOpen] = useState(false);
+  const [quickUploadOpen, setQuickUploadOpen] = useState(false);
 
   useEffect(() => {
     fetchClients();
@@ -232,10 +234,14 @@ export function ClientManagementDashboard({ onViewClient }: ClientManagementDash
                 className="pl-9"
               />
             </div>
+            <Button size="sm" variant="outline" onClick={() => setQuickUploadOpen(true)}>
+              <Upload className="w-4 h-4 mr-1" /> Upload Report
+            </Button>
             <Button size="sm" onClick={() => setAddClientOpen(true)}>
               <UserPlus className="w-4 h-4 mr-1" /> Add Client
             </Button>
             <AddClientDialog open={addClientOpen} onOpenChange={setAddClientOpen} onClientAdded={fetchClients} />
+            <QuickUploadReportModal open={quickUploadOpen} onOpenChange={setQuickUploadOpen} />
           </div>
         </CardHeader>
         <CardContent>
