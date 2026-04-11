@@ -11,11 +11,14 @@ import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
 import { usePaigeMemory } from "@/hooks/usePaigeMemory";
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
+import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
+import { useQueryClient } from "@tanstack/react-query";
 
 type Message = {
   role: "user" | "assistant";
   content: string;
   documentFileName?: string;
+  syncStatus?: any;
 };
 
 interface PaigeChatProps {
@@ -42,6 +45,7 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const sessionIdRef = useRef<string>(crypto.randomUUID());
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -173,6 +177,7 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
       let assistantMessage = "";
       let textBuffer = "";
       let streamDone = false;
+      let syncStatus: any = null;
 
       setMessages([...newMessages, { role: "assistant", content: "" }]);
 
@@ -196,6 +201,11 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
 
           try {
             const parsed = JSON.parse(jsonStr);
+            // Check for sync_status event
+            if (parsed.sync_status) {
+              syncStatus = parsed.sync_status;
+              continue;
+            }
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
               assistantMessage += content;
@@ -208,16 +218,23 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
         }
       }
 
-      // If document was attached, extract summary for within-session context
+      // If document was attached, extract summary and show sync status
       if (currentDoc && assistantMessage.length > 100) {
         extractDocumentSummary(assistantMessage, currentDoc.name);
 
-        setTimeout(() => {
+        if (syncStatus) {
+          // Add sync status panel message
           setMessages(prev => [
             ...prev,
-            { role: "assistant", content: "✅ Your credit profile has been updated with the data from this report." },
+            { role: "assistant", content: "", syncStatus },
           ]);
-        }, 2000);
+          // Invalidate all downstream queries so components refresh
+          queryClient.invalidateQueries({ queryKey: ["credit-factors"] });
+          queryClient.invalidateQueries({ queryKey: ["credit-factors-history"] });
+          queryClient.invalidateQueries({ queryKey: ["funding-matches"] });
+          queryClient.invalidateQueries({ queryKey: ["funding-matches-profile-scores"] });
+          queryClient.invalidateQueries({ queryKey: ["funding-projections"] });
+        }
       }
 
       setIsLoading(false);
@@ -264,9 +281,12 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
             )}
             <div className={`max-w-[85%] rounded-lg px-3.5 py-2.5 ${message.role === "user" ? "bg-accent text-accent-foreground" : "bg-muted/40 border border-border"}`}>
               {message.documentFileName && <DocumentMessageBubble fileName={message.documentFileName} />}
-              <p className={`text-sm leading-relaxed whitespace-pre-wrap ${message.role === "assistant" ? "text-foreground" : ""}`}>
-                {message.content}
-              </p>
+              {message.content && (
+                <p className={`text-sm leading-relaxed whitespace-pre-wrap ${message.role === "assistant" ? "text-foreground" : ""}`}>
+                  {message.content}
+                </p>
+              )}
+              {message.syncStatus && <SyncStatusPanel syncStatus={message.syncStatus} />}
             </div>
           </div>
         ))}
