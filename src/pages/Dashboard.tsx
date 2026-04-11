@@ -308,6 +308,7 @@ const Dashboard = () => {
                 {activeSection === "integrations" && <Integrations />}
                 {activeSection === "lender-research" && <LenderResearch />}
                 {activeSection === "funding-secured" && <FundingSecuredTracker />}
+                {activeSection === "webhooks" && <WebhooksIntegrations />}
                   {activeSection === "settings" && <ProfileSettings />}
                   {activeSection === "contact" && <ContactSupport />}
                 </div>
