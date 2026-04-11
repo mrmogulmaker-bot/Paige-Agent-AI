@@ -104,7 +104,15 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages } = validatedData;
+    const { messages, document: attachedDocument } = validatedData;
+
+    // Validate document size (base64 ~= 1.37x original, 10MB file ≈ 13.7MB base64)
+    if (attachedDocument?.base64 && attachedDocument.base64.length > 15_000_000) {
+      return new Response(
+        JSON.stringify({ error: 'Document too large. Maximum size is 10MB.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Check if the last user message contains a URL
     const lastUserMessage = messages.filter((m: any) => m.role === "user").pop();
