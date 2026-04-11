@@ -72,7 +72,7 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
+            Authorization: `Bearer ${freshSession.access_token}`,
           },
           body: JSON.stringify({ messages: newMessages }),
         }
