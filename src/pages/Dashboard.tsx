@@ -315,10 +315,11 @@ const Dashboard = () => {
                 {activeSection === "webhooks" && <WebhooksIntegrations />}
                 {activeSection === "outreach" && selectedClientId && <OutreachCenter clientUserId={selectedClientId} />}
                 {activeSection === "outreach" && !selectedClientId && (
-                  <Card className="p-8 text-center">
+                  <div className="p-8 text-center border border-border rounded-lg">
                     <p className="text-muted-foreground">Select a client from the Client Management dashboard first to generate outreach drafts.</p>
                     <Button variant="outline" className="mt-4" onClick={() => setActiveSection("dashboard")}>Go to Client Management</Button>
-                  </Card>
+                  </div>
+                )}
                 )}
                   {activeSection === "settings" && <ProfileSettings />}
                   {activeSection === "contact" && <ContactSupport />}
