@@ -7,7 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle } from "lucide-react";
+import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle, Link2, Unlink } from "lucide-react";
+import { lovable } from "@/integrations/lovable/index";
 import { z } from "zod";
 import { Switch } from "@/components/ui/switch";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
@@ -279,6 +280,10 @@ export const ProfileSettings = () => {
             <Building2 className="w-4 h-4" />
             Business Info
           </TabsTrigger>
+          <TabsTrigger value="accounts" className="gap-2">
+            <Link2 className="w-4 h-4" />
+            Connected Accounts
+          </TabsTrigger>
           {isCoachOrAdmin && (
             <TabsTrigger value="preferences" className="gap-2">
               <Monitor className="w-4 h-4" />
@@ -325,6 +330,10 @@ export const ProfileSettings = () => {
             </Card>
           </TabsContent>
         )}
+
+        <TabsContent value="accounts">
+          <ConnectedAccountsSection />
+        </TabsContent>
 
         <TabsContent value="personal">
           <Card className="p-6">
