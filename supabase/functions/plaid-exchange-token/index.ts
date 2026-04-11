@@ -12,7 +12,14 @@ serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get('Authorization')!;
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authorization required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -39,12 +46,13 @@ serve(async (req) => {
 
     console.log('Exchanging public token for user:', user.id);
 
-    // Check rate limit
+    // Use admin client for all server-side operations
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Check rate limit
     const { data: rateLimitCheck } = await supabaseAdmin.rpc('check_rate_limit', {
       _user_id: user.id,
       _function_name: 'plaid-exchange-token',
@@ -55,17 +63,10 @@ serve(async (req) => {
     if (!rateLimitCheck) {
       console.log('Rate limit exceeded for user:', user.id);
       return new Response(
-        JSON.stringify({ 
-          error: 'Rate limit exceeded. Please try again later.',
-          retryAfter: 60
-        }),
+        JSON.stringify({ error: 'Rate limit exceeded. Please try again later.', retryAfter: 60 }),
         { 
           status: 429,
-          headers: { 
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-            'Retry-After': '60'
-          }
+          headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Retry-After': '60' }
         }
       );
     }
@@ -82,7 +83,7 @@ serve(async (req) => {
       );
     }
 
-    // Exchange public token for access token
+    // Exchange public token for access token — server-side only
     const tokenResponse = await fetch(`https://${PLAID_ENV}.plaid.com/item/public_token/exchange`, {
       method: 'POST',
       headers: {
@@ -90,9 +91,7 @@ serve(async (req) => {
         'PLAID-CLIENT-ID': PLAID_CLIENT_ID,
         'PLAID-SECRET': PLAID_SECRET,
       },
-      body: JSON.stringify({
-        public_token,
-      }),
+      body: JSON.stringify({ public_token }),
     });
 
     const tokenData = await tokenResponse.json();
@@ -100,12 +99,12 @@ serve(async (req) => {
     if (!tokenResponse.ok) {
       console.error('Plaid token exchange error:', tokenData);
       return new Response(
-        JSON.stringify({ error: tokenData }),
+        JSON.stringify({ error: 'Failed to exchange token' }),
         { status: tokenResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Get account details
+    // Get account details — server-side only, using the access token
     const accountsResponse = await fetch(`https://${PLAID_ENV}.plaid.com/accounts/get`, {
       method: 'POST',
       headers: {
@@ -113,9 +112,7 @@ serve(async (req) => {
         'PLAID-CLIENT-ID': PLAID_CLIENT_ID,
         'PLAID-SECRET': PLAID_SECRET,
       },
-      body: JSON.stringify({
-        access_token: tokenData.access_token,
-      }),
+      body: JSON.stringify({ access_token: tokenData.access_token }),
     });
 
     const accountsData = await accountsResponse.json();
@@ -123,12 +120,12 @@ serve(async (req) => {
     if (!accountsResponse.ok) {
       console.error('Plaid accounts fetch error:', accountsData);
       return new Response(
-        JSON.stringify({ error: accountsData }),
+        JSON.stringify({ error: 'Failed to fetch account details' }),
         { status: accountsResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Store connected accounts in database
+    // SECURITY: Store access token using admin client only — never expose to client
     const accountInserts = accountsData.accounts.map((account: any) => ({
       user_id: user.id,
       plaid_access_token: tokenData.access_token,
@@ -142,7 +139,7 @@ serve(async (req) => {
       account_subtype: account.subtype,
     }));
 
-    const { error: insertError } = await supabase
+    const { error: insertError } = await supabaseAdmin
       .from('connected_bank_accounts')
       .insert(accountInserts);
 
@@ -154,10 +151,24 @@ serve(async (req) => {
       );
     }
 
-    console.log('Successfully stored connected accounts');
+    console.log('Successfully stored connected accounts for user:', user.id);
+
+    // SECURITY: Only return safe, non-sensitive account metadata to client
+    // Never return access_token, item_id, or other Plaid secrets
+    const safeAccounts = accountsData.accounts.map((account: any) => ({
+      account_id: account.account_id,
+      name: account.name,
+      mask: account.mask,
+      type: account.type,
+      subtype: account.subtype,
+    }));
 
     return new Response(
-      JSON.stringify({ success: true, accounts: accountsData.accounts }),
+      JSON.stringify({ 
+        success: true, 
+        message: 'Bank account connected successfully',
+        accounts: safeAccounts 
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
