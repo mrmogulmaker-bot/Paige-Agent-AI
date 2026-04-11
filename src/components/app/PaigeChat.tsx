@@ -52,10 +52,13 @@ export function PaigeChat({ user, session }: PaigeChatProps) {
     setIsLoading(true);
 
     try {
-      if (!session) {
+      // Always get a fresh session to handle token refresh
+      const { data: { session: freshSession } } = await supabase.auth.getSession();
+      
+      if (!freshSession) {
         toast({
-          title: "Authentication Error",
-          description: "Please sign in to use Paige.",
+          title: "Session Expired",
+          description: "Your session has expired. Please sign in again.",
           variant: "destructive",
         });
         setMessages(messages);
