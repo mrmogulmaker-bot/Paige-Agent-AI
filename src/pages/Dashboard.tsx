@@ -252,6 +252,7 @@ const Dashboard = () => {
                       )}
                     </div>
                   </div>
+                  )}
                 {activeSection === "personal" && <PersonalSection />}
                 {activeSection === "personal-build" && (
                   <div className="space-y-8">
