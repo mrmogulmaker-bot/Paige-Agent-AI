@@ -672,11 +672,15 @@ async function runDocumentReadCheck(base64: string, lovableApiKey: string) {
   });
 
   if (!response.ok) {
-    throw new Error("Unable to verify document readability before analysis.");
+    const errorBody = await response.text();
+    console.error(`Read-check API failed: status=${response.status} body=${errorBody}`);
+    throw new Error(`Unable to verify document readability (API status ${response.status}).`);
   }
 
   const data = await response.json();
-  const content = cleanJsonResponse(data.choices?.[0]?.message?.content || "");
+  const rawContent = data.choices?.[0]?.message?.content || "";
+  console.log(`Read-check raw response length: ${rawContent.length}`);
+  const content = cleanJsonResponse(rawContent);
   return JSON.parse(content);
 }
 
