@@ -286,13 +286,10 @@ SUMMARY:`;
     // === LOAD CLIENT MEMORY ===
     let memoryBlock = "";
     try {
-      const { data: memories } = await supabase
-        .from("client_memory")
-        .select("memory_type, content, created_at")
-        .eq("client_user_id", user.id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(10);
+      const memoryQuery = payloadClientId
+        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", payloadClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(10)
+        : supabase.from("client_memory").select("memory_type, content, created_at").eq("client_user_id", user.id).eq("is_active", true).order("created_at", { ascending: false }).limit(10);
+      const { data: memories } = await memoryQuery;
 
       if (memories && memories.length > 0) {
         const priorityOrder: Record<string, number> = {
