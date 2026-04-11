@@ -326,7 +326,7 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
 
         {/* Disputes */}
         <TabsContent value="disputes" className="mt-4">
-          <DisputesManager />
+          <DisputesManager clientId={clientId} />
         </TabsContent>
 
         {/* Funding */}
