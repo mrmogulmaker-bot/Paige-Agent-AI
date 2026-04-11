@@ -32,7 +32,7 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
 
       let query = supabase
         .from("connected_bank_accounts")
-        .select("*")
+        .select("id, account_id, account_name, account_mask, account_type, account_subtype, institution_id, institution_name, business_id, is_active, last_sync_at, created_at, updated_at")
         .eq("user_id", user.id)
         .eq("is_active", true)
         .order("created_at", { ascending: false });

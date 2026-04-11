@@ -33,7 +33,7 @@ export const BusinessBankAccountsOverview = ({ onNavigate }: BusinessBankAccount
 
       const { data: accounts } = await supabase
         .from("connected_bank_accounts")
-        .select("*")
+        .select("id, account_id, account_name, account_mask, account_type, account_subtype, institution_id, institution_name, business_id, is_active, last_sync_at, created_at")
         .eq("user_id", user.id)
         .eq("is_active", true)
         .not("business_id", "is", null);
