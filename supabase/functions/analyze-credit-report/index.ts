@@ -385,7 +385,7 @@ async function runReadCheck(base64: string, lovableApiKey: string) {
     READ_CHECK_PROMPT,
     [
       { type: "text", text: "Perform the read-check on this uploaded PDF credit report before any analysis." },
-      { type: "file", file: { data: base64, mime_type: "application/pdf" } },
+      { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64}` } },
     ],
     "google/gemini-2.5-pro",
   );
@@ -402,7 +402,7 @@ ${JSON.stringify(readCheck, null, 2)}
     prompt,
     [
       { type: "text", text: "Extract the structured credit report data from this uploaded PDF using only document-visible facts." },
-      { type: "file", file: { data: base64, mime_type: "application/pdf" } },
+      { type: "image_url", image_url: { url: `data:application/pdf;base64,${base64}` } },
     ],
     "google/gemini-2.5-pro",
   );
