@@ -415,6 +415,14 @@ function RoundLettersDialog({
         {/* Pre-generation summary */}
         {!allGenerated && !isGenerating && (
           <div className="space-y-4">
+            {!hasAddress && (
+              <div className="p-3 bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-200 text-sm flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
+                <div>
+                  <strong>Address missing:</strong> Please add the client's mailing address in their profile settings before sending these letters. The letter header will show a placeholder until an address is provided.
+                </div>
+              </div>
+            )}
             <div className="grid gap-3">
               {bureaus.map(bureau => (
                 <Card key={bureau} className="p-4">
@@ -664,7 +672,9 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
 export function DisputesManager({ personalOnly, businessOnly, clientId }: DisputesManagerProps) {
   const queryClient = useQueryClient();
   const { data: disputes, isLoading } = useDisputes(clientId);
-  const { data: clientName } = useClientName(clientId);
+  const { data: clientInfo } = useClientInfo(clientId);
+  const { data: profileInfo } = useProfileInfo(clientId);
+  const activeInfo = clientId ? clientInfo : profileInfo;
   const [roundDialogOpen, setRoundDialogOpen] = useState(false);
 
   const handleRefresh = () => {
@@ -708,7 +718,9 @@ export function DisputesManager({ personalOnly, businessOnly, clientId }: Disput
       <RoundLettersDialog
         disputes={allDisputes}
         clientId={clientId}
-        clientName={clientName || "Consumer"}
+        clientName={activeInfo?.name || "Consumer"}
+        clientAddress={activeInfo?.address || null}
+        hasAddress={activeInfo?.hasAddress || false}
         open={roundDialogOpen}
         onOpenChange={setRoundDialogOpen}
         onComplete={handleRefresh}
