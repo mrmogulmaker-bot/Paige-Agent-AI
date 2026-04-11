@@ -68,7 +68,7 @@ export default function FundingMatches() {
           </p>
           {middleScore && (
             <p className="text-xs text-muted-foreground mt-1">
-              Matching against your synced FICO scores (lowest: {middleScore})
+              Matching against middle bureau score: {middleScore})
             </p>
           )}
         </div>
@@ -149,7 +149,7 @@ export default function FundingMatches() {
             </p>
             {middleScore && (
               <p className="text-xs text-muted-foreground mb-4">
-                Baseline: {middleScore} (lowest bureau score from your synced report)
+                Baseline: {middleScore} (middle bureau score — how lenders qualify you)
               </p>
             )}
             <Button
