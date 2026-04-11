@@ -26,7 +26,6 @@ export default function FundingMatches() {
     },
   });
 
-  // Calculate the lowest bureau score for What-If baseline
   // Use MIDDLE score (how lenders actually qualify borrowers)
   const syncedScores = [
     profileScores?.estimated_fico_eq,
