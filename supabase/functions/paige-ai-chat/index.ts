@@ -11,7 +11,7 @@ const messageSchema = z.object({
   messages: z.array(
     z.object({
       role: z.enum(['user', 'assistant', 'system']),
-      content: z.string().min(1).max(4000),
+      content: z.string().min(1).max(50000),
       documentFileName: z.string().optional(),
     })
   ).min(1).max(50),
