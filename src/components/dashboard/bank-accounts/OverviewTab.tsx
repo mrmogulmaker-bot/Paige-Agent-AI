@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown, DollarSign, Activity, AlertCircle, RefreshCcw, Download, Plus } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import { BankingDataSetup } from "./BankingDataSetup";
 
 interface KPICardProps {
   title: string;
@@ -50,9 +51,10 @@ interface OverviewTabProps {
   onConnectBank: () => void;
   onRefresh: () => void;
   businessMode?: boolean;
+  onNavigateToUpload?: () => void;
 }
 
-export function OverviewTab({ onConnectBank, onRefresh, businessMode = false }: OverviewTabProps) {
+export function OverviewTab({ onConnectBank, onRefresh, businessMode = false, onNavigateToUpload }: OverviewTabProps) {
   // Mock data - replace with real data from hooks
   const cashflowData = [
     { date: "Jan", inflow: 45000, outflow: 32000 },
@@ -65,6 +67,9 @@ export function OverviewTab({ onConnectBank, onRefresh, businessMode = false }: 
 
   return (
     <div className="space-y-6">
+      {/* Three-Tier Banking Data Setup */}
+      <BankingDataSetup businessMode={businessMode} onNavigateToUpload={onNavigateToUpload} />
+
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <KPICard
