@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Plug, Shield, PhoneCall, DollarSign, Upload, Landmark, Monitor } from "lucide-react";
+import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Plug, Shield, PhoneCall, DollarSign, Upload, Landmark, Monitor, Webhook } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -254,6 +254,22 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
                     <span className="text-sm">Funding Secured</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                {isAdmin && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      onClick={() => setActiveSection("webhooks")}
+                      isActive={activeSection === "webhooks"}
+                      className={`w-full px-3 py-2 rounded-lg transition-all ${
+                        activeSection === "webhooks"
+                          ? "bg-primary/10 text-primary font-medium"
+                          : "hover:bg-muted text-sidebar-foreground"
+                      }`}
+                    >
+                      <Webhook className="w-5 h-5" />
+                      <span className="text-sm">Webhooks</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

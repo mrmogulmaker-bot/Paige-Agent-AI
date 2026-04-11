@@ -48,6 +48,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { PageTransition } from "@/components/PageTransition";
 import { PMEFundingReadiness } from "@/components/dashboard/PMEFundingReadiness";
 import { FundingSecuredTracker } from "@/components/dashboard/FundingSecuredTracker";
+import { WebhooksIntegrations } from "@/components/dashboard/WebhooksIntegrations";
 import { ClientManagementDashboard } from "@/components/dashboard/ClientManagementDashboard";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 
@@ -167,6 +168,7 @@ const Dashboard = () => {
                   {activeSection === "report-upload" && "Report Upload & AI Analysis"}
                   {activeSection === "lender-research" && "Lender Research"}
                   {activeSection === "funding-secured" && "Funding Secured"}
+                  {activeSection === "webhooks" && "Webhooks & Integrations"}
                 </h1>
               </div>
               <div className="flex items-center gap-2 md:gap-4">
@@ -307,6 +309,7 @@ const Dashboard = () => {
                 {activeSection === "integrations" && <Integrations />}
                 {activeSection === "lender-research" && <LenderResearch />}
                 {activeSection === "funding-secured" && <FundingSecuredTracker />}
+                {activeSection === "webhooks" && <WebhooksIntegrations />}
                   {activeSection === "settings" && <ProfileSettings />}
                   {activeSection === "contact" && <ContactSupport />}
                 </div>
