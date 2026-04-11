@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, DollarSign, TrendingUp, Calendar } from "lucide-react";
 import { format } from "date-fns";
+import { writeFundingMemory } from "@/lib/clientMemory";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 
@@ -122,6 +123,10 @@ export function FundingSecuredTracker({ clientUserId }: FundingSecuredTrackerPro
       } as any);
 
       if (error) throw error;
+
+      // Write memory record for funding secured
+      writeFundingMemory(targetUserId, form.lender_name, parseFloat(form.amount), form.product_type);
+
       toast.success("Funding event logged!");
       setDialogOpen(false);
       setForm({ date_secured: new Date().toISOString().split("T")[0], lender_name: "", product_type: "", amount: "", interest_rate: "", factor_rate: "", term_length_months: "", notes: "" });
