@@ -1595,6 +1595,99 @@ export type Database = {
           },
         ]
       }
+      financial_document_analyses: {
+        Row: {
+          analysis_status: string
+          avg_daily_balance: number | null
+          avg_monthly_revenue: number | null
+          business_id: string | null
+          created_at: string
+          doc_type_detected: string | null
+          document_id: string
+          error_message: string | null
+          full_analysis: Json | null
+          id: string
+          largest_deposit: number | null
+          largest_deposit_description: string | null
+          largest_withdrawal: number | null
+          largest_withdrawal_description: string | null
+          lender_red_flags: Json | null
+          lender_summary_path: string | null
+          nsf_count: number | null
+          overdraft_count: number | null
+          period_end: string | null
+          period_start: string | null
+          revenue_trend: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          analysis_status?: string
+          avg_daily_balance?: number | null
+          avg_monthly_revenue?: number | null
+          business_id?: string | null
+          created_at?: string
+          doc_type_detected?: string | null
+          document_id: string
+          error_message?: string | null
+          full_analysis?: Json | null
+          id?: string
+          largest_deposit?: number | null
+          largest_deposit_description?: string | null
+          largest_withdrawal?: number | null
+          largest_withdrawal_description?: string | null
+          lender_red_flags?: Json | null
+          lender_summary_path?: string | null
+          nsf_count?: number | null
+          overdraft_count?: number | null
+          period_end?: string | null
+          period_start?: string | null
+          revenue_trend?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          analysis_status?: string
+          avg_daily_balance?: number | null
+          avg_monthly_revenue?: number | null
+          business_id?: string | null
+          created_at?: string
+          doc_type_detected?: string | null
+          document_id?: string
+          error_message?: string | null
+          full_analysis?: Json | null
+          id?: string
+          largest_deposit?: number | null
+          largest_deposit_description?: string | null
+          largest_withdrawal?: number | null
+          largest_withdrawal_description?: string | null
+          lender_red_flags?: Json | null
+          lender_summary_path?: string | null
+          nsf_count?: number | null
+          overdraft_count?: number | null
+          period_end?: string | null
+          period_start?: string | null
+          revenue_trend?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_document_analyses_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_document_analyses_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_kpis: {
         Row: {
           avg_balance_30d: number | null
