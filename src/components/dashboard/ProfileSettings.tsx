@@ -7,8 +7,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, User, Building2, Eye, EyeOff } from "lucide-react";
+import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle } from "lucide-react";
 import { z } from "zod";
+import { Switch } from "@/components/ui/switch";
+import { useDashboardMode } from "@/contexts/DashboardModeContext";
 
 const ssnSchema = z.string().regex(/^\d{3}-?\d{2}-?\d{4}$/, "Invalid SSN format (XXX-XX-XXXX)");
 
@@ -16,6 +18,7 @@ export const ProfileSettings = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
   const { toast } = useToast();
+  const { mode, setMode, isCoachOrAdmin } = useDashboardMode();
 
   // Personal Info
   const [fullName, setFullName] = useState("");
@@ -267,7 +270,7 @@ export const ProfileSettings = () => {
       </div>
 
       <Tabs defaultValue="personal" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className={`grid w-full ${isCoachOrAdmin ? "grid-cols-3" : "grid-cols-2"}`}>
           <TabsTrigger value="personal" className="gap-2">
             <User className="w-4 h-4" />
             Personal Info
@@ -276,7 +279,52 @@ export const ProfileSettings = () => {
             <Building2 className="w-4 h-4" />
             Business Info
           </TabsTrigger>
+          {isCoachOrAdmin && (
+            <TabsTrigger value="preferences" className="gap-2">
+              <Monitor className="w-4 h-4" />
+              Preferences
+            </TabsTrigger>
+          )}
         </TabsList>
+
+        {isCoachOrAdmin && (
+          <TabsContent value="preferences">
+            <Card className="p-6">
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold">Dashboard Mode</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Choose your default post-login experience
+                  </p>
+                </div>
+                
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border">
+                  <div className="flex items-center gap-3">
+                    <UserCircle className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">
+                        {mode === "internal" ? "Internal Mode" : "Client Mode"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {mode === "internal" 
+                          ? "Coach view — manage clients, scores, and funding" 
+                          : "Consumer view — personal credit and business tools"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Client</span>
+                    <Switch
+                      checked={mode === "internal"}
+                      onCheckedChange={(checked) => setMode(checked ? "internal" : "client")}
+                    />
+                    <span className="text-xs text-muted-foreground">Internal</span>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="personal">
           <Card className="p-6">

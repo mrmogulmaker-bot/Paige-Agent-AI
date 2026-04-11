@@ -1,8 +1,9 @@
-import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Plug, Shield, PhoneCall, DollarSign, Upload, Landmark } from "lucide-react";
+import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Plug, Shield, PhoneCall, DollarSign, Upload, Landmark, Monitor } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { Lock } from "lucide-react";
 import {
   Sidebar,
@@ -57,6 +58,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
   const [isAdmin, setIsAdmin] = useState(false);
   const [isCoachOrAdmin, setIsCoachOrAdmin] = useState(false);
   const { planSlug } = useSubscription();
+  const { mode, isCoachOrAdmin: modeCoachOrAdmin } = useDashboardMode();
 
   useEffect(() => {
     checkRoles();
@@ -89,7 +91,9 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
           </div>
           <div>
             <h2 className="text-lg font-bold">PaigeAgent.ai</h2>
-            <p className="text-xs text-muted-foreground">Mogul Maker Academy</p>
+            <p className="text-xs text-muted-foreground">
+              {modeCoachOrAdmin && mode === "internal" ? "Internal Mode" : "Mogul Maker Academy"}
+            </p>
           </div>
         </div>
       </SidebarHeader>

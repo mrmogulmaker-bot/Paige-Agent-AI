@@ -48,8 +48,11 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { PageTransition } from "@/components/PageTransition";
 import { PMEFundingReadiness } from "@/components/dashboard/PMEFundingReadiness";
 import { FundingSecuredTracker } from "@/components/dashboard/FundingSecuredTracker";
+import { ClientManagementDashboard } from "@/components/dashboard/ClientManagementDashboard";
+import { useDashboardMode } from "@/contexts/DashboardModeContext";
 
 const Dashboard = () => {
+  const { mode, isCoachOrAdmin } = useDashboardMode();
   const [activeSection, setActiveSection] = useState("dashboard");
   const [showAccel, setShowAccel] = useState(true);
   const [showBuild, setShowBuild] = useState(true);
@@ -179,7 +182,13 @@ const Dashboard = () => {
             <main className="flex-1 overflow-auto">
               <PageTransition>
                 <div className="p-3 md:p-6 max-w-7xl mx-auto w-full">
-                  {activeSection === "dashboard" && (
+                  {activeSection === "dashboard" && mode === "internal" && isCoachOrAdmin && (
+                    <ClientManagementDashboard onViewClient={(clientId) => {
+                      // For now, navigate to funding-secured with client context
+                      setActiveSection("funding-secured");
+                    }} />
+                  )}
+                  {activeSection === "dashboard" && (mode !== "internal" || !isCoachOrAdmin) && (
                   <div className="space-y-6">
                     <UpgradeBanner onUpgradeClick={() => setShowUpgradeModal(true)} />
                     
