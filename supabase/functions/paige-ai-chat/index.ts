@@ -33,6 +33,7 @@ const messageSchema = z.object({
       content: z.string(),
     })
   ).optional(),
+  clientId: z.string().uuid().nullable().optional(),
 });
 
 const DOCUMENT_SOURCE_INSTRUCTION = `You are analyzing a specific PDF document that has been provided to you. You must ONLY report information that you can directly read from this document. Do not use your training data or prior knowledge to fill in account details, creditor names, balances, or scores. If you cannot read a specific piece of information from the document, state "Not visible in document" rather than providing an estimate or assumption. Every account name, balance, score, and date you report must be directly extractable from the uploaded document text.`;
@@ -186,7 +187,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages } = validatedData;
+    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId } = validatedData;
 
     // === SESSION SUMMARY GENERATION MODE ===
     if (generateSessionSummary && sessionMessages && sessionMessages.length > 0) {
@@ -221,12 +222,14 @@ SUMMARY:`;
       const summaryContent = summaryData.choices?.[0]?.message?.content || "";
 
       if (summaryContent.trim()) {
-        await supabase.from("client_memory").insert({
-          client_user_id: user.id,
+        const memoryInsert: any = {
+          client_user_id: payloadClientId || user.id,
           memory_type: "session_summary",
           content: summaryContent.trim(),
           source_session_id: rawData.sessionId || null,
-        });
+        };
+        if (payloadClientId) memoryInsert.client_id = payloadClientId;
+        await supabase.from("client_memory").insert(memoryInsert);
       }
 
       return new Response(
@@ -283,13 +286,10 @@ SUMMARY:`;
     // === LOAD CLIENT MEMORY ===
     let memoryBlock = "";
     try {
-      const { data: memories } = await supabase
-        .from("client_memory")
-        .select("memory_type, content, created_at")
-        .eq("client_user_id", user.id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(10);
+      const memoryQuery = payloadClientId
+        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", payloadClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(10)
+        : supabase.from("client_memory").select("memory_type, content, created_at").eq("client_user_id", user.id).eq("is_active", true).order("created_at", { ascending: false }).limit(10);
+      const { data: memories } = await memoryQuery;
 
       if (memories && memories.length > 0) {
         const priorityOrder: Record<string, number> = {
@@ -606,7 +606,8 @@ Always identify the document type and bureau in your response.`,
               supabaseUrl,
               supabaseServiceKey,
               lovableApiKey,
-              supabase
+              supabase,
+              payloadClientId || null
             );
 
             // Send sync status as a final SSE data event before closing
@@ -706,7 +707,8 @@ async function runStructuredExtractionAndSync(
   supabaseUrl: string,
   serviceRoleKey: string,
   lovableApiKey: string,
-  supabase: any
+  supabase: any,
+  clientId: string | null = null
 ): Promise<any> {
   console.log("Starting structured extraction from analysis...");
 
@@ -778,8 +780,9 @@ async function runStructuredExtractionAndSync(
     }
 
     // Step 3: Build sync payload and call sync-credit-report-data
-    const syncPayload = {
+    const syncPayload: any = {
       target_user_id: callerUserId,
+      client_id: clientId || null,
       report_type: structured.report_type || "consumer",
       scores: structured.scores,
       negative_items: (structured.negative_items || []).map((n: any) => ({
@@ -848,11 +851,13 @@ async function runStructuredExtractionAndSync(
     const scores = structured.scores || {};
     const memoryContent = `Credit report analyzed (${structured.report_type || 'consumer'}). Scores: EQ ${scores.equifax || 'N/A'}, EX ${scores.experian || 'N/A'}, TU ${scores.transunion || 'N/A'}. Found ${negCount} negative items, ${(structured.hard_inquiries || []).length} hard inquiries, ${posCount} positive accounts.`;
     
-    await supabase.from("client_memory").insert({
-      client_user_id: callerUserId,
+    const memoryInsert: any = {
+      client_user_id: clientId || callerUserId,
       memory_type: "report_upload",
       content: memoryContent,
-    });
+    };
+    if (clientId) memoryInsert.client_id = clientId;
+    await supabase.from("client_memory").insert(memoryInsert);
 
     return {
       success: true,

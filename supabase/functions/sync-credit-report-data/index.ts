@@ -55,6 +55,7 @@ const DiscrepancySchema = z.object({
 
 const SyncPayloadSchema = z.object({
   target_user_id: z.string().uuid(),
+  client_id: z.string().uuid().nullable().optional(),
   report_type: z.string().optional().default("consumer"),
   scores: ScoreSchema.optional(),
   negative_items: z.array(NegativeItemSchema).optional().default([]),
@@ -173,6 +174,10 @@ serve(async (req) => {
 async function processSync(supabase: any, payload: any, targetUserId: string, callerUserId: string) {
   const results: Record<string, any> = {};
   let currentStep = "init";
+  const clientId = payload.client_id || null;
+
+  // Helper: add client_id to insert payloads when in internal mode
+  const withClientId = (obj: any) => clientId ? { ...obj, client_id: clientId } : obj;
 
   try {
     // ========== STEP 1: CREDIT SCORES ==========
@@ -237,7 +242,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
         }).eq("id", existing.id);
         negativeItemsUpdated++;
       } else {
-        await supabase.from("credit_negative_items").insert({
+        await supabase.from("credit_negative_items").insert(withClientId({
           user_id: targetUserId,
           creditor_name: item.creditor_name,
           account_number_masked: item.account_number_masked,
@@ -250,7 +255,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
           notes: item.dispute_basis,
           removal_probability: item.estimated_score_impact,
           is_removable: true,
-        });
+        }));
         negativeItemsInserted++;
       }
     }
@@ -311,9 +316,9 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
         await supabase.from("credit_accounts").update(acctData).eq("id", existing.id);
         accountsUpdated++;
       } else {
-        await supabase.from("credit_accounts").insert({
+        await supabase.from("credit_accounts").insert(withClientId({
           user_id: targetUserId, creditor: acct.creditor, type: mappedType, ...acctData,
-        });
+        }));
         accountsInserted++;
       }
     }
@@ -463,7 +468,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       if (existingFactors) {
         await supabase.from("credit_factor_scores").update(factorData).eq("id", existingFactors.id);
       } else {
-        await supabase.from("credit_factor_scores").insert(factorData);
+        await supabase.from("credit_factor_scores").insert(withClientId(factorData));
       }
       results.credit_factors_recalculated = true;
       results.factor_scores = {
@@ -505,14 +510,14 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
           updated_at: new Date().toISOString(),
         }).eq("id", existingDispute.id);
       } else {
-        await supabase.from("disputes").insert({
+        await supabase.from("disputes").insert(withClientId({
           user_id: targetUserId,
           creditor_name: ds.creditor_name,
           bureau: ds.bureau,
           reason_code: ds.reason_code,
           status: "draft",
           narrative: `Auto-generated from credit report analysis. Dispute basis: ${ds.reason_code}`,
-        });
+        }));
         disputesCreated++;
       }
     }
