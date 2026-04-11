@@ -434,6 +434,39 @@ export type Database = {
         }
         Relationships: []
       }
+      client_memory: {
+        Row: {
+          client_user_id: string
+          content: string
+          created_at: string
+          id: string
+          is_active: boolean
+          memory_type: string
+          source_session_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_user_id: string
+          content: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          memory_type: string
+          source_session_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_user_id?: string
+          content?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          memory_type?: string
+          source_session_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       coach_clients: {
         Row: {
           client_user_id: string
