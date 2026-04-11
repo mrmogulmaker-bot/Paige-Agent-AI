@@ -316,9 +316,9 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
         await supabase.from("credit_accounts").update(acctData).eq("id", existing.id);
         accountsUpdated++;
       } else {
-        await supabase.from("credit_accounts").insert({
+        await supabase.from("credit_accounts").insert(withClientId({
           user_id: targetUserId, creditor: acct.creditor, type: mappedType, ...acctData,
-        });
+        }));
         accountsInserted++;
       }
     }
