@@ -45,6 +45,7 @@ import { PlanGate } from "@/components/dashboard/PlanGate";
 import { InstallPWA } from "@/components/InstallPWA";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PageTransition } from "@/components/PageTransition";
+import { PMEFundingReadiness } from "@/components/dashboard/PMEFundingReadiness";
 
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
