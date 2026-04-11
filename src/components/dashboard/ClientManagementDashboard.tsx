@@ -5,8 +5,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Users, Search, TrendingUp, DollarSign, UserCheck } from "lucide-react";
+import { Users, Search, TrendingUp, DollarSign, UserCheck, UserPlus } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 
 interface ClientRow {
   user_id: string;
