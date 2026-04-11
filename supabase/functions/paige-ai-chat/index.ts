@@ -606,7 +606,8 @@ Always identify the document type and bureau in your response.`,
               supabaseUrl,
               supabaseServiceKey,
               lovableApiKey,
-              supabase
+              supabase,
+              payloadClientId || null
             );
 
             // Send sync status as a final SSE data event before closing
