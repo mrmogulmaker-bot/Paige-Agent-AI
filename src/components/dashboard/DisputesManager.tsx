@@ -548,9 +548,12 @@ function NewDisputeDialog({ type, onCreated, clientId }: { type: "personal" | "b
       if (item) {
         setCreditorName(item.creditor_name || "");
         setBureau(item.bureau || "");
-        setReasonCode(getStatutoryLanguage(item.notes || `Dispute: ${item.item_type}`, item.item_type));
+        const acctType = normalizeAccountType(item.item_type);
+        setReasonCode(getStatutoryLanguageByType(acctType));
         setNarrative(item.notes || "");
       }
+    }
+  }, [selectedItem, negativeItems]);
     }
   }, [selectedItem, negativeItems]);
 
