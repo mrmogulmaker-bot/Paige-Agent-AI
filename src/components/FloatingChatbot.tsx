@@ -11,6 +11,7 @@ import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { useConversation } from "@11labs/react";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
 import { usePaigeMemory } from "@/hooks/usePaigeMemory";
+import { useClientChatContext } from "@/hooks/useClientChatContext";
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
@@ -23,8 +24,10 @@ type Message = {
   syncStatus?: any;
 };
 
-export const FloatingChatbot = () => {
+export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { contextBlock } = useClientChatContext(clientId, clientId ? null : currentUserId);
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", content: "Hey, how can I help?" },
   ]);
@@ -34,6 +37,13 @@ export const FloatingChatbot = () => {
   const queryClient = useQueryClient();
   const sessionIdRef = useRef<string>(crypto.randomUUID());
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Get current user id for context
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) setCurrentUserId(data.user.id);
+    });
+  }, []);
 
   const {
     extractDocumentSummary,
@@ -144,6 +154,8 @@ export const FloatingChatbot = () => {
           ...(m.documentFileName ? { documentFileName: m.documentFileName } : {}),
         })),
         sessionDocumentContext: getSessionDocumentContext(),
+        ...(clientId ? { clientId } : {}),
+        ...(contextBlock ? { clientContext: contextBlock } : {}),
       };
 
       if (currentDoc) {
