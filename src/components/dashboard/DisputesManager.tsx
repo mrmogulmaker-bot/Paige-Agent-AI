@@ -314,7 +314,7 @@ function RoundLettersDialog({
             disputeBasis: getStatutoryLanguageByType(acctType),
           };
         });
-        }));
+        
 
         const { data, error: fnError } = await supabase.functions.invoke("generate-dispute-letter", {
           body: { mode: "combined", bureau: bureau.charAt(0).toUpperCase() + bureau.slice(1), clientName, clientAddress: clientAddress || null, items, round: nextRound },
