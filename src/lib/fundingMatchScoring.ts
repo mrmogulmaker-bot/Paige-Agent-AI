@@ -53,11 +53,17 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
     dataPoints.push({ label: "Credit Score", value: "Not on file", status: "neutral" });
   }
 
-  // Data point: derogatory items
-  dataPoints.push({ label: "Look-back Period", value: `${profile.derogWithin24mo} derogatory items within 24 months`, status: profile.derogWithin24mo === 0 ? "positive" : "negative" });
+  // Data point: derogatory items — use totalActiveNegatives to match Credit Intelligence
+  dataPoints.push({ label: "Active Negatives", value: `${profile.totalActiveNegatives} active derogatory items`, status: profile.totalActiveNegatives === 0 ? "positive" : "negative" });
+  if (profile.derogWithin24mo < profile.totalActiveNegatives) {
+    dataPoints.push({ label: "Look-back Period", value: `${profile.derogWithin24mo} within last 24 months`, status: profile.derogWithin24mo === 0 ? "positive" : "negative" });
+  }
 
   // Data point: comparable credit
-  dataPoints.push({ label: "Comparable Credit", value: `$${profile.highestRevolvingLimit.toLocaleString()} highest revolving limit`, status: profile.highestRevolvingLimit > 0 ? "positive" : "neutral" });
+  const revLabel = profile.revolvingLimitIsHistorical
+    ? `$${profile.highestRevolvingLimit.toLocaleString()} highest closed revolving limit (Historical)`
+    : `$${profile.highestRevolvingLimit.toLocaleString()} highest revolving limit`;
+  dataPoints.push({ label: "Comparable Credit", value: revLabel, status: profile.highestRevolvingLimit > 0 ? "positive" : "neutral" });
 
   // Data point: revenue
   if (isRevenueBased) {
