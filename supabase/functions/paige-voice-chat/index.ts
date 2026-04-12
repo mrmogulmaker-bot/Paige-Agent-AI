@@ -326,11 +326,11 @@ GUIDELINES:
               {
                 type: 'function',
                 name: 'finance_sync',
-                description: 'Sync personal or business bank accounts via Plaid',
+                description: 'Upload bank statements as PDFs to document cash flow — open banking connection is planned for Phase 2',
                 parameters: {
                   type: 'object',
                   properties: {
-                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Which accounts to sync' }
+                    scope: { type: 'string', enum: ['personal', 'business'], description: 'Which accounts to provide statements for' }
                   }
                 }
               },
