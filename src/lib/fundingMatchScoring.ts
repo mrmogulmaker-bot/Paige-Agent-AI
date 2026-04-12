@@ -217,7 +217,7 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
 export function generateFundingSequence(profile: FundingProfileData) {
   const steps: { step: number; title: string; milestone: string; products: string; timeline: string; link: string; isCurrentStep: boolean }[] = [];
   const score = profile.middleScore || 0;
-  const hasActiveDerog = profile.negativeItems.filter((n: any) => n.status !== "removed").length > 0;
+  const hasActiveDerog = profile.totalActiveNegatives > 0;
 
   let currentStep = 1;
 
