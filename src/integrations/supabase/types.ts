@@ -250,6 +250,47 @@ export type Database = {
         }
         Relationships: []
       }
+      business_credit_history: {
+        Row: {
+          bureau: string
+          business_id: string
+          created_at: string
+          id: string
+          metric_name: string
+          recorded_at: string
+          score_value: number
+          user_id: string
+        }
+        Insert: {
+          bureau: string
+          business_id: string
+          created_at?: string
+          id?: string
+          metric_name: string
+          recorded_at?: string
+          score_value: number
+          user_id: string
+        }
+        Update: {
+          bureau?: string
+          business_id?: string
+          created_at?: string
+          id?: string
+          metric_name?: string
+          recorded_at?: string
+          score_value?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_credit_history_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_financial_docs: {
         Row: {
           business_id: string
@@ -540,8 +581,21 @@ export type Database = {
           created_at: string | null
           dba: string | null
           display_order: number | null
+          dnb_delinquency_predictor: number | null
+          dnb_duns: string | null
+          dnb_failure_score: number | null
+          dnb_last_verified: string | null
+          dnb_paydex: number | null
           ein: string | null
           entity_type: Database["public"]["Enums"]["entity_type"] | null
+          equifax_credit_risk: number | null
+          equifax_failure_score: number | null
+          equifax_last_verified: string | null
+          equifax_payment_index: number | null
+          experian_intelliscore: number | null
+          experian_last_verified: string | null
+          fico_sbss: number | null
+          fico_sbss_last_verified: string | null
           formation_date: string | null
           formation_status: string | null
           has_bank_account: boolean | null
@@ -578,8 +632,21 @@ export type Database = {
           created_at?: string | null
           dba?: string | null
           display_order?: number | null
+          dnb_delinquency_predictor?: number | null
+          dnb_duns?: string | null
+          dnb_failure_score?: number | null
+          dnb_last_verified?: string | null
+          dnb_paydex?: number | null
           ein?: string | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
+          equifax_credit_risk?: number | null
+          equifax_failure_score?: number | null
+          equifax_last_verified?: string | null
+          equifax_payment_index?: number | null
+          experian_intelliscore?: number | null
+          experian_last_verified?: string | null
+          fico_sbss?: number | null
+          fico_sbss_last_verified?: string | null
           formation_date?: string | null
           formation_status?: string | null
           has_bank_account?: boolean | null
@@ -616,8 +683,21 @@ export type Database = {
           created_at?: string | null
           dba?: string | null
           display_order?: number | null
+          dnb_delinquency_predictor?: number | null
+          dnb_duns?: string | null
+          dnb_failure_score?: number | null
+          dnb_last_verified?: string | null
+          dnb_paydex?: number | null
           ein?: string | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
+          equifax_credit_risk?: number | null
+          equifax_failure_score?: number | null
+          equifax_last_verified?: string | null
+          equifax_payment_index?: number | null
+          experian_intelliscore?: number | null
+          experian_last_verified?: string | null
+          fico_sbss?: number | null
+          fico_sbss_last_verified?: string | null
           formation_date?: string | null
           formation_status?: string | null
           has_bank_account?: boolean | null
