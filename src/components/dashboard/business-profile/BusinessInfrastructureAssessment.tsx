@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Building2, Globe, BarChart3, FileText, Award } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { FoundationSection } from "./FoundationSection";
 import { BuildProgramSection } from "./BuildProgramSection";
 
 interface Props {
