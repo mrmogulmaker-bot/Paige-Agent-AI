@@ -119,7 +119,7 @@ export function BuildProgramBusinessWrapper() {
           status: "Update Needed" // TODO: Get actual status
         }
       }}
-      banking={{
+      plaid={{
         avg_balance_90d: kpiData?.avg_balance_90d,
         dscr: kpiData?.dscr
       }}
