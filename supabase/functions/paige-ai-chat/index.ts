@@ -201,17 +201,33 @@ ${last20.map(m => `${m.role === 'user' ? 'Client' : 'Paige'}: ${m.content}`).joi
 
 SUMMARY:`;
 
-      const summaryResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash-lite",
-          messages: [{ role: "user", content: summaryPrompt }],
+      // Also check for foundation milestone mentions
+      const milestonePrompt = `Analyze the following conversation and determine if the client mentioned completing any of these Business Foundation items:
+1. Forming a business entity (LLC, S-Corp, C-Corp, etc.)
+2. Getting an EIN (Employer Identification Number)
+3. Setting up a business address (virtual office, commercial office, registered agent)
+4. Establishing a dedicated business phone line
+5. Opening a business bank account
+
+Return ONLY a JSON array of strings for items mentioned as completed. Use these exact labels: "entity_formed", "ein_obtained", "business_address_established", "business_phone_established", "business_bank_opened". If none were mentioned, return an empty array [].
+
+MESSAGES:
+${last20.map(m => `${m.role === 'user' ? 'Client' : 'Paige'}: ${m.content}`).join('\n')}
+
+JSON:`;
+
+      const [summaryResponse, milestoneResponse] = await Promise.all([
+        fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: summaryPrompt }] }),
         }),
-      });
+        fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: milestonePrompt }] }),
+        }),
+      ]);
 
       if (!summaryResponse.ok) {
         return new Response(
@@ -223,6 +239,7 @@ SUMMARY:`;
       const summaryData = await summaryResponse.json();
       const summaryContent = summaryData.choices?.[0]?.message?.content || "";
 
+      // Insert session summary memory
       if (summaryContent.trim()) {
         const memoryInsert: any = {
           client_user_id: payloadClientId || user.id,
@@ -232,6 +249,39 @@ SUMMARY:`;
         };
         if (payloadClientId) memoryInsert.client_id = payloadClientId;
         await supabase.from("client_memory").insert(memoryInsert);
+      }
+
+      // Insert milestone memories if detected
+      if (milestoneResponse.ok) {
+        try {
+          const milestoneData = await milestoneResponse.json();
+          const milestoneRaw = milestoneData.choices?.[0]?.message?.content || "[]";
+          const cleaned = milestoneRaw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+          const milestones: string[] = JSON.parse(cleaned);
+
+          const labelMap: Record<string, string> = {
+            entity_formed: "Client mentioned forming their business entity",
+            ein_obtained: "Client mentioned obtaining their EIN",
+            business_address_established: "Client mentioned setting up a business address",
+            business_phone_established: "Client mentioned establishing a dedicated business phone line",
+            business_bank_opened: "Client mentioned opening a business bank account",
+          };
+
+          for (const m of milestones) {
+            if (labelMap[m]) {
+              const milestoneMemory: any = {
+                client_user_id: payloadClientId || user.id,
+                memory_type: "milestone_completed",
+                content: labelMap[m],
+                source_session_id: rawData.sessionId || null,
+              };
+              if (payloadClientId) milestoneMemory.client_id = payloadClientId;
+              await supabase.from("client_memory").insert(milestoneMemory);
+            }
+          }
+        } catch (err) {
+          console.error("Error parsing milestone detection:", err);
+        }
       }
 
       return new Response(
@@ -447,7 +497,7 @@ PROHIBITED ACTIONS:
 
 === END COMPLIANCE MODULE ===
 
-${clientContext ? `\n\n=== CLIENT CONTEXT (VERIFIED DATABASE DATA) ===\n${clientContext}\n=== END CLIENT CONTEXT ===\n\nIMPORTANT: You have been provided with a CLIENT CONTEXT block above. This block contains verified data from the client's platform file. Always reference this data when answering questions about the client's credit profile, scores, disputes, or funding status. Never ask the client to provide information that is already present in the CLIENT CONTEXT block. Begin every new session by briefly acknowledging what you know about the client's current situation based on this context, using a warm and professional tone.\n` : ''}${memoryBlock}${sessionDocContext}${userContext}${fetchedUrlContent}
+${clientContext ? `\n\n=== CLIENT CONTEXT (VERIFIED DATABASE DATA) ===\n${clientContext}\n=== END CLIENT CONTEXT ===\n\nIMPORTANT: You have been provided with a CLIENT CONTEXT block above. This block contains verified data from the client's platform file. Always reference this data when answering questions about the client's credit profile, scores, disputes, or funding status. Never ask the client to provide information that is already present in the CLIENT CONTEXT block. Begin every new session by briefly acknowledging what you know about the client's current situation based on this context, using a warm and professional tone.\n\n=== BUSINESS FOUNDATION CROSS-REFERENCE RULES ===\nThe CLIENT CONTEXT includes a "Business Foundation Status" section showing the verified status of five foundation items: Entity Formation, EIN, Business Address, Business Phone, and Business Bank Account. When a client mentions anything related to these items, cross-reference what they say against the Foundation Status.\n\nIf a client says they have completed something that still shows as "Missing" or "Pending" in the context, acknowledge their progress and prompt them to update their Business Profile. For example: "That's a great step — make sure you update your Business Profile with your EIN so your platform reflects your current status and your funding matches update accordingly."\n\nIf an item shows as "Pending" with a Home Address warning, proactively educate the client about the privacy and funding implications and suggest upgrading to a virtual office or registered agent address.\n\nThis creates a natural feedback loop: your conversations encourage clients to keep their profile data current, which makes your advice more accurate in future sessions.\n=== END FOUNDATION RULES ===\n` : ''}${memoryBlock}${sessionDocContext}${userContext}${fetchedUrlContent}
 
 === OUR PROGRAMS & FRAMEWORKS ===
 You guide users through: ACCEL (Credit Restoration), BUILD Personal (Credit Building), BUILD Business (Business Credit), FUND (Funding Qualification), REPORT (Credit Monitoring), SHIELD (Compliance & Protection), ACQUIRE (Capital Deployment).
