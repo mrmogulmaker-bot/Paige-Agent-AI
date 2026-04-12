@@ -23,6 +23,7 @@ import type { ProductMatch } from "@/lib/fundingMatchScoring";
 export default function FundingMatches() {
   const profile = useFundingProfile();
   const [goalModalOpen, setGoalModalOpen] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // Parse funding goals from profile
   const fundingGoals: FundingGoals | null = useMemo(() => {
@@ -31,8 +32,10 @@ export default function FundingMatches() {
     return null;
   }, [profile.fundingGoals]);
 
-  // Show intake modal if no goals set (after loading)
   const needsIntake = !profile.isLoading && !fundingGoals;
+  // Auto-open modal on first visit only if goals not set
+  const [autoOpened, setAutoOpened] = useState(false);
+  const shouldAutoOpen = needsIntake && !autoOpened && !bannerDismissed;
 
   // Fetch all active lender products
   const { data: products, isLoading: productsLoading } = useQuery({
