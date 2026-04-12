@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { usePlaidLink } from "@/hooks/usePlaidLink";
 import { toast } from "sonner";
 import { Building2, User } from "lucide-react";
 import { OverviewTab } from "./bank-accounts/OverviewTab";
@@ -47,11 +46,6 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
       if (error) throw error;
       return data;
     },
-  });
-
-  const { open: openPlaidLink, ready: plaidReady } = usePlaidLink(() => {
-    toast.success("Bank account connected successfully!");
-    refetch();
   });
 
   const handleRefreshAccount = async (accountId: string) => {
@@ -173,7 +167,7 @@ export function BankAccountsManager({ businessMode = false }: BankAccountsManage
 
         <TabsContent value="overview" className="mt-6">
           <OverviewTab
-            onConnectBank={() => plaidReady && openPlaidLink()}
+            onConnectBank={() => toast.info("Bank account connection via open banking is planned for Phase 2. Upload bank statements as PDFs to document your cash flow.")}
             onRefresh={() => refetch()}
             businessMode={businessMode}
           />

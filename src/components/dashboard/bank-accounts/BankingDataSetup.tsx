@@ -7,16 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { usePlaidLink } from "@/hooks/usePlaidLink";
 import { toast } from "sonner";
 import {
-  Zap,
   FileText,
   PenLine,
   CheckCircle2,
   ArrowRight,
   Star,
   Upload,
+  Info,
 } from "lucide-react";
 
 interface BankingDataSetupProps {
@@ -32,11 +31,6 @@ export function BankingDataSetup({ businessMode = false, onNavigateToUpload }: B
     avg_daily_balance: "",
     monthly_nsf_count: "0",
     accounts_separated: false,
-  });
-
-  const { open: openPlaidLink, ready: plaidReady } = usePlaidLink(() => {
-    toast.success("Bank account connected successfully!");
-    queryClient.invalidateQueries({ queryKey: ["banking-data-source"] });
   });
 
   const { data: existingManual } = useQuery({
@@ -84,17 +78,6 @@ export function BankingDataSetup({ businessMode = false, onNavigateToUpload }: B
   const tiers = [
     {
       tier: 1,
-      title: "Connect Bank Account (Instant)",
-      description: "Most accurate method — live balances, transactions, and cashflow analysis via secure bank connection.",
-      icon: <Zap className="w-5 h-5" />,
-      badge: null,
-      action: () => plaidReady && openPlaidLink(),
-      actionLabel: "Connect via Plaid",
-      disabled: !plaidReady,
-      note: "Highest confidence • Real-time data",
-    },
-    {
-      tier: 2,
       title: "Upload Bank Statements (Recommended)",
       description: "AI extracts revenue, balances, NSF counts, and red flags from your PDF statements automatically.",
       icon: <FileText className="w-5 h-5" />,
@@ -105,7 +88,7 @@ export function BankingDataSetup({ businessMode = false, onNavigateToUpload }: B
       note: "High confidence • AI-verified extraction",
     },
     {
-      tier: 3,
+      tier: 2,
       title: "Enter Manually",
       description: "Quick fallback — enter key banking metrics yourself. Data is flagged as self-reported.",
       icon: <PenLine className="w-5 h-5" />,
@@ -126,12 +109,22 @@ export function BankingDataSetup({ businessMode = false, onNavigateToUpload }: B
         </p>
       </div>
 
+      {/* Phase 2 notice */}
+      <Card className="border-accent/30 bg-accent/5">
+        <CardContent className="p-3 flex items-start gap-2 text-sm">
+          <Info className="w-4 h-4 text-accent mt-0.5 shrink-0" />
+          <span className="text-muted-foreground">
+            Bank account connection via open banking is planned for Phase 2. Upload bank statements as PDFs to document your cash flow.
+          </span>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4">
         {tiers.map((tier) => (
           <Card
             key={tier.tier}
             className={`border transition-all ${
-              tier.tier === 2
+              tier.tier === 1
                 ? "border-[hsl(var(--gold))]/50 shadow-md ring-1 ring-[hsl(var(--gold))]/20"
                 : "border-border/50"
             }`}
@@ -139,7 +132,7 @@ export function BankingDataSetup({ businessMode = false, onNavigateToUpload }: B
             <CardContent className="p-4">
               <div className="flex items-start gap-4">
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                  tier.tier === 2 ? "bg-[hsl(var(--gold))]/15" : "bg-muted"
+                  tier.tier === 1 ? "bg-[hsl(var(--gold))]/15" : "bg-muted"
                 }`}>
                   {tier.icon}
                 </div>
@@ -147,19 +140,19 @@ export function BankingDataSetup({ businessMode = false, onNavigateToUpload }: B
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="font-medium text-sm">{tier.title}</h4>
                     {tier.badge}
-                    {tier.tier === 2 && <Star className="w-3.5 h-3.5 text-[hsl(var(--gold))]" />}
+                    {tier.tier === 1 && <Star className="w-3.5 h-3.5 text-[hsl(var(--gold))]" />}
                   </div>
                   <p className="text-xs text-muted-foreground">{tier.description}</p>
                   <p className="text-xs text-muted-foreground/70 italic">{tier.note}</p>
                 </div>
                 <Button
                   size="sm"
-                  variant={tier.tier === 2 ? "default" : "outline"}
-                  className={tier.tier === 2 ? "bg-gradient-gold hover:shadow-glow text-primary" : ""}
+                  variant={tier.tier === 1 ? "default" : "outline"}
+                  className={tier.tier === 1 ? "bg-gradient-gold hover:shadow-glow text-primary" : ""}
                   onClick={tier.action}
                   disabled={tier.disabled}
                 >
-                  {tier.tier === 2 ? <Upload className="w-3.5 h-3.5 mr-1.5" /> : <ArrowRight className="w-3.5 h-3.5 mr-1.5" />}
+                  {tier.tier === 1 ? <Upload className="w-3.5 h-3.5 mr-1.5" /> : <ArrowRight className="w-3.5 h-3.5 mr-1.5" />}
                   {tier.actionLabel}
                 </Button>
               </div>

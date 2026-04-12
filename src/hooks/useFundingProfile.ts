@@ -277,7 +277,7 @@ export function useFundingProfile(): FundingProfileData {
         { label: "Business Revenue", weight: 15, present: annualRevenue != null && annualRevenue > 0, cta: "Upload bank statements or enter revenue data", unlocks: "revenue-based funding products" },
         { label: "Entity & Formation", weight: 10, present: hasEntity && hasEIN, cta: "Complete Foundation tab in Business Profile", unlocks: "business credit products" },
         { label: "Time in Business", weight: 8, present: timeInBusinessMonths != null && timeInBusinessMonths > 0, cta: "Add formation date to your business profile", unlocks: "term loans and SBA products" },
-        { label: "Banking Relationship", weight: 8, present: infra.hasBankAccount || banks.length > 0, cta: "Add your business bank account in the Foundation tab", unlocks: "cash-flow based lending products" },
+        { label: "Banking Relationship", weight: 8, present: infra.hasBankAccount || banks.length > 0, cta: "Upload business bank statements as PDFs to document cash flow and unlock cash-flow based lending products", unlocks: "cash-flow based lending products" },
         { label: "Business Credit Scores", weight: 10, present: infra.dnbPaydex != null || infra.experianIntelliscore != null, cta: "Enter scores in the Business Credit tab", unlocks: "EIN-only business products" },
         { label: "Monthly Cash Flow", weight: 7, present: monthlyCashFlow != null && monthlyCashFlow !== 0, cta: "Upload bank statements to calculate cash flow", unlocks: "improved estimate accuracy" },
         { label: "Public Presence", weight: 7, present: infra.presenceComplete >= 4, cta: "Complete public listings in the Public Presence tab", unlocks: "identity verification for lenders" },

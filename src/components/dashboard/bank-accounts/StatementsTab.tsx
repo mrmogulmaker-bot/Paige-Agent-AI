@@ -242,9 +242,9 @@ export function StatementsTab() {
           <p className="font-medium">Statement Processing Features:</p>
           <ul className="space-y-1 text-muted-foreground ml-4">
             <li>• <strong>OCR Technology:</strong> Automatically extracts transactions from PDF statements</li>
-            <li>• <strong>Data Augmentation:</strong> Supplements Plaid data with manual uploads</li>
-            <li>• <strong>Reconciliation:</strong> Compare extracted data with live transaction feeds</li>
-            <li>• <strong>Historical Analysis:</strong> Access statements older than Plaid's data retention period</li>
+            <li>• <strong>Data Augmentation:</strong> Supplements manual entries with uploaded documents</li>
+            <li>• <strong>Reconciliation:</strong> Compare extracted data with manual banking entries</li>
+            <li>• <strong>Historical Analysis:</strong> Access statements for any period you upload</li>
           </ul>
         </CardContent>
       </Card>

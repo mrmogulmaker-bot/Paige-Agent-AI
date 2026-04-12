@@ -45,7 +45,7 @@ export function TransactionsTab({ transactions, cursorStatus }: TransactionsTabP
             <div className="flex items-center gap-3">
               <RefreshCcw className="h-5 w-5 text-accent" />
               <div>
-                <p className="font-medium">Plaid Cursor Status</p>
+                <p className="font-medium">Sync Status</p>
                 <p className="text-sm text-muted-foreground">
                   {cursorStatus === "up-to-date"
                     ? "All transactions synced"

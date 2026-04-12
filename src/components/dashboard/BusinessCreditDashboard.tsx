@@ -170,7 +170,7 @@ const BusinessCreditDashboard = () => {
               </Card>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Underwriting optics from Plaid. Keep above target pre-apply.</p>
+              <p>Underwriting optics from bank statements. Keep above target pre-apply.</p>
             </TooltipContent>
           </Tooltip>
 
