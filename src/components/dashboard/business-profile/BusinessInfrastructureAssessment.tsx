@@ -10,6 +10,7 @@ import { FoundationSection } from "./FoundationSection";
 import { BuildProgramSection } from "./BuildProgramSection";
 import { PublicPresenceSection } from "./PublicPresenceSection";
 import { BusinessCreditSection } from "./BusinessCreditSection";
+import { FinancialDocsSection } from "./FinancialDocsSection";
 
 interface Props {
   clientId?: string; // For internal client mode
@@ -171,7 +172,15 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
         </TabsContent>
 
         <TabsContent value="docs" className="mt-4">
-          <PlaceholderTab label="Financial Docs" />
+          {businesses.length === 0 ? (
+            <Card><CardContent className="py-12 text-center">
+              <FileText className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+              <h3 className="text-lg font-semibold mb-2">No Business Entity Found</h3>
+              <p className="text-sm text-muted-foreground">Add a business entity first.</p>
+            </CardContent></Card>
+          ) : (
+            <FinancialDocsSection businessId={selectedBusinessId} userId={userId} onCompletionChange={setDocsPct} />
+          )}
         </TabsContent>
 
         <TabsContent value="build" className="mt-4">

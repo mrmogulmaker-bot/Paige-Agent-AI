@@ -7,9 +7,21 @@ interface Props {
   profile: FundingProfileData;
 }
 
+const COMPLETENESS_CATEGORIES = [
+  { label: "Personal Bureau Scores", weight: 15 },
+  { label: "Negative Items Analysis", weight: 10 },
+  { label: "Business Revenue", weight: 15 },
+  { label: "Entity & Formation", weight: 10 },
+  { label: "Time in Business", weight: 8 },
+  { label: "Banking Relationship", weight: 8 },
+  { label: "Business Credit Scores", weight: 10 },
+  { label: "Monthly Cash Flow", weight: 7 },
+  { label: "Public Presence", weight: 7 },
+  { label: "Financial Documentation", weight: 10 },
+];
+
 export function ProfileCompletenessPanel({ profile }: Props) {
   const { completeness, missingItems } = profile;
-  const totalUnlocked = missingItems.length;
 
   return (
     <Card className="p-6 bg-card border-border">
@@ -19,7 +31,7 @@ export function ProfileCompletenessPanel({ profile }: Props) {
           <p className="text-sm text-muted-foreground mt-1">
             Your profile is <span className="font-semibold text-foreground">{completeness}%</span> complete
             {missingItems.length > 0 && (
-              <> — add <span className="text-accent font-medium">{missingItems[0].label.toLowerCase()}</span> to unlock {totalUnlocked} additional product categories and improve estimate accuracy.</>
+              <> — add <span className="text-accent font-medium">{missingItems[0].label.toLowerCase()}</span> to unlock additional product categories and improve estimate accuracy.</>
             )}
           </p>
         </div>
@@ -29,17 +41,7 @@ export function ProfileCompletenessPanel({ profile }: Props) {
       <Progress value={completeness} className="h-3 mb-5" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        {/* Show completed items */}
-        {[
-          { label: "Bureau Scores", weight: 20 },
-          { label: "Negative Items Analysis", weight: 15 },
-          { label: "Business Revenue", weight: 20 },
-          { label: "Entity Structure", weight: 10 },
-          { label: "Time in Business", weight: 10 },
-          { label: "Banking Relationship", weight: 10 },
-          { label: "Business Credit Scores", weight: 10 },
-          { label: "Monthly Cash Flow", weight: 5 },
-        ].map(item => {
+        {COMPLETENESS_CATEGORIES.map(item => {
           const isMissing = missingItems.find(m => m.label === item.label);
           return (
             <div key={item.label} className={`flex items-start gap-2 p-2 rounded-lg text-sm ${isMissing ? "bg-destructive/5" : "bg-fundability-excellent/5"}`}>
