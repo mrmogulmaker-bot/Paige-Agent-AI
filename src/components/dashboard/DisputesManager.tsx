@@ -640,7 +640,8 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
                     <CardTitle className="text-lg">{dispute.creditor_name}</CardTitle>
                     <CardDescription>Bureau: {dispute.bureau}</CardDescription>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <AccountTypeBadge itemType={dispute.narrative || dispute.reason_code} />
                     {dispute.dispute_round && <Badge variant="secondary" className="text-xs">R{dispute.dispute_round}</Badge>}
                     <Badge className={status.color}><StatusIcon className="w-3 h-3 mr-1" />{status.label}</Badge>
                   </div>
