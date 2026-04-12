@@ -159,19 +159,60 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           }
         }
 
-        // --- Business Context ---
+        // --- Business Foundation Status ---
         if (resolvedUserId) {
           const { data: businesses } = await supabase
             .from("businesses")
-            .select("legal_name, entity_type, formation_status, ein, formation_date")
+            .select("legal_name, entity_type, state_of_formation, formation_date, ein, business_address_type, business_street_address, business_city, business_state, business_zip, business_phone, phone_411_listed, has_bank_account, bank_name, bank_account_opened_date")
             .eq("owner_user_id", resolvedUserId)
             .limit(3);
 
           if (businesses && businesses.length > 0) {
             const biz = businesses[0];
-            const formed = biz.formation_status === "active" || biz.formation_date ? "Formed" : "Not formed";
-            const einStatus = biz.ein ? "Yes" : "No";
-            parts.push(`Business Profile: Entity: ${formed} (${biz.entity_type || "type not set"}) | EIN: ${einStatus} | ${biz.legal_name}`);
+
+            // Entity status
+            const entityVerified = biz.entity_type && biz.state_of_formation;
+            const entityPending = !entityVerified && (biz.entity_type || biz.state_of_formation);
+            const entityStatus = entityVerified ? "Verified" : entityPending ? "Pending" : "Missing";
+            const entityLine = entityVerified
+              ? `Entity: ${biz.entity_type} formed in ${biz.state_of_formation}${biz.formation_date ? ` on ${biz.formation_date}` : ""} | Status: ${entityStatus}`
+              : `Entity: Not yet formed | Status: ${entityStatus}`;
+
+            // EIN
+            const einLine = `EIN: ${biz.ein ? "On file" : "Not on file"}`;
+
+            // Address
+            const addrFilled = biz.business_street_address && biz.business_city && biz.business_state && biz.business_zip;
+            const isHome = biz.business_address_type === "Home Address";
+            const addrStatus = isHome ? "Pending — Home Address (privacy risk)" : addrFilled && biz.business_address_type ? "Verified" : biz.business_street_address ? "Pending" : "Missing";
+            const addrDetail = addrFilled ? `${biz.business_street_address}, ${biz.business_city}, ${biz.business_state} ${biz.business_zip}` : "Not entered";
+            const addrLine = `Business Address: ${biz.business_address_type || "Not set"} — ${addrDetail} | Status: ${addrStatus}`;
+
+            // Phone
+            const phoneStatus = biz.business_phone && biz.phone_411_listed ? "Verified" : biz.business_phone ? "Pending" : "Missing";
+            const phoneLine = `Business Phone: ${biz.business_phone || "Not on file"} | 411 Listed: ${biz.phone_411_listed ? "Yes" : "No"} | Status: ${phoneStatus}`;
+
+            // Bank
+            const bankStatus = biz.has_bank_account && biz.bank_name && biz.bank_account_opened_date ? "Verified" : biz.has_bank_account || biz.bank_name ? "Pending" : "Missing";
+            const bankLine = `Business Bank Account: ${biz.bank_name || "Not on file"}${biz.bank_account_opened_date ? ` opened ${biz.bank_account_opened_date}` : ""} | Commingling-free: ${biz.has_bank_account ? "Yes" : "No"} | Status: ${bankStatus}`;
+
+            // Completion
+            let foundationVerified = 0;
+            if (entityVerified) foundationVerified++;
+            if (biz.ein) foundationVerified++;
+            if (addrFilled && biz.business_address_type && !isHome) foundationVerified++;
+            if (biz.business_phone && biz.phone_411_listed) foundationVerified++;
+            if (biz.has_bank_account && biz.bank_name && biz.bank_account_opened_date) foundationVerified++;
+            const foundationPct = Math.round((foundationVerified / 5) * 100);
+
+            parts.push(`\nBusiness Foundation Status:`);
+            parts.push(`- ${entityLine}`);
+            parts.push(`- ${einLine}`);
+            parts.push(`- ${addrLine}`);
+            parts.push(`- ${phoneLine}`);
+            parts.push(`- ${bankLine}`);
+            parts.push(`- Foundation Completion: ${foundationPct}%`);
+            parts.push(`Business: ${biz.legal_name}`);
           } else {
             parts.push("Business Profile: No business entity on file");
           }
