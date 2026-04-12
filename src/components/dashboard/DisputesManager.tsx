@@ -15,6 +15,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AccountTypeBadge, normalizeAccountType, getStatutoryLanguageByType } from "./disputes/AccountTypeBadge";
 import { PersonalInfoAudit } from "./disputes/PersonalInfoAudit";
+import { BureauImpactPanel } from "./disputes/BureauImpactPanel";
 
 const statusConfig: Record<string, { label: string; icon: any; color: string }> = {
   draft: { label: "Draft", icon: FileText, color: "bg-muted" },
@@ -742,6 +743,7 @@ export function DisputesManager({ personalOnly, businessOnly, clientId }: Disput
   const renderContent = (type: "personal" | "business") => (
     <div className="space-y-6">
       {type === "personal" && <PersonalInfoAudit clientId={clientId} />}
+      {type === "personal" && <BureauImpactPanel clientId={clientId} />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {renderRoundButton()}
         <NewDisputeDialog type={type} onCreated={handleRefresh} clientId={clientId} />

@@ -1,12 +1,13 @@
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Info, Loader2 } from "lucide-react";
+import { Info, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+import { getLenderCategoriesForBureau } from "@/lib/fundingMatchScoring";
 
 interface BureauScorePanelProps {
-  /** When set, fetches scores for this client instead of the auth user */
   clientUserId?: string;
 }
 
@@ -33,15 +34,6 @@ function getScoreInfo(score: number | null): ScoreRange | null {
   return SCORE_RANGES.find((r) => score >= r.min && score <= r.max) ?? null;
 }
 
-function getFundingContext(scores: number[]): string {
-  if (scores.length === 0) return "";
-  const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-  if (avg >= 700) return "Strong profile. You qualify for most business credit products.";
-  if (avg >= 660) return "You are approaching lender thresholds. One or two dispute wins could move you significantly.";
-  if (avg >= 620) return "You qualify for some secured products. Removing derogatory items will unlock more options.";
-  return "Most traditional lenders require 680+. Focus on dispute resolution first.";
-}
-
 const SCORE_MODEL_TOOLTIPS: Record<string, string> = {
   FICO: "FICO scores are used by 90% of top lenders. They range from 300-850 and may differ from scores shown on free monitoring apps that use VantageScore.",
   VantageScore: "VantageScore is a competing model created by the three bureaus. It uses a similar 300-850 range but weighs factors differently than FICO, so scores often differ.",
@@ -53,6 +45,38 @@ const BUREAUS = [
   { key: "ex" as const, label: "Experian", field: "estimated_fico_ex" as const },
   { key: "eq" as const, label: "Equifax", field: "estimated_fico_eq" as const },
 ];
+
+function getBureauHealthIndicator(
+  thisScore: number | null,
+  allScores: (number | null)[]
+): { icon: React.ReactNode; label: string; color: string } | null {
+  if (thisScore == null) return null;
+  const valid = allScores.filter((s): s is number => s != null);
+  if (valid.length < 2) return null;
+
+  const max = Math.max(...valid);
+  const min = Math.min(...valid);
+
+  if (thisScore === max && max - min >= 15) {
+    return {
+      icon: <TrendingUp className="w-4 h-4" />,
+      label: "Best score",
+      color: "text-fundability-excellent",
+    };
+  }
+  if (thisScore === min && max - min >= 15) {
+    return {
+      icon: <TrendingDown className="w-4 h-4" />,
+      label: "Weakest score",
+      color: "text-destructive",
+    };
+  }
+  return {
+    icon: <Minus className="w-4 h-4" />,
+    label: "Mid-range",
+    color: "text-muted-foreground",
+  };
+}
 
 export function BureauScorePanel({ clientUserId }: BureauScorePanelProps) {
   const { data, isLoading } = useQuery({
@@ -89,6 +113,7 @@ export function BureauScorePanel({ clientUserId }: BureauScorePanelProps) {
   const scoreModel = (data?.score_model as string) || "Unknown";
   const lastUpdated = data?.last_report_analyzed_at as string | null;
   const scores = [tu, ex, eq].filter((s): s is number => s != null);
+  const allScores = [tu, ex, eq];
 
   if (scores.length === 0) return null;
 
@@ -101,6 +126,8 @@ export function BureauScorePanel({ clientUserId }: BureauScorePanelProps) {
           {BUREAUS.map(({ key, label, field }) => {
             const score = data?.[field] as number | null;
             const info = getScoreInfo(score);
+            const health = getBureauHealthIndicator(score, allScores);
+            const lenders = getLenderCategoriesForBureau(key);
 
             return (
               <Card key={key} className="p-5 bg-card border-border text-center">
@@ -115,7 +142,29 @@ export function BureauScorePanel({ clientUserId }: BureauScorePanelProps) {
                         {info.label}
                       </span>
                     )}
-                    <div className="flex items-center justify-center gap-1 mt-2">
+
+                    {/* Bureau health indicator */}
+                    {health && (
+                      <div className={`flex items-center justify-center gap-1.5 mt-2 ${health.color}`}>
+                        {health.icon}
+                        <span className="text-xs font-medium">{health.label}</span>
+                      </div>
+                    )}
+
+                    {/* Lender categories */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <p className="text-[10px] text-muted-foreground mt-2 cursor-help hover:text-foreground transition-colors">
+                          Used by: {lenders.split(",").slice(0, 2).join(",")}…
+                        </p>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-[260px] text-xs">
+                        <p className="font-semibold mb-1">Lenders that pull {label}:</p>
+                        <p>{lenders}</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <div className="flex items-center justify-center gap-1 mt-1">
                       <span className="text-[11px] text-muted-foreground">{scoreModelLabel}</span>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -134,9 +183,6 @@ export function BureauScorePanel({ clientUserId }: BureauScorePanelProps) {
             );
           })}
         </div>
-
-        {/* Context line */}
-        <p className="text-sm text-muted-foreground text-center">{getFundingContext(scores)}</p>
 
         {/* Score as of date */}
         {lastUpdated && (

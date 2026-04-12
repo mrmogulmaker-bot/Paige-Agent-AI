@@ -16,6 +16,126 @@ export interface ProductMatch {
   dataPoints: { label: string; value: string; status: "positive" | "negative" | "neutral" }[];
   track: "personal" | "business";
   phase: "ACCEL" | "BUILD" | "FUND" | "ACQUIRE";
+  /** Which bureau this product primarily pulls */
+  primaryBureau: BureauPull;
+  /** The specific score used for this product */
+  bureauScoreUsed: number | null;
+  /** Label for the bureau pull indicator */
+  bureauPullLabel: string;
+}
+
+export type BureauPull = "experian" | "transunion" | "equifax" | "all_three" | "middle_score" | "flexible";
+
+// ====== Bureau pull mapping by lender name ======
+const LENDER_BUREAU_MAP: Record<string, BureauPull> = {
+  // Personal credit cards
+  "chase": "experian",
+  "capital one": "transunion",
+  "american express": "experian",
+  "amex": "experian",
+  "citi": "equifax",
+  "citibank": "equifax",
+  "discover": "transunion",
+  "bank of america": "equifax",
+  "wells fargo": "experian",
+  "opensky": "transunion",
+  "chime": "transunion",
+  // Personal loans
+  "sofi": "experian",
+  "lightstream": "equifax",
+  "marcus": "experian",
+  "goldman": "experian",
+  "upgrade": "transunion",
+  // Business credit cards
+  "chase ink": "experian",
+  "capital one spark": "transunion",
+  "brex": "experian",
+  "ramp": "experian",
+  "divvy": "transunion",
+  "mercury": "experian",
+  // Business lending
+  "ondeck": "experian",
+  "bluevine": "experian",
+  "fundbox": "experian",
+  "kabbage": "experian",
+  // Equipment / specialty
+  "cdfi": "flexible",
+  "community bank": "flexible",
+};
+
+// Product type defaults when lender name doesn't match
+const TYPE_BUREAU_DEFAULTS: Record<string, BureauPull> = {
+  "sba": "middle_score",
+  "sba_loan": "middle_score",
+  "sba_7a": "middle_score",
+  "sba_504": "middle_score",
+  "equipment": "equifax",
+  "equipment_financing": "equifax",
+  "vendor_account": "experian",
+};
+
+export function resolvePrimaryBureau(product: any): BureauPull {
+  // Check explicit field first
+  if (product.primary_bureau) return product.primary_bureau as BureauPull;
+
+  const lender = (product.lender_name || "").toLowerCase().trim();
+  const type = (product.product_type || "").toLowerCase().replace(/\s+/g, "_");
+
+  // Check lender name (longest match first)
+  for (const [key, bureau] of Object.entries(LENDER_BUREAU_MAP).sort((a, b) => b[0].length - a[0].length)) {
+    if (lender.includes(key)) return bureau;
+  }
+
+  // Check product type defaults
+  for (const [key, bureau] of Object.entries(TYPE_BUREAU_DEFAULTS)) {
+    if (type.includes(key)) return bureau;
+  }
+
+  // Default: middle score for unknown
+  return "middle_score";
+}
+
+export function getBureauScore(
+  bureau: BureauPull,
+  scores: { tu: number | null; ex: number | null; eq: number | null },
+  middleScore: number | null
+): number | null {
+  switch (bureau) {
+    case "experian": return scores.ex;
+    case "transunion": return scores.tu;
+    case "equifax": return scores.eq;
+    case "flexible": {
+      // Use best available score
+      const valid = [scores.tu, scores.ex, scores.eq].filter((s): s is number => s != null);
+      return valid.length > 0 ? Math.max(...valid) : null;
+    }
+    case "all_three":
+    case "middle_score":
+    default:
+      return middleScore;
+  }
+}
+
+export function getBureauPullLabel(bureau: BureauPull): string {
+  switch (bureau) {
+    case "experian": return "Pulls Experian";
+    case "transunion": return "Pulls TransUnion";
+    case "equifax": return "Pulls Equifax";
+    case "all_three": return "Pulls all 3 — middle score used";
+    case "flexible": return "Flexible — best bureau used";
+    case "middle_score":
+    default:
+      return "Pulls all 3 — middle score used";
+  }
+}
+
+/** Get which major lender categories pull a given bureau */
+export function getLenderCategoriesForBureau(bureau: "tu" | "ex" | "eq"): string {
+  switch (bureau) {
+    case "ex": return "Chase, Amex, Wells Fargo, SoFi, OnDeck, BlueVine";
+    case "tu": return "Capital One, Discover, OpenSky, Chime, Upgrade, Divvy";
+    case "eq": return "Citi, Bank of America, LightStream, Equipment lenders";
+  }
 }
 
 const PERSONAL_TYPES = ["personal_credit_card", "personal_line_of_credit", "personal_loan", "credit_builder", "secured_card"];
@@ -56,14 +176,35 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
   const isDnBWeighted = type.includes("vendor") || type.includes("equipment");
   const infra = profile.businessInfra;
 
+  // === Bureau-specific score resolution ===
+  const primaryBureau = resolvePrimaryBureau(product);
+  const bureauScoreUsed = getBureauScore(primaryBureau, profile.scores, profile.middleScore);
+  const bureauPullLabel = getBureauPullLabel(primaryBureau);
+
+  // Bureau label for display
+  const bureauDisplayName = primaryBureau === "experian" ? "Experian" :
+    primaryBureau === "transunion" ? "TransUnion" :
+    primaryBureau === "equifax" ? "Equifax" :
+    primaryBureau === "flexible" ? "Best Bureau" : "Middle";
+
   // === Data Points ===
 
-  // Personal FICO
-  if (profile.middleScore != null) {
+  // Personal FICO — show bureau-specific score
+  if (bureauScoreUsed != null) {
+    const minFico = product.min_fico_score || 0;
+    dataPoints.push({
+      label: `${bureauDisplayName} Score`,
+      value: `${bureauScoreUsed}`,
+      status: bureauScoreUsed >= minFico ? "positive" : "negative",
+    });
+  } else if (profile.middleScore != null) {
     dataPoints.push({ label: "Personal FICO", value: `${profile.middleScore} middle score`, status: profile.middleScore >= (product.min_fico_score || 0) ? "positive" : "negative" });
   } else {
     dataPoints.push({ label: "Personal FICO", value: "Not on file", status: "neutral" });
   }
+
+  // Bureau pull indicator
+  dataPoints.push({ label: "Bureau Pull", value: bureauPullLabel, status: "neutral" });
 
   // Business credit scores for business products
   if (isBusiness) {
@@ -123,37 +264,26 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
 
   // --- Business Infrastructure Deductions (for business products) ---
   if (isBusiness) {
-    // Entity formation disqualifier
     if (!infra.hasEntity) {
       score -= 40;
       deductions.push({ label: "Entity formation required before applying for business credit", points: 40, severity: "critical" });
     }
-
-    // EIN disqualifier
     if (!infra.hasEIN) {
       score -= 40;
       deductions.push({ label: "EIN required before applying for business funding", points: 40, severity: "critical" });
     }
-
-    // Home address warning
     if (infra.addressType?.toLowerCase() === "home") {
       score -= 10;
       deductions.push({ label: "Home address may cause identity verification failures with lenders", points: 10, severity: "warning" });
     }
-
-    // No 411 phone
     if (!infra.hasPhone411) {
       score -= 5;
       deductions.push({ label: "No dedicated phone listed in 411 directories", points: 5, severity: "info" });
     }
-
-    // No bank account
     if (!infra.hasBankAccount && profile.connectedBanks === 0) {
       score -= 15;
       deductions.push({ label: "Business bank account required for most business funding products", points: 15, severity: "warning" });
     }
-
-    // Public presence
     const presencePct = infra.presenceTotal > 0 ? (infra.presenceComplete / infra.presenceTotal) * 100 : 0;
     if (presencePct < 50) {
       score -= 10;
@@ -166,7 +296,6 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
 
   // --- Business Bureau Score Deductions ---
   if (isBusiness && infra.experianIntelliscore != null) {
-    // For business credit cards, use Intelliscore as primary
     if (type.includes("business_credit_card") || type.includes("business_line")) {
       const minIntelli = product.min_business_score || 70;
       const gap = minIntelli - infra.experianIntelliscore;
@@ -227,7 +356,7 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
     }
   }
 
-  // --- Standard Personal Credit Deductions ---
+  // --- Standard Personal Credit Deductions (use bureau-specific score) ---
 
   // Active charge-offs > $5,000 on unsecured products
   if (isUnsecured && profile.chargeOffTotal > 5000) {
@@ -246,13 +375,14 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
     deductions.push({ label: "Security freeze must be lifted before applying", points: 15, severity: "warning" });
   }
 
-  // FICO below minimum
-  if (product.min_fico_score && profile.middleScore != null) {
-    const gap = product.min_fico_score - profile.middleScore;
+  // FICO below minimum — use bureau-specific score
+  const relevantScore = bureauScoreUsed ?? profile.middleScore;
+  if (product.min_fico_score && relevantScore != null) {
+    const gap = product.min_fico_score - relevantScore;
     if (gap > 0) {
       const pts = Math.min(40, Math.round(gap * 0.5));
       score -= pts;
-      deductions.push({ label: `Score ${profile.middleScore} is ${gap} points below ${product.min_fico_score} minimum`, points: pts, severity: gap > 50 ? "critical" : "warning" });
+      deductions.push({ label: `${bureauDisplayName} score ${relevantScore} is ${gap} points below ${product.min_fico_score} minimum`, points: pts, severity: gap > 50 ? "critical" : "warning" });
     }
   }
 
@@ -359,6 +489,9 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
     dataPoints,
     track: getTrack(type),
     phase: getPhase(type),
+    primaryBureau,
+    bureauScoreUsed,
+    bureauPullLabel,
   };
 }
 

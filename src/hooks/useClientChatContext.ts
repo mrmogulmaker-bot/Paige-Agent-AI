@@ -86,7 +86,11 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
 
         const scoreValues = [scores.transunion, scores.experian, scores.equifax].filter((v): v is number => v != null).sort((a, b) => a - b);
         const middleScore = scoreValues.length >= 2 ? scoreValues[Math.floor(scoreValues.length / 2)] : scoreValues[0] || null;
-        parts.push(`Bureau Scores: TransUnion ${scores.transunion ?? "N/A"} | Experian ${scores.experian ?? "N/A"} | Equifax ${scores.equifax ?? "N/A"} | Middle Score ${middleScore ?? "N/A"}`);
+        parts.push(`Bureau Scores:`);
+        parts.push(`  TransUnion: ${scores.transunion ?? "N/A"} — Pulled by: Capital One, Discover, OpenSky, Chime, Upgrade, Divvy`);
+        parts.push(`  Experian: ${scores.experian ?? "N/A"} — Pulled by: Chase, Amex, Wells Fargo, SoFi, OnDeck, BlueVine`);
+        parts.push(`  Equifax: ${scores.equifax ?? "N/A"} — Pulled by: Citi, Bank of America, LightStream, Equipment lenders`);
+        parts.push(`  Middle Score: ${middleScore ?? "N/A"} — Used for SBA and multi-bureau products`);
 
         // --- Credit factors ---
         const factorFilter = clientId
