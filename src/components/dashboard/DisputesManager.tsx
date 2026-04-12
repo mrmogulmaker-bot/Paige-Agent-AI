@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, FileText, Clock, CheckCircle2, XCircle, User, Building2, Loader2, Eye, Download, Copy, Mail, AlertTriangle, Send } from "lucide-react";
+import { DisputeOutcomeDialog } from "./DisputeOutcomeDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -613,11 +614,13 @@ function NewDisputeDialog({ type, onCreated, clientId }: { type: "personal" | "b
 const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: string; onRefresh: () => void }) => {
   const [detailsDispute, setDetailsDispute] = useState<any>(null);
   const [letterDispute, setLetterDispute] = useState<any>(null);
+  const [outcomeDispute, setOutcomeDispute] = useState<any>(null);
 
   return (
     <>
       <DisputeDetailsDialog dispute={detailsDispute} open={!!detailsDispute} onOpenChange={(v) => !v && setDetailsDispute(null)} />
       <GenerateLetterDialog dispute={letterDispute} open={!!letterDispute} onOpenChange={(v) => !v && setLetterDispute(null)} onLetterGenerated={onRefresh} />
+      <DisputeOutcomeDialog dispute={outcomeDispute} open={!!outcomeDispute} onOpenChange={(v) => !v && setOutcomeDispute(null)} onSaved={onRefresh} />
       <div className="grid gap-4">
         {disputes.map((dispute) => {
           const statusKey = dispute.status as string;
@@ -648,6 +651,9 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
                   <Button variant="outline" size="sm" onClick={() => setDetailsDispute(dispute)}><Eye className="w-3 h-3 mr-1" /> Details</Button>
                   {dispute.status === "draft" && (
                     <Button variant="outline" size="sm" onClick={() => setLetterDispute(dispute)}><FileText className="w-3 h-3 mr-1" /> Single Letter</Button>
+                  )}
+                  {dispute.status !== "draft" && dispute.status !== "resolved" && dispute.status !== "rejected" && (
+                    <Button variant="outline" size="sm" onClick={() => setOutcomeDispute(dispute)}><CheckCircle2 className="w-3 h-3 mr-1" /> Record Outcome</Button>
                   )}
                 </div>
               </CardContent>

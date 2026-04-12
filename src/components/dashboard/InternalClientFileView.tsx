@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft, DollarSign, FileText, Mail, Brain, Upload,
-  AlertTriangle, User, Building2, Phone, AtSign, Save, Archive, ArchiveRestore
+  AlertTriangle, User, Building2, Phone, AtSign, Save, Archive, ArchiveRestore, TrendingUp, ClipboardList
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
@@ -16,6 +16,8 @@ import { OutreachCenter } from "./OutreachCenter";
 import { PMEFundingReadiness } from "./PMEFundingReadiness";
 import { ClientMemoryTab } from "./ClientMemoryTab";
 import { DisputesManager } from "./DisputesManager";
+import { FundingApplicationLog } from "./FundingApplicationLog";
+import { ClientOutcomesTab } from "./ClientOutcomesTab";
 import { toast } from "sonner";
 
 interface InternalClientFileViewProps {
@@ -196,6 +198,9 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           <TabsTrigger value="funding" className="text-xs">
             <DollarSign className="w-3 h-3 mr-1" /> Funding
           </TabsTrigger>
+          <TabsTrigger value="applications" className="text-xs">
+            <ClipboardList className="w-3 h-3 mr-1" /> Applications
+          </TabsTrigger>
           <TabsTrigger value="documents" className="text-xs">
             <FileText className="w-3 h-3 mr-1" /> Documents
           </TabsTrigger>
@@ -204,6 +209,9 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           </TabsTrigger>
           <TabsTrigger value="memory" className="text-xs">
             <Brain className="w-3 h-3 mr-1" /> Memory
+          </TabsTrigger>
+          <TabsTrigger value="outcomes" className="text-xs">
+            <TrendingUp className="w-3 h-3 mr-1" /> Outcomes
           </TabsTrigger>
         </TabsList>
 
@@ -334,6 +342,11 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           <PMEFundingReadiness />
         </TabsContent>
 
+        {/* Funding Applications */}
+        <TabsContent value="applications" className="mt-4">
+          <FundingApplicationLog clientId={clientId} />
+        </TabsContent>
+
         {/* Documents */}
         <TabsContent value="documents" className="mt-4">
           <Card>
@@ -352,6 +365,11 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
         {/* Memory */}
         <TabsContent value="memory" className="mt-4">
           <ClientMemoryTab clientUserId={effectiveUserId} />
+        </TabsContent>
+
+        {/* Outcomes */}
+        <TabsContent value="outcomes" className="mt-4">
+          <ClientOutcomesTab clientId={clientId} clientName={fullName} />
         </TabsContent>
       </Tabs>
     </div>
