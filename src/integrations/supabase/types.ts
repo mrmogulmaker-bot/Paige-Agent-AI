@@ -1513,6 +1513,78 @@ export type Database = {
         }
         Relationships: []
       }
+      dispute_outcomes: {
+        Row: {
+          admin_notes: string | null
+          bureau: string
+          client_id: string | null
+          created_at: string
+          creditor_name: string
+          dispute_id: string
+          dispute_round: number | null
+          id: string
+          outcome_type: string
+          recorded_by: string
+          response_date: string | null
+          response_time_days: number | null
+          score_impact: number | null
+          submission_date: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          bureau: string
+          client_id?: string | null
+          created_at?: string
+          creditor_name: string
+          dispute_id: string
+          dispute_round?: number | null
+          id?: string
+          outcome_type: string
+          recorded_by: string
+          response_date?: string | null
+          response_time_days?: number | null
+          score_impact?: number | null
+          submission_date?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          bureau?: string
+          client_id?: string | null
+          created_at?: string
+          creditor_name?: string
+          dispute_id?: string
+          dispute_round?: number | null
+          id?: string
+          outcome_type?: string
+          recorded_by?: string
+          response_date?: string | null
+          response_time_days?: number | null
+          score_impact?: number | null
+          submission_date?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispute_outcomes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispute_outcomes_dispute_id_fkey"
+            columns: ["dispute_id"]
+            isOneToOne: false
+            referencedRelation: "disputes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       disputes: {
         Row: {
           account_number_masked: string | null
@@ -1918,6 +1990,80 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      funding_application_outcomes: {
+        Row: {
+          admin_notes: string | null
+          amount_requested: number
+          application_date: string
+          approved_amount: number | null
+          client_id: string | null
+          created_at: string
+          decline_reason: string | null
+          decline_reason_other: string | null
+          factor_rate: number | null
+          follow_up_date: string | null
+          id: string
+          interest_rate: number | null
+          lender_name: string
+          outcome: string
+          predicted_match_score: number | null
+          product_type: string
+          recorded_by: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          amount_requested: number
+          application_date: string
+          approved_amount?: number | null
+          client_id?: string | null
+          created_at?: string
+          decline_reason?: string | null
+          decline_reason_other?: string | null
+          factor_rate?: number | null
+          follow_up_date?: string | null
+          id?: string
+          interest_rate?: number | null
+          lender_name: string
+          outcome: string
+          predicted_match_score?: number | null
+          product_type: string
+          recorded_by: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          amount_requested?: number
+          application_date?: string
+          approved_amount?: number | null
+          client_id?: string | null
+          created_at?: string
+          decline_reason?: string | null
+          decline_reason_other?: string | null
+          factor_rate?: number | null
+          follow_up_date?: string | null
+          id?: string
+          interest_rate?: number | null
+          lender_name?: string
+          outcome?: string
+          predicted_match_score?: number | null
+          product_type?: string
+          recorded_by?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funding_application_outcomes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       funding_application_sequence: {
         Row: {
@@ -3336,6 +3482,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      response_quality_feedback: {
+        Row: {
+          correction_note: string | null
+          created_at: string
+          id: string
+          message_content: string | null
+          message_id: string
+          rated_by: string
+          rating: string
+          reason_category: string | null
+          reason_other: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          session_id: string
+        }
+        Insert: {
+          correction_note?: string | null
+          created_at?: string
+          id?: string
+          message_content?: string | null
+          message_id: string
+          rated_by: string
+          rating: string
+          reason_category?: string | null
+          reason_other?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          session_id: string
+        }
+        Update: {
+          correction_note?: string | null
+          created_at?: string
+          id?: string
+          message_content?: string | null
+          message_id?: string
+          rated_by?: string
+          rating?: string
+          reason_category?: string | null
+          reason_other?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          session_id?: string
+        }
+        Relationships: []
       }
       subscription_plans: {
         Row: {
