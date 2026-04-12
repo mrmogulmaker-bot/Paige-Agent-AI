@@ -366,13 +366,24 @@ export function generateFundingSequence(profile: FundingProfileData) {
   const steps: { step: number; title: string; milestone: string; products: string; timeline: string; link: string; isCurrentStep: boolean }[] = [];
   const score = profile.middleScore || 0;
   const hasActiveDerog = profile.totalActiveNegatives > 0;
-  const buildScore = profile.businessInfra?.buildScore ?? 0;
+
+  // Calculate Foundation completion percentage from business infra data
+  const infra = profile.businessInfra;
+  const foundationItems = [
+    infra?.hasEntity,
+    infra?.hasEIN,
+    !!(infra?.addressType),
+    infra?.hasPhone411,
+    infra?.hasBankAccount,
+  ];
+  const foundationComplete = foundationItems.filter(Boolean).length;
+  const foundationPct = Math.round((foundationComplete / 5) * 100);
 
   let currentStep = 1;
   let stepNum = 0;
 
-  // Step 0: Business Foundation Setup (if BUILD score < 20%)
-  if (buildScore < 20) {
+  // Step 0: Business Foundation Setup (if Foundation completion < 100%)
+  if (foundationPct < 100) {
     stepNum++;
     steps.push({
       step: stepNum,
@@ -444,8 +455,8 @@ export function generateFundingSequence(profile: FundingProfileData) {
     isCurrentStep: false,
   });
 
-  // Determine current step
-  if (buildScore < 20) {
+  // Determine current step based on Foundation completion first
+  if (foundationPct < 100) {
     currentStep = 1;
   } else if (score >= 720 && profile.timeInBusinessMonths && profile.timeInBusinessMonths >= 24) {
     currentStep = steps.length;
