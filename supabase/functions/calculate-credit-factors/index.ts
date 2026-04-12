@@ -52,14 +52,28 @@ Deno.serve(async (req) => {
     const negatives = negativesRes.data || [];
     const inquiries = inquiriesRes.data || [];
 
+    // === Deduplication helper: group by creditor+account for scoring ===
+    function deduplicateForScoring(items: any[]): any[] {
+      const groups = new Map<string, any>();
+      for (const item of items) {
+        const key = `${(item.creditor_name || "").toLowerCase().trim()}::${(item.account_number_masked || "").toLowerCase().trim()}`;
+        if (!groups.has(key)) groups.set(key, item);
+      }
+      return Array.from(groups.values());
+    }
+
     // === PAYMENT HISTORY (35%) ===
-    const chargeOffs = negatives.filter((n: any) => {
+    // Deduplicate for scoring — same account on multiple bureaus counts once
+    const uniqueNegatives = deduplicateForScoring(negatives);
+    const uniqueActive = uniqueNegatives.filter((n: any) => n.status === "active" || n.status !== "removed");
+
+    const chargeOffs = uniqueNegatives.filter((n: any) => {
       const t = (n.item_type || "").toLowerCase();
       return t.includes("charge") || t === "charge_off";
     });
-    const collections = negatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("collection"));
-    const latePayments = negatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("late"));
-    const activeNegatives = negatives.filter((n: any) => n.status === "active");
+    const collections = uniqueNegatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("collection"));
+    const latePayments = uniqueNegatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("late"));
+    const activeNegatives = uniqueNegatives.filter((n: any) => n.status === "active");
     const removedNegatives = negatives.filter((n: any) => n.status === "removed");
 
     let paymentHistoryScore = 100;
@@ -74,7 +88,7 @@ Deno.serve(async (req) => {
     paymentHistoryScore -= Math.min(highBalanceNegs.length * 3, 15);
     paymentHistoryScore = Math.max(0, paymentHistoryScore);
 
-    const totalNegatives = negatives.length;
+    const totalNegatives = uniqueNegatives.length;
     const oldestNegativeDate = negatives.length > 0
       ? negatives.reduce((oldest: string | null, n: any) => {
           const d = n.date_of_occurrence || n.date_reported;
