@@ -113,9 +113,21 @@ serve(async (req) => {
         ? "\\n\\nIMPORTANT: This is a follow-up dispute. The consumer previously disputed these items and the investigation was inadequate or the items remain unverified. Use stronger language referencing the bureau's obligation under FCRA Section 611(a)(5) to provide the method of verification and noting that failure to properly investigate may result in legal action under FCRA Section 616 and 617."
         : "";
 
-      systemPrompt = `You are an expert credit dispute letter writer for Project Mogul Enterprise Inc. (PME), specializing in FCRA compliance.
+      systemPrompt = `You are an expert credit dispute letter writer for Project Mogul Enterprise Inc. (PME), specializing in FCRA and FDCPA compliance.
 
 Write a SINGLE professional dispute letter addressed to ${bureau} that disputes ALL listed items in one organized letter.${escalation}
+
+CRITICAL ACCOUNT TYPE RULES — use the correct statutory basis for each item type:
+- Collection accounts: Cite FDCPA Section 809(b) — request original creditor name, original balance, date of first delinquency, and collector's authority to collect.
+- Charge-Off accounts: Cite FCRA Section 611 — request original signed account agreement, complete payment history, and method of verification.
+- Late Payment notations: Cite FCRA Section 623(a)(1) — request payment history records and method of verification for the late payment.
+- Repossession records: Cite FCRA Section 611 — request original agreement, deficiency balance calculation, and auction records.
+- Foreclosure records: Cite FCRA Section 611 — request mortgage agreement, default notifications, and method of verification.
+- Bankruptcy public records: Cite FCRA Section 611 — request case number, filing date, discharge date, and court documentation.
+- Hard Inquiries (unauthorized): Cite FCRA Section 604 — demand documentation of permissible purpose or immediate removal.
+- Account Not Mine: Cite FCRA Section 611 — state consumer has no knowledge, demand signed application/agreement or removal.
+
+Each item in the letter MUST use the statutory language matching its specific account type. Do NOT use the same template language across different account types.
 
 FORMAT REQUIREMENTS:
 - Start with [DATE] placeholder
@@ -124,8 +136,8 @@ FORMAT REQUIREMENTS:
 - Client address: ${clientAddress || "[CLIENT ADDRESS]"}
 - Subject line: "Re: Formal Dispute of Inaccurate Credit Report Items${roundLabel}"
 - Professional opening paragraph citing FCRA rights
-- Numbered list of ALL disputed items with their specific statutory basis
-- Each item must include the creditor name, account number if available, balance, and the specific FCRA/FDCPA section being cited
+- Numbered list of ALL disputed items with their specific statutory basis per account type
+- Each item must include the creditor name, account number if available, balance, account type, and the specific FCRA/FDCPA section being cited for that type
 - Closing paragraph requesting investigation within 30 days per FCRA Section 611(a)
 - Statement reserving all rights under FCRA including right to seek damages
 - Signature block with client name and signature line
