@@ -7,10 +7,27 @@ import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useConversation } from "@11labs/react";
+import { ResponseFeedback } from "@/components/chat/ResponseFeedback";
+import { useQuery } from "@tanstack/react-query";
 
 type Message = { role: "user" | "assistant"; content: string };
 
 export const PaigeAIChat = () => {
+  const sessionId = useRef(`session-${Date.now()}`).current;
+  
+  // Check if user is admin or coach for feedback visibility
+  const { data: userRole } = useQuery({
+    queryKey: ["user-role-for-feedback"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+      const roles = (data || []).map((r: any) => r.role);
+      return { isAdmin: roles.includes("admin"), isCoach: roles.includes("coach") };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const showFeedback = userRole?.isAdmin || userRole?.isCoach;
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -269,6 +286,15 @@ export const PaigeAIChat = () => {
                   <p className={`text-sm ${message.role === "assistant" ? "text-foreground" : ""}`}>
                     {message.content}
                   </p>
+                  {message.role === "assistant" && showFeedback && message.content && (
+                    <div className="mt-2 flex items-center">
+                      <ResponseFeedback
+                        messageContent={message.content}
+                        messageIndex={index}
+                        sessionId={sessionId}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
