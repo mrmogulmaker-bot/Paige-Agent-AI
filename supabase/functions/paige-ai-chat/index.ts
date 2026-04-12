@@ -36,6 +36,7 @@ const messageSchema = z.object({
   ).optional(),
   clientId: z.string().uuid().nullable().optional(),
   clientContext: z.string().max(10000).optional(),
+});
 
 const DOCUMENT_SOURCE_INSTRUCTION = `You are analyzing a specific PDF document that has been provided to you. You must ONLY report information that you can directly read from this document. Do not use your training data or prior knowledge to fill in account details, creditor names, balances, or scores. If you cannot read a specific piece of information from the document, state "Not visible in document" rather than providing an estimate or assumption. Every account name, balance, score, and date you report must be directly extractable from the uploaded document text.`;
 
