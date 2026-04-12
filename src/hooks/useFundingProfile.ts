@@ -1,6 +1,34 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
+export interface BusinessInfraData {
+  // Foundation
+  hasEntity: boolean;
+  hasEIN: boolean;
+  addressType: string | null;
+  hasPhone411: boolean;
+  hasBankAccount: boolean;
+  // Business credit scores
+  dnbPaydex: number | null;
+  experianIntelliscore: number | null;
+  equifaxPaymentIndex: number | null;
+  ficoSbss: number | null;
+  dnbLastVerified: string | null;
+  experianLastVerified: string | null;
+  equifaxLastVerified: string | null;
+  ficoSbssLastVerified: string | null;
+  // Public presence
+  presenceComplete: number;
+  presenceTotal: number;
+  hasConsistencyIssues: boolean;
+  // Financial docs
+  hasTaxReturns: boolean;
+  hasPnL: boolean;
+  hasBankStatements: boolean;
+  // BUILD
+  buildScore: number | null;
+}
+
 export interface FundingProfileData {
   // Bureau scores
   middleScore: number | null;
@@ -46,6 +74,9 @@ export interface FundingProfileData {
   buildScores: any | null;
   hasBusinessCreditScores: boolean;
 
+  // Business infrastructure (NEW)
+  businessInfra: BusinessInfraData;
+
   // Profile completeness
   completeness: number;
   missingItems: { label: string; weight: number; cta: string; unlocks: string }[];
@@ -69,6 +100,14 @@ function getMiddleScore(scores: (number | null)[]): number | null {
   return sorted[1];
 }
 
+const defaultInfra: BusinessInfraData = {
+  hasEntity: false, hasEIN: false, addressType: null, hasPhone411: false, hasBankAccount: false,
+  dnbPaydex: null, experianIntelliscore: null, equifaxPaymentIndex: null, ficoSbss: null,
+  dnbLastVerified: null, experianLastVerified: null, equifaxLastVerified: null, ficoSbssLastVerified: null,
+  presenceComplete: 0, presenceTotal: 7, hasConsistencyIssues: false,
+  hasTaxReturns: false, hasPnL: false, hasBankStatements: false, buildScore: null,
+};
+
 export function useFundingProfile(): FundingProfileData {
   const { data, isLoading } = useQuery({
     queryKey: ["funding-profile-complete"],
@@ -85,6 +124,8 @@ export function useFundingProfile(): FundingProfileData {
         kpisRes,
         banksRes,
         buildScoresRes,
+        presenceRes,
+        finDocsRes,
       ] = await Promise.all([
         supabase.from("profiles").select("*").eq("user_id", uid).maybeSingle(),
         supabase.from("credit_negative_items").select("*").eq("user_id", uid),
@@ -93,6 +134,8 @@ export function useFundingProfile(): FundingProfileData {
         supabase.from("financial_kpis").select("*").eq("user_id", uid).maybeSingle(),
         supabase.from("connected_bank_accounts").select("id").eq("user_id", uid).eq("is_active", true),
         supabase.from("build_scores").select("*").eq("user_id", uid).maybeSingle(),
+        supabase.from("business_public_presence").select("*").eq("user_id", uid),
+        supabase.from("business_financial_docs").select("*").eq("user_id", uid),
       ]);
 
       const profile = profileRes.data;
@@ -102,6 +145,8 @@ export function useFundingProfile(): FundingProfileData {
       const kpis = kpisRes.data;
       const banks = banksRes.data || [];
       const buildScores = buildScoresRes.data;
+      const presenceRows = presenceRes.data || [];
+      const finDocs = finDocsRes.data || [];
 
       // Scores
       const tu = profile?.estimated_fico_tu ?? null;
@@ -118,7 +163,7 @@ export function useFundingProfile(): FundingProfileData {
       const derogWithin = (months: number) => negItems.filter((n: any) => {
         if (n.status === "removed") return false;
         const d = n.date_of_occurrence || n.date_reported;
-        if (!d) return true; // assume recent if no date
+        if (!d) return true;
         const diff = (now.getTime() - new Date(d).getTime()) / (1000 * 60 * 60 * 24 * 30);
         return diff <= months;
       }).length;
@@ -129,12 +174,10 @@ export function useFundingProfile(): FundingProfileData {
       const installment = openAccounts.filter((a: any) => a.type === "installment");
       const loc = openAccounts.filter((a: any) => a.type === "line_of_credit");
 
-      // Include closed revolving accounts in good standing for comparable credit
       const closedRevolvingGoodStanding = accounts.filter((a: any) => {
-        if (a.is_open !== false) return false; // skip open accounts (already counted)
+        if (a.is_open !== false) return false;
         if (a.type !== "revolving") return false;
         const status = (a.status || "").toLowerCase();
-        // Exclude accounts with derogatory history
         if (status.includes("charge") || status.includes("collection") || status.includes("delinquent") || status.includes("default")) return false;
         return true;
       });
@@ -157,10 +200,11 @@ export function useFundingProfile(): FundingProfileData {
         : 0;
 
       // Business
+      const primaryBiz = businesses[0] as any;
       const hasEntity = businesses.length > 0 && businesses.some((b: any) => b.entity_type);
       const hasEIN = businesses.some((b: any) => b.ein);
       const oldestBiz = businesses.reduce((oldest: Date | null, b: any) => {
-        const d = b.created_at;
+        const d = b.formation_date || b.created_at;
         if (!d) return oldest;
         const dt = new Date(d);
         return !oldest || dt < oldest ? dt : oldest;
@@ -174,16 +218,70 @@ export function useFundingProfile(): FundingProfileData {
       const annualRevenue = monthlyInflow > 0 ? monthlyInflow * 12 : null;
       const monthlyCashFlow = kpis ? (kpis.monthly_inflow || 0) - (kpis.monthly_outflow || 0) : null;
 
-      // Completeness calculation
+      // --- Business Infrastructure Data ---
+      const infra: BusinessInfraData = { ...defaultInfra };
+      if (primaryBiz) {
+        infra.hasEntity = !!primaryBiz.entity_type;
+        infra.hasEIN = !!primaryBiz.ein;
+        infra.addressType = primaryBiz.business_address_type || null;
+        infra.hasPhone411 = !!primaryBiz.phone_411_listed;
+        infra.hasBankAccount = !!primaryBiz.has_bank_account;
+        infra.dnbPaydex = primaryBiz.dnb_paydex ?? null;
+        infra.experianIntelliscore = primaryBiz.experian_intelliscore ?? null;
+        infra.equifaxPaymentIndex = primaryBiz.equifax_payment_index ?? null;
+        infra.ficoSbss = primaryBiz.fico_sbss ?? null;
+        infra.dnbLastVerified = primaryBiz.dnb_last_verified ?? null;
+        infra.experianLastVerified = primaryBiz.experian_last_verified ?? null;
+        infra.equifaxLastVerified = primaryBiz.equifax_last_verified ?? null;
+        infra.ficoSbssLastVerified = primaryBiz.fico_sbss_last_verified ?? null;
+        infra.buildScore = primaryBiz.build_score ?? null;
+      }
+
+      // Public presence
+      if (presenceRows.length > 0) {
+        const p = presenceRows[0] as any;
+        const listingFields = [
+          { url: "website_url", n: "website_name_match", a: "website_address_match", ph: "website_phone_match" },
+          { url: "google_business_url", n: "google_name_match", a: "google_address_match", ph: "google_phone_match" },
+          { url: "yelp_url", n: "yelp_name_match", a: "yelp_address_match", ph: "yelp_phone_match" },
+          { url: "linkedin_url", n: "linkedin_name_match", a: "linkedin_address_match", ph: "linkedin_phone_match" },
+          { url: "facebook_url", n: "facebook_name_match", a: "facebook_address_match", ph: "facebook_phone_match" },
+          { url: "other1_url", n: "other1_name_match", a: "other1_address_match", ph: "other1_phone_match" },
+          { url: "other2_url", n: "other2_name_match", a: "other2_address_match", ph: "other2_phone_match" },
+        ];
+        let complete = 0;
+        let hasInconsistency = false;
+        for (const lf of listingFields) {
+          if (p[lf.url]) {
+            if (p[lf.n] && p[lf.a] && p[lf.ph]) {
+              complete++;
+            } else {
+              hasInconsistency = true;
+            }
+          }
+        }
+        infra.presenceComplete = complete;
+        infra.hasConsistencyIssues = hasInconsistency;
+      }
+
+      // Financial docs
+      const docStatuses = finDocs.reduce((acc: Record<string, string>, d: any) => { acc[d.doc_type] = d.status; return acc; }, {} as Record<string, string>);
+      infra.hasTaxReturns = docStatuses["tax_returns_business"] === "uploaded";
+      infra.hasPnL = docStatuses["profit_and_loss"] === "uploaded";
+      infra.hasBankStatements = docStatuses["bank_statements"] === "uploaded";
+
+      // Completeness calculation — updated weights
       const completenessItems: { label: string; weight: number; present: boolean; cta: string; unlocks: string }[] = [
-        { label: "Bureau Scores", weight: 20, present: middleScore != null, cta: "Upload your credit report via Paige chat", unlocks: "score-based product matching" },
-        { label: "Negative Items Analysis", weight: 15, present: negItems.length > 0 || (middleScore != null && middleScore >= 740), cta: "Upload a credit report to analyze derogatory items", unlocks: "accurate derogatory risk assessment" },
-        { label: "Business Revenue", weight: 20, present: annualRevenue != null && annualRevenue > 0, cta: "Upload bank statements or enter revenue data", unlocks: "revenue-based funding products" },
-        { label: "Entity Structure", weight: 10, present: hasEntity, cta: "Add your business entity in the Business section", unlocks: "business credit products" },
-        { label: "Time in Business", weight: 10, present: timeInBusinessMonths != null && timeInBusinessMonths > 0, cta: "Complete your business profile with formation date", unlocks: "term loans and SBA products" },
-        { label: "Banking Relationship", weight: 10, present: banks.length > 0, cta: "Connect a bank account via Plaid", unlocks: "cash-flow based lending products" },
-        { label: "Business Credit Scores", weight: 10, present: buildScores?.paydex != null || buildScores?.intelliscore != null, cta: "Upload a business credit report", unlocks: "EIN-only business products" },
-        { label: "Monthly Cash Flow", weight: 5, present: monthlyCashFlow != null && monthlyCashFlow !== 0, cta: "Connect bank accounts to calculate cash flow", unlocks: "improved estimate accuracy" },
+        { label: "Personal Bureau Scores", weight: 15, present: middleScore != null, cta: "Upload your credit report via Paige chat", unlocks: "score-based product matching" },
+        { label: "Negative Items Analysis", weight: 10, present: negItems.length > 0 || (middleScore != null && middleScore >= 740), cta: "Upload a credit report to analyze derogatory items", unlocks: "accurate derogatory risk assessment" },
+        { label: "Business Revenue", weight: 15, present: annualRevenue != null && annualRevenue > 0, cta: "Upload bank statements or enter revenue data", unlocks: "revenue-based funding products" },
+        { label: "Entity & Formation", weight: 10, present: hasEntity && hasEIN, cta: "Complete Foundation tab in Business Profile", unlocks: "business credit products" },
+        { label: "Time in Business", weight: 8, present: timeInBusinessMonths != null && timeInBusinessMonths > 0, cta: "Add formation date to your business profile", unlocks: "term loans and SBA products" },
+        { label: "Banking Relationship", weight: 8, present: infra.hasBankAccount || banks.length > 0, cta: "Add your business bank account in the Foundation tab", unlocks: "cash-flow based lending products" },
+        { label: "Business Credit Scores", weight: 10, present: infra.dnbPaydex != null || infra.experianIntelliscore != null, cta: "Enter scores in the Business Credit tab", unlocks: "EIN-only business products" },
+        { label: "Monthly Cash Flow", weight: 7, present: monthlyCashFlow != null && monthlyCashFlow !== 0, cta: "Upload bank statements to calculate cash flow", unlocks: "improved estimate accuracy" },
+        { label: "Public Presence", weight: 7, present: infra.presenceComplete >= 4, cta: "Complete public listings in the Public Presence tab", unlocks: "identity verification for lenders" },
+        { label: "Financial Documentation", weight: 10, present: infra.hasTaxReturns && infra.hasPnL, cta: "Upload tax returns and P&L in Financial Docs tab", unlocks: "SBA and traditional bank products" },
       ];
 
       const completeness = completenessItems.reduce((sum, item) => sum + (item.present ? item.weight : 0), 0);
@@ -217,12 +315,13 @@ export function useFundingProfile(): FundingProfileData {
         annualRevenue,
         monthlyCashFlow,
         connectedBanks: banks.length,
-        hasBankingRelationship: banks.length > 0,
+        hasBankingRelationship: infra.hasBankAccount || banks.length > 0,
         buildScores,
-        hasBusinessCreditScores: buildScores?.paydex != null || buildScores?.intelliscore != null,
+        hasBusinessCreditScores: infra.dnbPaydex != null || infra.experianIntelliscore != null,
+        businessInfra: infra,
         completeness,
         missingItems,
-        hasFraudAlert: false, // TODO: integrate with bureau API flags
+        hasFraudAlert: false,
         hasSecurityFreeze: false,
         fundingGoals: profile?.funding_goals || null,
         isLoading: false,
@@ -239,6 +338,7 @@ export function useFundingProfile(): FundingProfileData {
       financialKpis: null, hasRevenueData: false, annualRevenue: null, monthlyCashFlow: null,
       connectedBanks: 0, hasBankingRelationship: false,
       buildScores: null, hasBusinessCreditScores: false,
+      businessInfra: { ...defaultInfra },
       completeness: 0, missingItems: [],
       hasFraudAlert: false, hasSecurityFreeze: false,
       fundingGoals: null,
