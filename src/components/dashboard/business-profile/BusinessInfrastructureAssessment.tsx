@@ -8,6 +8,7 @@ import { Building2, Globe, BarChart3, FileText, Award } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { FoundationSection } from "./FoundationSection";
 import { BuildProgramSection } from "./BuildProgramSection";
+import { PublicPresenceSection } from "./PublicPresenceSection";
 
 interface Props {
   clientId?: string; // For internal client mode
@@ -145,7 +146,15 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
         </TabsContent>
 
         <TabsContent value="presence" className="mt-4">
-          <PlaceholderTab label="Public Presence" />
+          {businesses.length === 0 ? (
+            <Card><CardContent className="py-12 text-center">
+              <Globe className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+              <h3 className="text-lg font-semibold mb-2">No Business Entity Found</h3>
+              <p className="text-sm text-muted-foreground">Add a business entity first.</p>
+            </CardContent></Card>
+          ) : (
+            <PublicPresenceSection businessId={selectedBusinessId} userId={userId} onCompletionChange={setPresencePct} />
+          )}
         </TabsContent>
 
         <TabsContent value="credit" className="mt-4">
