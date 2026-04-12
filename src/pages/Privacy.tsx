@@ -29,7 +29,7 @@ const Privacy = () => {
               <li><strong>Account Information:</strong> Name, email address, phone number, and login credentials.</li>
               <li><strong>Identity Verification:</strong> Last four digits of Social Security Number, date of birth (used solely for credit report access).</li>
               <li><strong>Business Information:</strong> Legal business name, EIN, state of formation, NAICS code, and entity type.</li>
-              <li><strong>Financial Information:</strong> Credit report data (obtained with your consent via soft pull), bank account information connected through Plaid, and payment information processed through Stripe.</li>
+              <li><strong>Financial Information:</strong> Credit report data (obtained with your consent via soft pull), bank statement uploads, and payment information processed through Stripe.</li>
               <li><strong>Documents:</strong> Uploaded files such as business formation documents, tax returns, and financial statements.</li>
             </ul>
 
@@ -62,7 +62,7 @@ const Privacy = () => {
             <ul className="list-disc pl-6 space-y-2">
               <li><strong>Credit Bureaus:</strong> Equifax, Experian, and TransUnion — for credit report access and dispute filing, only with your explicit consent.</li>
               <li><strong>Financial Partners:</strong> Third-party lenders displayed in our funding marketplace, only when you choose to apply.</li>
-              <li><strong>Service Providers:</strong> Plaid (bank account connections), Stripe (payment processing), and infrastructure providers operating under strict data processing agreements.</li>
+              <li><strong>Service Providers:</strong> Stripe (payment processing) and infrastructure providers operating under strict data processing agreements.</li>
               <li><strong>Legal Compliance:</strong> When required by law, regulation, legal process, or government request.</li>
               <li><strong>Business Transfers:</strong> In the event of a merger, acquisition, or sale of assets.</li>
             </ul>
