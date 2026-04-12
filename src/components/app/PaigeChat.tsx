@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Loader2, Mic, MicOff, Paperclip } from "lucide-react";
+import { Send, Loader2, Mic, MicOff, Volume2, Paperclip } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import type { User, Session } from "@supabase/supabase-js";
+import { useConversation } from "@11labs/react";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
 import { usePaigeMemory } from "@/hooks/usePaigeMemory";
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
@@ -71,18 +72,49 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
     setAttachedDoc,
   } = useChatDocumentUpload();
 
+  // --- ElevenLabs voice (identical to FloatingChatbot) ---
+  const conversation = useConversation({
+    onConnect: () => { toast({ title: "Voice chat started", description: "You can now speak with Paige" }); },
+    onDisconnect: () => { toast({ title: "Voice chat ended", description: "The conversation has been closed" }); },
+    onMessage: (message) => {
+      if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content: message.message || "" }]);
+      else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content: message.message || "" }]);
+    },
+    onError: (error) => {
+      console.error("ElevenLabs error:", error);
+      toast({ title: "Voice chat error", description: typeof error === 'string' ? error : "Failed to connect to voice chat", variant: "destructive" });
+    },
+  });
+
+  const startVoiceChat = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const { data: { session: freshSession } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke("elevenlabs-signed-url", {
+        headers: { Authorization: `Bearer ${freshSession?.access_token}` },
+      });
+      if (error) throw error;
+      await conversation.startSession({ signedUrl: data.signedUrl });
+    } catch (err) {
+      console.error("Error starting voice chat:", err);
+      toast({ title: "Error", description: "Failed to start voice chat.", variant: "destructive" });
+    }
+  };
+
+  const stopVoiceChat = async () => {
+    try { await conversation.endSession(); } catch (e) { console.warn("Error ending session", e); }
+  };
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
-  // Reset inactivity timer on each message
   const resetInactivityTimer = useCallback(() => {
     trackActivity();
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     inactivityTimerRef.current = setTimeout(() => {
-      // 30 min inactivity — generate session summary
       if (messages.length > 2) {
         generateSessionSummary(
           messages.map(m => ({ role: m.role, content: m.content })),
@@ -92,7 +124,6 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
     }, 30 * 60 * 1000);
   }, [messages, trackActivity, generateSessionSummary]);
 
-  // Cleanup: generate summary on unmount
   useEffect(() => {
     return () => {
       if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
@@ -203,7 +234,6 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
 
           try {
             const parsed = JSON.parse(jsonStr);
-            // Check for sync_status event
             if (parsed.sync_status) {
               syncStatus = parsed.sync_status;
               continue;
@@ -220,17 +250,14 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         }
       }
 
-      // If document was attached, extract summary and show sync status
       if (currentDoc && assistantMessage.length > 100) {
         extractDocumentSummary(assistantMessage, currentDoc.name);
 
         if (syncStatus) {
-          // Add sync status panel message
           setMessages(prev => [
             ...prev,
             { role: "assistant", content: "", syncStatus },
           ]);
-          // Invalidate all downstream queries so components refresh
           queryClient.invalidateQueries({ queryKey: ["credit-factors"] });
           queryClient.invalidateQueries({ queryKey: ["credit-factors-history"] });
           queryClient.invalidateQueries({ queryKey: ["funding-matches"] });
@@ -312,7 +339,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
             <button
               key={action.label}
               onClick={() => handleSend(action.prompt)}
-              disabled={isLoading}
+              disabled={isLoading || conversation.status === "connected"}
               className="text-[11px] px-2.5 py-1 rounded-full border border-border bg-background hover:bg-accent/10 hover:border-accent/40 text-muted-foreground hover:text-accent transition-colors disabled:opacity-50"
             >
               {action.label}
@@ -320,6 +347,17 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
           ))}
         </div>
       </div>
+
+      {/* Voice status indicator */}
+      {conversation.status === "connected" && (
+        <div className="px-4 pb-2 flex items-center justify-center gap-4 text-sm">
+          {conversation.isSpeaking ? (
+            <div className="flex items-center gap-2 text-primary"><Volume2 className="h-4 w-4 animate-pulse" /><span>Speaking...</span></div>
+          ) : (
+            <div className="flex items-center gap-2 text-primary"><div className="h-2 w-2 rounded-full bg-primary animate-pulse" /><span>Listening...</span></div>
+          )}
+        </div>
+      )}
 
       {attachedDoc && (
         <div className="px-3 pt-2">
@@ -329,12 +367,15 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
 
       <div className="p-3 border-t border-border">
         <div className="flex gap-2 items-center">
-          <Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading} title="Attach credit report or financial document (PDF)">
+          <Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach credit report or financial document (PDF)">
             <Paperclip className="w-4 h-4" />
           </Button>
-          <Input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()} placeholder={attachedDoc ? "Add a message or send document..." : "Ask Paige anything..."} className="flex-1 text-sm" disabled={isLoading} />
-          <Button onClick={() => handleSend()} disabled={isLoading || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90" size="icon">
+          <Input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()} placeholder={attachedDoc ? "Add a message or send document..." : "Ask Paige anything..."} className="flex-1 text-sm" disabled={isLoading || conversation.status === "connected"} />
+          <Button onClick={() => handleSend()} disabled={isLoading || (!input.trim() && !attachedDoc) || conversation.status === "connected"} className="bg-gradient-gold hover:opacity-90" size="icon">
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          </Button>
+          <Button onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat} variant={conversation.status === "connected" ? "destructive" : "secondary"} size="icon" title={conversation.status === "connected" ? "End voice chat" : "Start voice chat"}>
+            {conversation.status === "connected" ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
           </Button>
         </div>
       </div>

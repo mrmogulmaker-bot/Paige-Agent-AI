@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { MessageCircle, X, Send, Loader2, Mic, MicOff, Volume2, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -74,7 +75,6 @@ export const FloatingChatbot = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  // Inactivity timer for session summary
   const resetInactivityTimer = useCallback(() => {
     trackActivity();
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
@@ -85,7 +85,6 @@ export const FloatingChatbot = () => {
     }, 30 * 60 * 1000);
   }, [messages, trackActivity, generateSessionSummary]);
 
-  // Generate summary when chatbot is closed
   const handleClose = useCallback(() => {
     if (messages.length > 2) {
       generateSessionSummary(messages.map(m => ({ role: m.role, content: m.content })), sessionIdRef.current);
@@ -227,16 +226,26 @@ export const FloatingChatbot = () => {
     }
   };
 
-  return (
+  const chatContent = (
     <>
       {!isOpen && (
-        <Button onClick={() => setIsOpen(true)} className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-glow z-50" variant="gold" size="icon">
+        <Button
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-glow z-[9999]"
+          variant="gold"
+          size="icon"
+        >
           <MessageCircle className="h-6 w-6" />
         </Button>
       )}
 
       {isOpen && (
-        <Card className={`fixed bottom-6 right-6 w-96 h-[500px] shadow-glow z-50 flex flex-col relative ${isDragOver ? "ring-2 ring-primary" : ""}`} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+        <Card
+          className={`fixed bottom-6 right-6 w-[380px] max-w-[calc(100vw-32px)] h-[min(600px,calc(100vh-48px))] shadow-glow z-[9999] flex flex-col relative ${isDragOver ? "ring-2 ring-primary" : ""}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           {isDragOver && (
             <div className="absolute inset-0 bg-primary/10 z-10 flex items-center justify-center rounded-xl pointer-events-none">
               <p className="text-sm font-medium text-primary">Drop PDF here</p>
@@ -245,7 +254,7 @@ export const FloatingChatbot = () => {
 
           <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handleFileSelect} className="hidden" />
 
-          <div className="flex items-center justify-between p-4 border-b border-border">
+          <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
             <div className="flex items-center gap-2">
               <img src={paigeAvatar} alt="PaigeAgent.ai" className="w-8 h-8 rounded-full" />
               <div>
@@ -258,7 +267,7 @@ export const FloatingChatbot = () => {
             </Button>
           </div>
 
-          <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+          <ScrollArea className="flex-1 p-4 overflow-y-auto" ref={scrollRef}>
             <div className="space-y-4">
               {messages.map((message, index) => (
                 <div key={index} className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -275,7 +284,7 @@ export const FloatingChatbot = () => {
             </div>
           </ScrollArea>
 
-          <div className="p-4 border-t border-border">
+          <div className="p-4 border-t border-border flex-shrink-0">
             {conversation.status === "connected" && (
               <div className="mb-3 flex items-center justify-center gap-4 text-sm">
                 {conversation.isSpeaking ? (
@@ -309,4 +318,6 @@ export const FloatingChatbot = () => {
       )}
     </>
   );
+
+  return createPortal(chatContent, document.body);
 };
