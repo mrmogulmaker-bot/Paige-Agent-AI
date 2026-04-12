@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useClientDisplayInfo } from "@/lib/getClientDisplayInfo";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,10 +59,7 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
   const [clientContext, setClientContext] = useState<any>({});
 
   // Use centralized client display info
-  const { data: displayInfo } = (() => {
-    const { useClientDisplayInfo } = require("@/lib/getClientDisplayInfo");
-    return useClientDisplayInfo({ userId: clientUserId });
-  })();
+  const { data: displayInfo } = useClientDisplayInfo({ userId: clientUserId });
 
   useEffect(() => {
     loadDrafts();
