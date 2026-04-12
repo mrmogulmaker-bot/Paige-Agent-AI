@@ -13,6 +13,8 @@ import { DisputeOutcomeDialog } from "./DisputeOutcomeDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { AccountTypeBadge, normalizeAccountType, getStatutoryLanguageByType } from "./disputes/AccountTypeBadge";
+import { PersonalInfoAudit } from "./disputes/PersonalInfoAudit";
 
 const statusConfig: Record<string, { label: string; icon: any; color: string }> = {
   draft: { label: "Draft", icon: FileText, color: "bg-muted" },
