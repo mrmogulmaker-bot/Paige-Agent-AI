@@ -3,12 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain } from "lucide-react";
+import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
 import { OutreachCenter } from "./OutreachCenter";
 import { PMEFundingReadiness } from "./PMEFundingReadiness";
 import { ClientMemoryTab } from "./ClientMemoryTab";
+import { ClientOutcomesTab } from "./ClientOutcomesTab";
 
 interface ClientFileViewProps {
   clientUserId: string;
@@ -100,6 +101,9 @@ export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
           <TabsTrigger value="memory" className="text-xs">
             <Brain className="w-3 h-3 mr-1" /> Memory
           </TabsTrigger>
+          <TabsTrigger value="outcomes" className="text-xs">
+            <TrendingUp className="w-3 h-3 mr-1" /> Outcomes
+          </TabsTrigger>
           <TabsTrigger value="notes" className="text-xs">
             <StickyNote className="w-3 h-3 mr-1" /> Notes
           </TabsTrigger>
@@ -127,6 +131,10 @@ export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
 
         <TabsContent value="memory" className="mt-4">
           <ClientMemoryTab clientUserId={clientUserId} />
+        </TabsContent>
+
+        <TabsContent value="outcomes" className="mt-4">
+          <ClientOutcomesTab clientId={clientUserId} clientName={profile?.full_name || "Client"} />
         </TabsContent>
 
         <TabsContent value="notes" className="mt-4">
