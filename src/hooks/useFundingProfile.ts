@@ -200,8 +200,10 @@ export function useFundingProfile(): FundingProfileData {
         activeCollections,
         derogWithin12mo: derogWithin(12),
         derogWithin24mo: derogWithin(24),
+        totalActiveNegatives: negItems.filter((n: any) => n.status !== "removed").length,
         creditAccounts: accounts,
         highestRevolvingLimit,
+        revolvingLimitIsHistorical,
         highestInstallmentBalance,
         highestLOCLimit,
         openAccountCount: openAccounts.length,
@@ -231,8 +233,8 @@ export function useFundingProfile(): FundingProfileData {
   if (isLoading || !data) {
     return {
       middleScore: null, scores: { tu: null, ex: null, eq: null }, scoreModel: "Unknown", lastReportDate: null,
-      negativeItems: [], activeChargeOffs: [], chargeOffTotal: 0, activeCollections: [], derogWithin12mo: 0, derogWithin24mo: 0,
-      creditAccounts: [], highestRevolvingLimit: 0, highestInstallmentBalance: 0, highestLOCLimit: 0, openAccountCount: 0, oldestAccountAgeMonths: 0,
+      negativeItems: [], activeChargeOffs: [], chargeOffTotal: 0, activeCollections: [], derogWithin12mo: 0, derogWithin24mo: 0, totalActiveNegatives: 0,
+      creditAccounts: [], highestRevolvingLimit: 0, revolvingLimitIsHistorical: false, highestInstallmentBalance: 0, highestLOCLimit: 0, openAccountCount: 0, oldestAccountAgeMonths: 0,
       businesses: [], hasEntityStructure: false, timeInBusinessMonths: null, hasEIN: false,
       financialKpis: null, hasRevenueData: false, annualRevenue: null, monthlyCashFlow: null,
       connectedBanks: 0, hasBankingRelationship: false,
