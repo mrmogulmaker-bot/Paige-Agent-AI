@@ -304,12 +304,16 @@ function RoundLettersDialog({
     try {
       for (const bureau of bureaus) {
         setGeneratingBureau(bureau);
-        const items = bureauGroups[bureau].map(d => ({
-          creditorName: d.creditor_name,
-          accountNumber: d.account_number_masked || null,
-          amount: null,
-          itemType: d.narrative?.toLowerCase().includes("collection") ? "Collection" : d.narrative?.toLowerCase().includes("charge") ? "Charge-Off" : d.reason_code?.includes("809") ? "Collection" : "Charge-Off",
-          disputeBasis: getStatutoryLanguage(d.reason_code || "", d.narrative),
+        const items = bureauGroups[bureau].map(d => {
+          const acctType = normalizeAccountType(d.narrative || d.reason_code);
+          return {
+            creditorName: d.creditor_name,
+            accountNumber: d.account_number_masked || null,
+            amount: null,
+            itemType: acctType.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+            disputeBasis: getStatutoryLanguageByType(acctType),
+          };
+        });
         }));
 
         const { data, error: fnError } = await supabase.functions.invoke("generate-dispute-letter", {
