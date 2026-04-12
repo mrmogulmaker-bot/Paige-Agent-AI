@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, FileCheck, AlertTriangle } from "lucide-react";
 
-export type BankingDataSource = "plaid" | "statement" | "manual" | "none";
+export type BankingDataSource = "verified" | "statement" | "manual" | "none";
 
 interface BankingSourceBadgeProps {
   source: BankingDataSource;
@@ -13,8 +13,8 @@ const sourceConfig: Record<BankingDataSource, {
   icon: React.ReactNode;
   className: string;
 }> = {
-  plaid: {
-    label: "Verified via Plaid",
+  verified: {
+    label: "Verified via Open Banking",
     icon: <CheckCircle2 className="w-3 h-3" />,
     className: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
   },
