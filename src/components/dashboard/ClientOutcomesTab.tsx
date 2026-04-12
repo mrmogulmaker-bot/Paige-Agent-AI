@@ -81,10 +81,17 @@ export function ClientOutcomesTab({ clientId, clientName }: ClientOutcomesTabPro
   const exportPDF = async () => {
     setExporting(true);
     try {
+      // Fetch full client display info for the export header
+      const { getClientDisplayInfo } = await import("@/lib/getClientDisplayInfo");
+      const info = await getClientDisplayInfo({ clientId });
+      const displayName = info.full_name || clientName;
+      const entityLine = info.entity_name ? `Entity: ${info.entity_name}\n` : "";
+
       // Generate a text-based summary for download
       let content = `CLIENT OUTCOMES SUMMARY\n`;
       content += `${"=".repeat(50)}\n\n`;
-      content += `Client: ${clientName}\n`;
+      content += `Client: ${displayName}\n`;
+      content += entityLine;
       content += `Generated: ${format(new Date(), "MMMM d, yyyy")}\n\n`;
 
       // Dispute summary
