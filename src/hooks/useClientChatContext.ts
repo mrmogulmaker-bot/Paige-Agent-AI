@@ -9,7 +9,6 @@ export interface ClientChatContext {
 /**
  * Assembles a structured client brief from real database data
  * for injection into Paige AI chat sessions.
- * Accepts either a clientId (internal CRM) or userId (auth user).
  */
 export function useClientChatContext(clientId?: string | null, userId?: string | null): ClientChatContext {
   const [contextBlock, setContextBlock] = useState("");
@@ -27,10 +26,9 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
       setIsLoading(true);
       try {
         const parts: string[] = [];
-
-        // --- 1. Identity Context ---
         let fullName = "Unknown";
         let entityName: string | null = null;
+        let fundingGoal: number | null = null;
 
         if (clientId) {
           const { data: client } = await supabase
@@ -42,6 +40,7 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           if (client) {
             fullName = `${client.first_name} ${client.last_name}`.trim();
             entityName = client.entity_name;
+            fundingGoal = client.funding_goal;
             parts.push(`CLIENT CONTEXT — ${fullName}`);
             if (entityName) parts.push(`Entity: ${entityName}`);
             if (client.funding_goal) parts.push(`Funding Goal: $${client.funding_goal.toLocaleString()}`);
@@ -50,7 +49,7 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
         } else if (userId) {
           const { data: profile } = await supabase
             .from("profiles")
-            .select("full_name, city, state, credit_score_equifax, credit_score_experian, credit_score_transunion")
+            .select("full_name, city, state")
             .eq("user_id", userId)
             .maybeSingle();
 
@@ -61,58 +60,61 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           }
         }
 
-        // Resolve the user_id for queries that need it
         const resolvedUserId = userId || (clientId ? await resolveUserIdFromClient(clientId) : null);
 
-        // --- 2. Credit Profile Context ---
-        const creditQuery = clientId
-          ? supabase.from("credit_factor_scores").select("*").eq("client_id", clientId).order("calculated_at", { ascending: false }).limit(1)
+        // --- Bureau scores from profiles ---
+        let scores = { equifax: null as number | null, experian: null as number | null, transunion: null as number | null };
+        if (resolvedUserId) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, funding_goals")
+            .eq("user_id", resolvedUserId)
+            .maybeSingle();
+          if (profile) {
+            scores.equifax = profile.estimated_fico_eq;
+            scores.experian = profile.estimated_fico_ex;
+            scores.transunion = profile.estimated_fico_tu;
+            if (!fundingGoal && profile.funding_goals) {
+              try {
+                const fg = profile.funding_goals as any;
+                if (fg?.target_amount) parts.push(`Funding Goal: $${Number(fg.target_amount).toLocaleString()} — ${fg.objective || ""} — ${fg.timeline || ""}`);
+              } catch { /* skip */ }
+            }
+          }
+        }
+
+        const scoreValues = [scores.transunion, scores.experian, scores.equifax].filter((v): v is number => v != null).sort((a, b) => a - b);
+        const middleScore = scoreValues.length >= 2 ? scoreValues[Math.floor(scoreValues.length / 2)] : scoreValues[0] || null;
+        parts.push(`Bureau Scores: TransUnion ${scores.transunion ?? "N/A"} | Experian ${scores.experian ?? "N/A"} | Equifax ${scores.equifax ?? "N/A"} | Middle Score ${middleScore ?? "N/A"}`);
+
+        // --- Credit factors ---
+        const factorFilter = clientId
+          ? supabase.from("credit_factor_scores").select("aggregate_utilization, overall_fundability_score, revolving_count, installment_count, mortgage_count").eq("client_id", clientId).order("calculated_at", { ascending: false }).limit(1)
           : resolvedUserId
-            ? supabase.from("credit_factor_scores").select("*").eq("user_id", resolvedUserId).order("calculated_at", { ascending: false }).limit(1)
+            ? supabase.from("credit_factor_scores").select("aggregate_utilization, overall_fundability_score, revolving_count, installment_count, mortgage_count").eq("user_id", resolvedUserId).order("calculated_at", { ascending: false }).limit(1)
             : null;
 
-        if (creditQuery) {
-          const { data: factors } = await creditQuery;
+        if (factorFilter) {
+          const { data: factors } = await factorFilter;
           const f = factors?.[0];
           if (f) {
-            // Get bureau scores from profiles if available
-            let scores = { equifax: null as number | null, experian: null as number | null, transunion: null as number | null };
-
-            if (resolvedUserId) {
-              const { data: profile } = await supabase
-                .from("profiles")
-                .select("credit_score_equifax, credit_score_experian, credit_score_transunion")
-                .eq("user_id", resolvedUserId)
-                .maybeSingle();
-              if (profile) {
-                scores.equifax = profile.credit_score_equifax;
-                scores.experian = profile.credit_score_experian;
-                scores.transunion = profile.credit_score_transunion;
-              }
-            }
-
-            const scoreValues = [scores.transunion, scores.experian, scores.equifax].filter(Boolean).sort((a, b) => (a || 0) - (b || 0));
-            const middleScore = scoreValues.length >= 2 ? scoreValues[Math.floor(scoreValues.length / 2)] : scoreValues[0] || null;
-
-            parts.push(`Bureau Scores: TransUnion ${scores.transunion ?? "N/A"} | Experian ${scores.experian ?? "N/A"} | Equifax ${scores.equifax ?? "N/A"} | Middle Score ${middleScore ?? "N/A"}`);
             parts.push(`Utilization: ${f.aggregate_utilization != null ? `${f.aggregate_utilization}%` : "N/A"}`);
             parts.push(`Fundability Score: ${f.overall_fundability_score ?? "N/A"}/100`);
             parts.push(`Credit Mix: ${f.revolving_count ?? 0} revolving, ${f.installment_count ?? 0} installment, ${f.mortgage_count ?? 0} mortgage`);
           }
         }
 
-        // Active negatives
-        const negQuery = clientId
+        // --- Active negatives ---
+        const negFilter = clientId
           ? supabase.from("credit_negative_items").select("creditor_name, amount, bureau, item_type, status").eq("client_id", clientId).neq("status", "removed")
           : resolvedUserId
             ? supabase.from("credit_negative_items").select("creditor_name, amount, bureau, item_type, status").eq("user_id", resolvedUserId).neq("status", "removed")
             : null;
 
-        if (negQuery) {
-          const { data: negatives } = await negQuery;
+        if (negFilter) {
+          const { data: negatives } = await negFilter;
           if (negatives && negatives.length > 0) {
             parts.push(`Active Negatives: ${negatives.length} items`);
-            // Top 3 by balance
             const sorted = [...negatives].sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 3);
             const topItems = sorted.map(n => `${n.creditor_name || "Unknown"} ($${n.amount?.toLocaleString() ?? "N/A"}, ${n.bureau}, ${n.item_type})`).join(" | ");
             parts.push(`Top items: ${topItems}`);
@@ -121,17 +123,17 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           }
         }
 
-        // --- 3. Dispute Context ---
-        const disputeQuery = clientId
+        // --- Disputes ---
+        const disputeFilter = clientId
           ? supabase.from("disputes").select("status, dispute_round").eq("client_id", clientId)
           : resolvedUserId
             ? supabase.from("disputes").select("status, dispute_round").eq("user_id", resolvedUserId)
             : null;
 
-        if (disputeQuery) {
-          const { data: disputes } = await disputeQuery;
+        if (disputeFilter) {
+          const { data: disputes } = await disputeFilter;
           if (disputes && disputes.length > 0) {
-            const openDisputes = disputes.filter(d => d.status !== "resolved" && d.status !== "closed");
+            const openDisputes = disputes.filter(d => d.status !== "resolved");
             const statusCounts: Record<string, number> = {};
             openDisputes.forEach(d => { statusCounts[d.status] = (statusCounts[d.status] || 0) + 1; });
             const maxRound = Math.max(...disputes.map(d => d.dispute_round || 1));
@@ -143,21 +145,21 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
         }
 
         // Last dispute outcome
-        const outcomeQuery = clientId
+        const outcomeFilter = clientId
           ? supabase.from("dispute_outcomes").select("outcome_type, creditor_name, bureau, created_at").eq("client_id", clientId).order("created_at", { ascending: false }).limit(1)
           : resolvedUserId
             ? supabase.from("dispute_outcomes").select("outcome_type, creditor_name, bureau, created_at").eq("user_id", resolvedUserId).order("created_at", { ascending: false }).limit(1)
             : null;
 
-        if (outcomeQuery) {
-          const { data: outcomes } = await outcomeQuery;
+        if (outcomeFilter) {
+          const { data: outcomes } = await outcomeFilter;
           if (outcomes?.[0]) {
             const o = outcomes[0];
             parts.push(`Last Dispute Outcome: ${o.outcome_type} — ${o.creditor_name} (${o.bureau}) on ${new Date(o.created_at).toLocaleDateString()}`);
           }
         }
 
-        // --- 4. Business Context ---
+        // --- Business Context ---
         if (resolvedUserId) {
           const { data: businesses } = await supabase
             .from("businesses")
@@ -175,50 +177,50 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           }
         }
 
-        // --- 5. Funding Context ---
-        const fundingAppQuery = clientId
+        // --- Funding applications ---
+        const fundingFilter = clientId
           ? supabase.from("funding_application_outcomes").select("id, outcome, lender_name").eq("client_id", clientId)
           : resolvedUserId
             ? supabase.from("funding_application_outcomes").select("id, outcome, lender_name").eq("user_id", resolvedUserId)
             : null;
 
-        if (fundingAppQuery) {
-          const { data: apps } = await fundingAppQuery;
+        if (fundingFilter) {
+          const { data: apps } = await fundingFilter;
           if (apps && apps.length > 0) {
-            const approved = apps.filter(a => a.outcome === "approved").length;
-            const declined = apps.filter(a => a.outcome === "declined").length;
+            const approved = apps.filter((a: any) => a.outcome === "approved").length;
+            const declined = apps.filter((a: any) => a.outcome === "declined").length;
             parts.push(`Funding Applications: ${apps.length} total | ${approved} approved, ${declined} declined`);
           }
         }
 
-        const fundingSecuredQuery = clientId
+        // --- Funding secured ---
+        const securedFilter = clientId
           ? supabase.from("funding_secured").select("lender_name, amount, product_type").eq("client_id", clientId)
           : resolvedUserId
             ? supabase.from("funding_secured").select("lender_name, amount, product_type").eq("user_id", resolvedUserId)
             : null;
 
-        if (fundingSecuredQuery) {
-          const { data: secured } = await fundingSecuredQuery;
+        if (securedFilter) {
+          const { data: secured } = await securedFilter;
           if (secured && secured.length > 0) {
             const totalSecured = secured.reduce((sum, s) => sum + (s.amount || 0), 0);
             parts.push(`Funding Secured: $${totalSecured.toLocaleString()} across ${secured.length} products`);
           }
         }
 
-        // --- 6. Memory Context ---
-        const memQuery = clientId
+        // --- Memory ---
+        const memFilter = clientId
           ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", clientId).eq("is_active", true).order("created_at", { ascending: false }).limit(5)
           : resolvedUserId
             ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_user_id", resolvedUserId).eq("is_active", true).order("created_at", { ascending: false }).limit(5)
             : null;
 
-        if (memQuery) {
-          const { data: memories } = await memQuery;
+        if (memFilter) {
+          const { data: memories } = await memFilter;
           if (memories && memories.length > 0) {
             const memLines = memories.slice(0, 3).map(m => {
               const date = new Date(m.created_at).toLocaleDateString();
               const typeLabel = m.memory_type.replace(/_/g, " ");
-              // Truncate content to ~100 chars
               const short = m.content.length > 100 ? m.content.substring(0, 100) + "..." : m.content;
               return `[${typeLabel}] (${date}): ${short}`;
             });
