@@ -87,41 +87,49 @@ function useNegativeItems(clientId?: string) {
   });
 }
 
-// Get client info for letter generation
-function useClientInfo(clientId?: string) {
-  return useQuery({
-    queryKey: ["client-info", clientId],
-    enabled: !!clientId,
-    queryFn: async () => {
-      if (!clientId) return null;
-      const { data } = await supabase.from("clients").select("first_name, last_name, street_address, city, state, zip_code" as any).eq("id", clientId).single();
-      if (!data) return null;
-      const d = data as any;
-      const name = `${d.first_name} ${d.last_name}`;
-      const hasAddress = d.street_address && d.city && d.state && d.zip_code;
-      const address = hasAddress ? `${d.street_address}\n${d.city}, ${d.state} ${d.zip_code}` : null;
-      return { name, address, hasAddress };
-    },
-  });
-}
+// Get client display info for letter generation
+import { useClientDisplayInfo } from "@/lib/getClientDisplayInfo";
 
-// Get auth user profile info for letter generation (non-internal mode)
-function useProfileInfo(clientId?: string) {
-  return useQuery({
-    queryKey: ["profile-info-for-letters"],
+function useDisputeClientInfo(clientId?: string) {
+  // For internal clients, use clientId; for auth users, resolve userId at runtime
+  const internalInfo = useClientDisplayInfo({ clientId });
+  const selfInfo = useClientDisplayInfo({ userId: clientId ? undefined : "__self__" });
+
+  // For auth-user mode, we need to resolve the actual user id
+  const authUserInfo = useQuery({
+    queryKey: ["profile-info-for-letters-v2"],
     enabled: !clientId,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
-      const { data } = await supabase.from("profiles").select("full_name, street_address, city, state, zip_code").eq("user_id", user.id).single();
-      if (!data) return { name: user.email || "Consumer", address: null, hasAddress: false };
-      const d = data as any;
-      const name = d.full_name || user.email || "Consumer";
-      const hasAddress = d.street_address && d.city && d.state && d.zip_code;
-      const address = hasAddress ? `${d.street_address}\n${d.city}, ${d.state} ${d.zip_code}` : null;
-      return { name, address, hasAddress };
+      const { getClientDisplayInfo } = await import("@/lib/getClientDisplayInfo");
+      return getClientDisplayInfo({ userId: user.id });
     },
   });
+
+  if (clientId) {
+    const info = internalInfo.data;
+    return {
+      data: info ? {
+        name: info.full_name,
+        address: info.formatted_address,
+        hasAddress: info.address_complete,
+        displayInfo: info,
+      } : null,
+      isLoading: internalInfo.isLoading,
+    };
+  }
+
+  const info = authUserInfo.data;
+  return {
+    data: info ? {
+      name: info.full_name,
+      address: info.formatted_address,
+      hasAddress: info.address_complete,
+      displayInfo: info,
+    } : null,
+    isLoading: authUserInfo.isLoading,
+  };
 }
 
 // ========== Bureau addresses ==========
@@ -678,9 +686,7 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
 export function DisputesManager({ personalOnly, businessOnly, clientId }: DisputesManagerProps) {
   const queryClient = useQueryClient();
   const { data: disputes, isLoading } = useDisputes(clientId);
-  const { data: clientInfo } = useClientInfo(clientId);
-  const { data: profileInfo } = useProfileInfo(clientId);
-  const activeInfo = clientId ? clientInfo : profileInfo;
+  const { data: activeInfo } = useDisputeClientInfo(clientId);
   const [roundDialogOpen, setRoundDialogOpen] = useState(false);
 
   const handleRefresh = () => {

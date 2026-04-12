@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useClientDisplayInfo } from "@/lib/getClientDisplayInfo";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +58,9 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
   const [clientMilestones, setClientMilestones] = useState<string[]>([]);
   const [clientContext, setClientContext] = useState<any>({});
 
+  // Use centralized client display info
+  const { data: displayInfo } = useClientDisplayInfo({ userId: clientUserId });
+
   useEffect(() => {
     loadDrafts();
     loadClientContext();
@@ -74,19 +78,9 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
   };
 
   const loadClientContext = async () => {
-    // Load profile
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("full_name, phone, address")
-      .eq("user_id", clientUserId)
-      .maybeSingle();
-
-    // Load businesses
-    const { data: businesses } = await supabase
-      .from("businesses")
-      .select("legal_name, entity_type, revenue_band")
-      .eq("owner_user_id", clientUserId)
-      .limit(1);
+    // Use centralized utility for name/entity info
+    const { getClientDisplayInfo } = await import("@/lib/getClientDisplayInfo");
+    const info = await getClientDisplayInfo({ userId: clientUserId });
 
     // Load credit factor scores
     const { data: creditFactors } = await supabase
@@ -110,18 +104,23 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
 
     const fundingTotal = (funding || []).reduce((sum: number, f: any) => sum + Number(f.amount || 0), 0);
 
-    const biz = businesses?.[0];
     setClientContext({
-      full_name: profile?.full_name || "Unknown",
-      entity_type: biz?.entity_type || "N/A",
-      entity_name: biz?.legal_name || "N/A",
-      revenue_band: biz?.revenue_band || "N/A",
+      full_name: info.full_name,
+      email: info.email || "N/A",
+      phone: info.phone || "N/A",
+      entity_name: info.entity_name || "N/A",
+      entity_type: "N/A",
+      revenue_band: "N/A",
       pme_score: creditFactors?.overall_fundability_score || "N/A",
       fico_score: "On file",
       build_score: buildScore?.build_score || "N/A",
       funding_total: fundingTotal,
       financial_summary: "See client file for details",
       milestones_completed: clientMilestones,
+      // Sender info — use business name if available, else full name
+      sender_name: info.entity_name || info.full_name,
+      sender_email: info.email || "N/A",
+      sender_phone: info.phone || "N/A",
     });
   };
 
