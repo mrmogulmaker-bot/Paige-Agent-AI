@@ -168,7 +168,7 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
               </CardContent>
             </Card>
           ) : (
-            <BuildProgramSection foundationPct={foundationPct} bureauPct={bureauPct} onCompletionChange={setBuildPct} />
+            <BuildProgramSection foundationPct={foundationPct} bureauPct={bureauPct} onCompletionChange={setBuildPct} businessId={selectedBusinessId} />
           )}
         </TabsContent>
       </Tabs>
