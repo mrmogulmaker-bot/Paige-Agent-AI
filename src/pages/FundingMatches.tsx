@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useFundingProfile } from "@/hooks/useFundingProfile";
@@ -7,12 +7,32 @@ import { ProfileCompletenessPanel } from "@/components/funding/ProfileCompletene
 import { FundingTrack } from "@/components/funding/FundingTrack";
 import { FundingSequence } from "@/components/funding/FundingSequence";
 import { RegionalLenderSearch } from "@/components/funding/RegionalLenderSearch";
-import { ProductMatchCard } from "@/components/funding/ProductMatchCard";
+import {
+  FundingGoalIntake,
+  FundingGoalBanner,
+  getGoalRelevanceBoost,
+  isPrerequisiteProduct,
+  getTimelineUrgencySort,
+  type FundingGoals,
+} from "@/components/funding/FundingGoalIntake";
 import { Card } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, AlertTriangle } from "lucide-react";
+import type { ProductMatch } from "@/lib/fundingMatchScoring";
 
 export default function FundingMatches() {
   const profile = useFundingProfile();
+  const [goalModalOpen, setGoalModalOpen] = useState(false);
+
+  // Parse funding goals from profile
+  const fundingGoals: FundingGoals | null = useMemo(() => {
+    const fg = profile.fundingGoals;
+    if (fg && typeof fg === "object" && "objective" in (fg as any)) return fg as unknown as FundingGoals;
+    return null;
+  }, [profile.fundingGoals]);
+
+  // Show intake modal if no goals set (after loading)
+  const needsIntake = !profile.isLoading && !fundingGoals;
 
   // Fetch all active lender products
   const { data: products, isLoading: productsLoading } = useQuery({
@@ -28,23 +48,65 @@ export default function FundingMatches() {
     },
   });
 
-  // Score all products client-side
-  const scoredMatches = useMemo(() => {
-    if (!products || profile.isLoading) return [];
-    return products.map(p => scoreProduct(p, profile));
-  }, [products, profile]);
+  // Score all products, then apply goal-based sorting/filtering
+  const { primaryMatches, prerequisiteMatches, personalMatches, businessMatches } = useMemo(() => {
+    if (!products || profile.isLoading) {
+      return { primaryMatches: [], prerequisiteMatches: [], personalMatches: [], businessMatches: [] };
+    }
 
-  const personalMatches = scoredMatches.filter(m => m.track === "personal").sort((a, b) => b.score - a.score);
-  const businessMatches = scoredMatches.filter(m => m.track === "business").sort((a, b) => b.score - a.score);
+    let scored = products.map(p => scoreProduct(p, profile));
+
+    if (fundingGoals) {
+      // Sort by goal relevance + urgency + score
+      scored = scored.map(m => ({
+        ...m,
+        _relevance: getGoalRelevanceBoost(m.product.product_type, fundingGoals),
+        _urgency: getTimelineUrgencySort(m.product.product_type, fundingGoals),
+        _isPrereq: isPrerequisiteProduct(m.product.product_type, fundingGoals),
+      }));
+
+      scored.sort((a: any, b: any) => {
+        // Prerequisites go to a separate section
+        if (a._isPrereq !== b._isPrereq) return a._isPrereq ? 1 : -1;
+        // Higher relevance first
+        if (a._relevance !== b._relevance) return b._relevance - a._relevance;
+        // Urgency for 90-day timelines
+        if (a._urgency !== b._urgency) return b._urgency - a._urgency;
+        // Then by score
+        return b.score - a.score;
+      });
+    }
+
+    const prereqs = fundingGoals
+      ? scored.filter((m: any) => m._isPrereq)
+      : [];
+    const primary = fundingGoals
+      ? scored.filter((m: any) => !m._isPrereq)
+      : scored;
+
+    const personal = primary.filter(m => m.track === "personal").sort((a, b) => b.score - a.score);
+    const business = primary.filter(m => m.track === "business").sort((a, b) => b.score - a.score);
+
+    return {
+      primaryMatches: primary,
+      prerequisiteMatches: prereqs,
+      personalMatches: personal,
+      businessMatches: business,
+    };
+  }, [products, profile, fundingGoals]);
 
   const fundingSequence = useMemo(() => generateFundingSequence(profile), [profile]);
 
   // Summary stats
-  const eligible = scoredMatches.filter(m => m.category === "eligible");
-  const nearEligible = scoredMatches.filter(m => m.category === "near_eligible");
+  const allMatches = [...primaryMatches, ...prerequisiteMatches];
+  const eligible = allMatches.filter(m => m.category === "eligible");
+  const nearEligible = allMatches.filter(m => m.category === "near_eligible");
   const totalEstimated = eligible.reduce((s, m) => s + (m.estimatedAmount || 0), 0);
 
   const isLoading = profile.isLoading || productsLoading;
+
+  // Urgent timeline warning
+  const isUrgent = fundingGoals?.timeline === "90_days";
 
   if (isLoading) {
     return (
@@ -56,6 +118,17 @@ export default function FundingMatches() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
+      {/* Goal Intake Modal */}
+      <FundingGoalIntake
+        open={needsIntake || goalModalOpen}
+        onOpenChange={open => {
+          if (needsIntake && !open) return; // Can't dismiss first-time intake
+          setGoalModalOpen(open);
+        }}
+        existingGoals={fundingGoals}
+        onSaved={() => setGoalModalOpen(false)}
+      />
+
       {/* Title */}
       <div>
         <h1 className="text-3xl font-bold text-foreground">Funding Intelligence</h1>
@@ -69,11 +142,32 @@ export default function FundingMatches() {
         )}
       </div>
 
-      {/* Change 1: Profile Completeness */}
+      {/* Current Goal Banner */}
+      {fundingGoals && (
+        <FundingGoalBanner goals={fundingGoals} onEdit={() => setGoalModalOpen(true)} />
+      )}
+
+      {/* Urgent Timeline Warning */}
+      {isUrgent && (
+        <Card className="p-4 bg-fundability-fair/5 border-fundability-fair/30">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-fundability-fair shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-foreground">90-Day Urgent Timeline Active</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Fast-access products are shown first. MCAs and revenue-based products provide speed but at higher cost — review factor rates carefully before applying.
+                Traditional bank products typically require 30-90 day underwriting.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Profile Completeness */}
       <ProfileCompletenessPanel profile={profile} />
 
       {/* Summary cards */}
-      {scoredMatches.length > 0 && (
+      {allMatches.length > 0 && (
         <div className="grid grid-cols-3 gap-4">
           <Card className="p-5 bg-card border-border text-center">
             <div className="text-3xl font-bold text-fundability-excellent">{eligible.length}</div>
@@ -92,7 +186,7 @@ export default function FundingMatches() {
         </div>
       )}
 
-      {/* Change 2: Separate Personal and Business Tracks */}
+      {/* Personal and Business Tracks */}
       {personalMatches.length > 0 && (
         <FundingTrack title="Personal Credit Track" icon="personal" matches={personalMatches} />
       )}
@@ -101,7 +195,27 @@ export default function FundingMatches() {
         <FundingTrack title="Business Credit Track" icon="business" matches={businessMatches} />
       )}
 
-      {scoredMatches.length === 0 && (
+      {/* Prerequisite Section */}
+      {prerequisiteMatches.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-bold text-muted-foreground">What Needs to Be Built First</h2>
+            <Badge variant="outline" className="text-xs">{prerequisiteMatches.length} products</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground -mt-1">
+            These credit-building products establish the foundation needed for your primary funding goal.
+          </p>
+          <div className="space-y-3">
+            {prerequisiteMatches.map(match => (
+              <div key={match.product.id} className="opacity-80">
+                <FundingTrack title="" icon="personal" matches={[match]} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {allMatches.length === 0 && (
         <Card className="p-8 text-center">
           <p className="text-muted-foreground">
             {profile.middleScore
@@ -111,10 +225,10 @@ export default function FundingMatches() {
         </Card>
       )}
 
-      {/* Change 5: Recommended Funding Sequence */}
+      {/* Recommended Funding Sequence */}
       <FundingSequence steps={fundingSequence} />
 
-      {/* Change 7: Regional Lender Search */}
+      {/* Regional Lender Search */}
       <RegionalLenderSearch
         userState={profile.businesses[0]?.state_of_formation || undefined}
         userCity={undefined}
