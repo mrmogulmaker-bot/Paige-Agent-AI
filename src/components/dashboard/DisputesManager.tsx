@@ -33,24 +33,15 @@ interface DisputesManagerProps {
   clientId?: string;
 }
 
-// FCRA/FDCPA statutory language by account type
+// FCRA/FDCPA statutory language by account type — now delegates to centralized mapping
 function getStatutoryLanguage(reasonCode: string, itemType?: string): string {
   const generic = ["validation dispute", "follow-up on existing dispute", "dispute:", "auto-generated"];
   const lower = (reasonCode || "").toLowerCase();
   const isGeneric = generic.some(g => lower.includes(g)) || lower.length < 30;
   if (!isGeneric) return reasonCode;
 
-  const type = (itemType || reasonCode || "").toLowerCase();
-  if (type.includes("charge") || type.includes("charge-off") || type.includes("charge_off")) {
-    return "Requesting verification of accuracy and completeness of this account pursuant to FCRA Section 611. Please provide the original account agreement, payment history, and method of verification.";
-  }
-  if (type.includes("collection")) {
-    return "Requesting full validation of this debt pursuant to FDCPA Section 809(b). Please provide verification of the original creditor, original balance, date of first delinquency, and your authority to collect this debt.";
-  }
-  if (type.includes("discrepan") || type.includes("cross-bureau") || type.includes("inconsistent")) {
-    return "This account is being reported inconsistently across credit bureaus in violation of FCRA Section 623(a)(1) accuracy requirements. Requesting immediate correction of the inaccurate information and method of verification.";
-  }
-  return "Requesting verification of accuracy and completeness of this account pursuant to FCRA Section 611. Please provide the original account agreement, complete payment history, and method of verification used.";
+  const acctType = normalizeAccountType(itemType || reasonCode);
+  return getStatutoryLanguageByType(acctType);
 }
 
 function useDisputes(clientId?: string) {
