@@ -127,7 +127,20 @@ export function useFundingProfile(): FundingProfileData {
       const installment = openAccounts.filter((a: any) => a.type === "installment");
       const loc = openAccounts.filter((a: any) => a.type === "line_of_credit");
 
-      const highestRevolvingLimit = Math.max(0, ...revolving.map((a: any) => a.credit_limit || a.limit_amount || 0));
+      // Include closed revolving accounts in good standing for comparable credit
+      const closedRevolvingGoodStanding = accounts.filter((a: any) => {
+        if (a.is_open !== false) return false; // skip open accounts (already counted)
+        if (a.type !== "revolving") return false;
+        const status = (a.status || "").toLowerCase();
+        // Exclude accounts with derogatory history
+        if (status.includes("charge") || status.includes("collection") || status.includes("delinquent") || status.includes("default")) return false;
+        return true;
+      });
+
+      const highestOpenRevolvingLimit = Math.max(0, ...revolving.map((a: any) => a.credit_limit || a.limit_amount || 0));
+      const highestClosedRevolvingLimit = Math.max(0, ...closedRevolvingGoodStanding.map((a: any) => a.credit_limit || a.limit_amount || 0));
+      const highestRevolvingLimit = Math.max(highestOpenRevolvingLimit, highestClosedRevolvingLimit);
+      const revolvingLimitIsHistorical = highestClosedRevolvingLimit > highestOpenRevolvingLimit && highestClosedRevolvingLimit > 0;
       const highestInstallmentBalance = Math.max(0, ...installment.map((a: any) => a.balance || a.current_balance || 0));
       const highestLOCLimit = Math.max(0, ...loc.map((a: any) => a.credit_limit || a.limit_amount || 0));
 
