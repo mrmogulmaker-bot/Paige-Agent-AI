@@ -3,16 +3,19 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { BarChart3, CreditCard, DollarSign, BookOpen, FileText, Building2, Settings, LogOut, User as UserIcon, Menu } from "lucide-react";
+import { BarChart3, CreditCard, DollarSign, BookOpen, FileText, Building2, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
+import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
 const navItems = [
@@ -33,6 +36,10 @@ export function AppNav({ user }: AppNavProps) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isCoachOrAdmin, isAdmin, mode, setMode } = useDashboardMode();
+
+  const userRoleLabel = isAdmin ? "Admin" : isCoachOrAdmin ? "Coach" : "Client";
+  const isViewingAsClient = isCoachOrAdmin && mode === "client";
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -112,6 +119,38 @@ export function AppNav({ user }: AppNavProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Role badge */}
+        <Badge variant="outline" className="text-[10px] font-medium capitalize border-accent/30 text-accent hidden sm:inline-flex">
+          {userRoleLabel}
+        </Badge>
+
+        {/* Return to admin for admin/coach in client view */}
+        {isViewingAsClient && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-sidebar-accent/50 gap-1.5 text-xs"
+            onClick={() => { setMode("internal"); navigate("/admin"); }}
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Exit Client View
+          </Button>
+        )}
+
+        {/* Contact Advisor for clients */}
+        {!isCoachOrAdmin && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-sidebar-accent/50 gap-1.5 text-xs"
+            onClick={() => navigate("/app")}
+            title="Ask Paige to connect you with your advisor"
+          >
+            <MessageCircle className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Contact Advisor</span>
+          </Button>
+        )}
+
         <NotificationBell />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -120,6 +159,15 @@ export function AppNav({ user }: AppNavProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {isCoachOrAdmin && !isViewingAsClient && (
+              <>
+                <DropdownMenuItem onClick={() => navigate("/admin")}>
+                  <Eye className="w-4 h-4 mr-2" />
+                  Admin Workspace
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
             <DropdownMenuItem onClick={() => navigate("/app/settings")}>
               <Settings className="w-4 h-4 mr-2" />
               Settings
