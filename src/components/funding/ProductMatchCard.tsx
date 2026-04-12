@@ -24,8 +24,17 @@ const STATUS_ICON = {
   neutral: <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0" />,
 };
 
+const BUREAU_COLORS: Record<string, string> = {
+  experian: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  transunion: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+  equifax: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  all_three: "bg-muted text-muted-foreground",
+  middle_score: "bg-muted text-muted-foreground",
+  flexible: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+};
+
 export function ProductMatchCard({ match }: { match: ProductMatch }) {
-  const { product, score, category, deductions, estimatedAmount, estimateExplanation, dataPoints } = match;
+  const { product, score, category, deductions, estimatedAmount, estimateExplanation, dataPoints, primaryBureau, bureauPullLabel } = match;
   const style = CATEGORY_STYLES[category];
 
   return (
@@ -40,6 +49,9 @@ export function ProductMatchCard({ match }: { match: ProductMatch }) {
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <Badge variant="outline" className="text-xs">{product.product_type?.replace(/_/g, " ")}</Badge>
             <Badge className={`text-xs ${style.bg} ${style.text} border-0`}>{style.label}</Badge>
+            <Badge variant="outline" className={`text-xs border-0 ${BUREAU_COLORS[primaryBureau] || BUREAU_COLORS.middle_score}`}>
+              {bureauPullLabel}
+            </Badge>
           </div>
         </div>
         <div className="text-right shrink-0">
