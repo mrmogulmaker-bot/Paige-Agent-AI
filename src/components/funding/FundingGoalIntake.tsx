@@ -86,7 +86,7 @@ export function FundingGoalIntake({ open, onOpenChange, existingGoals, onSaved }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="w-[calc(100%-32px)] max-w-[600px] max-h-[90vh] overflow-y-auto p-6 sm:p-8">
         <DialogHeader>
           <DialogTitle className="text-xl">Set Your Funding Goal</DialogTitle>
           <p className="text-sm text-muted-foreground">

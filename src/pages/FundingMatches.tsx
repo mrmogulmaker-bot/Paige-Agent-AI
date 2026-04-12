@@ -16,13 +16,15 @@ import {
   type FundingGoals,
 } from "@/components/funding/FundingGoalIntake";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle, Target } from "lucide-react";
 import type { ProductMatch } from "@/lib/fundingMatchScoring";
 
 export default function FundingMatches() {
   const profile = useFundingProfile();
   const [goalModalOpen, setGoalModalOpen] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // Parse funding goals from profile
   const fundingGoals: FundingGoals | null = useMemo(() => {
@@ -31,8 +33,10 @@ export default function FundingMatches() {
     return null;
   }, [profile.fundingGoals]);
 
-  // Show intake modal if no goals set (after loading)
   const needsIntake = !profile.isLoading && !fundingGoals;
+  // Auto-open modal on first visit only if goals not set
+  const [autoOpened, setAutoOpened] = useState(false);
+  const shouldAutoOpen = needsIntake && !autoOpened && !bannerDismissed;
 
   // Fetch all active lender products
   const { data: products, isLoading: productsLoading } = useQuery({
@@ -118,11 +122,11 @@ export default function FundingMatches() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Goal Intake Modal */}
+      {/* Goal Intake Modal — auto-open once, always dismissable */}
       <FundingGoalIntake
-        open={needsIntake || goalModalOpen}
+        open={shouldAutoOpen || goalModalOpen}
         onOpenChange={open => {
-          if (needsIntake && !open) return; // Can't dismiss first-time intake
+          if (!open && shouldAutoOpen) setAutoOpened(true);
           setGoalModalOpen(open);
         }}
         existingGoals={fundingGoals}
@@ -142,10 +146,30 @@ export default function FundingMatches() {
         )}
       </div>
 
-      {/* Current Goal Banner */}
-      {fundingGoals && (
+      {/* Current Goal Banner — or CTA if no goal set */}
+      {fundingGoals ? (
         <FundingGoalBanner goals={fundingGoals} onEdit={() => setGoalModalOpen(true)} />
-      )}
+      ) : !bannerDismissed ? (
+        <Card className="p-4 bg-accent/5 border-accent/20">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Target className="w-5 h-5 text-accent shrink-0" />
+              <p className="text-sm text-foreground">
+                <span className="font-medium">Add your funding goal to get personalized matches</span>
+                <span className="text-muted-foreground"> — takes 60 seconds</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button size="sm" onClick={() => setGoalModalOpen(true)} className="bg-gradient-gold hover:opacity-90 text-xs">
+                Set Goal
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setBannerDismissed(true)} className="text-muted-foreground text-xs px-2">
+                ✕
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       {/* Urgent Timeline Warning */}
       {isUrgent && (
