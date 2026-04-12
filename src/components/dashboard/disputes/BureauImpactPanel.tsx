@@ -33,10 +33,9 @@ export function BureauImpactPanel({ clientId }: BureauImpactPanelProps) {
           .select("estimated_fico_tu, estimated_fico_ex, estimated_fico_eq, funding_goals")
           .eq("user_id", userId)
           .maybeSingle(),
-        supabase.from("credit_negative_items")
-          .select("bureau, creditor_name, item_type, status")
-          .eq(clientId ? "client_id" as any : "user_id", clientId || userId)
-          .neq("status", "removed"),
+        clientId
+          ? supabase.from("credit_negative_items").select("bureau, creditor_name, item_type, status").eq("client_id", clientId as any).neq("status", "removed")
+          : supabase.from("credit_negative_items").select("bureau, creditor_name, item_type, status").eq("user_id", userId).neq("status", "removed"),
       ]);
 
       const profile = profileRes.data;
