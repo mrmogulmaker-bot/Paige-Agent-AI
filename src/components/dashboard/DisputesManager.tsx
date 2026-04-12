@@ -305,7 +305,7 @@ function RoundLettersDialog({
       for (const bureau of bureaus) {
         setGeneratingBureau(bureau);
         const items = bureauGroups[bureau].map(d => {
-          const acctType = normalizeAccountType(d.narrative || d.reason_code);
+          const acctType = normalizeAccountType(d.item_type || d.narrative || d.reason_code, null, d.narrative);
           return {
             creditorName: d.creditor_name,
             accountNumber: d.account_number_masked || null,
@@ -439,7 +439,7 @@ function RoundLettersDialog({
                   <div className="space-y-1">
                     {bureauGroups[bureau].map((d: any) => (
                       <div key={d.id} className="text-sm flex items-center gap-2">
-                        <AccountTypeBadge itemType={d.narrative || d.reason_code} />
+                        <AccountTypeBadge itemType={d.item_type || d.narrative || d.reason_code} />
                         <span>{d.creditor_name} {d.account_number_masked ? `(${d.account_number_masked})` : ""}</span>
                       </div>
                     ))}
