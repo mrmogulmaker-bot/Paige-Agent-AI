@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState, Suspense, lazy } from "react";
 import { useNavigate, Routes, Route } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,9 +16,6 @@ const KnowledgeBaseReviewQueue = lazy(() => import("@/components/dashboard/admin
 const FundingPortfolioView = lazy(() => import("@/components/dashboard/admin/FundingPortfolioView").then(m => ({ default: m.FundingPortfolioView })));
 const UserManagement = lazy(() => import("@/components/dashboard/UserManagement").then(m => ({ default: m.UserManagement })));
 const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformance").then(m => ({ default: m.UserPerformance })));
-const AuditLogsViewer = lazy(() => import("@/components/dashboard/admin/AuditLogsViewer").then(m => ({ default: m.AuditLogsViewer })));
-const ComplianceMonitor = lazy(() => import("@/components/dashboard/admin/ComplianceMonitor").then(m => ({ default: m.ComplianceMonitor })));
-const SystemMetrics = lazy(() => import("@/components/dashboard/admin/SystemMetrics").then(m => ({ default: m.SystemMetrics })));
 const AffiliateApplications = lazy(() => import("@/components/dashboard/AffiliateApplications").then(m => ({ default: m.AffiliateApplications })));
 
 const SuspenseFallback = () => (
@@ -98,6 +95,11 @@ const Admin = () => {
     }
   };
 
+  const handleViewClient = (clientUserId: string) => {
+    // Navigate to client view within admin context
+    navigate(`/app?viewAs=${clientUserId}`);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -110,7 +112,11 @@ const Admin = () => {
     <AdminLayout userRole={userRole}>
       <Routes>
         <Route index element={<AdminOverview stats={stats} />} />
-        <Route path="clients" element={<Suspense fallback={<SuspenseFallback />}><ClientManagementDashboard /></Suspense>} />
+        <Route path="clients" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <ClientManagementDashboard onViewClient={handleViewClient} />
+          </Suspense>
+        } />
         <Route path="disputes" element={<Suspense fallback={<SuspenseFallback />}><DisputesManager /></Suspense>} />
         <Route path="funding" element={<Suspense fallback={<SuspenseFallback />}><FundingPortfolioView /></Suspense>} />
         <Route path="analytics" element={
@@ -191,10 +197,5 @@ function AdminOverview({ stats }: { stats: { totalUsers: number; activeSubscript
     </div>
   );
 }
-
-const Suspense = lazy ? ({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) => {
-  // This is a workaround - we use React.Suspense directly
-  return null;
-} : null;
 
 export default Admin;
