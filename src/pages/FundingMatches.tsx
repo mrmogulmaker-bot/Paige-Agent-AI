@@ -121,11 +121,11 @@ export default function FundingMatches() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Goal Intake Modal */}
+      {/* Goal Intake Modal — auto-open once, always dismissable */}
       <FundingGoalIntake
-        open={needsIntake || goalModalOpen}
+        open={shouldAutoOpen || goalModalOpen}
         onOpenChange={open => {
-          if (needsIntake && !open) return; // Can't dismiss first-time intake
+          if (!open && shouldAutoOpen) setAutoOpened(true);
           setGoalModalOpen(open);
         }}
         existingGoals={fundingGoals}
@@ -145,10 +145,30 @@ export default function FundingMatches() {
         )}
       </div>
 
-      {/* Current Goal Banner */}
-      {fundingGoals && (
+      {/* Current Goal Banner — or CTA if no goal set */}
+      {fundingGoals ? (
         <FundingGoalBanner goals={fundingGoals} onEdit={() => setGoalModalOpen(true)} />
-      )}
+      ) : !bannerDismissed ? (
+        <Card className="p-4 bg-accent/5 border-accent/20">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Target className="w-5 h-5 text-accent shrink-0" />
+              <p className="text-sm text-foreground">
+                <span className="font-medium">Add your funding goal to get personalized matches</span>
+                <span className="text-muted-foreground"> — takes 60 seconds</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button size="sm" onClick={() => setGoalModalOpen(true)} className="bg-gradient-gold hover:opacity-90 text-xs">
+                Set Goal
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setBannerDismissed(true)} className="text-muted-foreground text-xs px-2">
+                ✕
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       {/* Urgent Timeline Warning */}
       {isUrgent && (
