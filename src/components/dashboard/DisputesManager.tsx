@@ -438,8 +438,8 @@ function RoundLettersDialog({
                   </div>
                   <div className="space-y-1">
                     {bureauGroups[bureau].map((d: any) => (
-                      <div key={d.id} className="text-sm flex items-start gap-2">
-                        <span className="text-muted-foreground">•</span>
+                      <div key={d.id} className="text-sm flex items-center gap-2">
+                        <AccountTypeBadge itemType={d.narrative || d.reason_code} />
                         <span>{d.creditor_name} {d.account_number_masked ? `(${d.account_number_masked})` : ""}</span>
                       </div>
                     ))}
