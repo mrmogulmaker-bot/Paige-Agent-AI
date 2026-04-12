@@ -15,10 +15,12 @@ export interface FundingProfileData {
   activeCollections: any[];
   derogWithin12mo: number;
   derogWithin24mo: number;
+  totalActiveNegatives: number;
 
   // Credit accounts (tradelines)
   creditAccounts: any[];
   highestRevolvingLimit: number;
+  revolvingLimitIsHistorical: boolean;
   highestInstallmentBalance: number;
   highestLOCLimit: number;
   openAccountCount: number;
