@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { countUniqueNegativeAccounts } from "@/lib/deduplicateNegatives";
 
 export interface ClientChatContext {
   contextBlock: string;
@@ -114,7 +115,9 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
         if (negFilter) {
           const { data: negatives } = await negFilter;
           if (negatives && negatives.length > 0) {
-            parts.push(`Active Negatives: ${negatives.length} items`);
+            const uniqueCount = countUniqueNegativeAccounts(negatives);
+            const totalBureauRecords = negatives.length;
+            parts.push(`Active Negatives: ${uniqueCount} unique accounts across ${totalBureauRecords} bureau records`);
             const sorted = [...negatives].sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 3);
             const topItems = sorted.map(n => `${n.creditor_name || "Unknown"} ($${n.amount?.toLocaleString() ?? "N/A"}, ${n.bureau}, ${n.item_type})`).join(" | ");
             parts.push(`Top items: ${topItems}`);
