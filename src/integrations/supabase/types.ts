@@ -450,6 +450,9 @@ export type Database = {
         Row: {
           bank_account_opened_date: string | null
           bank_name: string | null
+          build_assessed_at: string | null
+          build_assessment_answers: Json | null
+          build_score: number | null
           business_address_type: string | null
           business_city: string | null
           business_phone: string | null
@@ -485,6 +488,9 @@ export type Database = {
         Insert: {
           bank_account_opened_date?: string | null
           bank_name?: string | null
+          build_assessed_at?: string | null
+          build_assessment_answers?: Json | null
+          build_score?: number | null
           business_address_type?: string | null
           business_city?: string | null
           business_phone?: string | null
@@ -520,6 +526,9 @@ export type Database = {
         Update: {
           bank_account_opened_date?: string | null
           bank_name?: string | null
+          build_assessed_at?: string | null
+          build_assessment_answers?: Json | null
+          build_score?: number | null
           business_address_type?: string | null
           business_city?: string | null
           business_phone?: string | null
