@@ -21,6 +21,7 @@ import { DisputesManager } from "@/components/dashboard/DisputesManager";
 import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
 import { BuildProgramOutline } from "@/components/dashboard/BuildProgramOutline";
 import { BuildProgramBusinessWrapper } from "@/components/dashboard/BuildProgramBusinessWrapper";
+import { BusinessInfrastructureAssessment } from "@/components/dashboard/business-profile/BusinessInfrastructureAssessment";
 import { PersonalBuildProgram } from "@/components/dashboard/PersonalBuildProgram";
 import { AccelProgramOutline } from "@/components/dashboard/AccelProgramOutline";
 import { PersonalSection } from "@/components/dashboard/PersonalSection";
@@ -284,12 +285,12 @@ const Dashboard = () => {
                 {activeSection === "learning-vault" && <LearningVault />}
                 {activeSection === "business-credit" && (
                   <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
-                    <BusinessCreditSection />
+                    <BusinessInfrastructureAssessment />
                   </PlanGate>
                 )}
                 {activeSection === "build-steps" && (
                   <PlanGate feature="business_credit" onUpgradeClick={() => setShowUpgradeModal(true)}>
-                    <BuildProgramBusinessWrapper />
+                    <BusinessInfrastructureAssessment />
                   </PlanGate>
                 )}
                 {activeSection === "business-documents" && (

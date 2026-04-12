@@ -250,6 +250,131 @@ export type Database = {
         }
         Relationships: []
       }
+      business_financial_docs: {
+        Row: {
+          business_id: string
+          created_at: string | null
+          doc_type: string
+          document_id: string | null
+          expiry_date: string | null
+          id: string
+          notes: string | null
+          status: string
+          updated_at: string | null
+          upload_date: string | null
+          user_id: string
+        }
+        Insert: {
+          business_id: string
+          created_at?: string | null
+          doc_type: string
+          document_id?: string | null
+          expiry_date?: string | null
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string | null
+          upload_date?: string | null
+          user_id: string
+        }
+        Update: {
+          business_id?: string
+          created_at?: string | null
+          doc_type?: string
+          document_id?: string | null
+          expiry_date?: string | null
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string | null
+          upload_date?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_financial_docs_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_financial_docs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_public_presence: {
+        Row: {
+          business_id: string
+          created_at: string | null
+          facebook_url: string | null
+          google_business_claimed: boolean | null
+          google_business_url: string | null
+          id: string
+          linkedin_url: string | null
+          official_address: string | null
+          official_name: string | null
+          official_phone: string | null
+          other_listings: string | null
+          updated_at: string | null
+          user_id: string
+          website_live: boolean | null
+          website_url: string | null
+          yelp_exists: boolean | null
+          yelp_url: string | null
+        }
+        Insert: {
+          business_id: string
+          created_at?: string | null
+          facebook_url?: string | null
+          google_business_claimed?: boolean | null
+          google_business_url?: string | null
+          id?: string
+          linkedin_url?: string | null
+          official_address?: string | null
+          official_name?: string | null
+          official_phone?: string | null
+          other_listings?: string | null
+          updated_at?: string | null
+          user_id: string
+          website_live?: boolean | null
+          website_url?: string | null
+          yelp_exists?: boolean | null
+          yelp_url?: string | null
+        }
+        Update: {
+          business_id?: string
+          created_at?: string | null
+          facebook_url?: string | null
+          google_business_claimed?: boolean | null
+          google_business_url?: string | null
+          id?: string
+          linkedin_url?: string | null
+          official_address?: string | null
+          official_name?: string | null
+          official_phone?: string | null
+          other_listings?: string | null
+          updated_at?: string | null
+          user_id?: string
+          website_live?: boolean | null
+          website_url?: string | null
+          yelp_exists?: boolean | null
+          yelp_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_public_presence_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_vendors: {
         Row: {
           account_number: string | null
@@ -323,21 +448,34 @@ export type Database = {
       }
       businesses: {
         Row: {
+          bank_account_opened_date: string | null
+          bank_name: string | null
+          business_address_type: string | null
+          business_city: string | null
+          business_phone: string | null
+          business_state: string | null
+          business_street_address: string | null
           business_type:
             | Database["public"]["Enums"]["business_hierarchy_type"]
             | null
+          business_zip: string | null
           created_at: string | null
           dba: string | null
           display_order: number | null
           ein: string | null
           entity_type: Database["public"]["Enums"]["entity_type"] | null
+          formation_date: string | null
           formation_status: string | null
+          has_bank_account: boolean | null
           id: string
           legal_name: string
           naics: string | null
           organizational_level: number | null
           owner_user_id: string
           parent_business_id: string | null
+          phone_411_listed: boolean | null
+          registered_agent_address: string | null
+          registered_agent_name: string | null
           registered_agent_renewal_date: string | null
           registered_agent_state: string | null
           revenue_band: string | null
@@ -345,21 +483,34 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          bank_account_opened_date?: string | null
+          bank_name?: string | null
+          business_address_type?: string | null
+          business_city?: string | null
+          business_phone?: string | null
+          business_state?: string | null
+          business_street_address?: string | null
           business_type?:
             | Database["public"]["Enums"]["business_hierarchy_type"]
             | null
+          business_zip?: string | null
           created_at?: string | null
           dba?: string | null
           display_order?: number | null
           ein?: string | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
+          formation_date?: string | null
           formation_status?: string | null
+          has_bank_account?: boolean | null
           id?: string
           legal_name: string
           naics?: string | null
           organizational_level?: number | null
           owner_user_id: string
           parent_business_id?: string | null
+          phone_411_listed?: boolean | null
+          registered_agent_address?: string | null
+          registered_agent_name?: string | null
           registered_agent_renewal_date?: string | null
           registered_agent_state?: string | null
           revenue_band?: string | null
@@ -367,21 +518,34 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          bank_account_opened_date?: string | null
+          bank_name?: string | null
+          business_address_type?: string | null
+          business_city?: string | null
+          business_phone?: string | null
+          business_state?: string | null
+          business_street_address?: string | null
           business_type?:
             | Database["public"]["Enums"]["business_hierarchy_type"]
             | null
+          business_zip?: string | null
           created_at?: string | null
           dba?: string | null
           display_order?: number | null
           ein?: string | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
+          formation_date?: string | null
           formation_status?: string | null
+          has_bank_account?: boolean | null
           id?: string
           legal_name?: string
           naics?: string | null
           organizational_level?: number | null
           owner_user_id?: string
           parent_business_id?: string | null
+          phone_411_listed?: boolean | null
+          registered_agent_address?: string | null
+          registered_agent_name?: string | null
           registered_agent_renewal_date?: string | null
           registered_agent_state?: string | null
           revenue_band?: string | null
