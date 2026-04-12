@@ -628,6 +628,13 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
   const [letterDispute, setLetterDispute] = useState<any>(null);
   const [outcomeDispute, setOutcomeDispute] = useState<any>(null);
 
+  // Compute bureau count per account identity for badge display
+  const bureauCountMap = new Map<string, number>();
+  disputes.forEach(d => {
+    const key = `${(d.creditor_name || "").toLowerCase().trim()}::${(d.account_number_masked || "").toLowerCase().trim()}`;
+    bureauCountMap.set(key, (bureauCountMap.get(key) || 0) + 1);
+  });
+
   return (
     <>
       <DisputeDetailsDialog dispute={detailsDispute} open={!!detailsDispute} onOpenChange={(v) => !v && setDetailsDispute(null)} />
@@ -638,6 +645,8 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
           const statusKey = dispute.status as string;
           const status = statusConfig[statusKey] || statusConfig.draft;
           const StatusIcon = status.icon;
+          const acctKey = `${(dispute.creditor_name || "").toLowerCase().trim()}::${(dispute.account_number_masked || "").toLowerCase().trim()}`;
+          const totalBureaus = bureauCountMap.get(acctKey) || 1;
 
           return (
             <Card key={dispute.id} className="shadow-card hover:shadow-glow transition-shadow">
@@ -648,7 +657,12 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
                     <CardDescription>Bureau: {dispute.bureau}</CardDescription>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <AccountTypeBadge itemType={dispute.narrative || dispute.reason_code} />
+                    <AccountTypeBadge itemType={dispute.item_type || dispute.narrative || dispute.reason_code} />
+                    {totalBureaus > 1 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {totalBureaus} bureaus
+                      </Badge>
+                    )}
                     {dispute.dispute_round && <Badge variant="secondary" className="text-xs">R{dispute.dispute_round}</Badge>}
                     <Badge className={status.color}><StatusIcon className="w-3 h-3 mr-1" />{status.label}</Badge>
                   </div>
