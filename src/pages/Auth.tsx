@@ -33,19 +33,40 @@ const Auth = () => {
     setIsLogin(searchParams.get("mode") !== "signup");
   }, [searchParams]);
 
+  const redirectByRole = async (userId: string) => {
+    try {
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId);
+      const roleList = (roles || []).map((r: any) => r.role);
+      if (roleList.includes("admin") || roleList.includes("coach")) {
+        navigate("/admin");
+      } else {
+        navigate("/app");
+      }
+    } catch {
+      navigate("/app");
+    }
+  };
+
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        if (session?.user) navigate("/app");
+        if (session?.user) {
+          redirectByRole(session.user.id);
+        }
       }
     );
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) navigate("/app");
+      if (session?.user) {
+        redirectByRole(session.user.id);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -410,6 +431,12 @@ const Auth = () => {
             >
               {isLogin ? "Create a free account" : "Sign in instead"}
             </Button>
+
+            {/* Team Login hint */}
+            <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/40">
+              <Shield className="w-3 h-3" />
+              <span>Team member? Use your admin credentials above — you'll be routed automatically.</span>
+            </div>
 
             {/* Legal */}
             <p className="text-center text-[11px] text-muted-foreground/50 leading-relaxed">
