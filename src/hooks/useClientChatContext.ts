@@ -194,14 +194,13 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
         }
 
         // --- Funding secured ---
-        const securedFilter = clientId
-          ? supabase.from("funding_secured").select("lender_name, amount, product_type").eq("client_id", clientId)
-          : resolvedUserId
-            ? supabase.from("funding_secured").select("lender_name, amount, product_type").eq("user_id", resolvedUserId)
-            : null;
+        const securedId = resolvedUserId || (clientId ? null : null);
+        if (securedId) {
+          const { data: secured } = await supabase
+            .from("funding_secured")
+            .select("lender_name, amount, product_type")
+            .eq("user_id", securedId);
 
-        if (securedFilter) {
-          const { data: secured } = await securedFilter;
           if (secured && secured.length > 0) {
             const totalSecured = secured.reduce((sum, s) => sum + (s.amount || 0), 0);
             parts.push(`Funding Secured: $${totalSecured.toLocaleString()} across ${secured.length} products`);
