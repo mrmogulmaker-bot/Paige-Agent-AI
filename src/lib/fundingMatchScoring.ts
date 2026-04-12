@@ -53,11 +53,17 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
     dataPoints.push({ label: "Credit Score", value: "Not on file", status: "neutral" });
   }
 
-  // Data point: derogatory items
-  dataPoints.push({ label: "Look-back Period", value: `${profile.derogWithin24mo} derogatory items within 24 months`, status: profile.derogWithin24mo === 0 ? "positive" : "negative" });
+  // Data point: derogatory items — use totalActiveNegatives to match Credit Intelligence
+  dataPoints.push({ label: "Active Negatives", value: `${profile.totalActiveNegatives} active derogatory items`, status: profile.totalActiveNegatives === 0 ? "positive" : "negative" });
+  if (profile.derogWithin24mo < profile.totalActiveNegatives) {
+    dataPoints.push({ label: "Look-back Period", value: `${profile.derogWithin24mo} within last 24 months`, status: profile.derogWithin24mo === 0 ? "positive" : "negative" });
+  }
 
   // Data point: comparable credit
-  dataPoints.push({ label: "Comparable Credit", value: `$${profile.highestRevolvingLimit.toLocaleString()} highest revolving limit`, status: profile.highestRevolvingLimit > 0 ? "positive" : "neutral" });
+  const revLabel = profile.revolvingLimitIsHistorical
+    ? `$${profile.highestRevolvingLimit.toLocaleString()} highest closed revolving limit (Historical)`
+    : `$${profile.highestRevolvingLimit.toLocaleString()} highest revolving limit`;
+  dataPoints.push({ label: "Comparable Credit", value: revLabel, status: profile.highestRevolvingLimit > 0 ? "positive" : "neutral" });
 
   // Data point: revenue
   if (isRevenueBased) {
@@ -181,7 +187,8 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
     // Revolving / cards
     if (profile.highestRevolvingLimit > 0) {
       estimatedAmount = Math.min(Math.round(profile.highestRevolvingLimit * 1.75), maxAmt || profile.highestRevolvingLimit * 2);
-      estimateExplanation = `1.75x your highest revolving limit ($${profile.highestRevolvingLimit.toLocaleString()})`;
+      const histLabel = profile.revolvingLimitIsHistorical ? " (historical — closed account)" : "";
+      estimateExplanation = `1.75x your highest revolving limit ($${profile.highestRevolvingLimit.toLocaleString()}${histLabel})`;
     } else {
       estimatedAmount = minAmt || 500;
       estimateExplanation = `Minimum amount — no revolving tradeline history`;
@@ -210,7 +217,7 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
 export function generateFundingSequence(profile: FundingProfileData) {
   const steps: { step: number; title: string; milestone: string; products: string; timeline: string; link: string; isCurrentStep: boolean }[] = [];
   const score = profile.middleScore || 0;
-  const hasActiveDerog = profile.negativeItems.filter((n: any) => n.status !== "removed").length > 0;
+  const hasActiveDerog = profile.totalActiveNegatives > 0;
 
   let currentStep = 1;
 

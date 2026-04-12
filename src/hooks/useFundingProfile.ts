@@ -15,10 +15,12 @@ export interface FundingProfileData {
   activeCollections: any[];
   derogWithin12mo: number;
   derogWithin24mo: number;
+  totalActiveNegatives: number;
 
   // Credit accounts (tradelines)
   creditAccounts: any[];
   highestRevolvingLimit: number;
+  revolvingLimitIsHistorical: boolean;
   highestInstallmentBalance: number;
   highestLOCLimit: number;
   openAccountCount: number;
@@ -127,7 +129,20 @@ export function useFundingProfile(): FundingProfileData {
       const installment = openAccounts.filter((a: any) => a.type === "installment");
       const loc = openAccounts.filter((a: any) => a.type === "line_of_credit");
 
-      const highestRevolvingLimit = Math.max(0, ...revolving.map((a: any) => a.credit_limit || a.limit_amount || 0));
+      // Include closed revolving accounts in good standing for comparable credit
+      const closedRevolvingGoodStanding = accounts.filter((a: any) => {
+        if (a.is_open !== false) return false; // skip open accounts (already counted)
+        if (a.type !== "revolving") return false;
+        const status = (a.status || "").toLowerCase();
+        // Exclude accounts with derogatory history
+        if (status.includes("charge") || status.includes("collection") || status.includes("delinquent") || status.includes("default")) return false;
+        return true;
+      });
+
+      const highestOpenRevolvingLimit = Math.max(0, ...revolving.map((a: any) => a.credit_limit || a.limit_amount || 0));
+      const highestClosedRevolvingLimit = Math.max(0, ...closedRevolvingGoodStanding.map((a: any) => a.credit_limit || a.limit_amount || 0));
+      const highestRevolvingLimit = Math.max(highestOpenRevolvingLimit, highestClosedRevolvingLimit);
+      const revolvingLimitIsHistorical = highestClosedRevolvingLimit > highestOpenRevolvingLimit && highestClosedRevolvingLimit > 0;
       const highestInstallmentBalance = Math.max(0, ...installment.map((a: any) => a.balance || a.current_balance || 0));
       const highestLOCLimit = Math.max(0, ...loc.map((a: any) => a.credit_limit || a.limit_amount || 0));
 
@@ -185,8 +200,10 @@ export function useFundingProfile(): FundingProfileData {
         activeCollections,
         derogWithin12mo: derogWithin(12),
         derogWithin24mo: derogWithin(24),
+        totalActiveNegatives: negItems.filter((n: any) => n.status !== "removed").length,
         creditAccounts: accounts,
         highestRevolvingLimit,
+        revolvingLimitIsHistorical,
         highestInstallmentBalance,
         highestLOCLimit,
         openAccountCount: openAccounts.length,
@@ -216,8 +233,8 @@ export function useFundingProfile(): FundingProfileData {
   if (isLoading || !data) {
     return {
       middleScore: null, scores: { tu: null, ex: null, eq: null }, scoreModel: "Unknown", lastReportDate: null,
-      negativeItems: [], activeChargeOffs: [], chargeOffTotal: 0, activeCollections: [], derogWithin12mo: 0, derogWithin24mo: 0,
-      creditAccounts: [], highestRevolvingLimit: 0, highestInstallmentBalance: 0, highestLOCLimit: 0, openAccountCount: 0, oldestAccountAgeMonths: 0,
+      negativeItems: [], activeChargeOffs: [], chargeOffTotal: 0, activeCollections: [], derogWithin12mo: 0, derogWithin24mo: 0, totalActiveNegatives: 0,
+      creditAccounts: [], highestRevolvingLimit: 0, revolvingLimitIsHistorical: false, highestInstallmentBalance: 0, highestLOCLimit: 0, openAccountCount: 0, oldestAccountAgeMonths: 0,
       businesses: [], hasEntityStructure: false, timeInBusinessMonths: null, hasEIN: false,
       financialKpis: null, hasRevenueData: false, annualRevenue: null, monthlyCashFlow: null,
       connectedBanks: 0, hasBankingRelationship: false,
