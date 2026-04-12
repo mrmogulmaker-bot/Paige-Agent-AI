@@ -21,7 +21,7 @@ import { DashboardModeProvider } from "./contexts/DashboardModeContext";
 // Lazy-load existing dashboard sections for /app/* routes
 const DisputesManager = React.lazy(() => import("./components/dashboard/DisputesManager").then(m => ({ default: m.DisputesManager })));
 const LearningVault = React.lazy(() => import("./components/dashboard/LearningVault").then(m => ({ default: m.LearningVault })));
-const BusinessCreditSection = React.lazy(() => import("./components/dashboard/BusinessCreditSection").then(m => ({ default: m.BusinessCreditSection })));
+const BusinessInfrastructureAssessment = React.lazy(() => import("./components/dashboard/business-profile/BusinessInfrastructureAssessment").then(m => ({ default: m.BusinessInfrastructureAssessment })));
 const ProfileSettings = React.lazy(() => import("./components/dashboard/ProfileSettings").then(m => ({ default: m.ProfileSettings })));
 const AffiliateTracking = React.lazy(() => import("./components/dashboard/AffiliateTracking").then(m => ({ default: m.AffiliateTracking })));
 
@@ -69,7 +69,7 @@ const App = () => (
               } />
               <Route path="business" element={
                 <React.Suspense fallback={<SuspenseFallback />}>
-                  <BusinessCreditSection />
+                  <BusinessInfrastructureAssessment />
                 </React.Suspense>
               } />
               <Route path="settings" element={
