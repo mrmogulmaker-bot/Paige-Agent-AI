@@ -686,9 +686,7 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
 export function DisputesManager({ personalOnly, businessOnly, clientId }: DisputesManagerProps) {
   const queryClient = useQueryClient();
   const { data: disputes, isLoading } = useDisputes(clientId);
-  const { data: clientInfo } = useClientInfo(clientId);
-  const { data: profileInfo } = useProfileInfo(clientId);
-  const activeInfo = clientId ? clientInfo : profileInfo;
+  const { data: activeInfo } = useDisputeClientInfo(clientId);
   const [roundDialogOpen, setRoundDialogOpen] = useState(false);
 
   const handleRefresh = () => {
