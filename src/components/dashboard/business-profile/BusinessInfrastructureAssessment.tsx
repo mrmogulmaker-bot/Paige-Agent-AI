@@ -6,10 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Building2, Globe, BarChart3, FileText, Award } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { FoundationSection } from "./FoundationSection";
-import { PublicPresenceSection } from "./PublicPresenceSection";
-import { BusinessCreditBureauSection } from "./BusinessCreditBureauSection";
-import { FinancialDocsSection } from "./FinancialDocsSection";
 import { BuildProgramSection } from "./BuildProgramSection";
 
 interface Props {
@@ -20,7 +16,7 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
   const [businesses, setBusinesses] = useState<{ id: string; legal_name: string }[]>([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState<string>("");
   const [userId, setUserId] = useState<string>("");
-  const [activeTab, setActiveTab] = useState("foundation");
+  const [activeTab, setActiveTab] = useState("build");
 
   // Completion percentages
   const [foundationPct, setFoundationPct] = useState(0);
@@ -60,23 +56,17 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
     { value: "build", label: "BUILD Program", icon: Award, pct: buildPct },
   ];
 
-  if (businesses.length === 0) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center">
-          <Building2 className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
-          <h3 className="text-lg font-semibold mb-2">No Business Entity Found</h3>
-          <p className="text-sm text-muted-foreground">
-            Add a business entity from the Business Organization section to begin your infrastructure assessment.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const PlaceholderTab = ({ label }: { label: string }) => (
+    <Card>
+      <CardContent className="py-12 text-center">
+        <p className="text-sm text-muted-foreground">This section is coming in the next step.</p>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="space-y-6">
-      {/* Header with Business Selector and Overall Score */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1">
           <h2 className="text-xl md:text-2xl font-bold text-foreground">Business Infrastructure Assessment</h2>
@@ -140,23 +130,35 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
         </TabsList>
 
         <TabsContent value="foundation" className="mt-4">
-          <FoundationSection businessId={selectedBusinessId} userId={userId} onCompletionChange={setFoundationPct} />
+          <PlaceholderTab label="Foundation" />
         </TabsContent>
 
         <TabsContent value="presence" className="mt-4">
-          <PublicPresenceSection businessId={selectedBusinessId} userId={userId} onCompletionChange={setPresencePct} />
+          <PlaceholderTab label="Public Presence" />
         </TabsContent>
 
         <TabsContent value="credit" className="mt-4">
-          <BusinessCreditBureauSection businessId={selectedBusinessId} userId={userId} onCompletionChange={setBureauPct} />
+          <PlaceholderTab label="Business Credit" />
         </TabsContent>
 
         <TabsContent value="docs" className="mt-4">
-          <FinancialDocsSection businessId={selectedBusinessId} userId={userId} onCompletionChange={setDocsPct} />
+          <PlaceholderTab label="Financial Docs" />
         </TabsContent>
 
         <TabsContent value="build" className="mt-4">
-          <BuildProgramSection foundationPct={foundationPct} bureauPct={bureauPct} onCompletionChange={setBuildPct} />
+          {businesses.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Building2 className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <h3 className="text-lg font-semibold mb-2">No Business Entity Found</h3>
+                <p className="text-sm text-muted-foreground">
+                  Add a business entity from the Business Organization section to begin your infrastructure assessment.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <BuildProgramSection foundationPct={foundationPct} bureauPct={bureauPct} onCompletionChange={setBuildPct} />
+          )}
         </TabsContent>
       </Tabs>
     </div>
