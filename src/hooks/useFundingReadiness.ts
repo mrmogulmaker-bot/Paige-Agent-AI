@@ -73,7 +73,7 @@ function calcBankingScore(kpis: any, manualEntry: any, hasStatementAnalysis: boo
       : score >= 40
         ? "Banking is adequate. Increase average balances and avoid NSF/overdraft events."
         : "Banking history needs work. Maintain consistent balances and eliminate NSF activity.";
-    return { score, explanation, source: "plaid" };
+    return { score, explanation, source: "verified" as const };
   }
 
   if (hasStatementAnalysis && statementRevenue !== null) {
