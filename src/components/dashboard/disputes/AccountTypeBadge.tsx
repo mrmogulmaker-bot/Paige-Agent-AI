@@ -15,20 +15,108 @@ export const ACCOUNT_TYPES = {
 
 export type AccountTypeKey = keyof typeof ACCOUNT_TYPES;
 
-export function normalizeAccountType(itemType?: string | null): AccountTypeKey {
-  if (!itemType) return "collection";
-  const t = itemType.toLowerCase().replace(/[\s_-]+/g, "_");
-  if (t.includes("collection")) return "collection";
-  if (t.includes("charge") && t.includes("off")) return "charge-off";
-  if (t.includes("charge_off") || t.includes("chargeoff")) return "charge-off";
-  if (t.includes("late") || t.includes("delinquen")) return "late_payment";
-  if (t.includes("repo")) return "repossession";
-  if (t.includes("foreclos")) return "foreclosure";
-  if (t.includes("bankrupt")) return "bankruptcy";
-  if (t.includes("hard") && t.includes("inquir")) return "hard_inquiry";
-  if (t.includes("soft") && t.includes("inquir")) return "soft_inquiry";
-  if (t.includes("not_mine") || t.includes("not mine") || t.includes("unknown_account") || t.includes("fraud")) return "account_not_mine";
-  return "collection";
+/**
+ * Comprehensive account type classification.
+ * Examines item_type, status, and remarks/notes to determine the correct dispute category.
+ * Checks conditions in priority order and returns the first match.
+ */
+export function normalizeAccountType(
+  itemType?: string | null,
+  accountStatus?: string | null,
+  remarks?: string | null
+): AccountTypeKey {
+  // Combine all fields for searching; normalize to lowercase with underscores
+  const normalize = (s?: string | null) => (s || "").toLowerCase().replace(/[\s_-]+/g, "_");
+  const t = normalize(itemType);
+  const s = normalize(accountStatus);
+  const r = normalize(remarks);
+  const all = `${t} ${s} ${r}`;
+
+  // 1. Account Not Mine / Fraud — check first as it overrides everything
+  if (
+    r.includes("not_mine") || r.includes("not mine") || r.includes("fraudulent") ||
+    r.includes("identity_theft") || r.includes("unauthorized_account") ||
+    t.includes("not_mine") || t.includes("unknown_account") || t.includes("fraud") ||
+    t.includes("identity_theft")
+  ) {
+    return "account_not_mine";
+  }
+
+  // 2. Collections
+  if (
+    t.includes("collection") || s.includes("collection") ||
+    all.includes("assigned_to_collection") || all.includes("placed_for_collection") ||
+    all.includes("collection_agency")
+  ) {
+    return "collection";
+  }
+
+  // 3. Charge-Off
+  if (
+    t.includes("charge") || s.includes("charge") ||
+    all.includes("charged_off") || all.includes("chargeoff") ||
+    all.includes("bad_debt") || all.includes("writeoff") || all.includes("write_off") ||
+    all.includes("written_off")
+  ) {
+    return "charge-off";
+  }
+
+  // 4. Repossession — must check BEFORE generic late payment
+  if (
+    t.includes("repo") || s.includes("repo") ||
+    all.includes("repossession") || all.includes("voluntary_repo") || all.includes("involuntary_repo")
+  ) {
+    return "repossession";
+  }
+
+  // 5. Foreclosure
+  if (
+    t.includes("foreclos") || s.includes("foreclos") ||
+    all.includes("deed_in_lieu") || all.includes("short_sale")
+  ) {
+    return "foreclosure";
+  }
+
+  // 6. Bankruptcy
+  if (
+    t.includes("bankrupt") || s.includes("bankrupt") ||
+    all.includes("chapter_7") || all.includes("chapter_13") || all.includes("chapter_11") ||
+    all.includes("discharged") || all.includes("included_in_bankruptcy")
+  ) {
+    return "bankruptcy";
+  }
+
+  // 7. Inquiries
+  if (t.includes("inquir") || s.includes("inquir")) {
+    if (r.includes("unauthorized") || r.includes("did_not_authorize") || t.includes("hard")) {
+      return "hard_inquiry";
+    }
+    if (t.includes("soft")) return "soft_inquiry";
+    // Default inquiry to hard (disputable)
+    return "hard_inquiry";
+  }
+
+  // 8. Late Payment — only if not already classified as charge-off/collection above
+  if (
+    t.includes("late") || s.includes("late") ||
+    all.includes("past_due") || all.includes("delinquen") ||
+    all.includes("30_days") || all.includes("60_days") || all.includes("90_days") || all.includes("120_days")
+  ) {
+    return "late_payment";
+  }
+
+  // 9. Fallback: if the status suggests a negative account, default to charge-off
+  if (
+    s.includes("derogatory") || s.includes("negative") || s.includes("adverse") ||
+    t.includes("installment") || t.includes("revolving") || t.includes("open_account")
+  ) {
+    console.warn(`[AccountType] Could not definitively classify: itemType="${itemType}", status="${accountStatus}". Defaulting to charge-off.`);
+    return "charge-off";
+  }
+
+  // 10. Ultimate fallback — charge-off is safer than collection (collection implies FDCPA which may not apply)
+  console.warn(`[AccountType] Unclassified account type: itemType="${itemType}", status="${accountStatus}", remarks="${remarks}". Defaulting to charge-off.`);
+  return "charge-off";
 }
 
 export function getStatutoryLanguageByType(accountType: AccountTypeKey): string {
@@ -56,8 +144,8 @@ export function getStatutoryLanguageByType(accountType: AccountTypeKey): string 
   }
 }
 
-export function AccountTypeBadge({ itemType }: { itemType?: string | null }) {
-  const key = normalizeAccountType(itemType);
+export function AccountTypeBadge({ itemType, accountStatus, remarks }: { itemType?: string | null; accountStatus?: string | null; remarks?: string | null }) {
+  const key = normalizeAccountType(itemType, accountStatus, remarks);
   const config = ACCOUNT_TYPES[key];
   const Icon = config.icon;
 

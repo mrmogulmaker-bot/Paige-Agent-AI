@@ -40,7 +40,7 @@ function getStatutoryLanguage(reasonCode: string, itemType?: string): string {
   const isGeneric = generic.some(g => lower.includes(g)) || lower.length < 30;
   if (!isGeneric) return reasonCode;
 
-  const acctType = normalizeAccountType(itemType || reasonCode);
+  const acctType = normalizeAccountType(itemType || reasonCode, null, null);
   return getStatutoryLanguageByType(acctType);
 }
 
@@ -305,7 +305,7 @@ function RoundLettersDialog({
       for (const bureau of bureaus) {
         setGeneratingBureau(bureau);
         const items = bureauGroups[bureau].map(d => {
-          const acctType = normalizeAccountType(d.narrative || d.reason_code);
+          const acctType = normalizeAccountType(d.item_type || d.narrative || d.reason_code, null, d.narrative);
           return {
             creditorName: d.creditor_name,
             accountNumber: d.account_number_masked || null,
@@ -439,7 +439,7 @@ function RoundLettersDialog({
                   <div className="space-y-1">
                     {bureauGroups[bureau].map((d: any) => (
                       <div key={d.id} className="text-sm flex items-center gap-2">
-                        <AccountTypeBadge itemType={d.narrative || d.reason_code} />
+                        <AccountTypeBadge itemType={d.item_type || d.narrative || d.reason_code} />
                         <span>{d.creditor_name} {d.account_number_masked ? `(${d.account_number_masked})` : ""}</span>
                       </div>
                     ))}
@@ -548,9 +548,9 @@ function NewDisputeDialog({ type, onCreated, clientId }: { type: "personal" | "b
       if (item) {
         setCreditorName(item.creditor_name || "");
         setBureau(item.bureau || "");
-        const acctType = normalizeAccountType(item.item_type);
+        const acctType = normalizeAccountType(item.item_type, item.status, item.notes);
         setReasonCode(getStatutoryLanguageByType(acctType));
-        setNarrative(item.notes || "");
+        setNarrative(item.item_type || "");
       }
     }
   }, [selectedItem, negativeItems]);
@@ -561,7 +561,13 @@ function NewDisputeDialog({ type, onCreated, clientId }: { type: "personal" | "b
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const insertData: any = { user_id: user.id, creditor_name: creditorName, bureau, reason_code: reasonCode, narrative: narrative || null, status: "draft" };
+      // Resolve item_type from selected negative item
+      let resolvedItemType: string | null = null;
+      if (selectedItem && negativeItems) {
+        const item = negativeItems.find((n: any) => n.id === selectedItem);
+        if (item) resolvedItemType = item.item_type || null;
+      }
+      const insertData: any = { user_id: user.id, creditor_name: creditorName, bureau, reason_code: reasonCode, narrative: narrative || null, status: "draft", item_type: resolvedItemType };
       if (clientId) insertData.client_id = clientId;
       const { error } = await supabase.from("disputes").insert(insertData);
       if (error) throw error;
@@ -622,6 +628,13 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
   const [letterDispute, setLetterDispute] = useState<any>(null);
   const [outcomeDispute, setOutcomeDispute] = useState<any>(null);
 
+  // Compute bureau count per account identity for badge display
+  const bureauCountMap = new Map<string, number>();
+  disputes.forEach(d => {
+    const key = `${(d.creditor_name || "").toLowerCase().trim()}::${(d.account_number_masked || "").toLowerCase().trim()}`;
+    bureauCountMap.set(key, (bureauCountMap.get(key) || 0) + 1);
+  });
+
   return (
     <>
       <DisputeDetailsDialog dispute={detailsDispute} open={!!detailsDispute} onOpenChange={(v) => !v && setDetailsDispute(null)} />
@@ -632,6 +645,8 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
           const statusKey = dispute.status as string;
           const status = statusConfig[statusKey] || statusConfig.draft;
           const StatusIcon = status.icon;
+          const acctKey = `${(dispute.creditor_name || "").toLowerCase().trim()}::${(dispute.account_number_masked || "").toLowerCase().trim()}`;
+          const totalBureaus = bureauCountMap.get(acctKey) || 1;
 
           return (
             <Card key={dispute.id} className="shadow-card hover:shadow-glow transition-shadow">
@@ -642,7 +657,12 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
                     <CardDescription>Bureau: {dispute.bureau}</CardDescription>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <AccountTypeBadge itemType={dispute.narrative || dispute.reason_code} />
+                    <AccountTypeBadge itemType={dispute.item_type || dispute.narrative || dispute.reason_code} />
+                    {totalBureaus > 1 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {totalBureaus} bureaus
+                      </Badge>
+                    )}
                     {dispute.dispute_round && <Badge variant="secondary" className="text-xs">R{dispute.dispute_round}</Badge>}
                     <Badge className={status.color}><StatusIcon className="w-3 h-3 mr-1" />{status.label}</Badge>
                   </div>

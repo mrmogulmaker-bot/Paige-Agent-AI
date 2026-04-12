@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { countUniqueNegativeAccounts } from "@/lib/deduplicateNegatives";
 
 export interface BusinessInfraData {
   // Foundation
@@ -298,7 +299,7 @@ export function useFundingProfile(): FundingProfileData {
         activeCollections,
         derogWithin12mo: derogWithin(12),
         derogWithin24mo: derogWithin(24),
-        totalActiveNegatives: negItems.filter((n: any) => n.status !== "removed").length,
+        totalActiveNegatives: countUniqueNegativeAccounts(negItems.filter((n: any) => n.status !== "removed")),
         creditAccounts: accounts,
         highestRevolvingLimit,
         revolvingLimitIsHistorical,

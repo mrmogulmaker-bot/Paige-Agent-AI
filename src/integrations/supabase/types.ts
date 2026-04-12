@@ -1923,6 +1923,7 @@ export type Database = {
           dispute_round: number | null
           due_date: string | null
           id: string
+          item_type: string | null
           narrative: string | null
           open_date: string | null
           reason_code: string
@@ -1941,6 +1942,7 @@ export type Database = {
           dispute_round?: number | null
           due_date?: string | null
           id?: string
+          item_type?: string | null
           narrative?: string | null
           open_date?: string | null
           reason_code: string
@@ -1959,6 +1961,7 @@ export type Database = {
           dispute_round?: number | null
           due_date?: string | null
           id?: string
+          item_type?: string | null
           narrative?: string | null
           open_date?: string | null
           reason_code?: string
