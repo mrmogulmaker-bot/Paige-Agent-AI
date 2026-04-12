@@ -187,7 +187,8 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
     // Revolving / cards
     if (profile.highestRevolvingLimit > 0) {
       estimatedAmount = Math.min(Math.round(profile.highestRevolvingLimit * 1.75), maxAmt || profile.highestRevolvingLimit * 2);
-      estimateExplanation = `1.75x your highest revolving limit ($${profile.highestRevolvingLimit.toLocaleString()})`;
+      const histLabel = profile.revolvingLimitIsHistorical ? " (historical — closed account)" : "";
+      estimateExplanation = `1.75x your highest revolving limit ($${profile.highestRevolvingLimit.toLocaleString()}${histLabel})`;
     } else {
       estimatedAmount = minAmt || 500;
       estimateExplanation = `Minimum amount — no revolving tradeline history`;
