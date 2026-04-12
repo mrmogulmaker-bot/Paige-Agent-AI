@@ -52,6 +52,9 @@ export interface FundingProfileData {
   hasFraudAlert: boolean;
   hasSecurityFreeze: boolean;
 
+  // Funding goals
+  fundingGoals: any | null;
+
   isLoading: boolean;
 }
 
@@ -204,6 +207,7 @@ export function useFundingProfile(): FundingProfileData {
         missingItems,
         hasFraudAlert: false, // TODO: integrate with bureau API flags
         hasSecurityFreeze: false,
+        fundingGoals: profile?.funding_goals || null,
         isLoading: false,
       };
     },
@@ -220,6 +224,7 @@ export function useFundingProfile(): FundingProfileData {
       buildScores: null, hasBusinessCreditScores: false,
       completeness: 0, missingItems: [],
       hasFraudAlert: false, hasSecurityFreeze: false,
+      fundingGoals: null,
       isLoading: true,
     };
   }
