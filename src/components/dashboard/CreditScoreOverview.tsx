@@ -27,7 +27,7 @@ export const CreditScoreOverview = () => {
       if (!user) return { disputes: 0, negatives: 0, fundability: 0 };
       const [disputesRes, negativesRes, factorsRes] = await Promise.all([
         supabase.from("disputes").select("id", { count: "exact", head: true }).eq("user_id", user.id).in("status", ["draft", "submitted", "under_review"]),
-        supabase.from("credit_negative_items").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("status", "active"),
+        supabase.from("credit_negative_items").select("id", { count: "exact", head: true }).eq("user_id", user.id).neq("status", "removed"),
         supabase.from("credit_factor_scores").select("overall_fundability_score").eq("user_id", user.id).order("calculated_at", { ascending: false }).limit(1),
       ]);
       return {
