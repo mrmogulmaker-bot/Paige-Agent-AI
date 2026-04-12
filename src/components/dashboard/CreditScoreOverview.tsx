@@ -4,6 +4,7 @@ import { TrendingUp, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
+import { countUniqueNegativeAccounts } from "@/lib/deduplicateNegatives";
 
 export const CreditScoreOverview = () => {
   const { data: profile, isLoading } = useQuery({
@@ -27,12 +28,13 @@ export const CreditScoreOverview = () => {
       if (!user) return { disputes: 0, negatives: 0, fundability: 0 };
       const [disputesRes, negativesRes, factorsRes] = await Promise.all([
         supabase.from("disputes").select("id", { count: "exact", head: true }).eq("user_id", user.id).in("status", ["draft", "submitted", "under_review"]),
-        supabase.from("credit_negative_items").select("id", { count: "exact", head: true }).eq("user_id", user.id).neq("status", "removed"),
+        supabase.from("credit_negative_items").select("creditor_name, account_number_masked, bureau, amount, status").eq("user_id", user.id).neq("status", "removed"),
         supabase.from("credit_factor_scores").select("overall_fundability_score").eq("user_id", user.id).order("calculated_at", { ascending: false }).limit(1),
       ]);
+      const negItems = negativesRes.data || [];
       return {
         disputes: disputesRes.count ?? 0,
-        negatives: negativesRes.count ?? 0,
+        negatives: countUniqueNegativeAccounts(negItems),
         fundability: (factorsRes.data as any)?.[0]?.overall_fundability_score ?? 0,
       };
     },
