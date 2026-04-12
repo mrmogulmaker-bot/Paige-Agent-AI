@@ -554,8 +554,6 @@ function NewDisputeDialog({ type, onCreated, clientId }: { type: "personal" | "b
       }
     }
   }, [selectedItem, negativeItems]);
-    }
-  }, [selectedItem, negativeItems]);
 
   const handleSubmit = async () => {
     if (!creditorName || !bureau || !reasonCode) { toast.error("Please fill in all required fields"); return; }
