@@ -6,10 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Building2, Globe, BarChart3, FileText, Award } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { FoundationSection } from "./FoundationSection";
-import { PublicPresenceSection } from "./PublicPresenceSection";
-import { BusinessCreditBureauSection } from "./BusinessCreditBureauSection";
-import { FinancialDocsSection } from "./FinancialDocsSection";
 import { BuildProgramSection } from "./BuildProgramSection";
 
 interface Props {
@@ -20,7 +16,7 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
   const [businesses, setBusinesses] = useState<{ id: string; legal_name: string }[]>([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState<string>("");
   const [userId, setUserId] = useState<string>("");
-  const [activeTab, setActiveTab] = useState("foundation");
+  const [activeTab, setActiveTab] = useState("build");
 
   // Completion percentages
   const [foundationPct, setFoundationPct] = useState(0);
