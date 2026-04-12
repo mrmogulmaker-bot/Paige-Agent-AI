@@ -40,7 +40,7 @@ function getStatutoryLanguage(reasonCode: string, itemType?: string): string {
   const isGeneric = generic.some(g => lower.includes(g)) || lower.length < 30;
   if (!isGeneric) return reasonCode;
 
-  const acctType = normalizeAccountType(itemType || reasonCode);
+  const acctType = normalizeAccountType(itemType || reasonCode, null, null);
   return getStatutoryLanguageByType(acctType);
 }
 
@@ -548,9 +548,9 @@ function NewDisputeDialog({ type, onCreated, clientId }: { type: "personal" | "b
       if (item) {
         setCreditorName(item.creditor_name || "");
         setBureau(item.bureau || "");
-        const acctType = normalizeAccountType(item.item_type);
+        const acctType = normalizeAccountType(item.item_type, item.status, item.notes);
         setReasonCode(getStatutoryLanguageByType(acctType));
-        setNarrative(item.notes || "");
+        setNarrative(item.item_type || "");
       }
     }
   }, [selectedItem, negativeItems]);
@@ -561,7 +561,13 @@ function NewDisputeDialog({ type, onCreated, clientId }: { type: "personal" | "b
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const insertData: any = { user_id: user.id, creditor_name: creditorName, bureau, reason_code: reasonCode, narrative: narrative || null, status: "draft" };
+      // Resolve item_type from selected negative item
+      let resolvedItemType: string | null = null;
+      if (selectedItem && negativeItems) {
+        const item = negativeItems.find((n: any) => n.id === selectedItem);
+        if (item) resolvedItemType = item.item_type || null;
+      }
+      const insertData: any = { user_id: user.id, creditor_name: creditorName, bureau, reason_code: reasonCode, narrative: narrative || null, status: "draft", item_type: resolvedItemType };
       if (clientId) insertData.client_id = clientId;
       const { error } = await supabase.from("disputes").insert(insertData);
       if (error) throw error;
