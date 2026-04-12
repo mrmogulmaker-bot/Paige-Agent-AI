@@ -189,7 +189,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId } = validatedData;
+    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, clientContext } = validatedData;
 
     // === SESSION SUMMARY GENERATION MODE ===
     if (generateSessionSummary && sessionMessages && sessionMessages.length > 0) {
@@ -447,7 +447,7 @@ PROHIBITED ACTIONS:
 
 === END COMPLIANCE MODULE ===
 
-${memoryBlock}${sessionDocContext}${userContext}${fetchedUrlContent}
+${clientContext ? `\n\n=== CLIENT CONTEXT (VERIFIED DATABASE DATA) ===\n${clientContext}\n=== END CLIENT CONTEXT ===\n\nIMPORTANT: You have been provided with a CLIENT CONTEXT block above. This block contains verified data from the client's platform file. Always reference this data when answering questions about the client's credit profile, scores, disputes, or funding status. Never ask the client to provide information that is already present in the CLIENT CONTEXT block. Begin every new session by briefly acknowledging what you know about the client's current situation based on this context, using a warm and professional tone.\n` : ''}${memoryBlock}${sessionDocContext}${userContext}${fetchedUrlContent}
 
 === OUR PROGRAMS & FRAMEWORKS ===
 You guide users through: ACCEL (Credit Restoration), BUILD Personal (Credit Building), BUILD Business (Business Credit), FUND (Funding Qualification), REPORT (Credit Monitoring), SHIELD (Compliance & Protection), ACQUIRE (Capital Deployment).
