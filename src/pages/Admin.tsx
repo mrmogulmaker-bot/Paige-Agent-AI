@@ -10,6 +10,9 @@ import { AuditLogsViewer } from "@/components/dashboard/admin/AuditLogsViewer";
 import { ComplianceMonitor } from "@/components/dashboard/admin/ComplianceMonitor";
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
 import { FundingPortfolioView } from "@/components/dashboard/admin/FundingPortfolioView";
+import { DisputeAnalytics } from "@/components/dashboard/admin/DisputeAnalytics";
+import { FundingMatchAccuracy } from "@/components/dashboard/admin/FundingMatchAccuracy";
+import { KnowledgeBaseReviewQueue } from "@/components/dashboard/admin/KnowledgeBaseReviewQueue";
 import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
 import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
 import { toast } from "sonner";
@@ -140,11 +143,14 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="performance" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="flex flex-wrap h-auto gap-1">
             <TabsTrigger value="performance">Performance</TabsTrigger>
+            <TabsTrigger value="disputes">Dispute Analytics</TabsTrigger>
             <TabsTrigger value="funding">Funding</TabsTrigger>
+            <TabsTrigger value="accuracy">Match Accuracy</TabsTrigger>
             <TabsTrigger value="applications">Affiliates</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="knowledge">Knowledge Review</TabsTrigger>
             <TabsTrigger value="compliance">Compliance</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
             <TabsTrigger value="audit">Audit</TabsTrigger>
@@ -154,8 +160,16 @@ const Admin = () => {
             <UserPerformance />
           </TabsContent>
 
+          <TabsContent value="disputes" className="space-y-4">
+            <DisputeAnalytics />
+          </TabsContent>
+
           <TabsContent value="funding" className="space-y-4">
             <FundingPortfolioView />
+          </TabsContent>
+
+          <TabsContent value="accuracy" className="space-y-4">
+            <FundingMatchAccuracy />
           </TabsContent>
 
           <TabsContent value="applications" className="space-y-4">
@@ -164,6 +178,10 @@ const Admin = () => {
 
           <TabsContent value="users" className="space-y-4">
             <UserManagement />
+          </TabsContent>
+
+          <TabsContent value="knowledge" className="space-y-4">
+            <KnowledgeBaseReviewQueue />
           </TabsContent>
 
           <TabsContent value="compliance" className="space-y-4">
