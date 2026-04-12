@@ -16,8 +16,9 @@ import {
   type FundingGoals,
 } from "@/components/funding/FundingGoalIntake";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle, Target } from "lucide-react";
 import type { ProductMatch } from "@/lib/fundingMatchScoring";
 
 export default function FundingMatches() {
