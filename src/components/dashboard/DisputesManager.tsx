@@ -13,6 +13,8 @@ import { DisputeOutcomeDialog } from "./DisputeOutcomeDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { AccountTypeBadge, normalizeAccountType, getStatutoryLanguageByType } from "./disputes/AccountTypeBadge";
+import { PersonalInfoAudit } from "./disputes/PersonalInfoAudit";
 
 const statusConfig: Record<string, { label: string; icon: any; color: string }> = {
   draft: { label: "Draft", icon: FileText, color: "bg-muted" },
@@ -31,24 +33,15 @@ interface DisputesManagerProps {
   clientId?: string;
 }
 
-// FCRA/FDCPA statutory language by account type
+// FCRA/FDCPA statutory language by account type — now delegates to centralized mapping
 function getStatutoryLanguage(reasonCode: string, itemType?: string): string {
   const generic = ["validation dispute", "follow-up on existing dispute", "dispute:", "auto-generated"];
   const lower = (reasonCode || "").toLowerCase();
   const isGeneric = generic.some(g => lower.includes(g)) || lower.length < 30;
   if (!isGeneric) return reasonCode;
 
-  const type = (itemType || reasonCode || "").toLowerCase();
-  if (type.includes("charge") || type.includes("charge-off") || type.includes("charge_off")) {
-    return "Requesting verification of accuracy and completeness of this account pursuant to FCRA Section 611. Please provide the original account agreement, payment history, and method of verification.";
-  }
-  if (type.includes("collection")) {
-    return "Requesting full validation of this debt pursuant to FDCPA Section 809(b). Please provide verification of the original creditor, original balance, date of first delinquency, and your authority to collect this debt.";
-  }
-  if (type.includes("discrepan") || type.includes("cross-bureau") || type.includes("inconsistent")) {
-    return "This account is being reported inconsistently across credit bureaus in violation of FCRA Section 623(a)(1) accuracy requirements. Requesting immediate correction of the inaccurate information and method of verification.";
-  }
-  return "Requesting verification of accuracy and completeness of this account pursuant to FCRA Section 611. Please provide the original account agreement, complete payment history, and method of verification used.";
+  const acctType = normalizeAccountType(itemType || reasonCode);
+  return getStatutoryLanguageByType(acctType);
 }
 
 function useDisputes(clientId?: string) {
@@ -311,13 +304,17 @@ function RoundLettersDialog({
     try {
       for (const bureau of bureaus) {
         setGeneratingBureau(bureau);
-        const items = bureauGroups[bureau].map(d => ({
-          creditorName: d.creditor_name,
-          accountNumber: d.account_number_masked || null,
-          amount: null,
-          itemType: d.narrative?.toLowerCase().includes("collection") ? "Collection" : d.narrative?.toLowerCase().includes("charge") ? "Charge-Off" : d.reason_code?.includes("809") ? "Collection" : "Charge-Off",
-          disputeBasis: getStatutoryLanguage(d.reason_code || "", d.narrative),
-        }));
+        const items = bureauGroups[bureau].map(d => {
+          const acctType = normalizeAccountType(d.narrative || d.reason_code);
+          return {
+            creditorName: d.creditor_name,
+            accountNumber: d.account_number_masked || null,
+            amount: null,
+            itemType: acctType.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+            disputeBasis: getStatutoryLanguageByType(acctType),
+          };
+        });
+        
 
         const { data, error: fnError } = await supabase.functions.invoke("generate-dispute-letter", {
           body: { mode: "combined", bureau: bureau.charAt(0).toUpperCase() + bureau.slice(1), clientName, clientAddress: clientAddress || null, items, round: nextRound },
@@ -441,8 +438,8 @@ function RoundLettersDialog({
                   </div>
                   <div className="space-y-1">
                     {bureauGroups[bureau].map((d: any) => (
-                      <div key={d.id} className="text-sm flex items-start gap-2">
-                        <span className="text-muted-foreground">•</span>
+                      <div key={d.id} className="text-sm flex items-center gap-2">
+                        <AccountTypeBadge itemType={d.narrative || d.reason_code} />
                         <span>{d.creditor_name} {d.account_number_masked ? `(${d.account_number_masked})` : ""}</span>
                       </div>
                     ))}
@@ -551,7 +548,8 @@ function NewDisputeDialog({ type, onCreated, clientId }: { type: "personal" | "b
       if (item) {
         setCreditorName(item.creditor_name || "");
         setBureau(item.bureau || "");
-        setReasonCode(getStatutoryLanguage(item.notes || `Dispute: ${item.item_type}`, item.item_type));
+        const acctType = normalizeAccountType(item.item_type);
+        setReasonCode(getStatutoryLanguageByType(acctType));
         setNarrative(item.notes || "");
       }
     }
@@ -643,7 +641,8 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
                     <CardTitle className="text-lg">{dispute.creditor_name}</CardTitle>
                     <CardDescription>Bureau: {dispute.bureau}</CardDescription>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <AccountTypeBadge itemType={dispute.narrative || dispute.reason_code} />
                     {dispute.dispute_round && <Badge variant="secondary" className="text-xs">R{dispute.dispute_round}</Badge>}
                     <Badge className={status.color}><StatusIcon className="w-3 h-3 mr-1" />{status.label}</Badge>
                   </div>
@@ -722,6 +721,7 @@ export function DisputesManager({ personalOnly, businessOnly, clientId }: Disput
 
   const renderContent = (type: "personal" | "business") => (
     <div className="space-y-6">
+      {type === "personal" && <PersonalInfoAudit clientId={clientId} />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {renderRoundButton()}
         <NewDisputeDialog type={type} onCreated={handleRefresh} clientId={clientId} />
