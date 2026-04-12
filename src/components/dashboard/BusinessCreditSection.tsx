@@ -1,15 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
-import { usePlaidLink } from "react-plaid-link";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CreditCard, BarChart3, Building2, Plus, Trash2 } from "lucide-react";
+import { CreditCard, BarChart3, Building2, Info } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { AccountsOverview } from "./AccountsOverview";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
-import { usePlaidSync } from "@/hooks/usePlaidSync";
 import { useFinancialKPIs } from "@/hooks/useFinancialKPIs";
 import BusinessCreditDashboard from "./BusinessCreditDashboard";
 
@@ -90,14 +87,10 @@ const BusinessCreditReportTab = () => (
 );
 
 const BankAccountsTab = () => {
-  const [linkToken, setLinkToken] = useState<string | null>(null);
   const [connectedAccounts, setConnectedAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
-  const { syncTransactions, syncing } = usePlaidSync();
   const { data: kpis } = useFinancialKPIs();
 
-  // Fetch connected accounts
   const fetchConnectedAccounts = async () => {
     const { data, error } = await supabase
       .from('connected_bank_accounts')
@@ -117,104 +110,28 @@ const BankAccountsTab = () => {
     fetchConnectedAccounts();
   }, []);
 
-  // Create link token
-  const createLinkToken = async () => {
-    try {
-      const { data, error } = await supabase.functions.invoke('plaid-create-link-token');
-      
-      if (error) throw error;
-      setLinkToken(data.link_token);
-    } catch (error) {
-      console.error('Error creating link token:', error);
-      toast({
-        title: "Connection Error",
-        description: "Failed to initialize bank connection. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // Handle successful connection
-  const onSuccess = useCallback(async (public_token: string, metadata: any) => {
-    try {
-      const { error } = await supabase.functions.invoke('plaid-exchange-token', {
-        body: {
-          public_token,
-          institution: metadata.institution,
-        },
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Success!",
-        description: "Bank account connected successfully.",
-      });
-
-      fetchConnectedAccounts();
-      setLinkToken(null);
-    } catch (error) {
-      console.error('Error exchanging token:', error);
-      toast({
-        title: "Connection Error",
-        description: "Failed to connect bank account. Please try again.",
-        variant: "destructive",
-      });
-    }
-  }, [toast]);
-
-  const { open, ready } = usePlaidLink({
-    token: linkToken,
-    onSuccess,
-  });
-
-  // Handle disconnect
-  const handleDisconnect = async (accountId: string) => {
-    const { error } = await supabase
-      .from('connected_bank_accounts')
-      .update({ is_active: false })
-      .eq('id', accountId);
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to disconnect account.",
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Disconnected",
-        description: "Bank account disconnected successfully.",
-      });
-      fetchConnectedAccounts();
-    }
-  };
-
-  // Initialize link token on mount
-  useEffect(() => {
-    if (!linkToken && !ready) {
-      createLinkToken();
-    }
-  }, []);
-
   return (
     <div className="space-y-6">
+      {/* Phase 2 Notice */}
+      <Card className="border-accent/30 bg-accent/5">
+        <CardContent className="p-4 flex items-start gap-3">
+          <Info className="w-5 h-5 text-accent mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-foreground">Open Banking Connection — Phase 2</p>
+            <p className="text-sm text-muted-foreground">
+              Bank account connection via open banking is planned for Phase 2. Upload bank statements as PDFs in the Financial Docs tab to document your cash flow.
+            </p>
+            <Badge variant="outline" className="text-xs border-accent/30 text-accent mt-1">Coming Soon</Badge>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="shadow-card">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Business Bank Accounts</CardTitle>
-              <CardDescription>Connect and manage your business banking relationships</CardDescription>
-            </div>
-            <Button 
-              onClick={() => linkToken && ready ? open() : createLinkToken()}
-              className="bg-gradient-gold hover:opacity-90"
-              disabled={!ready}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Connect Bank Account
-            </Button>
-          </div>
+          <CardTitle>Business Bank Accounts</CardTitle>
+          <CardDescription>
+            Connected accounts will appear here once open banking integration is available in Phase 2.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -239,34 +156,20 @@ const BankAccountsTab = () => {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">Active</Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDisconnect(account.id)}
-                    >
-                      <Trash2 className="w-4 h-4 text-muted-foreground hover:text-destructive" />
-                    </Button>
-                  </div>
+                  <Badge variant="outline">Active</Badge>
                 </div>
               ))}
             </div>
           ) : (
             <div className="text-center py-12">
               <Building2 className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
-              <h3 className="text-lg font-semibold mb-2">No bank accounts connected</h3>
-              <p className="text-muted-foreground mb-4">
-                Connect your business bank account to build credit and track financial health
+              <h3 className="text-lg font-semibold mb-2">No bank accounts connected yet</h3>
+              <p className="text-muted-foreground mb-2">
+                Upload your bank statements as PDFs in the Financial Docs tab to document your cash flow and banking relationships.
               </p>
-              <Button 
-                onClick={() => linkToken && ready ? open() : createLinkToken()}
-                className="bg-gradient-gold hover:opacity-90"
-                disabled={!ready}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Connect Your First Account
-              </Button>
+              <p className="text-xs text-muted-foreground">
+                Direct bank account connection via open banking is planned for Phase 2.
+              </p>
             </div>
           )}
         </CardContent>
