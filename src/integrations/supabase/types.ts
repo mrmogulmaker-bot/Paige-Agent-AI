@@ -311,58 +311,133 @@ export type Database = {
         Row: {
           business_id: string
           created_at: string | null
+          facebook_address_match: boolean | null
+          facebook_name_match: boolean | null
+          facebook_phone_match: boolean | null
           facebook_url: string | null
+          google_address_match: boolean | null
           google_business_claimed: boolean | null
           google_business_url: string | null
+          google_name_match: boolean | null
+          google_phone_match: boolean | null
           id: string
+          linkedin_address_match: boolean | null
+          linkedin_name_match: boolean | null
+          linkedin_phone_match: boolean | null
           linkedin_url: string | null
           official_address: string | null
           official_name: string | null
           official_phone: string | null
           other_listings: string | null
+          other1_address_match: boolean | null
+          other1_label: string | null
+          other1_name_match: boolean | null
+          other1_phone_match: boolean | null
+          other1_url: string | null
+          other2_address_match: boolean | null
+          other2_label: string | null
+          other2_name_match: boolean | null
+          other2_phone_match: boolean | null
+          other2_url: string | null
           updated_at: string | null
           user_id: string
+          website_address_match: boolean | null
           website_live: boolean | null
+          website_name_match: boolean | null
+          website_phone_match: boolean | null
           website_url: string | null
+          yelp_address_match: boolean | null
           yelp_exists: boolean | null
+          yelp_name_match: boolean | null
+          yelp_phone_match: boolean | null
           yelp_url: string | null
         }
         Insert: {
           business_id: string
           created_at?: string | null
+          facebook_address_match?: boolean | null
+          facebook_name_match?: boolean | null
+          facebook_phone_match?: boolean | null
           facebook_url?: string | null
+          google_address_match?: boolean | null
           google_business_claimed?: boolean | null
           google_business_url?: string | null
+          google_name_match?: boolean | null
+          google_phone_match?: boolean | null
           id?: string
+          linkedin_address_match?: boolean | null
+          linkedin_name_match?: boolean | null
+          linkedin_phone_match?: boolean | null
           linkedin_url?: string | null
           official_address?: string | null
           official_name?: string | null
           official_phone?: string | null
           other_listings?: string | null
+          other1_address_match?: boolean | null
+          other1_label?: string | null
+          other1_name_match?: boolean | null
+          other1_phone_match?: boolean | null
+          other1_url?: string | null
+          other2_address_match?: boolean | null
+          other2_label?: string | null
+          other2_name_match?: boolean | null
+          other2_phone_match?: boolean | null
+          other2_url?: string | null
           updated_at?: string | null
           user_id: string
+          website_address_match?: boolean | null
           website_live?: boolean | null
+          website_name_match?: boolean | null
+          website_phone_match?: boolean | null
           website_url?: string | null
+          yelp_address_match?: boolean | null
           yelp_exists?: boolean | null
+          yelp_name_match?: boolean | null
+          yelp_phone_match?: boolean | null
           yelp_url?: string | null
         }
         Update: {
           business_id?: string
           created_at?: string | null
+          facebook_address_match?: boolean | null
+          facebook_name_match?: boolean | null
+          facebook_phone_match?: boolean | null
           facebook_url?: string | null
+          google_address_match?: boolean | null
           google_business_claimed?: boolean | null
           google_business_url?: string | null
+          google_name_match?: boolean | null
+          google_phone_match?: boolean | null
           id?: string
+          linkedin_address_match?: boolean | null
+          linkedin_name_match?: boolean | null
+          linkedin_phone_match?: boolean | null
           linkedin_url?: string | null
           official_address?: string | null
           official_name?: string | null
           official_phone?: string | null
           other_listings?: string | null
+          other1_address_match?: boolean | null
+          other1_label?: string | null
+          other1_name_match?: boolean | null
+          other1_phone_match?: boolean | null
+          other1_url?: string | null
+          other2_address_match?: boolean | null
+          other2_label?: string | null
+          other2_name_match?: boolean | null
+          other2_phone_match?: boolean | null
+          other2_url?: string | null
           updated_at?: string | null
           user_id?: string
+          website_address_match?: boolean | null
           website_live?: boolean | null
+          website_name_match?: boolean | null
+          website_phone_match?: boolean | null
           website_url?: string | null
+          yelp_address_match?: boolean | null
           yelp_exists?: boolean | null
+          yelp_name_match?: boolean | null
+          yelp_phone_match?: boolean | null
           yelp_url?: string | null
         }
         Relationships: [

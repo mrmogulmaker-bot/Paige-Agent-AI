@@ -4,9 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, AlertTriangle, XCircle, Globe, Info, Search } from "lucide-react";
+import {
+  CheckCircle2, AlertTriangle, XCircle, Globe, Info,
+  ExternalLink, Sparkles, Loader2
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -16,230 +19,370 @@ interface PublicPresenceSectionProps {
   onCompletionChange: (pct: number) => void;
 }
 
-interface PresenceData {
-  id?: string;
-  website_url: string | null;
-  website_live: boolean;
-  google_business_url: string | null;
-  google_business_claimed: boolean;
-  yelp_url: string | null;
-  yelp_exists: boolean;
-  linkedin_url: string | null;
-  facebook_url: string | null;
-  other_listings: string | null;
-  official_name: string | null;
-  official_address: string | null;
-  official_phone: string | null;
+interface FoundationIdentity {
+  legal_name: string;
+  address: string;
+  phone: string;
+  complete: boolean;
 }
 
-const EMPTY: PresenceData = {
-  website_url: null, website_live: false,
-  google_business_url: null, google_business_claimed: false,
-  yelp_url: null, yelp_exists: false,
-  linkedin_url: null, facebook_url: null, other_listings: null,
-  official_name: null, official_address: null, official_phone: null,
-};
+interface ListingItem {
+  key: string;
+  label: string;
+  urlField: string;
+  nameField: string;
+  addressField: string;
+  phoneField: string;
+  createUrl?: string;
+  note?: string;
+}
 
-type ListingKey = "website" | "google" | "yelp" | "linkedin" | "facebook";
+const LISTINGS: ListingItem[] = [
+  {
+    key: "website", label: "Website",
+    urlField: "website_url", nameField: "website_name_match", addressField: "website_address_match", phoneField: "website_phone_match",
+    note: "A professional website with your business name in the domain is one of the first things lenders verify.",
+  },
+  {
+    key: "google", label: "Google Business Profile",
+    urlField: "google_business_url", nameField: "google_name_match", addressField: "google_address_match", phoneField: "google_phone_match",
+    createUrl: "https://business.google.com",
+  },
+  {
+    key: "yelp", label: "Yelp Business Listing",
+    urlField: "yelp_url", nameField: "yelp_name_match", addressField: "yelp_address_match", phoneField: "yelp_phone_match",
+    createUrl: "https://biz.yelp.com",
+  },
+  {
+    key: "linkedin", label: "LinkedIn Company Page",
+    urlField: "linkedin_url", nameField: "linkedin_name_match", addressField: "linkedin_address_match", phoneField: "linkedin_phone_match",
+    createUrl: "https://linkedin.com/company/setup/new",
+  },
+  {
+    key: "facebook", label: "Facebook Business Page",
+    urlField: "facebook_url", nameField: "facebook_name_match", addressField: "facebook_address_match", phoneField: "facebook_phone_match",
+    createUrl: "https://facebook.com/pages/creation",
+  },
+  {
+    key: "other1", label: "Other Listing 1",
+    urlField: "other1_url", nameField: "other1_name_match", addressField: "other1_address_match", phoneField: "other1_phone_match",
+  },
+  {
+    key: "other2", label: "Other Listing 2",
+    urlField: "other2_url", nameField: "other2_name_match", addressField: "other2_address_match", phoneField: "other2_phone_match",
+  },
+];
+
+type PresenceRow = Record<string, any>;
 
 export function PublicPresenceSection({ businessId, userId, onCompletionChange }: PublicPresenceSectionProps) {
-  const [data, setData] = useState<PresenceData>(EMPTY);
+  const [foundation, setFoundation] = useState<FoundationIdentity>({ legal_name: "", address: "", phone: "", complete: false });
+  const [data, setData] = useState<PresenceRow>({});
+  const [rowId, setRowId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showConsistencyCheck, setShowConsistencyCheck] = useState(false);
+  const [insightText, setInsightText] = useState<string | null>(null);
+  const [insightLoading, setInsightLoading] = useState(false);
 
-  useEffect(() => { fetchData(); }, [businessId]);
+  useEffect(() => {
+    if (businessId) {
+      loadFoundation();
+      loadPresence();
+    }
+  }, [businessId]);
 
-  const fetchData = async () => {
-    const { data: rows } = await supabase
+  const loadFoundation = async () => {
+    const { data: biz } = await supabase
+      .from("businesses")
+      .select("legal_name, business_street_address, business_city, business_state, business_zip, business_phone")
+      .eq("id", businessId)
+      .maybeSingle();
+    if (!biz) return;
+    const addr = [biz.business_street_address, biz.business_city, biz.business_state, biz.business_zip].filter(Boolean).join(", ");
+    const complete = !!(biz.legal_name && biz.business_street_address && biz.business_phone);
+    setFoundation({ legal_name: biz.legal_name || "", address: addr, phone: biz.business_phone || "", complete });
+  };
+
+  const loadPresence = async () => {
+    const { data: row } = await supabase
       .from("business_public_presence")
       .select("*")
       .eq("business_id", businessId)
       .maybeSingle();
-    if (rows) {
-      setData(rows as any);
+    if (row) {
+      setData(row);
+      setRowId(row.id);
     }
-    calcCompletion(rows as any || EMPTY);
+    calcCompletion(row || {});
   };
 
-  const calcCompletion = (d: PresenceData) => {
-    const items: boolean[] = [
-      !!(d.website_url && d.website_live),
-      !!d.google_business_claimed,
-      !!d.yelp_exists,
-      !!d.linkedin_url,
-      !!d.facebook_url,
-    ];
-    const done = items.filter(Boolean).length;
-    onCompletionChange(Math.round((done / items.length) * 100));
+  const getStatus = (listing: ListingItem, d: PresenceRow): "complete" | "inconsistent" | "missing" => {
+    const url = d[listing.urlField];
+    if (!url) return "missing";
+    const nameOk = d[listing.nameField] === true;
+    const addrOk = d[listing.addressField] === true;
+    const phoneOk = d[listing.phoneField] === true;
+    return (nameOk && addrOk && phoneOk) ? "complete" : "inconsistent";
   };
 
-  const getStatus = (key: ListingKey): "complete" | "partial" | "missing" => {
-    switch (key) {
-      case "website": return data.website_live ? "complete" : data.website_url ? "partial" : "missing";
-      case "google": return data.google_business_claimed ? "complete" : data.google_business_url ? "partial" : "missing";
-      case "yelp": return data.yelp_exists ? "complete" : "missing";
-      case "linkedin": return data.linkedin_url ? "complete" : "missing";
-      case "facebook": return data.facebook_url ? "complete" : "missing";
-    }
+  const calcCompletion = (d: PresenceRow) => {
+    const complete = LISTINGS.filter(l => getStatus(l, d) === "complete").length;
+    onCompletionChange(Math.round((complete / 7) * 100));
   };
 
-  const StatusIcon = ({ status }: { status: string }) => {
-    if (status === "complete") return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
-    if (status === "partial") return <AlertTriangle className="w-4 h-4 text-amber-500" />;
-    return <XCircle className="w-4 h-4 text-destructive" />;
+  const update = (field: string, value: any) => {
+    setData(prev => {
+      const next = { ...prev, [field]: value };
+      calcCompletion(next);
+      return next;
+    });
   };
 
   const handleSave = async () => {
     setSaving(true);
-    const payload = {
+    const payload: Record<string, any> = {
       business_id: businessId,
       user_id: userId,
-      website_url: data.website_url, website_live: data.website_live,
-      google_business_url: data.google_business_url, google_business_claimed: data.google_business_claimed,
-      yelp_url: data.yelp_url, yelp_exists: data.yelp_exists,
-      linkedin_url: data.linkedin_url, facebook_url: data.facebook_url,
-      other_listings: data.other_listings,
-      official_name: data.official_name, official_address: data.official_address, official_phone: data.official_phone,
     };
+    LISTINGS.forEach(l => {
+      payload[l.urlField] = data[l.urlField] || null;
+      payload[l.nameField] = data[l.nameField] || false;
+      payload[l.addressField] = data[l.addressField] || false;
+      payload[l.phoneField] = data[l.phoneField] || false;
+    });
+    // labels
+    payload.other1_label = data.other1_label || null;
+    payload.other2_label = data.other2_label || null;
+    // legacy fields
+    payload.official_name = foundation.legal_name;
+    payload.official_address = foundation.address;
+    payload.official_phone = foundation.phone;
 
-    if (data.id) {
-      const { error } = await supabase.from("business_public_presence").update(payload as any).eq("id", data.id);
-      if (error) toast.error("Failed to save"); else { toast.success("Saved"); fetchData(); }
+    let error;
+    if (rowId) {
+      ({ error } = await supabase.from("business_public_presence").update(payload as any).eq("id", rowId));
     } else {
-      const { error } = await supabase.from("business_public_presence").insert(payload as any);
-      if (error) toast.error("Failed to save"); else { toast.success("Saved"); fetchData(); }
+      const res = await supabase.from("business_public_presence").insert(payload as any).select("id").single();
+      error = res.error;
+      if (res.data) setRowId(res.data.id);
     }
+    if (error) toast.error("Failed to save"); else toast.success("Public Presence saved");
     setSaving(false);
   };
 
-  // Consistency check
-  const checkConsistency = () => {
-    const issues: string[] = [];
-    const officialName = (data.official_name || "").toLowerCase().trim();
-    if (!officialName) { toast.info("Enter your official business name first"); return issues; }
-    // Simple check — in production this would be more sophisticated
-    return issues;
+  const fetchInsight = async () => {
+    setInsightLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const completeCount = LISTINGS.filter(l => getStatus(l, data) === "complete").length;
+      const inconsistentCount = LISTINGS.filter(l => getStatus(l, data) === "inconsistent").length;
+      const missingCount = LISTINGS.filter(l => getStatus(l, data) === "missing").length;
+      const res = await supabase.functions.invoke("paige-ai-chat", {
+        body: {
+          message: `The client's public presence status: ${completeCount}/7 listings complete, ${inconsistentCount} inconsistent, ${missingCount} missing. Give a concise 2-3 sentence coaching insight about what this means for lender verification and the single most important next action. Do not use markdown.`,
+          sessionId: `presence-insight-${Date.now()}`,
+          userId: user.id,
+          skipMemory: true,
+        }
+      });
+      setInsightText(res.data?.reply || res.data?.message || "Focus on getting all listings to match your official business identity exactly.");
+    } catch {
+      setInsightText("Ensure every listing matches your official business identity for the strongest lender verification outcome.");
+    } finally {
+      setInsightLoading(false);
+    }
   };
 
-  const listings: { key: ListingKey; label: string }[] = [
-    { key: "website", label: "Website" },
-    { key: "google", label: "Google Business Profile" },
-    { key: "yelp", label: "Yelp Business Listing" },
-    { key: "linkedin", label: "LinkedIn Company Page" },
-    { key: "facebook", label: "Facebook Business Page" },
-  ];
+  const StatusIcon = ({ status }: { status: string }) => {
+    if (status === "complete") return <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />;
+    if (status === "inconsistent") return <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />;
+    return <XCircle className="w-4 h-4 text-destructive flex-shrink-0" />;
+  };
+
+  const statusLabel = (s: string) => s === "complete" ? "Complete" : s === "inconsistent" ? "Listed — Inconsistent" : "Not Listed";
+  const statusColor = (s: string) => s === "complete" ? "bg-emerald-500/20 text-emerald-600 border-emerald-500/30" : s === "inconsistent" ? "bg-amber-500/20 text-amber-600 border-amber-500/30" : "";
+
+  // Consistency audit data
+  const auditRows = LISTINGS.filter(l => data[l.urlField]).map(l => {
+    const nm = data[l.nameField] === true;
+    const am = data[l.addressField] === true;
+    const pm = data[l.phoneField] === true;
+    const score = [nm, am, pm].filter(Boolean).length;
+    const mismatches: string[] = [];
+    if (!nm) mismatches.push("Name");
+    if (!am) mismatches.push("Address");
+    if (!pm) mismatches.push("Phone");
+    return { label: l.key === "other1" ? (data.other1_label || "Other 1") : l.key === "other2" ? (data.other2_label || "Other 2") : l.label, url: data[l.urlField], score, mismatches };
+  });
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Globe className="w-4 h-4" /> Online Presence Checklist
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {listings.map(l => (
-            <div key={l.key} className="flex items-start gap-3 p-3 border border-border rounded-lg">
-              <StatusIcon status={getStatus(l.key)} />
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{l.label}</span>
-                  <Badge variant="outline" className="text-xs capitalize">{getStatus(l.key)}</Badge>
-                </div>
-                {l.key === "website" && (
-                  <div className="flex gap-2 items-end">
-                    <div className="flex-1">
-                      <Input value={data.website_url || ""} onChange={e => setData({ ...data, website_url: e.target.value })} placeholder="https://yourbusiness.com" className="text-sm h-8" />
-                    </div>
-                    <label className="flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap">
-                      <input type="checkbox" checked={data.website_live} onChange={e => setData({ ...data, website_live: e.target.checked })} className="rounded" /> Live
-                    </label>
-                  </div>
-                )}
-                {l.key === "google" && (
-                  <div className="flex gap-2 items-end">
-                    <div className="flex-1">
-                      <Input value={data.google_business_url || ""} onChange={e => setData({ ...data, google_business_url: e.target.value })} placeholder="Google Business Profile URL" className="text-sm h-8" />
-                    </div>
-                    <label className="flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap">
-                      <input type="checkbox" checked={data.google_business_claimed} onChange={e => setData({ ...data, google_business_claimed: e.target.checked })} className="rounded" /> Claimed
-                    </label>
-                  </div>
-                )}
-                {l.key === "yelp" && (
-                  <div className="flex gap-2 items-end">
-                    <div className="flex-1">
-                      <Input value={data.yelp_url || ""} onChange={e => setData({ ...data, yelp_url: e.target.value })} placeholder="Yelp listing URL" className="text-sm h-8" />
-                    </div>
-                    <label className="flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap">
-                      <input type="checkbox" checked={data.yelp_exists} onChange={e => setData({ ...data, yelp_exists: e.target.checked })} className="rounded" /> Exists
-                    </label>
-                  </div>
-                )}
-                {l.key === "linkedin" && (
-                  <Input value={data.linkedin_url || ""} onChange={e => setData({ ...data, linkedin_url: e.target.value })} placeholder="LinkedIn company page URL" className="text-sm h-8" />
-                )}
-                {l.key === "facebook" && (
-                  <Input value={data.facebook_url || ""} onChange={e => setData({ ...data, facebook_url: e.target.value })} placeholder="Facebook business page URL" className="text-sm h-8" />
-                )}
+    <div className="space-y-5">
+      {/* Section 1: Consistency Standard */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="py-4">
+          <h3 className="text-sm font-semibold text-foreground mb-1">Your Official Business Identity</h3>
+          <p className="text-xs text-muted-foreground mb-3">All public listings must match this exactly.</p>
+          {!foundation.complete ? (
+            <Alert className="border-amber-500/30 bg-amber-500/10">
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              <AlertDescription className="text-xs text-amber-700">
+                Complete your Foundation tab first to establish your official business identity before building public presence.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+              <div>
+                <span className="text-xs text-muted-foreground block">Legal Name</span>
+                <span className="font-medium">{foundation.legal_name}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Address</span>
+                <span className="font-medium">{foundation.address || "—"}</span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground block">Phone</span>
+                <span className="font-medium">{foundation.phone || "—"}</span>
               </div>
             </div>
-          ))}
-
-          <div>
-            <Label className="text-xs">Other Listings</Label>
-            <Textarea value={data.other_listings || ""} onChange={e => setData({ ...data, other_listings: e.target.value })} placeholder="Additional platforms (BBB, industry directories, etc.)" rows={2} className="text-sm" />
-          </div>
-
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save Public Presence"}
-          </Button>
+          )}
         </CardContent>
       </Card>
 
-      {/* LexisNexis Insight */}
-      <Alert className="border-accent/30 bg-accent/5">
-        <Info className="w-4 h-4 text-accent" />
-        <AlertDescription className="text-xs">
-          <strong>Paige Insight — LexisNexis & Verification Services:</strong> When lenders verify your business identity, services like LexisNexis scan hundreds of public data sources to build a business profile. Inconsistencies between sources — such as your business name spelled differently on Google versus your Secretary of State filing, or different addresses on different listings — create verification failures that can lead to automatic declines regardless of your credit scores. Every listing should show the exact same legal business name, address, and phone number as your official state filing.
-        </AlertDescription>
-      </Alert>
-
-      {/* Consistency Check Tool */}
+      {/* Section 2: Checklist */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Search className="w-4 h-4" /> Consistency Check
-            </CardTitle>
-            <Button size="sm" variant="outline" onClick={() => setShowConsistencyCheck(!showConsistencyCheck)}>
-              {showConsistencyCheck ? "Hide" : "Run Check"}
-            </Button>
-          </div>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Globe className="w-4 h-4" /> Public Presence Checklist
+          </CardTitle>
         </CardHeader>
-        {showConsistencyCheck && (
-          <CardContent className="space-y-3">
-            <p className="text-xs text-muted-foreground">Enter the official details from your state filing to compare against your listings.</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <Label className="text-xs">Official Business Name</Label>
-                <Input value={data.official_name || ""} onChange={e => setData({ ...data, official_name: e.target.value })} className="text-sm h-8" />
+        <CardContent className="space-y-3">
+          {LISTINGS.map(listing => {
+            const status = getStatus(listing, data);
+            const isOther = listing.key === "other1" || listing.key === "other2";
+            return (
+              <div key={listing.key} className={`p-3 border rounded-lg space-y-2 ${status === "complete" ? "border-emerald-500/20 bg-emerald-500/5" : status === "inconsistent" ? "border-amber-500/20 bg-amber-500/5" : "border-border"}`}>
+                <div className="flex items-center gap-2">
+                  <StatusIcon status={status} />
+                  <span className="text-sm font-medium flex-1">
+                    {isOther ? (
+                      <Input
+                        value={data[listing.key === "other1" ? "other1_label" : "other2_label"] || ""}
+                        onChange={e => update(listing.key === "other1" ? "other1_label" : "other2_label", e.target.value)}
+                        placeholder={listing.label}
+                        className="text-sm h-7 w-48 inline-block"
+                      />
+                    ) : listing.label}
+                  </span>
+                  <Badge variant="outline" className={`text-[10px] ${statusColor(status)}`}>{statusLabel(status)}</Badge>
+                </div>
+
+                {listing.note && <p className="text-xs text-muted-foreground ml-6">{listing.note}</p>}
+
+                <div className="ml-6 space-y-2">
+                  <Input
+                    value={data[listing.urlField] || ""}
+                    onChange={e => update(listing.urlField, e.target.value)}
+                    placeholder="https://..."
+                    className="text-sm h-8"
+                  />
+
+                  {status === "missing" && listing.createUrl && (
+                    <a href={listing.createUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                      Create listing <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+
+                  {data[listing.urlField] && (
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex items-center gap-1.5 text-xs">
+                        <Checkbox checked={data[listing.nameField] === true} onCheckedChange={v => update(listing.nameField, !!v)} />
+                        Name matches
+                      </label>
+                      <label className="flex items-center gap-1.5 text-xs">
+                        <Checkbox checked={data[listing.addressField] === true} onCheckedChange={v => update(listing.addressField, !!v)} />
+                        Address matches
+                      </label>
+                      <label className="flex items-center gap-1.5 text-xs">
+                        <Checkbox checked={data[listing.phoneField] === true} onCheckedChange={v => update(listing.phoneField, !!v)} />
+                        Phone matches
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      {/* Section 3: Consistency Audit */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Info className="w-4 h-4" /> Consistency Audit
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            LexisNexis and other lender verification services build a business identity profile by scanning all your public listings.
+            Any discrepancy between listings — a different address on Google versus your state filing, a slightly different business name on Yelp versus LinkedIn — creates a verification failure that can result in automatic decline.
+            This audit helps you find and fix those inconsistencies before a lender does.
+          </p>
+
+          {auditRows.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic py-2">No listings entered yet. Add URLs above to see your consistency audit.</p>
+          ) : (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-xs font-medium">Listing</th>
+                    <th className="text-center px-3 py-2 text-xs font-medium">Score</th>
+                    <th className="text-left px-3 py-2 text-xs font-medium">Issues</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditRows.map(row => (
+                    <tr key={row.label} className={`border-t ${row.score < 3 ? "bg-amber-500/5" : ""}`}>
+                      <td className="px-3 py-2 text-xs font-medium">{row.label}</td>
+                      <td className="px-3 py-2 text-center">
+                        <Badge variant="outline" className={`text-[10px] ${row.score === 3 ? "bg-emerald-500/20 text-emerald-600 border-emerald-500/30" : "bg-amber-500/20 text-amber-600 border-amber-500/30"}`}>
+                          {row.score}/3
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {row.score === 3 ? "✓ All data points match" : `Mismatch: ${row.mismatches.join(", ")}`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Paige Insight */}
+          {insightText ? (
+            <div className="border border-primary/20 bg-primary/5 rounded-lg p-4 flex gap-3">
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                <Sparkles className="w-4 h-4 text-primary" />
               </div>
               <div>
-                <Label className="text-xs">Official Address</Label>
-                <Input value={data.official_address || ""} onChange={e => setData({ ...data, official_address: e.target.value })} className="text-sm h-8" />
-              </div>
-              <div>
-                <Label className="text-xs">Official Phone</Label>
-                <Input value={data.official_phone || ""} onChange={e => setData({ ...data, official_phone: e.target.value })} className="text-sm h-8" />
+                <p className="text-xs font-semibold text-primary mb-1">Paige's Insight</p>
+                <p className="text-sm text-foreground">{insightText}</p>
               </div>
             </div>
-            <Button size="sm" onClick={() => { handleSave(); toast.info("Consistency data saved. Review each listing above to ensure it matches these official details."); }}>
-              Save & Check
+          ) : (
+            <Button size="sm" variant="outline" onClick={fetchInsight} disabled={insightLoading}>
+              {insightLoading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Sparkles className="w-3 h-3 mr-1" />}
+              Get Paige's Assessment
             </Button>
-          </CardContent>
-        )}
+          )}
+        </CardContent>
       </Card>
+
+      <Button onClick={handleSave} disabled={saving} className="w-full">
+        {saving ? "Saving..." : "Save Changes"}
+      </Button>
     </div>
   );
 }
