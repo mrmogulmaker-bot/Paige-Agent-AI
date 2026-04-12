@@ -10,6 +10,7 @@ import type { User, Session } from "@supabase/supabase-js";
 import { useConversation } from "@11labs/react";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
 import { usePaigeMemory } from "@/hooks/usePaigeMemory";
+import { useClientChatContext } from "@/hooks/useClientChatContext";
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
@@ -36,6 +37,9 @@ const quickActions = [
 ];
 
 export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
+  const { contextBlock, isLoading: contextLoading } = useClientChatContext(clientId, clientId ? null : user.id);
+  const contextInjectedRef = useRef(false);
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -173,6 +177,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         })),
         sessionDocumentContext: getSessionDocumentContext(),
         ...(clientId ? { clientId } : {}),
+        ...(contextBlock ? { clientContext: contextBlock } : {}),
       };
 
       if (currentDoc) {
