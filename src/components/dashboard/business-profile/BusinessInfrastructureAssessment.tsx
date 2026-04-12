@@ -131,7 +131,17 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
         </TabsList>
 
         <TabsContent value="foundation" className="mt-4">
-          <PlaceholderTab label="Foundation" />
+          {businesses.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Building2 className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <h3 className="text-lg font-semibold mb-2">No Business Entity Found</h3>
+                <p className="text-sm text-muted-foreground">Add a business entity from the Business Organization section to begin.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <FoundationSection businessId={selectedBusinessId} userId={userId} onCompletionChange={setFoundationPct} />
+          )}
         </TabsContent>
 
         <TabsContent value="presence" className="mt-4">
