@@ -256,6 +256,7 @@ export default function FundingMatches() {
       <RegionalLenderSearch
         userState={profile.businesses[0]?.state_of_formation || undefined}
         userCity={undefined}
+        bureauScores={profile.scores}
       />
     </div>
   );

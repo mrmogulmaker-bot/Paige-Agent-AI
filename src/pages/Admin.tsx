@@ -127,7 +127,14 @@ const Admin = () => {
             </div>
           </Suspense>
         } />
-        <Route path="knowledge" element={<Suspense fallback={<SuspenseFallback />}><KnowledgeBaseReviewQueue /></Suspense>} />
+        <Route path="knowledge" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <div className="space-y-6">
+              <KnowledgeBaseReviewQueue />
+              <LenderBureauManager />
+            </div>
+          </Suspense>
+        } />
         <Route path="settings" element={
           <Suspense fallback={<SuspenseFallback />}>
             <div className="space-y-6">
