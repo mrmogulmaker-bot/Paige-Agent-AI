@@ -5,6 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const FDIC_BASE = "https://banks.data.fdic.gov/api/institutions";
+
 interface LenderResult {
   name: string;
   type: "Credit Union" | "Community Bank" | "CDFI";
@@ -14,10 +16,9 @@ interface LenderResult {
   zip: string;
   website: string;
   referenceId: string;
-  source: "NCUA" | "FDIC";
+  source: "FDIC";
 }
 
-// Map full state names to abbreviations for FDIC API
 const STATE_ABBR: Record<string, string> = {
   Alabama: "AL", Alaska: "AK", Arizona: "AZ", Arkansas: "AR", California: "CA",
   Colorado: "CO", Connecticut: "CT", Delaware: "DE", Florida: "FL", Georgia: "GA",
@@ -41,14 +42,13 @@ function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-async function searchFDIC(
+async function queryFDIC(
   stateAbbr: string,
-  city?: string,
-  specgrpFilter?: string,
-  label: LenderResult["type"] = "Community Bank"
-): Promise<LenderResult[]> {
-  const baseUrl = "https://api.fdic.gov/banks/institutions";
-  const url = new URL(baseUrl);
+  city: string | undefined,
+  specgrpFilter: string | undefined,
+  label: LenderResult["type"]
+): Promise<{ results: LenderResult[]; diagnostics: any }> {
+  const url = new URL(FDIC_BASE);
 
   let filters = `STALP:"${stateAbbr}" AND ACTIVE:1`;
   if (city) filters += ` AND CITY:"${titleCase(city)}"`;
@@ -61,16 +61,48 @@ async function searchFDIC(
   url.searchParams.set("sort_by", "NAME");
   url.searchParams.set("sort_order", "ASC");
 
+  const requestedUrl = url.toString();
+  const startTime = Date.now();
+
   try {
-    const resp = await fetch(url.toString());
+    const resp = await fetch(requestedUrl);
+    const elapsed = Date.now() - startTime;
+    const bodyText = await resp.text();
+
     if (!resp.ok) {
-      console.error("FDIC API returned", resp.status);
-      return [];
+      console.error(`FDIC API error [${resp.status}] for ${requestedUrl}: ${bodyText.slice(0, 500)}`);
+      return {
+        results: [],
+        diagnostics: {
+          url: requestedUrl,
+          status: resp.status,
+          error: `FDIC returned HTTP ${resp.status}`,
+          bodyPreview: bodyText.slice(0, 300),
+          elapsed_ms: elapsed,
+        },
+      };
     }
-    const data = await resp.json();
+
+    let data: any;
+    try {
+      data = JSON.parse(bodyText);
+    } catch {
+      console.error(`FDIC returned non-JSON for ${requestedUrl}: ${bodyText.slice(0, 200)}`);
+      return {
+        results: [],
+        diagnostics: {
+          url: requestedUrl,
+          status: resp.status,
+          error: "FDIC returned non-JSON response",
+          bodyPreview: bodyText.slice(0, 300),
+          elapsed_ms: elapsed,
+        },
+      };
+    }
+
     const institutions = data?.data || [];
 
-    return institutions.map((inst: any) => {
+    const results: LenderResult[] = institutions.map((inst: any) => {
       const d = inst.data || inst;
       return {
         name: d.NAME || "Unknown Institution",
@@ -84,50 +116,30 @@ async function searchFDIC(
         source: "FDIC" as const,
       };
     });
-  } catch (e) {
-    console.error("FDIC API error:", e);
-    return [];
+
+    return {
+      results,
+      diagnostics: {
+        url: requestedUrl,
+        status: 200,
+        total: data?.meta?.total || results.length,
+        returned: results.length,
+        elapsed_ms: elapsed,
+      },
+    };
+  } catch (e: any) {
+    const elapsed = Date.now() - startTime;
+    console.error(`FDIC fetch error for ${requestedUrl}:`, e);
+    return {
+      results: [],
+      diagnostics: {
+        url: requestedUrl,
+        error: e.message || String(e),
+        error_code: e.code || null,
+        elapsed_ms: elapsed,
+      },
+    };
   }
-}
-
-async function searchNCUA(stateAbbr: string, city?: string): Promise<LenderResult[]> {
-  // NCUA Credit Union Locator - use their public API
-  const url = new URL("https://mapping.ncua.gov/api/geocoding/searchbyfields");
-  url.searchParams.set("State", stateAbbr);
-  if (city) url.searchParams.set("City", titleCase(city));
-  url.searchParams.set("PageSize", "15");
-  url.searchParams.set("PageNumber", "1");
-
-  try {
-    const resp = await fetch(url.toString(), {
-      headers: { Accept: "application/json" },
-    });
-
-    if (resp.ok) {
-      const data = await resp.json();
-      const items = Array.isArray(data) ? data : data?.list || data?.results || [];
-      if (items.length > 0) {
-        return items.map((cu: any) => ({
-          name: cu.CU_NAME || cu.cuName || cu.name || "Unknown Credit Union",
-          type: "Credit Union" as const,
-          address: cu.Street || cu.street || cu.Address || "",
-          city: cu.City || cu.city || "",
-          state: cu.State || cu.state || stateAbbr,
-          zip: String(cu.Zip || cu.ZipCode || ""),
-          website: cu.Website || cu.URL || "",
-          referenceId: String(cu.CU_NUMBER || cu.CharterNumber || ""),
-          source: "NCUA" as const,
-        }));
-      }
-    }
-    console.log("NCUA primary returned", resp.status, "- falling back to FDIC credit union data");
-  } catch (e) {
-    console.error("NCUA API error:", e);
-  }
-
-  // Fallback: FDIC also tracks some credit-union-like institutions
-  // Use INSTCAT for savings institutions as a rough proxy
-  return await searchFDIC(stateAbbr, city, 'SPECGRP:6', "Credit Union");
 }
 
 serve(async (req) => {
@@ -135,58 +147,91 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const respond = (body: any, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+
   try {
-    const { state, city, lenderType } = await req.json();
+    const body = await req.json();
+
+    // Test endpoint: hardcoded Atlanta GA query to verify FDIC connectivity
+    if (body.test === true) {
+      const testUrl = `${FDIC_BASE}?filters=STALP%3A%22GA%22%20AND%20CITY%3A%22Atlanta%22%20AND%20ACTIVE%3A1&fields=NAME,CITY,STALP,ADDRESS,ZIP,CERT,WEBADDR&limit=5&sort_by=NAME&sort_order=ASC`;
+      const start = Date.now();
+      try {
+        const resp = await fetch(testUrl);
+        const text = await resp.text();
+        return respond({
+          test: true,
+          url: testUrl,
+          status: resp.status,
+          elapsed_ms: Date.now() - start,
+          body: text.slice(0, 2000),
+        });
+      } catch (e: any) {
+        return respond({
+          test: true,
+          url: testUrl,
+          error: e.message,
+          error_code: e.code || null,
+          elapsed_ms: Date.now() - start,
+        });
+      }
+    }
+
+    const { state, city, lenderType } = body;
 
     if (!state) {
-      return new Response(JSON.stringify({ error: "State is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return respond({ error: "State is required" }, 400);
     }
 
     const stateAbbr = resolveStateAbbr(state);
     const cleanCity = city?.trim() || undefined;
-    let results: LenderResult[] = [];
-    let broadened = false;
+    const allDiagnostics: any[] = [];
 
-    const search = async () => {
+    // FDIC tracks banks only — credit unions are NCUA-regulated and not in FDIC data.
+    // For credit union searches, we return a note with a direct NCUA locator link.
+    let creditUnionNote: string | null = null;
+
+    const doSearch = async (c?: string) => {
       if (lenderType === "credit_union") {
-        return await searchNCUA(stateAbbr, cleanCity);
+        // FDIC doesn't track credit unions — direct user to NCUA locator
+        creditUnionNote = `Credit unions are regulated by the NCUA, not the FDIC. Use the NCUA Credit Union Locator at https://mapping.ncua.gov to search for credit unions in ${stateAbbr}.`;
+        // Also return savings institutions from FDIC as related results
+        const r = await queryFDIC(stateAbbr, c, "SPECGRP:2", "Community Bank");
+        allDiagnostics.push({ query: "savings_institutions", ...r.diagnostics });
+        return r.results;
       } else if (lenderType === "cdfi") {
-        return await searchFDIC(stateAbbr, cleanCity, "SPECGRP:5", "CDFI");
+        const r = await queryFDIC(stateAbbr, c, "SPECGRP:5", "CDFI");
+        allDiagnostics.push({ query: "cdfi", ...r.diagnostics });
+        return r.results;
       } else if (lenderType === "community_bank") {
-        return await searchFDIC(stateAbbr, cleanCity);
+        const r = await queryFDIC(stateAbbr, c, undefined, "Community Bank");
+        allDiagnostics.push({ query: "community_bank", ...r.diagnostics });
+        return r.results;
       } else {
-        // All types
-        const [cus, banks, cdfis] = await Promise.all([
-          searchNCUA(stateAbbr, cleanCity),
-          searchFDIC(stateAbbr, cleanCity),
-          searchFDIC(stateAbbr, cleanCity, "SPECGRP:5", "CDFI"),
+        // All types — parallel (banks + CDFIs from FDIC)
+        const [banks, cdfis] = await Promise.all([
+          queryFDIC(stateAbbr, c, undefined, "Community Bank"),
+          queryFDIC(stateAbbr, c, "SPECGRP:5", "CDFI"),
         ]);
-        return [...cus, ...banks, ...cdfis];
+        allDiagnostics.push(
+          { query: "community_bank", ...banks.diagnostics },
+          { query: "cdfi", ...cdfis.diagnostics }
+        );
+        creditUnionNote = `For credit unions, visit the NCUA Credit Union Locator at https://mapping.ncua.gov`;
+        return [...banks.results, ...cdfis.results];
       }
     };
 
-    results = await search();
+    let results = await doSearch(cleanCity);
+    let broadened = false;
 
-    // Broaden to statewide if city search returned nothing
     if (results.length === 0 && cleanCity) {
       broadened = true;
-      if (lenderType === "credit_union") {
-        results = await searchNCUA(stateAbbr);
-      } else if (lenderType === "cdfi") {
-        results = await searchFDIC(stateAbbr, undefined, "SPECGRP:5", "CDFI");
-      } else if (lenderType === "community_bank") {
-        results = await searchFDIC(stateAbbr);
-      } else {
-        const [cus, banks, cdfis] = await Promise.all([
-          searchNCUA(stateAbbr),
-          searchFDIC(stateAbbr),
-          searchFDIC(stateAbbr, undefined, "SPECGRP:5", "CDFI"),
-        ]);
-        results = [...cus, ...banks, ...cdfis];
-      }
+      results = await doSearch(undefined);
     }
 
     // Deduplicate by name
@@ -198,21 +243,19 @@ serve(async (req) => {
       return true;
     });
 
-    return new Response(JSON.stringify({
+    return respond({
       results,
       broadened,
       searchedCity: cleanCity || null,
       count: results.length,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      creditUnionNote,
+      diagnostics: allDiagnostics,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Search local lenders error:", error);
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : "Search failed",
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return respond({
+      error: error.message || "Search failed",
+      diagnostics: { error_stage: "request_parsing", message: error.message },
+    }, 500);
   }
 });

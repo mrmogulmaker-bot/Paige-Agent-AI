@@ -66,7 +66,7 @@ export function RegionalLenderSearch({ userState, userCity }: { userState?: stri
 
       if (response.error) throw new Error("Search temporarily unavailable — please try again or visit ncua.gov to find local credit unions directly.");
       if (response.data?.error) throw new Error(response.data.error);
-      return response.data as { results: LenderResult[]; broadened: boolean; searchedCity: string | null; count: number };
+      return response.data as { results: LenderResult[]; broadened: boolean; searchedCity: string | null; count: number; creditUnionNote?: string | null };
     },
     enabled: !!searchKey,
     retry: 1,
@@ -88,7 +88,7 @@ export function RegionalLenderSearch({ userState, userCity }: { userState?: stri
         <h2 className="text-lg font-bold text-foreground">Find Local Lenders</h2>
       </div>
       <p className="text-sm text-muted-foreground mb-4">
-        Search real NCUA and FDIC databases for community banks, credit unions, and CDFIs in your area.
+        Search the FDIC database for community banks and CDFIs in your area.
       </p>
 
       <div className="flex flex-wrap gap-3 mb-4">
@@ -149,6 +149,19 @@ export function RegionalLenderSearch({ userState, userCity }: { userState?: stri
           <Info className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
           <p className="text-xs text-muted-foreground">
             No results found in <span className="font-medium text-foreground">{data.searchedCity}</span> — showing statewide results.
+          </p>
+        </div>
+      )}
+
+      {/* Credit union note */}
+      {data?.creditUnionNote && (
+        <div className="flex items-start gap-2 p-3 rounded-lg bg-accent/10 border border-accent/20 mb-3">
+          <Landmark className="w-4 h-4 text-accent mt-0.5 shrink-0" />
+          <p className="text-xs text-muted-foreground">
+            Credit unions are not in the FDIC database.{" "}
+            <a href="https://mapping.ncua.gov" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline font-medium">
+              Search the NCUA Credit Union Locator →
+            </a>
           </p>
         </div>
       )}
