@@ -64,6 +64,12 @@ const LISTINGS: ListingItem[] = [
     createUrl: "https://facebook.com/pages/creation",
   },
   {
+    key: "listyourself", label: "ListYourself.net",
+    urlField: "listyourself_url", nameField: "listyourself_name_match", addressField: "listyourself_address_match", phoneField: "listyourself_phone_match",
+    createUrl: "https://www.listyourself.net",
+    note: "ListYourself.net feeds data into LexisNexis and other business identity verification services that lenders use when underwriting business applications. A listing here with your exact legal business name, registered address, and dedicated business phone number strengthens your business identity footprint and improves your chances of passing automated verification checks.",
+  },
+  {
     key: "other1", label: "Other Listing 1",
     urlField: "other1_url", nameField: "other1_name_match", addressField: "other1_address_match", phoneField: "other1_phone_match",
   },
