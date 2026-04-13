@@ -248,6 +248,36 @@ export function PublicPresenceSection({ businessId, userId, onCompletionChange }
         </CardContent>
       </Card>
 
+      {/* Resource: ListYourself.net */}
+      <Card className="border-accent/30 bg-accent/5">
+        <CardContent className="py-4">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Globe className="w-4 h-4 text-accent-foreground" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
+                Set Up Your Public Presence with ListYourself.net
+                <Badge variant="outline" className="text-[10px]">Recommended</Badge>
+              </h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                ListYourself.net feeds data into LexisNexis and other business identity verification services that lenders use when underwriting business applications. A listing here with your exact legal business name, registered address, and dedicated business phone number strengthens your business identity footprint and improves your chances of passing automated verification checks.
+              </p>
+              <a
+                href="https://www.listyourself.net"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button size="sm" variant="outline" className="gap-1.5">
+                  <ExternalLink className="w-3 h-3" />
+                  Go to ListYourself.net
+                </Button>
+              </a>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Section 2: Checklist */}
       <Card>
         <CardHeader className="pb-3">
