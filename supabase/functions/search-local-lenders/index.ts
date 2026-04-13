@@ -191,12 +191,17 @@ serve(async (req) => {
     const cleanCity = city?.trim() || undefined;
     const allDiagnostics: any[] = [];
 
-    // All searches go through FDIC — no NCUA dependency
-    // SPECGRP codes: 5 = CDFI-like, 6 = savings/credit-union-like, others = commercial banks
+    // FDIC tracks banks only — credit unions are NCUA-regulated and not in FDIC data.
+    // For credit union searches, we return a note with a direct NCUA locator link.
+    let creditUnionNote: string | null = null;
+
     const doSearch = async (c?: string) => {
       if (lenderType === "credit_union") {
-        const r = await queryFDIC(stateAbbr, c, "SPECGRP:6", "Credit Union");
-        allDiagnostics.push({ query: "credit_union", ...r.diagnostics });
+        // FDIC doesn't track credit unions — direct user to NCUA locator
+        creditUnionNote = `Credit unions are regulated by the NCUA, not the FDIC. Use the NCUA Credit Union Locator at https://mapping.ncua.gov to search for credit unions in ${stateAbbr}.`;
+        // Also return savings institutions from FDIC as related results
+        const r = await queryFDIC(stateAbbr, c, "SPECGRP:2", "Community Bank");
+        allDiagnostics.push({ query: "savings_institutions", ...r.diagnostics });
         return r.results;
       } else if (lenderType === "cdfi") {
         const r = await queryFDIC(stateAbbr, c, "SPECGRP:5", "CDFI");
@@ -207,18 +212,17 @@ serve(async (req) => {
         allDiagnostics.push({ query: "community_bank", ...r.diagnostics });
         return r.results;
       } else {
-        // All types — parallel
-        const [banks, cus, cdfis] = await Promise.all([
+        // All types — parallel (banks + CDFIs from FDIC)
+        const [banks, cdfis] = await Promise.all([
           queryFDIC(stateAbbr, c, undefined, "Community Bank"),
-          queryFDIC(stateAbbr, c, "SPECGRP:6", "Credit Union"),
           queryFDIC(stateAbbr, c, "SPECGRP:5", "CDFI"),
         ]);
         allDiagnostics.push(
           { query: "community_bank", ...banks.diagnostics },
-          { query: "credit_union", ...cus.diagnostics },
           { query: "cdfi", ...cdfis.diagnostics }
         );
-        return [...banks.results, ...cus.results, ...cdfis.results];
+        creditUnionNote = `For credit unions, visit the NCUA Credit Union Locator at https://mapping.ncua.gov`;
+        return [...banks.results, ...cdfis.results];
       }
     };
 
