@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { countUniqueNegativeAccounts } from "@/lib/deduplicateNegatives";
+import { countUniqueNegativeAccounts, deduplicateNegativeItems } from "@/lib/deduplicateNegatives";
 
 export interface ClientChatContext {
   contextBlock: string;
@@ -111,9 +111,9 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
 
         // --- Active negatives ---
         const negFilter = clientId
-          ? supabase.from("credit_negative_items").select("creditor_name, amount, bureau, item_type, status").eq("client_id", clientId).neq("status", "removed")
+          ? supabase.from("credit_negative_items").select("creditor_name, account_number_masked, amount, bureau, item_type, status").eq("client_id", clientId).neq("status", "removed")
           : resolvedUserId
-            ? supabase.from("credit_negative_items").select("creditor_name, amount, bureau, item_type, status").eq("user_id", resolvedUserId).neq("status", "removed")
+            ? supabase.from("credit_negative_items").select("creditor_name, account_number_masked, amount, bureau, item_type, status").eq("user_id", resolvedUserId).neq("status", "removed")
             : null;
 
         if (negFilter) {
@@ -121,7 +121,28 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           if (negatives && negatives.length > 0) {
             const uniqueCount = countUniqueNegativeAccounts(negatives);
             const totalBureauRecords = negatives.length;
-            parts.push(`Active Negatives: ${uniqueCount} unique accounts across ${totalBureauRecords} bureau records`);
+            parts.push(`Active Negatives: ${uniqueCount} unique accounts (${totalBureauRecords} bureau records total — same account may appear on multiple bureaus)`);
+
+            // Charge-off specific deduplication
+            const chargeOffRecords = negatives.filter(n => {
+              const t = (n.item_type || "").toLowerCase();
+              return t.includes("charge") || t.includes("chargeoff") || t.includes("bad debt") || t.includes("write off") || t.includes("written off");
+            });
+            if (chargeOffRecords.length > 0) {
+              const uniqueChargeOffs = deduplicateNegativeItems(chargeOffRecords);
+              parts.push(`Charge-Offs: ${uniqueChargeOffs.length} unique accounts (${chargeOffRecords.length} bureau records)`);
+            }
+
+            // Collections specific deduplication
+            const collectionRecords = negatives.filter(n => {
+              const t = (n.item_type || "").toLowerCase();
+              return t.includes("collection");
+            });
+            if (collectionRecords.length > 0) {
+              const uniqueCollections = deduplicateNegativeItems(collectionRecords);
+              parts.push(`Collections: ${uniqueCollections.length} unique accounts (${collectionRecords.length} bureau records)`);
+            }
+
             const sorted = [...negatives].sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 3);
             const topItems = sorted.map(n => `${n.creditor_name || "Unknown"} ($${n.amount?.toLocaleString() ?? "N/A"}, ${n.bureau}, ${n.item_type})`).join(" | ");
             parts.push(`Top items: ${topItems}`);
