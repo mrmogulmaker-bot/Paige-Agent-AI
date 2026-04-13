@@ -2923,6 +2923,60 @@ export type Database = {
         }
         Relationships: []
       }
+      lender_bureau_preferences: {
+        Row: {
+          confidence_level: string
+          confidence_source: string
+          created_at: string
+          fdic_cert: string | null
+          geographic_scope: string
+          id: string
+          institution_name: string
+          institution_type: string
+          ncua_charter: string | null
+          notes: string | null
+          primary_bureau: string
+          secondary_bureau: string | null
+          states_applicable: string[] | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          confidence_level?: string
+          confidence_source?: string
+          created_at?: string
+          fdic_cert?: string | null
+          geographic_scope?: string
+          id?: string
+          institution_name: string
+          institution_type?: string
+          ncua_charter?: string | null
+          notes?: string | null
+          primary_bureau?: string
+          secondary_bureau?: string | null
+          states_applicable?: string[] | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          confidence_level?: string
+          confidence_source?: string
+          created_at?: string
+          fdic_cert?: string | null
+          geographic_scope?: string
+          id?: string
+          institution_name?: string
+          institution_type?: string
+          ncua_charter?: string | null
+          notes?: string | null
+          primary_bureau?: string
+          secondary_bureau?: string | null
+          states_applicable?: string[] | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       lender_products: {
         Row: {
           affiliate_commission_pct: number | null
