@@ -366,6 +366,10 @@ export type Database = {
           linkedin_name_match: boolean | null
           linkedin_phone_match: boolean | null
           linkedin_url: string | null
+          listyourself_address_match: boolean | null
+          listyourself_name_match: boolean | null
+          listyourself_phone_match: boolean | null
+          listyourself_url: string | null
           official_address: string | null
           official_name: string | null
           official_phone: string | null
@@ -410,6 +414,10 @@ export type Database = {
           linkedin_name_match?: boolean | null
           linkedin_phone_match?: boolean | null
           linkedin_url?: string | null
+          listyourself_address_match?: boolean | null
+          listyourself_name_match?: boolean | null
+          listyourself_phone_match?: boolean | null
+          listyourself_url?: string | null
           official_address?: string | null
           official_name?: string | null
           official_phone?: string | null
@@ -454,6 +462,10 @@ export type Database = {
           linkedin_name_match?: boolean | null
           linkedin_phone_match?: boolean | null
           linkedin_url?: string | null
+          listyourself_address_match?: boolean | null
+          listyourself_name_match?: boolean | null
+          listyourself_phone_match?: boolean | null
+          listyourself_url?: string | null
           official_address?: string | null
           official_name?: string | null
           official_phone?: string | null
