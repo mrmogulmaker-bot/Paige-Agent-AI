@@ -66,7 +66,7 @@ export function RegionalLenderSearch({ userState, userCity }: { userState?: stri
 
       if (response.error) throw new Error("Search temporarily unavailable — please try again or visit ncua.gov to find local credit unions directly.");
       if (response.data?.error) throw new Error(response.data.error);
-      return response.data as { results: LenderResult[]; broadened: boolean; searchedCity: string | null; count: number };
+      return response.data as { results: LenderResult[]; broadened: boolean; searchedCity: string | null; count: number; creditUnionNote?: string | null };
     },
     enabled: !!searchKey,
     retry: 1,
