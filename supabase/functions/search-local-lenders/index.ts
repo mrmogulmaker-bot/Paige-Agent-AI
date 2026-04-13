@@ -248,6 +248,7 @@ serve(async (req) => {
       broadened,
       searchedCity: cleanCity || null,
       count: results.length,
+      creditUnionNote,
       diagnostics: allDiagnostics,
     });
   } catch (error: any) {
