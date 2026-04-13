@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,6 +18,13 @@ interface LenderResult {
   website: string;
   referenceId: string;
   source: "FDIC";
+  bureauPreference?: {
+    primary_bureau: string;
+    secondary_bureau: string | null;
+    confidence_level: string;
+    confidence_source: string;
+    notes: string | null;
+  } | null;
 }
 
 const STATE_ABBR: Record<string, string> = {
@@ -70,38 +78,18 @@ async function queryFDIC(
     const bodyText = await resp.text();
 
     if (!resp.ok) {
-      console.error(`FDIC API error [${resp.status}] for ${requestedUrl}: ${bodyText.slice(0, 500)}`);
       return {
         results: [],
-        diagnostics: {
-          url: requestedUrl,
-          status: resp.status,
-          error: `FDIC returned HTTP ${resp.status}`,
-          bodyPreview: bodyText.slice(0, 300),
-          elapsed_ms: elapsed,
-        },
+        diagnostics: { url: requestedUrl, status: resp.status, error: `FDIC returned HTTP ${resp.status}`, elapsed_ms: elapsed },
       };
     }
 
     let data: any;
-    try {
-      data = JSON.parse(bodyText);
-    } catch {
-      console.error(`FDIC returned non-JSON for ${requestedUrl}: ${bodyText.slice(0, 200)}`);
-      return {
-        results: [],
-        diagnostics: {
-          url: requestedUrl,
-          status: resp.status,
-          error: "FDIC returned non-JSON response",
-          bodyPreview: bodyText.slice(0, 300),
-          elapsed_ms: elapsed,
-        },
-      };
+    try { data = JSON.parse(bodyText); } catch {
+      return { results: [], diagnostics: { url: requestedUrl, status: resp.status, error: "Non-JSON response", elapsed_ms: elapsed } };
     }
 
     const institutions = data?.data || [];
-
     const results: LenderResult[] = institutions.map((inst: any) => {
       const d = inst.data || inst;
       return {
@@ -114,32 +102,21 @@ async function queryFDIC(
         website: d.WEBADDR || "",
         referenceId: String(d.CERT || ""),
         source: "FDIC" as const,
+        bureauPreference: null,
       };
     });
 
-    return {
-      results,
-      diagnostics: {
-        url: requestedUrl,
-        status: 200,
-        total: data?.meta?.total || results.length,
-        returned: results.length,
-        elapsed_ms: elapsed,
-      },
-    };
+    return { results, diagnostics: { url: requestedUrl, status: 200, total: data?.meta?.total || results.length, returned: results.length, elapsed_ms: elapsed } };
   } catch (e: any) {
-    const elapsed = Date.now() - startTime;
-    console.error(`FDIC fetch error for ${requestedUrl}:`, e);
-    return {
-      results: [],
-      diagnostics: {
-        url: requestedUrl,
-        error: e.message || String(e),
-        error_code: e.code || null,
-        elapsed_ms: elapsed,
-      },
-    };
+    return { results: [], diagnostics: { url: requestedUrl, error: e.message, elapsed_ms: Date.now() - startTime } };
   }
+}
+
+function fuzzyMatch(a: string, b: string): boolean {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const na = normalize(a);
+  const nb = normalize(b);
+  return na.includes(nb) || nb.includes(na);
 }
 
 serve(async (req) => {
@@ -148,58 +125,35 @@ serve(async (req) => {
   }
 
   const respond = (body: any, status = 200) =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   try {
     const body = await req.json();
 
-    // Test endpoint: hardcoded Atlanta GA query to verify FDIC connectivity
+    // Test endpoint
     if (body.test === true) {
       const testUrl = `${FDIC_BASE}?filters=STALP%3A%22GA%22%20AND%20CITY%3A%22Atlanta%22%20AND%20ACTIVE%3A1&fields=NAME,CITY,STALP,ADDRESS,ZIP,CERT,WEBADDR&limit=5&sort_by=NAME&sort_order=ASC`;
       const start = Date.now();
       try {
         const resp = await fetch(testUrl);
         const text = await resp.text();
-        return respond({
-          test: true,
-          url: testUrl,
-          status: resp.status,
-          elapsed_ms: Date.now() - start,
-          body: text.slice(0, 2000),
-        });
+        return respond({ test: true, url: testUrl, status: resp.status, elapsed_ms: Date.now() - start, body: text.slice(0, 2000) });
       } catch (e: any) {
-        return respond({
-          test: true,
-          url: testUrl,
-          error: e.message,
-          error_code: e.code || null,
-          elapsed_ms: Date.now() - start,
-        });
+        return respond({ test: true, url: testUrl, error: e.message, elapsed_ms: Date.now() - start });
       }
     }
 
     const { state, city, lenderType } = body;
-
-    if (!state) {
-      return respond({ error: "State is required" }, 400);
-    }
+    if (!state) return respond({ error: "State is required" }, 400);
 
     const stateAbbr = resolveStateAbbr(state);
     const cleanCity = city?.trim() || undefined;
     const allDiagnostics: any[] = [];
-
-    // FDIC tracks banks only — credit unions are NCUA-regulated and not in FDIC data.
-    // For credit union searches, we return a note with a direct NCUA locator link.
     let creditUnionNote: string | null = null;
 
     const doSearch = async (c?: string) => {
       if (lenderType === "credit_union") {
-        // FDIC doesn't track credit unions — direct user to NCUA locator
         creditUnionNote = `Credit unions are regulated by the NCUA, not the FDIC. Use the NCUA Credit Union Locator at https://mapping.ncua.gov to search for credit unions in ${stateAbbr}.`;
-        // Also return savings institutions from FDIC as related results
         const r = await queryFDIC(stateAbbr, c, "SPECGRP:2", "Community Bank");
         allDiagnostics.push({ query: "savings_institutions", ...r.diagnostics });
         return r.results;
@@ -212,15 +166,11 @@ serve(async (req) => {
         allDiagnostics.push({ query: "community_bank", ...r.diagnostics });
         return r.results;
       } else {
-        // All types — parallel (banks + CDFIs from FDIC)
         const [banks, cdfis] = await Promise.all([
           queryFDIC(stateAbbr, c, undefined, "Community Bank"),
           queryFDIC(stateAbbr, c, "SPECGRP:5", "CDFI"),
         ]);
-        allDiagnostics.push(
-          { query: "community_bank", ...banks.diagnostics },
-          { query: "cdfi", ...cdfis.diagnostics }
-        );
+        allDiagnostics.push({ query: "community_bank", ...banks.diagnostics }, { query: "cdfi", ...cdfis.diagnostics });
         creditUnionNote = `For credit unions, visit the NCUA Credit Union Locator at https://mapping.ncua.gov`;
         return [...banks.results, ...cdfis.results];
       }
@@ -243,6 +193,52 @@ serve(async (req) => {
       return true;
     });
 
+    // Enrich with bureau preferences from the database
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const sb = createClient(supabaseUrl, serviceKey);
+
+      const { data: prefs } = await sb
+        .from("lender_bureau_preferences")
+        .select("institution_name, fdic_cert, primary_bureau, secondary_bureau, confidence_level, confidence_source, notes");
+
+      if (prefs && prefs.length > 0) {
+        for (const result of results) {
+          // 1. Try exact FDIC cert match
+          const certMatch = result.referenceId
+            ? prefs.find((p: any) => p.fdic_cert && p.fdic_cert === result.referenceId)
+            : null;
+
+          if (certMatch) {
+            result.bureauPreference = {
+              primary_bureau: certMatch.primary_bureau,
+              secondary_bureau: certMatch.secondary_bureau,
+              confidence_level: certMatch.confidence_level,
+              confidence_source: certMatch.confidence_source,
+              notes: certMatch.notes,
+            };
+            continue;
+          }
+
+          // 2. Try fuzzy name match
+          const nameMatch = prefs.find((p: any) => fuzzyMatch(result.name, p.institution_name));
+          if (nameMatch) {
+            result.bureauPreference = {
+              primary_bureau: nameMatch.primary_bureau,
+              secondary_bureau: nameMatch.secondary_bureau,
+              confidence_level: nameMatch.confidence_level,
+              confidence_source: nameMatch.confidence_source,
+              notes: nameMatch.notes,
+            };
+          }
+          // If no match, bureauPreference stays null
+        }
+      }
+    } catch (enrichErr: any) {
+      console.error("Bureau preference enrichment failed (non-fatal):", enrichErr.message);
+    }
+
     return respond({
       results,
       broadened,
@@ -253,9 +249,6 @@ serve(async (req) => {
     });
   } catch (error: any) {
     console.error("Search local lenders error:", error);
-    return respond({
-      error: error.message || "Search failed",
-      diagnostics: { error_stage: "request_parsing", message: error.message },
-    }, 500);
+    return respond({ error: error.message || "Search failed" }, 500);
   }
 });

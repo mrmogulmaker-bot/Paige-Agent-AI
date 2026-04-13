@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Search, Building2, Info, Globe, AlertCircle, Landmark, Loader2 } from "lucide-react";
+import { MapPin, Search, Building2, Info, Globe, AlertCircle, Landmark, Loader2, ShieldCheck, ShieldAlert, HelpCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 
@@ -20,6 +20,14 @@ const US_STATES = [
   "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"
 ];
 
+interface BureauPreference {
+  primary_bureau: string;
+  secondary_bureau: string | null;
+  confidence_level: string;
+  confidence_source: string;
+  notes: string | null;
+}
+
 interface LenderResult {
   name: string;
   type: "Credit Union" | "Community Bank" | "CDFI";
@@ -29,7 +37,14 @@ interface LenderResult {
   zip: string;
   website: string;
   referenceId: string;
-  source: "NCUA" | "FDIC";
+  source: "FDIC";
+  bureauPreference?: BureauPreference | null;
+}
+
+interface BureauScores {
+  tu: number | null;
+  ex: number | null;
+  eq: number | null;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -44,26 +59,103 @@ const TYPE_ICONS: Record<string, typeof Building2> = {
   CDFI: Building2,
 };
 
-export function RegionalLenderSearch({ userState, userCity }: { userState?: string; userCity?: string }) {
+const BUREAU_LABELS: Record<string, string> = {
+  experian: "Experian",
+  transunion: "TransUnion",
+  equifax: "Equifax",
+  all_three: "All Three Bureaus",
+  flexible: "Varies by Product",
+};
+
+const CONFIDENCE_COLORS: Record<string, string> = {
+  verified: "text-emerald-400",
+  likely: "text-amber-400",
+  reported: "text-blue-400",
+};
+
+function getScoreForBureau(bureau: string, scores: BureauScores): number | null {
+  if (bureau === "experian") return scores.ex;
+  if (bureau === "transunion") return scores.tu;
+  if (bureau === "equifax") return scores.eq;
+  return null;
+}
+
+function getStrongestBureau(scores: BureauScores): { bureau: string; score: number } | null {
+  const entries = [
+    { bureau: "experian", score: scores.ex },
+    { bureau: "transunion", score: scores.tu },
+    { bureau: "equifax", score: scores.eq },
+  ].filter((e) => e.score != null) as { bureau: string; score: number }[];
+  if (entries.length === 0) return null;
+  return entries.reduce((a, b) => (a.score >= b.score ? a : b));
+}
+
+const GENERAL_MIN_THRESHOLD = 620;
+
+function StrategicNote({ bureauPref, scores }: { bureauPref: BureauPreference; scores: BureauScores }) {
+  const bureau = bureauPref.primary_bureau;
+  if (bureau === "all_three" || bureau === "flexible") return null;
+
+  const score = getScoreForBureau(bureau, scores);
+  if (score == null) return null;
+
+  const strongest = getStrongestBureau(scores);
+  const bureauLabel = BUREAU_LABELS[bureau] || bureau;
+  const diff = score - GENERAL_MIN_THRESHOLD;
+
+  if (diff < 0) {
+    return (
+      <div className="flex items-start gap-2 mt-2 p-2 rounded bg-amber-500/10 border border-amber-500/20">
+        <ShieldAlert className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+        <p className="text-xs text-muted-foreground">
+          This institution pulls <span className="font-medium text-foreground">{bureauLabel}</span> where your score is{" "}
+          <span className="font-medium text-amber-400">{score}</span> — {Math.abs(diff)} points below estimated minimum.
+          Consider resolving {bureauLabel} items first before applying.
+        </p>
+      </div>
+    );
+  }
+
+  const isStrongest = strongest && strongest.bureau === bureau;
+  if (isStrongest) {
+    return (
+      <div className="flex items-start gap-2 mt-2 p-2 rounded bg-emerald-500/10 border border-emerald-500/20">
+        <ShieldCheck className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
+        <p className="text-xs text-muted-foreground">
+          This institution pulls <span className="font-medium text-foreground">{bureauLabel}</span> where your score is{" "}
+          <span className="font-medium text-emerald-400">{score}</span> — your strongest bureau. This may be a strong fit for your current profile.
+        </p>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+export function RegionalLenderSearch({
+  userState,
+  userCity,
+  bureauScores,
+}: {
+  userState?: string;
+  userCity?: string;
+  bureauScores?: BureauScores;
+}) {
   const [state, setState] = useState(userState || "");
   const [city, setCity] = useState(userCity || "");
   const [lenderType, setLenderType] = useState("");
   const [searchKey, setSearchKey] = useState<string | null>(null);
+
+  const scores: BureauScores = bureauScores || { tu: null, ex: null, eq: null };
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["local-lenders", searchKey],
     queryFn: async () => {
       if (!searchKey) return null;
       const params = JSON.parse(searchKey);
-
       const response = await supabase.functions.invoke("search-local-lenders", {
-        body: {
-          state: params.state,
-          city: params.city || undefined,
-          lenderType: params.lenderType || "all",
-        },
+        body: { state: params.state, city: params.city || undefined, lenderType: params.lenderType || "all" },
       });
-
       if (response.error) throw new Error("Search temporarily unavailable — please try again or visit ncua.gov to find local credit unions directly.");
       if (response.data?.error) throw new Error(response.data.error);
       return response.data as { results: LenderResult[]; broadened: boolean; searchedCity: string | null; count: number; creditUnionNote?: string | null };
@@ -115,27 +207,21 @@ export function RegionalLenderSearch({ userState, userCity }: { userState?: stri
           </SelectContent>
         </Select>
 
-        <Button
-          onClick={handleSearch}
-          disabled={!state || isLoading}
-          className="bg-gradient-gold hover:opacity-90"
-        >
+        <Button onClick={handleSearch} disabled={!state || isLoading} className="bg-gradient-gold hover:opacity-90">
           {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
           Search
         </Button>
       </div>
 
-      {/* Error state */}
       {error && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30 mb-4">
           <AlertCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
           <p className="text-sm text-destructive">
-            {error instanceof Error ? error.message : "Search temporarily unavailable — please try again or visit ncua.gov to find local credit unions directly."}
+            {error instanceof Error ? error.message : "Search temporarily unavailable."}
           </p>
         </div>
       )}
 
-      {/* Loading */}
       {isLoading && (
         <div className="flex items-center justify-center gap-2 py-8">
           <Loader2 className="w-5 h-5 animate-spin text-accent" />
@@ -143,7 +229,6 @@ export function RegionalLenderSearch({ userState, userCity }: { userState?: stri
         </div>
       )}
 
-      {/* Broadened notice */}
       {broadened && data?.searchedCity && results.length > 0 && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 mb-3">
           <Info className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
@@ -153,7 +238,6 @@ export function RegionalLenderSearch({ userState, userCity }: { userState?: stri
         </div>
       )}
 
-      {/* Credit union note */}
       {data?.creditUnionNote && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-accent/10 border border-accent/20 mb-3">
           <Landmark className="w-4 h-4 text-accent mt-0.5 shrink-0" />
@@ -166,68 +250,84 @@ export function RegionalLenderSearch({ userState, userCity }: { userState?: stri
         </div>
       )}
 
-      {/* Results */}
       {results.length > 0 && (
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">
             {results.length} institution{results.length !== 1 ? "s" : ""} found
-            <span className="ml-1 text-muted-foreground/60">
-              · Source: {[...new Set(results.map(r => r.source))].join(" & ")}
-            </span>
+            <span className="ml-1 text-muted-foreground/60">· Source: FDIC</span>
           </p>
           {results.map((lender, i) => {
             const Icon = TYPE_ICONS[lender.type] || Building2;
             const colorClass = TYPE_COLORS[lender.type] || "";
-            const fullAddress = [lender.address, lender.city, `${lender.state} ${lender.zip}`]
-              .filter(Boolean)
-              .join(", ");
+            const fullAddress = [lender.address, lender.city, `${lender.state} ${lender.zip}`].filter(Boolean).join(", ");
+            const bp = lender.bureauPreference;
 
             return (
-              <div key={`${lender.referenceId}-${i}`} className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 border border-border">
-                <Icon className="w-5 h-5 text-accent mt-0.5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-foreground">{lender.name}</span>
-                    <Badge variant="outline" className={`text-xs ${colorClass}`}>
-                      {lender.type}
-                    </Badge>
-                  </div>
-                  {fullAddress && (
-                    <p className="text-xs text-muted-foreground mt-1">{fullAddress}</p>
-                  )}
-                  <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                    {lender.website && (
-                      <a
-                        href={lender.website.startsWith("http") ? lender.website : `https://${lender.website}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
-                      >
-                        <Globe className="w-3 h-3" />
-                        Website
-                      </a>
+              <div key={`${lender.referenceId}-${i}`} className="p-3 rounded-lg bg-muted/30 border border-border">
+                <div className="flex items-start gap-3">
+                  <Icon className="w-5 h-5 text-accent mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-foreground">{lender.name}</span>
+                      <Badge variant="outline" className={`text-xs ${colorClass}`}>{lender.type}</Badge>
+                    </div>
+                    {fullAddress && <p className="text-xs text-muted-foreground mt-1">{fullAddress}</p>}
+
+                    {/* Bureau preference display */}
+                    {bp ? (
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <span className="text-xs text-muted-foreground">
+                          Typically pulls:{" "}
+                          <span className="font-medium text-foreground">{BUREAU_LABELS[bp.primary_bureau] || bp.primary_bureau}</span>
+                        </span>
+                        <span className="text-xs text-muted-foreground/60">·</span>
+                        <span className={`text-xs font-medium ${CONFIDENCE_COLORS[bp.confidence_level] || "text-muted-foreground"}`}>
+                          {bp.confidence_level === "verified" ? "Verified" : bp.confidence_level === "likely" ? "Likely" : "Reported by clients"}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <HelpCircle className="w-3 h-3 text-muted-foreground/50" />
+                        <span className="text-xs text-muted-foreground/70 italic">
+                          Bureau preference not yet documented — verify with your PME advisor or confirm after application.
+                        </span>
+                      </div>
                     )}
-                    {lender.referenceId && (
-                      <span className="text-xs text-muted-foreground/60">
-                        {lender.source === "NCUA" ? "Charter" : "CERT"} #{lender.referenceId}
-                      </span>
-                    )}
+
+                    <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                      {lender.website && (
+                        <a
+                          href={lender.website.startsWith("http") ? lender.website : `https://${lender.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                        >
+                          <Globe className="w-3 h-3" /> Website
+                        </a>
+                      )}
+                      {lender.referenceId && (
+                        <span className="text-xs text-muted-foreground/60">CERT #{lender.referenceId}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {/* Strategic score comparison */}
+                {bp && (scores.tu != null || scores.ex != null || scores.eq != null) && (
+                  <StrategicNote bureauPref={bp} scores={scores} />
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* No results */}
       {data && results.length === 0 && !isLoading && !error && (
         <p className="text-sm text-muted-foreground text-center py-4">
           No institutions found for this search. Try broadening your criteria or selecting a different state.
         </p>
       )}
 
-      {/* Phase 2 note */}
       <div className="flex items-start gap-2 mt-4 p-3 rounded-lg bg-accent/5 border border-accent/20">
         <Info className="w-4 h-4 text-accent mt-0.5 shrink-0" />
         <p className="text-xs text-muted-foreground">
