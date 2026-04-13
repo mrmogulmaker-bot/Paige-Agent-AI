@@ -132,7 +132,7 @@ export function PublicPresenceSection({ businessId, userId, onCompletionChange }
 
   const calcCompletion = (d: PresenceRow) => {
     const complete = LISTINGS.filter(l => getStatus(l, d) === "complete").length;
-    onCompletionChange(Math.round((complete / 7) * 100));
+    onCompletionChange(Math.round((complete / 8) * 100));
   };
 
   const update = (field: string, value: any) => {
