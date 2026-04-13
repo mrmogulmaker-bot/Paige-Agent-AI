@@ -13,6 +13,7 @@ const DisputesManager = lazy(() => import("@/components/dashboard/DisputesManage
 const DisputeAnalytics = lazy(() => import("@/components/dashboard/admin/DisputeAnalytics").then(m => ({ default: m.DisputeAnalytics })));
 const FundingMatchAccuracy = lazy(() => import("@/components/dashboard/admin/FundingMatchAccuracy").then(m => ({ default: m.FundingMatchAccuracy })));
 const KnowledgeBaseReviewQueue = lazy(() => import("@/components/dashboard/admin/KnowledgeBaseReviewQueue").then(m => ({ default: m.KnowledgeBaseReviewQueue })));
+const LenderBureauManager = lazy(() => import("@/components/dashboard/admin/LenderBureauManager").then(m => ({ default: m.LenderBureauManager })));
 const FundingPortfolioView = lazy(() => import("@/components/dashboard/admin/FundingPortfolioView").then(m => ({ default: m.FundingPortfolioView })));
 const UserManagement = lazy(() => import("@/components/dashboard/UserManagement").then(m => ({ default: m.UserManagement })));
 const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformance").then(m => ({ default: m.UserPerformance })));
