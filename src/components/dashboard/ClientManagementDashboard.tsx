@@ -134,7 +134,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       // Remove existing roles
       await supabase.from("user_roles").delete().eq("user_id", userId);
       // Insert new role
-      const { error } = await supabase.from("user_roles").insert([{ user_id: userId, role: newRole }]);
+      const { error } = await supabase.from("user_roles").insert([{ user_id: userId, role: newRole as any }]);
       if (error) throw error;
       toast.success("Role updated successfully");
       fetchAllClients();
