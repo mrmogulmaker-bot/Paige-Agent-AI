@@ -86,11 +86,22 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       const isAdmin = roles.includes("admin");
 
       if (isAdmin) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed")
-          .order("created_at", { ascending: false });
-        setAuthClients((data || []) as AuthClient[]);
+        const [profilesRes, allRolesRes] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("user_roles")
+            .select("user_id, role"),
+        ]);
+
+        const allRoles = allRolesRes.data || [];
+        const enriched = (profilesRes.data || []).map((p: any) => ({
+          ...p,
+          roles: allRoles.filter((r: any) => r.user_id === p.user_id).map((r: any) => r.role),
+        }));
+        setAuthClients(enriched as AuthClient[]);
       }
     } catch (err) {
       console.error("Error loading clients:", err);
