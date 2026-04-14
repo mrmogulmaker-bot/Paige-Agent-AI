@@ -222,6 +222,7 @@ export default function CreditIntelligence() {
         <FundingTrack title="Personal Credit Build Products" icon="personal" matches={personalMatches} />
       )}
     </div>
+  );
 }
 
 function StatusIcon({ score }: { score: number }) {
