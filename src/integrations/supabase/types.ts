@@ -1392,6 +1392,78 @@ export type Database = {
           },
         ]
       }
+      credit_alerts: {
+        Row: {
+          alert_description: string
+          alert_severity: string
+          alert_title: string
+          alert_type: string
+          bureau: string | null
+          client_id: string
+          created_at: string
+          dismissed_at: string | null
+          dismissed_by: string | null
+          id: string
+          is_dismissed: boolean
+          is_read: boolean
+          new_value: string | null
+          previous_value: string | null
+          read_at: string | null
+          related_account_id: string | null
+        }
+        Insert: {
+          alert_description: string
+          alert_severity: string
+          alert_title: string
+          alert_type: string
+          bureau?: string | null
+          client_id: string
+          created_at?: string
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          id?: string
+          is_dismissed?: boolean
+          is_read?: boolean
+          new_value?: string | null
+          previous_value?: string | null
+          read_at?: string | null
+          related_account_id?: string | null
+        }
+        Update: {
+          alert_description?: string
+          alert_severity?: string
+          alert_title?: string
+          alert_type?: string
+          bureau?: string | null
+          client_id?: string
+          created_at?: string
+          dismissed_at?: string | null
+          dismissed_by?: string | null
+          id?: string
+          is_dismissed?: boolean
+          is_read?: boolean
+          new_value?: string | null
+          previous_value?: string | null
+          read_at?: string | null
+          related_account_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_alerts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "credit_alerts_dismissed_by_fkey"
+            columns: ["dismissed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       credit_factor_scores: {
         Row: {
           active_negatives: number | null
