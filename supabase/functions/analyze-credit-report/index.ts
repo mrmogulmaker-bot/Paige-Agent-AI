@@ -393,6 +393,58 @@ serve(async (req) => {
       });
     }
 
+    // Extract and store personal information
+    const personalInfo = analysisResult.personal_information;
+    if (personalInfo) {
+      const piRecords: any[] = [];
+      const targetUserId = upload.user_id;
+      const clientId = upload.client_id || null;
+
+      for (const name of (personalInfo.name_variations || [])) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "name", field_value: name.value, bureau_source: name.bureau_source || "unknown",
+        });
+      }
+      for (const addr of (personalInfo.addresses || [])) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "address", field_value: addr.value, bureau_source: addr.bureau_source || "unknown",
+          date_range: addr.date_range || null,
+        });
+      }
+      for (const emp of (personalInfo.employers || [])) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "employer", field_value: emp.value, bureau_source: emp.bureau_source || "unknown",
+          date_range: emp.date_range || null,
+        });
+      }
+      for (const phone of (personalInfo.phones || [])) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "phone", field_value: phone.value, bureau_source: phone.bureau_source || "unknown",
+        });
+      }
+      if (personalInfo.date_of_birth) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "dob", field_value: personalInfo.date_of_birth, bureau_source: "all_three",
+        });
+      }
+      if (personalInfo.ssn_variations_detected) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "ssn_variation", field_value: "Multiple SSN variations detected", bureau_source: "all_three",
+        });
+      }
+
+      if (piRecords.length > 0) {
+        const { error: piError } = await supabase.from("credit_report_personal_info").insert(piRecords);
+        if (piError) console.error("Failed to insert personal info:", piError);
+      }
+    }
+
     await supabase.from("audit_logs").insert({
       user_id: user.id,
       entity: "credit_report_upload",
@@ -406,6 +458,7 @@ serve(async (req) => {
         fraud_alerts_count: analysisResult.fraud_alerts?.length || 0,
         security_freezes_count: analysisResult.security_freezes?.length || 0,
         discrepancies_count: analysisResult.cross_bureau_discrepancies?.length || 0,
+        personal_info_count: personalInfo ? (personalInfo.name_variations?.length || 0) + (personalInfo.addresses?.length || 0) + (personalInfo.employers?.length || 0) + (personalInfo.phones?.length || 0) : 0,
         document_verification: analysisResult.document_verification,
       },
     });
