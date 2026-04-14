@@ -116,6 +116,19 @@ const BUREAU_META: Record<BureauKey, { label: string; accent: string; dot: strin
   equifax: { label: "Equifax", accent: "border-red-500/40", dot: "bg-red-500" },
 };
 
+/* Bureau source display helper */
+function formatBureauSource(bs: string): string {
+  const s = bs.toLowerCase().replace(/[\s-]/g, "_");
+  if (s === "all_three" || s === "all") return "All 3 Bureaus";
+  if (s === "experian_transunion") return "EX + TU";
+  if (s === "experian_equifax") return "EX + EQ";
+  if (s === "transunion_equifax") return "TU + EQ";
+  if (s.includes("experian")) return "Experian";
+  if (s.includes("transunion")) return "TransUnion";
+  if (s.includes("equifax")) return "Equifax";
+  return bs;
+}
+
 /* ─── Helpers ─── */
 function effectiveLimit(a: CreditAccount) {
   return a.credit_limit ?? a.limit_amount ?? 0;
@@ -926,12 +939,25 @@ function ComparableCreditPanel({ comparable, bureauLabel }: { comparable: Compar
   const active = comparable.filter(c => c.category === "active");
   const historical = comparable.filter(c => c.category === "historical");
 
+  // Check how many accounts have missing amounts
+  const missingAmountPct = comparable.length > 0
+    ? comparable.filter(c => c.amount === 0).length / comparable.length
+    : 0;
+
   return (
     <Card className="p-6 bg-card border-border">
       <h3 className="font-semibold text-foreground mb-1">
         Comparable Credit{bureauLabel ? ` — ${bureauLabel}` : ""}
       </h3>
       <p className="text-xs text-muted-foreground mb-4">Your comparable credit includes both open accounts and closed accounts paid in good standing. Personal credit uses a 3× multiplier for auto and installment loans.</p>
+
+      {missingAmountPct > 0.3 && (
+        <div className="rounded-md bg-amber-500/10 border border-amber-500/30 px-4 py-2.5 mb-4">
+          <p className="text-xs text-amber-300">
+            ⚠ Some account amounts need updating. Click <span className="font-semibold">Refresh Analysis</span> above to get accurate comparable credit projections.
+          </p>
+        </div>
+      )}
 
       {active.length > 0 && (
         <div className="mb-5">
@@ -943,10 +969,17 @@ function ComparableCreditPanel({ comparable, bureauLabel }: { comparable: Compar
                   <p className="text-sm font-medium text-foreground">{c.creditor}</p>
                   <p className="text-xs text-accent">{c.label}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{c.detail}</p>
+                  {!bureauLabel && c.bureauSource && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 mt-1">{formatBureauSource(c.bureauSource)}</Badge>
+                  )}
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}</p>
-                  {c.type !== "mortgage" && <p className="text-xs text-muted-foreground">Projected: up to ${c.projectedApproval.toLocaleString()}</p>}
+                  {c.amount > 0 ? (
+                    <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}{c.amountEstimated ? " (est.)" : ""}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">Re-analyze report to get amount</p>
+                  )}
+                  {c.amount > 0 && c.type !== "mortgage" && <p className="text-xs text-muted-foreground">Projected: up to ${c.projectedApproval.toLocaleString()}</p>}
                 </div>
               </div>
             ))}
@@ -965,13 +998,20 @@ function ComparableCreditPanel({ comparable, bureauLabel }: { comparable: Compar
                   <p className="text-sm font-medium text-foreground">{c.creditor}</p>
                   <p className="text-xs text-accent">{c.label}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{c.detail}</p>
+                  {!bureauLabel && c.bureauSource && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 mt-1">{formatBureauSource(c.bureauSource)}</Badge>
+                  )}
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}</p>
-                  {c.type !== "revolving" && c.type !== "mortgage" && c.type !== "student_loan" && (
+                  {c.amount > 0 ? (
+                    <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}{c.amountEstimated ? " (est.)" : ""}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">Re-analyze report to get amount</p>
+                  )}
+                  {c.amount > 0 && c.type !== "revolving" && c.type !== "mortgage" && c.type !== "student_loan" && (
                     <p className="text-xs text-muted-foreground">Projected: up to ${c.projectedApproval.toLocaleString()}</p>
                   )}
-                  {c.type === "revolving" && <p className="text-xs text-muted-foreground">Comparable limit: ${c.amount.toLocaleString()}</p>}
+                  {c.amount > 0 && c.type === "revolving" && <p className="text-xs text-muted-foreground">Comparable limit: ${c.amount.toLocaleString()}</p>}
                 </div>
               </div>
             ))}
