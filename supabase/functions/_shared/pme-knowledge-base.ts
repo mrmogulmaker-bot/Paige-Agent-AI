@@ -323,6 +323,8 @@ PME operates as an educational and infrastructure company, not a law firm, credi
 
 ## SECTION 9 — OPTIMAL PERSONAL CREDIT FILE STRUCTURE (10-ACCOUNT FRAMEWORK)
 
+The Credit File Health Assessment now provides bureau-specific analysis. Each bureau tab (Experian, TransUnion, Equifax) shows what that specific bureau sees: its score, negative items specific to that bureau, comparable credit visible to that bureau, and which lenders pull that bureau.
+
 The optimal personal credit file has 10 open accounts structured as follows. Use this as the assessment standard for every client gap analysis.
 
 **Account Type 1 — Primary Credit Cards (2–4):** Must be primary cardholder, not authorized user, with limits above $3,000 each. Fewer than 2 primary cards above $3,000 = incomplete revolving foundation.
