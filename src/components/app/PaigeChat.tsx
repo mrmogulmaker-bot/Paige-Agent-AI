@@ -432,12 +432,14 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
 
       {/* Voice status indicator */}
       {conversation.status === "connected" && (
-        <div className="px-4 pb-2 flex items-center justify-center gap-4 text-sm">
-          {conversation.isSpeaking ? (
-            <div className="flex items-center gap-2 text-primary"><Volume2 className="h-4 w-4 animate-pulse" /><span>Speaking...</span></div>
-          ) : (
-            <div className="flex items-center gap-2 text-primary"><div className="h-2 w-2 rounded-full bg-primary animate-pulse" /><span>Listening...</span></div>
-          )}
+        <div className="px-4 pb-2 space-y-2">
+          <div className="flex items-center justify-center gap-4 text-sm">
+            {conversation.isSpeaking ? (
+              <div className="flex items-center gap-2 text-primary"><Volume2 className="h-4 w-4 animate-pulse" /><span>Speaking...</span></div>
+            ) : (
+              <div className="flex items-center gap-2 text-primary"><div className="h-2 w-2 rounded-full bg-primary animate-pulse" /><span>Listening...</span></div>
+            )}
+          </div>
         </div>
       )}
 
@@ -447,15 +449,43 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         </div>
       )}
 
-      <div className="p-3 border-t border-border">
+      <div className="p-3 border-t border-border space-y-2">
+        {/* Text input during voice mode */}
+        {conversation.status === "connected" && (
+          <div className="space-y-1">
+            <p className="text-[10px] text-muted-foreground text-center">Voice active — type to send a text message instead</p>
+            <div className="flex gap-2 items-center">
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+                placeholder="Type to Paige while talking..."
+                className="flex-1 text-sm bg-muted/30 border-border/50"
+              />
+              <Button
+                onClick={() => handleSend()}
+                disabled={isLoading || !input.trim()}
+                className="bg-gradient-gold hover:opacity-90"
+                size="icon"
+              >
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2 items-center">
           <Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach credit report or financial document (PDF)">
             <Paperclip className="w-4 h-4" />
           </Button>
-          <Input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()} placeholder={attachedDoc ? "Add a message or send document..." : "Ask Paige anything..."} className="flex-1 text-sm" disabled={isLoading || conversation.status === "connected"} />
-          <Button onClick={() => handleSend()} disabled={isLoading || (!input.trim() && !attachedDoc) || conversation.status === "connected"} className="bg-gradient-gold hover:opacity-90" size="icon">
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </Button>
+          {conversation.status !== "connected" && (
+            <Input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()} placeholder={attachedDoc ? "Add a message or send document..." : "Ask Paige anything..."} className="flex-1 text-sm" disabled={isLoading} />
+          )}
+          {conversation.status !== "connected" && (
+            <Button onClick={() => handleSend()} disabled={isLoading || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90" size="icon">
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+          )}
           <Button onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat} variant={conversation.status === "connected" ? "destructive" : "secondary"} size="icon" title={conversation.status === "connected" ? "End voice chat" : "Start voice chat"}>
             {conversation.status === "connected" ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
           </Button>
