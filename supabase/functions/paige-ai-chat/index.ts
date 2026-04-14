@@ -1207,6 +1207,24 @@ async function runStructuredExtractionAndSync(
     if (clientId) memoryInsert.client_id = clientId;
     await supabase.from("client_memory").insert(memoryInsert);
 
+    // Step 5: Update the credit_report_uploads record if we created one
+    if (uploadRecordId) {
+      const bureauDetected = structured.bureau_detected || null;
+      await supabase.from("credit_report_uploads").update({
+        analysis_status: "completed",
+        report_type: structured.report_type || "consumer",
+        bureau_detected: bureauDetected,
+        analysis_result: structured,
+        negative_items_extracted: structured.negative_items || [],
+        positive_accounts_extracted: structured.positive_accounts || [],
+        profile_summary: structured.profile_summary || null,
+        estimated_score_impact: structured.estimated_total_score_impact || 0,
+        last_analyzed_at: new Date().toISOString(),
+        error_message: null,
+      }).eq("id", uploadRecordId);
+      console.log("[Paige] Updated credit_report_uploads record:", uploadRecordId);
+    }
+
     return {
       success: true,
       scores_synced: scores,
