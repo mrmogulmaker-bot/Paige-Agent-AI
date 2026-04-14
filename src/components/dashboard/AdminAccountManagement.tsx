@@ -673,10 +673,10 @@ export function AdminAccountManagement({ clientUserId, clientId, userRole }: Adm
                       if (!session) return;
                       await supabase.from("notifications").insert({
                         user_id: clientUserId,
-                        type: "duplicate_question",
+                        type: "system" as const,
                         title: "Are these the same account?",
                         message: `Your advisor wants to know: Are "${s.primary.creditor}" and "${s.duplicate.creditor}" the same account? Please confirm in your Account Manager.`,
-                        metadata: { primary_id: s.primary.id, duplicate_id: s.duplicate.id },
+                        metadata: { primary_id: s.primary.id, duplicate_id: s.duplicate.id } as any,
                       });
                       toast.success("Notification sent to client.");
                     }}>
