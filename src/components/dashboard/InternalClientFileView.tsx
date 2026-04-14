@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft, DollarSign, FileText, Mail, Brain, Upload,
-  AlertTriangle, User, Building2, Phone, AtSign, Save, Archive, ArchiveRestore, TrendingUp, ClipboardList
+  AlertTriangle, User, Building2, Phone, AtSign, Save, Archive, ArchiveRestore, TrendingUp, ClipboardList, Database
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
@@ -18,6 +18,7 @@ import { ClientMemoryTab } from "./ClientMemoryTab";
 import { DisputesManager } from "./DisputesManager";
 import { FundingApplicationLog } from "./FundingApplicationLog";
 import { ClientOutcomesTab } from "./ClientOutcomesTab";
+import { AdminAccountManagement } from "./AdminAccountManagement";
 import { toast } from "sonner";
 
 interface InternalClientFileViewProps {
@@ -191,6 +192,9 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           <TabsTrigger value="credit-reports" className="text-xs">
             <Upload className="w-3 h-3 mr-1" /> Credit Reports
           </TabsTrigger>
+          <TabsTrigger value="account-mgmt" className="text-xs">
+            <Database className="w-3 h-3 mr-1" /> Account Mgmt
+          </TabsTrigger>
           <TabsTrigger value="disputes" className="text-xs">
             <AlertTriangle className="w-3 h-3 mr-1" /> Disputes
             {disputeCount > 0 && <span className="ml-1 text-[10px] bg-primary/20 rounded-full px-1.5">{disputeCount}</span>}
@@ -332,7 +336,11 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           <ReportUploadTab clientUserId={effectiveUserId} />
         </TabsContent>
 
-        {/* Disputes */}
+        {/* Account Management */}
+        <TabsContent value="account-mgmt" className="mt-4">
+          <AdminAccountManagement clientUserId={effectiveUserId} clientId={clientId} userRole="admin" />
+        </TabsContent>
+
         <TabsContent value="disputes" className="mt-4">
           <DisputesManager clientId={clientId} />
         </TabsContent>

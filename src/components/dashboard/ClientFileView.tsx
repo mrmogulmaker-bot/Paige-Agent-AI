@@ -3,17 +3,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain, TrendingUp } from "lucide-react";
+import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain, TrendingUp, Database } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
 import { OutreachCenter } from "./OutreachCenter";
 import { PMEFundingReadiness } from "./PMEFundingReadiness";
 import { ClientMemoryTab } from "./ClientMemoryTab";
 import { ClientOutcomesTab } from "./ClientOutcomesTab";
+import { AdminAccountManagement } from "./AdminAccountManagement";
 
 interface ClientFileViewProps {
   clientUserId: string;
   onBack: () => void;
+  userRole?: "admin" | "coach";
 }
 
 interface ClientProfile {
@@ -29,7 +31,7 @@ interface ClientProfile {
   last_report_analyzed_at: string | null;
 }
 
-export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
+export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: ClientFileViewProps) {
   const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [activeTab, setActiveTab] = useState("credit-reports");
 
@@ -89,6 +91,9 @@ export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
           <TabsTrigger value="credit-reports" className="text-xs">
             <Upload className="w-3 h-3 mr-1" /> Credit Reports
           </TabsTrigger>
+          <TabsTrigger value="account-mgmt" className="text-xs">
+            <Database className="w-3 h-3 mr-1" /> Account Mgmt
+          </TabsTrigger>
           <TabsTrigger value="funding" className="text-xs">
             <DollarSign className="w-3 h-3 mr-1" /> Funding Readiness
           </TabsTrigger>
@@ -111,6 +116,10 @@ export function ClientFileView({ clientUserId, onBack }: ClientFileViewProps) {
 
         <TabsContent value="credit-reports" className="mt-4">
           <ReportUploadTab clientUserId={clientUserId} />
+        </TabsContent>
+
+        <TabsContent value="account-mgmt" className="mt-4">
+          <AdminAccountManagement clientUserId={clientUserId} userRole={userRole} />
         </TabsContent>
 
         <TabsContent value="funding" className="mt-4">
