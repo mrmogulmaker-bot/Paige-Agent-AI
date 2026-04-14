@@ -201,66 +201,6 @@ export default function CreditIntelligence() {
     factors.inquiry_score != null
   );
 
-  const factorCards = hasData
-    ? [
-        {
-          label: "Payment History",
-          weight: "35%",
-          score: factors.payment_history_score ?? 0,
-          details: [
-            `${factors.active_negatives ?? 0} active negatives`,
-            `${factors.removed_negatives ?? 0} removed`,
-            `${factors.total_negatives ?? 0} total tracked`,
-          ],
-          action: "Dispute negative items",
-        },
-        {
-          label: "Utilization",
-          weight: "30%",
-          score: factors.utilization_score ?? 0,
-          details: [
-            `${Math.round(factors.aggregate_utilization || 0)}% aggregate`,
-            `${factors.cards_over_30_pct ?? 0} cards over 30%`,
-            `${factors.cards_over_70_pct ?? 0} cards over 70%`,
-            `$${Number(factors.total_balance || 0).toLocaleString()} / $${Number(factors.total_credit_limit || 0).toLocaleString()}`,
-          ],
-          action: "Optimize paydown strategy",
-        },
-        {
-          label: "Credit Age",
-          weight: "15%",
-          score: factors.credit_age_score ?? 0,
-          details: [
-            `${factors.average_account_age_months ?? 0} months average`,
-            `${factors.oldest_account_age_months ?? 0} months oldest`,
-            `${factors.newest_account_age_months ?? 0} months newest`,
-          ],
-          action: "Don't close old accounts",
-        },
-        {
-          label: "Credit Mix",
-          weight: "10%",
-          score: factors.credit_mix_score ?? 0,
-          details: [
-            `${factors.revolving_count ?? 0} revolving`,
-            `${factors.installment_count ?? 0} installment`,
-            `${factors.mortgage_count ?? 0} mortgage`,
-          ],
-          action: "Diversify account types",
-        },
-        {
-          label: "Inquiries",
-          weight: "10%",
-          score: factors.inquiry_score ?? 0,
-          details: [
-            `TU: ${factors.total_inquiries_tu ?? 0} | EX: ${factors.total_inquiries_ex ?? 0} | EQ: ${factors.total_inquiries_eq ?? 0}`,
-            `${factors.inquiry_budget_remaining ?? 0} safe inquiries remaining`,
-          ],
-          action: "Manage inquiry timing",
-        },
-      ]
-    : [];
-
   const lastCalculated = factors?.calculated_at;
 
   return (
