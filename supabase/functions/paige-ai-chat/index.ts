@@ -677,9 +677,122 @@ Always identify the document type and bureau in your response.`,
       return new Response(JSON.stringify({ error: "An error occurred", errorId }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // If no document attached, stream directly
+    // For non-document requests: check if streaming response contains tool calls
+    // We need to accumulate first to detect tool calls, then handle accordingly
     if (!attachedDocument) {
-      return new Response(response.body, {
+      // Read the full streamed response to check for tool calls
+      const fullReader = response.body!.getReader();
+      const fullDecoder = new TextDecoder();
+      let accumulatedContent = "";
+      let toolCalls: any[] = [];
+      let allChunks: Uint8Array[] = [];
+      let hasToolCall = false;
+
+      // Accumulate the stream
+      while (true) {
+        const { done, value } = await fullReader.read();
+        if (done) break;
+        allChunks.push(value);
+        const chunk = fullDecoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+        for (const line of lines) {
+          if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) accumulatedContent += content;
+            const tc = parsed.choices?.[0]?.delta?.tool_calls;
+            if (tc) {
+              hasToolCall = true;
+              for (const call of tc) {
+                if (call.index !== undefined) {
+                  if (!toolCalls[call.index]) toolCalls[call.index] = { id: "", type: "function", function: { name: "", arguments: "" } };
+                  if (call.id) toolCalls[call.index].id = call.id;
+                  if (call.function?.name) toolCalls[call.index].function.name = call.function.name;
+                  if (call.function?.arguments) toolCalls[call.index].function.arguments += call.function.arguments;
+                }
+              }
+            }
+            // Check finish_reason for tool_calls
+            if (parsed.choices?.[0]?.finish_reason === "tool_calls") hasToolCall = true;
+          } catch { /* skip */ }
+        }
+      }
+
+      // If no tool calls, replay the accumulated chunks as-is
+      if (!hasToolCall) {
+        const replayStream = new ReadableStream({
+          start(controller) {
+            for (const chunk of allChunks) {
+              controller.enqueue(chunk);
+            }
+            controller.close();
+          }
+        });
+        return new Response(replayStream, {
+          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+        });
+      }
+
+      // Handle tool calls
+      const toolResults: any[] = [];
+      for (const tc of toolCalls) {
+        if (!tc || !tc.function?.name) continue;
+        
+        if (tc.function.name === "update_client_data") {
+          try {
+            const args = JSON.parse(tc.function.arguments);
+            const writeBackPayload = {
+              updates: args.updates,
+              target_user_id: payloadClientId || user.id,
+            };
+
+            const wbResponse = await fetch(`${supabaseUrl}/functions/v1/paige-write-back`, {
+              method: "POST",
+              headers: { Authorization: authHeader, "Content-Type": "application/json" },
+              body: JSON.stringify(writeBackPayload),
+            });
+            const wbResult = await wbResponse.json();
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(wbResult) });
+          } catch (err) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }) });
+          }
+        } else if (tc.function.name === "web_fetch") {
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ note: "Web fetch not executed in this flow" }) });
+        }
+      }
+
+      // Make a second AI call with tool results to get the final response
+      const followUpMessages = [
+        ...aiMessages,
+        { role: "assistant", content: accumulatedContent || null, tool_calls: toolCalls.filter(Boolean) },
+        ...toolResults,
+      ];
+
+      const followUpResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: followUpMessages,
+          stream: true,
+        }),
+      });
+
+      if (!followUpResponse.ok) {
+        // Fallback: return accumulated content if follow-up fails
+        const fallbackStream = new ReadableStream({
+          start(controller) {
+            for (const chunk of allChunks) controller.enqueue(chunk);
+            controller.close();
+          }
+        });
+        return new Response(fallbackStream, {
+          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+        });
+      }
+
+      return new Response(followUpResponse.body, {
         headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
       });
     }
