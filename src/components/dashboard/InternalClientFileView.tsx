@@ -336,7 +336,11 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           <ReportUploadTab clientUserId={effectiveUserId} />
         </TabsContent>
 
-        {/* Disputes */}
+        {/* Account Management */}
+        <TabsContent value="account-mgmt" className="mt-4">
+          <AdminAccountManagement clientUserId={effectiveUserId} clientId={clientId} userRole="admin" />
+        </TabsContent>
+
         <TabsContent value="disputes" className="mt-4">
           <DisputesManager clientId={clientId} />
         </TabsContent>
