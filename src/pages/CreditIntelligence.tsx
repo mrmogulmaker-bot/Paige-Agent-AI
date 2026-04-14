@@ -1,18 +1,20 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCreditFactors } from "@/hooks/useCreditFactors";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Upload } from "lucide-react";
+import { Loader2, RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Upload, Settings2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
 import { CreditFileHealthAssessment } from "@/components/credit/CreditFileHealthAssessment";
+import { AccountManager } from "@/components/credit/AccountManager";
 
 export default function CreditIntelligence() {
   const { factors, isLoading, recalculate } = useCreditFactors();
   const navigate = useNavigate();
+  const [accountManagerOpen, setAccountManagerOpen] = useState(false);
 
   const hasData = factors && (
     factors.payment_history_score != null ||
@@ -99,18 +101,29 @@ export default function CreditIntelligence() {
           )}
         </div>
         {hasData ? (
-          <Button
-            onClick={() => recalculate.mutate()}
-            disabled={recalculate.isPending}
-            className="bg-gradient-gold hover:opacity-90"
-          >
-            {recalculate.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4 mr-2" />
-            )}
-            Refresh Credit Analysis
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAccountManagerOpen(true)}
+              className="gap-1.5"
+            >
+              <Settings2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Edit Accounts</span>
+            </Button>
+            <Button
+              onClick={() => recalculate.mutate()}
+              disabled={recalculate.isPending}
+              className="bg-gradient-gold hover:opacity-90"
+            >
+              {recalculate.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-2" />
+              )}
+              Refresh Credit Analysis
+            </Button>
+          </div>
         ) : (
           <Button
             onClick={() => navigate("/app")}
@@ -194,6 +207,9 @@ export default function CreditIntelligence() {
 
       {/* Credit File Health Assessment */}
       <CreditFileHealthAssessment />
+
+      {/* Account Manager */}
+      <AccountManager isOpen={accountManagerOpen} onClose={() => setAccountManagerOpen(false)} />
     </div>
   );
 }

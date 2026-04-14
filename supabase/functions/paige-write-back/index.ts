@@ -48,6 +48,11 @@ const ALLOWED_FIELDS: Record<string, { table: string; column: string; type: "str
   "funding.objective": { table: "funding_profiles", column: "funding_objective", type: "string" },
   "funding.target_amount": { table: "funding_profiles", column: "target_amount", type: "number" },
   "funding.timeline": { table: "funding_profiles", column: "timeline", type: "string" },
+  // Account management operations (handled specially)
+  "accounts.mark_not_mine": { table: "_account_op", column: "mark_not_mine", type: "string" },
+  "accounts.mark_duplicate": { table: "_account_op", column: "mark_duplicate", type: "string" },
+  "accounts.update_bureau_source": { table: "_account_op", column: "update_bureau_source", type: "string" },
+  "accounts.merge_duplicates": { table: "_account_op", column: "merge_duplicates", type: "string" },
 };
 
 const writeBackSchema = z.object({
@@ -55,6 +60,7 @@ const writeBackSchema = z.object({
     field_path: z.string().min(1).max(100),
     field_value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
     record_id: z.string().uuid().optional(),
+    merge_into_id: z.string().uuid().optional(),
   })).min(1).max(10),
   target_user_id: z.string().uuid().optional(),
 });
@@ -145,6 +151,70 @@ serve(async (req) => {
 
       try {
         const { table, column } = fieldDef;
+
+        // Handle account management operations
+        if (table === "_account_op") {
+          if (!update.record_id) {
+            results.push({ field_path: update.field_path, success: false, error: "record_id required for account operations" });
+            continue;
+          }
+
+          if (column === "mark_not_mine") {
+            // Try both tables
+            const { data: negItem } = await supabase.from("credit_negative_items").select("id, creditor_name, bureau, item_type, amount, status").eq("id", update.record_id).eq("user_id", targetUserId).maybeSingle();
+            const { data: acctItem } = await supabase.from("credit_accounts").select("id, creditor, type, status").eq("id", update.record_id).eq("user_id", targetUserId).maybeSingle();
+
+            if (negItem) {
+              await supabase.from("credit_negative_items").update({ is_disputed_ownership: true, status: "disputed" }).eq("id", update.record_id);
+              await supabase.from("audit_logs").insert({ user_id: user.id, entity: "account_modification", action: "mark_not_mine", entity_id: update.record_id, data: { creditor: negItem.creditor_name, table: "credit_negative_items", source: "paige_chat" } });
+              results.push({ field_path: update.field_path, success: true, detail: `Flagged ${negItem.creditor_name} as not belonging to client` });
+            } else if (acctItem) {
+              await supabase.from("credit_accounts").update({ is_disputed_ownership: true, status: "disputed_ownership" }).eq("id", update.record_id);
+              await supabase.from("audit_logs").insert({ user_id: user.id, entity: "account_modification", action: "mark_not_mine", entity_id: update.record_id, data: { creditor: acctItem.creditor, table: "credit_accounts", source: "paige_chat" } });
+              results.push({ field_path: update.field_path, success: true, detail: `Flagged ${acctItem.creditor} as not belonging to client` });
+            } else {
+              results.push({ field_path: update.field_path, success: false, error: "Account not found" });
+            }
+          } else if (column === "mark_duplicate" || column === "merge_duplicates") {
+            const mergeIntoId = update.merge_into_id;
+            if (!mergeIntoId) {
+              results.push({ field_path: update.field_path, success: false, error: "merge_into_id required for duplicate merge" });
+              continue;
+            }
+            const { data: negItem } = await supabase.from("credit_negative_items").select("id, creditor_name").eq("id", update.record_id).eq("user_id", targetUserId).maybeSingle();
+            if (negItem) {
+              await supabase.from("credit_negative_items").update({ duplicate_of_id: mergeIntoId, status: "removed" }).eq("id", update.record_id);
+              await supabase.from("audit_logs").insert({ user_id: user.id, entity: "account_modification", action: "merge", entity_id: update.record_id, data: { merged_into: mergeIntoId, creditor: negItem.creditor_name, source: "paige_chat" } });
+              results.push({ field_path: update.field_path, success: true, detail: `Merged duplicate ${negItem.creditor_name}` });
+            } else {
+              const { data: acctItem } = await supabase.from("credit_accounts").select("id, creditor").eq("id", update.record_id).eq("user_id", targetUserId).maybeSingle();
+              if (acctItem) {
+                await supabase.from("credit_accounts").update({ duplicate_of_id: mergeIntoId }).eq("id", update.record_id);
+                await supabase.from("audit_logs").insert({ user_id: user.id, entity: "account_modification", action: "merge", entity_id: update.record_id, data: { merged_into: mergeIntoId, creditor: acctItem.creditor, source: "paige_chat" } });
+                results.push({ field_path: update.field_path, success: true, detail: `Merged duplicate ${acctItem.creditor}` });
+              } else {
+                results.push({ field_path: update.field_path, success: false, error: "Account not found" });
+              }
+            }
+          } else if (column === "update_bureau_source") {
+            const newBureau = String(update.field_value).toLowerCase();
+            if (!["transunion", "experian", "equifax"].includes(newBureau)) {
+              results.push({ field_path: update.field_path, success: false, error: "Invalid bureau value" });
+              continue;
+            }
+            const { data: negItem } = await supabase.from("credit_negative_items").select("id, creditor_name, bureau").eq("id", update.record_id).eq("user_id", targetUserId).maybeSingle();
+            if (negItem) {
+              await supabase.from("credit_negative_items").update({ bureau: newBureau }).eq("id", update.record_id);
+              await supabase.from("audit_logs").insert({ user_id: user.id, entity: "account_modification", action: "bureau_correction", entity_id: update.record_id, data: { creditor: negItem.creditor_name, previous_bureau: negItem.bureau, new_bureau: newBureau, source: "paige_chat" } });
+              results.push({ field_path: update.field_path, success: true, detail: `Updated ${negItem.creditor_name} bureau to ${newBureau}` });
+            } else {
+              results.push({ field_path: update.field_path, success: false, error: "Negative item not found" });
+            }
+          } else {
+            results.push({ field_path: update.field_path, success: false, error: "Unknown account operation" });
+          }
+          continue;
+        }
 
         if (table === "businesses") {
           // Find the user's primary business
