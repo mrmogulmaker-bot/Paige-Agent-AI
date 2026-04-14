@@ -170,16 +170,45 @@ function getOriginalAmount(a: CreditAccount): number {
 }
 
 function getDisplayAmount(a: CreditAccount): { amount: number; estimated: boolean; label: string } {
+  const t = (a.type ?? "").toLowerCase();
+  const isRevolving = t.includes("revolv") || t.includes("credit_card") || t.includes("credit card") || t.includes("line_of_credit");
+  const isAuto = t.includes("auto") || t.includes("car") || t.includes("vehicle");
+  const isMortgage = t.includes("mortgage") || t.includes("home");
+  const isInstallment = t.includes("install") || t.includes("loan") || t.includes("student") || isAuto || isMortgage;
+
+  // Primary: original_amount
   const oa = a.original_amount;
   if (oa && oa > 0) return { amount: oa, estimated: false, label: "Original amount" };
-  const lim = effectiveLimit(a);
-  if (lim > 0) {
-    const isRevolving = a.type === "credit_card";
-    return { amount: lim, estimated: false, label: isRevolving ? "Credit limit" : "Est. original amount" };
+
+  if (isRevolving) {
+    // Revolving: credit_limit → balance
+    const lim = effectiveLimit(a);
+    if (lim > 0) return { amount: lim, estimated: false, label: "Credit limit" };
+    const bal = Number(a.balance ?? a.current_balance ?? 0);
+    if (bal > 0) return { amount: bal, estimated: true, label: "Est. credit limit" };
+    return { amount: 0, estimated: true, label: "Credit limit not reported" };
   }
+
+  if (isInstallment) {
+    // Installment/auto/mortgage: highest_balance proxy via credit_limit → balance
+    const lim = effectiveLimit(a);
+    if (lim > 0) return { amount: lim, estimated: true, label: "Est. original amount" };
+    const bal = Number(a.balance ?? a.current_balance ?? 0);
+    if (bal > 0) return { amount: bal, estimated: true, label: "Est. original amount" };
+    const notReportedLabel = isMortgage
+      ? "Original mortgage amount not reported"
+      : isAuto
+        ? "Original loan amount not reported by bureau"
+        : "Original amount not reported by bureau";
+    return { amount: 0, estimated: true, label: notReportedLabel };
+  }
+
+  // Fallback for other types
+  const lim = effectiveLimit(a);
+  if (lim > 0) return { amount: lim, estimated: false, label: isRevolving ? "Credit limit" : "Est. original amount" };
   const bal = Number(a.balance ?? a.current_balance ?? 0);
   if (bal > 0) return { amount: bal, estimated: true, label: "Est. original amount" };
-  return { amount: 0, estimated: true, label: "Re-analyze report to get amount" };
+  return { amount: 0, estimated: true, label: "Amount not reported by bureau" };
 }
 
 /* ─── Suggestion content ─── */
