@@ -630,6 +630,37 @@ Always identify the document type and bureau in your response.`,
                 required: ["url", "purpose"]
               }
             }
+          },
+          {
+            type: "function",
+            function: {
+              name: "update_client_data",
+              description: "Update a specific field in the client's profile, business foundation, or public presence. Call this when the user or coach explicitly provides new data for a known field — e.g. 'my business phone is 404-555-1234', 'update the EIN to on file', 'our address is 100 Peachtree St Atlanta GA 30303'. Only call when the user clearly intends to store or update data, not when they are just mentioning something in passing.",
+              parameters: {
+                type: "object",
+                properties: {
+                  updates: {
+                    type: "array",
+                    description: "Array of field updates to apply",
+                    items: {
+                      type: "object",
+                      properties: {
+                        field_path: {
+                          type: "string",
+                          description: "Dot-notation field identifier. Valid paths: foundation.entity_type, foundation.state_of_formation, foundation.formation_date, foundation.registered_agent_name, foundation.registered_agent_address, foundation.registered_agent_state, foundation.ein, foundation.business_address_type, foundation.street_address, foundation.city, foundation.state, foundation.zip, foundation.business_phone, foundation.phone_411_listed, foundation.bank_name, foundation.bank_account_opened, foundation.has_bank_account, foundation.legal_name, foundation.dba, foundation.naics, public_presence.website_url, public_presence.google_business_url, public_presence.yelp_url, public_presence.linkedin_url, public_presence.facebook_url, public_presence.website_live, public_presence.google_business_claimed, profile.full_name, profile.city, profile.state, funding.objective, funding.target_amount, funding.timeline"
+                        },
+                        field_value: {
+                          type: "string",
+                          description: "The new value to set"
+                        }
+                      },
+                      required: ["field_path", "field_value"]
+                    }
+                  }
+                },
+                required: ["updates"]
+              }
+            }
           }
         ],
         tool_choice: "auto",
