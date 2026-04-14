@@ -3768,6 +3768,7 @@ export type Database = {
           postal_code: string | null
           score_model: string | null
           ssn_encrypted: string | null
+          ssn_last_4: string | null
           state: string | null
           updated_at: string | null
           user_id: string
@@ -3797,6 +3798,7 @@ export type Database = {
           postal_code?: string | null
           score_model?: string | null
           ssn_encrypted?: string | null
+          ssn_last_4?: string | null
           state?: string | null
           updated_at?: string | null
           user_id: string
@@ -3826,6 +3828,7 @@ export type Database = {
           postal_code?: string | null
           score_model?: string | null
           ssn_encrypted?: string | null
+          ssn_last_4?: string | null
           state?: string | null
           updated_at?: string | null
           user_id?: string

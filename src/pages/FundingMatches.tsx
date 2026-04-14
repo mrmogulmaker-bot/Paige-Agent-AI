@@ -52,16 +52,18 @@ export default function FundingMatches() {
     },
   });
 
-  // Score all products, then apply goal-based sorting/filtering
-  const { primaryMatches, prerequisiteMatches, personalMatches, businessMatches } = useMemo(() => {
+  // Score all products, then apply goal-based sorting/filtering — BUSINESS ONLY
+  const { primaryMatches, prerequisiteMatches, businessMatches } = useMemo(() => {
     if (!products || profile.isLoading) {
-      return { primaryMatches: [], prerequisiteMatches: [], personalMatches: [], businessMatches: [] };
+      return { primaryMatches: [], prerequisiteMatches: [], businessMatches: [] };
     }
 
     let scored = products.map(p => scoreProduct(p, profile));
 
+    // Filter to business track only — personal credit products moved to Credit Intelligence tab
+    scored = scored.filter(m => m.track === "business");
+
     if (fundingGoals) {
-      // Sort by goal relevance + urgency + score
       scored = scored.map(m => ({
         ...m,
         _relevance: getGoalRelevanceBoost(m.product.product_type, fundingGoals),
@@ -70,13 +72,9 @@ export default function FundingMatches() {
       }));
 
       scored.sort((a: any, b: any) => {
-        // Prerequisites go to a separate section
         if (a._isPrereq !== b._isPrereq) return a._isPrereq ? 1 : -1;
-        // Higher relevance first
         if (a._relevance !== b._relevance) return b._relevance - a._relevance;
-        // Urgency for 90-day timelines
         if (a._urgency !== b._urgency) return b._urgency - a._urgency;
-        // Then by score
         return b.score - a.score;
       });
     }
@@ -88,13 +86,11 @@ export default function FundingMatches() {
       ? scored.filter((m: any) => !m._isPrereq)
       : scored;
 
-    const personal = primary.filter(m => m.track === "personal").sort((a, b) => b.score - a.score);
-    const business = primary.filter(m => m.track === "business").sort((a, b) => b.score - a.score);
+    const business = primary.sort((a, b) => b.score - a.score);
 
     return {
       primaryMatches: primary,
       prerequisiteMatches: prereqs,
-      personalMatches: personal,
       businessMatches: business,
     };
   }, [products, profile, fundingGoals]);
@@ -137,7 +133,7 @@ export default function FundingMatches() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Funding Intelligence</h1>
         <p className="text-muted-foreground mt-1">
-          Products matched to your real profile — every score explained by data, not thresholds.
+          Business funding products matched to your real profile — every score explained by data, not thresholds.
         </p>
         {profile.middleScore && (
           <p className="text-xs text-muted-foreground mt-1">
@@ -210,13 +206,9 @@ export default function FundingMatches() {
         </div>
       )}
 
-      {/* Personal and Business Tracks */}
-      {personalMatches.length > 0 && (
-        <FundingTrack title="Personal Credit Track" icon="personal" matches={personalMatches} />
-      )}
-
+      {/* Business Funding Track */}
       {businessMatches.length > 0 && (
-        <FundingTrack title="Business Credit Track" icon="business" matches={businessMatches} />
+        <FundingTrack title="Business Funding Products" icon="business" matches={businessMatches} />
       )}
 
       {/* Prerequisite Section */}
