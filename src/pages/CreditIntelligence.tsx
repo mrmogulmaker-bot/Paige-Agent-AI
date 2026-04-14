@@ -101,18 +101,29 @@ export default function CreditIntelligence() {
           )}
         </div>
         {hasData ? (
-          <Button
-            onClick={() => recalculate.mutate()}
-            disabled={recalculate.isPending}
-            className="bg-gradient-gold hover:opacity-90"
-          >
-            {recalculate.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4 mr-2" />
-            )}
-            Refresh Credit Analysis
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAccountManagerOpen(true)}
+              className="gap-1.5"
+            >
+              <Settings2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Edit Accounts</span>
+            </Button>
+            <Button
+              onClick={() => recalculate.mutate()}
+              disabled={recalculate.isPending}
+              className="bg-gradient-gold hover:opacity-90"
+            >
+              {recalculate.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-2" />
+              )}
+              Refresh Credit Analysis
+            </Button>
+          </div>
         ) : (
           <Button
             onClick={() => navigate("/app")}
