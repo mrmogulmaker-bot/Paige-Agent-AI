@@ -119,26 +119,11 @@ const Auth = () => {
 
         toast({
           title: "Account created!",
-          description: "Setting up your 14-day free trial...",
+          description: "Welcome! Redirecting to your dashboard...",
         });
 
-        setTimeout(async () => {
-          try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
-              toast({ title: "Error", description: "Session not found. Please login to continue.", variant: "destructive" });
-              return;
-            }
-            const { data, error } = await supabase.functions.invoke('create-trial-checkout', {
-              headers: { Authorization: `Bearer ${session.access_token}` },
-            });
-            if (error) throw error;
-            if (data?.url) window.location.href = data.url;
-          } catch (error) {
-            console.error('Trial setup error:', error);
-            toast({ title: "Error", description: "Failed to set up trial. Please contact support.", variant: "destructive" });
-          }
-        }, 1000);
+        // Auto-confirm is enabled, so session should be available immediately
+        // The onAuthStateChange listener will handle redirect via redirectByRole
       }
     } catch (error) {
       if (error instanceof z.ZodError) {

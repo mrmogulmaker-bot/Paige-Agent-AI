@@ -129,10 +129,13 @@ export const ProfileSettings = () => {
         }
         
         // Store only last 4 of SSN for display
-        if (profile.ssn_encrypted) {
-          const last4 = profile.ssn_encrypted.slice(-4);
-          setSsnLast4(last4);
-          setSsn(""); // Don't load full SSN into state
+        if ((profile as any).ssn_last_4) {
+          setSsnLast4((profile as any).ssn_last_4);
+          setSsn("");
+          setIsEditingSSN(false);
+        } else if (profile.ssn_encrypted) {
+          setSsnLast4("****");
+          setSsn("");
           setIsEditingSSN(false);
         }
       }
