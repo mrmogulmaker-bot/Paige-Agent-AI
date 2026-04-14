@@ -15,6 +15,29 @@ import { FundingTrack } from "@/components/funding/FundingTrack";
 export default function CreditIntelligence() {
   const { factors, isLoading, recalculate } = useCreditFactors();
   const navigate = useNavigate();
+  const profile = useFundingProfile();
+
+  // Fetch personal credit products for the Personal Credit Build section
+  const { data: personalProducts } = useQuery({
+    queryKey: ["personal-credit-products"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("lender_products")
+        .select("*")
+        .eq("is_active", true)
+        .order("lender_name");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const personalMatches = useMemo(() => {
+    if (!personalProducts || profile.isLoading) return [];
+    return personalProducts
+      .map(p => scoreProduct(p, profile))
+      .filter(m => m.track === "personal")
+      .sort((a, b) => b.score - a.score);
+  }, [personalProducts, profile]);
 
   const hasData = factors && (
     factors.payment_history_score != null ||
@@ -193,8 +216,12 @@ export default function CreditIntelligence() {
           </p>
         </Card>
       )}
+
+      {/* Personal Credit Build — product recommendations */}
+      {personalMatches.length > 0 && (
+        <FundingTrack title="Personal Credit Build Products" icon="personal" matches={personalMatches} />
+      )}
     </div>
-  );
 }
 
 function StatusIcon({ score }: { score: number }) {
