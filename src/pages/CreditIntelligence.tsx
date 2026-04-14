@@ -13,6 +13,8 @@ import { AccountManager } from "@/components/credit/AccountManager";
 import { CreditReportUploader } from "@/components/credit/CreditReportUploader";
 import { CreditFactorsPanel } from "@/components/credit/CreditFactorsPanel";
 import { DataFreshnessIndicator } from "@/components/credit/DataFreshnessIndicator";
+import { CreditAlertBanner } from "@/components/credit/CreditAlertBanner";
+import { CreditAlertsTab } from "@/components/credit/CreditAlertsTab";
 import { toast } from "sonner";
 
 export default function CreditIntelligence() {
@@ -233,6 +235,9 @@ export default function CreditIntelligence() {
         </div>
       </div>
 
+      {/* Credit Alert Banner */}
+      <CreditAlertBanner />
+
       {/* Credit Report Uploader */}
       <CreditReportUploader
         lastAnalyzed={lastReport?.timestamp || null}
@@ -309,6 +314,9 @@ export default function CreditIntelligence() {
 
       {/* Credit File Health Assessment */}
       <CreditFileHealthAssessment />
+
+      {/* Alerts History */}
+      <CreditAlertsTab />
 
       {/* Account Manager */}
       <AccountManager isOpen={accountManagerOpen} onClose={() => setAccountManagerOpen(false)} />
