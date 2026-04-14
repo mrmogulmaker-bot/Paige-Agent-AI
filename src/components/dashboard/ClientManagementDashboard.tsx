@@ -323,13 +323,15 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                         <TableHead>Name</TableHead>
                         <TableHead>Location</TableHead>
                         <TableHead>FICO</TableHead>
+                        <TableHead>Role</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead></TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredAuth.map((c) => {
                         const bestFICO = Math.max(c.estimated_fico_eq || 0, c.estimated_fico_ex || 0, c.estimated_fico_tu || 0);
+                        const primaryRole = c.roles?.[0] || "user";
                         return (
                           <TableRow key={c.user_id}>
                             <TableCell className="font-medium">{c.full_name || "—"}</TableCell>
@@ -342,14 +344,37 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                               ) : "—"}
                             </TableCell>
                             <TableCell>
+                              <Select
+                                defaultValue={primaryRole}
+                                onValueChange={(value) => updateUserRole(c.user_id, value)}
+                              >
+                                <SelectTrigger className="w-[120px] h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="user">User</SelectItem>
+                                  <SelectItem value="coach">Coach</SelectItem>
+                                  <SelectItem value="moderator">Moderator</SelectItem>
+                                  <SelectItem value="admin">Admin</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
                               <Badge variant={c.onboarding_completed ? "default" : "outline"}>
                                 {c.onboarding_completed ? "Active" : "Pending"}
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              <Button size="sm" variant="outline" onClick={() => onViewClient(c.user_id)}>
-                                View
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                {!c.onboarding_completed && (
+                                  <Button size="sm" variant="default" onClick={() => approveUser(c.user_id)}>
+                                    Approve
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="outline" onClick={() => onViewClient(c.user_id)}>
+                                  View
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
