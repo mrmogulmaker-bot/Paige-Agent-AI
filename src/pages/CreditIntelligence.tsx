@@ -303,6 +303,23 @@ export default function CreditIntelligence() {
       {/* Bureau Score Panel */}
       <BureauScorePanel />
 
+      {/* Bureau Tab Selector */}
+      {(hasData || hasAccounts) && (
+        <div className="flex gap-2 flex-wrap">
+          {(["all", "experian", "transunion", "equifax"] as const).map(b => (
+            <Button
+              key={b}
+              variant={selectedBureau === b ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedBureau(b)}
+              className={selectedBureau === b ? "bg-accent text-accent-foreground" : ""}
+            >
+              {b === "all" ? "All Bureaus" : b === "experian" ? "Experian" : b === "transunion" ? "TransUnion" : "Equifax"}
+            </Button>
+          ))}
+        </div>
+      )}
+
       {/* Fundability Score Ring */}
       {hasData && (
         <Card className="p-8 bg-card border-border text-center">
@@ -334,43 +351,17 @@ export default function CreditIntelligence() {
         </Card>
       )}
 
-      {/* Factor Cards */}
+      {/* Credit Factors Panel — between Bureau Strategy and Health Assessment */}
+      <CreditFactorsPanel selectedBureau={selectedBureau} />
+
+      {/* Legacy Factor Cards */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-accent" />
         </div>
-      ) : hasData ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          {factorCards.map((fc) => (
-            <Card key={fc.label} className="p-5 bg-card border-border hover:border-accent/50 transition-colors">
-              <div className="flex items-center justify-between mb-3">
-                <StatusIcon score={fc.score} />
-                <span className="text-xs text-muted-foreground">{fc.weight}</span>
-              </div>
-              <div className={`text-2xl font-bold ${getScoreTextColor(fc.score)}`}>
-                {fc.score}/100
-              </div>
-              <h3 className="font-semibold text-sm mt-1">{fc.label}</h3>
-              <ul className="mt-3 space-y-1">
-                {fc.details.map((d, i) => (
-                  <li key={i} className="text-xs text-muted-foreground">{d}</li>
-                ))}
-              </ul>
-              <p className="text-xs text-accent mt-3 font-medium">💡 {fc.action}</p>
-            </Card>
-          ))}
-        </div>
-      ) : !lastReport ? (
-        null // Upload area is already shown above
-      ) : (
-        <Card className="p-8 text-center">
-          <Loader2 className="w-10 h-10 text-muted-foreground mx-auto mb-3 animate-spin" />
-          <h3 className="font-semibold text-lg">Processing your data...</h3>
-          <p className="text-muted-foreground text-sm mt-2">
-            Your report has been uploaded. Factor scores will appear once analysis is complete.
-          </p>
-        </Card>
-      )}
+      ) : !hasData && !lastReport ? (
+        null
+      ) : null}
 
       {/* Credit File Health Assessment */}
       <CreditFileHealthAssessment />
