@@ -6,10 +6,21 @@ interface QuickStatsBarProps {
 
 export function QuickStatsBar({ factors }: QuickStatsBarProps) {
   const navigate = useNavigate();
+  const hasStatsData = Boolean(
+    factors &&
+      [
+        factors.overall_fundability_score,
+        factors.aggregate_utilization,
+        factors.active_negatives,
+        factors.utilization_score,
+        factors.inquiry_score,
+        factors.credit_mix_score,
+      ].some((value) => value != null)
+  );
 
-  const score = factors?.overall_fundability_score ?? null;
-  const negatives = factors?.active_negatives ?? null;
-  const utilization = factors?.aggregate_utilization ?? null;
+  const score = hasStatsData ? factors?.overall_fundability_score ?? null : null;
+  const negatives = hasStatsData ? factors?.active_negatives ?? null : null;
+  const utilization = hasStatsData ? factors?.aggregate_utilization ?? null : null;
 
   return (
     <div className="flex items-center justify-between px-4 py-2 bg-card border-t border-border text-xs">
@@ -19,7 +30,7 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
       >
         <span className="text-muted-foreground">Fundability:</span>
         <span className={`font-bold ${getScoreColor(score)}`}>
-          {score ?? "—"}/100
+          {score == null ? "—" : `${score}/100`}
         </span>
       </button>
 
@@ -49,7 +60,7 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
       >
         <span className="text-muted-foreground">Next:</span>
         <span className="font-medium text-accent">
-          {getNextAction(factors)}
+          {getNextAction(hasStatsData ? factors : null)}
         </span>
       </button>
     </div>
@@ -57,11 +68,11 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
 }
 
 function getNextAction(factors: any): string {
-  if (!factors) return "Run credit analysis";
-  if (factors.utilization_score < 50) return "Pay down balances";
-  if (factors.active_negatives > 0) return "Dispute negatives";
-  if (factors.inquiry_score < 50) return "Freeze inquiries";
-  if (factors.credit_mix_score < 50) return "Diversify accounts";
+  if (!factors) return "Upload report";
+  if (factors.utilization_score != null && factors.utilization_score < 50) return "Pay down balances";
+  if (factors.active_negatives != null && factors.active_negatives > 0) return "Dispute negatives";
+  if (factors.inquiry_score != null && factors.inquiry_score < 50) return "Freeze inquiries";
+  if (factors.credit_mix_score != null && factors.credit_mix_score < 50) return "Diversify accounts";
   return "Maintain progress";
 }
 
