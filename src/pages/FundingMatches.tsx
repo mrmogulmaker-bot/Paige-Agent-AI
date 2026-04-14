@@ -206,13 +206,9 @@ export default function FundingMatches() {
         </div>
       )}
 
-      {/* Personal and Business Tracks */}
-      {personalMatches.length > 0 && (
-        <FundingTrack title="Personal Credit Track" icon="personal" matches={personalMatches} />
-      )}
-
+      {/* Business Funding Track */}
       {businessMatches.length > 0 && (
-        <FundingTrack title="Business Credit Track" icon="business" matches={businessMatches} />
+        <FundingTrack title="Business Funding Products" icon="business" matches={businessMatches} />
       )}
 
       {/* Prerequisite Section */}
