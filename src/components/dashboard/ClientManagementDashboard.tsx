@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, CheckCircle2 } from "lucide-react";
+import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
 import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
@@ -154,21 +154,6 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
     } catch (err: any) {
       console.error("Error updating role:", err);
       toast.error("Failed to update role");
-    }
-  };
-
-  const approveUser = async (userId: string) => {
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ onboarding_completed: true } as any)
-        .eq("user_id", userId);
-      if (error) throw error;
-      toast.success("User approved");
-      fetchAllClients();
-    } catch (err: any) {
-      console.error("Error approving user:", err);
-      toast.error("Failed to approve user");
     }
   };
 
@@ -317,11 +302,6 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
-                      {!c.onboarding_completed && (
-                        <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => approveUser(c.user_id)}>
-                          <CheckCircle2 className="w-3 h-3 mr-1" /> Approve
-                        </Button>
-                      )}
                       <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onViewClient(c.user_id)}>
                         View
                       </Button>

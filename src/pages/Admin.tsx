@@ -1,5 +1,5 @@
 import { useEffect, useState, Suspense, lazy } from "react";
-import { useNavigate, Routes, Route } from "react-router-dom";
+import { useNavigate, Routes, Route, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -9,6 +9,8 @@ import { toast } from "sonner";
 
 // Lazy-load admin sub-pages
 const ClientManagementDashboard = lazy(() => import("@/components/dashboard/ClientManagementDashboard").then(m => ({ default: m.ClientManagementDashboard })));
+const ClientFileView = lazy(() => import("@/components/dashboard/ClientFileView").then(m => ({ default: m.ClientFileView })));
+const InternalClientFileView = lazy(() => import("@/components/dashboard/InternalClientFileView").then(m => ({ default: m.InternalClientFileView })));
 const DisputesManager = lazy(() => import("@/components/dashboard/DisputesManager").then(m => ({ default: m.DisputesManager })));
 const DisputeAnalytics = lazy(() => import("@/components/dashboard/admin/DisputeAnalytics").then(m => ({ default: m.DisputeAnalytics })));
 const FundingMatchAccuracy = lazy(() => import("@/components/dashboard/admin/FundingMatchAccuracy").then(m => ({ default: m.FundingMatchAccuracy })));
@@ -25,6 +27,18 @@ const SuspenseFallback = () => (
     <div className="animate-pulse text-muted-foreground">Loading...</div>
   </div>
 );
+
+function ClientFileWrapper({ userRole }: { userRole: "admin" | "coach" }) {
+  const { userId } = useParams();
+  const navigate = useNavigate();
+  return <ClientFileView clientUserId={userId!} onBack={() => navigate("/admin/clients")} userRole={userRole} />;
+}
+
+function InternalClientFileWrapper() {
+  const { clientId } = useParams();
+  const navigate = useNavigate();
+  return <InternalClientFileView clientId={clientId!} onBack={() => navigate("/admin/clients")} />;
+}
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -98,8 +112,11 @@ const Admin = () => {
   };
 
   const handleViewClient = (clientUserId: string) => {
-    // Navigate to client view within admin context
-    navigate(`/app?viewAs=${clientUserId}`);
+    navigate(`/admin/clients/user/${clientUserId}`);
+  };
+
+  const handleViewInternalClient = (clientId: string) => {
+    navigate(`/admin/clients/internal/${clientId}`);
   };
 
   if (loading) {
@@ -116,7 +133,17 @@ const Admin = () => {
         <Route index element={<AdminOverview stats={stats} />} />
         <Route path="clients" element={
           <Suspense fallback={<SuspenseFallback />}>
-            <ClientManagementDashboard onViewClient={handleViewClient} />
+            <ClientManagementDashboard onViewClient={handleViewClient} onViewInternalClient={handleViewInternalClient} />
+          </Suspense>
+        } />
+        <Route path="clients/user/:userId" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <ClientFileWrapper userRole={userRole} />
+          </Suspense>
+        } />
+        <Route path="clients/internal/:clientId" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <InternalClientFileWrapper />
           </Suspense>
         } />
         <Route path="disputes" element={<Suspense fallback={<SuspenseFallback />}><DisputesManager /></Suspense>} />
