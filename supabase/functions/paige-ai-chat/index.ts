@@ -536,6 +536,23 @@ NEGATIVE ITEM COUNT RULE: When referencing negative items, always use the unique
 CHARGE-OFF PATHWAY RULE: When discussing charge-off resolution, always identify which of the five causal pathways applies before recommending any action — True Financial Distress, Identity Theft, Synthetic Identity, Servicing Error, or Re-aging. Never recommend disputing a charge-off without first establishing the pathway because disputing a valid debt violates CROA and wastes a dispute round. Reference the specific creditor and dollar amount from the CLIENT CONTEXT when discussing strategy.
 
 === END CLIENT CONTEXT CROSS-REFERENCE RULES ===
+
+=== DATA WRITE-BACK RULES ===
+You have the ability to update client data directly through conversation using the update_client_data tool. Use this when:
+1. A client explicitly states new information for a known field — e.g. "my business phone is 404-555-1234" or "our address is 100 Peachtree Street Atlanta GA 30303"
+2. A coach instructs you to update a field — e.g. "update the EIN to on file" or "mark the Google listing as complete"
+3. Multiple fields can be updated in a single call — e.g. an address update should set street_address, city, state, and zip together
+
+When you execute a write-back:
+- ALWAYS confirm what you wrote back in your response so the user knows the update happened
+- Include the field name and new value in your confirmation
+- Suggest related follow-up actions — e.g. after updating business phone, ask about 411 listing status
+- If the address is described as a "virtual office" or "home address", also set foundation.business_address_type accordingly
+
+DO NOT call update_client_data for:
+- Casual mentions without clear intent to store — e.g. "I'm thinking about getting a virtual office" is NOT an update
+- Sensitive fields like credit scores, SSN, or financial data — those are never writable through chat
+=== END WRITE-BACK RULES ===
 ${relevantKnowledge}
 
 === PME FUNDING KNOWLEDGE BASE ===
@@ -630,6 +647,37 @@ Always identify the document type and bureau in your response.`,
                 required: ["url", "purpose"]
               }
             }
+          },
+          {
+            type: "function",
+            function: {
+              name: "update_client_data",
+              description: "Update a specific field in the client's profile, business foundation, or public presence. Call this when the user or coach explicitly provides new data for a known field — e.g. 'my business phone is 404-555-1234', 'update the EIN to on file', 'our address is 100 Peachtree St Atlanta GA 30303'. Only call when the user clearly intends to store or update data, not when they are just mentioning something in passing.",
+              parameters: {
+                type: "object",
+                properties: {
+                  updates: {
+                    type: "array",
+                    description: "Array of field updates to apply",
+                    items: {
+                      type: "object",
+                      properties: {
+                        field_path: {
+                          type: "string",
+                          description: "Dot-notation field identifier. Valid paths: foundation.entity_type, foundation.state_of_formation, foundation.formation_date, foundation.registered_agent_name, foundation.registered_agent_address, foundation.registered_agent_state, foundation.ein, foundation.business_address_type, foundation.street_address, foundation.city, foundation.state, foundation.zip, foundation.business_phone, foundation.phone_411_listed, foundation.bank_name, foundation.bank_account_opened, foundation.has_bank_account, foundation.legal_name, foundation.dba, foundation.naics, public_presence.website_url, public_presence.google_business_url, public_presence.yelp_url, public_presence.linkedin_url, public_presence.facebook_url, public_presence.website_live, public_presence.google_business_claimed, profile.full_name, profile.city, profile.state, funding.objective, funding.target_amount, funding.timeline"
+                        },
+                        field_value: {
+                          type: "string",
+                          description: "The new value to set"
+                        }
+                      },
+                      required: ["field_path", "field_value"]
+                    }
+                  }
+                },
+                required: ["updates"]
+              }
+            }
           }
         ],
         tool_choice: "auto",
@@ -646,9 +694,122 @@ Always identify the document type and bureau in your response.`,
       return new Response(JSON.stringify({ error: "An error occurred", errorId }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // If no document attached, stream directly
+    // For non-document requests: check if streaming response contains tool calls
+    // We need to accumulate first to detect tool calls, then handle accordingly
     if (!attachedDocument) {
-      return new Response(response.body, {
+      // Read the full streamed response to check for tool calls
+      const fullReader = response.body!.getReader();
+      const fullDecoder = new TextDecoder();
+      let accumulatedContent = "";
+      let toolCalls: any[] = [];
+      let allChunks: Uint8Array[] = [];
+      let hasToolCall = false;
+
+      // Accumulate the stream
+      while (true) {
+        const { done, value } = await fullReader.read();
+        if (done) break;
+        allChunks.push(value);
+        const chunk = fullDecoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+        for (const line of lines) {
+          if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) accumulatedContent += content;
+            const tc = parsed.choices?.[0]?.delta?.tool_calls;
+            if (tc) {
+              hasToolCall = true;
+              for (const call of tc) {
+                if (call.index !== undefined) {
+                  if (!toolCalls[call.index]) toolCalls[call.index] = { id: "", type: "function", function: { name: "", arguments: "" } };
+                  if (call.id) toolCalls[call.index].id = call.id;
+                  if (call.function?.name) toolCalls[call.index].function.name = call.function.name;
+                  if (call.function?.arguments) toolCalls[call.index].function.arguments += call.function.arguments;
+                }
+              }
+            }
+            // Check finish_reason for tool_calls
+            if (parsed.choices?.[0]?.finish_reason === "tool_calls") hasToolCall = true;
+          } catch { /* skip */ }
+        }
+      }
+
+      // If no tool calls, replay the accumulated chunks as-is
+      if (!hasToolCall) {
+        const replayStream = new ReadableStream({
+          start(controller) {
+            for (const chunk of allChunks) {
+              controller.enqueue(chunk);
+            }
+            controller.close();
+          }
+        });
+        return new Response(replayStream, {
+          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+        });
+      }
+
+      // Handle tool calls
+      const toolResults: any[] = [];
+      for (const tc of toolCalls) {
+        if (!tc || !tc.function?.name) continue;
+        
+        if (tc.function.name === "update_client_data") {
+          try {
+            const args = JSON.parse(tc.function.arguments);
+            const writeBackPayload = {
+              updates: args.updates,
+              target_user_id: payloadClientId || user.id,
+            };
+
+            const wbResponse = await fetch(`${supabaseUrl}/functions/v1/paige-write-back`, {
+              method: "POST",
+              headers: { Authorization: authHeader, "Content-Type": "application/json" },
+              body: JSON.stringify(writeBackPayload),
+            });
+            const wbResult = await wbResponse.json();
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(wbResult) });
+          } catch (err) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }) });
+          }
+        } else if (tc.function.name === "web_fetch") {
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ note: "Web fetch not executed in this flow" }) });
+        }
+      }
+
+      // Make a second AI call with tool results to get the final response
+      const followUpMessages = [
+        ...aiMessages,
+        { role: "assistant", content: accumulatedContent || null, tool_calls: toolCalls.filter(Boolean) },
+        ...toolResults,
+      ];
+
+      const followUpResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: followUpMessages,
+          stream: true,
+        }),
+      });
+
+      if (!followUpResponse.ok) {
+        // Fallback: return accumulated content if follow-up fails
+        const fallbackStream = new ReadableStream({
+          start(controller) {
+            for (const chunk of allChunks) controller.enqueue(chunk);
+            controller.close();
+          }
+        });
+        return new Response(fallbackStream, {
+          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+        });
+      }
+
+      return new Response(followUpResponse.body, {
         headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
       });
     }

@@ -56,3 +56,6 @@ verify_jwt = true
 
 [functions.process-email-queue]
 verify_jwt = true
+
+[functions.paige-write-back]
+verify_jwt = true

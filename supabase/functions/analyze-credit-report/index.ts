@@ -113,6 +113,36 @@ Return ONLY valid JSON with this exact structure:
   "score_model": "FICO" | "VantageScore" | "Unknown",
   "profile_summary": "string",
   "estimated_total_score_impact": number,
+  "personal_information": {
+    "name_variations": [
+      {
+        "value": "string — full name as printed on the report",
+        "bureau_source": "experian" | "transunion" | "equifax" | "all_three"
+      }
+    ],
+    "addresses": [
+      {
+        "value": "string — full address as printed",
+        "bureau_source": "experian" | "transunion" | "equifax" | "all_three",
+        "date_range": "string or null — date range if shown e.g. '01/2020 - Present'"
+      }
+    ],
+    "employers": [
+      {
+        "value": "string — employer name as printed",
+        "bureau_source": "experian" | "transunion" | "equifax" | "all_three",
+        "date_range": "string or null"
+      }
+    ],
+    "phones": [
+      {
+        "value": "string — phone number as printed",
+        "bureau_source": "experian" | "transunion" | "equifax" | "all_three"
+      }
+    ],
+    "date_of_birth": "string or null — as printed on report",
+    "ssn_variations_detected": boolean
+  },
   "negative_items": [
     {
       "category": "late_payment" | "collection" | "charge_off" | "hard_inquiry" | "public_record" | "repossession" | "foreclosure" | "bankruptcy" | "tax_lien" | "judgment" | "other",
@@ -191,6 +221,17 @@ Return ONLY valid JSON with this exact structure:
     "fraud_alerts_visible": boolean
   }
 }
+
+PERSONAL INFORMATION EXTRACTION RULES:
+- Look for the "Personal Information" or "Consumer Information" section at the top of the report
+- Extract ALL name variations, including maiden names, aliases, AKAs
+- Extract ALL addresses with their date ranges if shown
+- Extract ALL employers with date ranges if shown
+- Extract ALL phone numbers listed
+- For each item, determine which bureau(s) reported it by reading the tri-merge columns
+- If an item appears in all three bureau columns, set bureau_source to "all_three"
+- If the report shows multiple SSN fragments or variations, set ssn_variations_detected to true
+- Extract the date of birth exactly as printed
 
 Use the verified read-check below as hard evidence. If your extraction conflicts with the verified read-check, leave the conflicting field null instead of inventing a value.
 
@@ -352,6 +393,58 @@ serve(async (req) => {
       });
     }
 
+    // Extract and store personal information
+    const personalInfo = analysisResult.personal_information;
+    if (personalInfo) {
+      const piRecords: any[] = [];
+      const targetUserId = upload.user_id;
+      const clientId = upload.client_id || null;
+
+      for (const name of (personalInfo.name_variations || [])) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "name", field_value: name.value, bureau_source: name.bureau_source || "unknown",
+        });
+      }
+      for (const addr of (personalInfo.addresses || [])) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "address", field_value: addr.value, bureau_source: addr.bureau_source || "unknown",
+          date_range: addr.date_range || null,
+        });
+      }
+      for (const emp of (personalInfo.employers || [])) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "employer", field_value: emp.value, bureau_source: emp.bureau_source || "unknown",
+          date_range: emp.date_range || null,
+        });
+      }
+      for (const phone of (personalInfo.phones || [])) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "phone", field_value: phone.value, bureau_source: phone.bureau_source || "unknown",
+        });
+      }
+      if (personalInfo.date_of_birth) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "dob", field_value: personalInfo.date_of_birth, bureau_source: "all_three",
+        });
+      }
+      if (personalInfo.ssn_variations_detected) {
+        piRecords.push({
+          user_id: targetUserId, client_id: clientId, credit_report_upload_id: uploadId,
+          field_type: "ssn_variation", field_value: "Multiple SSN variations detected", bureau_source: "all_three",
+        });
+      }
+
+      if (piRecords.length > 0) {
+        const { error: piError } = await supabase.from("credit_report_personal_info").insert(piRecords);
+        if (piError) console.error("Failed to insert personal info:", piError);
+      }
+    }
+
     await supabase.from("audit_logs").insert({
       user_id: user.id,
       entity: "credit_report_upload",
@@ -365,6 +458,7 @@ serve(async (req) => {
         fraud_alerts_count: analysisResult.fraud_alerts?.length || 0,
         security_freezes_count: analysisResult.security_freezes?.length || 0,
         discrepancies_count: analysisResult.cross_bureau_discrepancies?.length || 0,
+        personal_info_count: personalInfo ? (personalInfo.name_variations?.length || 0) + (personalInfo.addresses?.length || 0) + (personalInfo.employers?.length || 0) + (personalInfo.phones?.length || 0) : 0,
         document_verification: analysisResult.document_verification,
       },
     });
