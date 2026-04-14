@@ -37,6 +37,7 @@ export interface CreditAccount {
   duplicate_of_id: string | null;
   is_disputed_ownership: boolean | null;
   payment_history_json: any | null;
+  bureau_source: string | null;
 }
 
 interface NegativeItem {
@@ -92,15 +93,41 @@ interface ComparableAccount {
   label: string;
   category: "active" | "historical";
   detail: string;
+  bureauSource: string | null;
+  amountEstimated: boolean;
 }
 
 type BureauKey = "experian" | "transunion" | "equifax";
+
+/* Bureau source matching */
+function accountMatchesBureau(bureauSource: string | null, bureau: BureauKey): boolean {
+  if (!bureauSource) return true; // null = show on all tabs (unknown bureau)
+  const bs = bureauSource.toLowerCase().replace(/[\s-]/g, "_");
+  if (bs === "all_three" || bs === "all") return true;
+  if (bureau === "experian") return bs.includes("experian");
+  if (bureau === "transunion") return bs.includes("transunion");
+  if (bureau === "equifax") return bs.includes("equifax");
+  return true;
+}
 
 const BUREAU_META: Record<BureauKey, { label: string; accent: string; dot: string }> = {
   experian: { label: "Experian", accent: "border-blue-500/40", dot: "bg-blue-500" },
   transunion: { label: "TransUnion", accent: "border-green-500/40", dot: "bg-green-500" },
   equifax: { label: "Equifax", accent: "border-red-500/40", dot: "bg-red-500" },
 };
+
+/* Bureau source display helper */
+function formatBureauSource(bs: string): string {
+  const s = bs.toLowerCase().replace(/[\s-]/g, "_");
+  if (s === "all_three" || s === "all") return "All 3 Bureaus";
+  if (s === "experian_transunion") return "EX + TU";
+  if (s === "experian_equifax") return "EX + EQ";
+  if (s === "transunion_equifax") return "TU + EQ";
+  if (s.includes("experian")) return "Experian";
+  if (s.includes("transunion")) return "TransUnion";
+  if (s.includes("equifax")) return "Equifax";
+  return bs;
+}
 
 /* ─── Helpers ─── */
 function effectiveLimit(a: CreditAccount) {
@@ -142,14 +169,17 @@ function getOriginalAmount(a: CreditAccount): number {
   return a.original_amount ?? effectiveLimit(a) ?? Number(a.balance ?? a.current_balance ?? 0);
 }
 
-function getDisplayAmount(a: CreditAccount): { amount: number; estimated: boolean } {
+function getDisplayAmount(a: CreditAccount): { amount: number; estimated: boolean; label: string } {
   const oa = a.original_amount;
-  if (oa && oa > 0) return { amount: oa, estimated: false };
+  if (oa && oa > 0) return { amount: oa, estimated: false, label: "Original amount" };
   const lim = effectiveLimit(a);
-  if (lim > 0) return { amount: lim, estimated: false };
+  if (lim > 0) {
+    const isRevolving = a.type === "credit_card";
+    return { amount: lim, estimated: false, label: isRevolving ? "Credit limit" : "Est. original amount" };
+  }
   const bal = Number(a.balance ?? a.current_balance ?? 0);
-  if (bal > 0) return { amount: bal, estimated: true };
-  return { amount: 0, estimated: true };
+  if (bal > 0) return { amount: bal, estimated: true, label: "Est. original amount" };
+  return { amount: 0, estimated: true, label: "Re-analyze report to get amount" };
 }
 
 /* ─── Suggestion content ─── */
@@ -266,21 +296,22 @@ function analyzeFile(accounts: CreditAccount[]): FileAnalysis {
   // Active comparable (open accounts in good standing)
   validAccounts.filter(a => (a.is_open ?? true) && isGoodStanding(a)).forEach(a => {
     compEvaluated++;
-    const { amount: amt, estimated } = getDisplayAmount(a);
-    const amtLabel = amt > 0 ? `$${amt.toLocaleString()}${estimated ? " (est.)" : ""}` : "Amount pending";
+    const { amount: amt, estimated, label: amtLabelType } = getDisplayAmount(a);
+    const amtLabel = amt > 0 ? `$${amt.toLocaleString()}${estimated ? " (est.)" : ""}` : amtLabelType;
     const displayAmt = amt > 0 ? amt : 0;
+    const bs = a.bureau_source ?? null;
     if (a.type === "credit_card" && !a.is_authorized_user && displayAmt > 0) {
       compQualified++;
-      comparable.push({ creditor: a.creditor, type: "revolving", amount: displayAmt, projectedApproval: Math.round(displayAmt * 1.5), label: "Active Revolving — Comparable Credit", category: "active", detail: `Open credit card — limit ${amtLabel}. Supports ~$${Math.round(displayAmt * 1.5).toLocaleString()} for a new revolving account.` });
+      comparable.push({ creditor: a.creditor, type: "revolving", amount: displayAmt, projectedApproval: Math.round(displayAmt * 1.5), label: "Active Revolving — Comparable Credit", category: "active", detail: `Open credit card — limit ${amtLabel}. Supports ~$${Math.round(displayAmt * 1.5).toLocaleString()} for a new revolving account.`, bureauSource: bs, amountEstimated: estimated });
     } else if (a.type === "auto_loan") {
       compQualified++;
-      comparable.push({ creditor: a.creditor, type: "auto", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Active Auto — Comparable Credit", category: "active", detail: `Open auto loan — ${amtLabel}.` });
+      comparable.push({ creditor: a.creditor, type: "auto", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Active Auto — Comparable Credit", category: "active", detail: `Open auto loan — ${amtLabel}.`, bureauSource: bs, amountEstimated: estimated });
     } else if (a.type === "mortgage") {
       compQualified++;
-      comparable.push({ creditor: a.creditor, type: "mortgage", amount: displayAmt, projectedApproval: displayAmt, label: "Active Mortgage — Comparable Credit", category: "active", detail: `Open mortgage — ${amtLabel}. Most valuable comparable tradeline.` });
+      comparable.push({ creditor: a.creditor, type: "mortgage", amount: displayAmt, projectedApproval: displayAmt, label: "Active Mortgage — Comparable Credit", category: "active", detail: `Open mortgage — ${amtLabel}. Most valuable comparable tradeline.`, bureauSource: bs, amountEstimated: estimated });
     } else if (a.type === "personal_loan") {
       compQualified++;
-      comparable.push({ creditor: a.creditor, type: "installment", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Active Installment — Comparable Credit", category: "active", detail: `Open personal loan — ${amtLabel}.` });
+      comparable.push({ creditor: a.creditor, type: "installment", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Active Installment — Comparable Credit", category: "active", detail: `Open personal loan — ${amtLabel}.`, bureauSource: bs, amountEstimated: estimated });
     }
   });
 
@@ -288,25 +319,25 @@ function analyzeFile(accounts: CreditAccount[]): FileAnalysis {
   const closedPositiveAccounts = validAccounts.filter(a => isClosedPositive(a));
   closedPositiveAccounts.forEach(a => {
     compEvaluated++;
-    const { amount: amt, estimated } = getDisplayAmount(a);
-    const amtLabel = amt > 0 ? `$${amt.toLocaleString()}${estimated ? " (est.)" : ""}` : "Amount pending extraction";
+    const { amount: amt, estimated, label: amtLabelType } = getDisplayAmount(a);
+    const amtLabel = amt > 0 ? `$${amt.toLocaleString()}${estimated ? " (est.)" : ""}` : amtLabelType;
     const displayAmt = Math.max(amt, 0);
+    const bs = a.bureau_source ?? null;
 
     // Include ALL closed positive accounts regardless of amount
     compQualified++;
     if (a.type === "credit_card") {
-      comparable.push({ creditor: a.creditor, type: "revolving", amount: displayAmt, projectedApproval: Math.round(displayAmt * 1.5), label: "Historical Revolving — Comparable Credit", category: "historical", detail: `Closed revolving — highest limit ${amtLabel}. ${displayAmt > 0 ? `Supports ~$${Math.round(displayAmt * 1.5).toLocaleString()} for a new revolving account.` : "Original amount needed for projection."}` });
+      comparable.push({ creditor: a.creditor, type: "revolving", amount: displayAmt, projectedApproval: Math.round(displayAmt * 1.5), label: "Historical Revolving — Comparable Credit", category: "historical", detail: `Closed revolving — highest limit ${amtLabel}. ${displayAmt > 0 ? `Supports ~$${Math.round(displayAmt * 1.5).toLocaleString()} for a new revolving account.` : "Original amount needed for projection."}`, bureauSource: bs, amountEstimated: estimated });
     } else if (a.type === "auto_loan" || /(auto|automobile|vehicle|ally fin)/i.test(a.creditor)) {
-      comparable.push({ creditor: a.creditor, type: "auto", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Historical Auto — Comparable Credit", category: "historical", detail: `Closed auto loan — ${amtLabel}. ${displayAmt > 0 ? `Supports ~$${(displayAmt * 3).toLocaleString()} for your next vehicle financing.` : "Original loan amount needed for projection."}` });
+      comparable.push({ creditor: a.creditor, type: "auto", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Historical Auto — Comparable Credit", category: "historical", detail: `Closed auto loan — ${amtLabel}. ${displayAmt > 0 ? `Supports ~$${(displayAmt * 3).toLocaleString()} for your next vehicle financing.` : "Original loan amount needed for projection."}`, bureauSource: bs, amountEstimated: estimated });
     } else if (a.type === "personal_loan" || a.type === "installment") {
-      comparable.push({ creditor: a.creditor, type: "installment", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Historical Installment — Comparable Credit", category: "historical", detail: `Closed installment loan — ${amtLabel}. ${displayAmt > 0 ? `Supports ~$${(displayAmt * 3).toLocaleString()} for your next personal loan.` : "Original amount needed for projection."}` });
+      comparable.push({ creditor: a.creditor, type: "installment", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Historical Installment — Comparable Credit", category: "historical", detail: `Closed installment loan — ${amtLabel}. ${displayAmt > 0 ? `Supports ~$${(displayAmt * 3).toLocaleString()} for your next personal loan.` : "Original amount needed for projection."}`, bureauSource: bs, amountEstimated: estimated });
     } else if (a.type === "mortgage") {
-      comparable.push({ creditor: a.creditor, type: "mortgage", amount: displayAmt, projectedApproval: displayAmt, label: "Historical Mortgage — Comparable Credit", category: "historical", detail: `Closed mortgage — ${amtLabel}. Most valuable comparable tradeline.` });
+      comparable.push({ creditor: a.creditor, type: "mortgage", amount: displayAmt, projectedApproval: displayAmt, label: "Historical Mortgage — Comparable Credit", category: "historical", detail: `Closed mortgage — ${amtLabel}. Most valuable comparable tradeline.`, bureauSource: bs, amountEstimated: estimated });
     } else if (a.type === "student_loan") {
-      comparable.push({ creditor: a.creditor, type: "student_loan", amount: displayAmt, projectedApproval: displayAmt, label: "Historical Student Loan — Comparable Credit", category: "historical", detail: `Paid student loan — ${amtLabel}. Demonstrates long-term installment management.` });
+      comparable.push({ creditor: a.creditor, type: "student_loan", amount: displayAmt, projectedApproval: displayAmt, label: "Historical Student Loan — Comparable Credit", category: "historical", detail: `Paid student loan — ${amtLabel}. Demonstrates long-term installment management.`, bureauSource: bs, amountEstimated: estimated });
     } else {
-      // Catch-all for any other closed positive account type
-      comparable.push({ creditor: a.creditor, type: a.type || "other", amount: displayAmt, projectedApproval: displayAmt, label: "Historical — Comparable Credit", category: "historical", detail: `Closed ${(a.type || "account").replace(/_/g, " ")} — ${amtLabel}. Closed in good standing.` });
+      comparable.push({ creditor: a.creditor, type: a.type || "other", amount: displayAmt, projectedApproval: displayAmt, label: "Historical — Comparable Credit", category: "historical", detail: `Closed ${(a.type || "account").replace(/_/g, " ")} — ${amtLabel}. Closed in good standing.`, bureauSource: bs, amountEstimated: estimated });
     }
   });
 
@@ -783,8 +814,13 @@ function BureauTabContent({
       {/* Section 3-6 — File Scorecard (same accounts, bureau context) */}
       <FileCompletionScorecard analysis={analysis} isMobile={isMobile} bureauLabel={BUREAU_META[bureau].label} />
 
-      {/* Section 4 — Comparable Credit */}
-      {analysis.comparable.length > 0 && <ComparableCreditPanel comparable={analysis.comparable} bureauLabel={BUREAU_META[bureau].label} />}
+      {/* Section 4 — Comparable Credit (filtered by bureau) */}
+      {analysis.comparable.length > 0 && (
+        <ComparableCreditPanel
+          comparable={analysis.comparable.filter(c => accountMatchesBureau(c.bureauSource, bureau))}
+          bureauLabel={BUREAU_META[bureau].label}
+        />
+      )}
 
       {/* Section 5 — Credit Age */}
       <CreditAgeGauge analysis={analysis} bureauLabel={BUREAU_META[bureau].label} />
@@ -903,12 +939,25 @@ function ComparableCreditPanel({ comparable, bureauLabel }: { comparable: Compar
   const active = comparable.filter(c => c.category === "active");
   const historical = comparable.filter(c => c.category === "historical");
 
+  // Check how many accounts have missing amounts
+  const missingAmountPct = comparable.length > 0
+    ? comparable.filter(c => c.amount === 0).length / comparable.length
+    : 0;
+
   return (
     <Card className="p-6 bg-card border-border">
       <h3 className="font-semibold text-foreground mb-1">
         Comparable Credit{bureauLabel ? ` — ${bureauLabel}` : ""}
       </h3>
       <p className="text-xs text-muted-foreground mb-4">Your comparable credit includes both open accounts and closed accounts paid in good standing. Personal credit uses a 3× multiplier for auto and installment loans.</p>
+
+      {missingAmountPct > 0.3 && (
+        <div className="rounded-md bg-amber-500/10 border border-amber-500/30 px-4 py-2.5 mb-4">
+          <p className="text-xs text-amber-300">
+            ⚠ Some account amounts need updating. Click <span className="font-semibold">Refresh Analysis</span> above to get accurate comparable credit projections.
+          </p>
+        </div>
+      )}
 
       {active.length > 0 && (
         <div className="mb-5">
@@ -920,10 +969,17 @@ function ComparableCreditPanel({ comparable, bureauLabel }: { comparable: Compar
                   <p className="text-sm font-medium text-foreground">{c.creditor}</p>
                   <p className="text-xs text-accent">{c.label}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{c.detail}</p>
+                  {!bureauLabel && c.bureauSource && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 mt-1">{formatBureauSource(c.bureauSource)}</Badge>
+                  )}
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}</p>
-                  {c.type !== "mortgage" && <p className="text-xs text-muted-foreground">Projected: up to ${c.projectedApproval.toLocaleString()}</p>}
+                  {c.amount > 0 ? (
+                    <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}{c.amountEstimated ? " (est.)" : ""}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">Re-analyze report to get amount</p>
+                  )}
+                  {c.amount > 0 && c.type !== "mortgage" && <p className="text-xs text-muted-foreground">Projected: up to ${c.projectedApproval.toLocaleString()}</p>}
                 </div>
               </div>
             ))}
@@ -942,13 +998,20 @@ function ComparableCreditPanel({ comparable, bureauLabel }: { comparable: Compar
                   <p className="text-sm font-medium text-foreground">{c.creditor}</p>
                   <p className="text-xs text-accent">{c.label}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{c.detail}</p>
+                  {!bureauLabel && c.bureauSource && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 mt-1">{formatBureauSource(c.bureauSource)}</Badge>
+                  )}
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}</p>
-                  {c.type !== "revolving" && c.type !== "mortgage" && c.type !== "student_loan" && (
+                  {c.amount > 0 ? (
+                    <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}{c.amountEstimated ? " (est.)" : ""}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">Re-analyze report to get amount</p>
+                  )}
+                  {c.amount > 0 && c.type !== "revolving" && c.type !== "mortgage" && c.type !== "student_loan" && (
                     <p className="text-xs text-muted-foreground">Projected: up to ${c.projectedApproval.toLocaleString()}</p>
                   )}
-                  {c.type === "revolving" && <p className="text-xs text-muted-foreground">Comparable limit: ${c.amount.toLocaleString()}</p>}
+                  {c.amount > 0 && c.type === "revolving" && <p className="text-xs text-muted-foreground">Comparable limit: ${c.amount.toLocaleString()}</p>}
                 </div>
               </div>
             ))}

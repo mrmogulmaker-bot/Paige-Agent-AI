@@ -1293,6 +1293,7 @@ export type Database = {
           account_number: string | null
           account_open_date: string | null
           balance: number | null
+          bureau_source: string | null
           client_id: string | null
           created_at: string | null
           credit_limit: number | null
@@ -1321,6 +1322,7 @@ export type Database = {
           account_number?: string | null
           account_open_date?: string | null
           balance?: number | null
+          bureau_source?: string | null
           client_id?: string | null
           created_at?: string | null
           credit_limit?: number | null
@@ -1349,6 +1351,7 @@ export type Database = {
           account_number?: string | null
           account_open_date?: string | null
           balance?: number | null
+          bureau_source?: string | null
           client_id?: string | null
           created_at?: string | null
           credit_limit?: number | null

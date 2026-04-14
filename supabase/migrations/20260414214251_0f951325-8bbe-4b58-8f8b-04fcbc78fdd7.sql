@@ -1,0 +1,1 @@
+ALTER TABLE public.credit_accounts ADD COLUMN IF NOT EXISTS bureau_source text;

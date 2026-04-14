@@ -57,6 +57,7 @@ const PositiveAccountSchema = z.object({
   date_closed: z.string().nullable().optional(),
   responsibility: z.string().nullable().optional(),
   payment_history_percentage: z.number().nullable().optional(),
+  bureau_source: z.string().nullable().optional(),
 });
 
 const DiscrepancySchema = z.object({
@@ -208,6 +209,17 @@ function similarity(a: string, b: string): number {
   return (2 * intersect) / (a.length - 1 + b.length - 1);
 }
 
+// Normalize creditor names for dedup comparison
+const STRIP_SUFFIXES = /\b(INC|LLC|CORP|CORPORATION|NA|N\.A\.|FSB|BANK|BK|FIN|FNCL|FINCL|CO|COMPANY|LTD|LP|FINANCIAL|SERVICES|SVC|SVCS|GROUP|GRP|ASSOC|ASSOCIATION)\b/gi;
+function normalizeCreditorName(name: string): string {
+  return (name || "unknown")
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, "")
+    .replace(STRIP_SUFFIXES, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function processSync(supabase: any, payload: any, targetUserId: string, callerUserId: string) {
   const results: Record<string, any> = {};
   let currentStep = "init";
@@ -320,19 +332,24 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
         if (rows && rows.length > 0) existing = rows[0];
       }
 
-      // DEDUP PRIORITY 2: creditor + bureau + item_type (fallback)
+      // DEDUP PRIORITY 2: normalized creditor + bureau + item_type (fallback)
       if (!existing) {
+        const normalizedName = normalizeCreditorName(item.creditor_name);
         let q = supabase.from("credit_negative_items").select("id, creditor_name")
           .eq("user_id", targetUserId).eq("bureau", bureau).eq("item_type", itemType);
         if (clientId) q = q.eq("client_id", clientId); else q = q.is("client_id", null);
         const { data: candidates } = await q;
         if (candidates && candidates.length > 0) {
-          // Exact match first, then fuzzy
-          const exact = candidates.find((c: any) => c.creditor_name === item.creditor_name);
-          if (exact) {
-            existing = exact;
+          // Exact normalized match first
+          const exactNorm = candidates.find((c: any) => normalizeCreditorName(c.creditor_name) === normalizedName);
+          if (exactNorm) {
+            existing = exactNorm;
+            if (exactNorm.creditor_name !== item.creditor_name) {
+              console.log(`[DEDUP NEG] Auto-merged case variant: "${item.creditor_name}" → "${exactNorm.creditor_name}"`);
+            }
           } else {
-            const fuzzy = candidates.find((c: any) => similarity(c.creditor_name, item.creditor_name) >= 0.8);
+            // Fuzzy match at 85%
+            const fuzzy = candidates.find((c: any) => similarity(normalizeCreditorName(c.creditor_name), normalizedName) >= 0.85);
             if (fuzzy) existing = fuzzy;
           }
         }
@@ -406,6 +423,13 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
     for (const acct of payload.positive_accounts) {
       const accountNumber = acct.account_number || acct.account_number_masked || null;
       const mappedType = accountTypeMap[acct.account_type?.toLowerCase()] || "credit_card";
+      const normalizedName = normalizeCreditorName(acct.creditor);
+
+      // Flag possible concatenated names (extraction errors)
+      let validationFlags: any[] = [];
+      if (normalizedName.length > 25) {
+        validationFlags.push({ type: "possible_concatenated_name", message: "Creditor name may be concatenated from extraction error" });
+      }
 
       // DEDUP PRIORITY 1: account_number match
       let existing: any = null;
@@ -415,21 +439,32 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
         if (rows && rows.length > 0) existing = rows[0];
       }
 
-      // DEDUP PRIORITY 2: creditor name match (exact then fuzzy)
+      // DEDUP PRIORITY 2: normalized creditor name match (exact then fuzzy at 85%)
       if (!existing) {
         const { data: candidates } = await supabase.from("credit_accounts").select("id, creditor")
           .eq("user_id", targetUserId);
         if (candidates && candidates.length > 0) {
-          const exact = candidates.find((c: any) => c.creditor === acct.creditor);
-          if (exact) {
-            existing = exact;
+          // Exact normalized match first
+          const exactNorm = candidates.find((c: any) => normalizeCreditorName(c.creditor) === normalizedName);
+          if (exactNorm) {
+            existing = exactNorm;
+            // Auto-merge case-sensitivity duplicates — log it
+            if (exactNorm.creditor !== acct.creditor) {
+              console.log(`[DEDUP] Auto-merged case variant: "${acct.creditor}" → "${exactNorm.creditor}"`);
+              await supabase.from("audit_logs").insert({
+                user_id: targetUserId, entity: "credit_accounts", action: "auto_merge_case_variant",
+                data: { original_name: acct.creditor, merged_into: exactNorm.creditor, account_id: exactNorm.id },
+              });
+            }
           } else {
-            const fuzzy = candidates.find((c: any) => similarity(c.creditor, acct.creditor) >= 0.8);
+            // Fuzzy match at 85%
+            const fuzzy = candidates.find((c: any) => similarity(normalizeCreditorName(c.creditor), normalizedName) >= 0.85);
             if (fuzzy) existing = fuzzy;
           }
         }
       }
 
+      const bureauSource = acct.bureau_source || null;
       const acctData: any = {
         balance: acct.balance, current_balance: acct.balance,
         credit_limit: acct.credit_limit, limit_amount: acct.credit_limit,
@@ -439,8 +474,14 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
         account_close_date: acct.date_closed || null,
         original_amount: acct.original_amount || null,
         account_number: accountNumber,
+        bureau_source: bureauSource,
         updated_at: new Date().toISOString(),
       };
+
+      if (validationFlags.length > 0) {
+        acctData.needs_review = true;
+        acctData.validation_flags = validationFlags;
+      }
 
       if (existing) {
         await supabase.from("credit_accounts").update(acctData).eq("id", existing.id);
