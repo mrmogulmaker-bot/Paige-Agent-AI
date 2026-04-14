@@ -314,12 +314,27 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
           <div className="p-4 border-t border-border flex-shrink-0">
             {conversation.status === "connected" && (
-              <div className="mb-3 flex items-center justify-center gap-4 text-sm">
-                {conversation.isSpeaking ? (
-                  <div className="flex items-center gap-2 text-primary"><Volume2 className="h-4 w-4 animate-pulse" /><span>Speaking...</span></div>
-                ) : (
-                  <div className="flex items-center gap-2 text-primary"><div className="h-2 w-2 rounded-full bg-primary animate-pulse" /><span>Listening...</span></div>
-                )}
+              <div className="mb-3 space-y-2">
+                <div className="flex items-center justify-center gap-4 text-sm">
+                  {conversation.isSpeaking ? (
+                    <div className="flex items-center gap-2 text-primary"><Volume2 className="h-4 w-4 animate-pulse" /><span>Speaking...</span></div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-primary"><div className="h-2 w-2 rounded-full bg-primary animate-pulse" /><span>Listening...</span></div>
+                  )}
+                </div>
+                <p className="text-[10px] text-muted-foreground text-center">Voice active — type to send a text message instead</p>
+                <div className="flex gap-2">
+                  <Input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyPress={(e) => e.key === "Enter" && handleSend()}
+                    placeholder="Type to Paige while talking..."
+                    className="bg-muted/30 border-border/50"
+                  />
+                  <Button onClick={handleSend} disabled={isLoading || !input.trim()} size="icon">
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -333,10 +348,14 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
               <Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach PDF">
                 <Paperclip className="h-4 w-4" />
               </Button>
-              <Input value={input} onChange={(e) => setInput(e.target.value)} onKeyPress={(e) => e.key === "Enter" && handleSend()} placeholder={attachedDoc ? "Add a message..." : "Ask me anything..."} disabled={isLoading || conversation.status === "connected"} />
-              <Button onClick={handleSend} disabled={isLoading || (!input.trim() && !attachedDoc) || conversation.status === "connected"} size="icon">
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
+              {conversation.status !== "connected" && (
+                <Input value={input} onChange={(e) => setInput(e.target.value)} onKeyPress={(e) => e.key === "Enter" && handleSend()} placeholder={attachedDoc ? "Add a message..." : "Ask me anything..."} disabled={isLoading} />
+              )}
+              {conversation.status !== "connected" && (
+                <Button onClick={handleSend} disabled={isLoading || (!input.trim() && !attachedDoc)} size="icon">
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              )}
               <Button onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat} variant={conversation.status === "connected" ? "destructive" : "secondary"} size="icon">
                 {conversation.status === "connected" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
               </Button>
