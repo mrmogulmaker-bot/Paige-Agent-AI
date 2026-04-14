@@ -442,7 +442,7 @@ export function buildBureauHealthContext(
 export function CreditFileHealthAssessment() {
   const isMobile = useIsMobile();
 
-  // Fetch credit accounts
+  // Fetch credit accounts (include new fields)
   const { data: accounts, isLoading: loadingAccounts } = useQuery({
     queryKey: ["credit-accounts-health"],
     queryFn: async () => {
@@ -454,13 +454,13 @@ export function CreditFileHealthAssessment() {
     },
   });
 
-  // Fetch negative items
+  // Fetch negative items — exclude duplicates and disputed ownership
   const { data: negatives } = useQuery({
     queryKey: ["credit-negatives-health"],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return [];
-      const { data, error } = await supabase.from("credit_negative_items").select("id, creditor_name, account_number_masked, amount, bureau, item_type, status").eq("user_id", session.user.id).neq("status", "removed");
+      const { data, error } = await supabase.from("credit_negative_items").select("id, creditor_name, account_number_masked, amount, bureau, item_type, status, duplicate_of_id, is_disputed_ownership").eq("user_id", session.user.id).neq("status", "removed").is("duplicate_of_id", null).or("is_disputed_ownership.is.null,is_disputed_ownership.eq.false");
       if (error) throw error;
       return (data || []) as NegativeItem[];
     },
@@ -863,29 +863,61 @@ function FileCompletionScorecard({ analysis, isMobile, bureauLabel }: { analysis
 
 /* ─── Comparable Credit Panel ─── */
 function ComparableCreditPanel({ comparable, bureauLabel }: { comparable: ComparableAccount[]; bureauLabel?: string }) {
+  const active = comparable.filter(c => c.category === "active");
+  const historical = comparable.filter(c => c.category === "historical");
+
   return (
     <Card className="p-6 bg-card border-border">
       <h3 className="font-semibold text-foreground mb-1">
-        Comparable Credit History{bureauLabel ? ` — ${bureauLabel}` : ""}
+        Comparable Credit{bureauLabel ? ` — ${bureauLabel}` : ""}
       </h3>
-      <p className="text-xs text-muted-foreground mb-4">Closed accounts in good standing. Personal credit uses a 3× multiplier.</p>
-      <div className="space-y-3">
-        {comparable.map((c, i) => (
-          <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-border p-3 gap-2">
-            <div>
-              <p className="text-sm font-medium text-foreground">{c.creditor}</p>
-              <p className="text-xs text-accent">{c.label}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}</p>
-              {c.type !== "revolving" && c.type !== "mortgage" && (
-                <p className="text-xs text-muted-foreground">Projected approval: up to ${c.projectedApproval.toLocaleString()}</p>
-              )}
-              {c.type === "revolving" && <p className="text-xs text-muted-foreground">Comparable revolving limit: ${c.amount.toLocaleString()}</p>}
-            </div>
+      <p className="text-xs text-muted-foreground mb-4">Your comparable credit includes both open accounts and closed accounts paid in good standing. Personal credit uses a 3× multiplier for auto and installment loans.</p>
+
+      {active.length > 0 && (
+        <div className="mb-5">
+          <h4 className="text-sm font-medium text-foreground mb-2 flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-fundability-excellent" /> Active Comparable Credit</h4>
+          <div className="space-y-2">
+            {active.map((c, i) => (
+              <div key={`active-${i}`} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-fundability-excellent/20 bg-fundability-excellent/5 p-3 gap-2">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{c.creditor}</p>
+                  <p className="text-xs text-accent">{c.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{c.detail}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}</p>
+                  {c.type !== "mortgage" && <p className="text-xs text-muted-foreground">Projected: up to ${c.projectedApproval.toLocaleString()}</p>}
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {historical.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium text-foreground mb-2 flex items-center gap-1.5"><Clock className="w-4 h-4 text-accent" /> Historical Comparable Credit — Closed in Good Standing</h4>
+          <p className="text-xs text-muted-foreground mb-3 leading-relaxed">Closed accounts in good standing are as valuable as open accounts for establishing comparable credit. Lenders use your historical credit to determine approval amounts for new accounts.</p>
+          <div className="space-y-2">
+            {historical.map((c, i) => (
+              <div key={`hist-${i}`} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-border p-3 gap-2">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{c.creditor}</p>
+                  <p className="text-xs text-accent">{c.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{c.detail}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}</p>
+                  {c.type !== "revolving" && c.type !== "mortgage" && c.type !== "student_loan" && (
+                    <p className="text-xs text-muted-foreground">Projected: up to ${c.projectedApproval.toLocaleString()}</p>
+                  )}
+                  {c.type === "revolving" && <p className="text-xs text-muted-foreground">Comparable limit: ${c.amount.toLocaleString()}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

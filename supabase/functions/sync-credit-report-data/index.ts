@@ -45,6 +45,10 @@ const PositiveAccountSchema = z.object({
   is_open: z.boolean().optional().default(true),
   payment_status: z.string().nullable().optional(),
   account_number_masked: z.string().nullable().optional(),
+  original_amount: z.number().nullable().optional(),
+  date_closed: z.string().nullable().optional(),
+  responsibility: z.string().nullable().optional(),
+  payment_history_percentage: z.number().nullable().optional(),
 });
 
 const DiscrepancySchema = z.object({
