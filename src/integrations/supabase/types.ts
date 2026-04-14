@@ -4717,6 +4717,10 @@ export type Database = {
         Returns: number
       }
       ensure_owner_admin: { Args: never; Returns: undefined }
+      factory_reset_delete_dispute_related: {
+        Args: { _user_id: string }
+        Returns: undefined
+      }
       get_business_hierarchy: {
         Args: { _user_id: string }
         Returns: {
