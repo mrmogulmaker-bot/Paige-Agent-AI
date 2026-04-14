@@ -159,17 +159,23 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
             }
             const paymentRate = totalPayments > 0 ? Math.round((onTimeCount / totalPayments) * 100) : 100;
 
-            // Utilization
+            // Utilization — use inference chain for credit_limit: credit_limit → limit_amount → original_amount → highest_balance
             const revolving = bAccounts.filter(a => {
               const t = (a.type || "").toLowerCase();
               return t.includes("revolving") || t.includes("credit_card") || t.includes("creditcard");
             });
-            const totalRevBal = revolving.reduce((s, a) => s + (Number(a.current_balance ?? a.balance) || 0), 0);
-            const totalRevLimit = revolving.reduce((s, a) => s + (Number(a.credit_limit ?? a.limit_amount) || 0), 0);
+            const inferLimit = (a: any): number => {
+              return Number(a.credit_limit) || Number(a.limit_amount) || Number(a.original_amount) || 0;
+            };
+            // Separate accounts with reported limits from those without
+            const revWithLimit = revolving.filter(a => inferLimit(a) > 0);
+            const revWithoutLimit = revolving.filter(a => inferLimit(a) <= 0);
+            const totalRevBal = revWithLimit.reduce((s, a) => s + (Number(a.current_balance ?? a.balance) || 0), 0);
+            const totalRevLimit = revWithLimit.reduce((s, a) => s + inferLimit(a), 0);
             const utilPct = totalRevLimit > 0 ? Math.round((totalRevBal / totalRevLimit) * 100) : 0;
-            const over30 = revolving.filter(a => {
+            const over30 = revWithLimit.filter(a => {
               const bal = Number(a.current_balance ?? a.balance) || 0;
-              const lim = Number(a.credit_limit ?? a.limit_amount) || 0;
+              const lim = inferLimit(a);
               return lim > 0 && (bal / lim) > 0.3;
             });
             const paydownTo10 = totalRevLimit > 0 ? Math.max(0, totalRevBal - Math.round(totalRevLimit * 0.1)) : 0;
@@ -234,12 +240,12 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
 
             parts.push(`Credit Factors — ${bureauLabel} (score: ${bScore ?? "N/A"}):`);
             parts.push(`  Payment History: ${paymentRate}% on-time (${accountsWithLates} accounts with lates)${worstAccount && worstPct < 95 ? ` — worst: ${worstAccount} at ${worstPct}%` : ""}`);
-            parts.push(`  Utilization: ${utilPct}% overall — ${fmt$(totalRevBal)} of ${fmt$(totalRevLimit)} — ${over30.length} accounts over 30%`);
+            parts.push(`  Utilization: ${utilPct}% overall — ${fmt$(totalRevBal)} of ${fmt$(totalRevLimit)} — ${over30.length} accounts over 30%${revWithoutLimit.length > 0 ? ` (Note: ${revWithoutLimit.length} revolving accounts excluded — credit limits not reported)` : ""}`);
             if (paydownTo10 > 0) parts.push(`  Paydown needed for 10% utilization: ${fmt$(paydownTo10)}`);
             if (over30.length > 0) {
               const over30Detail = over30.slice(0, 3).map(a => {
                 const bal = Number(a.current_balance ?? a.balance) || 0;
-                const lim = Number(a.credit_limit ?? a.limit_amount) || 0;
+                const lim = inferLimit(a);
                 return `${a.creditor} (${lim > 0 ? Math.round((bal / lim) * 100) : "?"}%)`;
               }).join(", ");
               parts.push(`  Accounts over 30%: ${over30Detail}`);
