@@ -1238,6 +1238,13 @@ async function runStructuredExtractionAndSync(
   } catch (err) {
     console.error("Structured extraction and sync pipeline failed:", err);
     await logSyncFailure(supabase, callerUserId, err instanceof Error ? err.message : "Unknown pipeline error", null);
+    // Mark upload record as failed if we created one
+    if (uploadRecordId) {
+      await supabase.from("credit_report_uploads").update({
+        analysis_status: "failed",
+        error_message: err instanceof Error ? err.message : "Pipeline error",
+      }).eq("id", uploadRecordId);
+    }
     return { success: false, error: err instanceof Error ? err.message : "Unknown error", step: "pipeline" };
   }
 }
