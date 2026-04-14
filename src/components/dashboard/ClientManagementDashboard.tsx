@@ -40,6 +40,7 @@ interface AuthClient {
   estimated_fico_ex: number | null;
   estimated_fico_tu: number | null;
   onboarding_completed: boolean | null;
+  roles: string[];
 }
 
 interface ClientManagementDashboardProps {
