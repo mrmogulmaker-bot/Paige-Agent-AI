@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -709,9 +709,22 @@ export function DisputesManager({ personalOnly, businessOnly, clientId }: Disput
   const { data: activeInfo } = useDisputeClientInfo(clientId);
   const [roundDialogOpen, setRoundDialogOpen] = useState(false);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["disputes", clientId || "self"] });
-  };
+    queryClient.invalidateQueries({ queryKey: ["credit-negative-items", clientId || "self"] });
+    queryClient.invalidateQueries({ queryKey: ["bureau-impact-analysis", clientId || "self"] });
+    queryClient.invalidateQueries({ queryKey: ["profile-info-for-letters-v2"] });
+  }, [clientId, queryClient]);
+
+  useEffect(() => {
+    const handleFactoryReset = () => {
+      setRoundDialogOpen(false);
+      handleRefresh();
+    };
+
+    window.addEventListener("paige-factory-reset", handleFactoryReset);
+    return () => window.removeEventListener("paige-factory-reset", handleFactoryReset);
+  }, [handleRefresh]);
 
   const allDisputes = disputes || [];
   const draftCount = allDisputes.filter(d => d.status === "draft" || (!d.dispute_round && d.status !== "resolved" && d.status !== "rejected")).length;
