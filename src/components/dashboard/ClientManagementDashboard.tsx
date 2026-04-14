@@ -6,10 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Search, TrendingUp, DollarSign, UserCheck, UserPlus, Upload, Building2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, Search, TrendingUp, DollarSign, UserCheck, UserPlus, Upload, Building2, Shield } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
 import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
+import { toast } from "sonner";
 
 // Internal client from the new clients table
 interface InternalClient {
@@ -38,6 +40,7 @@ interface AuthClient {
   estimated_fico_ex: number | null;
   estimated_fico_tu: number | null;
   onboarding_completed: boolean | null;
+  roles: string[];
 }
 
 interface ClientManagementDashboardProps {
@@ -83,11 +86,22 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       const isAdmin = roles.includes("admin");
 
       if (isAdmin) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed")
-          .order("created_at", { ascending: false });
-        setAuthClients((data || []) as AuthClient[]);
+        const [profilesRes, allRolesRes] = await Promise.all([
+          supabase
+            .from("profiles")
+            .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("user_roles")
+            .select("user_id, role"),
+        ]);
+
+        const allRoles = allRolesRes.data || [];
+        const enriched = (profilesRes.data || []).map((p: any) => ({
+          ...p,
+          roles: allRoles.filter((r: any) => r.user_id === p.user_id).map((r: any) => r.role),
+        }));
+        setAuthClients(enriched as AuthClient[]);
       }
     } catch (err) {
       console.error("Error loading clients:", err);
@@ -114,6 +128,36 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
 
   const activeCount = internalClients.filter((c) => c.status === "active").length;
   const withEntity = internalClients.filter((c) => c.entity_name).length;
+
+  const updateUserRole = async (userId: string, newRole: string) => {
+    try {
+      // Remove existing roles
+      await supabase.from("user_roles").delete().eq("user_id", userId);
+      // Insert new role
+      const { error } = await supabase.from("user_roles").insert([{ user_id: userId, role: newRole as any }]);
+      if (error) throw error;
+      toast.success("Role updated successfully");
+      fetchAllClients();
+    } catch (err: any) {
+      console.error("Error updating role:", err);
+      toast.error("Failed to update role");
+    }
+  };
+
+  const approveUser = async (userId: string) => {
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ onboarding_completed: true } as any)
+        .eq("user_id", userId);
+      if (error) throw error;
+      toast.success("User approved");
+      fetchAllClients();
+    } catch (err: any) {
+      console.error("Error approving user:", err);
+      toast.error("Failed to approve user");
+    }
+  };
 
   if (loading) {
     return (
@@ -279,13 +323,15 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                         <TableHead>Name</TableHead>
                         <TableHead>Location</TableHead>
                         <TableHead>FICO</TableHead>
+                        <TableHead>Role</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead></TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredAuth.map((c) => {
                         const bestFICO = Math.max(c.estimated_fico_eq || 0, c.estimated_fico_ex || 0, c.estimated_fico_tu || 0);
+                        const primaryRole = c.roles?.[0] || "user";
                         return (
                           <TableRow key={c.user_id}>
                             <TableCell className="font-medium">{c.full_name || "—"}</TableCell>
@@ -298,14 +344,37 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                               ) : "—"}
                             </TableCell>
                             <TableCell>
+                              <Select
+                                defaultValue={primaryRole}
+                                onValueChange={(value) => updateUserRole(c.user_id, value)}
+                              >
+                                <SelectTrigger className="w-[120px] h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="user">User</SelectItem>
+                                  <SelectItem value="coach">Coach</SelectItem>
+                                  <SelectItem value="moderator">Moderator</SelectItem>
+                                  <SelectItem value="admin">Admin</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
                               <Badge variant={c.onboarding_completed ? "default" : "outline"}>
                                 {c.onboarding_completed ? "Active" : "Pending"}
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              <Button size="sm" variant="outline" onClick={() => onViewClient(c.user_id)}>
-                                View
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                {!c.onboarding_completed && (
+                                  <Button size="sm" variant="default" onClick={() => approveUser(c.user_id)}>
+                                    Approve
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="outline" onClick={() => onViewClient(c.user_id)}>
+                                  View
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         );
