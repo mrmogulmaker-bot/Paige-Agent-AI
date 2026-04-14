@@ -65,9 +65,9 @@ export function PersonalInfoAudit({ clientId }: PersonalInfoAuditProps) {
   // Load extracted personal info from database
   useEffect(() => {
     loadExtractedData();
-  }, [clientId]);
+  }, [loadExtractedData]);
 
-  const loadExtractedData = async () => {
+  const loadExtractedData = useCallback(async () => {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -75,7 +75,6 @@ export function PersonalInfoAudit({ clientId }: PersonalInfoAuditProps) {
 
       const targetUserId = clientId || user.id;
 
-      // Query credit_report_personal_info for this user
       const { data: piData, error } = await supabase
         .from("credit_report_personal_info")
         .select("*")
@@ -84,86 +83,94 @@ export function PersonalInfoAudit({ clientId }: PersonalInfoAuditProps) {
 
       if (error) {
         console.error("Error loading personal info:", error);
-        setLoading(false);
         return;
       }
 
       const records = (piData || []) as any[];
-      
-      if (records.length > 0) {
-        setHasExtractedData(true);
 
-        // Deduplicate by field_type + field_value, keeping the most recent
-        const seen = new Set<string>();
-        const unique = records.filter(r => {
-          const key = `${r.field_type}:${r.field_value}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-
-        const nameItems = unique.filter(r => r.field_type === "name").map(r => ({
-          id: crypto.randomUUID(),
-          value: r.field_value,
-          status: r.status || "unreviewed",
-          bureauSource: r.bureau_source,
-          dbId: r.id,
-        }));
-        if (nameItems.length > 0) setNames(nameItems);
-
-        const addrItems = unique.filter(r => r.field_type === "address").map(r => ({
-          id: crypto.randomUUID(),
-          value: r.field_value,
-          status: r.status || "unreviewed",
-          bureauSource: r.bureau_source,
-          dateRange: r.date_range,
-          dbId: r.id,
-        }));
-        if (addrItems.length > 0) setAddresses(addrItems);
-
-        const empItems = unique.filter(r => r.field_type === "employer").map(r => ({
-          id: crypto.randomUUID(),
-          value: r.field_value,
-          status: r.status || "unreviewed",
-          bureauSource: r.bureau_source,
-          dateRange: r.date_range,
-          dbId: r.id,
-        }));
-        if (empItems.length > 0) setEmployers(empItems);
-
-        const phoneItems = unique.filter(r => r.field_type === "phone").map(r => ({
-          id: crypto.randomUUID(),
-          value: r.field_value,
-          status: r.status || "unreviewed",
-          bureauSource: r.bureau_source,
-          dbId: r.id,
-        }));
-        if (phoneItems.length > 0) setPhones(phoneItems);
-
-        const dobRecord = unique.find(r => r.field_type === "dob");
-        if (dobRecord) {
-          setDobValue(dobRecord.value);
-        }
-
-        const ssnRecord = unique.find(r => r.field_type === "ssn_variation");
-        if (ssnRecord) {
-          setSsnMultiple("multiple");
-        }
-      }
-
-      // If no extracted data, set defaults
       if (records.length === 0) {
-        if (names.length === 0) setNames([{ id: "1", value: "", status: "correct" }]);
-        if (addresses.length === 0) setAddresses([{ id: "1", value: "", status: "current" }]);
-        if (employers.length === 0) setEmployers([{ id: "1", value: "", status: "correct" }]);
-        if (phones.length === 0) setPhones([{ id: "1", value: "", status: "correct" }]);
+        setHasExtractedData(false);
+        setNames([{ id: crypto.randomUUID(), value: "", status: "correct" }]);
+        setAddresses([{ id: crypto.randomUUID(), value: "", status: "current" }]);
+        setEmployers([{ id: crypto.randomUUID(), value: "", status: "correct" }]);
+        setPhones([{ id: crypto.randomUUID(), value: "", status: "correct" }]);
+        setDobValue("");
+        setDobCorrect("correct");
+        setSsnMultiple("single");
+        return;
       }
+
+      setHasExtractedData(true);
+
+      const seen = new Set<string>();
+      const unique = records.filter((r) => {
+        const key = `${r.field_type}:${r.field_value}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      const nameItems = unique.filter(r => r.field_type === "name").map(r => ({
+        id: crypto.randomUUID(),
+        value: r.field_value,
+        status: r.status || "unreviewed",
+        bureauSource: r.bureau_source,
+        dbId: r.id,
+      }));
+      setNames(nameItems.length > 0 ? nameItems : [{ id: crypto.randomUUID(), value: "", status: "correct" }]);
+
+      const addrItems = unique.filter(r => r.field_type === "address").map(r => ({
+        id: crypto.randomUUID(),
+        value: r.field_value,
+        status: r.status || "unreviewed",
+        bureauSource: r.bureau_source,
+        dateRange: r.date_range,
+        dbId: r.id,
+      }));
+      setAddresses(addrItems.length > 0 ? addrItems : [{ id: crypto.randomUUID(), value: "", status: "current" }]);
+
+      const empItems = unique.filter(r => r.field_type === "employer").map(r => ({
+        id: crypto.randomUUID(),
+        value: r.field_value,
+        status: r.status || "unreviewed",
+        bureauSource: r.bureau_source,
+        dateRange: r.date_range,
+        dbId: r.id,
+      }));
+      setEmployers(empItems.length > 0 ? empItems : [{ id: crypto.randomUUID(), value: "", status: "correct" }]);
+
+      const phoneItems = unique.filter(r => r.field_type === "phone").map(r => ({
+        id: crypto.randomUUID(),
+        value: r.field_value,
+        status: r.status || "unreviewed",
+        bureauSource: r.bureau_source,
+        dbId: r.id,
+      }));
+      setPhones(phoneItems.length > 0 ? phoneItems : [{ id: crypto.randomUUID(), value: "", status: "correct" }]);
+
+      const dobRecord = unique.find(r => r.field_type === "dob");
+      setDobValue(dobRecord?.field_value || "");
+      setDobCorrect("correct");
+
+      const ssnRecord = unique.find(r => r.field_type === "ssn_variation");
+      setSsnMultiple(ssnRecord ? "multiple" : "single");
     } catch (err) {
       console.error("Error loading personal info:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [clientId]);
+
+
+  useEffect(() => {
+    const handleFactoryReset = () => {
+      setExpanded(true);
+      loadExtractedData();
+    };
+
+    window.addEventListener("paige-factory-reset", handleFactoryReset);
+    return () => window.removeEventListener("paige-factory-reset", handleFactoryReset);
+  }, [loadExtractedData]);
 
   const hasErrors = () => {
     const nameErrors = names.some(n => n.status === "not_mine" && n.value.trim());
