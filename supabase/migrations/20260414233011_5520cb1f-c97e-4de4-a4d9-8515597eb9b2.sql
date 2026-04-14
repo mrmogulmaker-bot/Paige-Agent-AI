@@ -1,0 +1,1 @@
+DELETE FROM public.credit_factor_scores WHERE user_id = 'fb1a09e3-bab2-487e-95bf-40e15b29729a';
