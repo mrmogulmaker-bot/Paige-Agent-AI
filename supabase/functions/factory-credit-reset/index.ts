@@ -52,7 +52,10 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseClient.auth.getUser();
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Invalid authentication token" }), {
         status: 401,
@@ -71,65 +74,56 @@ serve(async (req) => {
     const linkedClientIds = (linkedClients || []).map((client) => client.id);
     const startedAt = new Date().toISOString();
 
-    // ── Wave 1: Delete all user-owned data across every feature ──
+    const clearedTables: string[] = [];
+
     const deletions = [
-      // Credit Intelligence
-      admin.from("credit_accounts").delete().eq("user_id", user.id),
-      admin.from("credit_negative_items").delete().eq("user_id", user.id),
-      admin.from("credit_report_personal_info").delete().eq("user_id", user.id),
-      admin.from("credit_alerts").delete().eq("client_id", user.id),
-      admin.from("credit_factor_scores").delete().eq("user_id", user.id),
-      admin.from("credit_inquiries").delete().eq("user_id", user.id),
-      // Disputes
-      admin.from("dispute_letters").delete().eq("user_id", user.id),
-      admin.from("disputes").delete().eq("user_id", user.id),
-      // Funding Intelligence
-      admin.from("funding_readiness_scores").delete().eq("user_id", user.id),
-      admin.from("funding_secured").delete().eq("user_id", user.id),
-      admin.from("funding_projections").delete().eq("user_id", user.id),
-      // Build scores
-      admin.from("build_scores").delete().eq("user_id", user.id),
-      // Paige AI memory & chat
-      admin.from("client_memory").delete().eq("client_user_id", user.id),
-      admin.from("chat_messages").delete().eq("user_id", user.id),
-      admin.from("conversation_context").delete().eq("user_id", user.id),
-      admin.from("extraction_quality_log").delete().eq("user_id", user.id),
-    ];
+      ["credit_accounts", admin.from("credit_accounts").delete().eq("user_id", user.id)],
+      ["credit_negative_items_user", admin.from("credit_negative_items").delete().eq("user_id", user.id)],
+      ["credit_report_personal_info_user", admin.from("credit_report_personal_info").delete().eq("user_id", user.id)],
+      ["credit_alerts", admin.from("credit_alerts").delete().eq("client_id", user.id)],
+      ["credit_factor_scores_user", admin.from("credit_factor_scores").delete().eq("user_id", user.id)],
+      ["credit_inquiries", admin.from("credit_inquiries").delete().eq("user_id", user.id)],
+      ["dispute_letters", admin.from("dispute_letters").delete().eq("user_id", user.id)],
+      ["disputes_user", admin.from("disputes").delete().eq("user_id", user.id)],
+      ["funding_readiness_scores", admin.from("funding_readiness_scores").delete().eq("user_id", user.id)],
+      ["funding_secured_user", admin.from("funding_secured").delete().eq("user_id", user.id)],
+      ["funding_secured_client_user", admin.from("funding_secured").delete().eq("client_user_id", user.id)],
+      ["funding_projections", admin.from("funding_projections").delete().eq("user_id", user.id)],
+      ["funding_application_outcomes_user", admin.from("funding_application_outcomes").delete().eq("user_id", user.id)],
+      ["funding_plans", admin.from("funding_plans").delete().eq("user_id", user.id)],
+      ["build_scores", admin.from("build_scores").delete().eq("user_id", user.id)],
+      ["client_memory_user", admin.from("client_memory").delete().eq("client_user_id", user.id)],
+      ["chat_messages", admin.from("chat_messages").delete().eq("user_id", user.id)],
+      ["conversation_context", admin.from("conversation_context").delete().eq("user_id", user.id)],
+      ["extraction_quality_log_user", admin.from("extraction_quality_log").delete().eq("user_id", user.id)],
+    ] as const;
 
-    const deletionResults = await Promise.all(deletions);
-    const deletionLabels = [
-      "credit_accounts",
-      "credit_negative_items",
-      "credit_report_personal_info",
-      "credit_alerts",
-      "credit_factor_scores",
-      "credit_inquiries",
-      "dispute_letters",
-      "disputes",
-      "funding_readiness_scores",
-      "funding_secured",
-      "funding_projections",
-      "build_scores",
-      "client_memory",
-      "chat_messages",
-      "conversation_context",
-      "extraction_quality_log",
-    ];
+    const deletionResults = await Promise.all(deletions.map(([, query]) => query));
+    deletionResults.forEach((result, index) => {
+      const [label] = deletions[index];
+      ensureNoError(result.error, `Delete ${label}`);
+      clearedTables.push(label);
+    });
 
-    deletionResults.forEach((result, index) => ensureNoError(result.error, `Delete ${deletionLabels[index]}`));
-
-    // ── Wave 1b: Client-linked records ──
     if (linkedClientIds.length > 0) {
-      const linkedDeletes = await Promise.all([
-        admin.from("client_memory").delete().in("client_id", linkedClientIds),
-        admin.from("extraction_quality_log").delete().in("client_id", linkedClientIds),
-        admin.from("disputes").delete().in("client_id", linkedClientIds),
-        admin.from("dispute_letters").delete().in("client_id", linkedClientIds),
-      ]);
-      linkedDeletes.forEach((r, i) => ensureNoError(r.error, `Delete linked batch ${i}`));
+      const linkedDeletes = [
+        ["credit_negative_items_client", admin.from("credit_negative_items").delete().in("client_id", linkedClientIds)],
+        ["credit_report_personal_info_client", admin.from("credit_report_personal_info").delete().in("client_id", linkedClientIds)],
+        ["credit_factor_scores_client", admin.from("credit_factor_scores").delete().in("client_id", linkedClientIds)],
+        ["client_memory_client", admin.from("client_memory").delete().in("client_id", linkedClientIds)],
+        ["extraction_quality_log_client", admin.from("extraction_quality_log").delete().in("client_id", linkedClientIds)],
+        ["disputes_client", admin.from("disputes").delete().in("client_id", linkedClientIds)],
+        ["funding_application_outcomes_client", admin.from("funding_application_outcomes").delete().in("client_id", linkedClientIds)],
+      ] as const;
+
+      const linkedResults = await Promise.all(linkedDeletes.map(([, query]) => query));
+      linkedResults.forEach((result, index) => {
+        const [label] = linkedDeletes[index];
+        ensureNoError(result.error, `Delete ${label}`);
+        clearedTables.push(label);
+      });
     }
 
-    // ── Wave 2: Reset uploads to pending (preserve PDFs) ──
     const { error: uploadsError } = await admin
       .from("credit_report_uploads")
       .update({
@@ -148,8 +142,8 @@ serve(async (req) => {
       })
       .eq("user_id", user.id);
     ensureNoError(uploadsError, "Reset credit_report_uploads");
+    clearedTables.push("credit_report_uploads_reset");
 
-    // ── Wave 3: Null out profile credit fields ──
     const { error: profileError } = await admin
       .from("profiles")
       .update({
@@ -164,8 +158,8 @@ serve(async (req) => {
       })
       .eq("user_id", user.id);
     ensureNoError(profileError, "Reset profiles credit fields");
+    clearedTables.push("profiles_credit_fields_reset");
 
-    // ── Wave 4: Audit log ──
     const { error: auditError } = await admin.from("audit_logs").insert({
       user_id: user.id,
       entity: "credit_file",
@@ -174,12 +168,12 @@ serve(async (req) => {
         source: parsedBody.source,
         triggered_by: user.id,
         timestamp: startedAt,
-        cleared_tables: deletionLabels,
+        cleared_tables: clearedTables,
       },
     });
     ensureNoError(auditError, "Write audit log");
 
-    return new Response(JSON.stringify({ success: true, user_id: user.id }), {
+    return new Response(JSON.stringify({ success: true, user_id: user.id, cleared_tables: clearedTables }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
