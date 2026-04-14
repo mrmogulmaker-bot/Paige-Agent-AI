@@ -121,21 +121,35 @@ function isGoodStanding(a: CreditAccount) {
 
 function isClosedPositive(a: CreditAccount): boolean {
   if (a.is_open === true) return false;
-  if (a.is_open == null) return false; // unknown = skip
   if (a.is_disputed_ownership) return false;
   if (a.duplicate_of_id) return false;
   const s = (a.status ?? "").toLowerCase();
-  // Check if closed/paid in good standing
-  const isClosedStatus = s.includes("closed") || s.includes("paid") || s === "transferred" || s === "";
-  if (!isClosedStatus && !isGoodStanding(a)) return false;
-  // Balance should be zero or null (paid off)
+  // Exclude unpaid charge-offs and unpaid collections
+  if ((s.includes("charged") || s.includes("charge")) && !s.includes("paid")) return false;
+  if (s.includes("collection") && !s.includes("paid")) return false;
+  if (s.includes("delinquent")) return false;
+  // Accept: closed, paid, paid in full, current (with is_open=false), satisfied, discharged, transferred, or empty status
+  const validStatus = s.includes("closed") || s.includes("paid") || s === "transferred" || s === "" ||
+    s.includes("current") || s.includes("satisfied") || s.includes("discharged");
+  if (!validStatus) return false;
+  // Balance should be zero or null (paid off) — but accept null balances
   const bal = Number(a.balance ?? a.current_balance ?? 0);
-  if (bal > 0 && !s.includes("paid")) return false;
+  if (bal > 0 && !s.includes("paid") && !s.includes("current")) return false;
   return true;
 }
 
 function getOriginalAmount(a: CreditAccount): number {
   return a.original_amount ?? effectiveLimit(a) ?? Number(a.balance ?? a.current_balance ?? 0);
+}
+
+function getDisplayAmount(a: CreditAccount): { amount: number; estimated: boolean } {
+  const oa = a.original_amount;
+  if (oa && oa > 0) return { amount: oa, estimated: false };
+  const lim = effectiveLimit(a);
+  if (lim > 0) return { amount: lim, estimated: false };
+  const bal = Number(a.balance ?? a.current_balance ?? 0);
+  if (bal > 0) return { amount: bal, estimated: true };
+  return { amount: 0, estimated: true };
 }
 
 /* ─── Suggestion content ─── */
@@ -246,38 +260,57 @@ function analyzeFile(accounts: CreditAccount[]): FileAnalysis {
   const avgAgeYears = +(avgAgeMonths / 12).toFixed(1);
 
   const comparable: ComparableAccount[] = [];
+  let compEvaluated = 0;
+  let compQualified = 0;
 
   // Active comparable (open accounts in good standing)
   validAccounts.filter(a => (a.is_open ?? true) && isGoodStanding(a)).forEach(a => {
-    const amt = effectiveLimit(a) || Number(a.balance ?? a.current_balance ?? 0);
-    if (amt <= 0) return;
-    if (a.type === "credit_card" && !a.is_authorized_user) {
-      comparable.push({ creditor: a.creditor, type: "revolving", amount: amt, projectedApproval: Math.round(amt * 1.5), label: "Active Revolving — Comparable Credit", category: "active", detail: `Open credit card — limit $${amt.toLocaleString()}. Supports ~$${Math.round(amt * 1.5).toLocaleString()} for a new revolving account.` });
+    compEvaluated++;
+    const { amount: amt, estimated } = getDisplayAmount(a);
+    const amtLabel = amt > 0 ? `$${amt.toLocaleString()}${estimated ? " (est.)" : ""}` : "Amount pending";
+    const displayAmt = amt > 0 ? amt : 0;
+    if (a.type === "credit_card" && !a.is_authorized_user && displayAmt > 0) {
+      compQualified++;
+      comparable.push({ creditor: a.creditor, type: "revolving", amount: displayAmt, projectedApproval: Math.round(displayAmt * 1.5), label: "Active Revolving — Comparable Credit", category: "active", detail: `Open credit card — limit ${amtLabel}. Supports ~$${Math.round(displayAmt * 1.5).toLocaleString()} for a new revolving account.` });
     } else if (a.type === "auto_loan") {
-      comparable.push({ creditor: a.creditor, type: "auto", amount: amt, projectedApproval: amt * 3, label: "Active Auto — Comparable Credit", category: "active", detail: `Open auto loan — $${amt.toLocaleString()}.` });
+      compQualified++;
+      comparable.push({ creditor: a.creditor, type: "auto", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Active Auto — Comparable Credit", category: "active", detail: `Open auto loan — ${amtLabel}.` });
     } else if (a.type === "mortgage") {
-      comparable.push({ creditor: a.creditor, type: "mortgage", amount: amt, projectedApproval: amt, label: "Active Mortgage — Comparable Credit", category: "active", detail: `Open mortgage — $${amt.toLocaleString()}. Most valuable comparable tradeline.` });
+      compQualified++;
+      comparable.push({ creditor: a.creditor, type: "mortgage", amount: displayAmt, projectedApproval: displayAmt, label: "Active Mortgage — Comparable Credit", category: "active", detail: `Open mortgage — ${amtLabel}. Most valuable comparable tradeline.` });
     } else if (a.type === "personal_loan") {
-      comparable.push({ creditor: a.creditor, type: "installment", amount: amt, projectedApproval: amt * 3, label: "Active Installment — Comparable Credit", category: "active", detail: `Open personal loan — $${amt.toLocaleString()}.` });
+      compQualified++;
+      comparable.push({ creditor: a.creditor, type: "installment", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Active Installment — Comparable Credit", category: "active", detail: `Open personal loan — ${amtLabel}.` });
     }
   });
 
   // Historical comparable (closed accounts in good standing)
-  validAccounts.filter(a => isClosedPositive(a)).forEach(a => {
-    const amt = getOriginalAmount(a);
-    if (amt <= 0) return;
+  const closedPositiveAccounts = validAccounts.filter(a => isClosedPositive(a));
+  closedPositiveAccounts.forEach(a => {
+    compEvaluated++;
+    const { amount: amt, estimated } = getDisplayAmount(a);
+    const amtLabel = amt > 0 ? `$${amt.toLocaleString()}${estimated ? " (est.)" : ""}` : "Amount pending extraction";
+    const displayAmt = Math.max(amt, 0);
+
+    // Include ALL closed positive accounts regardless of amount
+    compQualified++;
     if (a.type === "credit_card") {
-      comparable.push({ creditor: a.creditor, type: "revolving", amount: amt, projectedApproval: Math.round(amt * 1.5), label: "Historical Revolving — Comparable Credit", category: "historical", detail: `Closed revolving — highest limit $${amt.toLocaleString()}. Supports ~$${Math.round(amt * 1.5).toLocaleString()} for a new revolving account.` });
-    } else if (a.type === "auto_loan" || /(auto|automobile|vehicle|ally financial)/i.test(a.creditor)) {
-      comparable.push({ creditor: a.creditor, type: "auto", amount: amt, projectedApproval: amt * 3, label: "Historical Auto — Comparable Credit", category: "historical", detail: `Closed auto loan — $${amt.toLocaleString()}. Supports ~$${(amt * 3).toLocaleString()} for your next vehicle financing.` });
-    } else if (a.type === "personal_loan") {
-      comparable.push({ creditor: a.creditor, type: "installment", amount: amt, projectedApproval: amt * 3, label: "Historical Installment — Comparable Credit", category: "historical", detail: `Closed installment loan — $${amt.toLocaleString()}. Supports ~$${(amt * 3).toLocaleString()} for your next personal loan.` });
+      comparable.push({ creditor: a.creditor, type: "revolving", amount: displayAmt, projectedApproval: Math.round(displayAmt * 1.5), label: "Historical Revolving — Comparable Credit", category: "historical", detail: `Closed revolving — highest limit ${amtLabel}. ${displayAmt > 0 ? `Supports ~$${Math.round(displayAmt * 1.5).toLocaleString()} for a new revolving account.` : "Original amount needed for projection."}` });
+    } else if (a.type === "auto_loan" || /(auto|automobile|vehicle|ally fin)/i.test(a.creditor)) {
+      comparable.push({ creditor: a.creditor, type: "auto", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Historical Auto — Comparable Credit", category: "historical", detail: `Closed auto loan — ${amtLabel}. ${displayAmt > 0 ? `Supports ~$${(displayAmt * 3).toLocaleString()} for your next vehicle financing.` : "Original loan amount needed for projection."}` });
+    } else if (a.type === "personal_loan" || a.type === "installment") {
+      comparable.push({ creditor: a.creditor, type: "installment", amount: displayAmt, projectedApproval: displayAmt * 3, label: "Historical Installment — Comparable Credit", category: "historical", detail: `Closed installment loan — ${amtLabel}. ${displayAmt > 0 ? `Supports ~$${(displayAmt * 3).toLocaleString()} for your next personal loan.` : "Original amount needed for projection."}` });
     } else if (a.type === "mortgage") {
-      comparable.push({ creditor: a.creditor, type: "mortgage", amount: amt, projectedApproval: amt, label: "Historical Mortgage — Comparable Credit", category: "historical", detail: `Closed mortgage — $${amt.toLocaleString()}. Most valuable comparable tradeline.` });
+      comparable.push({ creditor: a.creditor, type: "mortgage", amount: displayAmt, projectedApproval: displayAmt, label: "Historical Mortgage — Comparable Credit", category: "historical", detail: `Closed mortgage — ${amtLabel}. Most valuable comparable tradeline.` });
     } else if (a.type === "student_loan") {
-      comparable.push({ creditor: a.creditor, type: "student_loan", amount: amt, projectedApproval: amt, label: "Historical Student Loan — Comparable Credit", category: "historical", detail: `Paid student loan — $${amt.toLocaleString()}. Demonstrates long-term installment management.` });
+      comparable.push({ creditor: a.creditor, type: "student_loan", amount: displayAmt, projectedApproval: displayAmt, label: "Historical Student Loan — Comparable Credit", category: "historical", detail: `Paid student loan — ${amtLabel}. Demonstrates long-term installment management.` });
+    } else {
+      // Catch-all for any other closed positive account type
+      comparable.push({ creditor: a.creditor, type: a.type || "other", amount: displayAmt, projectedApproval: displayAmt, label: "Historical — Comparable Credit", category: "historical", detail: `Closed ${(a.type || "account").replace(/_/g, " ")} — ${amtLabel}. Closed in good standing.` });
     }
   });
+
+  console.log(`[Comparable Credit] Evaluated ${compEvaluated} accounts, ${compQualified} qualified. Closed positive: ${closedPositiveAccounts.length}.`);
 
   const withAge = validAccounts.map(a => ({ creditor: a.creditor, months: accountAgeMonths(a) })).filter((x): x is { creditor: string; months: number } => x.months !== null).sort((a, b) => b.months - a.months);
   const oldestAccounts = withAge.slice(0, 3);

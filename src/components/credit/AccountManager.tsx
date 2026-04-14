@@ -6,40 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  AlertTriangle,
-  Check,
-  Copy,
-  Edit2,
-  Flag,
-  Loader2,
-  Merge,
-  Search,
-  Trash2,
-  X,
-  XCircle,
+  AlertTriangle, Check, Edit2, Flag, Loader2, Merge, Search,
+  Trash2, X, XCircle,
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
@@ -57,24 +34,17 @@ interface AccountRecord {
   duplicate_of_id?: string | null;
   is_disputed_ownership?: boolean | null;
   table_source: "credit_accounts" | "credit_negative_items";
-  // negative-specific
   item_type?: string;
   bureau_source?: string;
   account_number_masked?: string | null;
-}
-
-interface MergeSuggestion {
-  primary: AccountRecord;
-  duplicate: AccountRecord;
-  reason: string;
-  similarity: number;
 }
 
 interface AccountManagerProps {
   isOpen: boolean;
   onClose: () => void;
   userRole?: "client" | "coach" | "admin";
-  targetUserId?: string; // for coach/admin viewing a client
+  targetUserId?: string;
+  initialMergeIds?: string[];
 }
 
 const ACCOUNT_TYPES = [
@@ -84,31 +54,17 @@ const ACCOUNT_TYPES = [
 
 const BUREAUS = ["Experian", "TransUnion", "Equifax"];
 
-function fuzzyMatch(a: string, b: string): number {
-  const la = a.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const lb = b.toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (la === lb) return 1;
-  if (la.includes(lb) || lb.includes(la)) return 0.9;
-  // Simple bigram similarity
-  const bigramsA = new Set<string>();
-  for (let i = 0; i < la.length - 1; i++) bigramsA.add(la.slice(i, i + 2));
-  const bigramsB = new Set<string>();
-  for (let i = 0; i < lb.length - 1; i++) bigramsB.add(lb.slice(i, i + 2));
-  let shared = 0;
-  bigramsA.forEach(bg => { if (bigramsB.has(bg)) shared++; });
-  return bigramsA.size + bigramsB.size === 0 ? 0 : (2 * shared) / (bigramsA.size + bigramsB.size);
-}
-
-export function AccountManager({ isOpen, onClose, userRole = "client", targetUserId }: AccountManagerProps) {
+export function AccountManager({ isOpen, onClose, userRole = "client", targetUserId, initialMergeIds }: AccountManagerProps) {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<AccountRecord>>({});
-  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
-  const [mergeSuggestions, setMergeSuggestions] = useState<MergeSuggestion[]>([]);
   const [notMineDialogId, setNotMineDialogId] = useState<string | null>(null);
-  const [markDupDialogId, setMarkDupDialogId] = useState<string | null>(null);
-  const [selectedDupTarget, setSelectedDupTarget] = useState<string>("");
+
+  // Merge mode state
+  const [mergeMode, setMergeMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(initialMergeIds || []));
+  const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false);
 
   // Fetch all accounts
   const { data: allAccounts, isLoading } = useQuery({
@@ -124,41 +80,25 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
       ]);
 
       const records: AccountRecord[] = [];
-
       (creditAccounts || []).forEach((a: any) => {
         records.push({
-          id: a.id,
-          creditor: a.creditor,
-          type: a.type,
-          amount: a.balance ?? a.current_balance,
-          balance: a.balance,
-          credit_limit: a.credit_limit ?? a.limit_amount,
-          status: a.status,
-          is_open: a.is_open,
-          is_authorized_user: a.is_authorized_user,
-          duplicate_of_id: a.duplicate_of_id,
-          is_disputed_ownership: a.is_disputed_ownership,
-          table_source: "credit_accounts",
-          account_number_masked: a.account_number_masked,
+          id: a.id, creditor: a.creditor, type: a.type,
+          amount: a.balance ?? a.current_balance, balance: a.balance,
+          credit_limit: a.credit_limit ?? a.limit_amount, status: a.status,
+          is_open: a.is_open, is_authorized_user: a.is_authorized_user,
+          duplicate_of_id: a.duplicate_of_id, is_disputed_ownership: a.is_disputed_ownership,
+          table_source: "credit_accounts", account_number_masked: a.account_number_masked,
         });
       });
-
       (negItems || []).forEach((n: any) => {
         records.push({
-          id: n.id,
-          creditor: n.creditor_name || "Unknown",
-          type: n.item_type,
-          bureau: n.bureau,
-          amount: n.amount,
-          status: n.status,
-          duplicate_of_id: n.duplicate_of_id,
-          is_disputed_ownership: n.is_disputed_ownership,
-          table_source: "credit_negative_items",
-          item_type: n.item_type,
+          id: n.id, creditor: n.creditor_name || "Unknown", type: n.item_type,
+          bureau: n.bureau, amount: n.amount, status: n.status,
+          duplicate_of_id: n.duplicate_of_id, is_disputed_ownership: n.is_disputed_ownership,
+          table_source: "credit_negative_items", item_type: n.item_type,
           account_number_masked: n.account_number_masked,
         });
       });
-
       return records;
     },
     enabled: isOpen,
@@ -177,12 +117,61 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
     return (allAccounts || []).filter(a => a.is_disputed_ownership);
   }, [allAccounts]);
 
+  // Selected accounts for merge preview
+  const selectedAccounts = useMemo(() => {
+    return filteredAccounts.filter(a => selectedIds.has(a.id));
+  }, [filteredAccounts, selectedIds]);
+
+  // Merge preview
+  const mergePreview = useMemo(() => {
+    if (selectedAccounts.length < 2) return null;
+    // Pick the one with most data as primary
+    const sorted = [...selectedAccounts].sort((a, b) => {
+      const scoreA = (a.creditor ? 1 : 0) + (a.amount ? 1 : 0) + (a.credit_limit ? 1 : 0) + (a.account_number_masked ? 1 : 0) + (a.status ? 1 : 0);
+      const scoreB = (b.creditor ? 1 : 0) + (b.amount ? 1 : 0) + (b.credit_limit ? 1 : 0) + (b.account_number_masked ? 1 : 0) + (b.status ? 1 : 0);
+      return scoreB - scoreA;
+    });
+    const primary = sorted[0];
+    const bureaus = new Set(selectedAccounts.map(a => a.bureau).filter(Boolean));
+    const highestAmount = Math.max(...selectedAccounts.map(a => a.amount ?? a.credit_limit ?? a.balance ?? 0));
+    const bestAcctNum = selectedAccounts.find(a => a.account_number_masked && !/^[xX0]+$/.test(a.account_number_masked.replace(/[^a-zA-Z0-9]/g, "")))?.account_number_masked || primary.account_number_masked;
+    const mostRecentStatus = selectedAccounts[0].status;
+
+    return {
+      primaryId: primary.id,
+      creditor: primary.creditor,
+      bureaus: Array.from(bureaus),
+      bureauCount: bureaus.size,
+      accountNumber: bestAcctNum,
+      highestAmount,
+      status: mostRecentStatus,
+      duplicateIds: sorted.slice(1).map(a => a.id),
+    };
+  }, [selectedAccounts]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const enterMergeMode = () => {
+    setMergeMode(true);
+    setSelectedIds(new Set(initialMergeIds || []));
+  };
+
+  const exitMergeMode = () => {
+    setMergeMode(false);
+    setSelectedIds(new Set());
+  };
+
   // Edit mutation
   const editMutation = useMutation({
     mutationFn: async ({ record, updates }: { record: AccountRecord; updates: Partial<AccountRecord> }) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-
       const table = record.table_source;
       const prevValues: Record<string, any> = {};
       const newValues: Record<string, any> = {};
@@ -206,13 +195,9 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
         await supabase.from("credit_negative_items").update(updatePayload).eq("id", record.id);
       }
 
-      // Audit log
       await supabase.from("audit_logs").insert({
-        user_id: session.user.id,
-        entity: "account_modification",
-        action: "edit",
-        entity_id: record.id,
-        data: { previous_value: prevValues, new_value: newValues, table: table, source: userRole === "admin" ? "admin_ui" : userRole === "coach" ? "coach_ui" : "client_ui" },
+        user_id: session.user.id, entity: "account_modification", action: "edit", entity_id: record.id,
+        data: { previous_value: prevValues, new_value: newValues, table, source: userRole === "admin" ? "admin_ui" : userRole === "coach" ? "coach_ui" : "client_ui" },
       });
     },
     onSuccess: () => {
@@ -233,19 +218,14 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
     mutationFn: async (record: AccountRecord) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-
       const table = record.table_source;
       if (table === "credit_negative_items") {
         await supabase.from("credit_negative_items").update({ is_disputed_ownership: true, status: "disputed" }).eq("id", record.id);
       } else {
         await supabase.from("credit_accounts").update({ is_disputed_ownership: true, status: "disputed_ownership" }).eq("id", record.id);
       }
-
       await supabase.from("audit_logs").insert({
-        user_id: session.user.id,
-        entity: "account_modification",
-        action: "mark_not_mine",
-        entity_id: record.id,
+        user_id: session.user.id, entity: "account_modification", action: "mark_not_mine", entity_id: record.id,
         data: { creditor: record.creditor, table, source: userRole === "admin" ? "admin_ui" : userRole === "coach" ? "coach_ui" : "client_ui" },
       });
     },
@@ -258,37 +238,44 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
     },
   });
 
-  // Mark as duplicate
-  const markDuplicateMutation = useMutation({
-    mutationFn: async ({ duplicateId, primaryId }: { duplicateId: string; primaryId: string }) => {
+  // Merge selected mutation
+  const mergeMutation = useMutation({
+    mutationFn: async () => {
+      if (!mergePreview) throw new Error("No merge preview");
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
-      const record = allAccounts?.find(a => a.id === duplicateId);
-      if (!record) throw new Error("Account not found");
+      for (const dupId of mergePreview.duplicateIds) {
+        const record = allAccounts?.find(a => a.id === dupId);
+        if (!record) continue;
+        const table = record.table_source;
+        if (table === "credit_negative_items") {
+          await supabase.from("credit_negative_items").update({ duplicate_of_id: mergePreview.primaryId, status: "removed" }).eq("id", dupId);
+        } else {
+          await supabase.from("credit_accounts").update({ duplicate_of_id: mergePreview.primaryId }).eq("id", dupId);
+        }
 
-      const table = record.table_source;
-      if (table === "credit_negative_items") {
-        await supabase.from("credit_negative_items").update({ duplicate_of_id: primaryId, status: "removed" }).eq("id", duplicateId);
-      } else {
-        await supabase.from("credit_accounts").update({ duplicate_of_id: primaryId }).eq("id", duplicateId);
+        await supabase.from("audit_logs").insert({
+          user_id: session.user.id, entity: "account_modification", action: "merge",
+          entity_id: dupId,
+          data: {
+            merged_into: mergePreview.primaryId, creditor: record.creditor, table,
+            merged_accounts: selectedAccounts.map(a => a.creditor).join(", "),
+            source: userRole === "admin" ? "admin_ui" : userRole === "coach" ? "coach_ui" : "client_ui",
+          },
+        });
       }
-
-      await supabase.from("audit_logs").insert({
-        user_id: session.user.id,
-        entity: "account_modification",
-        action: "mark_duplicate",
-        entity_id: duplicateId,
-        data: { merged_into: primaryId, creditor: record.creditor, table, source: userRole === "admin" ? "admin_ui" : userRole === "coach" ? "coach_ui" : "client_ui" },
-      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["account-manager"] });
       queryClient.invalidateQueries({ queryKey: ["credit-accounts-health"] });
       queryClient.invalidateQueries({ queryKey: ["credit-negatives-health"] });
-      setMarkDupDialogId(null);
-      setSelectedDupTarget("");
-      toast({ title: "Duplicate merged", description: "Account marked as duplicate and removed from active assessments." });
+      setMergeConfirmOpen(false);
+      exitMergeMode();
+      toast({ title: "Accounts merged", description: `${selectedAccounts.length} accounts merged into one record.` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Merge failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -297,18 +284,13 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
     mutationFn: async (record: AccountRecord) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-
       if (record.table_source === "credit_negative_items") {
         await supabase.from("credit_negative_items").update({ status: "removed" }).eq("id", record.id);
       } else {
         await supabase.from("credit_accounts").delete().eq("id", record.id);
       }
-
       await supabase.from("audit_logs").insert({
-        user_id: session.user.id,
-        entity: "account_modification",
-        action: "delete",
-        entity_id: record.id,
+        user_id: session.user.id, entity: "account_modification", action: "delete", entity_id: record.id,
         data: { creditor: record.creditor, type: record.type, table: record.table_source, source: userRole === "admin" ? "admin_ui" : "coach_ui" },
       });
     },
@@ -320,58 +302,11 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
     },
   });
 
-  // Auto-detect duplicates
-  const detectDuplicates = () => {
-    if (!allAccounts) return;
-    const suggestions: MergeSuggestion[] = [];
-
-    for (let i = 0; i < allAccounts.length; i++) {
-      for (let j = i + 1; j < allAccounts.length; j++) {
-        const a = allAccounts[i];
-        const b = allAccounts[j];
-        if (a.is_disputed_ownership || b.is_disputed_ownership) continue;
-
-        const nameSim = fuzzyMatch(a.creditor, b.creditor);
-        if (nameSim < 0.8) continue;
-
-        const sameType = a.type === b.type || (a.table_source !== b.table_source);
-        if (!sameType) continue;
-
-        const amtA = a.amount ?? a.balance ?? 0;
-        const amtB = b.amount ?? b.balance ?? 0;
-        const maxAmt = Math.max(amtA, amtB);
-        const amtClose = maxAmt === 0 || Math.abs(amtA - amtB) / maxAmt <= 0.1;
-
-        if (nameSim >= 0.8 && (sameType || amtClose)) {
-          const reasons: string[] = [];
-          if (nameSim >= 0.95) reasons.push("Exact creditor name match");
-          else reasons.push(`${Math.round(nameSim * 100)}% name similarity`);
-          if (amtClose && maxAmt > 0) reasons.push("Amounts within 10%");
-          if (a.type === b.type) reasons.push("Same account type");
-
-          suggestions.push({
-            primary: a,
-            duplicate: b,
-            reason: reasons.join(", "),
-            similarity: nameSim,
-          });
-        }
-      }
-    }
-
-    setMergeSuggestions(suggestions.sort((a, b) => b.similarity - a.similarity));
-    setMergeDialogOpen(true);
-  };
-
   const startEdit = (record: AccountRecord) => {
     setEditingId(record.id);
     setEditValues({
-      creditor: record.creditor,
-      type: record.type,
-      bureau: record.bureau,
-      amount: record.amount,
-      status: record.status,
-      credit_limit: record.credit_limit,
+      creditor: record.creditor, type: record.type, bureau: record.bureau,
+      amount: record.amount, status: record.status, credit_limit: record.credit_limit,
     });
   };
 
@@ -388,147 +323,226 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search accounts..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
+            <Input placeholder="Search accounts..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9" />
           </div>
-          <Button variant="outline" size="sm" onClick={detectDuplicates} className="gap-1.5">
-            <Merge className="w-4 h-4" /> Merge Duplicates
-          </Button>
+          {!mergeMode ? (
+            <Button variant="outline" size="sm" onClick={enterMergeMode} className="gap-1.5">
+              <Merge className="w-4 h-4" /> Merge Accounts
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={exitMergeMode} className="gap-1.5">
+              <X className="w-4 h-4" /> Cancel Merge
+            </Button>
+          )}
         </div>
+
+        {/* Merge Mode Banner */}
+        {mergeMode && (
+          <div className="mb-4 p-3 rounded-lg border border-accent/40 bg-accent/5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-foreground">
+                <Merge className="w-4 h-4 inline mr-1.5 text-accent" />
+                Select 2 or more accounts to merge. Click accounts to select them.
+                {selectedIds.size > 0 && <span className="ml-2 font-medium text-accent">{selectedIds.size} selected</span>}
+              </p>
+              {selectedIds.size >= 2 && (
+                <Button size="sm" onClick={() => setMergeConfirmOpen(true)} className="bg-gradient-gold hover:opacity-90 gap-1.5">
+                  <Merge className="w-3.5 h-3.5" /> Merge Selected
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-accent" />
           </div>
         ) : (
-          <>
-            <div className="overflow-x-auto">
+          <div className="flex gap-4">
+            {/* Main Table */}
+            <div className={`overflow-x-auto ${mergeMode && selectedIds.size >= 2 ? "flex-1" : "w-full"}`}>
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {mergeMode && <TableHead className="w-10"></TableHead>}
                     <TableHead>Creditor</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Bureau</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    {!mergeMode && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAccounts.map(record => (
-                    <TableRow key={record.id}>
-                      <TableCell>
-                        {editingId === record.id ? (
-                          <Input value={editValues.creditor || ""} onChange={e => setEditValues(v => ({ ...v, creditor: e.target.value }))} className="h-8 text-sm" />
-                        ) : (
-                          <div>
-                            <span className="font-medium text-sm">{record.creditor}</span>
-                            {record.account_number_masked && <span className="text-xs text-muted-foreground ml-1">({record.account_number_masked})</span>}
-                            <div className="flex gap-1 mt-0.5">
-                              <Badge variant="outline" className="text-[9px] px-1 py-0">
-                                {record.table_source === "credit_accounts" ? "Account" : "Negative"}
-                              </Badge>
-                              {record.is_authorized_user && <Badge variant="outline" className="text-[9px] px-1 py-0 bg-amber-500/10 text-amber-400">AU</Badge>}
+                  {filteredAccounts.map(record => {
+                    const isSelected = selectedIds.has(record.id);
+                    return (
+                      <TableRow
+                        key={record.id}
+                        className={`${mergeMode ? "cursor-pointer" : ""} ${isSelected ? "bg-accent/10 border-accent/30" : ""}`}
+                        onClick={mergeMode ? () => toggleSelect(record.id) : undefined}
+                      >
+                        {mergeMode && (
+                          <TableCell className="w-10 pr-0">
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${isSelected ? "border-accent bg-accent" : "border-muted-foreground/30"}`}>
+                              {isSelected && <Check className="w-3 h-3 text-accent-foreground" />}
                             </div>
-                          </div>
+                          </TableCell>
                         )}
-                      </TableCell>
-                      <TableCell>
-                        {editingId === record.id ? (
-                          <Select value={editValues.type || ""} onValueChange={v => setEditValues(vals => ({ ...vals, type: v }))}>
-                            <SelectTrigger className="h-8 text-xs w-32"><SelectValue /></SelectTrigger>
-                            <SelectContent>{ACCOUNT_TYPES.map(t => <SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
-                          </Select>
-                        ) : (
-                          <span className="text-xs">{(record.type || "").replace(/_/g, " ")}</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {editingId === record.id && record.table_source === "credit_negative_items" ? (
-                          <Select value={editValues.bureau || ""} onValueChange={v => setEditValues(vals => ({ ...vals, bureau: v }))}>
-                            <SelectTrigger className="h-8 text-xs w-28"><SelectValue /></SelectTrigger>
-                            <SelectContent>{BUREAUS.map(b => <SelectItem key={b} value={b.toLowerCase()}>{b}</SelectItem>)}</SelectContent>
-                          </Select>
-                        ) : (
-                          <span className="text-xs capitalize">{record.bureau || "—"}</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {editingId === record.id ? (
-                          <Input type="number" value={editValues.amount ?? ""} onChange={e => setEditValues(v => ({ ...v, amount: e.target.value ? Number(e.target.value) : null }))} className="h-8 text-sm w-24" />
-                        ) : (
-                          <span className="text-sm">{record.amount != null || record.credit_limit != null ? `$${(record.amount ?? record.credit_limit ?? 0).toLocaleString()}` : "—"}</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {editingId === record.id ? (
-                          <Input value={editValues.status || ""} onChange={e => setEditValues(v => ({ ...v, status: e.target.value }))} className="h-8 text-xs w-24" />
-                        ) : (
-                          <Badge variant="outline" className="text-[10px]">{record.status || "active"}</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {editingId === record.id ? (
-                          <div className="flex gap-1 justify-end">
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => editMutation.mutate({ record, updates: editValues })}>
-                              <Check className="w-3.5 h-3.5 text-fundability-excellent" />
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingId(null); setEditValues({}); }}>
-                              <X className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex gap-1 justify-end">
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Edit" onClick={() => startEdit(record)}>
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Mark as Duplicate" onClick={() => { setMarkDupDialogId(record.id); setSelectedDupTarget(""); }}>
-                              <Copy className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Not My Account" onClick={() => setNotMineDialogId(record.id)}>
-                              <Flag className="w-3.5 h-3.5" />
-                            </Button>
-                            {(userRole === "admin" || userRole === "coach") && (
-                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" title="Delete" onClick={() => deleteMutation.mutate(record)}>
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
+                        <TableCell>
+                          {editingId === record.id ? (
+                            <Input value={editValues.creditor || ""} onChange={e => setEditValues(v => ({ ...v, creditor: e.target.value }))} className="h-8 text-sm" />
+                          ) : (
+                            <div>
+                              <span className="font-medium text-sm">{record.creditor}</span>
+                              {record.account_number_masked && <span className="text-xs text-muted-foreground ml-1">({record.account_number_masked})</span>}
+                              <div className="flex gap-1 mt-0.5">
+                                <Badge variant="outline" className="text-[9px] px-1 py-0">
+                                  {record.table_source === "credit_accounts" ? "Account" : "Negative"}
+                                </Badge>
+                                {record.is_authorized_user && <Badge variant="outline" className="text-[9px] px-1 py-0 bg-amber-500/10 text-amber-400">AU</Badge>}
+                              </div>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingId === record.id ? (
+                            <Select value={editValues.type || ""} onValueChange={v => setEditValues(vals => ({ ...vals, type: v }))}>
+                              <SelectTrigger className="h-8 text-xs w-32"><SelectValue /></SelectTrigger>
+                              <SelectContent>{ACCOUNT_TYPES.map(t => <SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>)}</SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="text-xs">{(record.type || "").replace(/_/g, " ")}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingId === record.id && record.table_source === "credit_negative_items" ? (
+                            <Select value={editValues.bureau || ""} onValueChange={v => setEditValues(vals => ({ ...vals, bureau: v }))}>
+                              <SelectTrigger className="h-8 text-xs w-28"><SelectValue /></SelectTrigger>
+                              <SelectContent>{BUREAUS.map(b => <SelectItem key={b} value={b.toLowerCase()}>{b}</SelectItem>)}</SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="text-xs capitalize">{record.bureau || "—"}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingId === record.id ? (
+                            <Input type="number" value={editValues.amount ?? ""} onChange={e => setEditValues(v => ({ ...v, amount: e.target.value ? Number(e.target.value) : null }))} className="h-8 text-sm w-24" />
+                          ) : (
+                            <span className="text-sm">{record.amount != null || record.credit_limit != null ? `$${(record.amount ?? record.credit_limit ?? 0).toLocaleString()}` : "—"}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingId === record.id ? (
+                            <Input value={editValues.status || ""} onChange={e => setEditValues(v => ({ ...v, status: e.target.value }))} className="h-8 text-xs w-24" />
+                          ) : (
+                            <Badge variant="outline" className="text-[10px]">{record.status || "active"}</Badge>
+                          )}
+                        </TableCell>
+                        {!mergeMode && (
+                          <TableCell className="text-right">
+                            {editingId === record.id ? (
+                              <div className="flex gap-1 justify-end">
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => editMutation.mutate({ record, updates: editValues })}>
+                                  <Check className="w-3.5 h-3.5 text-fundability-excellent" />
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingId(null); setEditValues({}); }}>
+                                  <X className="w-3.5 h-3.5" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex gap-1 justify-end">
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Edit" onClick={() => startEdit(record)}>
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Not My Account" onClick={() => setNotMineDialogId(record.id)}>
+                                  <Flag className="w-3.5 h-3.5" />
+                                </Button>
+                                {(userRole === "admin" || userRole === "coach") && (
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" title="Delete" onClick={() => deleteMutation.mutate(record)}>
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                )}
+                              </div>
                             )}
-                          </div>
+                          </TableCell>
                         )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                      </TableRow>
+                    );
+                  })}
                   {filteredAccounts.length === 0 && (
-                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No accounts found</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={mergeMode ? 6 : 7} className="text-center text-muted-foreground py-8">No accounts found</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
             </div>
 
-            {/* Disputed Ownership Section */}
-            {disputedAccounts.length > 0 && (
-              <div className="mt-6">
-                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <XCircle className="w-4 h-4 text-amber-500" /> Not My Accounts ({disputedAccounts.length})
-                </h3>
-                <div className="space-y-2">
-                  {disputedAccounts.map(a => (
-                    <div key={a.id} className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2">
-                      <div>
-                        <span className="text-sm font-medium">{a.creditor}</span>
-                        <span className="text-xs text-muted-foreground ml-2">({a.type?.replace(/_/g, " ")})</span>
+            {/* Merge Preview Panel */}
+            {mergeMode && mergePreview && (
+              <div className="w-64 shrink-0 border border-accent/30 rounded-lg p-4 bg-accent/5 space-y-3 self-start sticky top-0">
+                <h4 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                  <Merge className="w-4 h-4 text-accent" /> Merge Preview
+                </h4>
+                <div className="space-y-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Creditor:</span>
+                    <p className="font-medium">{mergePreview.creditor}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Bureaus:</span>
+                    <p className="font-medium">
+                      {mergePreview.bureauCount > 0 ? `Reported by ${mergePreview.bureauCount} of 3 bureaus` : "Bureau TBD"}
+                    </p>
+                    {mergePreview.bureaus.length > 0 && (
+                      <div className="flex gap-1 mt-1 flex-wrap">
+                        {mergePreview.bureaus.map(b => (
+                          <Badge key={b} variant="outline" className="text-[9px] capitalize">{b}</Badge>
+                        ))}
                       </div>
-                      <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30">Disputed Ownership</Badge>
+                    )}
+                  </div>
+                  {mergePreview.accountNumber && (
+                    <div>
+                      <span className="text-muted-foreground">Account #:</span>
+                      <p className="font-medium font-mono">{mergePreview.accountNumber}</p>
                     </div>
-                  ))}
+                  )}
+                  <div>
+                    <span className="text-muted-foreground">Highest Amount:</span>
+                    <p className="font-medium">${mergePreview.highestAmount.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Status:</span>
+                    <p className="font-medium">{mergePreview.status || "active"}</p>
+                  </div>
                 </div>
+                <p className="text-[10px] text-muted-foreground">
+                  The account with the most complete data ({mergePreview.creditor}) will be kept. {mergePreview.duplicateIds.length} record(s) will be merged into it.
+                </p>
               </div>
             )}
-          </>
+          </div>
+        )}
+
+        {/* Disputed Ownership Section */}
+        {disputedAccounts.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+              <XCircle className="w-4 h-4 text-amber-500" /> Not My Accounts ({disputedAccounts.length})
+            </h3>
+            <div className="space-y-2">
+              {disputedAccounts.map(a => (
+                <div key={a.id} className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2">
+                  <div>
+                    <span className="text-sm font-medium">{a.creditor}</span>
+                    <span className="text-xs text-muted-foreground ml-2">({a.type?.replace(/_/g, " ")})</span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-400 border-amber-500/30">Disputed Ownership</Badge>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Not Mine Confirmation Dialog */}
@@ -557,83 +571,26 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
           </DialogContent>
         </Dialog>
 
-        {/* Mark Duplicate Dialog */}
-        <Dialog open={!!markDupDialogId} onOpenChange={() => setMarkDupDialogId(null)}>
+        {/* Merge Confirmation Dialog */}
+        <Dialog open={mergeConfirmOpen} onOpenChange={setMergeConfirmOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Mark as Duplicate</DialogTitle>
-              <DialogDescription>Select the primary account this is a duplicate of. The duplicate will be merged into the primary record.</DialogDescription>
+              <DialogTitle>Confirm Merge</DialogTitle>
+              <DialogDescription>
+                Merge these {selectedIds.size} accounts into one record? This combines {selectedAccounts.map(a => a.creditor).join(", ")} into a single entry. The account with the most complete data will be kept.
+              </DialogDescription>
             </DialogHeader>
-            <Select value={selectedDupTarget} onValueChange={setSelectedDupTarget}>
-              <SelectTrigger><SelectValue placeholder="Select primary account..." /></SelectTrigger>
-              <SelectContent>
-                {(allAccounts || [])
-                  .filter(a => a.id !== markDupDialogId && !a.is_disputed_ownership)
-                  .map(a => (
-                    <SelectItem key={a.id} value={a.id}>{a.creditor} ({a.type?.replace(/_/g, " ")})</SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setMarkDupDialogId(null)}>Cancel</Button>
+              <Button variant="outline" onClick={() => setMergeConfirmOpen(false)}>Cancel</Button>
               <Button
-                disabled={!selectedDupTarget || markDuplicateMutation.isPending}
-                onClick={() => { if (markDupDialogId && selectedDupTarget) markDuplicateMutation.mutate({ duplicateId: markDupDialogId, primaryId: selectedDupTarget }); }}
+                onClick={() => mergeMutation.mutate()}
+                disabled={mergeMutation.isPending}
+                className="bg-gradient-gold hover:opacity-90"
               >
-                {markDuplicateMutation.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
-                Merge Duplicate
+                {mergeMutation.isPending && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+                Confirm Merge
               </Button>
             </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Auto-Merge Suggestions Dialog */}
-        <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
-          <DialogContent className="sm:max-w-lg max-h-[70vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Duplicate Detection Results</DialogTitle>
-              <DialogDescription>{mergeSuggestions.length > 0 ? `Found ${mergeSuggestions.length} potential duplicate(s).` : "No duplicates detected."}</DialogDescription>
-            </DialogHeader>
-            {mergeSuggestions.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">Your account list looks clean — no duplicates found.</p>
-            ) : (
-              <div className="space-y-4">
-                {mergeSuggestions.map((s, i) => (
-                  <Card key={i} className="p-4 border-amber-500/30 bg-amber-500/5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <AlertTriangle className="w-4 h-4 text-amber-500" />
-                          <span className="text-sm font-medium">Possible Duplicate</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mb-2">{s.reason}</p>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="rounded bg-muted/30 p-2">
-                            <p className="text-[10px] text-muted-foreground mb-1">Primary</p>
-                            <p className="text-xs font-medium">{s.primary.creditor}</p>
-                            <p className="text-[10px] text-muted-foreground">{s.primary.type?.replace(/_/g, " ")} · ${(s.primary.amount ?? 0).toLocaleString()}</p>
-                          </div>
-                          <div className="rounded bg-muted/30 p-2">
-                            <p className="text-[10px] text-muted-foreground mb-1">Duplicate</p>
-                            <p className="text-xs font-medium">{s.duplicate.creditor}</p>
-                            <p className="text-[10px] text-muted-foreground">{s.duplicate.type?.replace(/_/g, " ")} · ${(s.duplicate.amount ?? 0).toLocaleString()}</p>
-                          </div>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs gap-1"
-                        onClick={() => markDuplicateMutation.mutate({ duplicateId: s.duplicate.id, primaryId: s.primary.id })}
-                        disabled={markDuplicateMutation.isPending}
-                      >
-                        <Merge className="w-3 h-3" /> Merge
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
           </DialogContent>
         </Dialog>
       </DialogContent>

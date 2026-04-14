@@ -2,7 +2,11 @@ import { useState, useCallback, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Loader2, CheckCircle, FileText, RefreshCw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { Upload, Loader2, CheckCircle, FileText, RefreshCw, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -19,6 +23,9 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadResult, setUploadResult] = useState<{ bureau?: string; accounts?: number } | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
@@ -42,13 +49,11 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
       const userId = session.user.id;
       const filePath = `${userId}/${Date.now()}_${file.name}`;
 
-      // Upload to storage
       const { error: storageError } = await supabase.storage
         .from("credit-report-uploads")
         .upload(filePath, file);
       if (storageError) throw storageError;
 
-      // Create record in credit_report_uploads
       const { data: uploadRecord, error: insertError } = await supabase
         .from("credit_report_uploads")
         .insert({
@@ -65,7 +70,6 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
 
       toast.info("Analyzing your report — this takes about 30 seconds.", { duration: 8000 });
 
-      // Trigger analysis
       const { data: analysisData, error: fnError } = await supabase.functions.invoke("analyze-credit-report", {
         body: { uploadId: uploadRecord.id },
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -73,7 +77,6 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
 
       if (fnError) throw fnError;
 
-      // If analysis returned data, trigger sync
       const analysis = analysisData?.analysis;
       if (analysis) {
         await supabase.functions.invoke("sync-credit-report-data", {
@@ -122,7 +125,6 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
         });
       }
 
-      // Fetch the completed record
       const { data: updated } = await supabase
         .from("credit_report_uploads")
         .select("bureau_detected, analysis_result")
@@ -132,12 +134,8 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
       const result = updated as any;
       const totalAccounts = ((result?.analysis_result?.negative_items?.length || 0) + (result?.analysis_result?.positive_accounts?.length || 0));
 
-      setUploadResult({
-        bureau: result?.bureau_detected || undefined,
-        accounts: totalAccounts,
-      });
+      setUploadResult({ bureau: result?.bureau_detected || undefined, accounts: totalAccounts });
 
-      // Invalidate all relevant queries
       queryClient.invalidateQueries({ queryKey: ["credit-factors"] });
       queryClient.invalidateQueries({ queryKey: ["credit-factors-history"] });
       queryClient.invalidateQueries({ queryKey: ["has-credit-accounts"] });
@@ -167,58 +165,161 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
     if (file) processUpload(file);
   }, [processUpload]);
 
+  const handleReset = async () => {
+    if (resetConfirmText !== "RESET") return;
+    setIsResetting(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      const userId = session.user.id;
+
+      // Step 1-3: Delete extracted data
+      await Promise.all([
+        supabase.from("credit_accounts").delete().eq("user_id", userId),
+        supabase.from("credit_negative_items").delete().eq("user_id", userId),
+        supabase.from("credit_report_personal_info").delete().eq("user_id", userId),
+      ]);
+
+      // Step 4: Reset upload records to pending (preserve PDFs)
+      await supabase
+        .from("credit_report_uploads")
+        .update({ analysis_status: "pending", analysis_result: null, negative_items_extracted: null, positive_accounts_extracted: null, profile_summary: null, estimated_score_impact: null, last_analyzed_at: null })
+        .eq("user_id", userId);
+
+      // Step 5: Clear bureau scores
+      await supabase
+        .from("profiles")
+        .update({ estimated_fico_eq: null, estimated_fico_ex: null, estimated_fico_tu: null })
+        .eq("user_id", userId);
+
+      // Step 6: Audit log
+      await supabase.from("audit_logs").insert({
+        user_id: userId,
+        entity: "credit_file",
+        action: "reset",
+        data: { source: "client_ui", triggered_by: userId, timestamp: new Date().toISOString() },
+      });
+
+      // Step 7: Invalidate all queries
+      queryClient.invalidateQueries({ queryKey: ["credit-factors"] });
+      queryClient.invalidateQueries({ queryKey: ["credit-factors-history"] });
+      queryClient.invalidateQueries({ queryKey: ["has-credit-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["last-analyzed-at"] });
+      queryClient.invalidateQueries({ queryKey: ["credit-health-assessment"] });
+      queryClient.invalidateQueries({ queryKey: ["bureau-scores"] });
+      queryClient.invalidateQueries({ queryKey: ["account-manager"] });
+      queryClient.invalidateQueries({ queryKey: ["credit-accounts-health"] });
+      queryClient.invalidateQueries({ queryKey: ["credit-negatives-health"] });
+      queryClient.invalidateQueries({ queryKey: ["bureau-scores-health"] });
+
+      setResetDialogOpen(false);
+      setResetConfirmText("");
+      toast.success("Credit file reset complete. Your uploaded reports are still available — click Refresh Analysis to re-analyze them without re-uploading.");
+    } catch (error: any) {
+      console.error("Reset error:", error);
+      toast.error(error?.message || "Reset failed");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const hasReport = !!lastAnalyzed;
 
   // State B — Compact banner when report exists
   if (hasReport) {
     return (
-      <Card className="p-4 bg-card border-border">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-fundability-excellent shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                Last analyzed: {format(new Date(lastAnalyzed), "MMM d, yyyy 'at' h:mm a")}
-                {lastBureau && <span className="text-muted-foreground"> — {lastBureau} report</span>}
-              </p>
+      <>
+        <Card className="p-4 bg-card border-border">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="w-5 h-5 text-fundability-excellent shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Last analyzed: {format(new Date(lastAnalyzed), "MMM d, yyyy 'at' h:mm a")}
+                  {lastBureau && <span className="text-muted-foreground"> — {lastBureau} report</span>}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onRefresh}
-              disabled={isRefreshing || isUploading}
-              className="gap-1.5"
-            >
-              {isRefreshing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-              Refresh Analysis
-            </Button>
-            <div>
-              <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleFileChange} className="hidden" />
+            <div className="flex gap-2">
               <Button
+                variant="outline"
                 size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="bg-gradient-gold hover:opacity-90 gap-1.5"
+                onClick={onRefresh}
+                disabled={isRefreshing || isUploading}
+                className="gap-1.5"
               >
-                {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                Upload New Report
+                {isRefreshing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Refresh Analysis
               </Button>
+              <div>
+                <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleFileChange} className="hidden" />
+                <Button
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="bg-gradient-gold hover:opacity-90 gap-1.5"
+                >
+                  {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  Upload New Report
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {uploadResult && (
-          <div className="mt-3 p-3 bg-muted/30 border border-border rounded-lg flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-fundability-excellent" />
-            <span className="text-sm">
-              Analysis complete — {uploadResult.accounts} accounts found
-              {uploadResult.bureau && ` from ${uploadResult.bureau}`}
-            </span>
+          {uploadResult && (
+            <div className="mt-3 p-3 bg-muted/30 border border-border rounded-lg flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-fundability-excellent" />
+              <span className="text-sm">
+                Analysis complete — {uploadResult.accounts} accounts found
+                {uploadResult.bureau && ` from ${uploadResult.bureau}`}
+              </span>
+            </div>
+          )}
+
+          <div className="mt-2 text-center">
+            <button
+              onClick={() => { setResetDialogOpen(true); setResetConfirmText(""); }}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+            >
+              <RotateCcw className="w-3 h-3 inline mr-1" />
+              Reset Credit File
+            </button>
           </div>
-        )}
-      </Card>
+        </Card>
+
+        {/* Reset Confirmation Dialog */}
+        <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-destructive">Reset your credit file?</DialogTitle>
+              <DialogDescription>
+                This will clear all extracted account data, scores, and analysis results. Your uploaded PDF files will be preserved so you can re-analyze them. This cannot be undone without re-uploading your report.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Type RESET to confirm:</p>
+              <Input
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                placeholder="RESET"
+                className="font-mono"
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setResetDialogOpen(false)}>Cancel</Button>
+              <Button
+                variant="destructive"
+                disabled={resetConfirmText !== "RESET" || isResetting}
+                onClick={handleReset}
+              >
+                {isResetting && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+                Reset Credit File
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 
