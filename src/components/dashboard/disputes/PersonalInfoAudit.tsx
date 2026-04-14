@@ -77,7 +77,7 @@ export function PersonalInfoAudit({ clientId }: PersonalInfoAuditProps) {
 
       // Query credit_report_personal_info for this user
       const { data: piData, error } = await supabase
-        .from("credit_report_personal_info" as any)
+        .from("credit_report_personal_info")
         .select("*")
         .eq("user_id", targetUserId)
         .order("created_at", { ascending: false });
