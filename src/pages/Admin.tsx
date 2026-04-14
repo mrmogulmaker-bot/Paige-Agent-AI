@@ -137,6 +137,11 @@ const Admin = () => {
             </div>
           </Suspense>
         } />
+        <Route path="maintenance" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <DataMaintenancePanel />
+          </Suspense>
+        } />
         <Route path="settings" element={
           <Suspense fallback={<SuspenseFallback />}>
             <div className="space-y-6">
