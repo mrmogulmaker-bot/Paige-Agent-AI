@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { countUniqueNegativeAccounts, deduplicateNegativeItems } from "@/lib/deduplicateNegatives";
 import { differenceInMonths } from "date-fns";
+import { buildBureauHealthContext } from "@/components/credit/CreditFileHealthAssessment";
 
 export interface ClientChatContext {
   contextBlock: string;
