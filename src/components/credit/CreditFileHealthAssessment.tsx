@@ -33,6 +33,10 @@ export interface CreditAccount {
   account_close_date: string | null;
   opened_on: string | null;
   status: string | null;
+  original_amount: number | null;
+  duplicate_of_id: string | null;
+  is_disputed_ownership: boolean | null;
+  payment_history_json: any | null;
 }
 
 interface NegativeItem {
@@ -43,6 +47,8 @@ interface NegativeItem {
   bureau: string;
   item_type: string;
   status: string | null;
+  duplicate_of_id: string | null;
+  is_disputed_ownership: boolean | null;
 }
 
 interface LenderPref {
