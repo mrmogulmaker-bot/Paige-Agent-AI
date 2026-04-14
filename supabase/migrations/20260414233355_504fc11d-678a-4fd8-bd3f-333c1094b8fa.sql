@@ -1,0 +1,1 @@
+COMMENT ON FUNCTION public.factory_reset_delete_dispute_related(uuid) IS 'Clears dispute-related records for a user and any linked client rows during factory reset.';
