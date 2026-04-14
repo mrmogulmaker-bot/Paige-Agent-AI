@@ -72,74 +72,147 @@ serve(async (req) => {
       if (user) {
         userId = user.id;
         
-        // Get user profile
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("full_name, city, state")
-          .eq("user_id", user.id)
-          .maybeSingle();
+        // Fetch comprehensive context matching useClientChatContext
+        const [
+          { data: profile },
+          { data: subscription },
+          { data: allAccounts },
+          { data: allNegs },
+          { data: disputes },
+          { data: businesses },
+          { data: alerts },
+          { data: recentUploads },
+          { data: recentMod },
+          { data: memories },
+        ] = await Promise.all([
+          supabase.from("profiles").select("full_name, city, state, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, funding_goals").eq("user_id", user.id).maybeSingle(),
+          supabase.from("user_subscriptions").select("plan_slug, status").eq("user_id", user.id).maybeSingle(),
+          supabase.from("credit_accounts").select("id, creditor, type, is_open, is_authorized_user, credit_limit, limit_amount, balance, current_balance, account_open_date, account_close_date, opened_on, status, bureau_source, payment_history_json, original_amount, is_disputed_ownership, duplicate_of_id, needs_review").eq("user_id", user.id),
+          supabase.from("credit_negative_items").select("id, creditor_name, amount, bureau, item_type, status, date_of_occurrence, date_reported, is_disputed_ownership, duplicate_of_id").eq("user_id", user.id).neq("status", "removed"),
+          supabase.from("disputes").select("bureau, creditor_name, status, dispute_round").eq("user_id", user.id).order("created_at", { ascending: false }).limit(5),
+          supabase.from("businesses").select("legal_name, entity_type, state_of_formation, formation_date, ein, business_phone, phone_411_listed, has_bank_account, bank_name").eq("owner_user_id", user.id).limit(3),
+          supabase.from("credit_alerts").select("alert_type, alert_severity, alert_title, alert_description, bureau, created_at").eq("client_id", user.id).eq("is_dismissed", false).eq("is_read", false).order("created_at", { ascending: false }).limit(5),
+          supabase.from("credit_report_uploads").select("bureau_detected, last_analyzed_at").eq("user_id", user.id).eq("analysis_status", "completed").order("last_analyzed_at", { ascending: false }).limit(6),
+          supabase.from("account_modifications").select("modification_type, modification_source, created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(1),
+          supabase.from("client_memory").select("memory_type, content").eq("client_user_id", user.id).eq("is_active", true).order("created_at", { ascending: false }).limit(3),
+        ]);
 
-        // Get user subscription
-        const { data: subscription } = await supabase
-          .from("user_subscriptions")
-          .select("plan_slug, status")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        // Get user tasks
-        const { data: tasks } = await supabase
-          .from("tasks")
-          .select("id, title, status, track, due_date, metadata")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(10);
-
-        // Get recent disputes
-        const { data: disputes } = await supabase
-          .from("disputes")
-          .select("bureau, creditor_name, status")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(5);
-
-        // Get business info
-        const { data: businesses } = await supabase
-          .from("businesses")
-          .select("id, legal_name, entity_type, formation_status, business_type")
-          .eq("owner_user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(5);
-
-        // Build context string
         const contextParts: string[] = [];
+        const fullName = profile?.full_name || "User";
+        contextParts.push(`CLIENT CONTEXT — ${fullName}`);
+        if (profile?.city) contextParts.push(`Location: ${profile.city}, ${profile.state}`);
+        if (subscription) contextParts.push(`Plan: ${subscription.plan_slug} (${subscription.status})`);
+
+        // Bureau scores
+        const scores = {
+          equifax: profile?.estimated_fico_eq as number | null,
+          experian: profile?.estimated_fico_ex as number | null,
+          transunion: profile?.estimated_fico_tu as number | null,
+        };
+        contextParts.push(`Bureau Scores: EQ ${scores.equifax ?? "N/A"} | EX ${scores.experian ?? "N/A"} | TU ${scores.transunion ?? "N/A"}`);
+
+        // Funding goals
+        if (profile?.funding_goals) {
+          try {
+            const fg = profile.funding_goals as any;
+            if (fg?.target_amount) contextParts.push(`Funding Goal: $${Number(fg.target_amount).toLocaleString()} — ${fg.objective || ""}`);
+          } catch { /* skip */ }
+        }
+
+        // Credit factors per bureau (summarized for voice)
+        const activeAccounts = (allAccounts || []).filter((a: any) => !a.is_disputed_ownership && !a.duplicate_of_id);
+        const activeNegs = (allNegs || []).filter((n: any) => !n.is_disputed_ownership && !n.duplicate_of_id);
+        const bureaus = ["experian", "transunion", "equifax"] as const;
         
-        if (profile) {
-          contextParts.push(`User: ${profile.full_name || "User"} from ${profile.city ? `${profile.city}, ${profile.state}` : "location not set"}`);
+        const matchBureau = (bs: string | null, bureau: string) => {
+          if (!bs) return true;
+          const s = bs.toLowerCase().replace(/[\\s-]/g, "_");
+          return s === "all_three" || s === "all" || s.includes(bureau);
+        };
+        
+        const inferLimit = (a: any): number => Number(a.credit_limit) || Number(a.limit_amount) || Number(a.original_amount) || 0;
+
+        for (const bureau of bureaus) {
+          const bAccts = activeAccounts.filter((a: any) => matchBureau(a.bureau_source, bureau));
+          const bNegs = activeNegs.filter((n: any) => (n.bureau || "").toLowerCase().includes(bureau));
+          const label = bureau.charAt(0).toUpperCase() + bureau.slice(1);
+          const bScore = scores[bureau];
+
+          // Utilization
+          const revolving = bAccts.filter((a: any) => {
+            const t = (a.type || "").toLowerCase();
+            return t.includes("revolving") || t.includes("credit_card");
+          });
+          const revWithLimit = revolving.filter((a: any) => inferLimit(a) > 0);
+          const totalBal = revWithLimit.reduce((s: number, a: any) => s + (Number(a.current_balance ?? a.balance) || 0), 0);
+          const totalLim = revWithLimit.reduce((s: number, a: any) => s + inferLimit(a), 0);
+          const utilPct = totalLim > 0 ? Math.round((totalBal / totalLim) * 100) : 0;
+          const paydownTo10 = totalLim > 0 ? Math.max(0, totalBal - Math.round(totalLim * 0.1)) : 0;
+
+          // Credit age
+          const now = Date.now();
+          const ages = bAccts.map((a: any) => {
+            const d = a.account_open_date || a.opened_on;
+            return d ? Math.round((now - new Date(d).getTime()) / (30 * 86400000)) : null;
+          }).filter((v: any): v is number => v != null && v >= 0);
+          const avgAge = ages.length > 0 ? Math.round(ages.reduce((s: number, v: number) => s + v, 0) / ages.length) : 0;
+          const avgYears = Math.floor(avgAge / 12);
+          const avgMonths = avgAge % 12;
+
+          // Derogatory
+          const collectionsCount = bNegs.filter((n: any) => (n.item_type || "").toLowerCase().includes("collection")).length;
+          const chargeOffsCount = bNegs.filter((n: any) => (n.item_type || "").toLowerCase().includes("charge")).length;
+
+          contextParts.push(`${label} (${bScore ?? "N/A"}): Util ${utilPct}% ($${totalBal.toLocaleString()} / $${totalLim.toLocaleString()})${paydownTo10 > 0 ? ` paydown $${paydownTo10.toLocaleString()} for 10%` : ""} | Age ${avgYears}y ${avgMonths}m | Derogs ${collectionsCount + chargeOffsCount} (${collectionsCount} coll, ${chargeOffsCount} CO) | ${bAccts.filter((a: any) => a.is_open !== false).length} open accts`);
         }
 
-        if (subscription) {
-          contextParts.push(`Plan: ${subscription.plan_slug} (${subscription.status})`);
+        // Alerts
+        if (alerts && alerts.length > 0) {
+          contextParts.push(`ALERTS (${alerts.length} unread):`);
+          for (const a of (alerts as any[])) {
+            const desc = (a.alert_description || "").substring(0, 80);
+            contextParts.push(`- ${(a.alert_severity || "").toUpperCase()}: ${a.alert_title} — ${desc}`);
+          }
         }
 
-        if (tasks && tasks.length > 0) {
-          const pendingTasks = tasks.filter(t => t.status === "pending").length;
-          contextParts.push(`Tasks: ${pendingTasks} pending`);
-          contextParts.push(`Recent tasks: ${tasks.map(t => `${t.title} (${t.status})`).join(", ")}`);
-        }
-
+        // Disputes
         if (disputes && disputes.length > 0) {
-          const activeDisputes = disputes.filter(d => d.status === "in_review").length;
-          contextParts.push(`Disputes: ${activeDisputes} active`);
+          const openD = disputes.filter((d: any) => d.status !== "resolved").length;
+          contextParts.push(`Disputes: ${openD} open`);
         }
 
+        // Business
         if (businesses && businesses.length > 0) {
-          const bizList = businesses.map(b => b.legal_name).join(", ");
-          contextParts.push(`Businesses: ${bizList}`);
+          const biz = businesses[0] as any;
+          contextParts.push(`Business: ${biz.legal_name} (${biz.entity_type || "unknown type"}) | EIN: ${biz.ein ? "on file" : "missing"} | Phone: ${biz.business_phone || "missing"} | Bank: ${biz.bank_name || "missing"}`);
         }
 
-        userContext = contextParts.length > 0 ? contextParts.join(" | ") : "";
+        // Account file status
+        const allRaw = allAccounts || [];
+        const disputedCount = allRaw.filter((a: any) => a.is_disputed_ownership).length;
+        const mergedCount = allRaw.filter((a: any) => a.duplicate_of_id).length;
+        const reviewCount = allRaw.filter((a: any) => a.needs_review).length;
+        if (disputedCount || mergedCount || reviewCount) {
+          contextParts.push(`Account Status: ${disputedCount} disputed, ${mergedCount} merged, ${reviewCount} needs review`);
+        }
 
-        // Load recent conversation history (last 10 messages)
+        // Data freshness
+        for (const bn of ["Experian", "TransUnion", "Equifax"]) {
+          const upload = (recentUploads || []).find((u: any) => (u.bureau_detected || "").toLowerCase().includes(bn.toLowerCase()));
+          if (upload?.last_analyzed_at) {
+            const daysAgo = Math.round((Date.now() - new Date(upload.last_analyzed_at as string).getTime()) / 86400000);
+            if (daysAgo > 30) contextParts.push(`⚠ ${bn} data is ${daysAgo} days old`);
+          }
+        }
+
+        // Memory
+        if (memories && memories.length > 0) {
+          contextParts.push(`Memory: ${(memories as any[]).map((m: any) => m.content.substring(0, 60)).join(" | ")}`);
+        }
+
+        userContext = contextParts.join("\n");
+
+        // Load recent conversation history
         const { data: recentMessages } = await supabaseAdmin
           .from("chat_messages")
           .select("role, content, created_at")
@@ -148,11 +221,10 @@ serve(async (req) => {
           .limit(10);
 
         if (recentMessages && recentMessages.length > 0) {
-          conversationHistory = recentMessages.reverse().map(msg => ({
+          conversationHistory = recentMessages.reverse().map((msg: any) => ({
             role: msg.role,
             content: msg.content
           }));
-          console.log(`Loaded ${conversationHistory.length} previous messages`);
         }
 
         // Search knowledge base
@@ -162,7 +234,7 @@ serve(async (req) => {
           .limit(10);
 
         if (knowledge && knowledge.length > 0) {
-          relevantKnowledge = knowledge.map(k => `${k.title}: ${k.summary || k.content.substring(0, 200)}`).join(" | ");
+          relevantKnowledge = knowledge.map((k: any) => `${k.title}: ${k.summary || k.content.substring(0, 200)}`).join(" | ");
         }
       }
     } catch (error) {
