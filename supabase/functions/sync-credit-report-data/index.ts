@@ -332,19 +332,24 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
         if (rows && rows.length > 0) existing = rows[0];
       }
 
-      // DEDUP PRIORITY 2: creditor + bureau + item_type (fallback)
+      // DEDUP PRIORITY 2: normalized creditor + bureau + item_type (fallback)
       if (!existing) {
+        const normalizedName = normalizeCreditorName(item.creditor_name);
         let q = supabase.from("credit_negative_items").select("id, creditor_name")
           .eq("user_id", targetUserId).eq("bureau", bureau).eq("item_type", itemType);
         if (clientId) q = q.eq("client_id", clientId); else q = q.is("client_id", null);
         const { data: candidates } = await q;
         if (candidates && candidates.length > 0) {
-          // Exact match first, then fuzzy
-          const exact = candidates.find((c: any) => c.creditor_name === item.creditor_name);
-          if (exact) {
-            existing = exact;
+          // Exact normalized match first
+          const exactNorm = candidates.find((c: any) => normalizeCreditorName(c.creditor_name) === normalizedName);
+          if (exactNorm) {
+            existing = exactNorm;
+            if (exactNorm.creditor_name !== item.creditor_name) {
+              console.log(`[DEDUP NEG] Auto-merged case variant: "${item.creditor_name}" → "${exactNorm.creditor_name}"`);
+            }
           } else {
-            const fuzzy = candidates.find((c: any) => similarity(c.creditor_name, item.creditor_name) >= 0.8);
+            // Fuzzy match at 85%
+            const fuzzy = candidates.find((c: any) => similarity(normalizeCreditorName(c.creditor_name), normalizedName) >= 0.85);
             if (fuzzy) existing = fuzzy;
           }
         }
