@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, FileText, DollarSign, BarChart3, Settings, LogOut,
-  Gavel, TrendingUp, Eye, ArrowLeft, Menu, X, BookOpen,
+  Gavel, TrendingUp, Eye, ArrowLeft, Menu, X, BookOpen, Wrench,
 } from "lucide-react";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
@@ -18,7 +18,7 @@ const adminNavItems = [
   { label: "Funding Pipeline", href: "/admin/funding", icon: DollarSign },
   { label: "Analytics", href: "/admin/analytics", icon: TrendingUp },
   { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
-  { label: "Maintenance", href: "/admin/maintenance", icon: Settings },
+  { label: "Maintenance", href: "/admin/maintenance", icon: Wrench },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
