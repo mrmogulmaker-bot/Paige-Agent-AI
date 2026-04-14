@@ -19,6 +19,7 @@ export default function CreditIntelligence() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [accountManagerOpen, setAccountManagerOpen] = useState(false);
+  const [selectedBureau, setSelectedBureau] = useState<"experian" | "transunion" | "equifax" | "all">("all");
 
   // Check if client has any accounts
   const { data: hasAccounts } = useQuery({
