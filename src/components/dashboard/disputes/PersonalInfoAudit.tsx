@@ -188,7 +188,7 @@ export function PersonalInfoAudit({ clientId }: PersonalInfoAuditProps) {
       if (field === "status") {
         const item = updated.find(i => i.id === id);
         if (item?.dbId) {
-          supabase.from("credit_report_personal_info" as any)
+          supabase.from("credit_report_personal_info")
             .update({ status: val })
             .eq("id", item.dbId)
             .then(({ error }) => {
