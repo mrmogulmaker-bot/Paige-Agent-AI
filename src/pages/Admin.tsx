@@ -126,12 +126,12 @@ const Admin = () => {
         } />
         <Route path="clients/user/:userId" element={
           <Suspense fallback={<SuspenseFallback />}>
-            <ClientFileView clientUserId="" onBack={() => navigate("/admin/clients")} userRole={userRole} />
+            <ClientFileWrapper userRole={userRole} />
           </Suspense>
         } />
         <Route path="clients/internal/:clientId" element={
           <Suspense fallback={<SuspenseFallback />}>
-            <InternalClientFileView clientId="" onBack={() => navigate("/admin/clients")} />
+            <InternalClientFileWrapper />
           </Suspense>
         } />
         <Route path="disputes" element={<Suspense fallback={<SuspenseFallback />}><DisputesManager /></Suspense>} />
