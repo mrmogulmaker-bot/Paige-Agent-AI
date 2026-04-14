@@ -133,7 +133,7 @@ export default function FundingMatches() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Funding Intelligence</h1>
         <p className="text-muted-foreground mt-1">
-          Products matched to your real profile — every score explained by data, not thresholds.
+          Business funding products matched to your real profile — every score explained by data, not thresholds.
         </p>
         {profile.middleScore && (
           <p className="text-xs text-muted-foreground mt-1">

@@ -1,10 +1,16 @@
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { useCreditFactors } from "@/hooks/useCreditFactors";
+import { useFundingProfile } from "@/hooks/useFundingProfile";
+import { scoreProduct } from "@/lib/fundingMatchScoring";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
+import { FundingTrack } from "@/components/funding/FundingTrack";
 
 export default function CreditIntelligence() {
   const { factors, isLoading, recalculate } = useCreditFactors();
