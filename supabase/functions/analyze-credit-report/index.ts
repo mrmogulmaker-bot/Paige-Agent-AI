@@ -7,13 +7,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const DOCUMENT_SOURCE_INSTRUCTION = `You are analyzing a specific PDF document that has been provided to you. You must ONLY report information that you can directly read from this document. Do not use your training data or prior knowledge to fill in account details, creditor names, balances, or scores. If you cannot read a specific piece of information from the document, state \"Not visible in document\" rather than providing an estimate or assumption. Every account name, balance, score, and date you report must be directly extractable from the uploaded document text.`;
+const DOCUMENT_SOURCE_INSTRUCTION = `You are analyzing a specific PDF document that has been provided to you. You must ONLY report information that you can directly read from this document. Do not use your training data or prior knowledge to fill in account details, creditor names, balances, or scores. If you cannot read a specific piece of information from the document, state "Not visible in document" rather than providing an estimate or assumption. Every account name, balance, score, and date you report must be directly extractable from the uploaded document text.`;
 
 const READ_CHECK_PROMPT = `${DOCUMENT_SOURCE_INSTRUCTION}
 
 Before any analysis, verify that you can literally read the PDF. Return ONLY valid JSON with this exact structure:
 {
-  "document_kind": "credit_report" | "financial_document" | "other",
+  "document_kind": "credit_report" | "business_credit_report" | "financial_document" | "other",
+  "report_category": "consumer" | "business" | "unknown",
   "can_read_document": boolean,
   "parse_error": "string or null",
   "visible_text_excerpt": "string — 2 to 6 exact lines copied from the document",
@@ -25,11 +26,22 @@ Before any analysis, verify that you can literally read the PDF. Return ONLY val
     "equifax": number or null,
     "experian": number or null,
     "transunion": number or null
+  },
+  "consumer_indicators": {
+    "has_ssn": boolean,
+    "has_personal_name": boolean,
+    "consumer_bureaus_detected": ["Experian", "TransUnion", "Equifax"]
+  },
+  "business_indicators": {
+    "has_ein": boolean,
+    "has_business_name_as_primary": boolean,
+    "business_bureaus_detected": ["D&B", "Experian Business", "Equifax Business", "FICO SBSS"]
   }
 }
 
 Rules:
 - The account names must be literal names visible in the PDF, not guesses.
+- Determine report_category: if you see a Social Security Number, personal name as primary borrower, and consumer bureau names (Experian, TransUnion, Equifax) → "consumer". If you see an EIN, business name as primary, and business bureau names (D&B, Experian Business, Equifax Business, FICO SBSS) → "business". Otherwise "unknown".
 - If this is a tri-merge credit report, identify the first five tradeline or collection account names you can actually read.
 - If you cannot read any account names from a credit report, set can_read_document to false and parse_error to "Unable to parse document content — please ensure the uploaded file is a readable PDF credit report".
 - Do not include markdown.`;
@@ -37,6 +49,9 @@ Rules:
 const CREDIT_REPORT_EXTRACTION_PROMPT = `${DOCUMENT_SOURCE_INSTRUCTION}
 
 You are extracting a consumer tri-merge credit report into structured JSON.
+
+=== REPORT TYPE VALIDATION ===
+This function processes CONSUMER credit reports ONLY. If the document is a business credit report (contains EIN as primary identifier, business name as primary borrower, or business bureau names like D&B, Experian Business, Equifax Business, FICO SBSS), set report_type to "business" and return minimal data — do not extract accounts.
 
 === SCORE MODEL DETECTION ===
 Determine the scoring model used in this report. Look at the document header, footer, and score section for explicit mentions of "FICO", "VantageScore", or the provider name.
@@ -48,6 +63,9 @@ Determine the scoring model used in this report. Look at the document header, fo
 
 === TRI-MERGE FORMAT RECOGNITION ===
 Tri-merge reports present each account in a three-column format: TransUnion (left), Experian (middle), Equifax (right). Each account section shows which bureaus report it. Dashes (--) in a column mean the account is NOT reported at that bureau. You MUST read each column independently and correctly identify which bureaus report each account. An account with data in one column and dashes in the other two reports to only ONE bureau. This bureau-specific reporting is critical for dispute targeting.
+
+=== ACCOUNT NUMBER EXTRACTION (CRITICAL) ===
+For EVERY account — positive or negative — you MUST extract the account number exactly as it appears on the report. Most bureaus show partial/masked numbers like "XXXX-XXXX-1234" or "****1234" or "5678". Extract exactly what is printed. NEVER fabricate, guess, or infer an account number. If no account number is visible for an account, set account_number to null. Account numbers are the definitive identifier for deduplication — without them the system cannot reliably distinguish between separate accounts.
 
 === FRAUD ALERT & SECURITY FREEZE DETECTION (HIGHEST PRIORITY) ===
 Check the Consumer Statement section at the top of the report FIRST.
@@ -146,15 +164,23 @@ Return ONLY valid JSON with this exact structure:
   "negative_items": [
     {
       "category": "late_payment" | "collection" | "charge_off" | "hard_inquiry" | "public_record" | "repossession" | "foreclosure" | "bankruptcy" | "tax_lien" | "judgment" | "other",
-      "creditor_name": "string",
+      "creditor_name": "string — exact name as printed on the report",
       "original_creditor": "string or null",
-      "account_number_masked": "string or null",
+      "account_number": "string or null — exact masked/partial number as printed on the report, e.g. XXXX1234. NEVER fabricate.",
+      "account_number_masked": "string or null — same as account_number for backwards compatibility",
       "amount": number or null,
+      "original_amount": number or null,
       "date_reported": "YYYY-MM-DD or null",
       "date_of_occurrence": "YYYY-MM-DD or null",
+      "date_opened": "YYYY-MM-DD or null",
+      "date_closed": "YYYY-MM-DD or null",
+      "date_of_last_activity": "YYYY-MM-DD or null",
       "bureaus_reporting": ["TransUnion", "Experian", "Equifax"],
       "bureau": "string",
-      "status": "string",
+      "status": "string — exact status as printed: Open, Closed, Paid, Collection, Charge-off, etc.",
+      "account_type": "string — exact type as printed: Revolving, Installment, Mortgage, Automobile, Open, Collection, etc.",
+      "responsibility": "Individual" | "Joint" | "Authorized User" | "Co-signer" | null,
+      "payment_history_percentage": number or null,
       "creditor_remarks": "string or null",
       "estimated_score_impact": number,
       "is_disputable": boolean,
@@ -166,6 +192,7 @@ Return ONLY valid JSON with this exact structure:
   "cross_bureau_discrepancies": [
     {
       "account_name": "string",
+      "account_number": "string or null",
       "issue": "string",
       "bureaus_affected": ["string"],
       "dispute_basis": "FCRA Section 623(a)(1) — inconsistent reporting across bureaus"
@@ -173,7 +200,8 @@ Return ONLY valid JSON with this exact structure:
   ],
   "positive_accounts": [
     {
-      "creditor": "string",
+      "creditor": "string — exact creditor name as printed on the report",
+      "account_number": "string or null — exact masked/partial number as printed. NEVER fabricate.",
       "account_type": "revolving" | "installment" | "mortgage" | "auto_loan" | "student_loan" | "other",
       "balance": number or null,
       "credit_limit": number or null,
@@ -185,6 +213,7 @@ Return ONLY valid JSON with this exact structure:
       "is_open": boolean,
       "opened_date": "YYYY-MM-DD or null",
       "date_closed": "YYYY-MM-DD or null",
+      "date_of_last_activity": "YYYY-MM-DD or null",
       "responsibility": "Individual" | "Joint" | "Authorized User" | null,
       "bureaus_reporting": ["string"]
     }
@@ -236,6 +265,12 @@ PERSONAL INFORMATION EXTRACTION RULES:
 - If an item appears in all three bureau columns, set bureau_source to "all_three"
 - If the report shows multiple SSN fragments or variations, set ssn_variations_detected to true
 - Extract the date of birth exactly as printed
+
+ACCOUNT NUMBER RULES (NON-NEGOTIABLE):
+- For every positive_account: extract "account_number" exactly as shown on the report
+- For every negative_item: extract "account_number" and also copy to "account_number_masked" for backwards compatibility
+- If the account number is not visible, set both fields to null
+- NEVER guess or fabricate account numbers — accuracy is critical for deduplication
 
 Use the verified read-check below as hard evidence. If your extraction conflicts with the verified read-check, leave the conflicting field null instead of inventing a value.
 
@@ -341,7 +376,21 @@ serve(async (req) => {
     const base64 = arrayBufferToBase64(await fileData.arrayBuffer());
     const readCheck = await runReadCheck(base64, lovableApiKey);
 
-    if (!readCheck.can_read_document || readCheck.document_kind !== "credit_report" || readCheck.directly_read_account_count < 1 || (readCheck.first_five_account_names || []).length < 1) {
+    // Check if this is a business report — reject early
+    if (readCheck.report_category === "business") {
+      const message = "This appears to be a business credit report. Business credit reports are analyzed in the Business Profile tab under Business Credit. Please upload this report there.";
+      await supabase.from("credit_report_uploads").update({
+        analysis_status: "failed",
+        error_message: message,
+        report_type: "business",
+      }).eq("id", uploadId);
+      return new Response(JSON.stringify({ error: message, report_type: "business", redirect: "/app?tab=business-credit" }), {
+        status: 422,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!readCheck.can_read_document || readCheck.document_kind === "other" || readCheck.directly_read_account_count < 1 || (readCheck.first_five_account_names || []).length < 1) {
       const message = readCheck.parse_error || "Unable to parse document content — please ensure the uploaded file is a readable PDF credit report";
       await logAuditFailure(supabase, user.id, uploadId, "read_check_failed", {
         read_check: readCheck,
@@ -351,6 +400,21 @@ serve(async (req) => {
     }
 
     const analysisResult = await runStructuredExtraction(base64, lovableApiKey, readCheck);
+
+    // Double-check: if AI says it's a business report, reject
+    if (analysisResult.report_type === "business") {
+      const message = "This appears to be a business credit report. Business credit reports are analyzed in the Business Profile tab under Business Credit. Please upload this report there.";
+      await supabase.from("credit_report_uploads").update({
+        analysis_status: "failed",
+        error_message: message,
+        report_type: "business",
+      }).eq("id", uploadId);
+      return new Response(JSON.stringify({ error: message, report_type: "business", redirect: "/app?tab=business-credit" }), {
+        status: 422,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     analysisResult.document_verification = {
       visible_text_excerpt: readCheck.visible_text_excerpt || "",
       first_five_account_names: readCheck.first_five_account_names || [],
@@ -374,18 +438,22 @@ serve(async (req) => {
       );
     }
 
+    // Run bureau accuracy validation pass
+    const validationFlags = runBureauValidation(analysisResult);
+
     const { error: updateError } = await supabase
       .from("credit_report_uploads")
       .update({
         analysis_status: "completed",
         report_type: analysisResult.report_type || "consumer",
         bureau_detected: analysisResult.bureau_detected,
-        analysis_result: analysisResult,
+        analysis_result: { ...analysisResult, validation_flags: validationFlags },
         negative_items_extracted: analysisResult.negative_items || [],
         positive_accounts_extracted: analysisResult.positive_accounts || [],
         profile_summary: analysisResult.profile_summary,
         estimated_score_impact: analysisResult.estimated_total_score_impact || 0,
         error_message: null,
+        last_analyzed_at: new Date().toISOString(),
       })
       .eq("id", uploadId);
 
@@ -464,10 +532,11 @@ serve(async (req) => {
         discrepancies_count: analysisResult.cross_bureau_discrepancies?.length || 0,
         personal_info_count: personalInfo ? (personalInfo.name_variations?.length || 0) + (personalInfo.addresses?.length || 0) + (personalInfo.employers?.length || 0) + (personalInfo.phones?.length || 0) : 0,
         document_verification: analysisResult.document_verification,
+        validation_flags: validationFlags,
       },
     });
 
-    return new Response(JSON.stringify({ success: true, analysis: analysisResult }), {
+    return new Response(JSON.stringify({ success: true, analysis: analysisResult, validation_flags: validationFlags }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
@@ -554,6 +623,93 @@ async function callAiJson(lovableApiKey: string, systemPrompt: string, userConte
   } catch (_error) {
     throw new Error("Failed to parse AI analysis result");
   }
+}
+
+function runBureauValidation(analysisResult: any): any[] {
+  const flags: any[] = [];
+  const reportBureau = (analysisResult.bureau_detected || "").toLowerCase();
+
+  const allAccounts = [
+    ...(analysisResult.positive_accounts || []).map((a: any) => ({ ...a, _source: "positive", _name: a.creditor })),
+    ...(analysisResult.negative_items || []).map((a: any) => ({ ...a, _source: "negative", _name: a.creditor_name })),
+  ];
+
+  const accountNumbersSeen = new Map<string, any[]>();
+
+  for (const acct of allAccounts) {
+    const acctNum = acct.account_number || acct.account_number_masked;
+
+    // Flag placeholder account numbers
+    if (acctNum) {
+      const stripped = acctNum.replace(/[^0-9a-zA-Z]/g, "");
+      if (/^(X+|0+)$/i.test(stripped) || stripped.length === 0) {
+        flags.push({
+          type: "masked_account_number",
+          account: acct._name,
+          account_number: acctNum,
+          message: "Account number contains only placeholder characters — no real digits for deduplication",
+        });
+      }
+
+      // Track for same-bureau duplicate detection
+      const bureaus = acct.bureaus_reporting || [acct.bureau];
+      for (const b of bureaus) {
+        const key = `${(b || "").toLowerCase()}::${acctNum.toLowerCase()}`;
+        if (!accountNumbersSeen.has(key)) accountNumbersSeen.set(key, []);
+        accountNumbersSeen.get(key)!.push(acct);
+      }
+    }
+
+    // Flag missing payment history percentage
+    const phPct = acct.payment_history_percentage;
+    if (phPct == null && acct.is_open !== false && acct._source === "positive") {
+      flags.push({
+        type: "missing_payment_history",
+        account: acct._name,
+        message: "Payment history percentage missing for open account — may affect comparable credit classification",
+      });
+    }
+
+    // Flag zero original amount on closed installment
+    if (!acct.is_open && acct._source === "positive") {
+      const origAmt = acct.original_amount;
+      const acctType = (acct.account_type || "").toLowerCase();
+      if ((acctType.includes("install") || acctType.includes("auto") || acctType.includes("mortgage")) && (!origAmt || origAmt === 0)) {
+        flags.push({
+          type: "missing_original_amount",
+          account: acct._name,
+          message: "Original amount is zero or null for closed installment account — comparable credit projection cannot be calculated",
+        });
+      }
+    }
+
+    // Flag type mismatch (e.g. MORTGAGE creditor as revolving)
+    const name = (acct._name || "").toLowerCase();
+    const type = (acct.account_type || "").toLowerCase();
+    if (name.includes("mortgage") && type.includes("revolv")) {
+      flags.push({
+        type: "possible_misclassification",
+        account: acct._name,
+        account_type: acct.account_type,
+        message: "Creditor name suggests mortgage but account type is revolving — possible misclassification",
+      });
+    }
+  }
+
+  // Flag same account number appearing more than once on same bureau
+  for (const [key, records] of accountNumbersSeen.entries()) {
+    if (records.length > 1) {
+      flags.push({
+        type: "same_bureau_duplicate",
+        bureau_key: key,
+        accounts: records.map((r: any) => r._name),
+        message: `Same account number appears ${records.length} times on the same bureau — definitive duplicate`,
+        auto_merge: true,
+      });
+    }
+  }
+
+  return flags;
 }
 
 function validateStructuredExtraction(analysisResult: any, readCheck: any) {
