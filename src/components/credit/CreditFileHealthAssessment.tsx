@@ -407,13 +407,17 @@ export function buildBureauHealthContext(
     const negAnalysis = analyzeNegativesForBureau(b, negatives);
     const bLenders = getLendersForBureau(b, lenders);
     const lenderList = bLenders.length > 0 ? bLenders.join(", ") : DEFAULT_LENDERS[b].join(", ");
+    const activeComp = analysis.comparable.filter(c => c.category === "active");
+    const histComp = analysis.comparable.filter(c => c.category === "historical");
     const highestComp = analysis.comparable.length > 0 ? Math.max(...analysis.comparable.map(c => c.amount)) : 0;
 
     parts.push(`\n${BUREAU_META[b].label} (score: ${score ?? "N/A"}):`);
     parts.push(`- File completion: ${analysis.completedCount} of ${analysis.totalCategories} account types`);
     parts.push(`- Negative items on ${BUREAU_META[b].label} only: ${negAnalysis.exclusive}`);
     parts.push(`- Negative items shared with other bureaus: ${negAnalysis.shared}`);
-    parts.push(`- Comparable credit: highest closed $${highestComp.toLocaleString()}, 3x projection $${(highestComp * 3).toLocaleString()}`);
+    parts.push(`- Comparable credit (active): ${activeComp.length} accounts, highest $${activeComp.length > 0 ? Math.max(...activeComp.map(c => c.amount)).toLocaleString() : '0'}`);
+    parts.push(`- Comparable credit (historical/closed positive): ${histComp.length} accounts, highest $${histComp.length > 0 ? Math.max(...histComp.map(c => c.amount)).toLocaleString() : '0'}`);
+    parts.push(`- Total comparable credit: highest $${highestComp.toLocaleString()}, 3x projection $${(highestComp * 3).toLocaleString()}`);
     parts.push(`- Credit age: ${analysis.avgAgeYears} years`);
     const topGap = analysis.categories.filter(c => c.status !== "complete")[0];
     parts.push(`- Priority gap: ${topGap?.label ?? "None"}`);
