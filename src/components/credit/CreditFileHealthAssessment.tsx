@@ -37,6 +37,7 @@ export interface CreditAccount {
   duplicate_of_id: string | null;
   is_disputed_ownership: boolean | null;
   payment_history_json: any | null;
+  bureau_source: string | null;
 }
 
 interface NegativeItem {
@@ -92,9 +93,22 @@ interface ComparableAccount {
   label: string;
   category: "active" | "historical";
   detail: string;
+  bureauSource: string | null;
+  amountEstimated: boolean;
 }
 
 type BureauKey = "experian" | "transunion" | "equifax";
+
+/* Bureau source matching */
+function accountMatchesBureau(bureauSource: string | null, bureau: BureauKey): boolean {
+  if (!bureauSource) return true; // null = show on all tabs (unknown bureau)
+  const bs = bureauSource.toLowerCase().replace(/[\s-]/g, "_");
+  if (bs === "all_three" || bs === "all") return true;
+  if (bureau === "experian") return bs.includes("experian");
+  if (bureau === "transunion") return bs.includes("transunion");
+  if (bureau === "equifax") return bs.includes("equifax");
+  return true;
+}
 
 const BUREAU_META: Record<BureauKey, { label: string; accent: string; dot: string }> = {
   experian: { label: "Experian", accent: "border-blue-500/40", dot: "bg-blue-500" },
@@ -142,14 +156,17 @@ function getOriginalAmount(a: CreditAccount): number {
   return a.original_amount ?? effectiveLimit(a) ?? Number(a.balance ?? a.current_balance ?? 0);
 }
 
-function getDisplayAmount(a: CreditAccount): { amount: number; estimated: boolean } {
+function getDisplayAmount(a: CreditAccount): { amount: number; estimated: boolean; label: string } {
   const oa = a.original_amount;
-  if (oa && oa > 0) return { amount: oa, estimated: false };
+  if (oa && oa > 0) return { amount: oa, estimated: false, label: "Original amount" };
   const lim = effectiveLimit(a);
-  if (lim > 0) return { amount: lim, estimated: false };
+  if (lim > 0) {
+    const isRevolving = a.type === "credit_card";
+    return { amount: lim, estimated: false, label: isRevolving ? "Credit limit" : "Est. original amount" };
+  }
   const bal = Number(a.balance ?? a.current_balance ?? 0);
-  if (bal > 0) return { amount: bal, estimated: true };
-  return { amount: 0, estimated: true };
+  if (bal > 0) return { amount: bal, estimated: true, label: "Est. original amount" };
+  return { amount: 0, estimated: true, label: "Re-analyze report to get amount" };
 }
 
 /* ─── Suggestion content ─── */
