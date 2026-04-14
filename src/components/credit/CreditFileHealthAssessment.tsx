@@ -121,21 +121,35 @@ function isGoodStanding(a: CreditAccount) {
 
 function isClosedPositive(a: CreditAccount): boolean {
   if (a.is_open === true) return false;
-  if (a.is_open == null) return false; // unknown = skip
   if (a.is_disputed_ownership) return false;
   if (a.duplicate_of_id) return false;
   const s = (a.status ?? "").toLowerCase();
-  // Check if closed/paid in good standing
-  const isClosedStatus = s.includes("closed") || s.includes("paid") || s === "transferred" || s === "";
-  if (!isClosedStatus && !isGoodStanding(a)) return false;
-  // Balance should be zero or null (paid off)
+  // Exclude unpaid charge-offs and unpaid collections
+  if ((s.includes("charged") || s.includes("charge")) && !s.includes("paid")) return false;
+  if (s.includes("collection") && !s.includes("paid")) return false;
+  if (s.includes("delinquent")) return false;
+  // Accept: closed, paid, paid in full, current (with is_open=false), satisfied, discharged, transferred, or empty status
+  const validStatus = s.includes("closed") || s.includes("paid") || s === "transferred" || s === "" ||
+    s.includes("current") || s.includes("satisfied") || s.includes("discharged");
+  if (!validStatus) return false;
+  // Balance should be zero or null (paid off) — but accept null balances
   const bal = Number(a.balance ?? a.current_balance ?? 0);
-  if (bal > 0 && !s.includes("paid")) return false;
+  if (bal > 0 && !s.includes("paid") && !s.includes("current")) return false;
   return true;
 }
 
 function getOriginalAmount(a: CreditAccount): number {
   return a.original_amount ?? effectiveLimit(a) ?? Number(a.balance ?? a.current_balance ?? 0);
+}
+
+function getDisplayAmount(a: CreditAccount): { amount: number; estimated: boolean } {
+  const oa = a.original_amount;
+  if (oa && oa > 0) return { amount: oa, estimated: false };
+  const lim = effectiveLimit(a);
+  if (lim > 0) return { amount: lim, estimated: false };
+  const bal = Number(a.balance ?? a.current_balance ?? 0);
+  if (bal > 0) return { amount: bal, estimated: true };
+  return { amount: 0, estimated: true };
 }
 
 /* ─── Suggestion content ─── */
