@@ -433,6 +433,8 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
         status: acct.status || "current",
         is_open: acct.is_open ?? true,
         account_open_date: acct.account_open_date || null,
+        account_close_date: acct.date_closed || null,
+        original_amount: acct.original_amount || null,
         updated_at: new Date().toISOString(),
       };
 
