@@ -7,6 +7,7 @@ import { buildBureauHealthContext } from "@/components/credit/CreditFileHealthAs
 export interface ClientChatContext {
   contextBlock: string;
   isLoading: boolean;
+  hasCreditData: boolean;
 }
 
 type Bureau = "experian" | "transunion" | "equifax";
@@ -40,10 +41,12 @@ function fmt$(n: number): string { return `$${n.toLocaleString()}`; }
 export function useClientChatContext(clientId?: string | null, userId?: string | null): ClientChatContext {
   const [contextBlock, setContextBlock] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [hasCreditData, setHasCreditData] = useState(false);
 
   useEffect(() => {
     if (!clientId && !userId) {
       setContextBlock("");
+      setHasCreditData(false);
       return;
     }
 
@@ -127,10 +130,18 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
 
           const activeAccounts = (allAccounts || []).filter(a => !a.is_disputed_ownership && !a.duplicate_of_id);
           const activeNegs = (allNegs || []).filter(n => !n.is_disputed_ownership && !n.duplicate_of_id);
+          const hasAnyScores = [scores.experian, scores.transunion, scores.equifax].some((value) => value != null);
+          const hasAnyCreditData = activeAccounts.length > 0 || activeNegs.length > 0 || hasAnyScores;
+          setHasCreditData(hasAnyCreditData);
           const now = new Date();
 
           const bureaus: Bureau[] = ["experian", "transunion", "equifax"];
           const bureauScoreMap: Record<Bureau, number | null> = { experian: scores.experian, transunion: scores.transunion, equifax: scores.equifax };
+
+          if (!hasAnyCreditData) {
+            parts.push("");
+            parts.push("Credit Data Status: No credit data is currently on file. Tell the client to upload a credit report to get started.");
+          }
 
           parts.push("");
           for (const bureau of bureaus) {
@@ -634,6 +645,7 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
         console.error("Error fetching client chat context:", err);
         if (!cancelled) {
           setContextBlock("");
+          setHasCreditData(false);
           setIsLoading(false);
         }
       }
@@ -643,7 +655,7 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
     return () => { cancelled = true; };
   }, [clientId, userId]);
 
-  return { contextBlock, isLoading };
+  return { contextBlock, isLoading, hasCreditData };
 }
 
 async function resolveUserIdFromClient(clientId: string): Promise<string | null> {
