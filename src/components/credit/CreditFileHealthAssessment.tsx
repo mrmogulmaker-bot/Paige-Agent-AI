@@ -414,8 +414,8 @@ export function CreditFileHealthAssessment() {
     queryKey: ["lender-prefs-health"],
     queryFn: async () => {
       const { data, error } = await supabase.from("lender_bureau_preferences" as any).select("institution_name, primary_bureau, secondary_bureau").limit(100);
-      if (error) return [];
-      return (data || []) as LenderPref[];
+      if (error) return [] as LenderPref[];
+      return ((data as unknown) || []) as LenderPref[];
     },
   });
 
