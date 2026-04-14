@@ -1290,6 +1290,7 @@ export type Database = {
       credit_accounts: {
         Row: {
           account_close_date: string | null
+          account_number: string | null
           account_open_date: string | null
           balance: number | null
           client_id: string | null
@@ -1304,6 +1305,7 @@ export type Database = {
           is_open: boolean | null
           last_reported_date: string | null
           limit_amount: number | null
+          needs_review: boolean
           opened_on: string | null
           original_amount: number | null
           payment_history_json: Json | null
@@ -1312,9 +1314,11 @@ export type Database = {
           updated_at: string | null
           user_id: string
           utilization: number | null
+          validation_flags: Json | null
         }
         Insert: {
           account_close_date?: string | null
+          account_number?: string | null
           account_open_date?: string | null
           balance?: number | null
           client_id?: string | null
@@ -1329,6 +1333,7 @@ export type Database = {
           is_open?: boolean | null
           last_reported_date?: string | null
           limit_amount?: number | null
+          needs_review?: boolean
           opened_on?: string | null
           original_amount?: number | null
           payment_history_json?: Json | null
@@ -1337,9 +1342,11 @@ export type Database = {
           updated_at?: string | null
           user_id: string
           utilization?: number | null
+          validation_flags?: Json | null
         }
         Update: {
           account_close_date?: string | null
+          account_number?: string | null
           account_open_date?: string | null
           balance?: number | null
           client_id?: string | null
@@ -1354,6 +1361,7 @@ export type Database = {
           is_open?: boolean | null
           last_reported_date?: string | null
           limit_amount?: number | null
+          needs_review?: boolean
           opened_on?: string | null
           original_amount?: number | null
           payment_history_json?: Json | null
@@ -1362,6 +1370,7 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
           utilization?: number | null
+          validation_flags?: Json | null
         }
         Relationships: [
           {
@@ -1545,6 +1554,7 @@ export type Database = {
       }
       credit_negative_items: {
         Row: {
+          account_number: string | null
           account_number_masked: string | null
           amount: number | null
           bureau: string
@@ -1559,6 +1569,7 @@ export type Database = {
           is_disputed_ownership: boolean | null
           is_removable: boolean | null
           item_type: string
+          needs_review: boolean
           notes: string | null
           original_amount: number | null
           removal_probability: number | null
@@ -1566,8 +1577,10 @@ export type Database = {
           status: string | null
           updated_at: string | null
           user_id: string
+          validation_flags: Json | null
         }
         Insert: {
+          account_number?: string | null
           account_number_masked?: string | null
           amount?: number | null
           bureau: string
@@ -1582,6 +1595,7 @@ export type Database = {
           is_disputed_ownership?: boolean | null
           is_removable?: boolean | null
           item_type: string
+          needs_review?: boolean
           notes?: string | null
           original_amount?: number | null
           removal_probability?: number | null
@@ -1589,8 +1603,10 @@ export type Database = {
           status?: string | null
           updated_at?: string | null
           user_id: string
+          validation_flags?: Json | null
         }
         Update: {
+          account_number?: string | null
           account_number_masked?: string | null
           amount?: number | null
           bureau?: string
@@ -1605,6 +1621,7 @@ export type Database = {
           is_disputed_ownership?: boolean | null
           is_removable?: boolean | null
           item_type?: string
+          needs_review?: boolean
           notes?: string | null
           original_amount?: number | null
           removal_probability?: number | null
@@ -1612,6 +1629,7 @@ export type Database = {
           status?: string | null
           updated_at?: string | null
           user_id?: string
+          validation_flags?: Json | null
         }
         Relationships: [
           {
@@ -1710,6 +1728,7 @@ export type Database = {
           file_path: string
           file_size: number | null
           id: string
+          last_analyzed_at: string | null
           negative_items_extracted: Json | null
           positive_accounts_extracted: Json | null
           profile_summary: string | null
@@ -1730,6 +1749,7 @@ export type Database = {
           file_path: string
           file_size?: number | null
           id?: string
+          last_analyzed_at?: string | null
           negative_items_extracted?: Json | null
           positive_accounts_extracted?: Json | null
           profile_summary?: string | null
@@ -1750,6 +1770,7 @@ export type Database = {
           file_path?: string
           file_size?: number | null
           id?: string
+          last_analyzed_at?: string | null
           negative_items_extracted?: Json | null
           positive_accounts_extracted?: Json | null
           profile_summary?: string | null
