@@ -240,12 +240,12 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
 
             parts.push(`Credit Factors — ${bureauLabel} (score: ${bScore ?? "N/A"}):`);
             parts.push(`  Payment History: ${paymentRate}% on-time (${accountsWithLates} accounts with lates)${worstAccount && worstPct < 95 ? ` — worst: ${worstAccount} at ${worstPct}%` : ""}`);
-            parts.push(`  Utilization: ${utilPct}% overall — ${fmt$(totalRevBal)} of ${fmt$(totalRevLimit)} — ${over30.length} accounts over 30%`);
+            parts.push(`  Utilization: ${utilPct}% overall — ${fmt$(totalRevBal)} of ${fmt$(totalRevLimit)} — ${over30.length} accounts over 30%${revWithoutLimit.length > 0 ? ` (Note: ${revWithoutLimit.length} revolving accounts excluded — credit limits not reported)` : ""}`);
             if (paydownTo10 > 0) parts.push(`  Paydown needed for 10% utilization: ${fmt$(paydownTo10)}`);
             if (over30.length > 0) {
               const over30Detail = over30.slice(0, 3).map(a => {
                 const bal = Number(a.current_balance ?? a.balance) || 0;
-                const lim = Number(a.credit_limit ?? a.limit_amount) || 0;
+                const lim = inferLimit(a);
                 return `${a.creditor} (${lim > 0 ? Math.round((bal / lim) * 100) : "?"}%)`;
               }).join(", ");
               parts.push(`  Accounts over 30%: ${over30Detail}`);
