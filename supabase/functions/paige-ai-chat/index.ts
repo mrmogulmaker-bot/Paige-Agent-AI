@@ -953,7 +953,8 @@ Always identify the document type and bureau in your response.`,
               supabaseServiceKey,
               lovableApiKey,
               supabase,
-              payloadClientId || null
+              payloadClientId || null,
+              paigeChatUploadId
             );
 
             // Send sync status as a final SSE data event before closing
