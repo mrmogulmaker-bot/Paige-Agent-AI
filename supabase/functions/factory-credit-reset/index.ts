@@ -113,6 +113,7 @@ serve(async (req) => {
         ["credit_factor_scores_client", admin.from("credit_factor_scores").delete().in("client_id", linkedClientIds)],
         ["client_memory_client", admin.from("client_memory").delete().in("client_id", linkedClientIds)],
         ["extraction_quality_log_client", admin.from("extraction_quality_log").delete().in("client_id", linkedClientIds)],
+        ["dispute_outcomes_client", admin.from("dispute_outcomes").delete().in("client_id", linkedClientIds)],
         ["disputes_client", admin.from("disputes").delete().in("client_id", linkedClientIds)],
         ["funding_application_outcomes_client", admin.from("funding_application_outcomes").delete().in("client_id", linkedClientIds)],
       ] as const;
