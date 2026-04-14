@@ -62,10 +62,6 @@ export function PersonalInfoAudit({ clientId }: PersonalInfoAuditProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [letter, setLetter] = useState("");
 
-  // Load extracted personal info from database
-  useEffect(() => {
-    loadExtractedData();
-  }, [loadExtractedData]);
 
   const loadExtractedData = useCallback(async () => {
     setLoading(true);
@@ -161,6 +157,10 @@ export function PersonalInfoAudit({ clientId }: PersonalInfoAuditProps) {
     }
   }, [clientId]);
 
+  // Load extracted personal info from database
+  useEffect(() => {
+    loadExtractedData();
+  }, [loadExtractedData]);
 
   useEffect(() => {
     const handleFactoryReset = () => {
