@@ -18,6 +18,7 @@ const FundingPortfolioView = lazy(() => import("@/components/dashboard/admin/Fun
 const UserManagement = lazy(() => import("@/components/dashboard/UserManagement").then(m => ({ default: m.UserManagement })));
 const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformance").then(m => ({ default: m.UserPerformance })));
 const AffiliateApplications = lazy(() => import("@/components/dashboard/AffiliateApplications").then(m => ({ default: m.AffiliateApplications })));
+const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
 
 const SuspenseFallback = () => (
   <div className="flex items-center justify-center py-12">
@@ -134,6 +135,11 @@ const Admin = () => {
               <KnowledgeBaseReviewQueue />
               <LenderBureauManager />
             </div>
+          </Suspense>
+        } />
+        <Route path="maintenance" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <DataMaintenancePanel />
           </Suspense>
         } />
         <Route path="settings" element={

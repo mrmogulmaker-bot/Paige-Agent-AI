@@ -1722,6 +1722,9 @@ export type Database = {
         Row: {
           analysis_result: Json | null
           analysis_status: string
+          backfill_completed_at: string | null
+          backfill_fields_updated: Json | null
+          backfill_status: string | null
           bureau_detected: string | null
           client_id: string | null
           created_at: string
@@ -1743,6 +1746,9 @@ export type Database = {
         Insert: {
           analysis_result?: Json | null
           analysis_status?: string
+          backfill_completed_at?: string | null
+          backfill_fields_updated?: Json | null
+          backfill_status?: string | null
           bureau_detected?: string | null
           client_id?: string | null
           created_at?: string
@@ -1764,6 +1770,9 @@ export type Database = {
         Update: {
           analysis_result?: Json | null
           analysis_status?: string
+          backfill_completed_at?: string | null
+          backfill_fields_updated?: Json | null
+          backfill_status?: string | null
           bureau_detected?: string | null
           client_id?: string | null
           created_at?: string
@@ -2317,6 +2326,69 @@ export type Database = {
           used_at?: string | null
         }
         Relationships: []
+      }
+      extraction_quality_log: {
+        Row: {
+          account_count_original: number | null
+          account_count_reextracted: number | null
+          client_id: string | null
+          created_at: string
+          creditor_consistency_check: Json | null
+          extraction_date: string
+          id: string
+          overall_quality_score: number | null
+          quality_flags: Json | null
+          report_id: string | null
+          required_fields_percentage: number | null
+          score_consistency_check: Json | null
+          user_id: string
+        }
+        Insert: {
+          account_count_original?: number | null
+          account_count_reextracted?: number | null
+          client_id?: string | null
+          created_at?: string
+          creditor_consistency_check?: Json | null
+          extraction_date?: string
+          id?: string
+          overall_quality_score?: number | null
+          quality_flags?: Json | null
+          report_id?: string | null
+          required_fields_percentage?: number | null
+          score_consistency_check?: Json | null
+          user_id: string
+        }
+        Update: {
+          account_count_original?: number | null
+          account_count_reextracted?: number | null
+          client_id?: string | null
+          created_at?: string
+          creditor_consistency_check?: Json | null
+          extraction_date?: string
+          id?: string
+          overall_quality_score?: number | null
+          quality_flags?: Json | null
+          report_id?: string | null
+          required_fields_percentage?: number | null
+          score_consistency_check?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "extraction_quality_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extraction_quality_log_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "credit_report_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       financial_api_logs: {
         Row: {

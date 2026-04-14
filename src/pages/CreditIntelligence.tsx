@@ -12,6 +12,7 @@ import { CreditFileHealthAssessment } from "@/components/credit/CreditFileHealth
 import { AccountManager } from "@/components/credit/AccountManager";
 import { CreditReportUploader } from "@/components/credit/CreditReportUploader";
 import { CreditFactorsPanel } from "@/components/credit/CreditFactorsPanel";
+import { DataFreshnessIndicator } from "@/components/credit/DataFreshnessIndicator";
 import { toast } from "sonner";
 
 export default function CreditIntelligence() {
@@ -243,20 +244,23 @@ export default function CreditIntelligence() {
       {/* Bureau Score Panel */}
       <BureauScorePanel />
 
-      {/* Bureau Tab Selector */}
+      {/* Data Freshness + Bureau Tab Selector */}
       {(hasData || hasAccounts) && (
-        <div className="flex gap-2 flex-wrap">
-          {(["all", "experian", "transunion", "equifax"] as const).map(b => (
-            <Button
-              key={b}
-              variant={selectedBureau === b ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedBureau(b)}
-              className={selectedBureau === b ? "bg-accent text-accent-foreground" : ""}
-            >
-              {b === "all" ? "All Bureaus" : b === "experian" ? "Experian" : b === "transunion" ? "TransUnion" : "Equifax"}
-            </Button>
-          ))}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex gap-2 flex-wrap">
+            {(["all", "experian", "transunion", "equifax"] as const).map(b => (
+              <Button
+                key={b}
+                variant={selectedBureau === b ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedBureau(b)}
+                className={selectedBureau === b ? "bg-accent text-accent-foreground" : ""}
+              >
+                {b === "all" ? "All Bureaus" : b === "experian" ? "Experian" : b === "transunion" ? "TransUnion" : "Equifax"}
+              </Button>
+            ))}
+          </div>
+          <DataFreshnessIndicator />
         </div>
       )}
 
