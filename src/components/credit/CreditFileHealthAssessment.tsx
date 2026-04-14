@@ -112,12 +112,30 @@ function effectiveOpenDate(a: CreditAccount): Date | null {
 }
 function isGoodStanding(a: CreditAccount) {
   const s = (a.status ?? "").toLowerCase();
-  return !s.includes("collection") && !s.includes("charged") && !s.includes("delinquent");
+  if (s.includes("delinquent")) return false;
+  // Unpaid charge-offs and unpaid collections are NOT good standing
+  if ((s.includes("charged") || s.includes("charge")) && !s.includes("paid")) return false;
+  if (s.includes("collection") && !s.includes("paid")) return false;
+  return true;
 }
-function accountAgeMonths(a: CreditAccount): number | null {
-  const d = effectiveOpenDate(a);
-  if (!d) return null;
-  return differenceInMonths(new Date(), d);
+
+function isClosedPositive(a: CreditAccount): boolean {
+  if (a.is_open === true) return false;
+  if (a.is_open == null) return false; // unknown = skip
+  if (a.is_disputed_ownership) return false;
+  if (a.duplicate_of_id) return false;
+  const s = (a.status ?? "").toLowerCase();
+  // Check if closed/paid in good standing
+  const isClosedStatus = s.includes("closed") || s.includes("paid") || s === "transferred" || s === "";
+  if (!isClosedStatus && !isGoodStanding(a)) return false;
+  // Balance should be zero or null (paid off)
+  const bal = Number(a.balance ?? a.current_balance ?? 0);
+  if (bal > 0 && !s.includes("paid")) return false;
+  return true;
+}
+
+function getOriginalAmount(a: CreditAccount): number {
+  return a.original_amount ?? effectiveLimit(a) ?? Number(a.balance ?? a.current_balance ?? 0);
 }
 
 /* ─── Suggestion content ─── */
