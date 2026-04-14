@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCreditFactors } from "@/hooks/useCreditFactors";
 import { Card } from "@/components/ui/card";
@@ -10,13 +10,15 @@ import { format } from "date-fns";
 import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
 import { CreditFileHealthAssessment } from "@/components/credit/CreditFileHealthAssessment";
 import { AccountManager } from "@/components/credit/AccountManager";
+import { toast } from "sonner";
 
 export default function CreditIntelligence() {
   const { factors, isLoading, recalculate } = useCreditFactors();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [accountManagerOpen, setAccountManagerOpen] = useState(false);
 
-  // Check if client has any accounts (independent of factor scores)
+  // Check if client has any accounts
   const { data: hasAccounts } = useQuery({
     queryKey: ["has-credit-accounts"],
     queryFn: async () => {
@@ -27,6 +29,129 @@ export default function CreditIntelligence() {
         supabase.from("credit_negative_items").select("id", { count: "exact", head: true }).eq("user_id", session.user.id),
       ]);
       return ((acctCount ?? 0) + (negCount ?? 0)) > 0;
+    },
+  });
+
+  // Get last analyzed timestamp from most recent report upload
+  const { data: lastAnalyzed } = useQuery({
+    queryKey: ["last-analyzed-at"],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return null;
+      const { data } = await supabase
+        .from("credit_report_uploads")
+        .select("last_analyzed_at, created_at")
+        .eq("user_id", session.user.id)
+        .eq("analysis_status", "completed")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (data && data.length > 0) {
+        return (data[0] as any).last_analyzed_at || (data[0] as any).created_at;
+      }
+      return null;
+    },
+  });
+
+  // Re-extract from original PDF mutation
+  const reExtract = useMutation({
+    mutationFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      // Get most recent completed upload
+      const { data: uploads } = await supabase
+        .from("credit_report_uploads")
+        .select("id, file_path, file_name")
+        .eq("user_id", session.user.id)
+        .eq("analysis_status", "completed")
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (!uploads || uploads.length === 0) {
+        throw new Error("No previously analyzed credit report found. Please upload a new report.");
+      }
+
+      const upload = uploads[0];
+      toast.info(`Re-analyzing ${(upload as any).file_name}...`, { duration: 5000 });
+
+      // Re-run the analyze function on the same upload
+      const response = await supabase.functions.invoke("analyze-credit-report", {
+        body: { uploadId: (upload as any).id },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (response.error) throw new Error(response.error.message || "Re-analysis failed");
+
+      // After analysis, trigger sync
+      const analysisData = response.data?.analysis;
+      if (analysisData) {
+        await supabase.functions.invoke("sync-credit-report-data", {
+          body: {
+            target_user_id: session.user.id,
+            report_type: analysisData.report_type || "consumer",
+            scores: analysisData.scores,
+            score_model: analysisData.score_model,
+            negative_items: (analysisData.negative_items || []).map((item: any) => ({
+              creditor_name: item.creditor_name,
+              account_number: item.account_number || item.account_number_masked || null,
+              account_number_masked: item.account_number || item.account_number_masked || null,
+              bureau: item.bureau || item.bureaus_reporting?.[0] || "unknown",
+              item_type: item.category || "collection",
+              amount: item.amount,
+              original_amount: item.original_amount || null,
+              date_of_occurrence: item.date_of_occurrence,
+              date_reported: item.date_reported,
+              dispute_basis: item.dispute_reason_suggestion,
+              estimated_score_impact: item.estimated_score_impact,
+              status: item.status || "active",
+            })),
+            hard_inquiries: analysisData.hard_inquiries || [],
+            positive_accounts: (analysisData.positive_accounts || []).map((acct: any) => ({
+              creditor: acct.creditor,
+              account_number: acct.account_number || null,
+              account_type: acct.account_type,
+              balance: acct.balance,
+              credit_limit: acct.credit_limit,
+              original_amount: acct.original_amount || null,
+              utilization: acct.utilization,
+              payment_status: acct.payment_status,
+              payment_history_percentage: acct.payment_history_percentage || null,
+              account_open_date: acct.opened_date,
+              date_closed: acct.date_closed || null,
+              is_open: acct.is_open,
+              responsibility: acct.responsibility || null,
+            })),
+            discrepancies: analysisData.cross_bureau_discrepancies || [],
+            priority_disputes: [],
+            report_upload_id: (upload as any).id,
+            fraud_alerts: analysisData.fraud_alerts,
+            security_freezes: analysisData.security_freezes,
+            validation_flags: response.data?.validation_flags || [],
+          },
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+      }
+
+      return response.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["credit-factors"] });
+      queryClient.invalidateQueries({ queryKey: ["credit-factors-history"] });
+      queryClient.invalidateQueries({ queryKey: ["has-credit-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["last-analyzed-at"] });
+      queryClient.invalidateQueries({ queryKey: ["credit-health-assessment"] });
+      queryClient.invalidateQueries({ queryKey: ["bureau-scores"] });
+
+      const flags = data?.validation_flags || [];
+      const flagCount = flags.length;
+      if (flagCount > 0) {
+        toast.success(`Re-analysis complete. ${flagCount} item(s) flagged for review.`);
+      } else {
+        toast.success("Re-analysis complete. All data refreshed from original report.");
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Re-analysis failed. Please try again.");
     },
   });
 
@@ -113,6 +238,11 @@ export default function CreditIntelligence() {
               Last synced: {format(new Date(lastCalculated), "MMM d, yyyy 'at' h:mm a")}
             </p>
           )}
+          {lastAnalyzed && (
+            <p className="text-xs text-muted-foreground">
+              Last extracted from report: {format(new Date(lastAnalyzed), "MMM d, yyyy 'at' h:mm a")}
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
           {(hasData || hasAccounts) && (
@@ -128,11 +258,11 @@ export default function CreditIntelligence() {
           )}
           {hasData ? (
             <Button
-              onClick={() => recalculate.mutate()}
-              disabled={recalculate.isPending}
+              onClick={() => reExtract.mutate()}
+              disabled={reExtract.isPending}
               className="bg-gradient-gold hover:opacity-90"
             >
-              {recalculate.isPending ? (
+              {reExtract.isPending ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <RefreshCw className="w-4 h-4 mr-2" />

@@ -15,16 +15,23 @@ const ScoreSchema = z.object({
 
 const NegativeItemSchema = z.object({
   creditor_name: z.string(),
+  account_number: z.string().nullable().optional(),
   account_number_masked: z.string().nullable().optional(),
   bureau: z.string(),
   item_type: z.string(),
   amount: z.number().nullable().optional(),
+  original_amount: z.number().nullable().optional(),
   date_of_occurrence: z.string().nullable().optional(),
   date_reported: z.string().nullable().optional(),
+  date_opened: z.string().nullable().optional(),
+  date_closed: z.string().nullable().optional(),
   dispute_basis: z.string().nullable().optional(),
   estimated_score_impact: z.number().nullable().optional(),
   status: z.string().optional().default("active"),
   is_cross_bureau_discrepancy: z.boolean().optional().default(false),
+  responsibility: z.string().nullable().optional(),
+  payment_history_percentage: z.number().nullable().optional(),
+  account_type: z.string().nullable().optional(),
 });
 
 const InquirySchema = z.object({
@@ -36,6 +43,7 @@ const InquirySchema = z.object({
 
 const PositiveAccountSchema = z.object({
   creditor: z.string(),
+  account_number: z.string().nullable().optional(),
   account_type: z.string(),
   balance: z.number().nullable().optional(),
   credit_limit: z.number().nullable().optional(),
@@ -77,6 +85,8 @@ const SyncPayloadSchema = z.object({
   report_upload_id: z.string().uuid().nullable().optional(),
   fraud_alerts: z.any().nullable().optional(),
   security_freezes: z.any().nullable().optional(),
+  score_model: z.string().nullable().optional(),
+  validation_flags: z.any().nullable().optional(),
 });
 
 serve(async (req) => {
@@ -101,7 +111,6 @@ serve(async (req) => {
     let callerUserId: string;
 
     if (authHeader.includes(supabaseServiceKey)) {
-      // Called internally with service role key - trust target_user_id from payload
       const rawData = await req.json();
       let payload;
       try {
@@ -175,13 +184,36 @@ serve(async (req) => {
   }
 });
 
+// Fuzzy string similarity (simple Dice coefficient)
+function similarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  a = a.toLowerCase().trim();
+  b = b.toLowerCase().trim();
+  if (a === b) return 1;
+  if (a.length < 2 || b.length < 2) return 0;
+  const bigrams = new Map<string, number>();
+  for (let i = 0; i < a.length - 1; i++) {
+    const bi = a.substring(i, i + 2);
+    bigrams.set(bi, (bigrams.get(bi) || 0) + 1);
+  }
+  let intersect = 0;
+  for (let i = 0; i < b.length - 1; i++) {
+    const bi = b.substring(i, i + 2);
+    const count = bigrams.get(bi) || 0;
+    if (count > 0) {
+      bigrams.set(bi, count - 1);
+      intersect++;
+    }
+  }
+  return (2 * intersect) / (a.length - 1 + b.length - 1);
+}
+
 async function processSync(supabase: any, payload: any, targetUserId: string, callerUserId: string) {
   const results: Record<string, any> = {};
   let currentStep = "init";
   const clientId = payload.client_id || null;
   const negativeItemLogs: any[] = [];
 
-  // Log raw payload counts
   console.log("=== SYNC PAYLOAD COUNTS ===", {
     negative_items: payload.negative_items?.length ?? 0,
     positive_accounts: payload.positive_accounts?.length ?? 0,
@@ -191,7 +223,6 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
     target_user_id: targetUserId,
   });
 
-  // Helper: add client_id to insert payloads when in internal mode
   const withClientId = (obj: any) => clientId ? { ...obj, client_id: clientId } : obj;
 
   try {
@@ -208,7 +239,6 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       if (equifax != null) updateFields.estimated_fico_eq = equifax;
       if (experian != null) updateFields.estimated_fico_ex = experian;
       if (transunion != null) updateFields.estimated_fico_tu = transunion;
-      // Persist score model (FICO / VantageScore / Unknown)
       if (payload.score_model && ["FICO", "VantageScore", "Unknown"].includes(payload.score_model)) {
         updateFields.score_model = payload.score_model;
       }
@@ -232,7 +262,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       }
     }
 
-    // ========== STEP 2: NEGATIVE ITEMS ==========
+    // ========== STEP 2: NEGATIVE ITEMS (account_number-first dedup) ==========
     currentStep = "negative_items";
     let negativeItemsInserted = 0;
     let negativeItemsUpdated = 0;
@@ -240,13 +270,12 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
 
     console.log(`=== NEGATIVE ITEMS: ${payload.negative_items.length} items to process ===`);
 
-    // Normalize bureau and item_type to match CHECK constraints
     const normalizeBureau = (b: string): string => {
       const lower = (b || "").toLowerCase().trim();
       if (lower.includes("trans")) return "transunion";
       if (lower.includes("exper")) return "experian";
       if (lower.includes("equi")) return "equifax";
-      return ""; // unrecognized — caught by validation guard below
+      return "";
     };
     const normalizeItemType = (t: string): string => {
       const lower = (t || "").toLowerCase().trim().replace(/-/g, "_");
@@ -273,128 +302,85 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       const itemType = normalizeItemType(item.item_type);
       const status = normalizeStatus(item.status);
       const removalProb = item.estimated_score_impact != null ? Math.max(0, Math.min(100, Math.round(item.estimated_score_impact))) : null;
+      const accountNumber = item.account_number || item.account_number_masked || null;
 
-      const itemLog: any = {
-        index: idx,
-        raw_creditor: item.creditor_name,
-        raw_bureau: item.bureau,
-        raw_item_type: item.item_type,
-        normalized_bureau: bureau,
-        normalized_item_type: itemType,
-        normalized_status: status,
-        account_number_masked: item.account_number_masked || null,
-        amount: item.amount,
-        identifier: clientId ? `client:${clientId}` : `user:${targetUserId}`,
-      };
-
-      console.log(`[NEG ${idx + 1}/${payload.negative_items.length}] PRE-INSERT:`, JSON.stringify(itemLog));
-
-      // Reject items whose bureau didn't normalize to a known value
       if (!["transunion", "experian", "equifax"].includes(bureau)) {
-        console.warn(`[NEG ${idx + 1}] Skipping — unrecognized bureau: '${item.bureau}' (normalized: '${bureau}')`);
-        itemLog.result = "skipped_invalid_bureau";
-        itemLog.error = `Unrecognized bureau value: '${item.bureau}'. Must resolve to transunion, experian, or equifax.`;
-        negativeItemLogs.push(itemLog);
+        console.warn(`[NEG ${idx + 1}] Skipping — unrecognized bureau: '${item.bureau}'`);
         negativeItemsFailed++;
         continue;
       }
 
-      // Check for existing record — scope by (user_id, creditor_name, bureau, item_type, account_number_masked)
-      // and by client_id to avoid cross-contaminating personal vs. client-scoped records.
-      let dedupeQuery = supabase
-        .from("credit_negative_items").select("id")
-        .eq("user_id", targetUserId)
-        .eq("creditor_name", item.creditor_name)
-        .eq("bureau", bureau)
-        .eq("item_type", itemType)
-        .eq("account_number_masked", item.account_number_masked ?? "");
-
-      if (clientId) {
-        dedupeQuery = dedupeQuery.eq("client_id", clientId);
-      } else {
-        dedupeQuery = dedupeQuery.is("client_id", null);
+      // DEDUP PRIORITY 1: account_number + bureau
+      let existing: any = null;
+      if (accountNumber) {
+        let q = supabase.from("credit_negative_items").select("id")
+          .eq("user_id", targetUserId).eq("bureau", bureau).eq("account_number", accountNumber);
+        if (clientId) q = q.eq("client_id", clientId); else q = q.is("client_id", null);
+        const { data: rows } = await q;
+        if (rows && rows.length > 0) existing = rows[0];
       }
 
-      const { data: existingRows, error: matchErr } = await dedupeQuery;
-
-      if (matchErr) {
-        console.error(`[NEG ${idx + 1}] Match query error:`, matchErr);
-        itemLog.result = "match_error";
-        itemLog.error = matchErr.message;
-        negativeItemLogs.push(itemLog);
-        negativeItemsFailed++;
-        continue;
+      // DEDUP PRIORITY 2: creditor + bureau + item_type (fallback)
+      if (!existing) {
+        let q = supabase.from("credit_negative_items").select("id, creditor_name")
+          .eq("user_id", targetUserId).eq("bureau", bureau).eq("item_type", itemType);
+        if (clientId) q = q.eq("client_id", clientId); else q = q.is("client_id", null);
+        const { data: candidates } = await q;
+        if (candidates && candidates.length > 0) {
+          // Exact match first, then fuzzy
+          const exact = candidates.find((c: any) => c.creditor_name === item.creditor_name);
+          if (exact) {
+            existing = exact;
+          } else {
+            const fuzzy = candidates.find((c: any) => similarity(c.creditor_name, item.creditor_name) >= 0.8);
+            if (fuzzy) existing = fuzzy;
+          }
+        }
       }
-
-      const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
 
       if (existing) {
-        const { error: updateErr } = await supabase.from("credit_negative_items").update({
-          status,
-          amount: item.amount,
-          item_type: itemType,
-          notes: item.dispute_basis,
-          removal_probability: removalProb,
+        await supabase.from("credit_negative_items").update({
+          status, amount: item.amount, item_type: itemType,
+          notes: item.dispute_basis, removal_probability: removalProb,
           date_of_occurrence: item.date_of_occurrence || null,
           date_reported: item.date_reported || null,
-          is_removable: true,
-          updated_at: new Date().toISOString(),
+          account_number: accountNumber,
+          account_number_masked: accountNumber,
+          original_amount: item.original_amount || null,
+          is_removable: true, updated_at: new Date().toISOString(),
         }).eq("id", existing.id);
-        if (updateErr) {
-          console.error(`[NEG ${idx + 1}] Update error:`, updateErr);
-          itemLog.result = "update_error";
-          itemLog.error = updateErr.message;
-          negativeItemsFailed++;
-        } else {
-          console.log(`[NEG ${idx + 1}] Updated existing record ${existing.id}`);
-          itemLog.result = "updated";
-          itemLog.existing_id = existing.id;
-          negativeItemsUpdated++;
-        }
+        negativeItemsUpdated++;
       } else {
         const insertPayload = withClientId({
-          user_id: targetUserId,
-          creditor_name: item.creditor_name,
-          account_number_masked: item.account_number_masked,
-          bureau,
-          item_type: itemType,
-          amount: item.amount,
+          user_id: targetUserId, creditor_name: item.creditor_name,
+          account_number: accountNumber, account_number_masked: accountNumber,
+          bureau, item_type: itemType, amount: item.amount,
+          original_amount: item.original_amount || null,
           date_of_occurrence: item.date_of_occurrence || null,
           date_reported: item.date_reported || null,
-          status,
-          notes: item.dispute_basis,
-          removal_probability: removalProb,
-          is_removable: true,
+          status, notes: item.dispute_basis, removal_probability: removalProb, is_removable: true,
         });
-        const { data: insertedRow, error: insertErr } = await supabase
-          .from("credit_negative_items").insert(insertPayload).select("id").single();
+        const { error: insertErr } = await supabase.from("credit_negative_items").insert(insertPayload);
         if (insertErr) {
-          console.error(`[NEG ${idx + 1}] Insert error:`, JSON.stringify(insertErr));
-          itemLog.result = "insert_error";
-          itemLog.error = insertErr.message;
-          itemLog.pg_code = insertErr.code;
+          console.error(`[NEG ${idx + 1}] Insert error:`, insertErr);
           negativeItemsFailed++;
         } else {
-          console.log(`[NEG ${idx + 1}] Inserted new record ${insertedRow?.id}`);
-          itemLog.result = "inserted";
-          itemLog.new_id = insertedRow?.id;
           negativeItemsInserted++;
         }
       }
-      negativeItemLogs.push(itemLog);
     }
-    results.negative_items = { inserted: negativeItemsInserted, updated: negativeItemsUpdated, failed: negativeItemsFailed, logs: negativeItemLogs };
+    results.negative_items = { inserted: negativeItemsInserted, updated: negativeItemsUpdated, failed: negativeItemsFailed };
 
     // ========== STEP 3: HARD INQUIRIES ==========
     currentStep = "hard_inquiries";
     let inquiriesInserted = 0;
     for (const inq of payload.hard_inquiries) {
-      const { data: existing } = await supabase
+      const { data: existingInq } = await supabase
         .from("credit_inquiries").select("id")
         .eq("user_id", targetUserId).eq("creditor_name", inq.creditor_name).eq("inquiry_date", inq.inquiry_date)
         .maybeSingle();
 
-      if (!existing) {
+      if (!existingInq) {
         await supabase.from("credit_inquiries").insert({
           user_id: targetUserId, creditor_name: inq.creditor_name, inquiry_date: inq.inquiry_date,
           bureau: inq.bureau, is_authorized: inq.is_authorized,
@@ -405,7 +391,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
     }
     results.hard_inquiries = { inserted: inquiriesInserted };
 
-    // ========== STEP 4: POSITIVE ACCOUNTS ==========
+    // ========== STEP 4: POSITIVE ACCOUNTS (account_number-first dedup) ==========
     currentStep = "positive_accounts";
     let accountsInserted = 0;
     let accountsUpdated = 0;
@@ -418,23 +404,41 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
     };
 
     for (const acct of payload.positive_accounts) {
-      const { data: existing } = await supabase
-        .from("credit_accounts").select("id")
-        .eq("user_id", targetUserId).eq("creditor", acct.creditor)
-        .maybeSingle();
-
+      const accountNumber = acct.account_number || acct.account_number_masked || null;
       const mappedType = accountTypeMap[acct.account_type?.toLowerCase()] || "credit_card";
-      const acctData = {
-        balance: acct.balance,
-        current_balance: acct.balance,
-        credit_limit: acct.credit_limit,
-        limit_amount: acct.credit_limit,
-        utilization: acct.utilization,
-        status: acct.status || "current",
+
+      // DEDUP PRIORITY 1: account_number match
+      let existing: any = null;
+      if (accountNumber) {
+        const { data: rows } = await supabase.from("credit_accounts").select("id")
+          .eq("user_id", targetUserId).eq("account_number", accountNumber);
+        if (rows && rows.length > 0) existing = rows[0];
+      }
+
+      // DEDUP PRIORITY 2: creditor name match (exact then fuzzy)
+      if (!existing) {
+        const { data: candidates } = await supabase.from("credit_accounts").select("id, creditor")
+          .eq("user_id", targetUserId);
+        if (candidates && candidates.length > 0) {
+          const exact = candidates.find((c: any) => c.creditor === acct.creditor);
+          if (exact) {
+            existing = exact;
+          } else {
+            const fuzzy = candidates.find((c: any) => similarity(c.creditor, acct.creditor) >= 0.8);
+            if (fuzzy) existing = fuzzy;
+          }
+        }
+      }
+
+      const acctData: any = {
+        balance: acct.balance, current_balance: acct.balance,
+        credit_limit: acct.credit_limit, limit_amount: acct.credit_limit,
+        utilization: acct.utilization, status: acct.status || "current",
         is_open: acct.is_open ?? true,
         account_open_date: acct.account_open_date || null,
         account_close_date: acct.date_closed || null,
         original_amount: acct.original_amount || null,
+        account_number: accountNumber,
         updated_at: new Date().toISOString(),
       };
 
@@ -463,24 +467,28 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       const accounts = acctRes.data || [];
       const inquiries = inqRes.data || [];
 
+      // Filter out duplicates and disputed ownership from scoring
+      const scorableNegatives = negatives.filter((n: any) => !n.duplicate_of_id && !n.is_disputed_ownership);
+      const scorableAccounts = accounts.filter((a: any) => !a.duplicate_of_id && !a.is_disputed_ownership);
+
       // --- Payment History Score ---
-      const chargeOffs = negatives.filter((n: any) => {
+      const chargeOffs = scorableNegatives.filter((n: any) => {
         const t = (n.item_type || "").toLowerCase();
         return t.includes("charge") || t === "charge-off" || t === "charge_off";
       });
-      const collections = negatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("collection"));
-      const latePayments = negatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("late"));
+      const collections = scorableNegatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("collection"));
+      const latePayments = scorableNegatives.filter((n: any) => (n.item_type || "").toLowerCase().includes("late"));
       
       let paymentHistoryScore = 100;
       paymentHistoryScore -= Math.min(chargeOffs.length * 15, 75);
       paymentHistoryScore -= Math.min(collections.length * 12, 60);
       paymentHistoryScore -= Math.min(latePayments.length * 5, 25);
-      const highBalanceNegs = negatives.filter((n: any) => (n.amount || 0) > 1000);
+      const highBalanceNegs = scorableNegatives.filter((n: any) => (n.amount || 0) > 1000);
       paymentHistoryScore -= Math.min(highBalanceNegs.length * 3, 15);
       paymentHistoryScore = Math.max(0, paymentHistoryScore);
 
       // --- Utilization Score ---
-      const revolvingAccounts = accounts.filter((a: any) => a.type === "credit_card" && a.is_open !== false);
+      const revolvingAccounts = scorableAccounts.filter((a: any) => a.type === "credit_card" && a.is_open !== false);
       const totalRevolvingBalance = revolvingAccounts.reduce((s: number, a: any) => s + (Number(a.current_balance || a.balance) || 0), 0);
       const totalRevolvingLimit = revolvingAccounts.reduce((s: number, a: any) => s + (Number(a.credit_limit || a.limit_amount) || 0), 0);
       const aggregateUtilization = totalRevolvingLimit > 0 ? (totalRevolvingBalance / totalRevolvingLimit) * 100 : 0;
@@ -498,7 +506,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       utilizationScore = Math.max(0, utilizationScore);
 
       // --- Credit Age Score ---
-      const accountsWithDates = accounts.filter((a: any) => a.account_open_date);
+      const accountsWithDates = scorableAccounts.filter((a: any) => a.account_open_date);
       const now = new Date();
       let oldestAgeMonths = 0, newestAgeMonths = 0, avgAgeMonths = 0;
 
@@ -524,13 +532,13 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       else creditAgeScore = 15;
 
       // --- Credit Mix Score ---
-      const revolvingCount = accounts.filter((a: any) => a.type === "credit_card").length;
-      const installmentCount = accounts.filter((a: any) => ["personal_loan", "auto_loan", "student_loan"].includes(a.type)).length;
-      const mortgageCount = accounts.filter((a: any) => a.type === "mortgage").length;
+      const revolvingCount = scorableAccounts.filter((a: any) => a.type === "credit_card").length;
+      const installmentCount = scorableAccounts.filter((a: any) => ["personal_loan", "auto_loan", "student_loan"].includes(a.type)).length;
+      const mortgageCount = scorableAccounts.filter((a: any) => a.type === "mortgage").length;
       const typeCount = [revolvingCount > 0, installmentCount > 0, mortgageCount > 0].filter(Boolean).length;
       
       let creditMixScore = typeCount >= 3 ? 100 : typeCount === 2 ? 70 : typeCount === 1 ? 40 : 10;
-      if (accounts.length >= 10) creditMixScore = Math.min(100, creditMixScore + 10);
+      if (scorableAccounts.length >= 10) creditMixScore = Math.min(100, creditMixScore + 10);
 
       // --- Inquiry Score ---
       const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
@@ -561,9 +569,9 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
         credit_mix_score: creditMixScore,
         inquiry_score: inquiryScore,
         overall_fundability_score: overallScore,
-        active_negatives: negatives.length,
+        active_negatives: scorableNegatives.length,
         removed_negatives: 0,
-        total_negatives: negatives.length,
+        total_negatives: scorableNegatives.length,
         aggregate_utilization: Math.round(aggregateUtilization * 100) / 100,
         total_balance: totalRevolvingBalance,
         total_credit_limit: totalRevolvingLimit,
@@ -580,7 +588,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
         total_inquiries_ex: inqByBureau.ex,
         total_inquiries_eq: inqByBureau.eq,
         inquiry_budget_remaining: inquiryBudgetRemaining,
-        oldest_negative_date: negatives.length > 0 ? negatives.reduce((oldest: string | null, n: any) => {
+        oldest_negative_date: scorableNegatives.length > 0 ? scorableNegatives.reduce((oldest: string | null, n: any) => {
           const d = n.date_of_occurrence || n.date_reported;
           return d && (!oldest || d < oldest) ? d : oldest;
         }, null as string | null) : null,
