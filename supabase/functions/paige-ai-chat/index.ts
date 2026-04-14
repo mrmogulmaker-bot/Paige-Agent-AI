@@ -303,6 +303,7 @@ JSON:`;
     }
 
     let documentReadCheck: any = null;
+    let paigeChatUploadId: string | null = null;
     if (attachedDocument) {
       documentReadCheck = await runDocumentReadCheck(attachedDocument.base64, lovableApiKey);
       if (!documentReadCheck?.can_read_document || documentReadCheck?.document_kind !== 'credit_report' || (documentReadCheck?.first_five_account_names || []).length < 1) {
@@ -311,6 +312,52 @@ JSON:`;
           JSON.stringify({ error: message }),
           { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      }
+
+      // Store the uploaded PDF to standard storage so Refresh can find it later
+      try {
+        const targetUserId = payloadClientId || user.id;
+        const timestamp = Date.now();
+        const safeName = (attachedDocument.fileName || "report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
+        const storagePath = `${targetUserId}/${timestamp}_paige_${safeName}`;
+
+        // Decode base64 to binary
+        const binaryString = atob(attachedDocument.base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const { error: storageErr } = await supabase.storage
+          .from("credit-report-uploads")
+          .upload(storagePath, bytes.buffer, { contentType: "application/pdf" });
+
+        if (storageErr) {
+          console.error("[Paige] Failed to store PDF to storage:", storageErr);
+        } else {
+          // Create credit_report_uploads record
+          const { data: uploadRec, error: insertErr } = await supabase
+            .from("credit_report_uploads")
+            .insert({
+              user_id: targetUserId,
+              uploaded_by: user.id,
+              file_name: attachedDocument.fileName || "credit-report.pdf",
+              file_path: storagePath,
+              file_size: bytes.length,
+              analysis_status: "processing",
+            })
+            .select("id")
+            .single();
+
+          if (insertErr) {
+            console.error("[Paige] Failed to create upload record:", insertErr);
+          } else {
+            paigeChatUploadId = uploadRec.id;
+            console.log("[Paige] Stored PDF to credit-report-uploads, record id:", paigeChatUploadId);
+          }
+        }
+      } catch (storeErr) {
+        console.error("[Paige] Error storing PDF:", storeErr);
       }
     }
 
