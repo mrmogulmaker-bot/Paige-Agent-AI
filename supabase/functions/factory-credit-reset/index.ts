@@ -83,6 +83,7 @@ serve(async (req) => {
       ["credit_alerts", admin.from("credit_alerts").delete().eq("client_id", user.id)],
       ["credit_factor_scores_user", admin.from("credit_factor_scores").delete().eq("user_id", user.id)],
       ["credit_inquiries", admin.from("credit_inquiries").delete().eq("user_id", user.id)],
+      ["dispute_outcomes", admin.from("dispute_outcomes").delete().eq("user_id", user.id)],
       ["dispute_letters", admin.from("dispute_letters").delete().eq("user_id", user.id)],
       ["disputes_user", admin.from("disputes").delete().eq("user_id", user.id)],
       ["funding_readiness_scores", admin.from("funding_readiness_scores").delete().eq("user_id", user.id)],
