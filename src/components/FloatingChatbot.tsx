@@ -116,7 +116,23 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
         headers: { Authorization: `Bearer ${session?.access_token}` },
       });
       if (error) throw error;
-      await conversation.startSession({ signedUrl: data.signedUrl });
+
+      // Inject full client context so voice Paige has the same data as text Paige
+      const voiceSystemPrompt = contextBlock
+        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
+        : undefined;
+
+      await conversation.startSession({
+        signedUrl: data.signedUrl,
+        ...(voiceSystemPrompt ? {
+          overrides: {
+            agent: {
+              prompt: { prompt: voiceSystemPrompt },
+              firstMessage: "Hey — I've got your file pulled up. What do you want to work on?",
+            },
+          },
+        } : {}),
+      });
     } catch (err) {
       console.error("Error starting widget voice chat:", err);
       toast({ title: "Error", description: "Failed to start voice chat.", variant: "destructive" });
