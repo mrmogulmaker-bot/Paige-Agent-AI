@@ -1,14 +1,15 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCreditFactors } from "@/hooks/useCreditFactors";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Upload } from "lucide-react";
+import { Loader2, RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Upload, Settings2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
 import { CreditFileHealthAssessment } from "@/components/credit/CreditFileHealthAssessment";
+import { AccountManager } from "@/components/credit/AccountManager";
 
 export default function CreditIntelligence() {
   const { factors, isLoading, recalculate } = useCreditFactors();
