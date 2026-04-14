@@ -71,12 +71,25 @@ serve(async (req) => {
     const linkedClientIds = (linkedClients || []).map((client) => client.id);
     const startedAt = new Date().toISOString();
 
+    // ── Wave 1: Delete all user-owned data across every feature ──
     const deletions = [
+      // Credit Intelligence
       admin.from("credit_accounts").delete().eq("user_id", user.id),
       admin.from("credit_negative_items").delete().eq("user_id", user.id),
       admin.from("credit_report_personal_info").delete().eq("user_id", user.id),
       admin.from("credit_alerts").delete().eq("client_id", user.id),
       admin.from("credit_factor_scores").delete().eq("user_id", user.id),
+      admin.from("credit_inquiries").delete().eq("user_id", user.id),
+      // Disputes
+      admin.from("dispute_letters").delete().eq("user_id", user.id),
+      admin.from("disputes").delete().eq("user_id", user.id),
+      // Funding Intelligence
+      admin.from("funding_readiness_scores").delete().eq("user_id", user.id),
+      admin.from("funding_secured").delete().eq("user_id", user.id),
+      admin.from("funding_projections").delete().eq("user_id", user.id),
+      // Build scores
+      admin.from("build_scores").delete().eq("user_id", user.id),
+      // Paige AI memory & chat
       admin.from("client_memory").delete().eq("client_user_id", user.id),
       admin.from("chat_messages").delete().eq("user_id", user.id),
       admin.from("conversation_context").delete().eq("user_id", user.id),
@@ -90,6 +103,13 @@ serve(async (req) => {
       "credit_report_personal_info",
       "credit_alerts",
       "credit_factor_scores",
+      "credit_inquiries",
+      "dispute_letters",
+      "disputes",
+      "funding_readiness_scores",
+      "funding_secured",
+      "funding_projections",
+      "build_scores",
       "client_memory",
       "chat_messages",
       "conversation_context",
@@ -98,15 +118,18 @@ serve(async (req) => {
 
     deletionResults.forEach((result, index) => ensureNoError(result.error, `Delete ${deletionLabels[index]}`));
 
+    // ── Wave 1b: Client-linked records ──
     if (linkedClientIds.length > 0) {
       const linkedDeletes = await Promise.all([
         admin.from("client_memory").delete().in("client_id", linkedClientIds),
         admin.from("extraction_quality_log").delete().in("client_id", linkedClientIds),
+        admin.from("disputes").delete().in("client_id", linkedClientIds),
+        admin.from("dispute_letters").delete().in("client_id", linkedClientIds),
       ]);
-      ensureNoError(linkedDeletes[0].error, "Delete linked client_memory");
-      ensureNoError(linkedDeletes[1].error, "Delete linked extraction_quality_log");
+      linkedDeletes.forEach((r, i) => ensureNoError(r.error, `Delete linked batch ${i}`));
     }
 
+    // ── Wave 2: Reset uploads to pending (preserve PDFs) ──
     const { error: uploadsError } = await admin
       .from("credit_report_uploads")
       .update({
@@ -126,6 +149,7 @@ serve(async (req) => {
       .eq("user_id", user.id);
     ensureNoError(uploadsError, "Reset credit_report_uploads");
 
+    // ── Wave 3: Null out profile credit fields ──
     const { error: profileError } = await admin
       .from("profiles")
       .update({
@@ -141,6 +165,7 @@ serve(async (req) => {
       .eq("user_id", user.id);
     ensureNoError(profileError, "Reset profiles credit fields");
 
+    // ── Wave 4: Audit log ──
     const { error: auditError } = await admin.from("audit_logs").insert({
       user_id: user.id,
       entity: "credit_file",
@@ -149,17 +174,7 @@ serve(async (req) => {
         source: parsedBody.source,
         triggered_by: user.id,
         timestamp: startedAt,
-        cleared_tables: [
-          "credit_accounts",
-          "credit_negative_items",
-          "credit_report_personal_info",
-          "credit_alerts",
-          "credit_factor_scores",
-          "client_memory",
-          "chat_messages",
-          "conversation_context",
-          "extraction_quality_log",
-        ],
+        cleared_tables: deletionLabels,
       },
     });
     ensureNoError(auditError, "Write audit log");

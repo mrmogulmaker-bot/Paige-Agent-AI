@@ -187,7 +187,7 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
       setResetConfirmText("");
       window.dispatchEvent(new CustomEvent("paige-factory-reset"));
 
-      toast.success("Factory reset complete. Your credit data, scores, alerts, and Paige memory were cleared. Uploaded PDFs were preserved for fresh re-analysis.");
+      toast.success("Factory reset complete. All credit data, disputes, funding intelligence, build scores, alerts, and Paige memory were cleared. Uploaded PDFs were preserved for fresh re-analysis.");
 
       setTimeout(() => window.location.reload(), 300);
     } catch (error: any) {
