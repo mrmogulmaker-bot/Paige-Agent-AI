@@ -1305,6 +1305,7 @@ export type Database = {
           last_reported_date: string | null
           limit_amount: number | null
           opened_on: string | null
+          original_amount: number | null
           payment_history_json: Json | null
           status: string | null
           type: Database["public"]["Enums"]["account_type"]
@@ -1329,6 +1330,7 @@ export type Database = {
           last_reported_date?: string | null
           limit_amount?: number | null
           opened_on?: string | null
+          original_amount?: number | null
           payment_history_json?: Json | null
           status?: string | null
           type: Database["public"]["Enums"]["account_type"]
@@ -1353,6 +1355,7 @@ export type Database = {
           last_reported_date?: string | null
           limit_amount?: number | null
           opened_on?: string | null
+          original_amount?: number | null
           payment_history_json?: Json | null
           status?: string | null
           type?: Database["public"]["Enums"]["account_type"]
@@ -1557,6 +1560,7 @@ export type Database = {
           is_removable: boolean | null
           item_type: string
           notes: string | null
+          original_amount: number | null
           removal_probability: number | null
           removal_reason: string | null
           status: string | null
@@ -1579,6 +1583,7 @@ export type Database = {
           is_removable?: boolean | null
           item_type: string
           notes?: string | null
+          original_amount?: number | null
           removal_probability?: number | null
           removal_reason?: string | null
           status?: string | null
@@ -1601,6 +1606,7 @@ export type Database = {
           is_removable?: boolean | null
           item_type?: string
           notes?: string | null
+          original_amount?: number | null
           removal_probability?: number | null
           removal_reason?: string | null
           status?: string | null
