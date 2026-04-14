@@ -1552,6 +1552,66 @@ export type Database = {
           },
         ]
       }
+      credit_report_personal_info: {
+        Row: {
+          bureau_source: string
+          client_id: string | null
+          created_at: string
+          credit_report_upload_id: string
+          date_range: string | null
+          extracted_at: string
+          field_type: string
+          field_value: string
+          id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bureau_source: string
+          client_id?: string | null
+          created_at?: string
+          credit_report_upload_id: string
+          date_range?: string | null
+          extracted_at?: string
+          field_type: string
+          field_value: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bureau_source?: string
+          client_id?: string | null
+          created_at?: string
+          credit_report_upload_id?: string
+          date_range?: string | null
+          extracted_at?: string
+          field_type?: string
+          field_value?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_report_personal_info_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_report_personal_info_credit_report_upload_id_fkey"
+            columns: ["credit_report_upload_id"]
+            isOneToOne: false
+            referencedRelation: "credit_report_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_report_uploads: {
         Row: {
           analysis_result: Json | null
