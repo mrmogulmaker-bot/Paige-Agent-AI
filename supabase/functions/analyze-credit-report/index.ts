@@ -113,6 +113,36 @@ Return ONLY valid JSON with this exact structure:
   "score_model": "FICO" | "VantageScore" | "Unknown",
   "profile_summary": "string",
   "estimated_total_score_impact": number,
+  "personal_information": {
+    "name_variations": [
+      {
+        "value": "string — full name as printed on the report",
+        "bureau_source": "experian" | "transunion" | "equifax" | "all_three"
+      }
+    ],
+    "addresses": [
+      {
+        "value": "string — full address as printed",
+        "bureau_source": "experian" | "transunion" | "equifax" | "all_three",
+        "date_range": "string or null — date range if shown e.g. '01/2020 - Present'"
+      }
+    ],
+    "employers": [
+      {
+        "value": "string — employer name as printed",
+        "bureau_source": "experian" | "transunion" | "equifax" | "all_three",
+        "date_range": "string or null"
+      }
+    ],
+    "phones": [
+      {
+        "value": "string — phone number as printed",
+        "bureau_source": "experian" | "transunion" | "equifax" | "all_three"
+      }
+    ],
+    "date_of_birth": "string or null — as printed on report",
+    "ssn_variations_detected": boolean
+  },
   "negative_items": [
     {
       "category": "late_payment" | "collection" | "charge_off" | "hard_inquiry" | "public_record" | "repossession" | "foreclosure" | "bankruptcy" | "tax_lien" | "judgment" | "other",
@@ -191,6 +221,17 @@ Return ONLY valid JSON with this exact structure:
     "fraud_alerts_visible": boolean
   }
 }
+
+PERSONAL INFORMATION EXTRACTION RULES:
+- Look for the "Personal Information" or "Consumer Information" section at the top of the report
+- Extract ALL name variations, including maiden names, aliases, AKAs
+- Extract ALL addresses with their date ranges if shown
+- Extract ALL employers with date ranges if shown
+- Extract ALL phone numbers listed
+- For each item, determine which bureau(s) reported it by reading the tri-merge columns
+- If an item appears in all three bureau columns, set bureau_source to "all_three"
+- If the report shows multiple SSN fragments or variations, set ssn_variations_detected to true
+- Extract the date of birth exactly as printed
 
 Use the verified read-check below as hard evidence. If your extraction conflicts with the verified read-check, leave the conflicting field null instead of inventing a value.
 
