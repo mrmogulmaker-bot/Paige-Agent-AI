@@ -18,6 +18,7 @@ const adminNavItems = [
   { label: "Funding Pipeline", href: "/admin/funding", icon: DollarSign },
   { label: "Analytics", href: "/admin/analytics", icon: TrendingUp },
   { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
+  { label: "Maintenance", href: "/admin/maintenance", icon: Settings },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
