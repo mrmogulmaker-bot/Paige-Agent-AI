@@ -48,6 +48,11 @@ const ALLOWED_FIELDS: Record<string, { table: string; column: string; type: "str
   "funding.objective": { table: "funding_profiles", column: "funding_objective", type: "string" },
   "funding.target_amount": { table: "funding_profiles", column: "target_amount", type: "number" },
   "funding.timeline": { table: "funding_profiles", column: "timeline", type: "string" },
+  // Account management operations (handled specially)
+  "accounts.mark_not_mine": { table: "_account_op", column: "mark_not_mine", type: "string" },
+  "accounts.mark_duplicate": { table: "_account_op", column: "mark_duplicate", type: "string" },
+  "accounts.update_bureau_source": { table: "_account_op", column: "update_bureau_source", type: "string" },
+  "accounts.merge_duplicates": { table: "_account_op", column: "merge_duplicates", type: "string" },
 };
 
 const writeBackSchema = z.object({
@@ -55,6 +60,7 @@ const writeBackSchema = z.object({
     field_path: z.string().min(1).max(100),
     field_value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
     record_id: z.string().uuid().optional(),
+    merge_into_id: z.string().uuid().optional(),
   })).min(1).max(10),
   target_user_id: z.string().uuid().optional(),
 });
