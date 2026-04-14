@@ -14,6 +14,7 @@ import { AccountManager } from "@/components/credit/AccountManager";
 export default function CreditIntelligence() {
   const { factors, isLoading, recalculate } = useCreditFactors();
   const navigate = useNavigate();
+  const [accountManagerOpen, setAccountManagerOpen] = useState(false);
 
   const hasData = factors && (
     factors.payment_history_score != null ||
