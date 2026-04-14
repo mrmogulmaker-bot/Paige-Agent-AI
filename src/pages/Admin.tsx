@@ -28,6 +28,18 @@ const SuspenseFallback = () => (
   </div>
 );
 
+function ClientFileWrapper({ userRole }: { userRole: "admin" | "coach" }) {
+  const { userId } = useParams();
+  const navigate = useNavigate();
+  return <ClientFileView clientUserId={userId!} onBack={() => navigate("/admin/clients")} userRole={userRole} />;
+}
+
+function InternalClientFileWrapper() {
+  const { clientId } = useParams();
+  const navigate = useNavigate();
+  return <InternalClientFileView clientId={clientId!} onBack={() => navigate("/admin/clients")} />;
+}
+
 const Admin = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
