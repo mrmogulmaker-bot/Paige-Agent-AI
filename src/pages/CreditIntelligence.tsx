@@ -16,6 +16,20 @@ export default function CreditIntelligence() {
   const navigate = useNavigate();
   const [accountManagerOpen, setAccountManagerOpen] = useState(false);
 
+  // Check if client has any accounts (independent of factor scores)
+  const { data: hasAccounts } = useQuery({
+    queryKey: ["has-credit-accounts"],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return false;
+      const [{ count: acctCount }, { count: negCount }] = await Promise.all([
+        supabase.from("credit_accounts").select("id", { count: "exact", head: true }).eq("user_id", session.user.id),
+        supabase.from("credit_negative_items").select("id", { count: "exact", head: true }).eq("user_id", session.user.id),
+      ]);
+      return ((acctCount ?? 0) + (negCount ?? 0)) > 0;
+    },
+  });
+
   const hasData = factors && (
     factors.payment_history_score != null ||
     factors.utilization_score != null ||
