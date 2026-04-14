@@ -11,6 +11,7 @@ import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
 import { CreditFileHealthAssessment } from "@/components/credit/CreditFileHealthAssessment";
 import { AccountManager } from "@/components/credit/AccountManager";
 import { CreditReportUploader } from "@/components/credit/CreditReportUploader";
+import { CreditFactorsPanel } from "@/components/credit/CreditFactorsPanel";
 import { toast } from "sonner";
 
 export default function CreditIntelligence() {
