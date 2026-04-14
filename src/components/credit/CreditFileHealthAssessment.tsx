@@ -801,8 +801,13 @@ function BureauTabContent({
       {/* Section 3-6 — File Scorecard (same accounts, bureau context) */}
       <FileCompletionScorecard analysis={analysis} isMobile={isMobile} bureauLabel={BUREAU_META[bureau].label} />
 
-      {/* Section 4 — Comparable Credit */}
-      {analysis.comparable.length > 0 && <ComparableCreditPanel comparable={analysis.comparable} bureauLabel={BUREAU_META[bureau].label} />}
+      {/* Section 4 — Comparable Credit (filtered by bureau) */}
+      {analysis.comparable.length > 0 && (
+        <ComparableCreditPanel
+          comparable={analysis.comparable.filter(c => accountMatchesBureau(c.bureauSource, bureau))}
+          bureauLabel={BUREAU_META[bureau].label}
+        />
+      )}
 
       {/* Section 5 — Credit Age */}
       <CreditAgeGauge analysis={analysis} bureauLabel={BUREAU_META[bureau].label} />
