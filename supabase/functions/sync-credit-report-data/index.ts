@@ -208,6 +208,17 @@ function similarity(a: string, b: string): number {
   return (2 * intersect) / (a.length - 1 + b.length - 1);
 }
 
+// Normalize creditor names for dedup comparison
+const STRIP_SUFFIXES = /\b(INC|LLC|CORP|CORPORATION|NA|N\.A\.|FSB|BANK|BK|FIN|FNCL|FINCL|CO|COMPANY|LTD|LP|FINANCIAL|SERVICES|SVC|SVCS|GROUP|GRP|ASSOC|ASSOCIATION)\b/gi;
+function normalizeCreditorName(name: string): string {
+  return (name || "unknown")
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, "")
+    .replace(STRIP_SUFFIXES, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 async function processSync(supabase: any, payload: any, targetUserId: string, callerUserId: string) {
   const results: Record<string, any> = {};
   let currentStep = "init";
