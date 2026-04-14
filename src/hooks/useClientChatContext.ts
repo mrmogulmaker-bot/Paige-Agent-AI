@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { countUniqueNegativeAccounts, deduplicateNegativeItems } from "@/lib/deduplicateNegatives";
+import { differenceInMonths } from "date-fns";
 
 export interface ClientChatContext {
   contextBlock: string;
@@ -243,6 +244,62 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
             parts.push(`Business: ${biz.legal_name}`);
           } else {
             parts.push("Business Profile: No business entity on file");
+          }
+        }
+
+        // --- Credit File Health Assessment ---
+        if (resolvedUserId) {
+          const { data: creditAccounts } = await supabase
+            .from("credit_accounts")
+            .select("id, creditor, type, is_open, is_authorized_user, credit_limit, limit_amount, balance, current_balance, account_open_date, account_close_date, opened_on, status")
+            .eq("user_id", resolvedUserId)
+            .order("creditor");
+
+          if (creditAccounts && creditAccounts.length > 0) {
+            // Inline lightweight analysis for context
+            const primaryAbove3k = creditAccounts.filter(a => a.type === "credit_card" && !a.is_authorized_user && (a.is_open ?? true) && ((a.credit_limit ?? a.limit_amount ?? 0) >= 3000)).length;
+            const auCount = creditAccounts.filter(a => a.is_authorized_user && (a.is_open ?? true)).length;
+            const hasRent = creditAccounts.some(a => /(rent|lease|housing|creditrentboost)/i.test(a.creditor));
+            const hasUtility = creditAccounts.some(a => /(boost|utility|experian boost|self-reported)/i.test(a.creditor));
+            const hasAuto = creditAccounts.some(a => a.type === "auto_loan");
+            const hasPL = creditAccounts.some(a => a.type === "personal_loan");
+            const hasMort = creditAccounts.some(a => a.type === "mortgage");
+
+            const missing: string[] = [];
+            const warnings: string[] = [];
+            if (primaryAbove3k < 2) missing.push("Primary Credit Cards (need 2+ above $3k)");
+            if (auCount > 2) warnings.push(`${auCount} Authorized User accounts (max 2 recommended)`);
+            if (!hasRent) missing.push("Rent Reporting");
+            if (!hasUtility) missing.push("Utility Reporting");
+            if (!hasAuto) missing.push("Auto Loan");
+            if (!hasPL) missing.push("Personal Loan");
+            if (!hasMort) missing.push("Mortgage");
+
+            // Credit age
+            const ages = creditAccounts.map(a => { const d = a.account_open_date ?? a.opened_on; return d ? differenceInMonths(new Date(), new Date(d)) : null; }).filter((m): m is number => m !== null);
+            const avgAgeYears = ages.length ? +(ages.reduce((s, v) => s + v, 0) / ages.length / 12).toFixed(1) : 0;
+            if (avgAgeYears < 5) missing.push(`Credit Age (${avgAgeYears} yrs, target 5+)`);
+
+            // Comparable credit
+            const closedGood = creditAccounts.filter(a => !(a.is_open ?? true) && !((a.status ?? "").toLowerCase().includes("collection") || (a.status ?? "").toLowerCase().includes("charged")));
+            const compLines = closedGood.map(a => {
+              const amt = a.credit_limit ?? a.limit_amount ?? Number(a.balance ?? a.current_balance ?? 0);
+              if (amt <= 0) return null;
+              const mult = a.type === "credit_card" ? 1 : 3;
+              return `${a.creditor} (${a.type}) $${amt.toLocaleString()} → projected $${(amt * mult).toLocaleString()}`;
+            }).filter(Boolean);
+
+            const completed = 8 - missing.length;
+            parts.push(`\nCredit File Health Assessment:`);
+            parts.push(`File Completion: ${completed} of 8 account types present`);
+            if (missing.length) parts.push(`Missing Items: ${missing.join(", ")}`);
+            if (warnings.length) parts.push(`Warnings: ${warnings.join("; ")}`);
+            if (compLines.length) parts.push(`Comparable Credit Available: ${compLines.join("; ")}`);
+            parts.push(`Average Credit Age: ${avgAgeYears} years — ${avgAgeYears >= 5 ? "above" : "below"} 5-year target`);
+
+            // Priority action
+            const priorityMissing = missing[0];
+            if (priorityMissing) parts.push(`Priority Action: ${priorityMissing}`);
           }
         }
 
