@@ -302,6 +302,32 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           }
         }
 
+        // --- Credit Alerts for Paige awareness ---
+        if (resolvedUserId) {
+          const { data: recentAlerts } = await supabase
+            .from("credit_alerts" as any)
+            .select("alert_type, alert_severity, alert_title, alert_description, bureau, created_at")
+            .eq("client_id", resolvedUserId)
+            .eq("is_read", false)
+            .in("alert_severity", ["critical", "warning"])
+            .order("created_at", { ascending: false })
+            .limit(3);
+
+          if (recentAlerts && recentAlerts.length > 0) {
+            parts.push(`\nRecent Unread Alerts:`);
+            for (const a of recentAlerts as any[]) {
+              const daysAgo = Math.round((Date.now() - new Date(a.created_at).getTime()) / 86400000);
+              const desc = a.alert_description.length > 100 ? a.alert_description.substring(0, 100) + "..." : a.alert_description;
+              parts.push(`- ${a.alert_severity.toUpperCase()}: ${a.alert_title} — ${desc} — ${a.bureau || "all"} — ${daysAgo}d ago`);
+            }
+            parts.push(`\nPAIGE ALERT RULES:`);
+            parts.push(`- If any CRITICAL alert exists, reference it at the start of the conversation before anything else.`);
+            parts.push(`- For score drops, identify likely causes from account data and recommend specific actions.`);
+            parts.push(`- For new collections/charge-offs, connect to client's funding goals and suggest dispute strategy.`);
+            parts.push(`- For high utilization, suggest specific paydown amounts per account.`);
+          }
+        }
+
         // --- Memory ---
         const memFilter = clientId
           ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", clientId).eq("is_active", true).order("created_at", { ascending: false }).limit(5)
