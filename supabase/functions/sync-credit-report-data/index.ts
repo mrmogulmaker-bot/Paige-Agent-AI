@@ -765,6 +765,25 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       },
     });
 
+    // ========== STEP 10: DETECT CREDIT ALERTS ==========
+    currentStep = "detect_alerts";
+    try {
+      await supabase.functions.invoke("detect-credit-alerts", {
+        body: {
+          client_id: targetUserId,
+          new_scores: payload.scores || null,
+          previous_scores: results.previous_scores || null,
+          new_accounts: payload.positive_accounts || [],
+          previous_accounts: results.previous_accounts || [],
+          new_negatives: payload.negative_items || [],
+          previous_negatives: results.previous_negatives || [],
+          bureau_source: payload.report_type === "consumer" ? "all" : null,
+        },
+      });
+    } catch (alertErr) {
+      console.error("Alert detection failed (non-blocking):", alertErr);
+    }
+
     return new Response(JSON.stringify({ success: true, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
