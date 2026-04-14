@@ -207,6 +207,9 @@ export default function CreditIntelligence() {
 
       {/* Credit File Health Assessment */}
       <CreditFileHealthAssessment />
+
+      {/* Account Manager */}
+      <AccountManager isOpen={accountManagerOpen} onClose={() => setAccountManagerOpen(false)} />
     </div>
   );
 }
