@@ -90,6 +90,8 @@ interface ComparableAccount {
   amount: number;
   projectedApproval: number;
   label: string;
+  category: "active" | "historical";
+  detail: string;
 }
 
 type BureauKey = "experian" | "transunion" | "equifax";
