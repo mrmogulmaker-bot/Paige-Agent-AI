@@ -9,6 +9,8 @@ import { toast } from "sonner";
 
 // Lazy-load admin sub-pages
 const ClientManagementDashboard = lazy(() => import("@/components/dashboard/ClientManagementDashboard").then(m => ({ default: m.ClientManagementDashboard })));
+const ClientFileView = lazy(() => import("@/components/dashboard/ClientFileView").then(m => ({ default: m.ClientFileView })));
+const InternalClientFileView = lazy(() => import("@/components/dashboard/InternalClientFileView").then(m => ({ default: m.InternalClientFileView })));
 const DisputesManager = lazy(() => import("@/components/dashboard/DisputesManager").then(m => ({ default: m.DisputesManager })));
 const DisputeAnalytics = lazy(() => import("@/components/dashboard/admin/DisputeAnalytics").then(m => ({ default: m.DisputeAnalytics })));
 const FundingMatchAccuracy = lazy(() => import("@/components/dashboard/admin/FundingMatchAccuracy").then(m => ({ default: m.FundingMatchAccuracy })));
@@ -98,8 +100,11 @@ const Admin = () => {
   };
 
   const handleViewClient = (clientUserId: string) => {
-    // Navigate to client view within admin context
-    navigate(`/app?viewAs=${clientUserId}`);
+    navigate(`/admin/clients/user/${clientUserId}`);
+  };
+
+  const handleViewInternalClient = (clientId: string) => {
+    navigate(`/admin/clients/internal/${clientId}`);
   };
 
   if (loading) {
