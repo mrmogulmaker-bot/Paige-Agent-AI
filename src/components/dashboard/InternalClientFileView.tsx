@@ -192,6 +192,9 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           <TabsTrigger value="credit-reports" className="text-xs">
             <Upload className="w-3 h-3 mr-1" /> Credit Reports
           </TabsTrigger>
+          <TabsTrigger value="account-mgmt" className="text-xs">
+            <Database className="w-3 h-3 mr-1" /> Account Mgmt
+          </TabsTrigger>
           <TabsTrigger value="disputes" className="text-xs">
             <AlertTriangle className="w-3 h-3 mr-1" /> Disputes
             {disputeCount > 0 && <span className="ml-1 text-[10px] bg-primary/20 rounded-full px-1.5">{disputeCount}</span>}
