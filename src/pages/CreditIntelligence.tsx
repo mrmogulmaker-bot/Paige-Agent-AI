@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
 import { CreditFileHealthAssessment } from "@/components/credit/CreditFileHealthAssessment";
 import { AccountManager } from "@/components/credit/AccountManager";
+import { CreditReportUploader } from "@/components/credit/CreditReportUploader";
 import { toast } from "sonner";
 
 export default function CreditIntelligence() {
@@ -32,21 +33,31 @@ export default function CreditIntelligence() {
     },
   });
 
-  // Get last analyzed timestamp from most recent report upload
-  const { data: lastAnalyzed } = useQuery({
+  // Get last analyzed timestamp and bureau from most recent report upload
+  const { data: lastReport } = useQuery({
     queryKey: ["last-analyzed-at"],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return null;
+
+      // Check credit_report_uploads for any completed analysis
       const { data } = await supabase
         .from("credit_report_uploads")
-        .select("last_analyzed_at, created_at")
+        .select("last_analyzed_at, created_at, bureau_detected, id, file_path, file_name")
         .eq("user_id", session.user.id)
-        .eq("analysis_status", "completed")
+        .in("analysis_status", ["completed", "complete"])
         .order("created_at", { ascending: false })
         .limit(1);
+
       if (data && data.length > 0) {
-        return (data[0] as any).last_analyzed_at || (data[0] as any).created_at;
+        const row = data[0] as any;
+        return {
+          timestamp: row.last_analyzed_at || row.created_at,
+          bureau: row.bureau_detected || null,
+          uploadId: row.id,
+          filePath: row.file_path,
+          fileName: row.file_name,
+        };
       }
       return null;
     },
@@ -58,25 +69,50 @@ export default function CreditIntelligence() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
-      // Get most recent completed upload
-      const { data: uploads } = await supabase
-        .from("credit_report_uploads")
-        .select("id, file_path, file_name")
-        .eq("user_id", session.user.id)
-        .eq("analysis_status", "completed")
-        .order("created_at", { ascending: false })
-        .limit(1);
+      console.log("[Refresh] Looking for most recent upload for user:", session.user.id);
 
-      if (!uploads || uploads.length === 0) {
-        throw new Error("No previously analyzed credit report found. Please upload a new report.");
+      // Step 1: Check credit_report_uploads (primary table)
+      const { data: uploads, error: queryError } = await supabase
+        .from("credit_report_uploads")
+        .select("id, file_path, file_name, analysis_status, created_at")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      console.log("[Refresh] Found uploads:", uploads?.length, "Query error:", queryError);
+
+      if (uploads && uploads.length > 0) {
+        uploads.forEach((u: any, i: number) => {
+          console.log(`[Refresh] Upload ${i}: id=${u.id}, status=${u.analysis_status}, file=${u.file_name}, path=${u.file_path}`);
+        });
       }
 
-      const upload = uploads[0];
-      toast.info(`Re-analyzing ${(upload as any).file_name}...`, { duration: 5000 });
+      // Find the best upload — prefer completed, but accept any with a file_path
+      const bestUpload = uploads?.find((u: any) => u.analysis_status === "completed")
+        || uploads?.find((u: any) => u.file_path);
+
+      if (!bestUpload) {
+        throw new Error("We could not locate your previously uploaded credit report file. This may happen if the report was uploaded through a different pathway. Please upload your report using the upload area above to run a fresh analysis.");
+      }
+
+      const upload = bestUpload as any;
+      console.log("[Refresh] Using upload:", upload.id, upload.file_name);
+
+      // Verify the file exists in storage
+      const { data: fileCheck } = await supabase.storage
+        .from("credit-report-uploads")
+        .createSignedUrl(upload.file_path, 60);
+
+      if (!fileCheck?.signedUrl) {
+        console.error("[Refresh] File not found in storage at path:", upload.file_path);
+        throw new Error("The original report file could not be found in storage. Please upload your report again.");
+      }
+
+      toast.info(`Re-analyzing ${upload.file_name}...`, { duration: 5000 });
 
       // Re-run the analyze function on the same upload
       const response = await supabase.functions.invoke("analyze-credit-report", {
-        body: { uploadId: (upload as any).id },
+        body: { uploadId: upload.id },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
@@ -123,7 +159,7 @@ export default function CreditIntelligence() {
             })),
             discrepancies: analysisData.cross_bureau_discrepancies || [],
             priority_disputes: [],
-            report_upload_id: (upload as any).id,
+            report_upload_id: upload.id,
             fraud_alerts: analysisData.fraud_alerts,
             security_freezes: analysisData.security_freezes,
             validation_flags: response.data?.validation_flags || [],
@@ -238,11 +274,6 @@ export default function CreditIntelligence() {
               Last synced: {format(new Date(lastCalculated), "MMM d, yyyy 'at' h:mm a")}
             </p>
           )}
-          {lastAnalyzed && (
-            <p className="text-xs text-muted-foreground">
-              Last extracted from report: {format(new Date(lastAnalyzed), "MMM d, yyyy 'at' h:mm a")}
-            </p>
-          )}
         </div>
         <div className="flex gap-2">
           {(hasData || hasAccounts) && (
@@ -256,30 +287,16 @@ export default function CreditIntelligence() {
               <span className="hidden sm:inline">Edit Accounts</span>
             </Button>
           )}
-          {hasData ? (
-            <Button
-              onClick={() => reExtract.mutate()}
-              disabled={reExtract.isPending}
-              className="bg-gradient-gold hover:opacity-90"
-            >
-              {reExtract.isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4 mr-2" />
-              )}
-              Refresh Credit Analysis
-            </Button>
-          ) : (
-            <Button
-              onClick={() => navigate("/app")}
-              className="bg-gradient-gold hover:opacity-90"
-            >
-              <Upload className="w-4 h-4 mr-2" />
-              Upload a Credit Report
-            </Button>
-          )}
         </div>
       </div>
+
+      {/* Credit Report Uploader */}
+      <CreditReportUploader
+        lastAnalyzed={lastReport?.timestamp || null}
+        lastBureau={lastReport?.bureau || null}
+        onRefresh={() => reExtract.mutate()}
+        isRefreshing={reExtract.isPending}
+      />
 
       {/* Bureau Score Panel */}
       <BureauScorePanel />
@@ -341,12 +358,14 @@ export default function CreditIntelligence() {
             </Card>
           ))}
         </div>
+      ) : !lastReport ? (
+        null // Upload area is already shown above
       ) : (
         <Card className="p-8 text-center">
-          <Upload className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-          <h3 className="font-semibold text-lg">Upload a credit report to see your FICO breakdown</h3>
+          <Loader2 className="w-10 h-10 text-muted-foreground mx-auto mb-3 animate-spin" />
+          <h3 className="font-semibold text-lg">Processing your data...</h3>
           <p className="text-muted-foreground text-sm mt-2">
-            Open Paige chat and attach a PDF credit report. She'll analyze it and your factor scores will appear here automatically.
+            Your report has been uploaded. Factor scores will appear once analysis is complete.
           </p>
         </Card>
       )}

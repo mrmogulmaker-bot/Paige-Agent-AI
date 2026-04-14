@@ -303,6 +303,7 @@ JSON:`;
     }
 
     let documentReadCheck: any = null;
+    let paigeChatUploadId: string | null = null;
     if (attachedDocument) {
       documentReadCheck = await runDocumentReadCheck(attachedDocument.base64, lovableApiKey);
       if (!documentReadCheck?.can_read_document || documentReadCheck?.document_kind !== 'credit_report' || (documentReadCheck?.first_five_account_names || []).length < 1) {
@@ -311,6 +312,52 @@ JSON:`;
           JSON.stringify({ error: message }),
           { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      }
+
+      // Store the uploaded PDF to standard storage so Refresh can find it later
+      try {
+        const targetUserId = payloadClientId || user.id;
+        const timestamp = Date.now();
+        const safeName = (attachedDocument.fileName || "report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
+        const storagePath = `${targetUserId}/${timestamp}_paige_${safeName}`;
+
+        // Decode base64 to binary
+        const binaryString = atob(attachedDocument.base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const { error: storageErr } = await supabase.storage
+          .from("credit-report-uploads")
+          .upload(storagePath, bytes.buffer, { contentType: "application/pdf" });
+
+        if (storageErr) {
+          console.error("[Paige] Failed to store PDF to storage:", storageErr);
+        } else {
+          // Create credit_report_uploads record
+          const { data: uploadRec, error: insertErr } = await supabase
+            .from("credit_report_uploads")
+            .insert({
+              user_id: targetUserId,
+              uploaded_by: user.id,
+              file_name: attachedDocument.fileName || "credit-report.pdf",
+              file_path: storagePath,
+              file_size: bytes.length,
+              analysis_status: "processing",
+            })
+            .select("id")
+            .single();
+
+          if (insertErr) {
+            console.error("[Paige] Failed to create upload record:", insertErr);
+          } else {
+            paigeChatUploadId = uploadRec.id;
+            console.log("[Paige] Stored PDF to credit-report-uploads, record id:", paigeChatUploadId);
+          }
+        }
+      } catch (storeErr) {
+        console.error("[Paige] Error storing PDF:", storeErr);
       }
     }
 
@@ -906,7 +953,8 @@ Always identify the document type and bureau in your response.`,
               supabaseServiceKey,
               lovableApiKey,
               supabase,
-              payloadClientId || null
+              payloadClientId || null,
+              paigeChatUploadId
             );
 
             // Send sync status as a final SSE data event before closing
@@ -1007,7 +1055,8 @@ async function runStructuredExtractionAndSync(
   serviceRoleKey: string,
   lovableApiKey: string,
   supabase: any,
-  clientId: string | null = null
+  clientId: string | null = null,
+  uploadRecordId: string | null = null
 ): Promise<any> {
   console.log("Starting structured extraction from analysis...");
 
@@ -1158,6 +1207,24 @@ async function runStructuredExtractionAndSync(
     if (clientId) memoryInsert.client_id = clientId;
     await supabase.from("client_memory").insert(memoryInsert);
 
+    // Step 5: Update the credit_report_uploads record if we created one
+    if (uploadRecordId) {
+      const bureauDetected = structured.bureau_detected || null;
+      await supabase.from("credit_report_uploads").update({
+        analysis_status: "completed",
+        report_type: structured.report_type || "consumer",
+        bureau_detected: bureauDetected,
+        analysis_result: structured,
+        negative_items_extracted: structured.negative_items || [],
+        positive_accounts_extracted: structured.positive_accounts || [],
+        profile_summary: structured.profile_summary || null,
+        estimated_score_impact: structured.estimated_total_score_impact || 0,
+        last_analyzed_at: new Date().toISOString(),
+        error_message: null,
+      }).eq("id", uploadRecordId);
+      console.log("[Paige] Updated credit_report_uploads record:", uploadRecordId);
+    }
+
     return {
       success: true,
       scores_synced: scores,
@@ -1171,6 +1238,13 @@ async function runStructuredExtractionAndSync(
   } catch (err) {
     console.error("Structured extraction and sync pipeline failed:", err);
     await logSyncFailure(supabase, callerUserId, err instanceof Error ? err.message : "Unknown pipeline error", null);
+    // Mark upload record as failed if we created one
+    if (uploadRecordId) {
+      await supabase.from("credit_report_uploads").update({
+        analysis_status: "failed",
+        error_message: err instanceof Error ? err.message : "Pipeline error",
+      }).eq("id", uploadRecordId);
+    }
     return { success: false, error: err instanceof Error ? err.message : "Unknown error", step: "pipeline" };
   }
 }
