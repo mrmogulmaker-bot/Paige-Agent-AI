@@ -177,11 +177,15 @@ Return ONLY valid JSON with this exact structure:
       "account_type": "revolving" | "installment" | "mortgage" | "auto_loan" | "student_loan" | "other",
       "balance": number or null,
       "credit_limit": number or null,
+      "original_amount": number or null,
       "utilization": number or null,
       "payment_status": "string",
+      "payment_history_percentage": number or null,
       "account_age_months": number or null,
       "is_open": boolean,
       "opened_date": "YYYY-MM-DD or null",
+      "date_closed": "YYYY-MM-DD or null",
+      "responsibility": "Individual" | "Joint" | "Authorized User" | null,
       "bureaus_reporting": ["string"]
     }
   ],
