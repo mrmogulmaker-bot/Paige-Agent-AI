@@ -182,6 +182,8 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
         supabase.from("credit_alerts").delete().eq("client_id", userId),
         supabase.from("extraction_quality_log" as any).delete().eq("client_id", userId),
         supabase.from("credit_factor_scores").delete().eq("user_id", userId),
+        supabase.from("client_memory").delete().eq("client_user_id", userId),
+        supabase.from("chat_messages").delete().eq("user_id", userId),
       ]);
 
       // Step 2: Reset upload records to pending (preserve PDFs)

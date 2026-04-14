@@ -43,6 +43,36 @@ serve(async (req) => {
       });
     }
 
+    // === POST-RESET / FIRST UPLOAD DETECTION ===
+    // Check if this is a first upload or a post-reset upload (no previous data to compare against)
+    const hasPreviousData = (previous_scores && Object.values(previous_scores).some((v: any) => v != null))
+      || (previous_accounts && previous_accounts.length > 0)
+      || (previous_negatives && previous_negatives.length > 0);
+
+    if (!hasPreviousData) {
+      // First-time upload — generate only an informational summary alert
+      const totalAccounts = (new_accounts || []).length + (new_negatives || []).length;
+      const bureaus = new Set<string>();
+      for (const a of (new_accounts || [])) if (a.bureau_source) bureaus.add(a.bureau_source);
+      for (const n of (new_negatives || [])) if (n.bureau) bureaus.add(n.bureau);
+
+      if (totalAccounts > 0) {
+        await supabase.from("credit_alerts").insert({
+          client_id,
+          alert_type: "file_established",
+          alert_severity: "informational",
+          alert_title: "Credit File Established",
+          alert_description: `Your credit file has been analyzed — ${totalAccounts} accounts found across ${bureaus.size || 1} bureau${bureaus.size !== 1 ? "s" : ""}. This is your baseline. Future uploads will detect changes and alert you to significant events.`,
+          bureau: bureau_source || null,
+        });
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, alerts_generated: totalAccounts > 0 ? 1 : 0, critical: 0, warnings: 0, informational: totalAccounts > 0 ? 1 : 0, first_upload: true }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const alerts: AlertCandidate[] = [];
     const bureauLabel = bureau_source || "all";
     const bureauDisplay = bureauLabel === "all" ? "your credit report" :

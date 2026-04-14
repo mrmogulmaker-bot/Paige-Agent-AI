@@ -7,9 +7,9 @@ interface QuickStatsBarProps {
 export function QuickStatsBar({ factors }: QuickStatsBarProps) {
   const navigate = useNavigate();
 
-  const score = factors?.overall_fundability_score;
-  const negatives = factors?.active_negatives ?? 0;
-  const utilization = factors?.aggregate_utilization;
+  const score = factors?.overall_fundability_score ?? null;
+  const negatives = factors?.active_negatives ?? null;
+  const utilization = factors?.aggregate_utilization ?? null;
 
   return (
     <div className="flex items-center justify-between px-4 py-2 bg-card border-t border-border text-xs">
@@ -28,7 +28,7 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
         className="flex items-center gap-2 hover:text-accent transition-colors"
       >
         <span className="text-muted-foreground">Utilization:</span>
-        <span className={`font-bold ${utilization > 30 ? "text-fundability-fair" : "text-fundability-excellent"}`}>
+        <span className={`font-bold ${utilization != null && utilization > 30 ? "text-fundability-fair" : "text-fundability-excellent"}`}>
           {utilization != null ? `${Math.round(utilization)}%` : "—"}
         </span>
       </button>
@@ -38,8 +38,8 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
         className="flex items-center gap-2 hover:text-accent transition-colors"
       >
         <span className="text-muted-foreground">Negatives:</span>
-        <span className={`font-bold ${negatives > 0 ? "text-fundability-poor" : "text-fundability-excellent"}`}>
-          {negatives}
+        <span className={`font-bold ${negatives != null && negatives > 0 ? "text-fundability-poor" : "text-fundability-excellent"}`}>
+          {negatives ?? "—"}
         </span>
       </button>
 
