@@ -199,6 +199,12 @@ function getSuggestion(key: string, auCount: number): SuggestionContent | undefi
 }
 
 /* ─── Analysis engine ─── */
+function accountAgeMonths(a: CreditAccount): number | null {
+  const d = effectiveOpenDate(a);
+  if (!d) return null;
+  return differenceInMonths(new Date(), d);
+}
+
 export interface FileAnalysis {
   categories: FileCategory[];
   comparable: ComparableAccount[];
@@ -215,36 +221,65 @@ export interface FileAnalysis {
 }
 
 function analyzeFile(accounts: CreditAccount[]): FileAnalysis {
-  const primaryCards = accounts.filter(a => a.type === "credit_card" && !a.is_authorized_user && (a.is_open ?? true));
-  const primaryCardsAbove3k = primaryCards.filter(a => effectiveLimit(a) >= 3000);
-  const openAU = accounts.filter(a => a.is_authorized_user && (a.is_open ?? true));
-  const rentAccounts = accounts.filter(a => /(rent|lease|housing|creditrentboost)/i.test(a.creditor));
-  const utilityAccounts = accounts.filter(a => /(boost|utility|experian boost|self-reported)/i.test(a.creditor));
-  const autoLoans = accounts.filter(a => a.type === "auto_loan");
-  const autoOpen = autoLoans.filter(a => a.is_open ?? true);
-  const autoClosed = autoLoans.filter(a => !(a.is_open ?? true) && isGoodStanding(a));
-  const personalLoans = accounts.filter(a => a.type === "personal_loan");
-  const plOpen = personalLoans.filter(a => a.is_open ?? true);
-  const plClosed = personalLoans.filter(a => !(a.is_open ?? true) && isGoodStanding(a));
-  const mortgages = accounts.filter(a => a.type === "mortgage");
-  const mortOpen = mortgages.filter(a => a.is_open ?? true);
-  const mortClosed = mortgages.filter(a => !(a.is_open ?? true) && isGoodStanding(a));
+  const validAccounts = accounts.filter(a => !a.duplicate_of_id && !a.is_disputed_ownership);
 
-  const ages = accounts.map(accountAgeMonths).filter((m): m is number => m !== null);
+  const primaryCards = validAccounts.filter(a => a.type === "credit_card" && !a.is_authorized_user && (a.is_open ?? true));
+  const primaryCardsAbove3k = primaryCards.filter(a => effectiveLimit(a) >= 3000);
+  const openAU = validAccounts.filter(a => a.is_authorized_user && (a.is_open ?? true));
+  const rentAccounts = validAccounts.filter(a => /(rent|lease|housing|creditrentboost)/i.test(a.creditor));
+  const utilityAccounts = validAccounts.filter(a => /(boost|utility|experian boost|self-reported)/i.test(a.creditor));
+
+  const autoLoans = validAccounts.filter(a => a.type === "auto_loan" || /(auto|automobile|vehicle)/i.test(a.creditor));
+  const autoOpen = autoLoans.filter(a => a.is_open ?? true);
+  const autoClosed = autoLoans.filter(a => isClosedPositive(a));
+
+  const personalLoans = validAccounts.filter(a => a.type === "personal_loan");
+  const plOpen = personalLoans.filter(a => a.is_open ?? true);
+  const plClosed = personalLoans.filter(a => isClosedPositive(a));
+
+  const mortgages = validAccounts.filter(a => a.type === "mortgage");
+  const mortOpen = mortgages.filter(a => a.is_open ?? true);
+  const mortClosed = mortgages.filter(a => isClosedPositive(a));
+
+  const ages = validAccounts.map(accountAgeMonths).filter((m): m is number => m !== null);
   const avgAgeMonths = ages.length ? Math.round(ages.reduce((s, v) => s + v, 0) / ages.length) : 0;
   const avgAgeYears = +(avgAgeMonths / 12).toFixed(1);
 
   const comparable: ComparableAccount[] = [];
-  accounts.filter(a => !(a.is_open ?? true) && isGoodStanding(a)).forEach(a => {
+
+  // Active comparable (open accounts in good standing)
+  validAccounts.filter(a => (a.is_open ?? true) && isGoodStanding(a)).forEach(a => {
     const amt = effectiveLimit(a) || Number(a.balance ?? a.current_balance ?? 0);
     if (amt <= 0) return;
-    if (a.type === "credit_card") comparable.push({ creditor: a.creditor, type: "revolving", amount: amt, projectedApproval: amt, label: "Historical — Comparable Revolving Credit" });
-    else if (a.type === "auto_loan") comparable.push({ creditor: a.creditor, type: "auto", amount: amt, projectedApproval: amt * 3, label: "Historical — Comparable Auto Credit" });
-    else if (a.type === "personal_loan") comparable.push({ creditor: a.creditor, type: "installment", amount: amt, projectedApproval: amt * 3, label: "Historical — Comparable Installment Credit" });
-    else if (a.type === "mortgage") comparable.push({ creditor: a.creditor, type: "mortgage", amount: amt, projectedApproval: amt, label: "Historical — Comparable Mortgage Credit" });
+    if (a.type === "credit_card" && !a.is_authorized_user) {
+      comparable.push({ creditor: a.creditor, type: "revolving", amount: amt, projectedApproval: Math.round(amt * 1.5), label: "Active Revolving — Comparable Credit", category: "active", detail: `Open credit card — limit $${amt.toLocaleString()}. Supports ~$${Math.round(amt * 1.5).toLocaleString()} for a new revolving account.` });
+    } else if (a.type === "auto_loan") {
+      comparable.push({ creditor: a.creditor, type: "auto", amount: amt, projectedApproval: amt * 3, label: "Active Auto — Comparable Credit", category: "active", detail: `Open auto loan — $${amt.toLocaleString()}.` });
+    } else if (a.type === "mortgage") {
+      comparable.push({ creditor: a.creditor, type: "mortgage", amount: amt, projectedApproval: amt, label: "Active Mortgage — Comparable Credit", category: "active", detail: `Open mortgage — $${amt.toLocaleString()}. Most valuable comparable tradeline.` });
+    } else if (a.type === "personal_loan") {
+      comparable.push({ creditor: a.creditor, type: "installment", amount: amt, projectedApproval: amt * 3, label: "Active Installment — Comparable Credit", category: "active", detail: `Open personal loan — $${amt.toLocaleString()}.` });
+    }
   });
 
-  const withAge = accounts.map(a => ({ creditor: a.creditor, months: accountAgeMonths(a) })).filter((x): x is { creditor: string; months: number } => x.months !== null).sort((a, b) => b.months - a.months);
+  // Historical comparable (closed accounts in good standing)
+  validAccounts.filter(a => isClosedPositive(a)).forEach(a => {
+    const amt = getOriginalAmount(a);
+    if (amt <= 0) return;
+    if (a.type === "credit_card") {
+      comparable.push({ creditor: a.creditor, type: "revolving", amount: amt, projectedApproval: Math.round(amt * 1.5), label: "Historical Revolving — Comparable Credit", category: "historical", detail: `Closed revolving — highest limit $${amt.toLocaleString()}. Supports ~$${Math.round(amt * 1.5).toLocaleString()} for a new revolving account.` });
+    } else if (a.type === "auto_loan" || /(auto|automobile|vehicle|ally financial)/i.test(a.creditor)) {
+      comparable.push({ creditor: a.creditor, type: "auto", amount: amt, projectedApproval: amt * 3, label: "Historical Auto — Comparable Credit", category: "historical", detail: `Closed auto loan — $${amt.toLocaleString()}. Supports ~$${(amt * 3).toLocaleString()} for your next vehicle financing.` });
+    } else if (a.type === "personal_loan") {
+      comparable.push({ creditor: a.creditor, type: "installment", amount: amt, projectedApproval: amt * 3, label: "Historical Installment — Comparable Credit", category: "historical", detail: `Closed installment loan — $${amt.toLocaleString()}. Supports ~$${(amt * 3).toLocaleString()} for your next personal loan.` });
+    } else if (a.type === "mortgage") {
+      comparable.push({ creditor: a.creditor, type: "mortgage", amount: amt, projectedApproval: amt, label: "Historical Mortgage — Comparable Credit", category: "historical", detail: `Closed mortgage — $${amt.toLocaleString()}. Most valuable comparable tradeline.` });
+    } else if (a.type === "student_loan") {
+      comparable.push({ creditor: a.creditor, type: "student_loan", amount: amt, projectedApproval: amt, label: "Historical Student Loan — Comparable Credit", category: "historical", detail: `Paid student loan — $${amt.toLocaleString()}. Demonstrates long-term installment management.` });
+    }
+  });
+
+  const withAge = validAccounts.map(a => ({ creditor: a.creditor, months: accountAgeMonths(a) })).filter((x): x is { creditor: string; months: number } => x.months !== null).sort((a, b) => b.months - a.months);
   const oldestAccounts = withAge.slice(0, 3);
   const newestAccounts = [...withAge].sort((a, b) => a.months - b.months).slice(0, 3);
 
@@ -257,14 +292,21 @@ function analyzeFile(accounts: CreditAccount[]): FileAnalysis {
   const hasMort = mortOpen.length > 0 || mortClosed.length > 0;
   const creditAgeOk = avgAgeYears >= 5;
 
+  const autoStatus = autoOpen.length > 0 ? "Open" : autoClosed.length > 0 ? "Complete — Historical" : "Missing";
+  const autoDetail = autoOpen.length > 0 ? "Active auto loan." : autoClosed.length > 0 ? (() => { const best = autoClosed[0]; const amt = getOriginalAmount(best); return `Closed Auto Loan in Good Standing — Comparable Credit Available. Your ${best.creditor} auto loan is paid off. Estimated approval range: $${(amt * 3).toLocaleString()}.`; })() : "Missing auto loan tradeline.";
+  const plStatus = plOpen.length > 0 ? "Open" : plClosed.length > 0 ? "Complete — Historical" : "Missing";
+  const plDetail = plOpen.length > 0 ? "Active personal loan." : plClosed.length > 0 ? "Closed personal loan in good standing — comparable credit available." : "Missing personal loan tradeline.";
+  const mortStatus = mortOpen.length > 0 ? "Open" : mortClosed.length > 0 ? "Complete — Historical" : "Missing";
+  const mortDetail = mortOpen.length > 0 ? "Active mortgage — strongest tradeline type." : mortClosed.length > 0 ? "Closed mortgage in good standing — most valuable comparable tradeline." : "Missing mortgage — highest-value tradeline.";
+
   const categories: FileCategory[] = [
     { key: "primary_cards", label: "Primary Credit Cards", icon: <CreditCard className="w-5 h-5" />, target: "2–4 above $3,000", status: pcCount >= 2 ? "complete" : "missing", current: `${pcCount} of 2–4`, detail: pcCount >= 2 ? `You have ${pcCount} primary cards above $3,000.` : `You need ${2 - pcCount} more primary card(s) above $3,000.`, suggestion: pcCount < 2 ? getSuggestion("primary_cards", auCount) : undefined, priority: "critical" },
     { key: "authorized_user", label: "Authorized User Accounts", icon: <UserCheck className="w-5 h-5" />, target: "Maximum 2", status: auCount <= 2 ? "complete" : "warning", current: `${auCount} of 2 max`, detail: auCount <= 2 ? `${auCount} AU account(s) — within limit.` : `${auCount} AU accounts — remove ${auCount - 2} to avoid credit padding flag.`, suggestion: auCount > 2 ? getSuggestion("authorized_user", auCount) : undefined, priority: "critical" },
     { key: "rent_reporting", label: "Rent Reporting", icon: <Home className="w-5 h-5" />, target: "1 tradeline", status: hasRent ? "complete" : "missing", current: hasRent ? "Active" : "Not reporting", detail: hasRent ? "Rent payments are being reported." : "Add rent reporting for a free positive tradeline.", suggestion: !hasRent ? getSuggestion("rent_reporting", auCount) : undefined, priority: "enhancement" },
     { key: "utility_reporting", label: "Utility / Streaming Reporting", icon: <Zap className="w-5 h-5" />, target: "1 account", status: hasUtility ? "complete" : "missing", current: hasUtility ? "Active" : "Not reporting", detail: hasUtility ? "Utility payments are being reported." : "Add utility reporting at no cost.", suggestion: !hasUtility ? getSuggestion("utility_reporting", auCount) : undefined, priority: "enhancement" },
-    { key: "auto_loan", label: "Auto Loan", icon: <Car className="w-5 h-5" />, target: "1 (open or closed)", status: hasAuto ? "complete" : "missing", current: autoOpen.length > 0 ? "Open" : autoClosed.length > 0 ? "Historical — Comparable" : "Missing", detail: hasAuto ? (autoOpen.length > 0 ? "Active auto loan." : "Closed auto loan — comparable credit available.") : "Missing auto loan tradeline.", suggestion: !hasAuto ? getSuggestion("auto_loan", auCount) : undefined, priority: "important" },
-    { key: "personal_loan", label: "Personal Loan", icon: <Landmark className="w-5 h-5" />, target: "1 (open or closed)", status: hasPL ? "complete" : "missing", current: plOpen.length > 0 ? "Open" : plClosed.length > 0 ? "Historical — Comparable" : "Missing", detail: hasPL ? "Personal loan history present." : "Missing personal loan tradeline.", suggestion: !hasPL ? getSuggestion("personal_loan", auCount) : undefined, priority: "important" },
-    { key: "mortgage", label: "Mortgage", icon: <Home className="w-5 h-5" />, target: "1 (open or closed)", status: hasMort ? "complete" : "missing", current: mortOpen.length > 0 ? "Open" : mortClosed.length > 0 ? "Historical — Comparable" : "Missing", detail: hasMort ? "Mortgage tradeline present — strongest tradeline type." : "Missing mortgage — highest-value tradeline.", suggestion: !hasMort ? getSuggestion("mortgage", auCount) : undefined, priority: "critical" },
+    { key: "auto_loan", label: "Auto Loan", icon: <Car className="w-5 h-5" />, target: "1 (open or closed)", status: hasAuto ? "complete" : "missing", current: autoStatus, detail: autoDetail, suggestion: !hasAuto ? getSuggestion("auto_loan", auCount) : undefined, priority: "important" },
+    { key: "personal_loan", label: "Personal Loan", icon: <Landmark className="w-5 h-5" />, target: "1 (open or closed)", status: hasPL ? "complete" : "missing", current: plStatus, detail: plDetail, suggestion: !hasPL ? getSuggestion("personal_loan", auCount) : undefined, priority: "important" },
+    { key: "mortgage", label: "Mortgage", icon: <Home className="w-5 h-5" />, target: "1 (open or closed)", status: hasMort ? "complete" : "missing", current: mortStatus, detail: mortDetail, suggestion: !hasMort ? getSuggestion("mortgage", auCount) : undefined, priority: "critical" },
     { key: "credit_age", label: "Credit Age", icon: <Clock className="w-5 h-5" />, target: "5+ years average", status: creditAgeOk ? "complete" : "missing", current: `${avgAgeYears} years`, detail: creditAgeOk ? `Average ${avgAgeYears} years — strong.` : `Average ${avgAgeYears} years — below 5-year target.`, suggestion: !creditAgeOk ? getSuggestion("credit_age", auCount) : undefined, priority: "enhancement" },
   ];
 
@@ -272,7 +314,7 @@ function analyzeFile(accounts: CreditAccount[]): FileAnalysis {
   return {
     categories, comparable, avgAgeMonths, avgAgeYears, oldestAccounts, newestAccounts,
     completedCount, totalCategories: categories.length, completionPct: Math.round((completedCount / categories.length) * 100),
-    totalOpen: accounts.filter(a => a.is_open ?? true).length, primaryCardsAbove3k: pcCount, auCount,
+    totalOpen: validAccounts.filter(a => a.is_open ?? true).length, primaryCardsAbove3k: pcCount, auCount,
   };
 }
 
