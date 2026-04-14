@@ -129,6 +129,36 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
   const activeCount = internalClients.filter((c) => c.status === "active").length;
   const withEntity = internalClients.filter((c) => c.entity_name).length;
 
+  const updateUserRole = async (userId: string, newRole: string) => {
+    try {
+      // Remove existing roles
+      await supabase.from("user_roles").delete().eq("user_id", userId);
+      // Insert new role
+      const { error } = await supabase.from("user_roles").insert([{ user_id: userId, role: newRole }]);
+      if (error) throw error;
+      toast.success("Role updated successfully");
+      fetchAllClients();
+    } catch (err: any) {
+      console.error("Error updating role:", err);
+      toast.error("Failed to update role");
+    }
+  };
+
+  const approveUser = async (userId: string) => {
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ onboarding_completed: true } as any)
+        .eq("user_id", userId);
+      if (error) throw error;
+      toast.success("User approved");
+      fetchAllClients();
+    } catch (err: any) {
+      console.error("Error approving user:", err);
+      toast.error("Failed to approve user");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
