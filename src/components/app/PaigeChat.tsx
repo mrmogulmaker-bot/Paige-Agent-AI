@@ -37,7 +37,7 @@ const quickActions = [
 ];
 
 export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
-  const { contextBlock, isLoading: contextLoading } = useClientChatContext(clientId, clientId ? null : user.id);
+  const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   const contextInjectedRef = useRef(false);
 
   const [messages, setMessages] = useState<Message[]>([
@@ -56,62 +56,73 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
 
   // When context loads, send a context-aware opening via the AI
   useEffect(() => {
-    if (contextBlock && !contextLoading && !contextInjectedRef.current && messages.length === 1) {
+    if (contextInjectedRef.current || contextLoading || messages.length !== 1) return;
+    if (!contextBlock) return;
+
+    if (!hasCreditData) {
       contextInjectedRef.current = true;
-      // Fire off a silent "greet me" to get a personalized opener
-      (async () => {
-        try {
-          const { data: { session: freshSession } } = await supabase.auth.getSession();
-          if (!freshSession) return;
-
-          setIsLoading(true);
-          const greetMessages = [{ role: "user" as const, content: "Give me a brief personalized greeting based on my client context. Don't repeat all my data — just acknowledge my situation warmly and ask what I want to work on today." }];
-
-          const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${freshSession.access_token}` },
-              body: JSON.stringify({
-                messages: greetMessages,
-                clientContext: contextBlock,
-                ...(clientId ? { clientId } : {}),
-              }),
-            }
-          );
-
-          if (!response.ok) { setIsLoading(false); return; }
-
-          const reader = response.body?.getReader();
-          const decoder = new TextDecoder();
-          let greeting = "";
-
-          while (reader) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value);
-            for (const line of chunk.split("\n")) {
-              if (!line.startsWith("data: ")) continue;
-              const data = line.slice(6).trim();
-              if (data === "[DONE]") continue;
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices?.[0]?.delta?.content;
-                if (content) greeting += content;
-              } catch { /* skip */ }
-            }
-          }
-
-          if (greeting.trim()) {
-            setMessages([{ role: "assistant", content: greeting.trim() }]);
-          }
-          setIsLoading(false);
-        } catch {
-          setIsLoading(false);
-        }
-      })();
+      setMessages([
+        {
+          role: "assistant",
+          content: "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation.",
+        },
+      ]);
+      return;
     }
-  }, [contextBlock, contextLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    contextInjectedRef.current = true;
+    (async () => {
+      try {
+        const { data: { session: freshSession } } = await supabase.auth.getSession();
+        if (!freshSession) return;
+
+        setIsLoading(true);
+        const greetMessages = [{ role: "user" as const, content: "Give me a brief personalized greeting based on my client context. Don't repeat all my data — just acknowledge my situation warmly and ask what I want to work on today." }];
+
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${freshSession.access_token}` },
+            body: JSON.stringify({
+              messages: greetMessages,
+              clientContext: contextBlock,
+              ...(clientId ? { clientId } : {}),
+            }),
+          }
+        );
+
+        if (!response.ok) { setIsLoading(false); return; }
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let greeting = "";
+
+        while (reader) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          for (const line of chunk.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6).trim();
+            if (data === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) greeting += content;
+            } catch { /* skip */ }
+          }
+        }
+
+        if (greeting.trim()) {
+          setMessages([{ role: "assistant", content: greeting.trim() }]);
+        }
+        setIsLoading(false);
+      } catch {
+        setIsLoading(false);
+      }
+    })();
+  }, [clientId, contextBlock, contextLoading, hasCreditData, messages.length]);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
@@ -160,7 +171,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
 
       // Build override prompt with full client context so voice Paige knows the client
       const voiceSystemPrompt = contextBlock
-        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
+        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
         : undefined;
 
       await conversation.startSession({
@@ -170,7 +181,9 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
             agent: {
               prompt: { prompt: voiceSystemPrompt },
               firstMessage: contextBlock
-                ? `Hey ${user.user_metadata?.full_name?.split(" ")[0] || "there"} — I've got your file pulled up. What do you want to work on?`
+                ? hasCreditData
+                  ? `Hey ${user.user_metadata?.full_name?.split(" ")[0] || "there"} — I've got your file pulled up. What do you want to work on?`
+                  : "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation."
                 : undefined,
             },
           },
@@ -185,6 +198,30 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
   const stopVoiceChat = async () => {
     try { await conversation.endSession(); } catch (e) { console.warn("Error ending session", e); }
   };
+
+  useEffect(() => {
+    const handleFactoryReset = async () => {
+      contextInjectedRef.current = false;
+      resetSession();
+      setInput("");
+      setMessages([
+        {
+          role: "assistant",
+          content: "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation.",
+        },
+      ]);
+      if (conversation.status === "connected") {
+        try {
+          await conversation.endSession();
+        } catch (error) {
+          console.warn("Error ending voice session after reset", error);
+        }
+      }
+    };
+
+    window.addEventListener("paige-factory-reset", handleFactoryReset);
+    return () => window.removeEventListener("paige-factory-reset", handleFactoryReset);
+  }, [conversation, resetSession]);
 
   useEffect(() => {
     if (scrollRef.current) {

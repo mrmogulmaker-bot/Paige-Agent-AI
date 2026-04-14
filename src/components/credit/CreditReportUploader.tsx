@@ -172,68 +172,24 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-      const userId = session.user.id;
 
-      // Step 1: Delete all extracted data across every dependent table
-      await Promise.all([
-        supabase.from("credit_accounts").delete().eq("user_id", userId),
-        supabase.from("credit_negative_items").delete().eq("user_id", userId),
-        supabase.from("credit_report_personal_info").delete().eq("user_id", userId),
-        supabase.from("credit_alerts").delete().eq("client_id", userId),
-        supabase.from("extraction_quality_log" as any).delete().eq("client_id", userId),
-        supabase.from("credit_factor_scores").delete().eq("user_id", userId),
-        supabase.from("client_memory").delete().eq("client_user_id", userId),
-        supabase.from("chat_messages").delete().eq("user_id", userId),
-      ]);
-
-      // Step 2: Reset upload records to pending (preserve PDFs)
-      await supabase
-        .from("credit_report_uploads")
-        .update({
-          analysis_status: "pending",
-          analysis_result: null,
-          negative_items_extracted: null,
-          positive_accounts_extracted: null,
-          profile_summary: null,
-          estimated_score_impact: null,
-          last_analyzed_at: null,
-          bureau_detected: null,
-          backfill_status: null,
-          backfill_completed_at: null,
-          backfill_fields_updated: null,
-        })
-        .eq("user_id", userId);
-
-      // Step 3: Clear bureau scores on profile
-      await supabase
-        .from("profiles")
-        .update({
-          estimated_fico_eq: null,
-          estimated_fico_ex: null,
-          estimated_fico_tu: null,
-        })
-        .eq("user_id", userId);
-
-      // Step 4: Audit log
-      await supabase.from("audit_logs").insert({
-        user_id: userId,
-        entity: "credit_file",
-        action: "reset",
-        data: { source: "client_ui", triggered_by: userId, timestamp: new Date().toISOString() },
+      const { data, error } = await supabase.functions.invoke("factory-credit-reset", {
+        body: { source: "client_ui" },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
-      // Step 5: Invalidate ALL React Query cache — forces every component to re-fetch
-      queryClient.invalidateQueries();
+      if (error) throw error;
+      if (!data?.success) throw new Error("Factory reset failed");
 
-      // Step 6: Clear local upload result state
+      await queryClient.invalidateQueries();
       setUploadResult(null);
       setResetDialogOpen(false);
       setResetConfirmText("");
+      window.dispatchEvent(new CustomEvent("paige-factory-reset"));
 
-      toast.success("Credit file reset complete. Your uploaded reports are still available — click Refresh Analysis to re-analyze them without re-uploading.");
+      toast.success("Factory reset complete. Your credit data, scores, alerts, and Paige memory were cleared. Uploaded PDFs were preserved for fresh re-analysis.");
 
-      // Step 7: Force page reload so all components re-initialize from scratch
-      setTimeout(() => window.location.reload(), 500);
+      setTimeout(() => window.location.reload(), 300);
     } catch (error: any) {
       console.error("Reset error:", error);
       toast.error(error?.message || "Reset failed");

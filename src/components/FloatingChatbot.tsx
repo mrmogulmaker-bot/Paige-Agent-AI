@@ -27,7 +27,7 @@ type Message = {
 export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const { contextBlock } = useClientChatContext(clientId, clientId ? null : currentUserId);
+  const { contextBlock, hasCreditData } = useClientChatContext(clientId, clientId ? null : currentUserId);
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", content: "Hey, how can I help?" },
   ]);
@@ -119,7 +119,7 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
       // Inject full client context so voice Paige has the same data as text Paige
       const voiceSystemPrompt = contextBlock
-        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
+        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
         : undefined;
 
       await conversation.startSession({
@@ -128,7 +128,7 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
           overrides: {
             agent: {
               prompt: { prompt: voiceSystemPrompt },
-              firstMessage: "Hey — I've got your file pulled up. What do you want to work on?",
+              firstMessage: hasCreditData ? "Hey — I've got your file pulled up. What do you want to work on?" : "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation.",
             },
           },
         } : {}),
@@ -142,6 +142,29 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
   const stopVoiceChat = async () => {
     try { await conversation.endSession(); } catch (e) { console.warn("Error ending session", e); }
   };
+
+  useEffect(() => {
+    const handleFactoryReset = async () => {
+      resetSession();
+      setInput("");
+      setMessages([
+        {
+          role: "assistant",
+          content: "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation.",
+        },
+      ]);
+      if (conversation.status === "connected") {
+        try {
+          await conversation.endSession();
+        } catch (error) {
+          console.warn("Error ending widget voice session after reset", error);
+        }
+      }
+    };
+
+    window.addEventListener("paige-factory-reset", handleFactoryReset);
+    return () => window.removeEventListener("paige-factory-reset", handleFactoryReset);
+  }, [conversation, resetSession]);
 
   const handleSend = async () => {
     if ((!input.trim() && !attachedDoc) || isLoading) return;
