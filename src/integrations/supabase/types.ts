@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      account_modifications: {
+        Row: {
+          account_id: string | null
+          account_table: string
+          client_id: string | null
+          created_at: string
+          id: string
+          modification_source: string
+          modification_type: string
+          modified_by_user_id: string
+          new_value: Json | null
+          notes: string | null
+          previous_value: Json | null
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          account_table?: string
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          modification_source: string
+          modification_type: string
+          modified_by_user_id: string
+          new_value?: Json | null
+          notes?: string | null
+          previous_value?: Json | null
+          user_id: string
+        }
+        Update: {
+          account_id?: string | null
+          account_table?: string
+          client_id?: string | null
+          created_at?: string
+          id?: string
+          modification_source?: string
+          modification_type?: string
+          modified_by_user_id?: string
+          new_value?: Json | null
+          notes?: string | null
+          previous_value?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_modifications_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       affiliate_profiles: {
         Row: {
           application_note: string | null
@@ -1244,8 +1297,10 @@ export type Database = {
           credit_limit: number | null
           creditor: string
           current_balance: number | null
+          duplicate_of_id: string | null
           id: string
           is_authorized_user: boolean | null
+          is_disputed_ownership: boolean | null
           is_open: boolean | null
           last_reported_date: string | null
           limit_amount: number | null
@@ -1266,8 +1321,10 @@ export type Database = {
           credit_limit?: number | null
           creditor: string
           current_balance?: number | null
+          duplicate_of_id?: string | null
           id?: string
           is_authorized_user?: boolean | null
+          is_disputed_ownership?: boolean | null
           is_open?: boolean | null
           last_reported_date?: string | null
           limit_amount?: number | null
@@ -1288,8 +1345,10 @@ export type Database = {
           credit_limit?: number | null
           creditor?: string
           current_balance?: number | null
+          duplicate_of_id?: string | null
           id?: string
           is_authorized_user?: boolean | null
+          is_disputed_ownership?: boolean | null
           is_open?: boolean | null
           last_reported_date?: string | null
           limit_amount?: number | null
@@ -1307,6 +1366,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_accounts_duplicate_of_id_fkey"
+            columns: ["duplicate_of_id"]
+            isOneToOne: false
+            referencedRelation: "credit_accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -1485,7 +1551,9 @@ export type Database = {
           date_of_occurrence: string | null
           date_reported: string | null
           dispute_id: string | null
+          duplicate_of_id: string | null
           id: string
+          is_disputed_ownership: boolean | null
           is_removable: boolean | null
           item_type: string
           notes: string | null
@@ -1505,7 +1573,9 @@ export type Database = {
           date_of_occurrence?: string | null
           date_reported?: string | null
           dispute_id?: string | null
+          duplicate_of_id?: string | null
           id?: string
+          is_disputed_ownership?: boolean | null
           is_removable?: boolean | null
           item_type: string
           notes?: string | null
@@ -1525,7 +1595,9 @@ export type Database = {
           date_of_occurrence?: string | null
           date_reported?: string | null
           dispute_id?: string | null
+          duplicate_of_id?: string | null
           id?: string
+          is_disputed_ownership?: boolean | null
           is_removable?: boolean | null
           item_type?: string
           notes?: string | null
@@ -1548,6 +1620,13 @@ export type Database = {
             columns: ["dispute_id"]
             isOneToOne: false
             referencedRelation: "disputes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_negative_items_duplicate_of_id_fkey"
+            columns: ["duplicate_of_id"]
+            isOneToOne: false
+            referencedRelation: "credit_negative_items"
             referencedColumns: ["id"]
           },
         ]
