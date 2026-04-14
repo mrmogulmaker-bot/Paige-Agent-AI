@@ -57,7 +57,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
   const [addInternalOpen, setAddInternalOpen] = useState(false);
   const [addLegacyOpen, setAddLegacyOpen] = useState(false);
   const [quickUploadOpen, setQuickUploadOpen] = useState(false);
-  const [activeView, setActiveView] = useState<"internal" | "auth">("internal");
+  const [activeView, setActiveView] = useState<"internal" | "auth" | "team">("internal");
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ type: "internal" | "auth"; id: string; name: string } | null>(null);
