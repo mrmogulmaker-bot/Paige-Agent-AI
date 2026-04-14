@@ -162,7 +162,7 @@ export function DataMaintenancePanel() {
           </p>
         </div>
         <Button
-          onClick={() => bulkBackfill.mutate()}
+          onClick={() => bulkBackfill.mutate(undefined)}
           disabled={bulkBackfill.isPending}
           className="gap-2"
         >
