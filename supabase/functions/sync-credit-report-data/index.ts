@@ -57,6 +57,7 @@ const PositiveAccountSchema = z.object({
   date_closed: z.string().nullable().optional(),
   responsibility: z.string().nullable().optional(),
   payment_history_percentage: z.number().nullable().optional(),
+  bureau_source: z.string().nullable().optional(),
 });
 
 const DiscrepancySchema = z.object({
