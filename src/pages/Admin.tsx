@@ -121,7 +121,17 @@ const Admin = () => {
         <Route index element={<AdminOverview stats={stats} />} />
         <Route path="clients" element={
           <Suspense fallback={<SuspenseFallback />}>
-            <ClientManagementDashboard onViewClient={handleViewClient} />
+            <ClientManagementDashboard onViewClient={handleViewClient} onViewInternalClient={handleViewInternalClient} />
+          </Suspense>
+        } />
+        <Route path="clients/user/:userId" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <ClientFileView clientUserId="" onBack={() => navigate("/admin/clients")} userRole={userRole} />
+          </Suspense>
+        } />
+        <Route path="clients/internal/:clientId" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <InternalClientFileView clientId="" onBack={() => navigate("/admin/clients")} />
           </Suspense>
         } />
         <Route path="disputes" element={<Suspense fallback={<SuspenseFallback />}><DisputesManager /></Suspense>} />
