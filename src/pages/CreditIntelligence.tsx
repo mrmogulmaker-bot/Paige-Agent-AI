@@ -114,8 +114,8 @@ export default function CreditIntelligence() {
             </p>
           )}
         </div>
-        {hasData ? (
-          <div className="flex gap-2">
+        <div className="flex gap-2">
+          {(hasData || hasAccounts) && (
             <Button
               variant="outline"
               size="sm"
@@ -125,6 +125,8 @@ export default function CreditIntelligence() {
               <Settings2 className="w-4 h-4" />
               <span className="hidden sm:inline">Edit Accounts</span>
             </Button>
+          )}
+          {hasData ? (
             <Button
               onClick={() => recalculate.mutate()}
               disabled={recalculate.isPending}
@@ -137,16 +139,16 @@ export default function CreditIntelligence() {
               )}
               Refresh Credit Analysis
             </Button>
-          </div>
-        ) : (
-          <Button
-            onClick={() => navigate("/app")}
-            className="bg-gradient-gold hover:opacity-90"
-          >
-            <Upload className="w-4 h-4 mr-2" />
-            Upload a Credit Report
-          </Button>
-        )}
+          ) : (
+            <Button
+              onClick={() => navigate("/app")}
+              className="bg-gradient-gold hover:opacity-90"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Upload a Credit Report
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Bureau Score Panel */}
