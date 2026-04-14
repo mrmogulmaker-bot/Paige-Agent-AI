@@ -2,42 +2,17 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useCreditFactors } from "@/hooks/useCreditFactors";
-import { useFundingProfile } from "@/hooks/useFundingProfile";
-import { scoreProduct } from "@/lib/fundingMatchScoring";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
-import { FundingTrack } from "@/components/funding/FundingTrack";
+import { CreditFileHealthAssessment } from "@/components/credit/CreditFileHealthAssessment";
 
 export default function CreditIntelligence() {
   const { factors, isLoading, recalculate } = useCreditFactors();
   const navigate = useNavigate();
-  const profile = useFundingProfile();
-
-  // Fetch personal credit products for the Personal Credit Build section
-  const { data: personalProducts } = useQuery({
-    queryKey: ["personal-credit-products"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("lender_products")
-        .select("*")
-        .eq("is_active", true)
-        .order("lender_name");
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  const personalMatches = useMemo(() => {
-    if (!personalProducts || profile.isLoading) return [];
-    return personalProducts
-      .map(p => scoreProduct(p, profile))
-      .filter(m => m.track === "personal")
-      .sort((a, b) => b.score - a.score);
-  }, [personalProducts, profile]);
 
   const hasData = factors && (
     factors.payment_history_score != null ||
@@ -147,7 +122,7 @@ export default function CreditIntelligence() {
         )}
       </div>
 
-      {/* Bureau Score Panel — lead with familiar numbers */}
+      {/* Bureau Score Panel */}
       <BureauScorePanel />
 
       {/* Fundability Score Ring */}
@@ -174,9 +149,9 @@ export default function CreditIntelligence() {
               </div>
             </div>
             <h2 className="text-xl font-bold mt-4">Fundability Score</h2>
-             <p className="text-sm text-muted-foreground">
-               {getFundabilityLabel(factors.overall_fundability_score ?? 0)}
-             </p>
+            <p className="text-sm text-muted-foreground">
+              {getFundabilityLabel(factors.overall_fundability_score ?? 0)}
+            </p>
           </div>
         </Card>
       )}
@@ -217,10 +192,8 @@ export default function CreditIntelligence() {
         </Card>
       )}
 
-      {/* Personal Credit Build — product recommendations */}
-      {personalMatches.length > 0 && (
-        <FundingTrack title="Personal Credit Build Products" icon="personal" matches={personalMatches} />
-      )}
+      {/* Credit File Health Assessment */}
+      <CreditFileHealthAssessment />
     </div>
   );
 }
