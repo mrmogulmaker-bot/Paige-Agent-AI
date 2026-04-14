@@ -13,13 +13,13 @@ import {
 import {
   CheckCircle, AlertTriangle, Circle, CreditCard, Car, Home,
   Landmark, Zap, UserCheck, Clock, ExternalLink, Loader2, ChevronDown,
-  ChevronRight, Target,
+  ChevronRight, Target, Shield, TrendingUp, BarChart3,
 } from "lucide-react";
 import { differenceInMonths } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 /* ─── Types ─── */
-interface CreditAccount {
+export interface CreditAccount {
   id: string;
   creditor: string;
   type: string;
@@ -35,7 +35,29 @@ interface CreditAccount {
   status: string | null;
 }
 
-interface FileCategory {
+interface NegativeItem {
+  id: string;
+  creditor_name: string | null;
+  account_number_masked: string | null;
+  amount: number | null;
+  bureau: string;
+  item_type: string;
+  status: string | null;
+}
+
+interface LenderPref {
+  institution_name: string;
+  primary_bureau: string;
+  secondary_bureau: string | null;
+}
+
+interface BureauScores {
+  experian: number | null;
+  transunion: number | null;
+  equifax: number | null;
+}
+
+export interface FileCategory {
   key: string;
   label: string;
   icon: React.ReactNode;
@@ -43,7 +65,6 @@ interface FileCategory {
   status: "complete" | "warning" | "missing";
   current: string;
   detail: string;
-  action?: { label: string; href: string };
   suggestion?: SuggestionContent;
   priority: "critical" | "important" | "enhancement";
 }
@@ -65,29 +86,34 @@ interface ComparableAccount {
   label: string;
 }
 
+type BureauKey = "experian" | "transunion" | "equifax";
+
+const BUREAU_META: Record<BureauKey, { label: string; accent: string; dot: string }> = {
+  experian: { label: "Experian", accent: "border-blue-500/40", dot: "bg-blue-500" },
+  transunion: { label: "TransUnion", accent: "border-green-500/40", dot: "bg-green-500" },
+  equifax: { label: "Equifax", accent: "border-red-500/40", dot: "bg-red-500" },
+};
+
 /* ─── Helpers ─── */
 function effectiveLimit(a: CreditAccount) {
   return a.credit_limit ?? a.limit_amount ?? 0;
 }
-
 function effectiveOpenDate(a: CreditAccount): Date | null {
   const d = a.account_open_date ?? a.opened_on;
   return d ? new Date(d) : null;
 }
-
 function isGoodStanding(a: CreditAccount) {
   const s = (a.status ?? "").toLowerCase();
   return !s.includes("collection") && !s.includes("charged") && !s.includes("delinquent");
 }
-
 function accountAgeMonths(a: CreditAccount): number | null {
   const d = effectiveOpenDate(a);
   if (!d) return null;
   return differenceInMonths(new Date(), d);
 }
 
-/* ─── Suggestion content for each gap ─── */
-function getSuggestion(key: string, analysis: ReturnType<typeof analyzeFile>): SuggestionContent | undefined {
+/* ─── Suggestion content ─── */
+function getSuggestion(key: string, auCount: number): SuggestionContent | undefined {
   const map: Record<string, () => SuggestionContent> = {
     primary_cards: () => ({
       whyItMatters: "Primary credit cards with limits above $3,000 are the foundation of your revolving credit profile. Lenders look for 2 to 4 primary cards to confirm you can manage revolving debt responsibly.",
@@ -97,7 +123,7 @@ function getSuggestion(key: string, analysis: ReturnType<typeof analyzeFile>): S
     }),
     authorized_user: () => ({
       whyItMatters: "Having more than 2 authorized user accounts signals credit padding to lenders and underwriters. While AU accounts help with utilization and credit age, too many suggest you are relying on someone else's credit history rather than your own.",
-      recommendation: `Remove yourself from ${analysis.auCount - 2} authorized user account(s). Keep the 2 that have the highest limits and longest history since those provide the most benefit to your utilization ratio and average credit age.`,
+      recommendation: `Remove yourself from ${Math.max(auCount - 2, 1)} authorized user account(s). Keep the 2 that have the highest limits and longest history since those provide the most benefit to your utilization ratio and average credit age.`,
       whereToGetIt: "Contact the primary cardholder on each account you want to be removed from and ask them to call their card issuer to remove you as an authorized user. This is a simple phone call and takes effect within 30 to 60 days.",
       impact: "Reducing to 2 or fewer AU accounts strengthens your primary tradeline profile and removes a flag that sophisticated lenders use to discount your apparent credit strength.",
     }),
@@ -115,7 +141,7 @@ function getSuggestion(key: string, analysis: ReturnType<typeof analyzeFile>): S
     }),
     auto_loan: () => ({
       whyItMatters: "An auto loan is a key installment tradeline that demonstrates your ability to manage large recurring payments over time. Lenders view auto loan history as strong evidence of financial responsibility.",
-      recommendation: "If you are planning a vehicle purchase in the next 12 months, now is the time to structure it strategically. Use your existing comparable credit history to determine the right loan amount to target. If you are not planning a vehicle purchase a credit builder loan serves a similar purpose without requiring a large purchase.",
+      recommendation: "If you are planning a vehicle purchase in the next 12 months, now is the time to structure it strategically. If you are not planning a vehicle purchase a credit builder loan serves a similar purpose without requiring a large purchase.",
       impact: "An installment loan in good standing improves your credit mix, adds to your payment history, and creates comparable credit for future financing. On the personal side lenders typically approve up to 3x your highest comparable auto tradeline for your next vehicle.",
       ctas: [{ label: "Build Credit with Credit Strong", href: "https://creditstrong.referralrock.com/l/3ANTONIO94/" }],
     }),
@@ -131,13 +157,13 @@ function getSuggestion(key: string, analysis: ReturnType<typeof analyzeFile>): S
     }),
     mortgage: () => ({
       whyItMatters: "A mortgage is the most valuable primary tradeline on a consumer credit report. It demonstrates asset ownership, long-term financial commitment, and the ability to manage the largest installment obligation most consumers carry. Even a mortgage as low as $50,000 to $75,000 has a significant positive impact on your fundability profile.",
-      recommendation: "If homeownership is part of your financial plan, prioritizing a mortgage — even a modest one — is one of the highest-leverage moves you can make for your credit file. Work with a VA-approved lender if you are a veteran, an FHA lender if your score is between 580 and 620, or a conventional lender if your score is 620 or above.",
+      recommendation: "If homeownership is part of your financial plan, prioritizing a mortgage — even a modest one — is one of the highest-leverage moves you can make for your credit file.",
       impact: "A mortgage in good standing is the single most impactful tradeline you can add to a consumer credit file. It improves your credit mix, demonstrates asset ownership to lenders, and signals long-term financial stability to every capital source you approach.",
       ctas: [{ label: "Book a Strategy Session", href: "https://www.mogulmakeracademy.com/booking-screening.html" }],
     }),
     credit_age: () => ({
       whyItMatters: "Credit age accounts for approximately 15 percent of your FICO score. Lenders also use average credit age as an indicator of financial maturity. The target average is 5 years or more.",
-      recommendation: "Protect your existing credit age by avoiding unnecessary new account applications. Every new account reduces your average age. Focus on keeping your oldest accounts open and in good standing. Adding rent reporting through CreditRentBoost can add years of rental payment history to your file which improves your effective credit age.",
+      recommendation: "Protect your existing credit age by avoiding unnecessary new account applications. Every new account reduces your average age. Focus on keeping your oldest accounts open and in good standing.",
       impact: "Credit age improves naturally over time. Avoid closing old accounts even if you do not use them regularly — an old account with zero balance still contributes positively to your average age.",
       ctas: [{ label: "Start Rent Reporting — CreditRentBoost", href: "https://affiliates.creditrentboost.com/?affi=00498" }],
     }),
@@ -147,60 +173,52 @@ function getSuggestion(key: string, analysis: ReturnType<typeof analyzeFile>): S
 }
 
 /* ─── Analysis engine ─── */
-function analyzeFile(accounts: CreditAccount[]) {
-  const primaryCards = accounts.filter(
-    (a) => a.type === "credit_card" && !a.is_authorized_user && (a.is_open ?? true)
-  );
-  const primaryCardsAbove3k = primaryCards.filter((a) => effectiveLimit(a) >= 3000);
-  const auAccounts = accounts.filter((a) => a.is_authorized_user);
-  const openAU = auAccounts.filter((a) => a.is_open ?? true);
+export interface FileAnalysis {
+  categories: FileCategory[];
+  comparable: ComparableAccount[];
+  avgAgeMonths: number;
+  avgAgeYears: number;
+  oldestAccounts: { creditor: string; months: number }[];
+  newestAccounts: { creditor: string; months: number }[];
+  completedCount: number;
+  totalCategories: number;
+  completionPct: number;
+  totalOpen: number;
+  primaryCardsAbove3k: number;
+  auCount: number;
+}
 
-  const rentAccounts = accounts.filter((a) =>
-    /(rent|lease|housing|creditrentboost)/i.test(a.creditor)
-  );
-  const utilityAccounts = accounts.filter((a) =>
-    /(boost|utility|experian boost|self-reported)/i.test(a.creditor)
-  );
-
-  const autoLoans = accounts.filter((a) => a.type === "auto_loan");
-  const autoOpen = autoLoans.filter((a) => a.is_open ?? true);
-  const autoClosed = autoLoans.filter((a) => !(a.is_open ?? true) && isGoodStanding(a));
-
-  const personalLoans = accounts.filter((a) => a.type === "personal_loan");
-  const plOpen = personalLoans.filter((a) => a.is_open ?? true);
-  const plClosed = personalLoans.filter((a) => !(a.is_open ?? true) && isGoodStanding(a));
-
-  const mortgages = accounts.filter((a) => a.type === "mortgage");
-  const mortOpen = mortgages.filter((a) => a.is_open ?? true);
-  const mortClosed = mortgages.filter((a) => !(a.is_open ?? true) && isGoodStanding(a));
+function analyzeFile(accounts: CreditAccount[]): FileAnalysis {
+  const primaryCards = accounts.filter(a => a.type === "credit_card" && !a.is_authorized_user && (a.is_open ?? true));
+  const primaryCardsAbove3k = primaryCards.filter(a => effectiveLimit(a) >= 3000);
+  const openAU = accounts.filter(a => a.is_authorized_user && (a.is_open ?? true));
+  const rentAccounts = accounts.filter(a => /(rent|lease|housing|creditrentboost)/i.test(a.creditor));
+  const utilityAccounts = accounts.filter(a => /(boost|utility|experian boost|self-reported)/i.test(a.creditor));
+  const autoLoans = accounts.filter(a => a.type === "auto_loan");
+  const autoOpen = autoLoans.filter(a => a.is_open ?? true);
+  const autoClosed = autoLoans.filter(a => !(a.is_open ?? true) && isGoodStanding(a));
+  const personalLoans = accounts.filter(a => a.type === "personal_loan");
+  const plOpen = personalLoans.filter(a => a.is_open ?? true);
+  const plClosed = personalLoans.filter(a => !(a.is_open ?? true) && isGoodStanding(a));
+  const mortgages = accounts.filter(a => a.type === "mortgage");
+  const mortOpen = mortgages.filter(a => a.is_open ?? true);
+  const mortClosed = mortgages.filter(a => !(a.is_open ?? true) && isGoodStanding(a));
 
   const ages = accounts.map(accountAgeMonths).filter((m): m is number => m !== null);
   const avgAgeMonths = ages.length ? Math.round(ages.reduce((s, v) => s + v, 0) / ages.length) : 0;
   const avgAgeYears = +(avgAgeMonths / 12).toFixed(1);
 
   const comparable: ComparableAccount[] = [];
-  accounts
-    .filter((a) => !(a.is_open ?? true) && isGoodStanding(a))
-    .forEach((a) => {
-      const amt = effectiveLimit(a) || Number(a.balance ?? a.current_balance ?? 0);
-      if (amt <= 0) return;
-      const multiplier = 3;
-      if (a.type === "credit_card") {
-        comparable.push({ creditor: a.creditor, type: "revolving", amount: amt, projectedApproval: amt, label: "Historical — Comparable Revolving Credit" });
-      } else if (a.type === "auto_loan") {
-        comparable.push({ creditor: a.creditor, type: "auto", amount: amt, projectedApproval: amt * multiplier, label: "Historical — Comparable Auto Credit" });
-      } else if (a.type === "personal_loan") {
-        comparable.push({ creditor: a.creditor, type: "installment", amount: amt, projectedApproval: amt * multiplier, label: "Historical — Comparable Installment Credit" });
-      } else if (a.type === "mortgage") {
-        comparable.push({ creditor: a.creditor, type: "mortgage", amount: amt, projectedApproval: amt, label: "Historical — Comparable Mortgage Credit" });
-      }
-    });
+  accounts.filter(a => !(a.is_open ?? true) && isGoodStanding(a)).forEach(a => {
+    const amt = effectiveLimit(a) || Number(a.balance ?? a.current_balance ?? 0);
+    if (amt <= 0) return;
+    if (a.type === "credit_card") comparable.push({ creditor: a.creditor, type: "revolving", amount: amt, projectedApproval: amt, label: "Historical — Comparable Revolving Credit" });
+    else if (a.type === "auto_loan") comparable.push({ creditor: a.creditor, type: "auto", amount: amt, projectedApproval: amt * 3, label: "Historical — Comparable Auto Credit" });
+    else if (a.type === "personal_loan") comparable.push({ creditor: a.creditor, type: "installment", amount: amt, projectedApproval: amt * 3, label: "Historical — Comparable Installment Credit" });
+    else if (a.type === "mortgage") comparable.push({ creditor: a.creditor, type: "mortgage", amount: amt, projectedApproval: amt, label: "Historical — Comparable Mortgage Credit" });
+  });
 
-  const withAge = accounts
-    .map((a) => ({ creditor: a.creditor, months: accountAgeMonths(a) }))
-    .filter((x): x is { creditor: string; months: number } => x.months !== null)
-    .sort((a, b) => b.months - a.months);
-
+  const withAge = accounts.map(a => ({ creditor: a.creditor, months: accountAgeMonths(a) })).filter((x): x is { creditor: string; months: number } => x.months !== null).sort((a, b) => b.months - a.months);
   const oldestAccounts = withAge.slice(0, 3);
   const newestAccounts = [...withAge].sort((a, b) => a.months - b.months).slice(0, 3);
 
@@ -213,193 +231,191 @@ function analyzeFile(accounts: CreditAccount[]) {
   const hasMort = mortOpen.length > 0 || mortClosed.length > 0;
   const creditAgeOk = avgAgeYears >= 5;
 
-  // We'll build categories after we have auCount to pass to getSuggestion
-  const partialAnalysis = { auCount, primaryCardsAbove3k: pcCount, avgAgeYears, avgAgeMonths, comparable, oldestAccounts, newestAccounts, totalOpen: 0, completedCount: 0, totalCategories: 0, completionPct: 0, categories: [] as FileCategory[] };
+  const categories: FileCategory[] = [
+    { key: "primary_cards", label: "Primary Credit Cards", icon: <CreditCard className="w-5 h-5" />, target: "2–4 above $3,000", status: pcCount >= 2 ? "complete" : "missing", current: `${pcCount} of 2–4`, detail: pcCount >= 2 ? `You have ${pcCount} primary cards above $3,000.` : `You need ${2 - pcCount} more primary card(s) above $3,000.`, suggestion: pcCount < 2 ? getSuggestion("primary_cards", auCount) : undefined, priority: "critical" },
+    { key: "authorized_user", label: "Authorized User Accounts", icon: <UserCheck className="w-5 h-5" />, target: "Maximum 2", status: auCount <= 2 ? "complete" : "warning", current: `${auCount} of 2 max`, detail: auCount <= 2 ? `${auCount} AU account(s) — within limit.` : `${auCount} AU accounts — remove ${auCount - 2} to avoid credit padding flag.`, suggestion: auCount > 2 ? getSuggestion("authorized_user", auCount) : undefined, priority: "critical" },
+    { key: "rent_reporting", label: "Rent Reporting", icon: <Home className="w-5 h-5" />, target: "1 tradeline", status: hasRent ? "complete" : "missing", current: hasRent ? "Active" : "Not reporting", detail: hasRent ? "Rent payments are being reported." : "Add rent reporting for a free positive tradeline.", suggestion: !hasRent ? getSuggestion("rent_reporting", auCount) : undefined, priority: "enhancement" },
+    { key: "utility_reporting", label: "Utility / Streaming Reporting", icon: <Zap className="w-5 h-5" />, target: "1 account", status: hasUtility ? "complete" : "missing", current: hasUtility ? "Active" : "Not reporting", detail: hasUtility ? "Utility payments are being reported." : "Add utility reporting at no cost.", suggestion: !hasUtility ? getSuggestion("utility_reporting", auCount) : undefined, priority: "enhancement" },
+    { key: "auto_loan", label: "Auto Loan", icon: <Car className="w-5 h-5" />, target: "1 (open or closed)", status: hasAuto ? "complete" : "missing", current: autoOpen.length > 0 ? "Open" : autoClosed.length > 0 ? "Historical — Comparable" : "Missing", detail: hasAuto ? (autoOpen.length > 0 ? "Active auto loan." : "Closed auto loan — comparable credit available.") : "Missing auto loan tradeline.", suggestion: !hasAuto ? getSuggestion("auto_loan", auCount) : undefined, priority: "important" },
+    { key: "personal_loan", label: "Personal Loan", icon: <Landmark className="w-5 h-5" />, target: "1 (open or closed)", status: hasPL ? "complete" : "missing", current: plOpen.length > 0 ? "Open" : plClosed.length > 0 ? "Historical — Comparable" : "Missing", detail: hasPL ? "Personal loan history present." : "Missing personal loan tradeline.", suggestion: !hasPL ? getSuggestion("personal_loan", auCount) : undefined, priority: "important" },
+    { key: "mortgage", label: "Mortgage", icon: <Home className="w-5 h-5" />, target: "1 (open or closed)", status: hasMort ? "complete" : "missing", current: mortOpen.length > 0 ? "Open" : mortClosed.length > 0 ? "Historical — Comparable" : "Missing", detail: hasMort ? "Mortgage tradeline present — strongest tradeline type." : "Missing mortgage — highest-value tradeline.", suggestion: !hasMort ? getSuggestion("mortgage", auCount) : undefined, priority: "critical" },
+    { key: "credit_age", label: "Credit Age", icon: <Clock className="w-5 h-5" />, target: "5+ years average", status: creditAgeOk ? "complete" : "missing", current: `${avgAgeYears} years`, detail: creditAgeOk ? `Average ${avgAgeYears} years — strong.` : `Average ${avgAgeYears} years — below 5-year target.`, suggestion: !creditAgeOk ? getSuggestion("credit_age", auCount) : undefined, priority: "enhancement" },
+  ];
 
-  const categories: FileCategory[] = [];
-
-  categories.push({
-    key: "primary_cards",
-    label: "Primary Credit Cards",
-    icon: <CreditCard className="w-5 h-5" />,
-    target: "2–4 above $3,000",
-    status: pcCount >= 2 ? "complete" : "missing",
-    current: `${pcCount} of 2–4`,
-    detail: pcCount >= 2
-      ? `You have ${pcCount} primary cards above $3,000. Your revolving credit foundation is solid.`
-      : `You need ${2 - pcCount} more primary card(s) with limits above $3,000 to establish revolving credit depth.`,
-    suggestion: pcCount < 2 ? getSuggestion("primary_cards", partialAnalysis as any) : undefined,
-    priority: "critical",
-  });
-
-  categories.push({
-    key: "authorized_user",
-    label: "Authorized User Accounts",
-    icon: <UserCheck className="w-5 h-5" />,
-    target: "Maximum 2",
-    status: auCount <= 2 ? "complete" : "warning",
-    current: `${auCount} of 2 max`,
-    detail: auCount <= 2
-      ? `${auCount} authorized user account(s) — within the recommended limit.`
-      : `You have ${auCount} authorized user accounts. We recommend removing yourself from ${auCount - 2} account(s) to keep this at 2 or fewer. Lenders view excessive authorized user accounts as credit padding which can hurt your fundability score.`,
-    suggestion: auCount > 2 ? getSuggestion("authorized_user", partialAnalysis as any) : undefined,
-    priority: "critical",
-  });
-
-  categories.push({
-    key: "rent_reporting",
-    label: "Rent Reporting",
-    icon: <Home className="w-5 h-5" />,
-    target: "1 tradeline",
-    status: hasRent ? "complete" : "missing",
-    current: hasRent ? "Active" : "Not reporting",
-    detail: hasRent
-      ? "Your rent payments are being reported. This strengthens payment history and credit age."
-      : "Reporting rent payments adds a positive tradeline that improves payment history and credit age at no cost.",
-    suggestion: !hasRent ? getSuggestion("rent_reporting", partialAnalysis as any) : undefined,
-    priority: "enhancement",
-  });
-
-  categories.push({
-    key: "utility_reporting",
-    label: "Utility / Streaming Reporting",
-    icon: <Zap className="w-5 h-5" />,
-    target: "1 account",
-    status: hasUtility ? "complete" : "missing",
-    current: hasUtility ? "Active" : "Not reporting",
-    detail: hasUtility
-      ? "Utility or streaming payments are being reported to your credit file."
-      : "Adding utility payments to your credit file improves credit age and payment history at no cost.",
-    suggestion: !hasUtility ? getSuggestion("utility_reporting", partialAnalysis as any) : undefined,
-    priority: "enhancement",
-  });
-
-  const autoStatus = autoOpen.length > 0 ? "Open" : autoClosed.length > 0 ? "Historical — Comparable Credit Available" : "Missing";
-  categories.push({
-    key: "auto_loan",
-    label: "Auto Loan",
-    icon: <Car className="w-5 h-5" />,
-    target: "1 (open or closed in good standing)",
-    status: hasAuto ? "complete" : "missing",
-    current: autoStatus,
-    detail: hasAuto
-      ? autoOpen.length > 0
-        ? "You have an active auto loan contributing to your installment credit mix."
-        : "Your closed auto loan in good standing serves as comparable credit for future auto financing."
-      : "An auto loan tradeline completes your installment credit history and provides comparable credit for future vehicle financing.",
-    suggestion: !hasAuto ? getSuggestion("auto_loan", partialAnalysis as any) : undefined,
-    priority: "important",
-  });
-
-  const plStatus = plOpen.length > 0 ? "Open" : plClosed.length > 0 ? "Historical — Comparable Credit" : "Missing";
-  categories.push({
-    key: "personal_loan",
-    label: "Personal Loan",
-    icon: <Landmark className="w-5 h-5" />,
-    target: "1 (open or closed in good standing)",
-    status: hasPL ? "complete" : "missing",
-    current: plStatus,
-    detail: hasPL
-      ? "Your personal loan history strengthens your installment credit mix."
-      : "A personal loan completes your credit mix and improves your installment credit history.",
-    suggestion: !hasPL ? getSuggestion("personal_loan", partialAnalysis as any) : undefined,
-    priority: "important",
-  });
-
-  const mortStatus = mortOpen.length > 0 ? "Open" : mortClosed.length > 0 ? "Historical — Comparable Credit" : "Missing";
-  categories.push({
-    key: "mortgage",
-    label: "Mortgage",
-    icon: <Home className="w-5 h-5" />,
-    target: "1 (open or closed in good standing)",
-    status: hasMort ? "complete" : "missing",
-    current: mortStatus,
-    detail: hasMort
-      ? "A mortgage is the most valuable primary tradeline on a consumer file. This significantly strengthens your fundability profile."
-      : "A mortgage is the most valuable tradeline on a consumer file. Even a modest mortgage significantly improves your fundability profile with most lenders.",
-    suggestion: !hasMort ? getSuggestion("mortgage", partialAnalysis as any) : undefined,
-    priority: "critical",
-  });
-
-  // Credit age as a category
-  categories.push({
-    key: "credit_age",
-    label: "Credit Age",
-    icon: <Clock className="w-5 h-5" />,
-    target: "5+ years average",
-    status: creditAgeOk ? "complete" : "missing",
-    current: `${avgAgeYears} years`,
-    detail: creditAgeOk
-      ? `Your average credit age of ${avgAgeYears} years is strong. Protect this by limiting unnecessary new account applications.`
-      : `Your average credit age is ${avgAgeYears} years, below the 5-year target. Avoid opening new accounts unnecessarily.`,
-    suggestion: !creditAgeOk ? getSuggestion("credit_age", partialAnalysis as any) : undefined,
-    priority: "enhancement",
-  });
-
-  const completedCount = categories.filter((c) => c.status === "complete").length;
-  const totalCategories = categories.length;
-  const completionPct = Math.round((completedCount / totalCategories) * 100);
-  const totalOpen = accounts.filter((a) => a.is_open ?? true).length;
-
+  const completedCount = categories.filter(c => c.status === "complete").length;
   return {
-    categories,
-    comparable,
-    avgAgeMonths,
-    avgAgeYears,
-    oldestAccounts,
-    newestAccounts,
-    completedCount,
-    totalCategories,
-    completionPct,
-    totalOpen,
-    primaryCardsAbove3k: pcCount,
-    auCount,
+    categories, comparable, avgAgeMonths, avgAgeYears, oldestAccounts, newestAccounts,
+    completedCount, totalCategories: categories.length, completionPct: Math.round((completedCount / categories.length) * 100),
+    totalOpen: accounts.filter(a => a.is_open ?? true).length, primaryCardsAbove3k: pcCount, auCount,
   };
 }
 
-/* ─── Exported helper for chat context ─── */
-export function buildHealthAssessmentContext(analysis: ReturnType<typeof analyzeFile>): string {
-  const parts: string[] = [];
-  parts.push(`Credit File Health Assessment:`);
-  parts.push(`File Completion: ${analysis.completedCount} of ${analysis.totalCategories} account types present`);
+/* ─── Bureau-specific negative analysis ─── */
+interface BureauNegativeAnalysis {
+  total: number;
+  exclusive: number; // only on this bureau
+  shared: number; // on 2+ bureaus
+  items: (NegativeItem & { bureauSpread: string })[];
+}
 
-  const missing = analysis.categories.filter(c => c.status !== "complete").map(c => c.label);
-  if (missing.length) parts.push(`Missing Items: ${missing.join(", ")}`);
+function analyzeNegativesForBureau(bureau: BureauKey, allNegatives: NegativeItem[]): BureauNegativeAnalysis {
+  const bureauLabel = BUREAU_META[bureau].label.toLowerCase();
+  const thisItems = allNegatives.filter(n => n.bureau.toLowerCase().includes(bureauLabel) || n.bureau.toLowerCase() === bureau);
 
-  const warnings = analysis.categories.filter(c => c.status === "warning").map(c => `${c.label}: ${c.current}`);
-  if (warnings.length) parts.push(`Warnings: ${warnings.join("; ")}`);
+  // Group by creditor+account to check cross-bureau
+  const creditorMap = new Map<string, Set<string>>();
+  allNegatives.forEach(n => {
+    const key = `${(n.creditor_name || "").toLowerCase()}|${n.account_number_masked || ""}`;
+    if (!creditorMap.has(key)) creditorMap.set(key, new Set());
+    creditorMap.get(key)!.add(n.bureau.toLowerCase());
+  });
 
-  if (analysis.comparable.length > 0) {
-    const compLines = analysis.comparable.map(c => `${c.creditor} (${c.type}) $${c.amount.toLocaleString()} → projected $${c.projectedApproval.toLocaleString()}`);
-    parts.push(`Comparable Credit Available: ${compLines.join("; ")}`);
+  let exclusive = 0;
+  let shared = 0;
+  const items = thisItems.map(n => {
+    const key = `${(n.creditor_name || "").toLowerCase()}|${n.account_number_masked || ""}`;
+    const bureaus = creditorMap.get(key);
+    const count = bureaus?.size ?? 1;
+    if (count === 1) { exclusive++; } else { shared++; }
+    const bureauSpread = count >= 3 ? "Reported by all 3 bureaus" : count === 2 ? "Reported by 2 of 3 bureaus" : `${BUREAU_META[bureau].label} only`;
+    return { ...n, bureauSpread };
+  });
+
+  return { total: thisItems.length, exclusive, shared, items };
+}
+
+/* ─── Lender helpers ─── */
+function getLendersForBureau(bureau: BureauKey, lenders: LenderPref[]): string[] {
+  const b = BUREAU_META[bureau].label.toLowerCase();
+  return lenders
+    .filter(l => l.primary_bureau.toLowerCase().includes(b) || l.secondary_bureau?.toLowerCase().includes(b))
+    .map(l => l.institution_name)
+    .slice(0, 8);
+}
+
+/* Default well-known lender mapping */
+const DEFAULT_LENDERS: Record<BureauKey, string[]> = {
+  experian: ["Chase", "American Express", "Wells Fargo", "SoFi", "OnDeck", "BlueVine"],
+  transunion: ["Capital One", "Discover", "OpenSky", "Chime", "Upgrade", "Divvy"],
+  equifax: ["Citi", "Bank of America", "LightStream", "Equipment lenders"],
+};
+
+/* ─── Score color helper ─── */
+function scoreColor(score: number | null): string {
+  if (score == null) return "text-muted-foreground";
+  if (score >= 740) return "text-fundability-excellent";
+  if (score >= 670) return "text-fundability-good";
+  if (score >= 580) return "text-amber-500";
+  return "text-red-500";
+}
+
+function scoreBg(score: number | null): string {
+  if (score == null) return "bg-muted/30";
+  if (score >= 740) return "bg-fundability-excellent/10";
+  if (score >= 670) return "bg-fundability-good/10";
+  if (score >= 580) return "bg-amber-500/10";
+  return "bg-red-500/10";
+}
+
+/* ─── Exported context builder ─── */
+export function buildBureauHealthContext(
+  scores: BureauScores,
+  accounts: CreditAccount[],
+  negatives: NegativeItem[],
+  lenders: LenderPref[]
+): string {
+  const bureaus: BureauKey[] = ["experian", "transunion", "equifax"];
+  const analysis = analyzeFile(accounts);
+  const parts: string[] = ["Bureau-Specific Credit File Assessment:"];
+
+  const scoreMap: Record<BureauKey, number | null> = {
+    experian: scores.experian,
+    transunion: scores.transunion,
+    equifax: scores.equifax,
+  };
+
+  bureaus.forEach(b => {
+    const score = scoreMap[b];
+    const negAnalysis = analyzeNegativesForBureau(b, negatives);
+    const bLenders = getLendersForBureau(b, lenders);
+    const lenderList = bLenders.length > 0 ? bLenders.join(", ") : DEFAULT_LENDERS[b].join(", ");
+    const highestComp = analysis.comparable.length > 0 ? Math.max(...analysis.comparable.map(c => c.amount)) : 0;
+
+    parts.push(`\n${BUREAU_META[b].label} (score: ${score ?? "N/A"}):`);
+    parts.push(`- File completion: ${analysis.completedCount} of ${analysis.totalCategories} account types`);
+    parts.push(`- Negative items on ${BUREAU_META[b].label} only: ${negAnalysis.exclusive}`);
+    parts.push(`- Negative items shared with other bureaus: ${negAnalysis.shared}`);
+    parts.push(`- Comparable credit: highest closed $${highestComp.toLocaleString()}, 3x projection $${(highestComp * 3).toLocaleString()}`);
+    parts.push(`- Credit age: ${analysis.avgAgeYears} years`);
+    const topGap = analysis.categories.filter(c => c.status !== "complete")[0];
+    parts.push(`- Priority gap: ${topGap?.label ?? "None"}`);
+    parts.push(`- Lenders pulling ${BUREAU_META[b].label}: ${lenderList}`);
+  });
+
+  // Strategy summary
+  const valid = bureaus.filter(b => scoreMap[b] != null).sort((a, b2) => (scoreMap[b2] ?? 0) - (scoreMap[a] ?? 0));
+  if (valid.length >= 2) {
+    const strongest = valid[0];
+    const weakest = valid[valid.length - 1];
+    const negCounts = Object.fromEntries(bureaus.map(b => [b, analyzeNegativesForBureau(b, negatives).total]));
+    const mostNegs = bureaus.reduce((a, b2) => (negCounts[b2] > negCounts[a] ? b2 : a));
+    const spread = (scoreMap[strongest] ?? 0) - (scoreMap[weakest] ?? 0);
+
+    parts.push(`\nBureau Strategy:`);
+    parts.push(`- Strongest bureau: ${BUREAU_META[strongest].label} at ${scoreMap[strongest]}`);
+    parts.push(`- Most improvement needed: ${BUREAU_META[mostNegs].label} with ${negCounts[mostNegs]} negatives`);
+    parts.push(`- Score spread: ${scoreMap[strongest]} to ${scoreMap[weakest]} (${spread} point difference)`);
   }
-
-  parts.push(`Average Credit Age: ${analysis.avgAgeYears} years — ${analysis.avgAgeYears >= 5 ? "above" : "below"} 5-year target`);
-
-  // Priority action
-  const priorityOrder: Record<string, number> = { critical: 0, important: 1, enhancement: 2 };
-  const topGap = analysis.categories
-    .filter(c => c.status !== "complete")
-    .sort((a, b) => (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9))[0];
-  if (topGap) parts.push(`Priority Action: ${topGap.label} — ${topGap.detail}`);
 
   return parts.join("\n");
 }
 
-/* ─── Component ─── */
+/* ═══════════════════ COMPONENT ═══════════════════ */
 export function CreditFileHealthAssessment() {
-  const { data: accounts, isLoading } = useQuery({
+  const isMobile = useIsMobile();
+
+  // Fetch credit accounts
+  const { data: accounts, isLoading: loadingAccounts } = useQuery({
     queryKey: ["credit-accounts-health"],
     queryFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return [];
-      const { data, error } = await supabase
-        .from("credit_accounts")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .order("creditor");
+      const { data, error } = await supabase.from("credit_accounts").select("*").eq("user_id", session.user.id).order("creditor");
       if (error) throw error;
       return (data || []) as CreditAccount[];
+    },
+  });
+
+  // Fetch negative items
+  const { data: negatives } = useQuery({
+    queryKey: ["credit-negatives-health"],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return [];
+      const { data, error } = await supabase.from("credit_negative_items").select("id, creditor_name, account_number_masked, amount, bureau, item_type, status").eq("user_id", session.user.id).neq("status", "removed");
+      if (error) throw error;
+      return (data || []) as NegativeItem[];
+    },
+  });
+
+  // Fetch bureau scores
+  const { data: scores } = useQuery({
+    queryKey: ["bureau-scores-health"],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return { experian: null, transunion: null, equifax: null } as BureauScores;
+      const { data } = await supabase.from("profiles").select("estimated_fico_ex, estimated_fico_tu, estimated_fico_eq").eq("user_id", session.user.id).maybeSingle();
+      return { experian: data?.estimated_fico_ex ?? null, transunion: data?.estimated_fico_tu ?? null, equifax: data?.estimated_fico_eq ?? null } as BureauScores;
+    },
+  });
+
+  // Fetch lender bureau preferences
+  const { data: lenders } = useQuery({
+    queryKey: ["lender-prefs-health"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("lender_bureau_preferences" as any).select("institution_name, primary_bureau, secondary_bureau").limit(100);
+      if (error) return [] as LenderPref[];
+      return ((data as unknown) || []) as LenderPref[];
     },
   });
 
@@ -408,12 +424,21 @@ export function CreditFileHealthAssessment() {
     return analyzeFile(accounts);
   }, [accounts]);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
-      </div>
-    );
+  // Determine strongest bureau for default tab
+  const defaultTab = useMemo<BureauKey | "all">(() => {
+    if (!scores) return "all";
+    const s: [BureauKey, number | null][] = [["experian", scores.experian], ["transunion", scores.transunion], ["equifax", scores.equifax]];
+    const valid = s.filter(([, v]) => v != null).sort(([, a], [, b]) => (b ?? 0) - (a ?? 0));
+    return valid.length > 0 ? valid[0][0] : "all";
+  }, [scores]);
+
+  const [activeTab, setActiveTab] = useState<BureauKey | "all">(defaultTab);
+
+  // Sync default tab when scores load
+  useMemo(() => { if (defaultTab !== "all" && activeTab === "all") setActiveTab(defaultTab); }, [defaultTab]);
+
+  if (loadingAccounts) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-accent" /></div>;
   }
 
   if (!analysis) {
@@ -421,34 +446,257 @@ export function CreditFileHealthAssessment() {
       <Card className="p-6 text-center">
         <CreditCard className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
         <h3 className="font-semibold text-lg">Upload a credit report to see your file health assessment</h3>
-        <p className="text-muted-foreground text-sm mt-2">
-          Once Paige analyzes your credit report, your file structure, comparable credit, and credit age will appear here.
-        </p>
+        <p className="text-muted-foreground text-sm mt-2">Once Paige analyzes your credit report, your file structure, comparable credit, and credit age will appear here.</p>
       </Card>
     );
   }
+
+  const safeScores = scores ?? { experian: null, transunion: null, equifax: null };
+  const safeNegatives = negatives ?? [];
+  const safeLenders = lenders ?? [];
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-foreground">Credit File Health Assessment</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Your credit file evaluated against the optimal 10-account structure.
-        </p>
+        <p className="text-sm text-muted-foreground mt-1">Your credit file evaluated per bureau against the optimal 10-account structure.</p>
       </div>
 
-      {/* Component 1 — File Completion Scorecard */}
-      <FileCompletionScorecard analysis={analysis} />
+      {/* Bureau Strategy Overview — always visible */}
+      <BureauStrategyOverview scores={safeScores} negatives={safeNegatives} lenders={safeLenders} />
 
-      {/* Component 2 — Comparable Credit Panel */}
-      {analysis.comparable.length > 0 && (
-        <ComparableCreditPanel comparable={analysis.comparable} />
+      {/* Bureau Tabs */}
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm pb-2 pt-1 -mx-1 px-1">
+        <div className={`flex gap-2 ${isMobile ? "overflow-x-auto scrollbar-none" : ""}`}>
+          {(["experian", "transunion", "equifax"] as BureauKey[]).map(b => {
+            const s = safeScores[b];
+            return (
+              <button
+                key={b}
+                onClick={() => setActiveTab(b)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap border ${
+                  activeTab === b
+                    ? `bg-card ${BUREAU_META[b].accent} border-2 shadow-sm`
+                    : "bg-muted/30 border-border hover:bg-muted/60"
+                }`}
+              >
+                <span className={`w-2.5 h-2.5 rounded-full ${BUREAU_META[b].dot}`} />
+                <span>{BUREAU_META[b].label}</span>
+                {s != null && (
+                  <span className={`font-bold ${scoreColor(s)}`}>{s}</span>
+                )}
+                {s == null && <span className="text-muted-foreground text-xs">N/A</span>}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setActiveTab("all")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap border ${
+              activeTab === "all" ? "bg-card border-accent/40 border-2 shadow-sm" : "bg-muted/30 border-border hover:bg-muted/60"
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>All Bureaus</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === "all" ? (
+        <AllBureausView analysis={analysis} isMobile={!!isMobile} />
+      ) : (
+        <BureauTabContent
+          bureau={activeTab}
+          score={safeScores[activeTab]}
+          analysis={analysis}
+          negatives={safeNegatives}
+          lenders={safeLenders}
+          isMobile={!!isMobile}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Bureau Strategy Overview ─── */
+function BureauStrategyOverview({ scores, negatives, lenders }: { scores: BureauScores; negatives: NegativeItem[]; lenders: LenderPref[] }) {
+  const bureaus: BureauKey[] = ["experian", "transunion", "equifax"];
+  const valid = bureaus.filter(b => scores[b] != null).sort((a, b) => (scores[b] ?? 0) - (scores[a] ?? 0));
+
+  if (valid.length < 2) return null;
+
+  const strongest = valid[0];
+  const weakest = valid[valid.length - 1];
+  const spread = (scores[strongest] ?? 0) - (scores[weakest] ?? 0);
+
+  const negCounts = Object.fromEntries(bureaus.map(b => [b, analyzeNegativesForBureau(b, negatives).total])) as Record<BureauKey, number>;
+  const mostNegsB = bureaus.reduce((a, b) => (negCounts[b] > negCounts[a] ? b : a));
+
+  const strongLenders = getLendersForBureau(strongest, lenders);
+  const strongLenderStr = strongLenders.length > 0 ? strongLenders.join(", ") : DEFAULT_LENDERS[strongest].join(", ");
+
+  return (
+    <Card className="p-5 bg-card border-border">
+      <div className="flex items-center gap-2 mb-4">
+        <Shield className="w-5 h-5 text-accent" />
+        <h3 className="font-semibold text-foreground">Bureau Strategy Overview</h3>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Strongest */}
+        <div className={`rounded-lg p-4 ${scoreBg(scores[strongest])}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <TrendingUp className="w-4 h-4 text-fundability-excellent" />
+            <span className="text-xs font-medium text-muted-foreground">Strongest Bureau</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${BUREAU_META[strongest].dot}`} />
+            <span className="font-semibold text-foreground">{BUREAU_META[strongest].label}</span>
+            <span className={`font-bold ${scoreColor(scores[strongest])}`}>{scores[strongest]}</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+            Lenders who pull {BUREAU_META[strongest].label}: {strongLenderStr}. Prioritize applications to these lenders.
+          </p>
+        </div>
+
+        {/* Biggest Gap */}
+        <div className={`rounded-lg p-4 ${scoreBg(scores[mostNegsB])}`}>
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-4 h-4 text-amber-500" />
+            <span className="text-xs font-medium text-muted-foreground">Most Improvement Needed</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${BUREAU_META[mostNegsB].dot}`} />
+            <span className="font-semibold text-foreground">{BUREAU_META[mostNegsB].label}</span>
+            <span className={`font-bold ${scoreColor(scores[mostNegsB])}`}>{scores[mostNegsB] ?? "N/A"}</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+            {negCounts[mostNegsB]} negative items. Focus dispute efforts here first if your target lenders pull this bureau.
+          </p>
+        </div>
+
+        {/* Score Spread */}
+        <div className="rounded-lg p-4 bg-muted/30">
+          <div className="flex items-center gap-2 mb-2">
+            <BarChart3 className="w-4 h-4 text-accent" />
+            <span className="text-xs font-medium text-muted-foreground">Score Spread</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {bureaus.map(b => (
+              <div key={b} className="text-center">
+                <span className={`w-2 h-2 rounded-full inline-block ${BUREAU_META[b].dot} mb-1`} />
+                <div className={`text-lg font-bold ${scoreColor(scores[b])}`}>{scores[b] ?? "—"}</div>
+                <div className="text-[10px] text-muted-foreground">{BUREAU_META[b].label.slice(0, 2).toUpperCase()}</div>
+              </div>
+            ))}
+          </div>
+          {spread > 40 && (
+            <p className="text-xs text-amber-400 mt-2">
+              ⚠ Your scores vary by {spread} points. Different lenders see very different credit profiles. Closing this gap should be a priority.
+            </p>
+          )}
+          {spread <= 40 && spread > 0 && (
+            <p className="text-xs text-muted-foreground mt-2">{spread} point spread — relatively consistent across bureaus.</p>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/* ─── Bureau Tab Content ─── */
+function BureauTabContent({
+  bureau, score, analysis, negatives, lenders, isMobile,
+}: {
+  bureau: BureauKey; score: number | null; analysis: FileAnalysis; negatives: NegativeItem[]; lenders: LenderPref[]; isMobile: boolean;
+}) {
+  const negAnalysis = useMemo(() => analyzeNegativesForBureau(bureau, negatives), [bureau, negatives]);
+  const bLenders = useMemo(() => {
+    const fromDb = getLendersForBureau(bureau, lenders);
+    return fromDb.length > 0 ? fromDb : DEFAULT_LENDERS[bureau];
+  }, [bureau, lenders]);
+
+  return (
+    <div className="space-y-6">
+      {/* Section 1 — Score + Lender Intel */}
+      <Card className={`p-6 bg-card border-2 ${BUREAU_META[bureau].accent}`}>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-center gap-3">
+            <span className={`w-4 h-4 rounded-full ${BUREAU_META[bureau].dot}`} />
+            <h3 className="text-lg font-bold text-foreground">{BUREAU_META[bureau].label} Score</h3>
+          </div>
+          <span className={`text-4xl font-bold ${scoreColor(score)}`}>{score ?? "N/A"}</span>
+        </div>
+        <div className="mt-4 rounded-md bg-muted/30 p-3">
+          <p className="text-xs font-medium text-foreground mb-1">Lenders who pull {BUREAU_META[bureau].label}:</p>
+          <p className="text-xs text-muted-foreground">{bLenders.join(", ")}</p>
+          {score != null && (
+            <p className="text-xs text-accent mt-2">
+              {score >= 700
+                ? `Your ${BUREAU_META[bureau].label} score of ${score} meets the threshold for most lenders pulling this bureau.`
+                : score >= 620
+                ? `Your ${BUREAU_META[bureau].label} score of ${score} meets minimum thresholds for some lenders but may limit premium product access.`
+                : `Your ${BUREAU_META[bureau].label} score of ${score} is below most lender minimums. Focus on dispute and credit building for this bureau.`}
+            </p>
+          )}
+        </div>
+      </Card>
+
+      {/* Section 2 — Bureau-Specific Negatives */}
+      {negAnalysis.total > 0 && (
+        <Card className="p-6 bg-card border-border">
+          <h3 className="font-semibold text-foreground mb-1">Negative Items on {BUREAU_META[bureau].label}</h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            {negAnalysis.total} items — {negAnalysis.exclusive} exclusive to {BUREAU_META[bureau].label}, {negAnalysis.shared} shared with other bureaus
+          </p>
+          <div className="space-y-2">
+            {negAnalysis.items.slice(0, 10).map((item, i) => (
+              <div key={item.id || i} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-border p-3 gap-2">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{item.creditor_name || "Unknown"}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">{item.item_type}</Badge>
+                    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${item.bureauSpread.includes("only") ? "bg-amber-500/10 text-amber-400 border-amber-500/30" : ""}`}>
+                      {item.bureauSpread}
+                    </Badge>
+                  </div>
+                </div>
+                <span className="text-sm font-semibold text-foreground">
+                  {item.amount ? `$${item.amount.toLocaleString()}` : "N/A"}
+                </span>
+              </div>
+            ))}
+            {negAnalysis.total > 10 && (
+              <p className="text-xs text-muted-foreground text-center pt-2">
+                Showing 10 of {negAnalysis.total} items. View full list in Disputes Manager.
+              </p>
+            )}
+          </div>
+        </Card>
       )}
 
-      {/* Component 3 — Credit Age Gauge */}
-      <CreditAgeGauge analysis={analysis} />
+      {/* Section 3-6 — File Scorecard (same accounts, bureau context) */}
+      <FileCompletionScorecard analysis={analysis} isMobile={isMobile} bureauLabel={BUREAU_META[bureau].label} />
 
-      {/* Component 4 — Priority Action List */}
+      {/* Section 4 — Comparable Credit */}
+      {analysis.comparable.length > 0 && <ComparableCreditPanel comparable={analysis.comparable} bureauLabel={BUREAU_META[bureau].label} />}
+
+      {/* Section 5 — Credit Age */}
+      <CreditAgeGauge analysis={analysis} bureauLabel={BUREAU_META[bureau].label} />
+
+      {/* Section 7 — Bureau-Specific Priority Action List */}
+      <PriorityActionList analysis={analysis} bureauLabel={BUREAU_META[bureau].label} />
+    </div>
+  );
+}
+
+/* ─── All Bureaus View ─── */
+function AllBureausView({ analysis, isMobile }: { analysis: FileAnalysis; isMobile: boolean }) {
+  return (
+    <div className="space-y-6">
+      <FileCompletionScorecard analysis={analysis} isMobile={isMobile} />
+      {analysis.comparable.length > 0 && <ComparableCreditPanel comparable={analysis.comparable} />}
+      <CreditAgeGauge analysis={analysis} />
       <PriorityActionList analysis={analysis} />
     </div>
   );
@@ -460,45 +708,20 @@ function SuggestionCard({ suggestion, isMobile }: { suggestion: SuggestionConten
 
   const content = (
     <div className="space-y-3">
-      <div>
-        <p className="text-xs font-medium text-accent mb-1">Why it matters</p>
-        <p className="text-xs text-muted-foreground leading-relaxed">{suggestion.whyItMatters}</p>
-      </div>
-      <div>
-        <p className="text-xs font-medium text-accent mb-1">Recommendation</p>
-        <p className="text-xs text-muted-foreground leading-relaxed">{suggestion.recommendation}</p>
-      </div>
-      {suggestion.whereToGetIt && (
-        <div>
-          <p className="text-xs font-medium text-accent mb-1">Where to get it</p>
-          <p className="text-xs text-muted-foreground leading-relaxed">{suggestion.whereToGetIt}</p>
-        </div>
-      )}
-      <div>
-        <p className="text-xs font-medium text-accent mb-1">Impact on your file</p>
-        <p className="text-xs text-muted-foreground leading-relaxed">{suggestion.impact}</p>
-      </div>
+      <div><p className="text-xs font-medium text-accent mb-1">Why it matters</p><p className="text-xs text-muted-foreground leading-relaxed">{suggestion.whyItMatters}</p></div>
+      <div><p className="text-xs font-medium text-accent mb-1">Recommendation</p><p className="text-xs text-muted-foreground leading-relaxed">{suggestion.recommendation}</p></div>
+      {suggestion.whereToGetIt && <div><p className="text-xs font-medium text-accent mb-1">Where to get it</p><p className="text-xs text-muted-foreground leading-relaxed">{suggestion.whereToGetIt}</p></div>}
+      <div><p className="text-xs font-medium text-accent mb-1">Impact on your file</p><p className="text-xs text-muted-foreground leading-relaxed">{suggestion.impact}</p></div>
       {suggestion.ctas && suggestion.ctas.length > 0 && (
         <div className="flex flex-wrap gap-2 pt-1">
           {suggestion.ctas.map((cta, i) => (
-            <Button
-              key={i}
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs gap-1.5 border-accent/40 text-accent hover:bg-accent/10"
-              asChild
-            >
-              <a href={cta.href} target="_blank" rel="noopener noreferrer">
-                {cta.label}
-                <ExternalLink className="w-3 h-3" />
-              </a>
+            <Button key={i} variant="outline" size="sm" className="h-8 text-xs gap-1.5 border-accent/40 text-accent hover:bg-accent/10" asChild>
+              <a href={cta.href} target="_blank" rel="noopener noreferrer">{cta.label}<ExternalLink className="w-3 h-3" /></a>
             </Button>
           ))}
         </div>
       )}
-      {suggestion.disclaimer && (
-        <p className="text-[11px] text-muted-foreground/70 italic leading-relaxed pt-1">{suggestion.disclaimer}</p>
-      )}
+      {suggestion.disclaimer && <p className="text-[11px] text-muted-foreground/70 italic leading-relaxed pt-1">{suggestion.disclaimer}</p>}
     </div>
   );
 
@@ -516,94 +739,50 @@ function SuggestionCard({ suggestion, isMobile }: { suggestion: SuggestionConten
     );
   }
 
-  return (
-    <div className="mt-2 rounded-md border-l-4 border-accent/60 bg-muted/40 p-4">
-      {content}
-    </div>
-  );
+  return <div className="mt-2 rounded-md border-l-4 border-accent/60 bg-muted/40 p-4">{content}</div>;
 }
 
-/* ─── Component 1: File Completion Scorecard ─── */
-function FileCompletionScorecard({ analysis }: { analysis: ReturnType<typeof analyzeFile> }) {
-  const isMobile = useIsMobile();
-
+/* ─── File Completion Scorecard ─── */
+function FileCompletionScorecard({ analysis, isMobile, bureauLabel }: { analysis: FileAnalysis; isMobile?: boolean; bureauLabel?: string }) {
   return (
     <Card className="p-6 bg-card border-border">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
         <div>
-          <h3 className="font-semibold text-foreground">File Structure Scorecard</h3>
+          <h3 className="font-semibold text-foreground">
+            File Structure Scorecard{bureauLabel ? ` — ${bureauLabel}` : ""}
+          </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {analysis.completedCount} of {analysis.totalCategories} account types met ·{" "}
-            {analysis.totalOpen} open accounts of 10 target
+            {analysis.completedCount} of {analysis.totalCategories} account types met · {analysis.totalOpen} open accounts of 10 target
           </p>
         </div>
         <div className="flex items-center gap-3 min-w-[160px]">
           <Progress value={analysis.completionPct} className="h-2.5 flex-1" />
-          <span className="text-sm font-bold text-foreground whitespace-nowrap">
-            {analysis.completionPct}%
-          </span>
+          <span className="text-sm font-bold text-foreground whitespace-nowrap">{analysis.completionPct}%</span>
         </div>
       </div>
 
       {analysis.totalOpen > 10 && (
         <div className="rounded-md bg-amber-500/10 border border-amber-500/30 px-4 py-2.5 mb-4">
-          <p className="text-xs text-amber-300">
-            You have {analysis.totalOpen} open accounts. Quality matters more than quantity — review
-            for redundant accounts that may signal credit-seeking behavior.
-          </p>
+          <p className="text-xs text-amber-300">You have {analysis.totalOpen} open accounts. Quality matters more than quantity.</p>
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {analysis.categories.map((cat) => (
-          <div
-            key={cat.key}
-            className={`rounded-lg border p-4 transition-colors ${
-              cat.status === "complete"
-                ? "border-fundability-excellent/30 bg-fundability-excellent/5"
-                : cat.status === "warning"
-                ? "border-amber-500/30 bg-amber-500/5"
-                : "border-border bg-muted/30"
-            }`}
-          >
+        {analysis.categories.map(cat => (
+          <div key={cat.key} className={`rounded-lg border p-4 transition-colors ${cat.status === "complete" ? "border-fundability-excellent/30 bg-fundability-excellent/5" : cat.status === "warning" ? "border-amber-500/30 bg-amber-500/5" : "border-border bg-muted/30"}`}>
             <div className="flex items-start gap-3">
               <div className="mt-0.5">
-                {cat.status === "complete" ? (
-                  <CheckCircle className="w-5 h-5 text-fundability-excellent" />
-                ) : cat.status === "warning" ? (
-                  <AlertTriangle className="w-5 h-5 text-amber-500" />
-                ) : (
-                  <Circle className="w-5 h-5 text-muted-foreground" />
-                )}
+                {cat.status === "complete" ? <CheckCircle className="w-5 h-5 text-fundability-excellent" /> : cat.status === "warning" ? <AlertTriangle className="w-5 h-5 text-amber-500" /> : <Circle className="w-5 h-5 text-muted-foreground" />}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   {cat.icon}
                   <span className="font-medium text-sm text-foreground">{cat.label}</span>
-                  <Badge
-                    variant={
-                      cat.status === "complete"
-                        ? "default"
-                        : cat.status === "warning"
-                        ? "secondary"
-                        : "outline"
-                    }
-                    className={`text-[10px] px-1.5 py-0 ${
-                      cat.status === "complete"
-                        ? "bg-fundability-excellent/20 text-fundability-excellent border-fundability-excellent/30"
-                        : cat.status === "warning"
-                        ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
-                        : ""
-                    }`}
-                  >
+                  <Badge variant={cat.status === "complete" ? "default" : cat.status === "warning" ? "secondary" : "outline"} className={`text-[10px] px-1.5 py-0 ${cat.status === "complete" ? "bg-fundability-excellent/20 text-fundability-excellent border-fundability-excellent/30" : cat.status === "warning" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : ""}`}>
                     {cat.current}
                   </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                  {cat.detail}
-                </p>
-
-                {/* Suggestion card for gaps */}
+                <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{cat.detail}</p>
                 {cat.suggestion && <SuggestionCard suggestion={cat.suggestion} isMobile={!!isMobile} />}
               </div>
             </div>
@@ -614,15 +793,14 @@ function FileCompletionScorecard({ analysis }: { analysis: ReturnType<typeof ana
   );
 }
 
-/* ─── Component 2: Comparable Credit Panel ─── */
-function ComparableCreditPanel({ comparable }: { comparable: ComparableAccount[] }) {
+/* ─── Comparable Credit Panel ─── */
+function ComparableCreditPanel({ comparable, bureauLabel }: { comparable: ComparableAccount[]; bureauLabel?: string }) {
   return (
     <Card className="p-6 bg-card border-border">
-      <h3 className="font-semibold text-foreground mb-1">Comparable Credit History</h3>
-      <p className="text-xs text-muted-foreground mb-4">
-        Closed accounts in good standing that lenders use to determine future approval amounts.
-        Personal credit uses a 3× multiplier for installment tradelines.
-      </p>
+      <h3 className="font-semibold text-foreground mb-1">
+        Comparable Credit History{bureauLabel ? ` — ${bureauLabel}` : ""}
+      </h3>
+      <p className="text-xs text-muted-foreground mb-4">Closed accounts in good standing. Personal credit uses a 3× multiplier.</p>
       <div className="space-y-3">
         {comparable.map((c, i) => (
           <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-border p-3 gap-2">
@@ -631,19 +809,11 @@ function ComparableCreditPanel({ comparable }: { comparable: ComparableAccount[]
               <p className="text-xs text-accent">{c.label}</p>
             </div>
             <div className="text-right">
-              <p className="text-sm font-semibold text-foreground">
-                ${c.amount.toLocaleString()}
-              </p>
+              <p className="text-sm font-semibold text-foreground">${c.amount.toLocaleString()}</p>
               {c.type !== "revolving" && c.type !== "mortgage" && (
-                <p className="text-xs text-muted-foreground">
-                  Projected approval: up to ${c.projectedApproval.toLocaleString()}
-                </p>
+                <p className="text-xs text-muted-foreground">Projected approval: up to ${c.projectedApproval.toLocaleString()}</p>
               )}
-              {c.type === "revolving" && (
-                <p className="text-xs text-muted-foreground">
-                  Comparable revolving limit: ${c.amount.toLocaleString()}
-                </p>
-              )}
+              {c.type === "revolving" && <p className="text-xs text-muted-foreground">Comparable revolving limit: ${c.amount.toLocaleString()}</p>}
             </div>
           </div>
         ))}
@@ -652,32 +822,20 @@ function ComparableCreditPanel({ comparable }: { comparable: ComparableAccount[]
   );
 }
 
-/* ─── Component 3: Credit Age Gauge ─── */
-function CreditAgeGauge({ analysis }: { analysis: ReturnType<typeof analyzeFile> }) {
-  const targetYears = 5;
-  const pct = Math.min((analysis.avgAgeYears / targetYears) * 100, 100);
-  const isHealthy = analysis.avgAgeYears >= targetYears;
+/* ─── Credit Age Gauge ─── */
+function CreditAgeGauge({ analysis, bureauLabel }: { analysis: FileAnalysis; bureauLabel?: string }) {
+  const pct = Math.min((analysis.avgAgeYears / 5) * 100, 100);
+  const isHealthy = analysis.avgAgeYears >= 5;
 
   return (
     <Card className="p-6 bg-card border-border">
-      <h3 className="font-semibold text-foreground mb-1">Credit Age</h3>
-      <p className="text-xs text-muted-foreground mb-4">
-        Target: 5+ years average across all accounts.
-      </p>
+      <h3 className="font-semibold text-foreground mb-1">Credit Age{bureauLabel ? ` — ${bureauLabel}` : ""}</h3>
+      <p className="text-xs text-muted-foreground mb-4">Target: 5+ years average.</p>
 
       <div className="flex items-center gap-4 mb-4">
         <div className="flex-1">
           <div className="relative h-4 rounded-full bg-secondary overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-700 ${
-                isHealthy ? "bg-fundability-excellent" : "bg-amber-500"
-              }`}
-              style={{ width: `${pct}%` }}
-            />
-            <div
-              className="absolute top-0 bottom-0 w-0.5 bg-foreground/40"
-              style={{ left: "100%" }}
-            />
+            <div className={`h-full rounded-full transition-all duration-700 ${isHealthy ? "bg-fundability-excellent" : "bg-amber-500"}`} style={{ width: `${pct}%` }} />
           </div>
           <div className="flex justify-between mt-1">
             <span className="text-[10px] text-muted-foreground">0 yrs</span>
@@ -685,48 +843,26 @@ function CreditAgeGauge({ analysis }: { analysis: ReturnType<typeof analyzeFile>
           </div>
         </div>
         <div className="text-right">
-          <span className={`text-2xl font-bold ${isHealthy ? "text-fundability-excellent" : "text-amber-500"}`}>
-            {analysis.avgAgeYears}
-          </span>
+          <span className={`text-2xl font-bold ${isHealthy ? "text-fundability-excellent" : "text-amber-500"}`}>{analysis.avgAgeYears}</span>
           <span className="text-xs text-muted-foreground ml-1">years</span>
         </div>
       </div>
 
-      {isHealthy ? (
-        <p className="text-xs text-fundability-excellent">
-          ✓ Your average credit age of {analysis.avgAgeYears} years is strong. Protect this by
-          limiting unnecessary new account applications.
-        </p>
-      ) : (
-        <p className="text-xs text-amber-400">
-          Your average credit age is below the 5-year target. Avoid opening new accounts
-          unnecessarily until your average age improves.
-        </p>
-      )}
+      {isHealthy
+        ? <p className="text-xs text-fundability-excellent">✓ Average of {analysis.avgAgeYears} years is strong. Protect by limiting new applications.</p>
+        : <p className="text-xs text-amber-400">Below the 5-year target. Avoid unnecessary new accounts.</p>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
         {analysis.oldestAccounts.length > 0 && (
           <div>
-            <p className="text-xs font-medium text-foreground flex items-center gap-1 mb-2">
-              <Clock className="w-3.5 h-3.5 text-fundability-excellent" /> Oldest Accounts
-            </p>
-            {analysis.oldestAccounts.map((a, i) => (
-              <p key={i} className="text-xs text-muted-foreground">
-                {a.creditor} — {Math.round(a.months / 12 * 10) / 10} yrs
-              </p>
-            ))}
+            <p className="text-xs font-medium text-foreground flex items-center gap-1 mb-2"><Clock className="w-3.5 h-3.5 text-fundability-excellent" /> Oldest</p>
+            {analysis.oldestAccounts.map((a, i) => <p key={i} className="text-xs text-muted-foreground">{a.creditor} — {Math.round(a.months / 12 * 10) / 10} yrs</p>)}
           </div>
         )}
         {analysis.newestAccounts.length > 0 && (
           <div>
-            <p className="text-xs font-medium text-foreground flex items-center gap-1 mb-2">
-              <Clock className="w-3.5 h-3.5 text-amber-500" /> Newest Accounts
-            </p>
-            {analysis.newestAccounts.map((a, i) => (
-              <p key={i} className="text-xs text-muted-foreground">
-                {a.creditor} — {Math.round(a.months / 12 * 10) / 10} yrs
-              </p>
-            ))}
+            <p className="text-xs font-medium text-foreground flex items-center gap-1 mb-2"><Clock className="w-3.5 h-3.5 text-amber-500" /> Newest</p>
+            {analysis.newestAccounts.map((a, i) => <p key={i} className="text-xs text-muted-foreground">{a.creditor} — {Math.round(a.months / 12 * 10) / 10} yrs</p>)}
           </div>
         )}
       </div>
@@ -734,69 +870,41 @@ function CreditAgeGauge({ analysis }: { analysis: ReturnType<typeof analyzeFile>
   );
 }
 
-/* ─── Component 4: Priority Action List ─── */
-function PriorityActionList({ analysis }: { analysis: ReturnType<typeof analyzeFile> }) {
+/* ─── Priority Action List ─── */
+function PriorityActionList({ analysis, bureauLabel }: { analysis: FileAnalysis; bureauLabel?: string }) {
   const priorityOrder: Record<string, number> = { critical: 0, important: 1, enhancement: 2 };
-  const gaps = analysis.categories
-    .filter((c) => c.status !== "complete")
-    .sort((a, b) => (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9));
+  const gaps = analysis.categories.filter(c => c.status !== "complete").sort((a, b) => (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9));
 
   if (gaps.length === 0) {
     return (
       <Card className="p-6 bg-card border-border">
-        <div className="flex items-center gap-2 mb-2">
-          <Target className="w-5 h-5 text-fundability-excellent" />
-          <h3 className="font-semibold text-foreground">Your Credit File Action Plan</h3>
-        </div>
-        <p className="text-sm text-fundability-excellent">
-          ✓ Your credit file meets all 10-account structure targets. Continue maintaining your accounts in good standing.
-        </p>
+        <div className="flex items-center gap-2 mb-2"><Target className="w-5 h-5 text-fundability-excellent" /><h3 className="font-semibold text-foreground">Credit File Action Plan{bureauLabel ? ` — ${bureauLabel}` : ""}</h3></div>
+        <p className="text-sm text-fundability-excellent">✓ All account type targets met. Continue maintaining accounts in good standing.</p>
       </Card>
     );
   }
 
-  const priorityLabel = (p: string) => {
-    if (p === "critical") return <Badge className="text-[10px] px-1.5 py-0 bg-red-500/20 text-red-400 border-red-500/30">Critical</Badge>;
-    if (p === "important") return <Badge className="text-[10px] px-1.5 py-0 bg-amber-500/20 text-amber-400 border-amber-500/30">Important</Badge>;
-    return <Badge className="text-[10px] px-1.5 py-0 bg-blue-500/20 text-blue-400 border-blue-500/30">Enhancement</Badge>;
-  };
-
   return (
     <Card className="p-6 bg-card border-border">
-      <div className="flex items-center gap-2 mb-1">
-        <Target className="w-5 h-5 text-accent" />
-        <h3 className="font-semibold text-foreground">Your Credit File Action Plan</h3>
-      </div>
-      <p className="text-xs text-muted-foreground mb-5">
-        Complete these items in order to build an optimal credit file. Focus on one at a time rather than applying for multiple new accounts simultaneously.
-      </p>
-
+      <div className="flex items-center gap-2 mb-1"><Target className="w-5 h-5 text-accent" /><h3 className="font-semibold text-foreground">Credit File Action Plan{bureauLabel ? ` — ${bureauLabel}` : ""}</h3></div>
+      <p className="text-xs text-muted-foreground mb-5">Complete these items in order. Focus on one at a time.</p>
       <div className="space-y-4">
         {gaps.map((gap, i) => (
           <div key={gap.key} className="flex gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold mt-0.5">
-              {i + 1}
-            </div>
+            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold mt-0.5">{i + 1}</div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <span className="text-sm font-medium text-foreground">{gap.label}</span>
-                {priorityLabel(gap.priority)}
+                <Badge className={`text-[10px] px-1.5 py-0 ${gap.priority === "critical" ? "bg-red-500/20 text-red-400 border-red-500/30" : gap.priority === "important" ? "bg-amber-500/20 text-amber-400 border-amber-500/30" : "bg-blue-500/20 text-blue-400 border-blue-500/30"}`}>
+                  {gap.priority === "critical" ? "Critical" : gap.priority === "important" ? "Important" : "Enhancement"}
+                </Badge>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">{gap.suggestion?.recommendation || gap.detail}</p>
               {gap.suggestion?.ctas && gap.suggestion.ctas.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
                   {gap.suggestion.ctas.map((cta, j) => (
-                    <Button
-                      key={j}
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs gap-1.5 border-accent/40 text-accent hover:bg-accent/10"
-                      asChild
-                    >
-                      <a href={cta.href} target="_blank" rel="noopener noreferrer">
-                        {cta.label}
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
+                    <Button key={j} variant="outline" size="sm" className="h-7 text-xs gap-1.5 border-accent/40 text-accent hover:bg-accent/10" asChild>
+                      <a href={cta.href} target="_blank" rel="noopener noreferrer">{cta.label}<ExternalLink className="w-3 h-3" /></a>
                     </Button>
                   ))}
                 </div>
@@ -805,7 +913,6 @@ function PriorityActionList({ analysis }: { analysis: ReturnType<typeof analyzeF
           </div>
         ))}
       </div>
-
       <p className="text-[11px] text-muted-foreground/60 mt-6 leading-relaxed italic">
         These suggestions are educational recommendations based on your current credit file. PME does not guarantee specific credit outcomes. Never take on debt solely to build your credit profile — only add tradelines that make sense for your financial situation.
       </p>
