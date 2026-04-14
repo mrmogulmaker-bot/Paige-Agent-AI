@@ -1055,7 +1055,8 @@ async function runStructuredExtractionAndSync(
   serviceRoleKey: string,
   lovableApiKey: string,
   supabase: any,
-  clientId: string | null = null
+  clientId: string | null = null,
+  uploadRecordId: string | null = null
 ): Promise<any> {
   console.log("Starting structured extraction from analysis...");
 
