@@ -53,6 +53,11 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/reset-password" element={
+              <React.Suspense fallback={<SuspenseFallback />}>
+                <ResetPassword />
+              </React.Suspense>
+            } />
 
             {/* New agent-first dashboard */}
             <Route path="/app" element={<AppShell />}>
