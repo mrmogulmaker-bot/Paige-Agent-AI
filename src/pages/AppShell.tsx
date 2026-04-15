@@ -9,6 +9,9 @@ import { AppNav } from "@/components/app/AppNav";
 import { QuickStatsBar } from "@/components/app/QuickStatsBar";
 import { useCreditFactors } from "@/hooks/useCreditFactors";
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
+import { SessionTimeoutWarning } from "@/components/auth/SessionTimeoutWarning";
+import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -26,6 +29,7 @@ const AppShell = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { factors } = useCreditFactors();
+  const { showWarning, staySignedIn } = useSessionTimeout();
 
   // Show context panel on non-root /app routes
   const showContextPanel = location.pathname !== "/app" || !isMobile;
@@ -74,6 +78,7 @@ const AppShell = () => {
     return (
       <>
         <AdminViewBanner />
+        <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
         <div className="h-screen flex flex-col bg-background">
           <AppNav user={activeUser} />
           <div className="flex-1 overflow-hidden">
@@ -95,6 +100,7 @@ const AppShell = () => {
   return (
     <>
       <AdminViewBanner />
+      <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
       <div className="h-screen flex flex-col bg-background">
         <AppNav user={activeUser} />
         <ResizablePanelGroup direction="horizontal" className="flex-1">
@@ -105,7 +111,7 @@ const AppShell = () => {
           <ResizablePanel defaultSize={60}>
             <div className="h-full overflow-y-auto p-6">
               {location.pathname === "/app" ? (
-                <AppDashboardHome factors={factors} />
+                <AppDashboardHome factors={factors} userId={activeUser.id} />
               ) : (
                 <Outlet context={{ user: activeUser, session }} />
               )}
@@ -119,9 +125,10 @@ const AppShell = () => {
 };
 
 // Default home content when on /app
-function AppDashboardHome({ factors }: { factors: any }) {
+function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }) {
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
+      {userId && <OnboardingChecklist userId={userId} />}
       <div>
         <h1 className="text-3xl font-bold text-foreground">Welcome Back</h1>
         <p className="text-muted-foreground mt-1">

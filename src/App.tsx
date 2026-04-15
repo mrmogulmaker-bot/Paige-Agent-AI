@@ -11,6 +11,7 @@ import CreditIntelligence from "./pages/CreditIntelligence";
 import FundingMatches from "./pages/FundingMatches";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
+const ResetPassword = React.lazy(() => import("./pages/ResetPassword"));
 import NotFound from "./pages/NotFound";
 import Unsubscribe from "./pages/Unsubscribe";
 import Terms from "./pages/Terms";
@@ -52,6 +53,11 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/reset-password" element={
+              <React.Suspense fallback={<SuspenseFallback />}>
+                <ResetPassword />
+              </React.Suspense>
+            } />
 
             {/* New agent-first dashboard */}
             <Route path="/app" element={<AppShell />}>
