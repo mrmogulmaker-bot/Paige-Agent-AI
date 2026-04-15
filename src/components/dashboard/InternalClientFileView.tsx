@@ -372,7 +372,10 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
 
         {/* Funding */}
         <TabsContent value="funding" className="mt-4">
-          <PMEFundingReadiness />
+          <div className="space-y-6">
+            <PMEFundingReadiness />
+            <AdminFundingOverride clientUserId={effectiveUserId} />
+          </div>
         </TabsContent>
 
         {/* Funding Applications */}
@@ -404,6 +407,13 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
         <TabsContent value="outcomes" className="mt-4">
           <ClientOutcomesTab clientId={clientId} clientName={fullName} />
         </TabsContent>
+
+        {/* Chat History */}
+        {client.linked_user_id && (
+          <TabsContent value="chat-history" className="mt-4">
+            <AdminChatHistory clientUserId={client.linked_user_id} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
