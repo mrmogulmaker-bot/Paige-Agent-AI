@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft, DollarSign, FileText, Mail, Brain, Upload,
-  AlertTriangle, User, Building2, Phone, AtSign, Save, Archive, ArchiveRestore, TrendingUp, ClipboardList, Database
+  AlertTriangle, User, Building2, Phone, AtSign, Save, Archive, ArchiveRestore,
+  TrendingUp, ClipboardList, Database, MessageSquare, Trash2, Edit3
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
@@ -19,6 +20,7 @@ import { DisputesManager } from "./DisputesManager";
 import { FundingApplicationLog } from "./FundingApplicationLog";
 import { ClientOutcomesTab } from "./ClientOutcomesTab";
 import { AdminAccountManagement } from "./AdminAccountManagement";
+import { AdminFactoryResetDialog, AdminChatHistory, AdminFundingOverride } from "./admin/AdminClientTools";
 import { toast } from "sonner";
 
 interface InternalClientFileViewProps {
