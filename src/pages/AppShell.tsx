@@ -78,6 +78,7 @@ const AppShell = () => {
     return (
       <>
         <AdminViewBanner />
+        <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
         <div className="h-screen flex flex-col bg-background">
           <AppNav user={activeUser} />
           <div className="flex-1 overflow-hidden">
@@ -99,6 +100,7 @@ const AppShell = () => {
   return (
     <>
       <AdminViewBanner />
+      <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
       <div className="h-screen flex flex-col bg-background">
         <AppNav user={activeUser} />
         <ResizablePanelGroup direction="horizontal" className="flex-1">
@@ -109,7 +111,7 @@ const AppShell = () => {
           <ResizablePanel defaultSize={60}>
             <div className="h-full overflow-y-auto p-6">
               {location.pathname === "/app" ? (
-                <AppDashboardHome factors={factors} />
+                <AppDashboardHome factors={factors} userId={activeUser.id} />
               ) : (
                 <Outlet context={{ user: activeUser, session }} />
               )}
