@@ -8,6 +8,7 @@ import { PaigeChat } from "@/components/app/PaigeChat";
 import { AppNav } from "@/components/app/AppNav";
 import { QuickStatsBar } from "@/components/app/QuickStatsBar";
 import { useCreditFactors } from "@/hooks/useCreditFactors";
+import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import {
   ResizablePanelGroup,
   ResizablePanel,
