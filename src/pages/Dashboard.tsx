@@ -8,6 +8,7 @@ import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { CurrentDateTime } from "@/components/dashboard/CurrentDateTime";
 import { CreditScoreOverview } from "@/components/dashboard/CreditScoreOverview";
 import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
+import { DashboardCommandCenter } from "@/components/dashboard/DashboardCommandCenter";
 import { AccelProgress } from "@/components/dashboard/AccelProgress";
 import { BuildProgress } from "@/components/dashboard/BuildProgress";
 import { PersonalBankAccountsOverview } from "@/components/dashboard/PersonalBankAccountsOverview";
