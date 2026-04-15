@@ -78,6 +78,7 @@ interface ReportUpload {
   report_type: string;
   bureau_detected: string | null;
   file_name: string;
+  file_path?: string;
   analysis_status: string;
   analysis_result: AnalysisResult | null;
   negative_items_extracted: NegativeItem[] | null;
