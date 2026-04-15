@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,10 +12,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send } from "lucide-react";
+import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
 import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
+import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { toast } from "sonner";
 
 interface InternalClient {
@@ -52,6 +54,8 @@ interface ClientManagementDashboardProps {
 }
 
 export function ClientManagementDashboard({ onViewClient, onViewInternalClient }: ClientManagementDashboardProps) {
+  const navigate = useNavigate();
+  const { setMode } = useDashboardMode();
   const [internalClients, setInternalClients] = useState<InternalClient[]>([]);
   const [authClients, setAuthClients] = useState<AuthClient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -349,6 +353,12 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => {
+                            setMode("client");
+                            navigate("/app");
+                          }}>
+                            <Eye className="w-4 h-4 mr-2" /> View as Client
+                          </DropdownMenuItem>
                           {showPromoteToInternal && (
                             <DropdownMenuItem onClick={() => moveToInternal(c)}>
                               <ArrowRightLeft className="w-4 h-4 mr-2" /> Move to Internal
@@ -537,6 +547,13 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => {
+                                    setMode("client");
+                                    navigate("/app");
+                                  }}>
+                                    <Eye className="w-4 h-4 mr-2" /> View as Client
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     className="text-destructive focus:text-destructive"
                                     onClick={() => setDeleteTarget({ type: "internal", id: c.id, name: `${c.first_name} ${c.last_name}` })}
