@@ -9,6 +9,9 @@ import { AppNav } from "@/components/app/AppNav";
 import { QuickStatsBar } from "@/components/app/QuickStatsBar";
 import { useCreditFactors } from "@/hooks/useCreditFactors";
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
+import { SessionTimeoutWarning } from "@/components/auth/SessionTimeoutWarning";
+import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
 import {
   ResizablePanelGroup,
   ResizablePanel,
