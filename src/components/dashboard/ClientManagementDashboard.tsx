@@ -64,6 +64,12 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ type: "internal" | "auth"; id: string; name: string } | null>(null);
 
+  // Invite dialog state
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<string>("user");
+  const [inviteSending, setInviteSending] = useState(false);
+
   useEffect(() => {
     fetchAllClients();
   }, []);
