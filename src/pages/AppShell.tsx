@@ -125,9 +125,10 @@ const AppShell = () => {
 };
 
 // Default home content when on /app
-function AppDashboardHome({ factors }: { factors: any }) {
+function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }) {
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
+      {userId && <OnboardingChecklist userId={userId} />}
       <div>
         <h1 className="text-3xl font-bold text-foreground">Welcome Back</h1>
         <p className="text-muted-foreground mt-1">
