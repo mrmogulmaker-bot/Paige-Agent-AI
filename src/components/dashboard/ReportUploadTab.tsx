@@ -415,6 +415,22 @@ export function ReportUploadTab({ clientUserId }: ReportUploadTabProps) {
                       )}
                     </Button>
                   )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteUpload(upload);
+                    }}
+                    disabled={deletingUpload === upload.id}
+                  >
+                    {deletingUpload === upload.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3 h-3" />
+                    )}
+                  </Button>
                 </div>
               </div>
             ))}
