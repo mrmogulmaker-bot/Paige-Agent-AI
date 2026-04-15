@@ -625,7 +625,7 @@ function NewDisputeDialog({ type, onCreated, clientId }: { type: "personal" | "b
 }
 
 // ========== Disputes List ==========
-const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: string; onRefresh: () => void }) => {
+const DisputesList = ({ disputes, type, onRefresh, onEdit }: { disputes: any[]; type: string; onRefresh: () => void; onEdit?: (d: any) => void }) => {
   const [detailsDispute, setDetailsDispute] = useState<any>(null);
   const [letterDispute, setLetterDispute] = useState<any>(null);
   const [outcomeDispute, setOutcomeDispute] = useState<any>(null);
