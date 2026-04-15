@@ -99,6 +99,7 @@ export function ReportUploadTab({ clientUserId }: ReportUploadTabProps) {
   const [isAnalyzing, setIsAnalyzing] = useState<string | null>(null);
   const [selectedUpload, setSelectedUpload] = useState<ReportUpload | null>(null);
   const [generatingDispute, setGeneratingDispute] = useState<string | null>(null);
+  const [deletingUpload, setDeletingUpload] = useState<string | null>(null);
 
   const fetchUploads = useCallback(async () => {
     const userId = clientUserId || (await supabase.auth.getUser()).data.user?.id;
