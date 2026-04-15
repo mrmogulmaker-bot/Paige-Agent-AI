@@ -189,6 +189,12 @@ export function ReportUploadTab({ clientUserId }: ReportUploadTabProps) {
   const triggerAnalysis = async (uploadId: string) => {
     setIsAnalyzing(uploadId);
     try {
+      const currentUser = (await supabase.auth.getUser()).data.user;
+      const session = (await supabase.auth.getSession()).data.session;
+      if (!currentUser || !session) throw new Error('Not authenticated');
+
+      const targetUserId = clientUserId || currentUser.id;
+
       const { data, error } = await supabase.functions.invoke('analyze-credit-report', {
         body: { uploadId },
       });
@@ -198,7 +204,63 @@ export function ReportUploadTab({ clientUserId }: ReportUploadTabProps) {
       if (data?.error) {
         toast.error(data.error);
       } else {
-        toast.success('Credit report analysis complete!');
+        toast.success('Credit report analysis complete! Syncing data...');
+
+        // Sync extracted data to platform tables (scores, accounts, negatives, inquiries)
+        const analysis = data?.analysis;
+        if (analysis) {
+          try {
+            await supabase.functions.invoke('sync-credit-report-data', {
+              body: {
+                target_user_id: targetUserId,
+                report_type: analysis.report_type || 'consumer',
+                scores: analysis.scores,
+                score_model: analysis.score_model,
+                negative_items: (analysis.negative_items || []).map((item: any) => ({
+                  creditor_name: item.creditor_name,
+                  account_number: item.account_number || item.account_number_masked || null,
+                  account_number_masked: item.account_number || item.account_number_masked || null,
+                  bureau: item.bureau || item.bureaus_reporting?.[0] || 'unknown',
+                  item_type: item.category || 'collection',
+                  amount: item.amount,
+                  original_amount: item.original_amount || null,
+                  date_of_occurrence: item.date_of_occurrence,
+                  date_reported: item.date_reported,
+                  dispute_basis: item.dispute_reason_suggestion,
+                  estimated_score_impact: item.estimated_score_impact,
+                  status: item.status || 'active',
+                })),
+                hard_inquiries: analysis.hard_inquiries || [],
+                positive_accounts: (analysis.positive_accounts || []).map((acct: any) => ({
+                  creditor: acct.creditor,
+                  account_number: acct.account_number || null,
+                  account_type: acct.account_type,
+                  balance: acct.balance,
+                  credit_limit: acct.credit_limit,
+                  original_amount: acct.original_amount || null,
+                  utilization: acct.utilization,
+                  payment_status: acct.payment_status,
+                  payment_history_percentage: acct.payment_history_percentage || null,
+                  account_open_date: acct.opened_date,
+                  date_closed: acct.date_closed || null,
+                  is_open: acct.is_open,
+                  responsibility: acct.responsibility || null,
+                })),
+                discrepancies: analysis.cross_bureau_discrepancies || [],
+                priority_disputes: [],
+                report_upload_id: uploadId,
+                fraud_alerts: analysis.fraud_alerts,
+                security_freezes: analysis.security_freezes,
+                validation_flags: data?.validation_flags || [],
+              },
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            toast.success('All data synced across the platform!');
+          } catch (syncErr) {
+            console.error('Sync error:', syncErr);
+            toast.error('Analysis complete but data sync failed. You can retry from the report.');
+          }
+        }
       }
       await fetchUploads();
     } catch (error) {
