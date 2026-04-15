@@ -25,6 +25,7 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // Verify caller is admin
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No authorization header");
 
@@ -42,12 +43,66 @@ const handler = async (req: Request): Promise<Response> => {
     if (!roleData) throw new Error("Insufficient permissions");
 
     const { email, role }: InvitationRequest = await req.json();
-
     if (!email || !role) throw new Error("Email and role are required");
     if (!VALID_ROLES.includes(role)) throw new Error(`Invalid role: ${role}`);
 
     console.log(`Creating invitation for ${email} with role ${role}`);
 
+    // Get inviter's name for the email
+    const { data: inviterProfile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("user_id", user.id)
+      .single();
+    const inviterName = inviterProfile?.full_name || user.email || "An administrator";
+
+    // 1. Check if user already exists
+    const { data: existingUsers } = await supabase.auth.admin.listUsers();
+    const existingUser = existingUsers?.users?.find(u => u.email === email);
+
+    let targetUserId: string;
+
+    if (existingUser) {
+      // User already exists — just assign the role
+      targetUserId = existingUser.id;
+      console.log("User already exists, assigning role:", targetUserId);
+    } else {
+      // 2. Create the user account (pre-populate with email, confirmed)
+      const tempPassword = crypto.randomUUID() + "Aa1!"; // Strong temp password
+      const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
+        email,
+        password: tempPassword,
+        email_confirm: true, // Pre-confirm so they don't need email verification
+        user_metadata: { invited_by: user.id, invited_role: role },
+      });
+
+      if (createError) throw new Error(`Failed to create user: ${createError.message}`);
+      targetUserId = newUser.user.id;
+      console.log("Created new user:", targetUserId);
+    }
+
+    // 3. Assign the role
+    await supabase
+      .from("user_roles")
+      .upsert({ user_id: targetUserId, role }, { onConflict: "user_id,role" });
+
+    // 4. Generate a password reset link so the invitee can set their own password
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: "recovery",
+      email,
+      options: {
+        redirectTo: "https://paigeagent.ai/auth",
+      },
+    });
+
+    if (linkError) {
+      console.error("Failed to generate recovery link:", linkError);
+    }
+
+    // Build the invite URL — use the magic link if available, otherwise fallback to auth page
+    const inviteUrl = linkData?.properties?.action_link || `https://paigeagent.ai/auth?mode=login`;
+
+    // 5. Create invitation record for audit trail
     const rawToken = Array.from(crypto.getRandomValues(new Uint8Array(32)))
       .map(b => b.toString(16).padStart(2, '0')).join('');
 
@@ -59,22 +114,25 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (inviteError) throw inviteError;
 
-    console.log("Invitation created:", invitation.id);
+    // Mark as accepted immediately since account is pre-created
+    await supabase
+      .from("invitations")
+      .update({ accepted_at: new Date().toISOString() })
+      .eq("id", invitation.id);
 
+    // 6. Send branded invitation email
     const roleLabels: Record<string, string> = {
       admin: "Administrator", coach: "Coach", moderator: "Moderator",
       affiliate: "Affiliate Partner", user: "Client",
     };
     const roleLabel = roleLabels[role] || role;
-    const inviteUrl = `https://paigeagent.ai/auth?invite=${rawToken}`;
 
-    // Send via transactional email system (uses verified notify.paigeagent.ai domain)
     const { error: emailError } = await supabase.functions.invoke("send-transactional-email", {
       body: {
         templateName: "role-invitation",
         recipientEmail: email,
         idempotencyKey: `invite-${invitation.id}`,
-        templateData: { role: roleLabel, inviteUrl },
+        templateData: { role: roleLabel, inviteUrl, invitedBy: inviterName },
       },
     });
 
@@ -85,8 +143,17 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("Invitation email queued successfully");
     }
 
+    // 7. Log audit event
+    await supabase.from("audit_logs").insert({
+      user_id: user.id,
+      entity: "invitation",
+      action: "user_invited",
+      entity_id: invitation.id,
+      data: { invited_email: email, role, target_user_id: targetUserId },
+    });
+
     return new Response(
-      JSON.stringify({ success: true, invitation, emailSent }),
+      JSON.stringify({ success: true, invitation, emailSent, userCreated: !existingUser }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {

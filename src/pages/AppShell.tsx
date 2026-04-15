@@ -8,6 +8,7 @@ import { PaigeChat } from "@/components/app/PaigeChat";
 import { AppNav } from "@/components/app/AppNav";
 import { QuickStatsBar } from "@/components/app/QuickStatsBar";
 import { useCreditFactors } from "@/hooks/useCreditFactors";
+import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -71,43 +72,49 @@ const AppShell = () => {
   // Mobile layout: full-screen chat with bottom nav
   if (isMobile) {
     return (
-      <div className="h-screen flex flex-col bg-background">
-        <AppNav user={activeUser} />
-        <div className="flex-1 overflow-hidden">
-          {location.pathname === "/app" ? (
-            <PaigeChat user={activeUser} session={session} />
-          ) : (
-            <div className="h-full overflow-y-auto p-4">
-              <Outlet context={{ user: activeUser, session }} />
-            </div>
-          )}
+      <>
+        <AdminViewBanner />
+        <div className="h-screen flex flex-col bg-background">
+          <AppNav user={activeUser} />
+          <div className="flex-1 overflow-hidden">
+            {location.pathname === "/app" ? (
+              <PaigeChat user={activeUser} session={session} />
+            ) : (
+              <div className="h-full overflow-y-auto p-4">
+                <Outlet context={{ user: activeUser, session }} />
+              </div>
+            )}
+          </div>
+          <QuickStatsBar factors={factors} />
         </div>
-        <QuickStatsBar factors={factors} />
-      </div>
+      </>
     );
   }
 
   // Desktop layout: resizable panels
   return (
-    <div className="h-screen flex flex-col bg-background">
-      <AppNav user={activeUser} />
-      <ResizablePanelGroup direction="horizontal" className="flex-1">
-        <ResizablePanel defaultSize={40} minSize={30} maxSize={60}>
-          <PaigeChat user={activeUser} session={session} />
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={60}>
-          <div className="h-full overflow-y-auto p-6">
-            {location.pathname === "/app" ? (
-              <AppDashboardHome factors={factors} />
-            ) : (
-              <Outlet context={{ user: activeUser, session }} />
-            )}
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
-      <QuickStatsBar factors={factors} />
-    </div>
+    <>
+      <AdminViewBanner />
+      <div className="h-screen flex flex-col bg-background">
+        <AppNav user={activeUser} />
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
+          <ResizablePanel defaultSize={40} minSize={30} maxSize={60}>
+            <PaigeChat user={activeUser} session={session} />
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={60}>
+            <div className="h-full overflow-y-auto p-6">
+              {location.pathname === "/app" ? (
+                <AppDashboardHome factors={factors} />
+              ) : (
+                <Outlet context={{ user: activeUser, session }} />
+              )}
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+        <QuickStatsBar factors={factors} />
+      </div>
+    </>
   );
 };
 
