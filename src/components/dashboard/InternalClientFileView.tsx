@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft, DollarSign, FileText, Mail, Brain, Upload,
-  AlertTriangle, User, Building2, Phone, AtSign, Save, Archive, ArchiveRestore, TrendingUp, ClipboardList, Database
+  AlertTriangle, User, Building2, Phone, AtSign, Save, Archive, ArchiveRestore,
+  TrendingUp, ClipboardList, Database, MessageSquare, Trash2, Edit3
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
@@ -19,6 +20,7 @@ import { DisputesManager } from "./DisputesManager";
 import { FundingApplicationLog } from "./FundingApplicationLog";
 import { ClientOutcomesTab } from "./ClientOutcomesTab";
 import { AdminAccountManagement } from "./AdminAccountManagement";
+import { AdminFactoryResetDialog, AdminChatHistory, AdminFundingOverride } from "./admin/AdminClientTools";
 import { toast } from "sonner";
 
 interface InternalClientFileViewProps {
@@ -48,6 +50,7 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<ClientRecord>>({});
   const [saving, setSaving] = useState(false);
+  const [showFactoryReset, setShowFactoryReset] = useState(false);
 
   // Credit scores from profiles (if linked) or credit_factor_scores
   const [scores, setScores] = useState<{ eq: number; ex: number; tu: number }>({ eq: 0, ex: 0, tu: 0 });
@@ -180,8 +183,22 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
               <><Archive className="w-4 h-4 mr-1" /> Archive</>
             )}
           </Button>
+          {client.linked_user_id && (
+            <Button size="sm" variant="destructive" onClick={() => setShowFactoryReset(true)}>
+              <Trash2 className="w-4 h-4 mr-1" /> Factory Reset
+            </Button>
+          )}
         </div>
       </div>
+
+      {client.linked_user_id && (
+        <AdminFactoryResetDialog
+          clientUserId={client.linked_user_id}
+          clientName={fullName}
+          open={showFactoryReset}
+          onOpenChange={setShowFactoryReset}
+        />
+      )}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -214,6 +231,14 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           <TabsTrigger value="memory" className="text-xs">
             <Brain className="w-3 h-3 mr-1" /> Memory
           </TabsTrigger>
+          <TabsTrigger value="outcomes" className="text-xs">
+            <TrendingUp className="w-3 h-3 mr-1" /> Outcomes
+          </TabsTrigger>
+          {client.linked_user_id && (
+            <TabsTrigger value="chat-history" className="text-xs">
+              <MessageSquare className="w-3 h-3 mr-1" /> Chat
+            </TabsTrigger>
+          )}
           <TabsTrigger value="outcomes" className="text-xs">
             <TrendingUp className="w-3 h-3 mr-1" /> Outcomes
           </TabsTrigger>
@@ -347,7 +372,10 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
 
         {/* Funding */}
         <TabsContent value="funding" className="mt-4">
-          <PMEFundingReadiness />
+          <div className="space-y-6">
+            <PMEFundingReadiness />
+            <AdminFundingOverride clientUserId={effectiveUserId} />
+          </div>
         </TabsContent>
 
         {/* Funding Applications */}
@@ -379,6 +407,13 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
         <TabsContent value="outcomes" className="mt-4">
           <ClientOutcomesTab clientId={clientId} clientName={fullName} />
         </TabsContent>
+
+        {/* Chat History */}
+        {client.linked_user_id && (
+          <TabsContent value="chat-history" className="mt-4">
+            <AdminChatHistory clientUserId={client.linked_user_id} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

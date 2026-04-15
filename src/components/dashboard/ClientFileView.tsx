@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain, TrendingUp, Database, User, Phone, AtSign, MapPin, Calendar, Shield } from "lucide-react";
+import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain, TrendingUp, Database, User, Phone, AtSign, MapPin, Calendar, Shield, MessageSquare, Trash2, Edit3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
 import { OutreachCenter } from "./OutreachCenter";
@@ -11,6 +11,8 @@ import { PMEFundingReadiness } from "./PMEFundingReadiness";
 import { ClientMemoryTab } from "./ClientMemoryTab";
 import { ClientOutcomesTab } from "./ClientOutcomesTab";
 import { AdminAccountManagement } from "./AdminAccountManagement";
+import { DisputesManager } from "./DisputesManager";
+import { AdminFactoryResetDialog, AdminChatHistory, AdminFundingOverride } from "./admin/AdminClientTools";
 
 interface ClientFileViewProps {
   clientUserId: string;
@@ -46,6 +48,8 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
   const [roles, setRoles] = useState<string[]>([]);
   const [negativeCount, setNegativeCount] = useState(0);
   const [disputeCount, setDisputeCount] = useState(0);
+  const [showFactoryReset, setShowFactoryReset] = useState(false);
+
 
   useEffect(() => {
     fetchProfile();
@@ -143,7 +147,19 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
             )}
           </div>
         </div>
+        {userRole === "admin" && (
+          <Button variant="destructive" size="sm" onClick={() => setShowFactoryReset(true)}>
+            <Trash2 className="w-4 h-4 mr-1" /> Factory Reset
+          </Button>
+        )}
       </div>
+
+      <AdminFactoryResetDialog
+        clientUserId={clientUserId}
+        clientName={profile?.full_name || "Client"}
+        open={showFactoryReset}
+        onOpenChange={setShowFactoryReset}
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex flex-wrap h-auto gap-1">
@@ -155,6 +171,9 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           </TabsTrigger>
           <TabsTrigger value="account-mgmt" className="text-xs">
             <Database className="w-3 h-3 mr-1" /> Account Mgmt
+          </TabsTrigger>
+          <TabsTrigger value="disputes" className="text-xs">
+            <AlertTriangle className="w-3 h-3 mr-1" /> Disputes
           </TabsTrigger>
           <TabsTrigger value="funding" className="text-xs">
             <DollarSign className="w-3 h-3 mr-1" /> Funding Readiness
@@ -170,6 +189,9 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           </TabsTrigger>
           <TabsTrigger value="outcomes" className="text-xs">
             <TrendingUp className="w-3 h-3 mr-1" /> Outcomes
+          </TabsTrigger>
+          <TabsTrigger value="chat-history" className="text-xs">
+            <MessageSquare className="w-3 h-3 mr-1" /> Chat
           </TabsTrigger>
           <TabsTrigger value="notes" className="text-xs">
             <StickyNote className="w-3 h-3 mr-1" /> Notes
@@ -285,8 +307,15 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           <AdminAccountManagement clientUserId={clientUserId} userRole={userRole} />
         </TabsContent>
 
+        <TabsContent value="disputes" className="mt-4">
+          <DisputesManager personalOnly clientId={clientUserId} />
+        </TabsContent>
+
         <TabsContent value="funding" className="mt-4">
-          <PMEFundingReadiness />
+          <div className="space-y-6">
+            <PMEFundingReadiness />
+            {userRole === "admin" && <AdminFundingOverride clientUserId={clientUserId} />}
+          </div>
         </TabsContent>
 
         <TabsContent value="documents" className="mt-4">
@@ -309,6 +338,10 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           <ClientOutcomesTab clientId={clientUserId} clientName={profile?.full_name || "Client"} />
         </TabsContent>
 
+        <TabsContent value="chat-history" className="mt-4">
+          <AdminChatHistory clientUserId={clientUserId} />
+        </TabsContent>
+
         <TabsContent value="notes" className="mt-4">
           <Card>
             <CardContent className="py-12 text-center">
@@ -316,6 +349,8 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
             </CardContent>
           </Card>
         </TabsContent>
+
+
       </Tabs>
     </div>
   );
