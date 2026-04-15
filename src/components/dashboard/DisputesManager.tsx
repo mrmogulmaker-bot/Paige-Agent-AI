@@ -707,8 +707,10 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
 export function DisputesManager({ personalOnly, businessOnly, clientId }: DisputesManagerProps) {
   const queryClient = useQueryClient();
   const { data: disputes, isLoading } = useDisputes(clientId);
+  const { data: negItems } = useNegativeItems(clientId);
   const { data: activeInfo } = useDisputeClientInfo(clientId);
   const [roundDialogOpen, setRoundDialogOpen] = useState(false);
+  const [editingDispute, setEditingDispute] = useState<any>(null);
 
   const handleRefresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["disputes", clientId || "self"] });
