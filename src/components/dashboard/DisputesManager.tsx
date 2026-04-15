@@ -671,10 +671,11 @@ const DisputesList = ({ disputes, type, onRefresh, onEdit }: { disputes: any[]; 
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                   <div><p className="text-muted-foreground text-xs">Reason</p><p className="font-medium line-clamp-2 text-xs">{dispute.reason_code}</p></div>
                   <div><p className="text-muted-foreground text-xs">Created</p><p className="font-medium text-xs">{dispute.created_at ? new Date(dispute.created_at).toLocaleDateString() : "—"}</p></div>
                   {dispute.account_number_masked && <div><p className="text-muted-foreground text-xs">Account #</p><p className="font-medium text-xs">{dispute.account_number_masked}</p></div>}
+                  {(dispute as any).amount && <div><p className="text-muted-foreground text-xs">Amount</p><p className="font-medium text-xs">${Number((dispute as any).amount).toLocaleString()}</p></div>}
                 </div>
                 <div className="mt-3 flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setDetailsDispute(dispute)}><Eye className="w-3 h-3 mr-1" /> Details</Button>
