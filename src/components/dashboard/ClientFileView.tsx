@@ -49,9 +49,7 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
   const [negativeCount, setNegativeCount] = useState(0);
   const [disputeCount, setDisputeCount] = useState(0);
   const [showFactoryReset, setShowFactoryReset] = useState(false);
-  const [roles, setRoles] = useState<string[]>([]);
-  const [negativeCount, setNegativeCount] = useState(0);
-  const [disputeCount, setDisputeCount] = useState(0);
+
 
   useEffect(() => {
     fetchProfile();
