@@ -678,8 +678,11 @@ const DisputesList = ({ disputes, type, onRefresh, onEdit }: { disputes: any[]; 
                 </div>
                 <div className="mt-3 flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setDetailsDispute(dispute)}><Eye className="w-3 h-3 mr-1" /> Details</Button>
+                  {dispute.status === "draft" && (dispute as any).is_auto_staged && onEdit && (
+                    <Button variant="outline" size="sm" onClick={() => onEdit(dispute)}><Pencil className="w-3 h-3 mr-1" /> Edit</Button>
+                  )}
                   {dispute.status === "draft" && (
-                    <Button variant="outline" size="sm" onClick={() => setLetterDispute(dispute)}><FileText className="w-3 h-3 mr-1" /> Single Letter</Button>
+                    <Button variant="outline" size="sm" onClick={() => setLetterDispute(dispute)}><Send className="w-3 h-3 mr-1" /> Send</Button>
                   )}
                   {dispute.status !== "draft" && dispute.status !== "resolved" && dispute.status !== "rejected" && (
                     <Button variant="outline" size="sm" onClick={() => setOutcomeDispute(dispute)}><CheckCircle2 className="w-3 h-3 mr-1" /> Record Outcome</Button>
