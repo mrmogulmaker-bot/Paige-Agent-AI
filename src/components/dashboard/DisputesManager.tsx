@@ -756,15 +756,30 @@ export function DisputesManager({ personalOnly, businessOnly, clientId }: Disput
     );
   };
 
+  const autoStagedDisputes = allDisputes.filter(d => (d as any).is_auto_staged && d.status === "draft");
+
+  const handleStartDisputes = () => {
+    if (autoStagedDisputes.length > 0) {
+      setEditingDispute(autoStagedDisputes[0]);
+    }
+  };
+
   const renderContent = (type: "personal" | "business") => (
     <div className="space-y-6">
+      {type === "personal" && (
+        <DisputeStrategyPanel
+          negativeItems={negItems || []}
+          autoStagedDisputes={autoStagedDisputes}
+          onStartDisputes={handleStartDisputes}
+        />
+      )}
       {type === "personal" && <PersonalInfoAudit clientId={clientId} />}
       {type === "personal" && <BureauImpactPanel clientId={clientId} />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {renderRoundButton()}
         <NewDisputeDialog type={type} onCreated={handleRefresh} clientId={clientId} />
       </div>
-      <DisputesList disputes={allDisputes} type={type} onRefresh={handleRefresh} />
+      <DisputesList disputes={allDisputes} type={type} onRefresh={handleRefresh} onEdit={setEditingDispute} />
       <RoundLettersDialog
         disputes={allDisputes}
         clientId={clientId}
@@ -775,6 +790,15 @@ export function DisputesManager({ personalOnly, businessOnly, clientId }: Disput
         onOpenChange={setRoundDialogOpen}
         onComplete={handleRefresh}
       />
+      {/* Inline edit dialog for auto-staged disputes */}
+      {editingDispute && (
+        <EditAutoStagedDialog
+          dispute={editingDispute}
+          open={!!editingDispute}
+          onOpenChange={(v) => !v && setEditingDispute(null)}
+          onSaved={handleRefresh}
+        />
+      )}
     </div>
   );
 
