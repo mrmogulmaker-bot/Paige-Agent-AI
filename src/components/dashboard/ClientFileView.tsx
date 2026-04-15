@@ -307,8 +307,15 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           <AdminAccountManagement clientUserId={clientUserId} userRole={userRole} />
         </TabsContent>
 
+        <TabsContent value="disputes" className="mt-4">
+          <DisputesManager personalOnly clientId={clientUserId} />
+        </TabsContent>
+
         <TabsContent value="funding" className="mt-4">
-          <PMEFundingReadiness />
+          <div className="space-y-6">
+            <PMEFundingReadiness />
+            {userRole === "admin" && <AdminFundingOverride clientUserId={clientUserId} />}
+          </div>
         </TabsContent>
 
         <TabsContent value="documents" className="mt-4">
@@ -321,6 +328,26 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
 
         <TabsContent value="outreach" className="mt-4">
           <OutreachCenter clientUserId={clientUserId} />
+        </TabsContent>
+
+        <TabsContent value="memory" className="mt-4">
+          <ClientMemoryTab clientUserId={clientUserId} />
+        </TabsContent>
+
+        <TabsContent value="outcomes" className="mt-4">
+          <ClientOutcomesTab clientId={clientUserId} clientName={profile?.full_name || "Client"} />
+        </TabsContent>
+
+        <TabsContent value="chat-history" className="mt-4">
+          <AdminChatHistory clientUserId={clientUserId} />
+        </TabsContent>
+
+        <TabsContent value="notes" className="mt-4">
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground">Client notes coming soon</p>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="memory" className="mt-4">
