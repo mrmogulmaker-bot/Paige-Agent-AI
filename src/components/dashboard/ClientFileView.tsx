@@ -350,21 +350,7 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           </Card>
         </TabsContent>
 
-        <TabsContent value="memory" className="mt-4">
-          <ClientMemoryTab clientUserId={clientUserId} />
-        </TabsContent>
 
-        <TabsContent value="outcomes" className="mt-4">
-          <ClientOutcomesTab clientId={clientUserId} clientName={profile?.full_name || "Client"} />
-        </TabsContent>
-
-        <TabsContent value="notes" className="mt-4">
-          <Card>
-            <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">Client notes coming soon</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
     </div>
   );
