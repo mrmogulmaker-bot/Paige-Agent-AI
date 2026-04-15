@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Clock, CheckCircle2, XCircle, User, Building2, Loader2, Eye, Download, Copy, Mail, AlertTriangle, Send } from "lucide-react";
+import { Plus, FileText, Clock, CheckCircle2, XCircle, User, Building2, Loader2, Eye, Download, Copy, Mail, AlertTriangle, Send, Pencil } from "lucide-react";
 import { DisputeOutcomeDialog } from "./DisputeOutcomeDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { AccountTypeBadge, normalizeAccountType, getStatutoryLanguageByType } from "./disputes/AccountTypeBadge";
 import { PersonalInfoAudit } from "./disputes/PersonalInfoAudit";
 import { BureauImpactPanel } from "./disputes/BureauImpactPanel";
+import { DisputeStrategyPanel } from "./disputes/DisputeStrategyPanel";
 
 const statusConfig: Record<string, { label: string; icon: any; color: string }> = {
   draft: { label: "Draft", icon: FileText, color: "bg-muted" },
