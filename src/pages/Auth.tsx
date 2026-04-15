@@ -117,6 +117,16 @@ const Auth = () => {
           return;
         }
 
+        // Send welcome email
+        supabase.functions.invoke("send-transactional-email", {
+          body: {
+            templateName: "welcome",
+            recipientEmail: email,
+            idempotencyKey: `welcome-${email}-${Date.now()}`,
+            templateData: { name: fullName },
+          },
+        }).catch(err => console.warn("Welcome email failed:", err));
+
         toast({
           title: "Account created!",
           description: "Welcome! Redirecting to your dashboard...",

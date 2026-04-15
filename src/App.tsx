@@ -12,6 +12,7 @@ import FundingMatches from "./pages/FundingMatches";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
+import Unsubscribe from "./pages/Unsubscribe";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import { FloatingChatbot } from "./components/FloatingChatbot";
@@ -88,6 +89,7 @@ const App = () => (
             <Route path="/dashboard" element={<Navigate to="/app" replace />} />
 
             <Route path="/admin/*" element={<Admin />} />
+            <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
