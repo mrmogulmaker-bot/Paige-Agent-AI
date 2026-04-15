@@ -11,6 +11,7 @@ import CreditIntelligence from "./pages/CreditIntelligence";
 import FundingMatches from "./pages/FundingMatches";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
+const ResetPassword = React.lazy(() => import("./pages/ResetPassword"));
 import NotFound from "./pages/NotFound";
 import Unsubscribe from "./pages/Unsubscribe";
 import Terms from "./pages/Terms";

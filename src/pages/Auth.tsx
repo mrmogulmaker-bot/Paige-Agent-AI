@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ArrowLeft, Shield, TrendingUp, Zap, ChevronRight } from "lucide-react";
+import { Loader2, ArrowLeft, Shield, TrendingUp, Zap, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
 import type { User, Session } from "@supabase/supabase-js";
 import paigeLogo from "@/assets/paige-logo-transparent.png";
 import { lovable } from "@/integrations/lovable/index";
+import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
+import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -24,6 +26,8 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const navigate = useNavigate();
@@ -86,13 +90,13 @@ const Auth = () => {
       if (isLogin) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
-          toast({
-            title: "Login failed",
-            description: error.message.includes("Invalid login credentials")
-              ? "Invalid email or password. Please try again."
-              : error.message,
-            variant: "destructive",
-          });
+          let description = error.message;
+          if (error.message.includes("Invalid login credentials")) {
+            description = "Invalid email or password. Please try again.";
+          } else if (error.message.includes("password") && error.message.includes("breach")) {
+            description = "This password has been found in a data breach. Please use a different password.";
+          }
+          toast({ title: "Login failed", description, variant: "destructive" });
           return;
         }
         toast({ title: "Welcome back!", description: "You've successfully logged in." });
@@ -107,13 +111,16 @@ const Auth = () => {
         });
 
         if (error) {
-          toast({
-            title: error.message.includes("User already registered") ? "Account exists" : "Error",
-            description: error.message.includes("User already registered")
-              ? "An account with this email already exists. Please login instead."
-              : error.message,
-            variant: "destructive",
-          });
+          let title = "Error";
+          let description = error.message;
+          if (error.message.includes("User already registered")) {
+            title = "Account exists";
+            description = "An account with this email already exists. Please login instead.";
+          } else if (error.message.includes("password") && error.message.includes("breach")) {
+            title = "Unsafe password";
+            description = "This password has appeared in a known data breach. Please choose a stronger, unique password.";
+          }
+          toast({ title, description, variant: "destructive" });
           return;
         }
 
@@ -131,9 +138,6 @@ const Auth = () => {
           title: "Account created!",
           description: "Welcome! Redirecting to your dashboard...",
         });
-
-        // Auto-confirm is enabled, so session should be available immediately
-        // The onAuthStateChange listener will handle redirect via redirectByRole
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -163,6 +167,23 @@ const Auth = () => {
     }
   };
 
+  const handleAppleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      const result = await lovable.auth.signInWithOAuth("apple", {
+        redirect_uri: window.location.origin,
+      });
+      if (result.error) {
+        toast({ title: "Apple sign-in failed", description: String(result.error), variant: "destructive" });
+      }
+      if (result.redirected) return;
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to sign in with Apple.", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const toggleMode = () => {
     const newMode = isLogin ? "signup" : "login";
     navigate(`/auth?mode=${newMode}`, { replace: true });
@@ -176,20 +197,19 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen flex bg-background">
+      <ForgotPasswordDialog open={showForgotPassword} onOpenChange={setShowForgotPassword} />
+
       {/* Left Panel — Brand / Value Prop */}
       <div className="hidden lg:flex lg:w-[48%] relative overflow-hidden bg-primary flex-col justify-between p-10">
         {/* Decorative Elements */}
         <div className="absolute inset-0">
-          {/* Grid pattern */}
           <div className="absolute inset-0 opacity-[0.04]" style={{
             backgroundImage: `linear-gradient(hsl(var(--accent)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--accent)) 1px, transparent 1px)`,
             backgroundSize: '60px 60px',
           }} />
-          {/* Gradient orbs */}
           <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-accent/10 blur-3xl animate-float" />
           <div className="absolute bottom-20 -left-20 w-80 h-80 rounded-full bg-gold/8 blur-3xl animate-float-slow" />
           <div className="absolute top-1/2 right-1/4 w-48 h-48 rounded-full bg-accent/5 blur-2xl animate-float-delayed" />
-          {/* Diagonal accent line */}
           <div className="absolute top-0 right-0 w-px h-full bg-gradient-to-b from-transparent via-accent/20 to-transparent" style={{ transform: 'translateX(-120px)' }} />
         </div>
 
@@ -242,12 +262,7 @@ const Auth = () => {
         <div className="relative z-10">
           <div className="flex items-center gap-3">
             <div className="flex -space-x-2">
-              {[
-                'bg-accent/60',
-                'bg-gold/60',
-                'bg-accent/40',
-                'bg-gold/40',
-              ].map((bg, i) => (
+              {['bg-accent/60', 'bg-gold/60', 'bg-accent/40', 'bg-gold/40'].map((bg, i) => (
                 <div key={i} className={`w-8 h-8 rounded-full ${bg} border-2 border-primary flex items-center justify-center`}>
                   <span className="text-[10px] font-bold text-primary-foreground/80">
                     {['JD', 'AK', 'MR', 'TS'][i]}
@@ -271,7 +286,6 @@ const Auth = () => {
             <ArrowLeft className="w-4 h-4" />
             <span className="hidden sm:inline">Back to home</span>
           </Link>
-          {/* Mobile logo */}
           <Link to="/" className="lg:hidden inline-flex items-center gap-2">
             <img src={paigeLogo} alt="PaigeAgent.ai" className="h-8 w-auto" />
             <span className="text-lg font-bold text-accent">PaigeAgent.ai</span>
@@ -339,20 +353,42 @@ const Auth = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Password
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={isLoading}
-                  minLength={6}
-                  className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
-                />
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Password
+                  </Label>
+                  {isLogin && (
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPassword(true)}
+                      className="text-xs text-accent hover:text-accent/80 font-medium transition-colors"
+                    >
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={isLoading}
+                    minLength={6}
+                    className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {!isLogin && <PasswordStrengthIndicator password={password} />}
               </div>
 
               <Button
@@ -387,22 +423,36 @@ const Auth = () => {
               </div>
             </div>
 
-            {/* Google OAuth */}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleGoogleSignIn}
-              disabled={isLoading}
-              className="w-full h-11 text-sm border-border/60 hover:border-accent/40 transition-all gap-2"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-              </svg>
-              Continue with Google
-            </Button>
+            {/* OAuth Buttons */}
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGoogleSignIn}
+                disabled={isLoading}
+                className="h-11 text-sm border-border/60 hover:border-accent/40 transition-all gap-2"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                Google
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleAppleSignIn}
+                disabled={isLoading}
+                className="h-11 text-sm border-border/60 hover:border-accent/40 transition-all gap-2"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+                </svg>
+                Apple
+              </Button>
+            </div>
 
             {/* Mode Toggle Divider */}
             <div className="relative">
