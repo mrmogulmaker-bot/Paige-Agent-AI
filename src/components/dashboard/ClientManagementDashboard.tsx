@@ -9,7 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
 import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
@@ -61,6 +63,12 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ type: "internal" | "auth"; id: string; name: string } | null>(null);
+
+  // Invite dialog state
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<string>("user");
+  const [inviteSending, setInviteSending] = useState(false);
 
   useEffect(() => {
     fetchAllClients();
@@ -242,6 +250,37 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
     setDeleteTarget(null);
   };
 
+  const sendInvite = async () => {
+    if (!inviteEmail.trim()) {
+      toast.error("Please enter an email address");
+      return;
+    }
+    setInviteSending(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke("send-admin-invitation", {
+        body: { email: inviteEmail.trim(), role: inviteRole },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const roleLabels: Record<string, string> = {
+        admin: "Administrator", coach: "Coach", moderator: "Moderator",
+        affiliate: "Affiliate", user: "Client",
+      };
+      toast.success(`Invitation sent to ${inviteEmail} as ${roleLabels[inviteRole] || inviteRole}`);
+      setInviteOpen(false);
+      setInviteEmail("");
+      setInviteRole("user");
+    } catch (err: any) {
+      console.error("Error sending invite:", err);
+      toast.error(err.message || "Failed to send invitation");
+    } finally {
+      setInviteSending(false);
+    }
+  };
+
   // --- Render helpers ---
 
   const renderAuthTable = (list: AuthClient[], showPromoteToInternal: boolean) => {
@@ -296,9 +335,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                     </Select>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={c.onboarding_completed ? "default" : "outline"}>
-                      {c.onboarding_completed ? "Active" : "Pending"}
-                    </Badge>
+                    <Badge variant="default">Active</Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
@@ -409,6 +446,9 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
             </div>
             <Button size="sm" variant="outline" onClick={() => setQuickUploadOpen(true)}>
               <Upload className="w-4 h-4 mr-1" /> Upload Report
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
+              <Mail className="w-4 h-4 mr-1" /> Send Invite
             </Button>
             <Button size="sm" onClick={() => setAddInternalOpen(true)}>
               <UserPlus className="w-4 h-4 mr-1" /> New Client
@@ -550,6 +590,52 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       <AddInternalClientDialog open={addInternalOpen} onOpenChange={setAddInternalOpen} onClientAdded={fetchAllClients} />
       <AddClientDialog open={addLegacyOpen} onOpenChange={setAddLegacyOpen} onClientAdded={fetchAllClients} />
       <QuickUploadReportModal open={quickUploadOpen} onOpenChange={setQuickUploadOpen} />
+
+      {/* Send Invite Dialog */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send Role Invitation</DialogTitle>
+            <DialogDescription>
+              Send an email invitation for someone to join the platform with a specific role.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="invite-email">Email Address</Label>
+              <Input
+                id="invite-email"
+                type="email"
+                placeholder="name@example.com"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invite-role">Role</Label>
+              <Select value={inviteRole} onValueChange={setInviteRole}>
+                <SelectTrigger id="invite-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">Client</SelectItem>
+                  <SelectItem value="coach">Coach</SelectItem>
+                  <SelectItem value="moderator">Moderator</SelectItem>
+                  <SelectItem value="admin">Administrator</SelectItem>
+                  <SelectItem value="affiliate">Affiliate Partner</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
+            <Button onClick={sendInvite} disabled={inviteSending}>
+              <Send className="w-4 h-4 mr-1" />
+              {inviteSending ? "Sending..." : "Send Invitation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
