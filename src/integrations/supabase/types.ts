@@ -4708,6 +4708,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      delete_credit_report_upload: {
+        Args: { _calling_user_id: string; _upload_id: string }
+        Returns: Json
+      }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
