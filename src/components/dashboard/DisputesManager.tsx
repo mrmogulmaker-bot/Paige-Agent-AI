@@ -706,6 +706,81 @@ const DisputesList = ({ disputes, type, onRefresh, onEdit }: { disputes: any[]; 
   );
 };
 
+// ========== Edit Auto-Staged Dispute Dialog ==========
+function EditAutoStagedDialog({ dispute, open, onOpenChange, onSaved }: { dispute: any; open: boolean; onOpenChange: (v: boolean) => void; onSaved: () => void }) {
+  const [creditorName, setCreditorName] = useState(dispute?.creditor_name || "");
+  const [reasonCode, setReasonCode] = useState(dispute?.reason_code || "");
+  const [narrative, setNarrative] = useState(dispute?.narrative || "");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (dispute) {
+      setCreditorName(dispute.creditor_name || "");
+      setReasonCode(dispute.reason_code || "");
+      setNarrative(dispute.narrative || "");
+    }
+  }, [dispute]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.from("disputes").update({
+        creditor_name: creditorName,
+        reason_code: reasonCode,
+        narrative: narrative || null,
+        updated_at: new Date().toISOString(),
+      } as any).eq("id", dispute.id);
+      if (error) throw error;
+      toast.success("Dispute updated");
+      onSaved();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!dispute) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Edit Auto-Staged Dispute</DialogTitle>
+          <DialogDescription>Review and modify this auto-generated dispute before sending.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">{dispute.bureau}</Badge>
+            <AccountTypeBadge itemType={dispute.item_type || dispute.narrative || dispute.reason_code} />
+            {dispute.amount && <Badge variant="secondary">${Number(dispute.amount).toLocaleString()}</Badge>}
+          </div>
+          <div className="space-y-2">
+            <Label>Creditor Name</Label>
+            <Input value={creditorName} onChange={(e) => setCreditorName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Dispute Reason / Basis</Label>
+            <Textarea value={reasonCode} onChange={(e) => setReasonCode(e.target.value)} rows={4} />
+          </div>
+          <div className="space-y-2">
+            <Label>Additional Notes</Label>
+            <Textarea value={narrative} onChange={(e) => setNarrative(e.target.value)} rows={2} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSave} disabled={isSaving} className="bg-gradient-gold hover:opacity-90">
+            {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Save Changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ========== Main Component ==========
 export function DisputesManager({ personalOnly, businessOnly, clientId }: DisputesManagerProps) {
   const queryClient = useQueryClient();
