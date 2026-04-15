@@ -250,6 +250,37 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
     setDeleteTarget(null);
   };
 
+  const sendInvite = async () => {
+    if (!inviteEmail.trim()) {
+      toast.error("Please enter an email address");
+      return;
+    }
+    setInviteSending(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke("send-admin-invitation", {
+        body: { email: inviteEmail.trim(), role: inviteRole },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const roleLabels: Record<string, string> = {
+        admin: "Administrator", coach: "Coach", moderator: "Moderator",
+        affiliate: "Affiliate", user: "Client",
+      };
+      toast.success(`Invitation sent to ${inviteEmail} as ${roleLabels[inviteRole] || inviteRole}`);
+      setInviteOpen(false);
+      setInviteEmail("");
+      setInviteRole("user");
+    } catch (err: any) {
+      console.error("Error sending invite:", err);
+      toast.error(err.message || "Failed to send invitation");
+    } finally {
+      setInviteSending(false);
+    }
+  };
+
   // --- Render helpers ---
 
   const renderAuthTable = (list: AuthClient[], showPromoteToInternal: boolean) => {
