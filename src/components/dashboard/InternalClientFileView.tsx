@@ -183,8 +183,22 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
               <><Archive className="w-4 h-4 mr-1" /> Archive</>
             )}
           </Button>
+          {client.linked_user_id && (
+            <Button size="sm" variant="destructive" onClick={() => setShowFactoryReset(true)}>
+              <Trash2 className="w-4 h-4 mr-1" /> Factory Reset
+            </Button>
+          )}
         </div>
       </div>
+
+      {client.linked_user_id && (
+        <AdminFactoryResetDialog
+          clientUserId={client.linked_user_id}
+          clientName={fullName}
+          open={showFactoryReset}
+          onOpenChange={setShowFactoryReset}
+        />
+      )}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
