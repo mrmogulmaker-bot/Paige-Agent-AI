@@ -72,20 +72,22 @@ const AppShell = () => {
   // Mobile layout: full-screen chat with bottom nav
   if (isMobile) {
     return (
-      <AdminViewBanner />
-      <div className="h-screen flex flex-col bg-background">
-        <AppNav user={activeUser} />
-        <div className="flex-1 overflow-hidden">
-          {location.pathname === "/app" ? (
-            <PaigeChat user={activeUser} session={session} />
-          ) : (
-            <div className="h-full overflow-y-auto p-4">
-              <Outlet context={{ user: activeUser, session }} />
-            </div>
-          )}
+      <>
+        <AdminViewBanner />
+        <div className="h-screen flex flex-col bg-background">
+          <AppNav user={activeUser} />
+          <div className="flex-1 overflow-hidden">
+            {location.pathname === "/app" ? (
+              <PaigeChat user={activeUser} session={session} />
+            ) : (
+              <div className="h-full overflow-y-auto p-4">
+                <Outlet context={{ user: activeUser, session }} />
+              </div>
+            )}
+          </div>
+          <QuickStatsBar factors={factors} />
         </div>
-        <QuickStatsBar factors={factors} />
-      </div>
+      </>
     );
   }
 
