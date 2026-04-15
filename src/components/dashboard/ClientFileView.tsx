@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain, TrendingUp, Database, User, Phone, AtSign, MapPin, Calendar, Shield } from "lucide-react";
+import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain, TrendingUp, Database, User, Phone, AtSign, MapPin, Calendar, Shield, MessageSquare, Trash2, Edit3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
 import { OutreachCenter } from "./OutreachCenter";
@@ -11,6 +11,8 @@ import { PMEFundingReadiness } from "./PMEFundingReadiness";
 import { ClientMemoryTab } from "./ClientMemoryTab";
 import { ClientOutcomesTab } from "./ClientOutcomesTab";
 import { AdminAccountManagement } from "./AdminAccountManagement";
+import { DisputesManager } from "./DisputesManager";
+import { AdminFactoryResetDialog, AdminChatHistory, AdminFundingOverride } from "./admin/AdminClientTools";
 
 interface ClientFileViewProps {
   clientUserId: string;
@@ -43,6 +45,10 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
   const [email, setEmail] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("profile");
   const [subscription, setSubscription] = useState<{ plan_slug: string; status: string } | null>(null);
+  const [roles, setRoles] = useState<string[]>([]);
+  const [negativeCount, setNegativeCount] = useState(0);
+  const [disputeCount, setDisputeCount] = useState(0);
+  const [showFactoryReset, setShowFactoryReset] = useState(false);
   const [roles, setRoles] = useState<string[]>([]);
   const [negativeCount, setNegativeCount] = useState(0);
   const [disputeCount, setDisputeCount] = useState(0);
