@@ -1,0 +1,1 @@
+ALTER TABLE public.disputes ADD COLUMN IF NOT EXISTS is_auto_staged BOOLEAN DEFAULT FALSE;

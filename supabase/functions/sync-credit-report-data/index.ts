@@ -784,6 +784,33 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       console.error("Alert detection failed (non-blocking):", alertErr);
     }
 
+    // ========== STEP 11: AUTO-STAGE DISPUTES (fire-and-forget) ==========
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const bureauSources = [...new Set(payload.negative_items.map((n: any) => {
+        const lower = (n.bureau || "").toLowerCase();
+        if (lower.includes("trans")) return "transunion";
+        if (lower.includes("exper")) return "experian";
+        if (lower.includes("equi")) return "equifax";
+        return lower;
+      }).filter(Boolean))];
+
+      fetch(`${supabaseUrl}/functions/v1/auto-stage-disputes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({
+          client_id: targetUserId,
+          bureau_source: bureauSources.length === 1 ? bureauSources[0] : "all",
+        }),
+      }).catch(err => console.error("Auto-stage-disputes fire-and-forget failed:", err));
+    } catch (stageErr) {
+      console.error("Auto-stage-disputes setup failed (non-blocking):", stageErr);
+    }
+
     return new Response(JSON.stringify({ success: true, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

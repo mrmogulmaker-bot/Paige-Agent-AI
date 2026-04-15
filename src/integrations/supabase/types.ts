@@ -2185,6 +2185,7 @@ export type Database = {
           dispute_round: number | null
           due_date: string | null
           id: string
+          is_auto_staged: boolean | null
           item_type: string | null
           narrative: string | null
           open_date: string | null
@@ -2204,6 +2205,7 @@ export type Database = {
           dispute_round?: number | null
           due_date?: string | null
           id?: string
+          is_auto_staged?: boolean | null
           item_type?: string | null
           narrative?: string | null
           open_date?: string | null
@@ -2223,6 +2225,7 @@ export type Database = {
           dispute_round?: number | null
           due_date?: string | null
           id?: string
+          is_auto_staged?: boolean | null
           item_type?: string | null
           narrative?: string | null
           open_date?: string | null

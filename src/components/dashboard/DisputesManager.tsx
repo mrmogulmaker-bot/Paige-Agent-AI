@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, FileText, Clock, CheckCircle2, XCircle, User, Building2, Loader2, Eye, Download, Copy, Mail, AlertTriangle, Send } from "lucide-react";
+import { Plus, FileText, Clock, CheckCircle2, XCircle, User, Building2, Loader2, Eye, Download, Copy, Mail, AlertTriangle, Send, Pencil } from "lucide-react";
 import { DisputeOutcomeDialog } from "./DisputeOutcomeDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { AccountTypeBadge, normalizeAccountType, getStatutoryLanguageByType } from "./disputes/AccountTypeBadge";
 import { PersonalInfoAudit } from "./disputes/PersonalInfoAudit";
 import { BureauImpactPanel } from "./disputes/BureauImpactPanel";
+import { DisputeStrategyPanel } from "./disputes/DisputeStrategyPanel";
 
 const statusConfig: Record<string, { label: string; icon: any; color: string }> = {
   draft: { label: "Draft", icon: FileText, color: "bg-muted" },
@@ -624,7 +625,7 @@ function NewDisputeDialog({ type, onCreated, clientId }: { type: "personal" | "b
 }
 
 // ========== Disputes List ==========
-const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: string; onRefresh: () => void }) => {
+const DisputesList = ({ disputes, type, onRefresh, onEdit }: { disputes: any[]; type: string; onRefresh: () => void; onEdit?: (d: any) => void }) => {
   const [detailsDispute, setDetailsDispute] = useState<any>(null);
   const [letterDispute, setLetterDispute] = useState<any>(null);
   const [outcomeDispute, setOutcomeDispute] = useState<any>(null);
@@ -670,15 +671,19 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                   <div><p className="text-muted-foreground text-xs">Reason</p><p className="font-medium line-clamp-2 text-xs">{dispute.reason_code}</p></div>
                   <div><p className="text-muted-foreground text-xs">Created</p><p className="font-medium text-xs">{dispute.created_at ? new Date(dispute.created_at).toLocaleDateString() : "—"}</p></div>
                   {dispute.account_number_masked && <div><p className="text-muted-foreground text-xs">Account #</p><p className="font-medium text-xs">{dispute.account_number_masked}</p></div>}
+                  {(dispute as any).amount && <div><p className="text-muted-foreground text-xs">Amount</p><p className="font-medium text-xs">${Number((dispute as any).amount).toLocaleString()}</p></div>}
                 </div>
                 <div className="mt-3 flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setDetailsDispute(dispute)}><Eye className="w-3 h-3 mr-1" /> Details</Button>
+                  {dispute.status === "draft" && (dispute as any).is_auto_staged && onEdit && (
+                    <Button variant="outline" size="sm" onClick={() => onEdit(dispute)}><Pencil className="w-3 h-3 mr-1" /> Edit</Button>
+                  )}
                   {dispute.status === "draft" && (
-                    <Button variant="outline" size="sm" onClick={() => setLetterDispute(dispute)}><FileText className="w-3 h-3 mr-1" /> Single Letter</Button>
+                    <Button variant="outline" size="sm" onClick={() => setLetterDispute(dispute)}><Send className="w-3 h-3 mr-1" /> Send</Button>
                   )}
                   {dispute.status !== "draft" && dispute.status !== "resolved" && dispute.status !== "rejected" && (
                     <Button variant="outline" size="sm" onClick={() => setOutcomeDispute(dispute)}><CheckCircle2 className="w-3 h-3 mr-1" /> Record Outcome</Button>
@@ -702,12 +707,89 @@ const DisputesList = ({ disputes, type, onRefresh }: { disputes: any[]; type: st
   );
 };
 
+// ========== Edit Auto-Staged Dispute Dialog ==========
+function EditAutoStagedDialog({ dispute, open, onOpenChange, onSaved }: { dispute: any; open: boolean; onOpenChange: (v: boolean) => void; onSaved: () => void }) {
+  const [creditorName, setCreditorName] = useState(dispute?.creditor_name || "");
+  const [reasonCode, setReasonCode] = useState(dispute?.reason_code || "");
+  const [narrative, setNarrative] = useState(dispute?.narrative || "");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (dispute) {
+      setCreditorName(dispute.creditor_name || "");
+      setReasonCode(dispute.reason_code || "");
+      setNarrative(dispute.narrative || "");
+    }
+  }, [dispute]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.from("disputes").update({
+        creditor_name: creditorName,
+        reason_code: reasonCode,
+        narrative: narrative || null,
+        updated_at: new Date().toISOString(),
+      } as any).eq("id", dispute.id);
+      if (error) throw error;
+      toast.success("Dispute updated");
+      onSaved();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!dispute) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Edit Auto-Staged Dispute</DialogTitle>
+          <DialogDescription>Review and modify this auto-generated dispute before sending.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">{dispute.bureau}</Badge>
+            <AccountTypeBadge itemType={dispute.item_type || dispute.narrative || dispute.reason_code} />
+            {dispute.amount && <Badge variant="secondary">${Number(dispute.amount).toLocaleString()}</Badge>}
+          </div>
+          <div className="space-y-2">
+            <Label>Creditor Name</Label>
+            <Input value={creditorName} onChange={(e) => setCreditorName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Dispute Reason / Basis</Label>
+            <Textarea value={reasonCode} onChange={(e) => setReasonCode(e.target.value)} rows={4} />
+          </div>
+          <div className="space-y-2">
+            <Label>Additional Notes</Label>
+            <Textarea value={narrative} onChange={(e) => setNarrative(e.target.value)} rows={2} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSave} disabled={isSaving} className="bg-gradient-gold hover:opacity-90">
+            {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Save Changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ========== Main Component ==========
 export function DisputesManager({ personalOnly, businessOnly, clientId }: DisputesManagerProps) {
   const queryClient = useQueryClient();
   const { data: disputes, isLoading } = useDisputes(clientId);
+  const { data: negItems } = useNegativeItems(clientId);
   const { data: activeInfo } = useDisputeClientInfo(clientId);
   const [roundDialogOpen, setRoundDialogOpen] = useState(false);
+  const [editingDispute, setEditingDispute] = useState<any>(null);
 
   const handleRefresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["disputes", clientId || "self"] });
@@ -753,15 +835,30 @@ export function DisputesManager({ personalOnly, businessOnly, clientId }: Disput
     );
   };
 
+  const autoStagedDisputes = allDisputes.filter(d => (d as any).is_auto_staged && d.status === "draft");
+
+  const handleStartDisputes = () => {
+    if (autoStagedDisputes.length > 0) {
+      setEditingDispute(autoStagedDisputes[0]);
+    }
+  };
+
   const renderContent = (type: "personal" | "business") => (
     <div className="space-y-6">
+      {type === "personal" && (
+        <DisputeStrategyPanel
+          negativeItems={negItems || []}
+          autoStagedDisputes={autoStagedDisputes}
+          onStartDisputes={handleStartDisputes}
+        />
+      )}
       {type === "personal" && <PersonalInfoAudit clientId={clientId} />}
       {type === "personal" && <BureauImpactPanel clientId={clientId} />}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {renderRoundButton()}
         <NewDisputeDialog type={type} onCreated={handleRefresh} clientId={clientId} />
       </div>
-      <DisputesList disputes={allDisputes} type={type} onRefresh={handleRefresh} />
+      <DisputesList disputes={allDisputes} type={type} onRefresh={handleRefresh} onEdit={setEditingDispute} />
       <RoundLettersDialog
         disputes={allDisputes}
         clientId={clientId}
@@ -772,6 +869,15 @@ export function DisputesManager({ personalOnly, businessOnly, clientId }: Disput
         onOpenChange={setRoundDialogOpen}
         onComplete={handleRefresh}
       />
+      {/* Inline edit dialog for auto-staged disputes */}
+      {editingDispute && (
+        <EditAutoStagedDialog
+          dispute={editingDispute}
+          open={!!editingDispute}
+          onOpenChange={(v) => !v && setEditingDispute(null)}
+          onSaved={handleRefresh}
+        />
+      )}
     </div>
   );
 
