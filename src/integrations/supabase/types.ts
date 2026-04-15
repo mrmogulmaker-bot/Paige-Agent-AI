@@ -4014,6 +4014,7 @@ export type Database = {
           estimated_fico_tu: number | null
           full_name: string | null
           funding_goals: Json | null
+          ghl_contact_id: string | null
           has_discrepancies: boolean | null
           id: string
           last_report_analyzed_at: string | null
@@ -4021,6 +4022,7 @@ export type Database = {
           onboarding_completed: boolean | null
           onboarding_step: string | null
           phone: string | null
+          pme_phase: string | null
           postal_code: string | null
           score_model: string | null
           ssn_encrypted: string | null
@@ -4044,6 +4046,7 @@ export type Database = {
           estimated_fico_tu?: number | null
           full_name?: string | null
           funding_goals?: Json | null
+          ghl_contact_id?: string | null
           has_discrepancies?: boolean | null
           id?: string
           last_report_analyzed_at?: string | null
@@ -4051,6 +4054,7 @@ export type Database = {
           onboarding_completed?: boolean | null
           onboarding_step?: string | null
           phone?: string | null
+          pme_phase?: string | null
           postal_code?: string | null
           score_model?: string | null
           ssn_encrypted?: string | null
@@ -4074,6 +4078,7 @@ export type Database = {
           estimated_fico_tu?: number | null
           full_name?: string | null
           funding_goals?: Json | null
+          ghl_contact_id?: string | null
           has_discrepancies?: boolean | null
           id?: string
           last_report_analyzed_at?: string | null
@@ -4081,6 +4086,7 @@ export type Database = {
           onboarding_completed?: boolean | null
           onboarding_step?: string | null
           phone?: string | null
+          pme_phase?: string | null
           postal_code?: string | null
           score_model?: string | null
           ssn_encrypted?: string | null
