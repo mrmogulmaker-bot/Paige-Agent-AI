@@ -447,6 +447,9 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
             <Button size="sm" variant="outline" onClick={() => setQuickUploadOpen(true)}>
               <Upload className="w-4 h-4 mr-1" /> Upload Report
             </Button>
+            <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
+              <Mail className="w-4 h-4 mr-1" /> Send Invite
+            </Button>
             <Button size="sm" onClick={() => setAddInternalOpen(true)}>
               <UserPlus className="w-4 h-4 mr-1" /> New Client
             </Button>
