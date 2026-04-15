@@ -335,9 +335,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                     </Select>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={c.onboarding_completed ? "default" : "outline"}>
-                      {c.onboarding_completed ? "Active" : "Pending"}
-                    </Badge>
+                    <Badge variant="default">Active</Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
