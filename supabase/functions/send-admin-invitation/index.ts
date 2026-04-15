@@ -61,104 +61,39 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log("Invitation created:", invitation.id);
 
-    // Build invite URL
-    const appUrl = "https://paigeagent.ai";
-    const inviteUrl = `${appUrl}/auth?invite=${rawToken}`;
-
     const roleLabels: Record<string, string> = {
-      admin: "Administrator",
-      coach: "Coach",
-      moderator: "Moderator",
-      affiliate: "Affiliate Partner",
-      user: "Client",
+      admin: "Administrator", coach: "Coach", moderator: "Moderator",
+      affiliate: "Affiliate Partner", user: "Client",
     };
     const roleLabel = roleLabels[role] || role;
+    const inviteUrl = `https://paigeagent.ai/auth?invite=${rawToken}`;
 
-    // Send via Resend through connector gateway
-    const GATEWAY_URL = 'https://connector-gateway.lovable.dev/resend';
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-
-    if (!LOVABLE_API_KEY || !RESEND_API_KEY) {
-      console.warn("Email keys not configured, invitation created but email not sent");
-      return new Response(
-        JSON.stringify({ success: true, invitation, emailSent: false }),
-        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    const emailResponse = await fetch(`${GATEWAY_URL}/emails`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'X-Connection-Api-Key': RESEND_API_KEY,
+    // Send via transactional email system (uses verified notify.paigeagent.ai domain)
+    const { error: emailError } = await supabase.functions.invoke("send-transactional-email", {
+      body: {
+        templateName: "role-invitation",
+        recipientEmail: email,
+        idempotencyKey: `invite-${invitation.id}`,
+        templateData: { role: roleLabel, inviteUrl },
       },
-      body: JSON.stringify({
-        from: 'PaigeAgent.ai <onboarding@resend.dev>',
-        to: [email],
-        subject: `You're invited to join PaigeAgent.ai as ${roleLabel}`,
-        html: `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta charset="utf-8">
-              <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background: linear-gradient(135deg, #CFAE70, #B8935A); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-                .content { background: #ffffff; padding: 30px; border: 1px solid #e5e7eb; border-top: none; }
-                .button { display: inline-block; background: #CFAE70; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
-                .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 14px; }
-                .role-badge { display: inline-block; background: #f3f4f6; color: #1f2937; padding: 4px 12px; border-radius: 4px; font-size: 14px; font-weight: 600; }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <div class="header">
-                  <h1 style="margin: 0; font-size: 28px;">PaigeAgent.ai</h1>
-                  <p style="margin: 10px 0 0; opacity: 0.9;">Mogul Maker Academy</p>
-                </div>
-                <div class="content">
-                  <h2>You've Been Invited!</h2>
-                  <p>You've been invited to join PaigeAgent.ai with the role:</p>
-                  <p style="text-align: center;">
-                    <span class="role-badge">${roleLabel.toUpperCase()}</span>
-                  </p>
-                  <p>Click the button below to accept your invitation and create your account:</p>
-                  <p style="text-align: center;">
-                    <a href="${inviteUrl}" class="button">Accept Invitation</a>
-                  </p>
-                  <p style="color: #6b7280; font-size: 14px;">
-                    This invitation will expire in 7 days. If you didn't expect this invitation, you can safely ignore this email.
-                  </p>
-                  <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">
-                    Or copy and paste this link in your browser:<br>
-                    <code style="background: #f3f4f6; padding: 8px; display: block; margin-top: 8px; word-break: break-all;">${inviteUrl}</code>
-                  </p>
-                </div>
-                <div class="footer">
-                  <p>&copy; ${new Date().getFullYear()} PaigeAgent.ai. All rights reserved.</p>
-                </div>
-              </div>
-            </body>
-          </html>
-        `,
-      }),
     });
 
-    const emailResult = await emailResponse.json();
-    console.log("Email sent:", emailResult);
+    const emailSent = !emailError;
+    if (emailError) {
+      console.error("Failed to send invitation email:", emailError);
+    } else {
+      console.log("Invitation email queued successfully");
+    }
 
     return new Response(
-      JSON.stringify({ success: true, invitation, emailSent: true }),
+      JSON.stringify({ success: true, invitation, emailSent }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
     console.error("Error in send-admin-invitation:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }
 };
