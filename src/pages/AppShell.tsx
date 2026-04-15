@@ -72,6 +72,7 @@ const AppShell = () => {
   // Mobile layout: full-screen chat with bottom nav
   if (isMobile) {
     return (
+      <AdminViewBanner />
       <div className="h-screen flex flex-col bg-background">
         <AppNav user={activeUser} />
         <div className="flex-1 overflow-hidden">
