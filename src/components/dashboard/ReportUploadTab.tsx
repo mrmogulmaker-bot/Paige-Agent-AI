@@ -255,6 +255,44 @@ export function ReportUploadTab({ clientUserId }: ReportUploadTabProps) {
     }
   };
 
+  const handleDeleteUpload = async (upload: ReportUpload) => {
+    if (!confirm(`Delete "${upload.file_name}" and all extracted data? This cannot be undone.`)) return;
+    
+    setDeletingUpload(upload.id);
+    try {
+      const currentUser = (await supabase.auth.getUser()).data.user;
+      if (!currentUser) throw new Error('Not authenticated');
+
+      // Call the database function to cascade-delete related data
+      const { data, error } = await supabase.rpc('delete_credit_report_upload', {
+        _upload_id: upload.id,
+        _calling_user_id: currentUser.id,
+      });
+
+      if (error) throw error;
+      const result = data as any;
+      if (!result?.success) throw new Error(result?.message || 'Delete failed');
+
+      // Also remove the file from storage
+      if (result.file_path) {
+        await supabase.storage.from('credit-report-uploads').remove([result.file_path]);
+      }
+
+      // Clear selection if this was the selected upload
+      if (selectedUpload?.id === upload.id) {
+        setSelectedUpload(null);
+      }
+
+      toast.success('Report and all related data deleted');
+      await fetchUploads();
+    } catch (err: any) {
+      console.error('Delete error:', err);
+      toast.error('Failed to delete report', { description: err.message });
+    } finally {
+      setDeletingUpload(null);
+    }
+  };
+
   const getCategoryBadgeColor = (category: string) => {
     const colors: Record<string, string> = {
       late_payment: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
