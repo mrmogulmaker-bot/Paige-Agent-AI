@@ -234,6 +234,14 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           <TabsTrigger value="outcomes" className="text-xs">
             <TrendingUp className="w-3 h-3 mr-1" /> Outcomes
           </TabsTrigger>
+          {client.linked_user_id && (
+            <TabsTrigger value="chat-history" className="text-xs">
+              <MessageSquare className="w-3 h-3 mr-1" /> Chat
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="outcomes" className="text-xs">
+            <TrendingUp className="w-3 h-3 mr-1" /> Outcomes
+          </TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
