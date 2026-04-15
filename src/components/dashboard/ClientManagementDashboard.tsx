@@ -54,6 +54,8 @@ interface ClientManagementDashboardProps {
 }
 
 export function ClientManagementDashboard({ onViewClient, onViewInternalClient }: ClientManagementDashboardProps) {
+  const navigate = useNavigate();
+  const { setMode } = useDashboardMode();
   const [internalClients, setInternalClients] = useState<InternalClient[]>([]);
   const [authClients, setAuthClients] = useState<AuthClient[]>([]);
   const [loading, setLoading] = useState(true);
