@@ -147,7 +147,19 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
             )}
           </div>
         </div>
+        {userRole === "admin" && (
+          <Button variant="destructive" size="sm" onClick={() => setShowFactoryReset(true)}>
+            <Trash2 className="w-4 h-4 mr-1" /> Factory Reset
+          </Button>
+        )}
       </div>
+
+      <AdminFactoryResetDialog
+        clientUserId={clientUserId}
+        clientName={profile?.full_name || "Client"}
+        open={showFactoryReset}
+        onOpenChange={setShowFactoryReset}
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex flex-wrap h-auto gap-1">
@@ -159,6 +171,9 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           </TabsTrigger>
           <TabsTrigger value="account-mgmt" className="text-xs">
             <Database className="w-3 h-3 mr-1" /> Account Mgmt
+          </TabsTrigger>
+          <TabsTrigger value="disputes" className="text-xs">
+            <AlertTriangle className="w-3 h-3 mr-1" /> Disputes
           </TabsTrigger>
           <TabsTrigger value="funding" className="text-xs">
             <DollarSign className="w-3 h-3 mr-1" /> Funding Readiness
@@ -174,6 +189,9 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           </TabsTrigger>
           <TabsTrigger value="outcomes" className="text-xs">
             <TrendingUp className="w-3 h-3 mr-1" /> Outcomes
+          </TabsTrigger>
+          <TabsTrigger value="chat-history" className="text-xs">
+            <MessageSquare className="w-3 h-3 mr-1" /> Chat
           </TabsTrigger>
           <TabsTrigger value="notes" className="text-xs">
             <StickyNote className="w-3 h-3 mr-1" /> Notes
