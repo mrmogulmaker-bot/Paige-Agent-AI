@@ -354,7 +354,8 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => {
-                            window.open(`/app`, '_self');
+                            setMode("client");
+                            navigate("/app");
                           }}>
                             <Eye className="w-4 h-4 mr-2" /> View as Client
                           </DropdownMenuItem>
@@ -547,7 +548,8 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                   <DropdownMenuItem onClick={() => {
-                                    window.open(`/app`, '_self');
+                                    setMode("client");
+                                    navigate("/app");
                                   }}>
                                     <Eye className="w-4 h-4 mr-2" /> View as Client
                                   </DropdownMenuItem>
