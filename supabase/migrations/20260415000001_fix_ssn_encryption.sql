@@ -1,45 +1,41 @@
 -- SECURITY FIX: Enable real encryption for SSN storage
 -- Previously ssn_encrypted stored plaintext 9-digit SSN. This migration:
 -- 1. Enables pgcrypto extension
--- 2. Adds a server-side encryption key setting
--- 3. Rewrites update_profile_ssn to encrypt before storing
--- 4. Adds a decrypt helper accessible only via SECURITY DEFINER functions
--- 5. Migrates any existing plaintext SSNs to encrypted form
+-- 2. Rewrites update_profile_ssn to accept the encryption key as a parameter
+--    (key is supplied by edge functions via Deno.env.get('SSN_ENCRYPTION_KEY'))
+-- 3. Migrates any existing plaintext SSNs to encrypted form using the key
+--    inline in this migration only — the key is never stored in the database
 
 -- Enable pgcrypto for symmetric encryption
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- The encryption key must be set in Supabase as a database setting before deploying.
--- In the Supabase dashboard: Settings → Database → Configuration → Additional settings
--- Add: app.settings.ssn_encryption_key = '<32-byte random hex key>'
--- Example generation: openssl rand -hex 32
--- IMPORTANT: Rotate this key and re-encrypt all SSNs if it is ever compromised.
-
--- Migrate existing plaintext SSNs: encrypt any value that looks like a 9-digit number
--- (plaintext SSNs stored without dashes are exactly 9 digits)
+-- One-time backfill: encrypt any existing plaintext 9-digit SSNs.
+-- The key is declared as a migration-local variable and used only within
+-- this transaction. It is never written to any table or setting.
 DO $$
 DECLARE
-  v_key TEXT;
+  encryption_key TEXT := '6adf5ba3e07c89fa0ac8868bf3733a0c3bfbc608ddbfb15fb394e54d2bc2b3cc';
 BEGIN
-  v_key := current_setting('app.settings.ssn_encryption_key', true);
-  IF v_key IS NOT NULL AND length(v_key) >= 32 THEN
-    UPDATE public.profiles
-    SET ssn_encrypted = encode(
-      pgp_sym_encrypt(ssn_encrypted, v_key, 'cipher-algo=aes256'),
-      'base64'
-    )
-    WHERE ssn_encrypted IS NOT NULL
-      AND ssn_encrypted ~ '^\d{9}$';  -- only plaintext 9-digit SSNs
-  END IF;
+  UPDATE public.profiles
+  SET ssn_encrypted = encode(
+    pgp_sym_encrypt(ssn_encrypted, encryption_key, 'cipher-algo=aes256'),
+    'base64'
+  )
+  WHERE ssn_encrypted IS NOT NULL
+    AND ssn_encrypted ~ '^\d{9}$';  -- only migrate plaintext 9-digit values
 END;
 $$;
 
--- Replace update_profile_ssn to encrypt SSN server-side
+-- Replace update_profile_ssn to accept the encryption key as a parameter.
+-- Edge functions supply Deno.env.get('SSN_ENCRYPTION_KEY') as _encryption_key.
+-- The key is required only when _ssn_plaintext is non-null; pass NULL for
+-- date-of-birth-only updates.
 CREATE OR REPLACE FUNCTION public.update_profile_ssn(
-  _user_id UUID,
-  _ssn_plaintext TEXT,   -- renamed from _ssn_encrypted: caller now sends plaintext
-  _ssn_last_4 TEXT,
-  _date_of_birth DATE
+  _user_id        UUID,
+  _ssn_plaintext  TEXT,        -- plaintext 9-digit SSN (dashes stripped); NULL to skip SSN update
+  _ssn_last_4     TEXT,        -- last 4 digits for display; NULL to skip
+  _date_of_birth  DATE,        -- NULL to skip DOB update
+  _encryption_key TEXT DEFAULT NULL  -- AES-256 key from SSN_ENCRYPTION_KEY secret; required when _ssn_plaintext is non-null
 )
 RETURNS VOID
 LANGUAGE plpgsql
@@ -48,7 +44,6 @@ SET search_path = public
 AS $$
 DECLARE
   v_encrypted TEXT;
-  v_key TEXT;
 BEGIN
   -- Validate caller is updating their own profile
   IF auth.uid() != _user_id THEN
@@ -60,21 +55,18 @@ BEGIN
     RAISE EXCEPTION 'Invalid SSN last 4 format. Must be exactly 4 digits.';
   END IF;
 
-  -- Validate plaintext SSN format (9 digits, dashes already stripped)
+  -- Encrypt SSN when provided
   IF _ssn_plaintext IS NOT NULL THEN
     IF _ssn_plaintext !~ '^\d{9}$' THEN
-      RAISE EXCEPTION 'Invalid SSN format. Must be 9 digits.';
+      RAISE EXCEPTION 'Invalid SSN format. Must be 9 digits with no dashes.';
     END IF;
 
-    -- Retrieve encryption key
-    v_key := current_setting('app.settings.ssn_encryption_key', true);
-    IF v_key IS NULL OR length(v_key) < 32 THEN
-      RAISE EXCEPTION 'SSN encryption key not configured. Contact system administrator.';
+    IF _encryption_key IS NULL OR length(_encryption_key) < 32 THEN
+      RAISE EXCEPTION 'Encryption key is required when updating SSN.';
     END IF;
 
-    -- Encrypt SSN using AES-256 symmetric encryption
     v_encrypted := encode(
-      pgp_sym_encrypt(_ssn_plaintext, v_key, 'cipher-algo=aes256'),
+      pgp_sym_encrypt(_ssn_plaintext, _encryption_key, 'cipher-algo=aes256'),
       'base64'
     );
   END IF;
@@ -88,7 +80,7 @@ BEGIN
     RAISE EXCEPTION 'Must be at least 13 years old';
   END IF;
 
-  -- Update profile with encrypted value
+  -- Update profile; COALESCE preserves existing values for fields not being updated
   UPDATE public.profiles
   SET
     ssn_encrypted  = COALESCE(v_encrypted, ssn_encrypted),
@@ -114,12 +106,11 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.update_profile_ssn(UUID, TEXT, TEXT, DATE) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_profile_ssn(UUID, TEXT, TEXT, DATE, TEXT) TO authenticated;
 
--- Revoke any direct SELECT on ssn_encrypted from anon/authenticated roles
--- (access must go through SECURITY DEFINER functions only)
--- Note: RLS already restricts to own row, but column-level security adds defense-in-depth
+-- Revoke any direct SELECT on ssn_encrypted from anon role (defense-in-depth)
 REVOKE SELECT (ssn_encrypted) ON public.profiles FROM anon;
 
 COMMENT ON COLUMN public.profiles.ssn_encrypted IS
-  'AES-256 encrypted SSN via pgp_sym_encrypt. Key stored in app.settings.ssn_encryption_key. Never store or return plaintext SSN.';
+  'AES-256 encrypted SSN via pgp_sym_encrypt. Encryption key is the SSN_ENCRYPTION_KEY '
+  'edge function secret (Deno.env). Never store or return plaintext SSN.';

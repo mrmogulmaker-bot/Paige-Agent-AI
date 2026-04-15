@@ -200,24 +200,29 @@ export const ProfileSettings = () => {
 
       if (profileError) throw profileError;
 
-      // Update SSN/DOB using secure server-side function — encryption happens in DB
+      // Update SSN/DOB via paige-write-back edge function.
+      // The edge function supplies the AES-256 encryption key from the
+      // SSN_ENCRYPTION_KEY secret — the key never touches the browser.
       if ((ssn && isEditingSSN) || (dateOfBirth && isEditingDOB)) {
-        // Strip dashes; the RPC function encrypts the value server-side with AES-256
-        const cleanedSsn = ssn ? ssn.replace(/-/g, '') : null;
-        const ssnLast4Value = cleanedSsn ? cleanedSsn.slice(-4) : null;
+        const updates: { field_path: string; field_value: string }[] = [];
 
-        const { error: ssnError } = await supabase.rpc('update_profile_ssn', {
-          _user_id: user.id,
-          _ssn_plaintext: (ssn && isEditingSSN) ? cleanedSsn : null,
-          _ssn_last_4: (ssn && isEditingSSN) ? ssnLast4Value : null,
-          _date_of_birth: (dateOfBirth && isEditingDOB) ? dateOfBirth : null,
+        if (ssn && isEditingSSN) {
+          updates.push({ field_path: "profile.ssn", field_value: ssn.replace(/-/g, "") });
+        }
+        if (dateOfBirth && isEditingDOB) {
+          updates.push({ field_path: "profile.date_of_birth", field_value: dateOfBirth });
+        }
+
+        const { error: ssnError } = await supabase.functions.invoke("paige-write-back", {
+          body: { updates },
         });
 
         if (ssnError) throw ssnError;
 
         // Update local state
         if (ssn && isEditingSSN) {
-          setSsnLast4(ssnLast4Value!);
+          const cleanedSsn = ssn.replace(/-/g, "");
+          setSsnLast4(cleanedSsn.slice(-4));
           setSsn("");
           setIsEditingSSN(false);
           setShowSsn(false);

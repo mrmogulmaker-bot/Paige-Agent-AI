@@ -44,6 +44,9 @@ const ALLOWED_FIELDS: Record<string, { table: string; column: string; type: "str
   "profile.full_name": { table: "profiles", column: "full_name", type: "string" },
   "profile.city": { table: "profiles", column: "city", type: "string" },
   "profile.state": { table: "profiles", column: "state", type: "string" },
+  // Sensitive PII fields — routed through update_profile_ssn with server-side encryption key
+  "profile.ssn": { table: "_ssn_op", column: "ssn", type: "string" },
+  "profile.date_of_birth": { table: "_ssn_op", column: "date_of_birth", type: "date" },
   // Funding goal fields (funding_profiles table)
   "funding.objective": { table: "funding_profiles", column: "funding_objective", type: "string" },
   "funding.target_amount": { table: "funding_profiles", column: "target_amount", type: "number" },
@@ -257,6 +260,41 @@ serve(async (req) => {
               user_id: targetUserId,
               [column]: update.field_value,
             });
+          }
+          results.push({ field_path: update.field_path, success: true });
+        } else if (table === "_ssn_op") {
+          // SSN and DOB updates are routed through update_profile_ssn so they are
+          // encrypted server-side and written to pii_access_log.
+          // The encryption key comes from the SSN_ENCRYPTION_KEY edge function secret —
+          // it never touches the client or the database configuration.
+          const encryptionKey = Deno.env.get("SSN_ENCRYPTION_KEY") ?? null;
+
+          if (column === "ssn") {
+            const raw = typeof update.field_value === "string" ? update.field_value : null;
+            const cleaned = raw ? raw.replace(/-/g, "") : null;
+            if (cleaned && !/^\d{9}$/.test(cleaned)) {
+              results.push({ field_path: update.field_path, success: false, error: "Invalid SSN format" });
+              continue;
+            }
+            const last4 = cleaned ? cleaned.slice(-4) : null;
+            const { error: rpcErr } = await supabase.rpc("update_profile_ssn", {
+              _user_id: targetUserId,
+              _ssn_plaintext: cleaned,
+              _ssn_last_4: last4,
+              _date_of_birth: null,
+              _encryption_key: encryptionKey,
+            });
+            if (rpcErr) throw rpcErr;
+          } else if (column === "date_of_birth") {
+            const dob = typeof update.field_value === "string" ? update.field_value : null;
+            const { error: rpcErr } = await supabase.rpc("update_profile_ssn", {
+              _user_id: targetUserId,
+              _ssn_plaintext: null,
+              _ssn_last_4: null,
+              _date_of_birth: dob,
+              _encryption_key: null,  // not needed when only updating DOB
+            });
+            if (rpcErr) throw rpcErr;
           }
           results.push({ field_path: update.field_path, success: true });
         } else if (table === "credit_report_personal_info") {
