@@ -50,6 +50,7 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<ClientRecord>>({});
   const [saving, setSaving] = useState(false);
+  const [showFactoryReset, setShowFactoryReset] = useState(false);
 
   // Credit scores from profiles (if linked) or credit_factor_scores
   const [scores, setScores] = useState<{ eq: number; ex: number; tu: number }>({ eq: 0, ex: 0, tu: 0 });
