@@ -55,22 +55,34 @@ serve(async (req) => {
 
   socket.onopen = async () => {
     console.log("Client WebSocket connected");
-    
+
+    // SECURITY: Enforce authentication before any session activity.
+    // WebSocket protocol prevents header auth from browser clients, so we accept
+    // a short-lived bearer token via query param, but we still validate it here.
+    if (!authHeader) {
+      console.error("[paige-voice-chat] Rejecting unauthenticated WebSocket");
+      socket.close(1008, "Authentication required");
+      return;
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !user) {
+      console.error("[paige-voice-chat] Invalid token — closing WebSocket");
+      socket.close(1008, "Unauthorized");
+      return;
+    }
+
     // Generate unique session ID
     sessionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // Fetch user context and knowledge base
     try {
-      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: authHeader || "" } }
-      });
-
       const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        userId = user.id;
+      userId = user.id;
         
         // Fetch comprehensive context matching useClientChatContext
         const [
@@ -236,7 +248,6 @@ serve(async (req) => {
         if (knowledge && knowledge.length > 0) {
           relevantKnowledge = knowledge.map((k: any) => `${k.title}: ${k.summary || k.content.substring(0, 200)}`).join(" | ");
         }
-      }
     } catch (error) {
       console.error("Error fetching user context:", error);
     }

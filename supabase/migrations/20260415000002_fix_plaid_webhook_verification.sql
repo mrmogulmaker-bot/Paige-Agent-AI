@@ -1,0 +1,13 @@
+-- HIGH SEVERITY FIX (for review — do not apply without testing):
+-- Plaid webhook JWT signature is currently not fully verified.
+-- The verifyPlaidWebhook() function in plaid-webhook/index.ts only checks
+-- the body hash from the decoded (unsigned) JWT payload. An attacker who
+-- can forge a Plaid-Verification header can bypass this check.
+--
+-- The fix is in the TypeScript edge function, not SQL.
+-- See the HIGH FIX section in the security audit report for the updated
+-- verifyPlaidWebhook() implementation that fetches Plaid's webhook
+-- verification key and validates the JWT signature.
+--
+-- This migration is a placeholder so the fix is tracked in version control.
+SELECT 1; -- no-op; actual fix is in supabase/functions/plaid-webhook/index.ts

@@ -128,12 +128,13 @@ export const ProfileSettings = () => {
           setIsEditingDOB(false);
         }
         
-        // Store only last 4 of SSN for display
+        // Use the dedicated ssn_last_4 column for display (never derive from encrypted blob)
         if ((profile as any).ssn_last_4) {
           setSsnLast4((profile as any).ssn_last_4);
-          setSsn("");
+          setSsn(""); // Never load full SSN into client state
           setIsEditingSSN(false);
         } else if (profile.ssn_encrypted) {
+          // SSN is stored but last4 column not set — show masked placeholder
           setSsnLast4("****");
           setSsn("");
           setIsEditingSSN(false);
@@ -199,15 +200,15 @@ export const ProfileSettings = () => {
 
       if (profileError) throw profileError;
 
-      // Update SSN/DOB using secure server-side function if editing
+      // Update SSN/DOB using secure server-side function — encryption happens in DB
       if ((ssn && isEditingSSN) || (dateOfBirth && isEditingDOB)) {
-        // Remove dashes from SSN for storage
+        // Strip dashes; the RPC function encrypts the value server-side with AES-256
         const cleanedSsn = ssn ? ssn.replace(/-/g, '') : null;
         const ssnLast4Value = cleanedSsn ? cleanedSsn.slice(-4) : null;
-        
+
         const { error: ssnError } = await supabase.rpc('update_profile_ssn', {
           _user_id: user.id,
-          _ssn_encrypted: (ssn && isEditingSSN) ? cleanedSsn : null,
+          _ssn_plaintext: (ssn && isEditingSSN) ? cleanedSsn : null,
           _ssn_last_4: (ssn && isEditingSSN) ? ssnLast4Value : null,
           _date_of_birth: (dateOfBirth && isEditingDOB) ? dateOfBirth : null,
         });
