@@ -29,6 +29,7 @@ const AppShell = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { factors } = useCreditFactors();
+  const { showWarning, staySignedIn } = useSessionTimeout();
 
   // Show context panel on non-root /app routes
   const showContextPanel = location.pathname !== "/app" || !isMobile;
