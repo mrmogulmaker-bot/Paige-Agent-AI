@@ -8,6 +8,7 @@ import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { CurrentDateTime } from "@/components/dashboard/CurrentDateTime";
 import { CreditScoreOverview } from "@/components/dashboard/CreditScoreOverview";
 import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
+import { DashboardCommandCenter } from "@/components/dashboard/DashboardCommandCenter";
 import { AccelProgress } from "@/components/dashboard/AccelProgress";
 import { BuildProgress } from "@/components/dashboard/BuildProgress";
 import { PersonalBankAccountsOverview } from "@/components/dashboard/PersonalBankAccountsOverview";
@@ -210,67 +211,8 @@ const Dashboard = () => {
                       }}
                     />
                   )}
-                  {activeSection === "dashboard" && (mode !== "internal" || !isCoachOrAdmin) && (
-                  <div className="space-y-6">
-                    <UpgradeBanner onUpgradeClick={() => setShowUpgradeModal(true)} />
-                    
-                    <BureauScorePanel />
-                    
-                    <div className="grid gap-6">
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <CreditScoreOverview />
-                        <PMEFundingReadiness />
-                      </div>
-                      
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {showAccel && <AccelProgress onToggle={() => setShowAccel(false)} onNavigate={() => setActiveSection('personal')} />}
-                        {showBuild && <BuildProgress onToggle={() => setShowBuild(false)} onNavigate={() => setActiveSection('personal-build')} />}
-                      </div>
-                      
-                      {/* Personal Section */}
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-px bg-border flex-1" />
-                          <h3 className="text-lg font-semibold text-foreground px-3">Personal Credit</h3>
-                          <div className="h-px bg-border flex-1" />
-                        </div>
-                        
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          <PersonalBankAccountsOverview onNavigate={() => setActiveSection('personal-bank-accounts')} />
-                          <PersonalTasksOverview onNavigate={() => setActiveSection('tasks')} />
-                        </div>
-                      </div>
-                      
-                      {/* Business Section */}
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-px bg-border flex-1" />
-                          <h3 className="text-lg font-semibold text-foreground px-3">Business Credit</h3>
-                          <div className="h-px bg-border flex-1" />
-                        </div>
-                        
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          <BusinessCreditOverview onNavigate={() => setActiveSection('business-credit')} />
-                          <BusinessBankAccountsOverview onNavigate={() => setActiveSection('business-bank-accounts')} />
-                        </div>
-                        
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          <BusinessTasksOverview onNavigate={() => setActiveSection('business-tasks')} />
-                        </div>
-                      </div>
-                      
-                      {!showAccel && !showBuild && (
-                        <div className="flex gap-4 justify-center">
-                          <Button onClick={() => setShowAccel(true)} variant="outline">
-                            Show A.C.C.E.L.
-                          </Button>
-                          <Button onClick={() => setShowBuild(true)} variant="outline">
-                            Show B.U.I.L.D.
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  {activeSection === "dashboard" && (mode !== "internal" || !isCoachOrAdmin) && user && (
+                    <DashboardCommandCenter userId={user.id} onNavigate={setActiveSection} />
                   )}
                 {activeSection === "personal" && <PersonalSection />}
                 {activeSection === "personal-build" && (
