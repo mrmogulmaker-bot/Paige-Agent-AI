@@ -551,9 +551,9 @@ export function CreditScoreSimulator({ userId, onNavigate }: Props) {
     queryFn: async () => {
       const { data } = await supabase
         .from("credit_accounts")
-        .select("id, creditor, current_balance, credit_limit, bureau_source, type, is_open")
+        .select("id, creditor, current_balance, credit_limit, bureau_source, type, is_open, balance, limit_amount")
         .eq("user_id", userId)
-        .eq("type", "revolving")
+        .eq("type", "credit_card")
         .neq("is_open", false);
       return (data ?? []).map((a: any) => ({
         id: a.id,
