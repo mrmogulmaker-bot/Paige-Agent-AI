@@ -1,76 +1,55 @@
 project_id = "bfmyebsjyuoecmjskqhs"
 
-[functions.stripe-webhook]
-verify_jwt = false
-
-[functions.paige-voice-chat]
-verify_jwt = false
-
-[functions.plaid-webhook]
-verify_jwt = false
-
-[functions.personal-build-suggestions]
-verify_jwt = true
-
-[functions.send-sms-reminder]
-verify_jwt = true
-
-[functions.send-funding-report]
-verify_jwt = true
-
-[functions.voice-command-processor]
-verify_jwt = true
-
-[functions.issue-certificate]
-verify_jwt = true
-
-[functions.schedule-automated-tasks]
-verify_jwt = true
-
-[functions.enroll-user-in-course]
-verify_jwt = true
-
-[functions.track-lesson-progress]
-verify_jwt = true
-
-[functions.vapi-create-session]
-verify_jwt = true
-
-[functions.create-trial-checkout]
-verify_jwt = true
-
-[functions.customer-portal]
-verify_jwt = true
-
-[functions.send-support-request]
-verify_jwt = true
-
-[functions.fetch-url-content]
-verify_jwt = true
-
-[functions.log-consent]
-verify_jwt = true
-
-[functions.request-data-deletion]
-verify_jwt = true
-
-[functions.process-email-queue]
-verify_jwt = true
-
-[functions.paige-write-back]
-verify_jwt = true
-
-[functions.send-transactional-email]
-verify_jwt = true
-
-[functions.preview-transactional-email]
-verify_jwt = false
-
-[functions.handle-email-unsubscribe]
-verify_jwt = false
-
-[functions.handle-email-suppression]
-verify_jwt = false
-
-[functions.webhook-inbound]
-verify_jwt = false
+[functions]
+  [functions.auth-email-hook]
+    verify_jwt = false
+  [functions.create-trial-checkout]
+    verify_jwt = true
+  [functions.customer-portal]
+    verify_jwt = true
+  [functions.enroll-user-in-course]
+    verify_jwt = true
+  [functions.fetch-url-content]
+    verify_jwt = true
+  [functions.handle-email-suppression]
+    verify_jwt = false
+  [functions.handle-email-unsubscribe]
+    verify_jwt = false
+  [functions.issue-certificate]
+    verify_jwt = true
+  [functions.log-consent]
+    verify_jwt = true
+  [functions.paige-voice-chat]
+    verify_jwt = false
+  [functions.paige-write-back]
+    verify_jwt = true
+  [functions.personal-build-suggestions]
+    verify_jwt = true
+  [functions.plaid-webhook]
+    verify_jwt = false
+  [functions.preview-transactional-email]
+    verify_jwt = false
+  [functions.process-email-queue]
+    verify_jwt = true
+  [functions.request-data-deletion]
+    verify_jwt = true
+  [functions.schedule-automated-tasks]
+    verify_jwt = true
+  [functions.send-funding-report]
+    verify_jwt = true
+  [functions.send-sms-reminder]
+    verify_jwt = true
+  [functions.send-support-request]
+    verify_jwt = true
+  [functions.send-transactional-email]
+    verify_jwt = true
+  [functions.stripe-webhook]
+    verify_jwt = false
+  [functions.track-lesson-progress]
+    verify_jwt = true
+  [functions.vapi-create-session]
+    verify_jwt = true
+  [functions.voice-command-processor]
+    verify_jwt = true
+  [functions.webhook-inbound]
+    verify_jwt = false
