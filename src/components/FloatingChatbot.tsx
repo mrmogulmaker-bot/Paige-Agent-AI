@@ -373,7 +373,28 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              {conversation.status === "connected" && (
+              {/* Mobile voice status + end button in header */}
+              {isMobile && conversation.status === "connected" && (
+                <div className="flex items-center gap-1.5 mr-2">
+                  {conversation.isSpeaking ? (
+                    <div className="flex items-center gap-1 text-primary text-xs">
+                      <Volume2 className="h-3.5 w-3.5 animate-pulse" />
+                      <span className="text-[10px]">Speaking</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-primary text-xs">
+                      <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                      <span className="text-[10px]">Listening</span>
+                    </div>
+                  )}
+                  <Button onClick={stopVoiceChat} variant="destructive" size="sm" className="h-7 px-2 text-[10px]">
+                    <MicOff className="w-3 h-3 mr-1" />
+                    End
+                  </Button>
+                </div>
+              )}
+              {/* Desktop voice status icon */}
+              {!isMobile && conversation.status === "connected" && (
                 <div className="flex items-center gap-1 text-primary text-xs mr-2">
                   {conversation.isSpeaking ? (
                     <Volume2 className="h-3.5 w-3.5 animate-pulse" />
