@@ -281,8 +281,8 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
     }
   };
 
-  // Hide on mobile when on main dashboard (PaigeChat is already full-screen there)
-  const hideOnMobileDashboard = isMobile && location.pathname === "/app";
+  // On mobile: hide on /app (PaigeChat is full-screen there) and on non-app pages (auth, landing, etc.)
+  const hideChatbot = isMobile && (location.pathname === "/app" || !location.pathname.startsWith("/app"));
 
   const chatContent = (
     <>
