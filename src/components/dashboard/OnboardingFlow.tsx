@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, ArrowRight, ArrowLeft, Target, TrendingUp, DollarSign, CheckCircle2, Sparkles } from "lucide-react";
+import { Loader2, ArrowRight, ArrowLeft, Target, TrendingUp, DollarSign, CheckCircle2, Sparkles, FileText } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 interface OnboardingFlowProps {
