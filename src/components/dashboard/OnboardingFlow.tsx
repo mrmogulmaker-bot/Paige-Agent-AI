@@ -138,20 +138,7 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
         description: "Your profile has been set up successfully",
       });
 
-      // Send welcome email
-      try {
-        await supabase.functions.invoke('send-welcome-email', {
-          body: { 
-            fullName, 
-            email: user.email,
-            goals 
-          }
-        });
-        console.log("Welcome email sent");
-      } catch (emailError) {
-        console.error("Failed to send welcome email:", emailError);
-        // Don't block onboarding if email fails
-      }
+      // Welcome email already sent on signup — no need to send again here
 
       onComplete();
     } catch (error) {

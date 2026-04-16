@@ -12,6 +12,7 @@ import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { SessionTimeoutWarning } from "@/components/auth/SessionTimeoutWarning";
 import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
+import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -25,6 +26,7 @@ const AppShell = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(!DEV_MODE);
   const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const location = useLocation();
@@ -33,6 +35,22 @@ const AppShell = () => {
 
   // Show context panel on non-root /app routes
   const showContextPanel = location.pathname !== "/app" || !isMobile;
+
+  // Check if user is new and needs onboarding
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("profiles")
+      .select("full_name, phone, address")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        // Show onboarding if profile is mostly empty (new user)
+        if (data && !data.phone && !data.address) {
+          setShowOnboarding(true);
+        }
+      });
+  }, [user?.id]);
 
   useEffect(() => {
     if (DEV_MODE) return;
@@ -77,6 +95,7 @@ const AppShell = () => {
   if (isMobile) {
     return (
       <>
+        <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
         <AdminViewBanner />
         <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
         <div className="h-screen flex flex-col bg-background">
@@ -99,6 +118,7 @@ const AppShell = () => {
   // Desktop layout: resizable panels
   return (
     <>
+      <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
       <AdminViewBanner />
       <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
       <div className="h-screen flex flex-col bg-background">

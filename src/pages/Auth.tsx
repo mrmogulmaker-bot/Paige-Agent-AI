@@ -154,7 +154,7 @@ const Auth = () => {
     setIsLoading(true);
     try {
       const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+        redirect_uri: `${window.location.origin}/app`,
       });
       if (result.error) {
         toast({ title: "Google sign-in failed", description: String(result.error), variant: "destructive" });
@@ -171,7 +171,7 @@ const Auth = () => {
     setIsLoading(true);
     try {
       const result = await lovable.auth.signInWithOAuth("apple", {
-        redirect_uri: window.location.origin,
+        redirect_uri: `${window.location.origin}/app`,
       });
       if (result.error) {
         toast({ title: "Apple sign-in failed", description: String(result.error), variant: "destructive" });
