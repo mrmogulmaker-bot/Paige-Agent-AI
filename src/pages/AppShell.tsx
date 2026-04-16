@@ -99,6 +99,7 @@ const AppShell = () => {
         <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
         <AdminViewBanner />
         <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
+        <PushNotificationPrompt />
         <div className="h-screen flex flex-col bg-background">
           <AppNav user={activeUser} />
           <div className="flex-1 overflow-hidden">
@@ -122,6 +123,7 @@ const AppShell = () => {
       <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
       <AdminViewBanner />
       <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
+      <PushNotificationPrompt />
       <div className="h-screen flex flex-col bg-background">
         <AppNav user={activeUser} />
         <ResizablePanelGroup direction="horizontal" className="flex-1">
