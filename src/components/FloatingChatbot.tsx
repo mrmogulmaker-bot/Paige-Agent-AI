@@ -37,6 +37,7 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const sessionIdRef = useRef<string>(crypto.randomUUID());
@@ -47,6 +48,18 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) setCurrentUserId(data.user.id);
     });
+  }, []);
+
+  // Check mic permission on mount
+  useEffect(() => {
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: "microphone" as PermissionName }).then((result) => {
+        setMicPermission(result.state === 'granted' ? 'granted' : result.state === 'denied' ? 'denied' : 'unknown');
+        result.onchange = () => {
+          setMicPermission(result.state === 'granted' ? 'granted' : result.state === 'denied' ? 'denied' : 'unknown');
+        };
+      }).catch(() => { /* permissions API not supported */ });
+    }
   }, []);
 
   const {
@@ -79,7 +92,13 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
     },
     onError: (error) => {
       console.error("ElevenLabs error:", error);
-      toast({ title: "Voice chat error", description: typeof error === 'string' ? error : "Failed to connect to voice chat", variant: "destructive" });
+      const errorMsg = typeof error === 'string' ? error : "Failed to connect to voice chat";
+      if (errorMsg.includes("NotAllowed") || errorMsg.includes("Permission")) {
+        toast({ title: "Microphone Access Required", description: "Please allow microphone access in your browser settings, then try again.", variant: "destructive" });
+        setMicPermission('denied');
+      } else {
+        toast({ title: "Voice chat error", description: errorMsg, variant: "destructive" });
+      }
     },
   });
 
@@ -114,7 +133,20 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
   const startVoiceChat = async () => {
     try {
+      if (micPermission === 'denied') {
+        toast({
+          title: "Microphone Blocked",
+          description: isMobile
+            ? "Enable microphone in your browser settings. On iPhone: Settings > Safari > Microphone."
+            : "Tap the lock icon in your browser's address bar to enable microphone access.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicPermission('granted');
+
       const { data: { session } } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke("elevenlabs-signed-url", {
         headers: { Authorization: `Bearer ${session?.access_token}` },
@@ -138,16 +170,19 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       });
     } catch (err: any) {
       console.error("Error starting widget voice chat:", err);
-      if (err?.name === "NotAllowedError") {
+      if (err?.name === "NotAllowedError" || err?.message?.includes("Permission")) {
+        setMicPermission('denied');
         toast({
           title: "Microphone Access Required",
           description: isMobile
-            ? "Enable microphone in your browser settings to use voice chat."
+            ? "Please enable microphone in your browser settings. On iPhone: Settings > Safari > Microphone."
             : "Please allow microphone access when prompted.",
           variant: "destructive",
         });
+      } else if (err?.name === "NotFoundError") {
+        toast({ title: "No Microphone Found", description: "Please connect a microphone and try again.", variant: "destructive" });
       } else {
-        toast({ title: "Error", description: "Failed to start voice chat.", variant: "destructive" });
+        toast({ title: "Error", description: "Failed to start voice chat. Please try again.", variant: "destructive" });
       }
     }
   };
@@ -338,7 +373,28 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              {conversation.status === "connected" && (
+              {/* Mobile voice status + end button in header */}
+              {isMobile && conversation.status === "connected" && (
+                <div className="flex items-center gap-1.5 mr-2">
+                  {conversation.isSpeaking ? (
+                    <div className="flex items-center gap-1 text-primary text-xs">
+                      <Volume2 className="h-3.5 w-3.5 animate-pulse" />
+                      <span className="text-[10px]">Speaking</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-primary text-xs">
+                      <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                      <span className="text-[10px]">Listening</span>
+                    </div>
+                  )}
+                  <Button onClick={stopVoiceChat} variant="destructive" size="sm" className="h-7 px-2 text-[10px]">
+                    <MicOff className="w-3 h-3 mr-1" />
+                    End
+                  </Button>
+                </div>
+              )}
+              {/* Desktop voice status icon */}
+              {!isMobile && conversation.status === "connected" && (
                 <div className="flex items-center gap-1 text-primary text-xs mr-2">
                   {conversation.isSpeaking ? (
                     <Volume2 className="h-3.5 w-3.5 animate-pulse" />
@@ -429,7 +485,14 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
                 onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat}
                 variant={conversation.status === "connected" ? "destructive" : "secondary"}
                 size="icon"
-                className="h-10 w-10 flex-shrink-0"
+                className={`flex-shrink-0 ${isMobile ? "h-10 w-10" : "h-10 w-10"} ${micPermission === 'denied' ? 'opacity-60' : ''}`}
+                title={
+                  micPermission === 'denied'
+                    ? "Microphone blocked — tap to learn how to enable"
+                    : conversation.status === "connected"
+                      ? "End voice chat"
+                      : "Start voice chat with Paige"
+                }
               >
                 {conversation.status === "connected" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
               </Button>
