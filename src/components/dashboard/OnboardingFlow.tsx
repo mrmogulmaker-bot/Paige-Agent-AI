@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, ArrowRight, ArrowLeft, Target, TrendingUp, DollarSign, CheckCircle2, Sparkles } from "lucide-react";
+import { Loader2, ArrowRight, ArrowLeft, Target, TrendingUp, DollarSign, CheckCircle2, Sparkles, FileText } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 interface OnboardingFlowProps {
@@ -176,6 +176,38 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
                 Your AI-powered credit building and business financing companion. Let's get you started on your journey to financial success.
               </p>
             </div>
+
+            {/* Document Upload Reminder */}
+            <Card className="p-4 border-gold/30 bg-gold/5">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-gold/20 flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-5 h-5 text-gold" />
+                </div>
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-sm">Have Your Documents Ready</h4>
+                  <p className="text-xs text-muted-foreground">
+                    To get the most out of Paige, have these ready:
+                  </p>
+                  <ul className="text-xs text-muted-foreground space-y-1">
+                    <li className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent" />
+                      <span>Personal credit reports (all 3 bureaus)</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent" />
+                      <span>Business formation docs (if applicable)</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent" />
+                      <span>Business credit ratings (if you have them)</span>
+                    </li>
+                  </ul>
+                  <p className="text-xs text-gold-dark font-medium pt-1">
+                    Don't have everything? No problem — Paige will guide you through every step.
+                  </p>
+                </div>
+              </div>
+            </Card>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-6">
               <Card className="p-4 text-center space-y-2 border-primary/20">
