@@ -154,81 +154,78 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
 
   return (
     <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent className="max-w-2xl" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto sm:max-h-[85vh]" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle className="text-2xl">Welcome to PaigeAgent.ai! 🎉</DialogTitle>
+          <DialogTitle className="text-xl sm:text-2xl">Welcome to PaigeAgent.ai! 🎉</DialogTitle>
           <DialogDescription>
             Let's set up your profile to personalize your experience
           </DialogDescription>
         </DialogHeader>
 
-        {step > 0 && <Progress value={progress} className="mb-6" />}
+        {step > 0 && <Progress value={progress} className="mb-4 sm:mb-6" />}
 
         {/* Step 0: Welcome */}
         {step === 0 && (
-          <div className="space-y-6 py-4">
-            <div className="text-center space-y-4">
-              <div className="w-20 h-20 bg-gradient-gold rounded-full mx-auto flex items-center justify-center">
-                <Sparkles className="w-10 h-10 text-white" />
+          <div className="space-y-4 sm:space-y-6 py-2 sm:py-4">
+            <div className="text-center space-y-2 sm:space-y-4">
+              <div className="w-14 h-14 sm:w-20 sm:h-20 bg-gradient-gold rounded-full mx-auto flex items-center justify-center">
+                <Sparkles className="w-7 h-7 sm:w-10 sm:h-10 text-white" />
               </div>
-              <h2 className="text-3xl font-bold">Welcome to PaigeAgent.ai!</h2>
-              <p className="text-muted-foreground max-w-md mx-auto">
-                Your AI-powered credit building and business financing companion. Let's get you started on your journey to financial success.
+              <h2 className="text-xl sm:text-3xl font-bold">Welcome to PaigeAgent.ai!</h2>
+              <p className="text-sm sm:text-base text-muted-foreground max-w-md mx-auto">
+                Your AI-powered credit building and business financing companion.
               </p>
             </div>
 
             {/* Document Upload Reminder */}
-            <Card className="p-4 border-gold/30 bg-gold/5">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-full bg-gold/20 flex items-center justify-center flex-shrink-0">
-                  <FileText className="w-5 h-5 text-gold" />
+            <Card className="p-3 sm:p-4 border-gold/30 bg-gold/5">
+              <div className="flex items-start gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gold/20 flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-gold" />
                 </div>
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-sm">Have Your Documents Ready</h4>
-                  <p className="text-xs text-muted-foreground">
-                    To get the most out of Paige, have these ready:
-                  </p>
+                <div className="space-y-1.5">
+                  <h4 className="font-semibold text-xs sm:text-sm">Have Your Documents Ready</h4>
                   <ul className="text-xs text-muted-foreground space-y-1">
                     <li className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent" />
+                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent flex-shrink-0" />
                       <span>Personal credit reports (all 3 bureaus)</span>
                     </li>
                     <li className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent" />
+                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent flex-shrink-0" />
                       <span>Business formation docs (if applicable)</span>
                     </li>
                     <li className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent" />
+                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent flex-shrink-0" />
                       <span>Business credit ratings (if you have them)</span>
                     </li>
                   </ul>
-                  <p className="text-xs text-gold-dark font-medium pt-1">
-                    Don't have everything? No problem — Paige will guide you through every step.
+                  <p className="text-xs text-gold-dark font-medium">
+                    Don't have everything? Paige will guide you through every step.
                   </p>
                 </div>
               </div>
             </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-6">
-              <Card className="p-4 text-center space-y-2 border-primary/20">
-                <Target className="w-8 h-8 mx-auto text-primary" />
-                <h3 className="font-semibold">A.C.C.E.L.</h3>
-                <p className="text-xs text-muted-foreground">Personal credit repair & optimization</p>
+            <div className="grid grid-cols-3 gap-2 sm:gap-4">
+              <Card className="p-2 sm:p-4 text-center space-y-1 sm:space-y-2 border-primary/20">
+                <Target className="w-5 h-5 sm:w-8 sm:h-8 mx-auto text-primary" />
+                <h3 className="font-semibold text-xs sm:text-base">A.C.C.E.L.</h3>
+                <p className="text-[10px] sm:text-xs text-muted-foreground hidden sm:block">Personal credit repair & optimization</p>
               </Card>
-              <Card className="p-4 text-center space-y-2 border-primary/20">
-                <TrendingUp className="w-8 h-8 mx-auto text-primary" />
-                <h3 className="font-semibold">B.U.I.L.D.</h3>
-                <p className="text-xs text-muted-foreground">Business credit building strategies</p>
+              <Card className="p-2 sm:p-4 text-center space-y-1 sm:space-y-2 border-primary/20">
+                <TrendingUp className="w-5 h-5 sm:w-8 sm:h-8 mx-auto text-primary" />
+                <h3 className="font-semibold text-xs sm:text-base">B.U.I.L.D.</h3>
+                <p className="text-[10px] sm:text-xs text-muted-foreground hidden sm:block">Business credit building strategies</p>
               </Card>
-              <Card className="p-4 text-center space-y-2 border-primary/20">
-                <DollarSign className="w-8 h-8 mx-auto text-primary" />
-                <h3 className="font-semibold">Funding</h3>
-                <p className="text-xs text-muted-foreground">Access to capital & financing</p>
+              <Card className="p-2 sm:p-4 text-center space-y-1 sm:space-y-2 border-primary/20">
+                <DollarSign className="w-5 h-5 sm:w-8 sm:h-8 mx-auto text-primary" />
+                <h3 className="font-semibold text-xs sm:text-base">Funding</h3>
+                <p className="text-[10px] sm:text-xs text-muted-foreground hidden sm:block">Access to capital & financing</p>
               </Card>
             </div>
 
             <div className="flex justify-center">
-              <Button onClick={() => setStep(1)} size="lg" className="bg-gradient-gold">
+              <Button onClick={() => setStep(1)} size="lg" className="bg-gradient-gold w-full sm:w-auto">
                 Get Started
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
@@ -326,7 +323,7 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
               <div className="space-y-2">
                 <Label htmlFor="city">City</Label>
                 <Input
@@ -351,7 +348,7 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
                 </Select>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 col-span-2 sm:col-span-1">
                 <Label htmlFor="postalCode">ZIP</Label>
                 <Input
                   id="postalCode"
@@ -372,14 +369,14 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
               This helps us provide personalized business credit building guidance
             </p>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <Button
                 variant={hasBusinessCredit === true ? "default" : "outline"}
                 onClick={() => setHasBusinessCredit(true)}
-                className="h-24"
+                className="h-20 sm:h-24"
               >
                 <div>
-                  <p className="font-semibold">Yes, I have a business</p>
+                  <p className="font-semibold text-sm sm:text-base">Yes, I have a business</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     I want to build business credit
                   </p>
@@ -389,10 +386,10 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
               <Button
                 variant={hasBusinessCredit === false ? "default" : "outline"}
                 onClick={() => setHasBusinessCredit(false)}
-                className="h-24"
+                className="h-20 sm:h-24"
               >
                 <div>
-                  <p className="font-semibold">No business yet</p>
+                  <p className="font-semibold text-sm sm:text-base">No business yet</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     Focus on personal credit for now
                   </p>
