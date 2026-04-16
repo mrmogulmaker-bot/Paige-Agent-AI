@@ -297,7 +297,7 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
         </Button>
       )}
 
-      {isOpen && (
+      {isOpen && !hideChatbot && (
         <Card
           className={`fixed bottom-6 right-6 w-[380px] max-w-[calc(100vw-32px)] h-[min(600px,calc(100vh-48px))] shadow-glow z-[9999] flex flex-col relative ${isDragOver ? "ring-2 ring-primary" : ""}`}
           onDragOver={handleDragOver}
