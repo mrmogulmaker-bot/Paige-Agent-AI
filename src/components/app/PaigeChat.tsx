@@ -234,24 +234,23 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
       });
       if (error) throw error;
 
+      const voicePageLine = `Current page: ${currentPageRef.current}`;
       const voiceSystemPrompt = contextBlock
-        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
-        : undefined;
+        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\n${voicePageLine}\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- The client is currently viewing the "${currentPageRef.current}" page — assume their questions relate to what they are seeing there and tailor your answers to that section\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
+        : `You are Paige, the AI credit strategist for PaigeAgent.ai. ${voicePageLine}. Tailor responses to that section of the app.`;
 
       await conversation.startSession({
         signedUrl: data.signedUrl,
-        ...(voiceSystemPrompt ? {
-          overrides: {
-            agent: {
-              prompt: { prompt: voiceSystemPrompt },
-              firstMessage: contextBlock
-                ? hasCreditData
-                  ? `Hey ${user.user_metadata?.full_name?.split(" ")[0] || "there"} — I've got your file pulled up. What do you want to work on?`
-                  : "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation."
-                : undefined,
-            },
+        overrides: {
+          agent: {
+            prompt: { prompt: voiceSystemPrompt },
+            firstMessage: contextBlock
+              ? hasCreditData
+                ? `Hey ${user.user_metadata?.full_name?.split(" ")[0] || "there"} — I've got your file pulled up and I see you're on the ${currentPageRef.current} page. What do you want to work on?`
+                : "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation."
+              : undefined,
           },
-        } : {}),
+        },
       });
     } catch (err: any) {
       console.error("Error starting voice chat:", err);
@@ -377,7 +376,9 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         })),
         sessionDocumentContext: getSessionDocumentContext(),
         ...(clientId ? { clientId } : {}),
-        ...(contextBlock ? { clientContext: contextBlock } : {}),
+        // Always include current_page even if there's no credit context block yet,
+        // so Paige can still tailor responses to the section the client is viewing.
+        clientContext: buildContextWithPage(contextBlock || ""),
       };
 
       if (currentDoc) {
