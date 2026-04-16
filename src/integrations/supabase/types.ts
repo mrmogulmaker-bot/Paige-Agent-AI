@@ -4909,6 +4909,47 @@ export type Database = {
           parent_business_id: string
         }[]
       }
+      get_profile_with_pii_log: {
+        Args: { _user_id: string }
+        Returns: {
+          address: string | null
+          avatar_url: string | null
+          city: string | null
+          created_at: string | null
+          credit_goals: Json | null
+          cross_bureau_discrepancies: Json | null
+          dashboard_mode: string
+          date_of_birth: string | null
+          dob_last4: string | null
+          estimated_fico_eq: number | null
+          estimated_fico_ex: number | null
+          estimated_fico_tu: number | null
+          full_name: string | null
+          funding_goals: Json | null
+          ghl_contact_id: string | null
+          has_discrepancies: boolean | null
+          id: string
+          last_report_analyzed_at: string | null
+          last_report_source: string | null
+          onboarding_completed: boolean | null
+          onboarding_step: string | null
+          phone: string | null
+          pme_phase: string | null
+          postal_code: string | null
+          score_model: string | null
+          ssn_encrypted: string | null
+          ssn_last_4: string | null
+          state: string | null
+          updated_at: string | null
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "profiles"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
