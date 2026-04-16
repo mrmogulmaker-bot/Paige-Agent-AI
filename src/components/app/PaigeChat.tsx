@@ -42,6 +42,28 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   const contextInjectedRef = useRef(false);
   const isMobile = useIsMobile();
+  const location = useLocation();
+
+  // Page awareness — derive human-readable page name from current route.
+  // Tracked in a ref so the latest value is always included in outgoing
+  // requests without requiring a re-render of the chat panel.
+  const currentPage = useMemo(() => getCurrentPageName(location.pathname), [location.pathname]);
+  const currentPageRef = useRef(currentPage);
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  // Build the contextBlock with the current_page line prepended.
+  // Used inside async send handlers so they always see the latest page
+  // even if the user navigates mid-chat.
+  const buildContextWithPage = useCallback(
+    (block: string) => {
+      const page = currentPageRef.current;
+      if (!block) return `Current page: ${page}`;
+      return `Current page: ${page}\n\n${block}`;
+    },
+    []
+  );
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -71,7 +93,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
     }
   }, []);
 
-  // When context loads, send a context-aware opening via the AI
+  // When context loads, send a context-aware, PAGE-AWARE opening via the AI
   useEffect(() => {
     if (contextInjectedRef.current || contextLoading || messages.length !== 1) return;
     if (!contextBlock) return;
@@ -94,7 +116,9 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         if (!freshSession) return;
 
         setIsLoading(true);
-        const greetMessages = [{ role: "user" as const, content: "Give me a brief personalized greeting based on my client context. Don't repeat all my data — just acknowledge my situation warmly and ask what I want to work on today." }];
+        const firstName = (user.user_metadata?.full_name || "").split(" ")[0] || undefined;
+        const pageInstruction = getPageOpeningInstruction(currentPageRef.current, firstName);
+        const greetMessages = [{ role: "user" as const, content: pageInstruction }];
 
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,
@@ -103,7 +127,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${freshSession.access_token}` },
             body: JSON.stringify({
               messages: greetMessages,
-              clientContext: contextBlock,
+              clientContext: buildContextWithPage(contextBlock),
               ...(clientId ? { clientId } : {}),
             }),
           }
@@ -139,7 +163,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         setIsLoading(false);
       }
     })();
-  }, [clientId, contextBlock, contextLoading, hasCreditData, messages.length]);
+  }, [clientId, contextBlock, contextLoading, hasCreditData, messages.length, user, buildContextWithPage]);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
