@@ -602,7 +602,8 @@ export function CreditScoreSimulator({ userId, onNavigate }: Props) {
     const hasAutoLoan = types.some((t) => t.includes("auto"));
     let totalBal = 0, totalLim = 0;
     for (const a of allAccounts as any[]) {
-      if (((a.type || "").toLowerCase()).includes("revolv")) {
+      const t = (a.type || "").toLowerCase();
+      if (t === "credit_card" || t.includes("revolv") || t.includes("card")) {
         totalBal += a.current_balance ?? 0;
         totalLim += a.credit_limit ?? 0;
       }
