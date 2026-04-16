@@ -95,6 +95,7 @@ const AppShell = () => {
   if (isMobile) {
     return (
       <>
+        <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
         <AdminViewBanner />
         <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
         <div className="h-screen flex flex-col bg-background">
