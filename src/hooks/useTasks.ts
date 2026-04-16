@@ -138,6 +138,7 @@ export const useTasks = () => {
         });
 
         return data;
+      } else {
         // Personal Credit Task validation
         const validationResult = validatePersonalCreditTask(
           taskData.title || "",
