@@ -16,6 +16,8 @@ import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
 import { useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type Message = {
   role: "user" | "assistant";
@@ -25,6 +27,8 @@ type Message = {
 };
 
 export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
+  const location = useLocation();
+  const isMobile = useIsMobile();
   const [isOpen, setIsOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { contextBlock, hasCreditData } = useClientChatContext(clientId, clientId ? null : currentUserId);
@@ -277,9 +281,12 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
     }
   };
 
+  // On mobile: hide on /app (PaigeChat is full-screen there) and on non-app pages (auth, landing, etc.)
+  const hideChatbot = isMobile && (location.pathname === "/app" || !location.pathname.startsWith("/app"));
+
   const chatContent = (
     <>
-      {!isOpen && (
+      {!isOpen && !hideChatbot && (
         <Button
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-glow z-[9999]"
@@ -290,7 +297,7 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
         </Button>
       )}
 
-      {isOpen && (
+      {isOpen && !hideChatbot && (
         <Card
           className={`fixed bottom-6 right-6 w-[380px] max-w-[calc(100vw-32px)] h-[min(600px,calc(100vh-48px))] shadow-glow z-[9999] flex flex-col relative ${isDragOver ? "ring-2 ring-primary" : ""}`}
           onDragOver={handleDragOver}
