@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, Loader2, Mic, MicOff, Volume2, Paperclip } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import { getCurrentPageName } from "@/lib/pageContext";
 import type { User, Session } from "@supabase/supabase-js";
 import { useConversation } from "@11labs/react";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
