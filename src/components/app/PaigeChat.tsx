@@ -6,7 +6,7 @@ import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useLocation } from "react-router-dom";
-import { getCurrentPageName } from "@/lib/pageContext";
+import { getCurrentPageName, getPageOpeningInstruction } from "@/lib/pageContext";
 import type { User, Session } from "@supabase/supabase-js";
 import { useConversation } from "@11labs/react";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
