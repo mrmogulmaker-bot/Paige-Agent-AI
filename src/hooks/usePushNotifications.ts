@@ -95,11 +95,14 @@ export const usePushNotifications = () => {
       }
 
       const existing = await registration.pushManager.getSubscription();
+      const keyBytes = urlBase64ToUint8Array(vapidKey);
+      // Cast to BufferSource — Uint8Array is a valid BufferSource at runtime,
+      // but TS lib types are overly strict about ArrayBuffer vs SharedArrayBuffer.
       const sub =
         existing ||
         (await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+          applicationServerKey: keyBytes as unknown as BufferSource,
         }));
 
       const json = sub.toJSON();
