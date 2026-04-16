@@ -105,12 +105,10 @@ export const ProfileSettings = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Load personal profile
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      // Load personal profile via PII-logged RPC (records read access to ssn/dob)
+      const { data: profileRows } = await supabase
+        .rpc("get_profile_with_pii_log", { _user_id: user.id });
+      const profile = Array.isArray(profileRows) ? profileRows[0] : profileRows;
 
       if (profile) {
         setFullName(profile.full_name || "");
