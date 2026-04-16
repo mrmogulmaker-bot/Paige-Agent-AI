@@ -4097,6 +4097,143 @@ export type Database = {
         }
         Relationships: []
       }
+      push_notification_log: {
+        Row: {
+          body: string
+          category: string
+          created_at: string
+          data: Json | null
+          error_message: string | null
+          id: string
+          sent_at: string | null
+          status: string
+          subscription_id: string | null
+          title: string
+          url: string | null
+          user_id: string
+        }
+        Insert: {
+          body: string
+          category: string
+          created_at?: string
+          data?: Json | null
+          error_message?: string | null
+          id?: string
+          sent_at?: string | null
+          status?: string
+          subscription_id?: string | null
+          title: string
+          url?: string | null
+          user_id: string
+        }
+        Update: {
+          body?: string
+          category?: string
+          created_at?: string
+          data?: Json | null
+          error_message?: string | null
+          id?: string
+          sent_at?: string | null
+          status?: string
+          subscription_id?: string | null
+          title?: string
+          url?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_notification_log_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "push_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_notification_preferences: {
+        Row: {
+          created_at: string
+          id: string
+          notify_credit_score_changes: boolean
+          notify_dispute_updates: boolean
+          notify_funding_matches: boolean
+          notify_task_reminders: boolean
+          prompt_dismiss_count: number
+          prompt_dismissed_at: string | null
+          push_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notify_credit_score_changes?: boolean
+          notify_dispute_updates?: boolean
+          notify_funding_matches?: boolean
+          notify_task_reminders?: boolean
+          prompt_dismiss_count?: number
+          prompt_dismissed_at?: string | null
+          push_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notify_credit_score_changes?: boolean
+          notify_dispute_updates?: boolean
+          notify_funding_matches?: boolean
+          notify_task_reminders?: boolean
+          prompt_dismiss_count?: number
+          prompt_dismissed_at?: string | null
+          push_enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      push_subscriptions: {
+        Row: {
+          auth_key: string
+          created_at: string
+          device_type: string | null
+          endpoint: string
+          id: string
+          is_active: boolean
+          last_used_at: string
+          p256dh_key: string
+          updated_at: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth_key: string
+          created_at?: string
+          device_type?: string | null
+          endpoint: string
+          id?: string
+          is_active?: boolean
+          last_used_at?: string
+          p256dh_key: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth_key?: string
+          created_at?: string
+          device_type?: string | null
+          endpoint?: string
+          id?: string
+          is_active?: boolean
+          last_used_at?: string
+          p256dh_key?: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       referral_codes: {
         Row: {
           affiliate_id: string
