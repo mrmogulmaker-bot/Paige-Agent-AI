@@ -9,6 +9,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { OnboardingChecklist } from "./OnboardingChecklist";
+import { CreditScoreSimulator } from "./CreditScoreSimulator";
 
 // ── Helpers ──
 
@@ -480,6 +481,9 @@ export function DashboardCommandCenter({ userId, onNavigate }: DashboardCommandC
 
       {/* Next Best Action */}
       <NextBestAction onNavigate={onNavigate} />
+
+      {/* Credit Score Simulator */}
+      {userId && <CreditScoreSimulator userId={userId} onNavigate={onNavigate} />}
 
       {/* Middle row: Disputes + File Completion */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
