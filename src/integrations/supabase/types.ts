@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      _internal_secrets: {
+        Row: {
+          created_at: string
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          created_at?: string
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          created_at?: string
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
       account_modifications: {
         Row: {
           account_id: string | null
