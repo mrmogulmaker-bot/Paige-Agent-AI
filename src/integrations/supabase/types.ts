@@ -4470,6 +4470,7 @@ export type Database = {
           due_date: string | null
           id: string
           metadata: Json | null
+          reminder_sent: boolean
           status: Database["public"]["Enums"]["task_status"]
           title: string
           track: string | null
@@ -4483,6 +4484,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           metadata?: Json | null
+          reminder_sent?: boolean
           status?: Database["public"]["Enums"]["task_status"]
           title: string
           track?: string | null
@@ -4496,6 +4498,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           metadata?: Json | null
+          reminder_sent?: boolean
           status?: Database["public"]["Enums"]["task_status"]
           title?: string
           track?: string | null
