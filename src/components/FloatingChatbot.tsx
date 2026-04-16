@@ -485,7 +485,14 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
                 onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat}
                 variant={conversation.status === "connected" ? "destructive" : "secondary"}
                 size="icon"
-                className="h-10 w-10 flex-shrink-0"
+                className={`flex-shrink-0 ${isMobile ? "h-10 w-10" : "h-10 w-10"} ${micPermission === 'denied' ? 'opacity-60' : ''}`}
+                title={
+                  micPermission === 'denied'
+                    ? "Microphone blocked — tap to learn how to enable"
+                    : conversation.status === "connected"
+                      ? "End voice chat"
+                      : "Start voice chat with Paige"
+                }
               >
                 {conversation.status === "connected" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
               </Button>
