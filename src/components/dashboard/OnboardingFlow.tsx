@@ -190,15 +190,15 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
                   </p>
                   <ul className="text-xs text-muted-foreground space-y-1">
                     <li className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent" />
                       <span>Personal credit reports (all 3 bureaus)</span>
                     </li>
                     <li className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent" />
                       <span>Business formation docs (if applicable)</span>
                     </li>
                     <li className="flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                      <CheckCircle2 className="w-3 h-3 text-fundability-excellent" />
                       <span>Business credit ratings (if you have them)</span>
                     </li>
                   </ul>
