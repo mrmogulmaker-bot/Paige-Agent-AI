@@ -1,10 +1,11 @@
 import * as React from 'npm:react@18.3.1'
 import {
-  Body, Container, Head, Heading, Html, Preview, Text, Button, Hr,
+  Body, Container, Head, Heading, Html, Img, Preview, Text, Button, Hr,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
 const SITE_NAME = "PaigeAgent.ai"
+const LOGO_URL = 'https://bfmyebsjyuoecmjskqhs.supabase.co/storage/v1/object/public/email-assets/paige-logo-transparent.png'
 
 interface WelcomeProps {
   name?: string
@@ -16,7 +17,7 @@ const WelcomeEmail = ({ name }: WelcomeProps) => (
     <Preview>Welcome to {SITE_NAME} — let's build your credit empire</Preview>
     <Body style={main}>
       <Container style={container}>
-        <Heading style={h1}>{SITE_NAME}</Heading>
+        <Img src={LOGO_URL} alt={SITE_NAME} width="180" height="auto" style={logo} />
         <Text style={subheading}>Mogul Maker Academy</Text>
         <Hr style={hr} />
         <Heading as="h2" style={h2}>
@@ -50,8 +51,8 @@ export const template = {
 
 const main = { backgroundColor: '#ffffff', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }
 const container = { padding: '40px 25px', maxWidth: '600px', margin: '0 auto' }
-const h1 = { fontSize: '28px', fontWeight: 'bold' as const, color: '#CFAE70', margin: '0', textAlign: 'center' as const }
-const subheading = { fontSize: '14px', color: '#6b7280', textAlign: 'center' as const, margin: '4px 0 0' }
+const logo = { display: 'block' as const, margin: '0 auto 8px' }
+const subheading = { fontSize: '14px', color: '#6b7280', textAlign: 'center' as const, margin: '0' }
 const h2 = { fontSize: '22px', fontWeight: 'bold' as const, color: '#0a1628', margin: '24px 0 12px' }
 const text = { fontSize: '15px', color: '#374151', lineHeight: '1.6', margin: '0 0 16px' }
 const listItem = { fontSize: '15px', color: '#374151', lineHeight: '1.6', margin: '0 0 8px', paddingLeft: '4px' }
