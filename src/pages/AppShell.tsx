@@ -13,6 +13,7 @@ import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { SessionTimeoutWarning } from "@/components/auth/SessionTimeoutWarning";
 import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
+import { PushNotificationPrompt } from "@/components/notifications/PushNotificationPrompt";
 import {
   ResizablePanelGroup,
   ResizablePanel,

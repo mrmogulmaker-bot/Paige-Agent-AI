@@ -361,9 +361,28 @@ serve(async (req) => {
       }
     }
 
-    // === EMAIL NOTIFICATIONS FOR CRITICAL ALERTS ===
+    // === EMAIL + PUSH NOTIFICATIONS FOR CRITICAL ALERTS ===
     const criticalAlerts = insertedAlerts.filter(a => a.alert_severity === "critical");
     if (criticalAlerts.length > 0) {
+      // Fire push notifications (one per critical alert) — non-blocking
+      for (const alert of criticalAlerts) {
+        try {
+          const isScoreChange = alert.alert_type?.includes("score");
+          await supabase.functions.invoke("send-push-notification", {
+            body: {
+              user_id: client_id,
+              category: isScoreChange ? "credit_score_changes" : "dispute_updates",
+              title: alert.alert_title,
+              body: alert.alert_description,
+              url: "/app/credit",
+              tag: `alert-${alert.alert_type}`,
+              data: { alert_id: (alert as any).id, bureau: alert.bureau },
+            },
+          });
+        } catch (e) {
+          console.error("Failed to send push notification:", e);
+        }
+      }
       // Get client profile for email
       const { data: clientProfile } = await supabase
         .from("profiles")
