@@ -25,6 +25,12 @@ type Message = {
 };
 
 export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
+  const isMobile = window.innerWidth < 768;
+  const isAppDashboard = window.location.pathname === "/app";
+
+  // Hide floating chatbot on mobile when on main dashboard (PaigeChat is already full-screen there)
+  if (isMobile && isAppDashboard) return null;
+
   const [isOpen, setIsOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { contextBlock, hasCreditData } = useClientChatContext(clientId, clientId ? null : currentUserId);
