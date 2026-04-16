@@ -16,6 +16,8 @@ import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
 import { useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type Message = {
   role: "user" | "assistant";
@@ -25,12 +27,8 @@ type Message = {
 };
 
 export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
-  const isMobile = window.innerWidth < 768;
-  const isAppDashboard = window.location.pathname === "/app";
-
-  // Hide floating chatbot on mobile when on main dashboard (PaigeChat is already full-screen there)
-  if (isMobile && isAppDashboard) return null;
-
+  const location = useLocation();
+  const isMobile = useIsMobile();
   const [isOpen, setIsOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { contextBlock, hasCreditData } = useClientChatContext(clientId, clientId ? null : currentUserId);
