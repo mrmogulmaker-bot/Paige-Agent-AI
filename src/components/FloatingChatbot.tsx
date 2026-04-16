@@ -92,7 +92,13 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
     },
     onError: (error) => {
       console.error("ElevenLabs error:", error);
-      toast({ title: "Voice chat error", description: typeof error === 'string' ? error : "Failed to connect to voice chat", variant: "destructive" });
+      const errorMsg = typeof error === 'string' ? error : "Failed to connect to voice chat";
+      if (errorMsg.includes("NotAllowed") || errorMsg.includes("Permission")) {
+        toast({ title: "Microphone Access Required", description: "Please allow microphone access in your browser settings, then try again.", variant: "destructive" });
+        setMicPermission('denied');
+      } else {
+        toast({ title: "Voice chat error", description: errorMsg, variant: "destructive" });
+      }
     },
   });
 
