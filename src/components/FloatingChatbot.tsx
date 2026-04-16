@@ -286,7 +286,7 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
   const chatContent = (
     <>
-      {!isOpen && !hideOnMobileDashboard && (
+      {!isOpen && !hideChatbot && (
         <Button
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-glow z-[9999]"
