@@ -133,7 +133,20 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
   const startVoiceChat = async () => {
     try {
+      if (micPermission === 'denied') {
+        toast({
+          title: "Microphone Blocked",
+          description: isMobile
+            ? "Enable microphone in your browser settings. On iPhone: Settings > Safari > Microphone."
+            : "Tap the lock icon in your browser's address bar to enable microphone access.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicPermission('granted');
+
       const { data: { session } } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke("elevenlabs-signed-url", {
         headers: { Authorization: `Bearer ${session?.access_token}` },
@@ -157,16 +170,19 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       });
     } catch (err: any) {
       console.error("Error starting widget voice chat:", err);
-      if (err?.name === "NotAllowedError") {
+      if (err?.name === "NotAllowedError" || err?.message?.includes("Permission")) {
+        setMicPermission('denied');
         toast({
           title: "Microphone Access Required",
           description: isMobile
-            ? "Enable microphone in your browser settings to use voice chat."
+            ? "Please enable microphone in your browser settings. On iPhone: Settings > Safari > Microphone."
             : "Please allow microphone access when prompted.",
           variant: "destructive",
         });
+      } else if (err?.name === "NotFoundError") {
+        toast({ title: "No Microphone Found", description: "Please connect a microphone and try again.", variant: "destructive" });
       } else {
-        toast({ title: "Error", description: "Failed to start voice chat.", variant: "destructive" });
+        toast({ title: "Error", description: "Failed to start voice chat. Please try again.", variant: "destructive" });
       }
     }
   };
