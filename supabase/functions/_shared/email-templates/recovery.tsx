@@ -15,7 +15,7 @@ import {
   Hr,
 } from 'npm:@react-email/components@0.0.22'
 
-const SITE_NAME = 'PaigeAgent.ai'
+const SITE_NAME = 'Paige Agent AI'
 const LOGO_URL = 'https://bfmyebsjyuoecmjskqhs.supabase.co/storage/v1/object/public/email-assets/paige-logo-transparent.png'
 
 interface RecoveryEmailProps {

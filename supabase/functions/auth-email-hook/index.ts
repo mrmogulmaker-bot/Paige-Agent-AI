@@ -17,12 +17,12 @@ const corsHeaders = {
 }
 
 const EMAIL_SUBJECTS: Record<string, string> = {
-  signup: 'Verify your email — PaigeAgent.ai',
-  invite: "You've been invited to PaigeAgent.ai",
-  magiclink: 'Your login link — PaigeAgent.ai',
-  recovery: 'Reset your password — PaigeAgent.ai',
-  email_change: 'Confirm your email change — PaigeAgent.ai',
-  reauthentication: 'Your verification code — PaigeAgent.ai',
+  signup: 'Verify your email — Paige Agent AI',
+  invite: "You've been invited to Paige Agent AI",
+  magiclink: 'Your login link — Paige Agent AI',
+  recovery: 'Reset your password — Paige Agent AI',
+  email_change: 'Confirm your email change — Paige Agent AI',
+  reauthentication: 'Your verification code — Paige Agent AI',
 }
 
 // Template mapping
@@ -36,7 +36,7 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 }
 
 // Configuration
-const SITE_NAME = "PaigeAgent.ai"
+const SITE_NAME = "Paige Agent AI"
 const SENDER_DOMAIN = "notify.paigeagent.ai"
 const ROOT_DOMAIN = "paigeagent.ai"
 const FROM_DOMAIN = "paigeagent.ai"
