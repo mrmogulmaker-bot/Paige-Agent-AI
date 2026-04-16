@@ -44,7 +44,7 @@ export const useTasks = () => {
         .order("due_date", { ascending: true, nullsFirst: false });
 
       if (error) throw error;
-      setTasks((data || []) as Task[]);
+      setTasks((data || []) as unknown as Task[]);
     } catch (error) {
       console.error("Error fetching tasks:", error);
       toast({
@@ -131,7 +131,7 @@ export const useTasks = () => {
 
         if (error) throw error;
 
-        setTasks((prev) => [...prev, data as Task]);
+        setTasks((prev) => [...prev, data as unknown as Task]);
         toast({
           title: "Success",
           description: "Business task created successfully",
@@ -190,11 +190,7 @@ export const useTasks = () => {
 
         if (error) throw error;
 
-        setTasks((prev) => [...prev, data as Task]);
-        toast({
-          title: "Success",
-          description: "Task created successfully",
-        });
+        setTasks((prev) => [...prev, data as unknown as Task]);
 
         return data;
       }
@@ -220,7 +216,7 @@ export const useTasks = () => {
 
       if (error) throw error;
 
-      setTasks((prev) => prev.map((t) => (t.id === id ? data as Task : t)));
+      setTasks((prev) => prev.map((t) => (t.id === id ? data as unknown as Task : t)));
       
       if (updates.status === "completed") {
         const isPersonalCredit = data.track?.startsWith("ACCEL");
