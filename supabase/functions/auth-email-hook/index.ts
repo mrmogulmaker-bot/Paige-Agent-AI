@@ -17,12 +17,12 @@ const corsHeaders = {
 }
 
 const EMAIL_SUBJECTS: Record<string, string> = {
-  signup: 'Confirm your email',
-  invite: "You've been invited",
-  magiclink: 'Your login link',
-  recovery: 'Reset your password',
-  email_change: 'Confirm your new email',
-  reauthentication: 'Your verification code',
+  signup: 'Verify your email — PaigeAgent.ai',
+  invite: "You've been invited to PaigeAgent.ai",
+  magiclink: 'Your login link — PaigeAgent.ai',
+  recovery: 'Reset your password — PaigeAgent.ai',
+  email_change: 'Confirm your email change — PaigeAgent.ai',
+  reauthentication: 'Your verification code — PaigeAgent.ai',
 }
 
 // Template mapping
@@ -36,17 +36,17 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 }
 
 // Configuration
-const SITE_NAME = "paige-credit-navigator"
+const SITE_NAME = "PaigeAgent.ai"
 const SENDER_DOMAIN = "notify.paigeagent.ai"
 const ROOT_DOMAIN = "paigeagent.ai"
-const FROM_DOMAIN = "paigeagent.ai" // Domain shown in From address (may be root or sender subdomain)
+const FROM_DOMAIN = "paigeagent.ai"
 
 // Sample data for preview mode ONLY (not used in actual email sending).
 // URLs are baked in at scaffold time from the project's real data.
 // The sample email uses a fixed placeholder (RFC 6761 .test TLD) so the Go backend
 // can always find-and-replace it with the actual recipient when sending test emails,
 // even if the project's domain has changed since the template was scaffolded.
-const SAMPLE_PROJECT_URL = "https://paige-credit-navigator.lovable.app"
+const SAMPLE_PROJECT_URL = "https://paigeagent.ai"
 const SAMPLE_EMAIL = "user@example.test"
 const SAMPLE_DATA: Record<string, object> = {
   signup: {
