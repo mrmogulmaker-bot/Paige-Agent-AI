@@ -132,9 +132,12 @@ export const useTasks = () => {
         if (error) throw error;
 
         setTasks((prev) => [...prev, data as unknown as Task]);
+        toast({
+          title: "Success",
+          description: "Business task created successfully",
+        });
 
         return data;
-      } else {
         // Personal Credit Task validation
         const validationResult = validatePersonalCreditTask(
           taskData.title || "",
