@@ -15,6 +15,7 @@ import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
 import { useQueryClient } from "@tanstack/react-query";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type Message = {
   role: "user" | "assistant";
@@ -39,6 +40,7 @@ const quickActions = [
 export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   const contextInjectedRef = useRef(false);
+  const isMobile = useIsMobile();
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -48,11 +50,25 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const sessionIdRef = useRef<string>(crypto.randomUUID());
+
+  // Check mic permission on mount
+  useEffect(() => {
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: "microphone" as PermissionName }).then((result) => {
+        setMicPermission(result.state === 'granted' ? 'granted' : result.state === 'denied' ? 'denied' : 'unknown');
+        result.onchange = () => {
+          setMicPermission(result.state === 'granted' ? 'granted' : result.state === 'denied' ? 'denied' : 'unknown');
+        };
+      }).catch(() => { /* permissions API not supported */ });
+    }
+  }, []);
 
   // When context loads, send a context-aware opening via the AI
   useEffect(() => {
@@ -146,7 +162,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
     setAttachedDoc,
   } = useChatDocumentUpload();
 
-  // --- ElevenLabs voice (identical to FloatingChatbot) ---
+  // --- ElevenLabs voice ---
   const conversation = useConversation({
     onConnect: () => { toast({ title: "Voice chat started", description: "You can now speak with Paige" }); },
     onDisconnect: () => { toast({ title: "Voice chat ended", description: "The conversation has been closed" }); },
@@ -156,20 +172,43 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
     },
     onError: (error) => {
       console.error("ElevenLabs error:", error);
-      toast({ title: "Voice chat error", description: typeof error === 'string' ? error : "Failed to connect to voice chat", variant: "destructive" });
+      const errorMsg = typeof error === 'string' ? error : "Failed to connect to voice chat";
+      // Give mobile-friendly error guidance
+      if (errorMsg.includes("NotAllowed") || errorMsg.includes("Permission")) {
+        toast({
+          title: "Microphone Access Required",
+          description: "Please allow microphone access in your browser settings, then try again.",
+          variant: "destructive",
+        });
+        setMicPermission('denied');
+      } else {
+        toast({ title: "Voice chat error", description: errorMsg, variant: "destructive" });
+      }
     },
   });
 
   const startVoiceChat = async () => {
     try {
+      // Check denied permission first to give clear guidance
+      if (micPermission === 'denied') {
+        toast({
+          title: "Microphone Blocked",
+          description: "Tap the lock icon in your browser's address bar to enable microphone access.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Request mic permission — must be in gesture context (we're in a click handler, so this is fine)
       await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicPermission('granted');
+
       const { data: { session: freshSession } } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke("elevenlabs-signed-url", {
         headers: { Authorization: `Bearer ${freshSession?.access_token}` },
       });
       if (error) throw error;
 
-      // Build override prompt with full client context so voice Paige knows the client
       const voiceSystemPrompt = contextBlock
         ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
         : undefined;
@@ -189,9 +228,26 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
           },
         } : {}),
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error starting voice chat:", err);
-      toast({ title: "Error", description: "Failed to start voice chat.", variant: "destructive" });
+      if (err?.name === "NotAllowedError" || err?.message?.includes("Permission")) {
+        setMicPermission('denied');
+        toast({
+          title: "Microphone Access Required",
+          description: isMobile
+            ? "Please enable microphone in your browser settings. On iPhone: Settings > Safari > Microphone."
+            : "Please allow microphone access when prompted.",
+          variant: "destructive",
+        });
+      } else if (err?.name === "NotFoundError") {
+        toast({
+          title: "No Microphone Found",
+          description: "Please connect a microphone and try again.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Error", description: "Failed to start voice chat. Please try again.", variant: "destructive" });
+      }
     }
   };
 
@@ -268,6 +324,11 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput("");
+
+    // Blur input on mobile to dismiss keyboard after sending
+    if (isMobile && inputRef.current) {
+      inputRef.current.blur();
+    }
 
     const currentDoc = attachedDoc;
     setAttachedDoc(null);
@@ -411,26 +472,53 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
 
       <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handleFileSelect} className="hidden" />
 
-      <div className="px-4 py-3 border-b border-border">
-        <div className="flex items-center gap-3">
-          <img src={paigeAvatar} alt="Paige" className="w-9 h-9 rounded-full border-2 border-accent" />
-          <div>
+      {/* Header — compact on mobile */}
+      <div className="px-3 sm:px-4 py-2 sm:py-3 border-b border-border flex-shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <img src={paigeAvatar} alt="Paige" className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-accent" />
+          <div className="flex-1 min-w-0">
             <h2 className="font-bold text-foreground text-sm">PaigeAgent.ai</h2>
-            <p className="text-[11px] text-muted-foreground">Your credit & funding strategist</p>
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">Your credit & funding strategist</p>
           </div>
+          {/* Voice status in header on mobile for visibility */}
+          {isMobile && conversation.status === "connected" && (
+            <div className="flex items-center gap-1.5">
+              {conversation.isSpeaking ? (
+                <div className="flex items-center gap-1 text-primary text-xs">
+                  <Volume2 className="h-3.5 w-3.5 animate-pulse" />
+                  <span className="text-[10px]">Speaking</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 text-primary text-xs">
+                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                  <span className="text-[10px]">Listening</span>
+                </div>
+              )}
+              <Button
+                onClick={stopVoiceChat}
+                variant="destructive"
+                size="sm"
+                className="h-7 px-2 text-[10px]"
+              >
+                <MicOff className="w-3 h-3 mr-1" />
+                End
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
         {messages.map((message, index) => (
-          <div key={index} className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+          <div key={index} className={`flex gap-2 sm:gap-3 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
             {message.role === "assistant" && (
-              <img src={paigeAvatar} alt="Paige" className="w-8 h-8 rounded-full border border-accent flex-shrink-0" />
+              <img src={paigeAvatar} alt="Paige" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-accent flex-shrink-0" />
             )}
-            <div className={`max-w-[85%] rounded-lg px-3.5 py-2.5 ${message.role === "user" ? "bg-accent text-accent-foreground" : "bg-muted/40 border border-border"}`}>
+            <div className={`max-w-[88%] sm:max-w-[85%] rounded-lg px-3 py-2 sm:px-3.5 sm:py-2.5 ${message.role === "user" ? "bg-accent text-accent-foreground" : "bg-muted/40 border border-border"}`}>
               {message.documentFileName && <DocumentMessageBubble fileName={message.documentFileName} />}
               {message.content && (
-                <p className={`text-sm leading-relaxed whitespace-pre-wrap ${message.role === "assistant" ? "text-foreground" : ""}`}>
+                <p className={`text-[13px] sm:text-sm leading-relaxed whitespace-pre-wrap ${message.role === "assistant" ? "text-foreground" : ""}`}>
                   {message.content}
                 </p>
               )}
@@ -439,8 +527,8 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
           </div>
         ))}
         {isLoading && messages[messages.length - 1]?.role === "user" && (
-          <div className="flex gap-3">
-            <img src={paigeAvatar} alt="Paige" className="w-8 h-8 rounded-full border border-accent flex-shrink-0" />
+          <div className="flex gap-2 sm:gap-3">
+            <img src={paigeAvatar} alt="Paige" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-accent flex-shrink-0" />
             <div className="bg-muted/40 border border-border rounded-lg px-3.5 py-2.5">
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
@@ -452,14 +540,15 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         )}
       </div>
 
-      <div className="px-4 pb-2">
-        <div className="flex flex-wrap gap-1.5">
+      {/* Quick actions — horizontally scrollable on mobile */}
+      <div className="px-3 sm:px-4 pb-1.5 sm:pb-2 flex-shrink-0">
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
           {quickActions.map((action) => (
             <button
               key={action.label}
               onClick={() => handleSend(action.prompt)}
               disabled={isLoading || conversation.status === "connected"}
-              className="text-[11px] px-2.5 py-1 rounded-full border border-border bg-background hover:bg-accent/10 hover:border-accent/40 text-muted-foreground hover:text-accent transition-colors disabled:opacity-50"
+              className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full border border-border bg-background hover:bg-accent/10 hover:border-accent/40 text-muted-foreground hover:text-accent transition-colors disabled:opacity-50 whitespace-nowrap flex-shrink-0"
             >
               {action.label}
             </button>
@@ -467,9 +556,9 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         </div>
       </div>
 
-      {/* Voice status indicator */}
-      {conversation.status === "connected" && (
-        <div className="px-4 pb-2 space-y-2">
+      {/* Voice status indicator — desktop only (mobile shows in header) */}
+      {!isMobile && conversation.status === "connected" && (
+        <div className="px-4 pb-2 space-y-2 flex-shrink-0">
           <div className="flex items-center justify-center gap-4 text-sm">
             {conversation.isSpeaking ? (
               <div className="flex items-center gap-2 text-primary"><Volume2 className="h-4 w-4 animate-pulse" /><span>Speaking...</span></div>
@@ -481,14 +570,15 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
       )}
 
       {attachedDoc && (
-        <div className="px-3 pt-2">
+        <div className="px-3 pt-1.5 flex-shrink-0">
           <DocumentAttachmentChip fileName={attachedDoc.name} onRemove={removeAttachment} />
         </div>
       )}
 
-      <div className="p-3 border-t border-border space-y-2">
-        {/* Text input during voice mode */}
-        {conversation.status === "connected" && (
+      {/* Input area — safe area padding on mobile */}
+      <div className="p-2 sm:p-3 border-t border-border space-y-2 flex-shrink-0 pb-[env(safe-area-inset-bottom,8px)]">
+        {/* Text input during voice mode — desktop */}
+        {!isMobile && conversation.status === "connected" && (
           <div className="space-y-1">
             <p className="text-[10px] text-muted-foreground text-center">Voice active — type to send a text message instead</p>
             <div className="flex gap-2 items-center">
@@ -511,19 +601,62 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
           </div>
         )}
 
-        <div className="flex gap-2 items-center">
-          <Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach credit report or financial document (PDF)">
+        {/* Mobile voice mode: simplified input */}
+        {isMobile && conversation.status === "connected" && (
+          <div className="flex gap-2 items-center">
+            <Input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+              placeholder="Or type to Paige..."
+              className="flex-1 text-sm bg-muted/30 border-border/50 h-10"
+            />
+            <Button
+              onClick={() => handleSend()}
+              disabled={isLoading || !input.trim()}
+              className="bg-gradient-gold hover:opacity-90 h-10 w-10"
+              size="icon"
+            >
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+          </div>
+        )}
+
+        <div className="flex gap-1.5 sm:gap-2 items-center">
+          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach credit report or financial document (PDF)">
             <Paperclip className="w-4 h-4" />
           </Button>
           {conversation.status !== "connected" && (
-            <Input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()} placeholder={attachedDoc ? "Add a message or send document..." : "Ask Paige anything..."} className="flex-1 text-sm" disabled={isLoading} />
+            <Input
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+              placeholder={attachedDoc ? "Add a message or send document..." : "Ask Paige anything..."}
+              className="flex-1 text-sm h-10"
+              disabled={isLoading}
+            />
           )}
           {conversation.status !== "connected" && (
-            <Button onClick={() => handleSend()} disabled={isLoading || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90" size="icon">
+            <Button onClick={() => handleSend()} disabled={isLoading || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90 h-10 w-10" size="icon">
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           )}
-          <Button onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat} variant={conversation.status === "connected" ? "destructive" : "secondary"} size="icon" title={conversation.status === "connected" ? "End voice chat" : "Start voice chat"}>
+          {/* Mic button — larger on mobile for easy tapping */}
+          <Button
+            onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat}
+            variant={conversation.status === "connected" ? "destructive" : "secondary"}
+            size="icon"
+            className={`flex-shrink-0 ${isMobile ? "h-10 w-10" : "h-9 w-9"} ${micPermission === 'denied' ? 'opacity-60' : ''}`}
+            title={
+              micPermission === 'denied'
+                ? "Microphone blocked — tap to learn how to enable"
+                : conversation.status === "connected"
+                  ? "End voice chat"
+                  : "Start voice chat with Paige"
+            }
+          >
             {conversation.status === "connected" ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
           </Button>
         </div>
