@@ -41,8 +41,8 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
   const queryClient = useQueryClient();
   const sessionIdRef = useRef<string>(crypto.randomUUID());
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Get current user id for context
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) setCurrentUserId(data.user.id);
@@ -121,7 +121,6 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       });
       if (error) throw error;
 
-      // Inject full client context so voice Paige has the same data as text Paige
       const voiceSystemPrompt = contextBlock
         ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
         : undefined;
@@ -137,9 +136,19 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
           },
         } : {}),
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error starting widget voice chat:", err);
-      toast({ title: "Error", description: "Failed to start voice chat.", variant: "destructive" });
+      if (err?.name === "NotAllowedError") {
+        toast({
+          title: "Microphone Access Required",
+          description: isMobile
+            ? "Enable microphone in your browser settings to use voice chat."
+            : "Please allow microphone access when prompted.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Error", description: "Failed to start voice chat.", variant: "destructive" });
+      }
     }
   };
 
@@ -182,6 +191,10 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
     };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+
+    if (isMobile && inputRef.current) {
+      inputRef.current.blur();
+    }
 
     const currentDoc = attachedDoc;
     setAttachedDoc(null);
@@ -299,7 +312,11 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
       {isOpen && !hideChatbot && (
         <Card
-          className={`fixed bottom-6 right-6 w-[380px] max-w-[calc(100vw-32px)] h-[min(600px,calc(100vh-48px))] shadow-glow z-[9999] flex flex-col relative ${isDragOver ? "ring-2 ring-primary" : ""}`}
+          className={`fixed z-[9999] flex flex-col relative ${isDragOver ? "ring-2 ring-primary" : ""} ${
+            isMobile
+              ? "inset-0 w-full h-full rounded-none"
+              : "bottom-6 right-6 w-[380px] max-w-[calc(100vw-32px)] h-[min(600px,calc(100vh-48px))]"
+          } shadow-glow`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -312,29 +329,40 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
           <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handleFileSelect} className="hidden" />
 
-          <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
+          <div className="flex items-center justify-between p-3 sm:p-4 border-b border-border flex-shrink-0">
             <div className="flex items-center gap-2">
               <img src={paigeAvatar} alt="PaigeAgent.ai" className="w-8 h-8 rounded-full" />
               <div>
-                <h3 className="font-semibold">PaigeAgent.ai</h3>
-                <p className="text-xs text-muted-foreground">Your Credit Coach</p>
+                <h3 className="font-semibold text-sm">PaigeAgent.ai</h3>
+                <p className="text-[10px] sm:text-xs text-muted-foreground">Your Credit Coach</p>
               </div>
             </div>
-            <Button variant="ghost" size="icon" onClick={handleClose}>
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              {conversation.status === "connected" && (
+                <div className="flex items-center gap-1 text-primary text-xs mr-2">
+                  {conversation.isSpeaking ? (
+                    <Volume2 className="h-3.5 w-3.5 animate-pulse" />
+                  ) : (
+                    <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                  )}
+                </div>
+              )}
+              <Button variant="ghost" size="icon" onClick={handleClose} className="h-8 w-8">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
-          <ScrollArea className="flex-1 p-4 overflow-y-auto" ref={scrollRef}>
-            <div className="space-y-4">
+          <ScrollArea className="flex-1 p-3 sm:p-4 overflow-y-auto" ref={scrollRef}>
+            <div className="space-y-3 sm:space-y-4">
               {messages.map((message, index) => (
-                <div key={index} className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div key={index} className={`flex gap-2 sm:gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                   {message.role === "assistant" && (
-                    <img src={paigeAvatar} alt="PaigeAgent.ai" className="w-8 h-8 rounded-full flex-shrink-0" />
+                    <img src={paigeAvatar} alt="PaigeAgent.ai" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex-shrink-0" />
                   )}
-                  <div className={`rounded-lg px-4 py-2 max-w-[80%] ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
+                  <div className={`rounded-lg px-3 py-2 sm:px-4 sm:py-2 max-w-[85%] sm:max-w-[80%] ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
                     {message.documentFileName && <DocumentMessageBubble fileName={message.documentFileName} />}
-                    {message.content && <p className="text-sm whitespace-pre-wrap">{message.content}</p>}
+                    {message.content && <p className="text-[13px] sm:text-sm whitespace-pre-wrap">{message.content}</p>}
                     {message.syncStatus && <SyncStatusPanel syncStatus={message.syncStatus} />}
                   </div>
                 </div>
@@ -342,26 +370,29 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
             </div>
           </ScrollArea>
 
-          <div className="p-4 border-t border-border flex-shrink-0">
+          <div className="p-3 sm:p-4 border-t border-border flex-shrink-0 pb-[env(safe-area-inset-bottom,8px)]">
             {conversation.status === "connected" && (
-              <div className="mb-3 space-y-2">
-                <div className="flex items-center justify-center gap-4 text-sm">
-                  {conversation.isSpeaking ? (
-                    <div className="flex items-center gap-2 text-primary"><Volume2 className="h-4 w-4 animate-pulse" /><span>Speaking...</span></div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-primary"><div className="h-2 w-2 rounded-full bg-primary animate-pulse" /><span>Listening...</span></div>
-                  )}
-                </div>
+              <div className="mb-2 sm:mb-3 space-y-2">
+                {!isMobile && (
+                  <div className="flex items-center justify-center gap-4 text-sm">
+                    {conversation.isSpeaking ? (
+                      <div className="flex items-center gap-2 text-primary"><Volume2 className="h-4 w-4 animate-pulse" /><span>Speaking...</span></div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-primary"><div className="h-2 w-2 rounded-full bg-primary animate-pulse" /><span>Listening...</span></div>
+                    )}
+                  </div>
+                )}
                 <p className="text-[10px] text-muted-foreground text-center">Voice active — type to send a text message instead</p>
                 <div className="flex gap-2">
                   <Input
+                    ref={inputRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyPress={(e) => e.key === "Enter" && handleSend()}
                     placeholder="Type to Paige while talking..."
-                    className="bg-muted/30 border-border/50"
+                    className="bg-muted/30 border-border/50 h-10"
                   />
-                  <Button onClick={handleSend} disabled={isLoading || !input.trim()} size="icon">
+                  <Button onClick={handleSend} disabled={isLoading || !input.trim()} size="icon" className="h-10 w-10">
                     {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   </Button>
                 </div>
@@ -374,19 +405,32 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
               </div>
             )}
 
-            <div className="flex gap-2">
-              <Button variant="ghost" size="icon" className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach PDF">
+            <div className="flex gap-1.5 sm:gap-2">
+              <Button variant="ghost" size="icon" className="h-10 w-10 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach PDF">
                 <Paperclip className="h-4 w-4" />
               </Button>
               {conversation.status !== "connected" && (
-                <Input value={input} onChange={(e) => setInput(e.target.value)} onKeyPress={(e) => e.key === "Enter" && handleSend()} placeholder={attachedDoc ? "Add a message..." : "Ask me anything..."} disabled={isLoading} />
+                <Input
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={(e) => e.key === "Enter" && handleSend()}
+                  placeholder={attachedDoc ? "Add a message..." : "Ask me anything..."}
+                  disabled={isLoading}
+                  className="h-10"
+                />
               )}
               {conversation.status !== "connected" && (
-                <Button onClick={handleSend} disabled={isLoading || (!input.trim() && !attachedDoc)} size="icon">
+                <Button onClick={handleSend} disabled={isLoading || (!input.trim() && !attachedDoc)} size="icon" className="h-10 w-10">
                   {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
               )}
-              <Button onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat} variant={conversation.status === "connected" ? "destructive" : "secondary"} size="icon">
+              <Button
+                onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat}
+                variant={conversation.status === "connected" ? "destructive" : "secondary"}
+                size="icon"
+                className="h-10 w-10 flex-shrink-0"
+              >
                 {conversation.status === "connected" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
               </Button>
             </div>
