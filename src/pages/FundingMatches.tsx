@@ -22,6 +22,17 @@ import { Loader2, AlertTriangle, Target } from "lucide-react";
 import type { ProductMatch } from "@/lib/fundingMatchScoring";
 import { SeparationAuditCard } from "@/components/dashboard/business-profile/SeparationAuditCard";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+
+function SeparationAuditFundingBanner({ onFix }: { onFix: () => void }) {
+  const [uid, setUid] = useState<string | null>(null);
+  useState(() => {
+    supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
+    return undefined;
+  });
+  if (!uid) return null;
+  return <SeparationAuditCard userId={uid} variant="compact" onFix={onFix} />;
+}
 
 export default function FundingMatches() {
   const profile = useFundingProfile();
@@ -187,13 +198,7 @@ export default function FundingMatches() {
       )}
 
       {/* Personal/Business Separation warning */}
-      {profile.userId && (
-        <SeparationAuditCard
-          userId={profile.userId}
-          variant="compact"
-          onFix={() => navigate("/app/build-program")}
-        />
-      )}
+      <SeparationAuditFundingBanner onFix={() => navigate("/app/build-program")} />
 
       {/* Profile Completeness */}
       <ProfileCompletenessPanel profile={profile} />
