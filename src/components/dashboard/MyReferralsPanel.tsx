@@ -233,10 +233,10 @@ export default function MyReferralsPanel() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatCents(c.amount_cents)}
+                        {formatCents(Math.round((c.order_amount ?? 0) * 100))}
                       </TableCell>
                       <TableCell className="text-right font-semibold tabular-nums text-[#d4a574]">
-                        {formatCents(c.commission_cents)}
+                        {formatCents(Math.round((c.commission_amount ?? 0) * 100))}
                       </TableCell>
                     </TableRow>
                   ))}

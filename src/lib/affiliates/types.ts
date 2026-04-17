@@ -35,16 +35,20 @@ export interface FunnelDay {
   paid: number;
 }
 
+// Matches public.referral_conversions actual columns.
+// order_amount and commission_amount are NUMERIC dollars (not cents).
 export interface ConversionRow {
   id: string;
   affiliate_id: string;
-  converted_user_id: string;
-  referral_code: string;
+  referred_user_id: string;
+  referral_code: string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
-  amount_cents: number;
-  commission_cents: number;
-  status: "attributed" | "expired" | "reversed" | string;
+  order_amount: number;          // dollars
+  commission_amount: number;     // dollars
+  commission_rate: number;
+  status: "attributed" | "expired" | "reversed" | "approved" | "paid" | string;
+  event_type: string | null;
   converted_at: string;
 }
 
