@@ -57,7 +57,19 @@ const US_STATES = [
   "Virginia","Washington","West Virginia","Wisconsin","Wyoming"
 ];
 
-type ItemKey = "entity" | "ein" | "address" | "phone" | "bank";
+type ItemKey = "entity" | "ein" | "address" | "phone" | "email" | "bank";
+
+const FREE_EMAIL_DOMAINS = new Set([
+  "gmail.com","yahoo.com","ymail.com","outlook.com","hotmail.com","live.com","msn.com",
+  "icloud.com","me.com","mac.com","aol.com","aim.com","proton.me","protonmail.com",
+  "gmx.com","mail.com","yandex.com","zoho.com",
+]);
+const isFreeEmail = (e?: string | null) => {
+  if (!e) return false;
+  const at = e.lastIndexOf("@");
+  if (at < 0) return false;
+  return FREE_EMAIL_DOMAINS.has(e.slice(at + 1).trim().toLowerCase());
+};
 
 export function FoundationSection({ businessId, userId, onCompletionChange }: FoundationSectionProps) {
   const [data, setData] = useState<BusinessData | null>(null);
