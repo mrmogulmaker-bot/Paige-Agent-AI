@@ -657,6 +657,7 @@ export type Database = {
           build_score: number | null
           business_address_type: string | null
           business_city: string | null
+          business_email: string | null
           business_phone: string | null
           business_state: string | null
           business_street_address: string | null
@@ -708,6 +709,7 @@ export type Database = {
           build_score?: number | null
           business_address_type?: string | null
           business_city?: string | null
+          business_email?: string | null
           business_phone?: string | null
           business_state?: string | null
           business_street_address?: string | null
@@ -759,6 +761,7 @@ export type Database = {
           build_score?: number | null
           business_address_type?: string | null
           business_city?: string | null
+          business_email?: string | null
           business_phone?: string | null
           business_state?: string | null
           business_street_address?: string | null
