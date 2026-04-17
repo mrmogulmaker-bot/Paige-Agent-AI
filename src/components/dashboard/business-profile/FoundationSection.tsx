@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import {
   CheckCircle2, AlertTriangle, XCircle, Building2, Phone, Landmark, FileText,
-  ExternalLink, ChevronDown, ChevronUp, Info, CalendarIcon, Eye, EyeOff
+  ExternalLink, ChevronDown, ChevronUp, Info, CalendarIcon, Eye, EyeOff, Mail
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -37,6 +37,7 @@ interface BusinessData {
   business_state: string | null;
   business_zip: string | null;
   business_phone: string | null;
+  business_email: string | null;
   phone_411_listed: boolean;
   has_bank_account: boolean;
   bank_name: string | null;
