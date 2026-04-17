@@ -22,7 +22,6 @@ import { Loader2, AlertTriangle, Target } from "lucide-react";
 import type { ProductMatch } from "@/lib/fundingMatchScoring";
 import { SeparationAuditCard } from "@/components/dashboard/business-profile/SeparationAuditCard";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 
 function SeparationAuditFundingBanner({ onFix }: { onFix: () => void }) {
   const [uid, setUid] = useState<string | null>(null);
