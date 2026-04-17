@@ -433,6 +433,37 @@ export function FoundationSection({ businessId, userId, onCompletionChange }: Fo
                   </>
                 )}
 
+                {/* ── Business Email ── */}
+                {item.key === "email" && (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      A dedicated business email on a domain you own (e.g. you@yourbusiness.com) is what funders, LexisNexis, and the business bureaus expect. Free-domain emails (gmail, yahoo, outlook, icloud) signal an unestablished business and can downgrade your file regardless of credit scores.
+                    </p>
+                    <div>
+                      <Label className="text-xs">Business Email Address</Label>
+                      <Input
+                        type="email"
+                        value={editData.business_email || ""}
+                        onChange={e => setEditData({ ...editData, business_email: e.target.value })}
+                        placeholder="you@yourbusiness.com"
+                      />
+                      {editData.business_email && isFreeEmail(editData.business_email) && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          ⚠ This is a free-domain email. Funders treat this as a personal address — switch to your own domain.
+                        </p>
+                      )}
+                    </div>
+                    <Button size="sm" onClick={() => handleSave({ business_email: editData.business_email } as any)} disabled={saving}>
+                      {saving ? "Saving..." : "Save Business Email"}
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <a href="https://workspace.google.com/business/signup/welcome" target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="w-3 h-3 mr-1" /> Set up Google Workspace ($7/user/mo)
+                      </a>
+                    </Button>
+                  </>
+                )}
+
                 {/* ── Business Bank Account ── */}
                 {item.key === "bank" && (
                   <>
