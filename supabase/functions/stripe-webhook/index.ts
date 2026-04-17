@@ -104,6 +104,30 @@ serve(async (req) => {
             logStep("Subscription created/updated successfully");
           }
 
+          // Attribute referral conversion (initial subscription payment)
+          try {
+            const amountCents = session.amount_total || 0;
+            if (amountCents > 0) {
+              const { data: convId, error: attrError } = await supabaseAdmin.rpc(
+                "attribute_conversion",
+                {
+                  p_user_id: user.id,
+                  p_stripe_customer_id: customerId,
+                  p_stripe_sub_id: subscriptionId,
+                  p_amount_cents: amountCents,
+                  p_event_type: "initial",
+                },
+              );
+              if (attrError) {
+                logStep("Referral attribution error", { error: attrError.message });
+              } else if (convId) {
+                logStep("Referral conversion attributed", { convId });
+              }
+            }
+          } catch (attrErr) {
+            logStep("Referral attribution exception", { error: String(attrErr) });
+          }
+
           // Send payment confirmation email
           try {
             const { data: profile } = await supabaseAdmin
@@ -190,6 +214,41 @@ serve(async (req) => {
             logStep("Error updating subscription after payment", { error });
           } else {
             logStep("Subscription marked as active after payment");
+          }
+
+          // Attribute recurring referral commission (skip the very first invoice — handled by checkout.session.completed)
+          try {
+            const billingReason = (invoice as any).billing_reason as string | undefined;
+            const isRecurring = billingReason === "subscription_cycle";
+            const amountCents = invoice.amount_paid || 0;
+            if (isRecurring && amountCents > 0) {
+              const customerId = invoice.customer as string;
+              const customer = await stripe.customers.retrieve(customerId);
+              const email = (customer as Stripe.Customer).email;
+              if (email) {
+                const { data: userData } = await supabaseAdmin.auth.admin.listUsers();
+                const user = userData.users.find((u) => u.email === email);
+                if (user) {
+                  const { data: convId, error: attrError } = await supabaseAdmin.rpc(
+                    "attribute_conversion",
+                    {
+                      p_user_id: user.id,
+                      p_stripe_customer_id: customerId,
+                      p_stripe_sub_id: invoice.subscription as string,
+                      p_amount_cents: amountCents,
+                      p_event_type: "recurring",
+                    },
+                  );
+                  if (attrError) {
+                    logStep("Recurring attribution error", { error: attrError.message });
+                  } else if (convId) {
+                    logStep("Recurring referral conversion attributed", { convId });
+                  }
+                }
+              }
+            }
+          } catch (attrErr) {
+            logStep("Recurring attribution exception", { error: String(attrErr) });
           }
         }
         break;

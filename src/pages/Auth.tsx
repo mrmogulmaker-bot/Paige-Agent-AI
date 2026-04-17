@@ -12,6 +12,7 @@ import paigeLogo from "@/assets/paige-logo-transparent.png";
 import { lovable } from "@/integrations/lovable/index";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
+import { signUpWithReferral } from "@/lib/signUpWithReferral";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -101,13 +102,11 @@ const Auth = () => {
         }
         toast({ title: "Welcome back!", description: "You've successfully logged in." });
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { error } = await signUpWithReferral({
           email,
           password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/app`,
-            data: { full_name: fullName },
-          },
+          fullName,
+          redirectTo: `${window.location.origin}/app`,
         });
 
         if (error) {
