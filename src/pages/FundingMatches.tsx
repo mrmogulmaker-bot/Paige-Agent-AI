@@ -20,9 +20,23 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, AlertTriangle, Target } from "lucide-react";
 import type { ProductMatch } from "@/lib/fundingMatchScoring";
+import { SeparationAuditCard } from "@/components/dashboard/business-profile/SeparationAuditCard";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+
+function SeparationAuditFundingBanner({ onFix }: { onFix: () => void }) {
+  const [uid, setUid] = useState<string | null>(null);
+  useState(() => {
+    supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
+    return undefined;
+  });
+  if (!uid) return null;
+  return <SeparationAuditCard userId={uid} variant="compact" onFix={onFix} />;
+}
 
 export default function FundingMatches() {
   const profile = useFundingProfile();
+  const navigate = useNavigate();
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
@@ -182,6 +196,9 @@ export default function FundingMatches() {
           </div>
         </Card>
       )}
+
+      {/* Personal/Business Separation warning */}
+      <SeparationAuditFundingBanner onFix={() => navigate("/app/build-program")} />
 
       {/* Profile Completeness */}
       <ProfileCompletenessPanel profile={profile} />

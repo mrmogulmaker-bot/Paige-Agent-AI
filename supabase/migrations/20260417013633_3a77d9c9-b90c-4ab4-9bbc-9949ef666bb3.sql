@@ -1,0 +1,2 @@
+ALTER TABLE public.businesses ADD COLUMN IF NOT EXISTS business_email text;
+COMMENT ON COLUMN public.businesses.business_email IS 'Dedicated business email used on funding applications and bureau records. Should be on a domain the business owns (not gmail/yahoo/etc).';

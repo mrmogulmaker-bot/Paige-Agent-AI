@@ -11,6 +11,7 @@ import { BuildProgramSection } from "./BuildProgramSection";
 import { PublicPresenceSection } from "./PublicPresenceSection";
 import { BusinessCreditSection } from "./BusinessCreditSection";
 import { FinancialDocsSection } from "./FinancialDocsSection";
+import { SeparationAuditCard } from "./SeparationAuditCard";
 
 interface Props {
   clientId?: string; // For internal client mode
@@ -118,6 +119,11 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Personal/Business Separation Audit — always visible above the tabs */}
+      {userId && selectedBusinessId && (
+        <SeparationAuditCard userId={userId} businessId={selectedBusinessId} />
+      )}
 
       {/* Tabbed Sections */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>

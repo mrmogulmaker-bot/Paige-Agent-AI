@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import {
   CheckCircle2, AlertTriangle, XCircle, Building2, Phone, Landmark, FileText,
-  ExternalLink, ChevronDown, ChevronUp, Info, CalendarIcon, Eye, EyeOff
+  ExternalLink, ChevronDown, ChevronUp, Info, CalendarIcon, Eye, EyeOff, Mail
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -37,6 +37,7 @@ interface BusinessData {
   business_state: string | null;
   business_zip: string | null;
   business_phone: string | null;
+  business_email: string | null;
   phone_411_listed: boolean;
   has_bank_account: boolean;
   bank_name: string | null;
@@ -56,7 +57,19 @@ const US_STATES = [
   "Virginia","Washington","West Virginia","Wisconsin","Wyoming"
 ];
 
-type ItemKey = "entity" | "ein" | "address" | "phone" | "bank";
+type ItemKey = "entity" | "ein" | "address" | "phone" | "email" | "bank";
+
+const FREE_EMAIL_DOMAINS = new Set([
+  "gmail.com","yahoo.com","ymail.com","outlook.com","hotmail.com","live.com","msn.com",
+  "icloud.com","me.com","mac.com","aol.com","aim.com","proton.me","protonmail.com",
+  "gmx.com","mail.com","yandex.com","zoho.com",
+]);
+const isFreeEmail = (e?: string | null) => {
+  if (!e) return false;
+  const at = e.lastIndexOf("@");
+  if (at < 0) return false;
+  return FREE_EMAIL_DOMAINS.has(e.slice(at + 1).trim().toLowerCase());
+};
 
 export function FoundationSection({ businessId, userId, onCompletionChange }: FoundationSectionProps) {
   const [data, setData] = useState<BusinessData | null>(null);
@@ -74,7 +87,7 @@ export function FoundationSection({ businessId, userId, onCompletionChange }: Fo
   const fetchData = async () => {
     const { data: biz } = await supabase
       .from("businesses")
-      .select("entity_type, state_of_formation, formation_date, registered_agent_name, registered_agent_address, ein, business_address_type, business_street_address, business_city, business_state, business_zip, business_phone, phone_411_listed, has_bank_account, bank_name, bank_account_opened_date")
+      .select("entity_type, state_of_formation, formation_date, registered_agent_name, registered_agent_address, ein, business_address_type, business_street_address, business_city, business_state, business_zip, business_phone, business_email, phone_411_listed, has_bank_account, bank_name, bank_account_opened_date")
       .eq("id", businessId)
       .maybeSingle();
     if (biz) {
@@ -105,6 +118,10 @@ export function FoundationSection({ businessId, userId, onCompletionChange }: Fo
         if (data.business_phone && data.phone_411_listed) return "verified";
         if (data.business_phone) return "pending";
         return "missing";
+      case "email":
+        if (data.business_email && !isFreeEmail(data.business_email)) return "verified";
+        if (data.business_email) return "pending"; // free domain
+        return "missing";
       case "bank":
         if (data.has_bank_account && data.bank_name && data.bank_account_opened_date) return "verified";
         if (data.has_bank_account || data.bank_name) return "pending";
@@ -122,9 +139,11 @@ export function FoundationSection({ businessId, userId, onCompletionChange }: Fo
     if (d.business_street_address && d.business_city && d.business_state && d.business_zip && d.business_address_type && d.business_address_type !== "Home Address") verified++;
     // Phone: verified when number + 411
     if (d.business_phone && d.phone_411_listed) verified++;
+    // Email: verified when on a non-free domain
+    if (d.business_email && !isFreeEmail(d.business_email)) verified++;
     // Bank: verified when all filled
     if (d.has_bank_account && d.bank_name && d.bank_account_opened_date) verified++;
-    onCompletionChange(Math.round((verified / 5) * 100));
+    onCompletionChange(Math.round((verified / 6) * 100));
   };
 
   const handleSave = async (fields: Partial<BusinessData>) => {
@@ -411,6 +430,37 @@ export function FoundationSection({ businessId, userId, onCompletionChange }: Fo
                         </a>
                       </Button>
                     )}
+                  </>
+                )}
+
+                {/* ── Business Email ── */}
+                {item.key === "email" && (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      A dedicated business email on a domain you own (e.g. you@yourbusiness.com) is what funders, LexisNexis, and the business bureaus expect. Free-domain emails (gmail, yahoo, outlook, icloud) signal an unestablished business and can downgrade your file regardless of credit scores.
+                    </p>
+                    <div>
+                      <Label className="text-xs">Business Email Address</Label>
+                      <Input
+                        type="email"
+                        value={editData.business_email || ""}
+                        onChange={e => setEditData({ ...editData, business_email: e.target.value })}
+                        placeholder="you@yourbusiness.com"
+                      />
+                      {editData.business_email && isFreeEmail(editData.business_email) && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          ⚠ This is a free-domain email. Funders treat this as a personal address — switch to your own domain.
+                        </p>
+                      )}
+                    </div>
+                    <Button size="sm" onClick={() => handleSave({ business_email: editData.business_email } as any)} disabled={saving}>
+                      {saving ? "Saving..." : "Save Business Email"}
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <a href="https://workspace.google.com/business/signup/welcome" target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="w-3 h-3 mr-1" /> Set up Google Workspace ($7/user/mo)
+                      </a>
+                    </Button>
                   </>
                 )}
 
