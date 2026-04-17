@@ -445,13 +445,20 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           }
         }
 
-        // --- Business Foundation Status ---
+        // --- Business Foundation Status + Personal/Business Separation Audit ---
         if (resolvedUserId) {
-          const { data: businesses } = await supabase
-            .from("businesses")
-            .select("legal_name, entity_type, state_of_formation, formation_date, ein, business_address_type, business_street_address, business_city, business_state, business_zip, business_phone, phone_411_listed, has_bank_account, bank_name, bank_account_opened_date")
-            .eq("owner_user_id", resolvedUserId)
-            .limit(3);
+          const [{ data: businesses }, { data: ownerProfile }] = await Promise.all([
+            supabase
+              .from("businesses")
+              .select("id, legal_name, entity_type, state_of_formation, formation_date, ein, business_address_type, business_street_address, business_city, business_state, business_zip, business_phone, business_email, phone_411_listed, has_bank_account, bank_name, bank_account_opened_date")
+              .eq("owner_user_id", resolvedUserId)
+              .limit(3),
+            supabase
+              .from("profiles")
+              .select("street_address, city, state, zip_code, phone_number, email")
+              .eq("user_id", resolvedUserId)
+              .maybeSingle(),
+          ]);
 
           if (businesses && businesses.length > 0) {
             const biz = businesses[0];
@@ -487,6 +494,48 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
             parts.push(`- ${bankLine}`);
             parts.push(`- Foundation Completion: ${foundationPct}%`);
             parts.push(`Business: ${biz.legal_name}`);
+
+            // === Personal/Business Separation Audit ===
+            try {
+              const { data: presence } = await supabase
+                .from("business_public_presence")
+                .select("website_url, website_live")
+                .eq("business_id", biz.id)
+                .maybeSingle();
+
+              const { runSeparationAudit, summarizeSeparation } = await import("@/lib/separationAudit");
+              const audit = runSeparationAudit({
+                personalAddress: (ownerProfile as any)?.street_address ?? null,
+                personalCity: (ownerProfile as any)?.city ?? null,
+                personalState: (ownerProfile as any)?.state ?? null,
+                personalZip: (ownerProfile as any)?.zip_code ?? null,
+                personalPhone: (ownerProfile as any)?.phone_number ?? null,
+                personalEmail: (ownerProfile as any)?.email ?? null,
+                businessName: biz.legal_name,
+                businessStreetAddress: biz.business_street_address,
+                businessCity: biz.business_city,
+                businessState: biz.business_state,
+                businessZip: biz.business_zip,
+                businessPhone: biz.business_phone,
+                businessEmail: (biz as any).business_email,
+                businessAddressType: biz.business_address_type,
+                phone411Listed: biz.phone_411_listed,
+                websiteUrl: presence?.website_url ?? null,
+                websiteLive: presence?.website_live ?? null,
+              });
+
+              parts.push("");
+              parts.push(`Personal/Business Separation Audit (score ${audit.score}/100, status: ${audit.status}):`);
+              parts.push(`  ${summarizeSeparation(audit)}`);
+              if (audit.issues.length > 0) {
+                for (const issue of audit.issues.slice(0, 6)) {
+                  parts.push(`  - [${issue.severity.toUpperCase()}] ${issue.field}: ${issue.detail} → ${issue.fixHint}`);
+                }
+                parts.push(`  Coaching guidance: When the client asks about funding, applying for credit, or readiness, proactively warn them about any HIGH severity items above before they submit applications. Funders and bureaus (LexisNexis, Equifax SBFE, D&B) penalize commingling.`);
+              }
+            } catch {
+              /* audit is best-effort — never block context */
+            }
           } else {
             parts.push("Business Profile: No business entity on file");
           }
