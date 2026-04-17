@@ -20,9 +20,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, AlertTriangle, Target } from "lucide-react";
 import type { ProductMatch } from "@/lib/fundingMatchScoring";
+import { SeparationAuditCard } from "@/components/dashboard/business-profile/SeparationAuditCard";
+import { useNavigate } from "react-router-dom";
 
 export default function FundingMatches() {
   const profile = useFundingProfile();
+  const navigate = useNavigate();
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
@@ -181,6 +184,15 @@ export default function FundingMatches() {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Personal/Business Separation warning */}
+      {profile.userId && (
+        <SeparationAuditCard
+          userId={profile.userId}
+          variant="compact"
+          onFix={() => navigate("/app/build-program")}
+        />
       )}
 
       {/* Profile Completeness */}

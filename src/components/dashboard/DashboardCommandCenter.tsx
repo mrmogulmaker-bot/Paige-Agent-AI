@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { OnboardingChecklist } from "./OnboardingChecklist";
 import { CreditScoreSimulator } from "./CreditScoreSimulator";
+import { SeparationAuditCard } from "./business-profile/SeparationAuditCard";
 
 // ── Helpers ──
 
@@ -478,6 +479,9 @@ export function DashboardCommandCenter({ userId, onNavigate }: DashboardCommandC
         <CreditScoreSummary onNavigate={onNavigate} />
         <ActiveAlerts onNavigate={onNavigate} />
       </div>
+
+      {/* Personal/Business Separation warning (only shows when there are issues) */}
+      {userId && <SeparationAuditCard userId={userId} variant="compact" onFix={() => onNavigate("build-steps")} />}
 
       {/* Next Best Action */}
       <NextBestAction onNavigate={onNavigate} />
