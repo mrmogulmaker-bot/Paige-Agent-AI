@@ -75,7 +75,7 @@ export function FoundationSection({ businessId, userId, onCompletionChange }: Fo
   const fetchData = async () => {
     const { data: biz } = await supabase
       .from("businesses")
-      .select("entity_type, state_of_formation, formation_date, registered_agent_name, registered_agent_address, ein, business_address_type, business_street_address, business_city, business_state, business_zip, business_phone, phone_411_listed, has_bank_account, bank_name, bank_account_opened_date")
+      .select("entity_type, state_of_formation, formation_date, registered_agent_name, registered_agent_address, ein, business_address_type, business_street_address, business_city, business_state, business_zip, business_phone, business_email, phone_411_listed, has_bank_account, bank_name, bank_account_opened_date")
       .eq("id", businessId)
       .maybeSingle();
     if (biz) {
@@ -106,6 +106,10 @@ export function FoundationSection({ businessId, userId, onCompletionChange }: Fo
         if (data.business_phone && data.phone_411_listed) return "verified";
         if (data.business_phone) return "pending";
         return "missing";
+      case "email":
+        if (data.business_email && !isFreeEmail(data.business_email)) return "verified";
+        if (data.business_email) return "pending"; // free domain
+        return "missing";
       case "bank":
         if (data.has_bank_account && data.bank_name && data.bank_account_opened_date) return "verified";
         if (data.has_bank_account || data.bank_name) return "pending";
@@ -123,9 +127,11 @@ export function FoundationSection({ businessId, userId, onCompletionChange }: Fo
     if (d.business_street_address && d.business_city && d.business_state && d.business_zip && d.business_address_type && d.business_address_type !== "Home Address") verified++;
     // Phone: verified when number + 411
     if (d.business_phone && d.phone_411_listed) verified++;
+    // Email: verified when on a non-free domain
+    if (d.business_email && !isFreeEmail(d.business_email)) verified++;
     // Bank: verified when all filled
     if (d.has_bank_account && d.bank_name && d.bank_account_opened_date) verified++;
-    onCompletionChange(Math.round((verified / 5) * 100));
+    onCompletionChange(Math.round((verified / 6) * 100));
   };
 
   const handleSave = async (fields: Partial<BusinessData>) => {
