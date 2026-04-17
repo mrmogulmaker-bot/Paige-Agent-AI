@@ -88,15 +88,54 @@ export type Database = {
           },
         ]
       }
+      affiliate_commission_tiers: {
+        Row: {
+          commission_rate: number
+          created_at: string
+          display_name: string
+          duration_months: number | null
+          id: string
+          is_recurring: boolean
+          notes: string | null
+          tier_key: string
+          updated_at: string
+        }
+        Insert: {
+          commission_rate: number
+          created_at?: string
+          display_name: string
+          duration_months?: number | null
+          id?: string
+          is_recurring?: boolean
+          notes?: string | null
+          tier_key: string
+          updated_at?: string
+        }
+        Update: {
+          commission_rate?: number
+          created_at?: string
+          display_name?: string
+          duration_months?: number | null
+          id?: string
+          is_recurring?: boolean
+          notes?: string | null
+          tier_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       affiliate_profiles: {
         Row: {
+          active: boolean
           application_note: string | null
           applied_at: string | null
           approved_at: string | null
           approved_by: string | null
           commission_rate: number | null
+          commission_tier_id: string | null
           company_name: string | null
           created_at: string | null
+          enrolled_from: string | null
           id: string
           rejection_reason: string | null
           social_media_links: Json | null
@@ -106,13 +145,16 @@ export type Database = {
           website: string | null
         }
         Insert: {
+          active?: boolean
           application_note?: string | null
           applied_at?: string | null
           approved_at?: string | null
           approved_by?: string | null
           commission_rate?: number | null
+          commission_tier_id?: string | null
           company_name?: string | null
           created_at?: string | null
+          enrolled_from?: string | null
           id?: string
           rejection_reason?: string | null
           social_media_links?: Json | null
@@ -122,13 +164,16 @@ export type Database = {
           website?: string | null
         }
         Update: {
+          active?: boolean
           application_note?: string | null
           applied_at?: string | null
           approved_at?: string | null
           approved_by?: string | null
           commission_rate?: number | null
+          commission_tier_id?: string | null
           company_name?: string | null
           created_at?: string | null
+          enrolled_from?: string | null
           id?: string
           rejection_reason?: string | null
           social_media_links?: Json | null
@@ -137,7 +182,15 @@ export type Database = {
           user_id?: string
           website?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_profiles_commission_tier_id_fkey"
+            columns: ["commission_tier_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_commission_tiers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       api_rate_limits: {
         Row: {
@@ -1035,6 +1088,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "affiliate_profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_payments_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "v_affiliate_stats"
+            referencedColumns: ["affiliate_id"]
           },
         ]
       }
@@ -4048,10 +4108,12 @@ export type Database = {
           phone: string | null
           pme_phase: string | null
           postal_code: string | null
+          referral_code: string | null
           score_model: string | null
           ssn_encrypted: string | null
           ssn_last_4: string | null
           state: string | null
+          stripe_customer_id: string | null
           updated_at: string | null
           user_id: string
         }
@@ -4080,10 +4142,12 @@ export type Database = {
           phone?: string | null
           pme_phase?: string | null
           postal_code?: string | null
+          referral_code?: string | null
           score_model?: string | null
           ssn_encrypted?: string | null
           ssn_last_4?: string | null
           state?: string | null
+          stripe_customer_id?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -4112,10 +4176,12 @@ export type Database = {
           phone?: string | null
           pme_phase?: string | null
           postal_code?: string | null
+          referral_code?: string | null
           score_model?: string | null
           ssn_encrypted?: string | null
           ssn_last_4?: string | null
           state?: string | null
+          stripe_customer_id?: string | null
           updated_at?: string | null
           user_id?: string
         }
@@ -4258,6 +4324,63 @@ export type Database = {
         }
         Relationships: []
       }
+      referral_clicks: {
+        Row: {
+          affiliate_id: string | null
+          clicked_at: string
+          country: string | null
+          id: number
+          ip_hash: string | null
+          landing_path: string | null
+          referral_code: string
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          affiliate_id?: string | null
+          clicked_at?: string
+          country?: string | null
+          id?: number
+          ip_hash?: string | null
+          landing_path?: string | null
+          referral_code: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          affiliate_id?: string | null
+          clicked_at?: string
+          country?: string | null
+          id?: number
+          ip_hash?: string | null
+          landing_path?: string | null
+          referral_code?: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_clicks_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_clicks_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "v_affiliate_stats"
+            referencedColumns: ["affiliate_id"]
+          },
+        ]
+      }
       referral_codes: {
         Row: {
           affiliate_id: string
@@ -4297,6 +4420,13 @@ export type Database = {
             referencedRelation: "affiliate_profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "referral_codes_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "v_affiliate_stats"
+            referencedColumns: ["affiliate_id"]
+          },
         ]
       }
       referral_conversions: {
@@ -4306,12 +4436,16 @@ export type Database = {
           commission_rate: number
           converted_at: string | null
           created_at: string | null
+          event_type: string | null
           id: string
           order_amount: number
           order_id: string | null
+          referral_code: string | null
           referral_code_id: string
           referred_user_id: string
           status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -4320,12 +4454,16 @@ export type Database = {
           commission_rate: number
           converted_at?: string | null
           created_at?: string | null
+          event_type?: string | null
           id?: string
           order_amount: number
           order_id?: string | null
+          referral_code?: string | null
           referral_code_id: string
           referred_user_id: string
           status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -4334,12 +4472,16 @@ export type Database = {
           commission_rate?: number
           converted_at?: string | null
           created_at?: string | null
+          event_type?: string | null
           id?: string
           order_amount?: number
           order_id?: string | null
+          referral_code?: string | null
           referral_code_id?: string
           referred_user_id?: string
           status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -4349,6 +4491,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "affiliate_profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_conversions_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "v_affiliate_stats"
+            referencedColumns: ["affiliate_id"]
           },
           {
             foreignKeyName: "referral_conversions_order_id_fkey"
@@ -4861,12 +5010,49 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      v_affiliate_stats: {
+        Row: {
+          active: boolean | null
+          affiliate_id: string | null
+          clicks: number | null
+          commission_owed_cents: number | null
+          commission_paid_ytd_cents: number | null
+          commission_rate: number | null
+          email: string | null
+          full_name: string | null
+          paid_conversions: number | null
+          referral_code: string | null
+          signups: number | null
+          tier_key: string | null
+          tier_name: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
+      v_referral_funnel_daily: {
+        Row: {
+          clicks: number | null
+          day: string | null
+          paid: number | null
+          signups: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       accept_invitation: {
         Args: { _token: string; _user_id: string }
         Returns: Json
+      }
+      attribute_conversion: {
+        Args: {
+          p_amount_cents: number
+          p_event_type: string
+          p_stripe_customer_id: string
+          p_stripe_sub_id: string
+          p_user_id: string
+        }
+        Returns: string
       }
       check_feature_access: {
         Args: { _feature: string; _user_id: string }
@@ -4939,10 +5125,12 @@ export type Database = {
           phone: string | null
           pme_phase: string | null
           postal_code: string | null
+          referral_code: string | null
           score_model: string | null
           ssn_encrypted: string | null
           ssn_last_4: string | null
           state: string | null
+          stripe_customer_id: string | null
           updated_at: string | null
           user_id: string
         }[]

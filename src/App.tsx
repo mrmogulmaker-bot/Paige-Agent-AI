@@ -19,6 +19,7 @@ import Privacy from "./pages/Privacy";
 import { FloatingChatbot } from "./components/FloatingChatbot";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { DashboardModeProvider } from "./contexts/DashboardModeContext";
+import { useReferralTracking } from "./hooks/useReferralTracking";
 
 // Lazy-load existing dashboard sections for /app/* routes
 const DisputesManager = React.lazy(() => import("./components/dashboard/DisputesManager").then(m => ({ default: m.DisputesManager })));
@@ -42,6 +43,11 @@ const SuspenseFallback = () => (
   </div>
 );
 
+const AppInner = () => {
+  useReferralTracking();
+  return null;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -50,6 +56,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <AppInner />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
