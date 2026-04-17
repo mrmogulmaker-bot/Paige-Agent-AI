@@ -19,7 +19,6 @@ const LenderBureauManager = lazy(() => import("@/components/dashboard/admin/Lend
 const FundingPortfolioView = lazy(() => import("@/components/dashboard/admin/FundingPortfolioView").then(m => ({ default: m.FundingPortfolioView })));
 const UserManagement = lazy(() => import("@/components/dashboard/UserManagement").then(m => ({ default: m.UserManagement })));
 const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformance").then(m => ({ default: m.UserPerformance })));
-const AffiliateApplications = lazy(() => import("@/components/dashboard/AffiliateApplications").then(m => ({ default: m.AffiliateApplications })));
 const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
 const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
 const MyReferralsPanel = lazy(() => import("@/components/dashboard/MyReferralsPanel"));
@@ -93,10 +92,9 @@ const Admin = () => {
 
   const fetchStats = async () => {
     try {
-      const [usersRes, subsRes, appsRes, ordersRes] = await Promise.all([
+      const [usersRes, subsRes, ordersRes] = await Promise.all([
         supabase.from("profiles").select("id", { count: "exact", head: true }),
         supabase.from("user_subscriptions").select("id", { count: "exact", head: true }).eq("status", "active"),
-        supabase.from("affiliate_profiles").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("orders").select("amount").eq("status", "completed"),
       ]);
 
@@ -105,7 +103,7 @@ const Admin = () => {
       setStats({
         totalUsers: usersRes.count || 0,
         activeSubscriptions: subsRes.count || 0,
-        pendingApplications: appsRes.count || 0,
+        pendingApplications: 0,
         totalRevenue,
       });
     } catch (error) {
@@ -178,10 +176,7 @@ const Admin = () => {
         } />
         <Route path="settings" element={
           <Suspense fallback={<SuspenseFallback />}>
-            <div className="space-y-6">
-              <UserManagement />
-              <AffiliateApplications />
-            </div>
+            <UserManagement />
           </Suspense>
         } />
       </Routes>
