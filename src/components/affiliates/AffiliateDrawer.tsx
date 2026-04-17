@@ -143,10 +143,10 @@ export default function AffiliateDrawer({ affiliate, onClose }: Props) {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {formatCents(c.amount_cents)}
+                            {formatCents(Math.round((c.order_amount ?? 0) * 100))}
                           </TableCell>
                           <TableCell className="text-right font-medium tabular-nums text-[#1a2840]">
-                            {formatCents(c.commission_cents)}
+                            {formatCents(Math.round((c.commission_amount ?? 0) * 100))}
                           </TableCell>
                         </TableRow>
                       ))}

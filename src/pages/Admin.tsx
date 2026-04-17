@@ -21,6 +21,8 @@ const UserManagement = lazy(() => import("@/components/dashboard/UserManagement"
 const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformance").then(m => ({ default: m.UserPerformance })));
 const AffiliateApplications = lazy(() => import("@/components/dashboard/AffiliateApplications").then(m => ({ default: m.AffiliateApplications })));
 const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
+const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
+const MyReferralsPanel = lazy(() => import("@/components/dashboard/MyReferralsPanel"));
 
 const SuspenseFallback = () => (
   <div className="flex items-center justify-center py-12">
@@ -167,6 +169,11 @@ const Admin = () => {
         <Route path="maintenance" element={
           <Suspense fallback={<SuspenseFallback />}>
             <DataMaintenancePanel />
+          </Suspense>
+        } />
+        <Route path="affiliates" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            {userRole === "admin" ? <AffiliatesAdmin /> : <MyReferralsPanel />}
           </Suspense>
         } />
         <Route path="settings" element={

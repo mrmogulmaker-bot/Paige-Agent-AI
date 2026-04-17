@@ -75,7 +75,7 @@ export async function fetchAffiliateConversions(
 
   const { data, error } = await q;
   if (error) throw error;
-  return (data ?? []) as ConversionRow[];
+  return ((data ?? []) as unknown) as ConversionRow[];
 }
 
 export async function fetchMyRecentConversions(
@@ -89,7 +89,7 @@ export async function fetchMyRecentConversions(
     .order("converted_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
-  return (data ?? []) as ConversionRow[];
+  return ((data ?? []) as unknown) as ConversionRow[];
 }
 
 // -----------------------------------------------------------------------------
