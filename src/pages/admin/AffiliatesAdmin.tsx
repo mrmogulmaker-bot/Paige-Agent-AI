@@ -13,6 +13,7 @@ import AffiliateFunnelChart from "@/components/affiliates/AffiliateFunnelChart";
 import AffiliateDrawer from "@/components/affiliates/AffiliateDrawer";
 import AffiliateApplicationsTab from "@/components/affiliates/AffiliateApplicationsTab";
 import CommissionTierEditor from "@/components/affiliates/CommissionTierEditor";
+import InviteAffiliateDialog from "@/components/affiliates/InviteAffiliateDialog";
 import type {
   AffiliateStatRow,
   CommissionTier,
@@ -76,7 +77,10 @@ export default function AffiliatesAdmin() {
             Internal referral program — leaderboard, conversions, and commission tiers.
           </p>
         </div>
-        <AffiliateDateRangePicker value={range} onChange={setRange} />
+        <div className="flex items-center gap-3">
+          <InviteAffiliateDialog onInvited={loadAll} />
+          <AffiliateDateRangePicker value={range} onChange={setRange} />
+        </div>
       </header>
 
       {error && (
