@@ -162,11 +162,22 @@ export function AppNav({ user }: AppNavProps) {
         <NotificationBell />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-sidebar-accent">
-              <UserIcon className="w-5 h-5" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-primary-foreground hover:bg-sidebar-accent gap-2 px-2"
+            >
+              <UserIcon className="w-4 h-4" />
+              <span className="hidden md:inline text-xs max-w-[140px] truncate">
+                {user.email}
+              </span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="w-56">
+            <div className="px-2 py-1.5 text-xs text-muted-foreground truncate">
+              {user.email}
+            </div>
+            <DropdownMenuSeparator />
             {isCoachOrAdmin && !isViewingAsClient && (
               <>
                 <DropdownMenuItem onClick={() => navigate("/admin")}>
@@ -180,12 +191,27 @@ export function AppNav({ user }: AppNavProps) {
               <Settings className="w-4 h-4 mr-2" />
               Settings
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleSignOut}>
+            <DropdownMenuItem onClick={handleSignOut} className="text-red-500 focus:text-red-500 focus:bg-red-500/10">
               <LogOut className="w-4 h-4 mr-2" />
               Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Always-visible Sign Out on desktop for discoverability */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleSignOut}
+          className="hidden lg:inline-flex text-primary-foreground/70 hover:text-primary-foreground hover:bg-red-500/20 gap-1.5 text-xs"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          Sign Out
+        </Button>
+      </div>
+    </div>
+  );
+}
       </div>
     </div>
   );
