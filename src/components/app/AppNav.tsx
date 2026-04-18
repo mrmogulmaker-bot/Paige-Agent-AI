@@ -212,7 +212,4 @@ export function AppNav({ user }: AppNavProps) {
     </div>
   );
 }
-      </div>
-    </div>
-  );
-}
+
