@@ -347,6 +347,149 @@ export type Database = {
           },
         ]
       }
+      build_milestones: {
+        Row: {
+          created_at: string
+          description: string | null
+          display_name: string
+          id: string
+          milestone_key: string
+          phase: string
+          required_for_phase: boolean
+          sort_order: number
+          track: string
+          verification_type: string
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          display_name: string
+          id?: string
+          milestone_key: string
+          phase: string
+          required_for_phase?: boolean
+          sort_order?: number
+          track: string
+          verification_type: string
+          weight?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          display_name?: string
+          id?: string
+          milestone_key?: string
+          phase?: string
+          required_for_phase?: boolean
+          sort_order?: number
+          track?: string
+          verification_type?: string
+          weight?: number
+        }
+        Relationships: []
+      }
+      build_progress: {
+        Row: {
+          business_id: string | null
+          created_at: string
+          current_phase: string
+          id: string
+          last_assessed_at: string
+          overall_score: number
+          phase_started_at: string
+          phase_target_completion: string | null
+          track: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          business_id?: string | null
+          created_at?: string
+          current_phase?: string
+          id?: string
+          last_assessed_at?: string
+          overall_score?: number
+          phase_started_at?: string
+          phase_target_completion?: string | null
+          track: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          business_id?: string | null
+          created_at?: string
+          current_phase?: string
+          id?: string
+          last_assessed_at?: string
+          overall_score?: number
+          phase_started_at?: string
+          phase_target_completion?: string | null
+          track?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "build_progress_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      build_recommendations: {
+        Row: {
+          acted_at: string | null
+          action_type: string
+          body: string
+          created_at: string
+          external_url: string | null
+          id: string
+          milestone_key: string | null
+          phase: string
+          priority: number
+          status: string
+          title: string
+          track: string
+          user_id: string
+          vendor_or_product: string | null
+        }
+        Insert: {
+          acted_at?: string | null
+          action_type: string
+          body: string
+          created_at?: string
+          external_url?: string | null
+          id?: string
+          milestone_key?: string | null
+          phase: string
+          priority?: number
+          status?: string
+          title: string
+          track: string
+          user_id: string
+          vendor_or_product?: string | null
+        }
+        Update: {
+          acted_at?: string | null
+          action_type?: string
+          body?: string
+          created_at?: string
+          external_url?: string | null
+          id?: string
+          milestone_key?: string | null
+          phase?: string
+          priority?: number
+          status?: string
+          title?: string
+          track?: string
+          user_id?: string
+          vendor_or_product?: string | null
+        }
+        Relationships: []
+      }
       build_scores: {
         Row: {
           active_vendors: number | null
@@ -3455,12 +3598,19 @@ export type Database = {
           min_account_age_months: number | null
           min_amount: number | null
           min_annual_revenue: number | null
+          min_build_phase_business: string | null
+          min_build_phase_personal: string | null
           min_business_age_months: number | null
+          min_dscr: number | null
           min_fico_score: number | null
+          min_intelliscore: number | null
+          min_months_clean_reporting: number | null
           min_open_accounts: number | null
+          min_paydex: number | null
           notes: string | null
           product_name: string
           product_type: string
+          requires_duns: boolean
           requires_pg: boolean | null
           term_months: number | null
           updated_at: string | null
@@ -3485,12 +3635,19 @@ export type Database = {
           min_account_age_months?: number | null
           min_amount?: number | null
           min_annual_revenue?: number | null
+          min_build_phase_business?: string | null
+          min_build_phase_personal?: string | null
           min_business_age_months?: number | null
+          min_dscr?: number | null
           min_fico_score?: number | null
+          min_intelliscore?: number | null
+          min_months_clean_reporting?: number | null
           min_open_accounts?: number | null
+          min_paydex?: number | null
           notes?: string | null
           product_name: string
           product_type: string
+          requires_duns?: boolean
           requires_pg?: boolean | null
           term_months?: number | null
           updated_at?: string | null
@@ -3515,12 +3672,19 @@ export type Database = {
           min_account_age_months?: number | null
           min_amount?: number | null
           min_annual_revenue?: number | null
+          min_build_phase_business?: string | null
+          min_build_phase_personal?: string | null
           min_business_age_months?: number | null
+          min_dscr?: number | null
           min_fico_score?: number | null
+          min_intelliscore?: number | null
+          min_months_clean_reporting?: number | null
           min_open_accounts?: number | null
+          min_paydex?: number | null
           notes?: string | null
           product_name?: string
           product_type?: string
+          requires_duns?: boolean
           requires_pg?: boolean | null
           term_months?: number | null
           updated_at?: string | null
@@ -4685,6 +4849,57 @@ export type Database = {
             columns: ["biz_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_build_milestones: {
+        Row: {
+          business_id: string | null
+          completed_at: string | null
+          created_at: string
+          evidence: Json | null
+          id: string
+          milestone_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          business_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          evidence?: Json | null
+          id?: string
+          milestone_id: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          business_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          evidence?: Json | null
+          id?: string
+          milestone_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_build_milestones_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_build_milestones_milestone_id_fkey"
+            columns: ["milestone_id"]
+            isOneToOne: false
+            referencedRelation: "build_milestones"
             referencedColumns: ["id"]
           },
         ]
