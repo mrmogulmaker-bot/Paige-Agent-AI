@@ -112,6 +112,7 @@ const App = () => (
               </React.Suspense>
             } />
             <Route path="/become-an-affiliate" element={<Navigate to="/affiliates" replace />} />
+            <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
