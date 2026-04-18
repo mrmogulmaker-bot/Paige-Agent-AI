@@ -88,6 +88,81 @@ export type Database = {
           },
         ]
       }
+      affiliate_applications: {
+        Row: {
+          audience_description: string | null
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          phone: string | null
+          requested_tier_key: string
+          resulting_affiliate_id: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          social_links: string | null
+          status: string
+          updated_at: string
+          user_id: string | null
+          website_url: string | null
+          why_join: string | null
+        }
+        Insert: {
+          audience_description?: string | null
+          created_at?: string
+          email: string
+          full_name: string
+          id?: string
+          phone?: string | null
+          requested_tier_key?: string
+          resulting_affiliate_id?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          social_links?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+          website_url?: string | null
+          why_join?: string | null
+        }
+        Update: {
+          audience_description?: string | null
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          phone?: string | null
+          requested_tier_key?: string
+          resulting_affiliate_id?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          social_links?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+          website_url?: string | null
+          why_join?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_applications_resulting_affiliate_id_fkey"
+            columns: ["resulting_affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_applications_resulting_affiliate_id_fkey"
+            columns: ["resulting_affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "v_affiliate_stats"
+            referencedColumns: ["affiliate_id"]
+          },
+        ]
+      }
       affiliate_commission_tiers: {
         Row: {
           commission_rate: number
@@ -4970,6 +5045,10 @@ export type Database = {
         Args: { _token: string; _user_id: string }
         Returns: Json
       }
+      approve_affiliate_application: {
+        Args: { _application_id: string; _notes?: string; _tier_key?: string }
+        Returns: Json
+      }
       attribute_conversion: {
         Args: {
           p_amount_cents: number
@@ -5092,6 +5171,10 @@ export type Database = {
           msg_id: number
           read_ct: number
         }[]
+      }
+      reject_affiliate_application: {
+        Args: { _application_id: string; _notes?: string }
+        Returns: Json
       }
       trigger_business_credit_sync: {
         Args: { _user_id: string }
