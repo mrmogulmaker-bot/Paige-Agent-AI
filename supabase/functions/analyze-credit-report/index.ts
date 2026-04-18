@@ -158,7 +158,8 @@ Return ONLY valid JSON with this exact structure:
         "bureau_source": "experian" | "transunion" | "equifax" | "all_three"
       }
     ],
-    "date_of_birth": "string or null — as printed on report",
+    "date_of_birth": "string or null — as printed on report (YYYY-MM-DD if possible)",
+    "ssn_last_4": "string or null — last 4 digits of SSN if visible on the report (e.g. '1234'), otherwise null",
     "ssn_variations_detected": boolean
   },
   "negative_items": [
@@ -514,6 +515,105 @@ serve(async (req) => {
       if (piRecords.length > 0) {
         const { error: piError } = await supabase.from("credit_report_personal_info").insert(piRecords);
         if (piError) console.error("Failed to insert personal info:", piError);
+      }
+
+      // === Mirror primary identity fields onto profiles + linked clients row ===
+      // Pick the most recent / first-listed name, address, phone for canonical fields.
+      try {
+        const primaryName = personalInfo.name_variations?.[0]?.value || null;
+        const primaryAddressRaw = personalInfo.addresses?.[0]?.value || null;
+        const primaryPhone = personalInfo.phones?.[0]?.value || null;
+        const dob = personalInfo.date_of_birth || null;
+
+        // Parse "123 Main St, Atlanta, GA 30301" → {street, city, state, zip}
+        const parseAddress = (addr: string | null) => {
+          if (!addr) return { street: null as string | null, city: null as string | null, state: null as string | null, zip: null as string | null };
+          const parts = addr.split(",").map(p => p.trim()).filter(Boolean);
+          let street = parts[0] || null;
+          let city: string | null = null;
+          let state: string | null = null;
+          let zip: string | null = null;
+          if (parts.length >= 2) {
+            city = parts[1];
+            const last = parts[parts.length - 1];
+            const m = last.match(/^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
+            if (m) {
+              state = m[1].toUpperCase();
+              zip = m[2];
+            } else {
+              const m2 = last.match(/(\d{5}(?:-\d{4})?)/);
+              if (m2) zip = m2[1];
+              const m3 = last.match(/\b([A-Z]{2})\b/i);
+              if (m3) state = m3[1].toUpperCase();
+            }
+          }
+          return { street, city, state, zip };
+        };
+
+        const addr = parseAddress(primaryAddressRaw);
+        const ssnLast4 = personalInfo.ssn_last_4 || null;
+
+        // Build profile patch — only fill blanks (never overwrite client-entered data) except for phone/address which we always refresh from latest report
+        const { data: existingProfile } = await supabase
+          .from("profiles")
+          .select("full_name, phone, address, city, state, date_of_birth, ssn_last_4")
+          .eq("user_id", targetUserId)
+          .maybeSingle();
+
+        if (existingProfile) {
+          const patch: Record<string, any> = {};
+          if (primaryName && !existingProfile.full_name) patch.full_name = primaryName;
+          if (primaryPhone) patch.phone = primaryPhone;
+          if (addr.street) patch.address = addr.street;
+          if (addr.city) patch.city = addr.city;
+          if (addr.state) patch.state = addr.state;
+          if (dob && !existingProfile.date_of_birth) patch.date_of_birth = dob;
+          if (ssnLast4 && !existingProfile.ssn_last_4) patch.ssn_last_4 = ssnLast4;
+
+          if (Object.keys(patch).length > 0) {
+            const { error: profErr } = await supabase
+              .from("profiles")
+              .update(patch)
+              .eq("user_id", targetUserId);
+            if (profErr) console.error("[analyze-credit-report] profile mirror failed:", profErr);
+            else console.log("[analyze-credit-report] mirrored to profile:", Object.keys(patch));
+          }
+        }
+
+        // Mirror onto linked clients row (CRM record visible to admins/coaches)
+        const linkedClientId = clientId || null;
+        if (linkedClientId || targetUserId) {
+          // Find the clients row either by explicit clientId or by linked_user_id
+          const clientQuery = linkedClientId
+            ? supabase.from("clients").select("id, first_name, last_name, phone, street_address, city, state, zip_code").eq("id", linkedClientId).maybeSingle()
+            : supabase.from("clients").select("id, first_name, last_name, phone, street_address, city, state, zip_code").eq("linked_user_id", targetUserId).maybeSingle();
+
+          const { data: clientRow } = await clientQuery;
+          if (clientRow) {
+            const cPatch: Record<string, any> = {};
+            // Split full name → first/last only when blank
+            if (primaryName) {
+              const nameParts = primaryName.trim().split(/\s+/);
+              const first = nameParts[0];
+              const last = nameParts.slice(1).join(" ");
+              if (first && !clientRow.first_name) cPatch.first_name = first;
+              if (last && !clientRow.last_name) cPatch.last_name = last;
+            }
+            if (primaryPhone) cPatch.phone = primaryPhone;
+            if (addr.street) cPatch.street_address = addr.street;
+            if (addr.city) cPatch.city = addr.city;
+            if (addr.state) cPatch.state = addr.state;
+            if (addr.zip) cPatch.zip_code = addr.zip;
+
+            if (Object.keys(cPatch).length > 0) {
+              const { error: cErr } = await supabase.from("clients").update(cPatch).eq("id", clientRow.id);
+              if (cErr) console.error("[analyze-credit-report] client mirror failed:", cErr);
+              else console.log("[analyze-credit-report] mirrored to client row:", clientRow.id, Object.keys(cPatch));
+            }
+          }
+        }
+      } catch (mirrorErr) {
+        console.error("[analyze-credit-report] identity mirror exception:", mirrorErr);
       }
     }
 
