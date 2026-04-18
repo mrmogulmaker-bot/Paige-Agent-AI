@@ -142,7 +142,7 @@ const handler = async (req: Request): Promise<Response> => {
     });
     const setPasswordUrl = linkData?.properties?.action_link || "https://paigeagent.ai/auth?mode=login";
 
-    const referralLink = `https://paigeagent.ai/pricing?ref=${encodeURIComponent(referralCode!)}`;
+    const referralLink = `https://paigeagent.ai/?ref=${encodeURIComponent(referralCode!)}#pricing`;
 
     // 5. Send branded invitation email (best-effort)
     let emailSent = false;
