@@ -52,9 +52,23 @@ export function getCurrentPageName(pathname: string): string {
 /**
  * Generate the contextual opening prompt Paige uses to greet a client
  * based on the current page they are viewing.
+ *
+ * When `freshSignIn` is true (the user signed in within the last ~2 minutes),
+ * Paige opens with a warm "Welcome back" instead of jumping straight to data.
  */
-export function getPageOpeningInstruction(pageName: string, firstName?: string): string {
+export function getPageOpeningInstruction(
+  pageName: string,
+  firstName?: string,
+  freshSignIn: boolean = false,
+): string {
   const name = firstName || "there";
+
+  if (freshSignIn) {
+    // Fresh sign-in: warm welcome-back, no data dump.
+    // Paige will get to the dashboard data once the client tells her what they want.
+    return `The client (${name}) just signed in and opened the app on the "${pageName}" page. This is a FRESH SIGN-IN — give them a warm, personable "welcome back" greeting that uses their first name and asks what's on the agenda today (or this evening, depending on time of day). ONE warm sentence + ONE open question. Examples of the bar: "Welcome back, ${name} — what's on the agenda today?" / "Hey ${name}, welcome back. What are we tackling today?" / "Good to see you again, ${name}. What's on your plate this evening?" Do NOT recite scores, dispute counts, alerts, or BUILD/funding data on this opener — that's for after they tell you what they want to work on. Match the time of day naturally using the current time in context.`;
+  }
+
   const base = `The client just opened the chat panel while viewing the "${pageName}" page. Generate a short, page-specific opening greeting (1-3 sentences) that uses the client's actual data from CLIENT CONTEXT — bureau scores, next best action, dispute counts, BUILD score, funding matches, etc. Address the client by their first name (${name}) if known.`;
 
   switch (pageName) {
