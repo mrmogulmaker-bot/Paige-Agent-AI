@@ -612,6 +612,8 @@ export const ProfileSettings = () => {
             </div>
             )}
           </Card>
+
+          <SecurityCard />
         </TabsContent>
 
         <TabsContent value="business">
