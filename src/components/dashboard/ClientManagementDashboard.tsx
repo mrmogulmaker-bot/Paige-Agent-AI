@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye } from "lucide-react";
+import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye, LogOut } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
 import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
@@ -67,6 +67,10 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ type: "internal" | "auth"; id: string; name: string } | null>(null);
+
+  // Force sign-out confirmation state
+  const [forceSignOutTarget, setForceSignOutTarget] = useState<{ id: string; name: string } | null>(null);
+  const [forceSignOutLoading, setForceSignOutLoading] = useState(false);
 
   // Invite dialog state
   const [inviteOpen, setInviteOpen] = useState(false);
