@@ -536,7 +536,88 @@ serve(async (req) => {
       },
     });
 
-    return new Response(JSON.stringify({ success: true, analysis: analysisResult, validation_flags: validationFlags }), {
+    // === Auto-sync structured data into credit_accounts / credit_negative_items / credit_factor_scores ===
+    // Only consumer reports go through this sync; business reports use a different pipeline.
+    let syncResult: any = null;
+    let syncError: string | null = null;
+    const reportTypeForSync = (analysisResult.report_type || "consumer").toLowerCase();
+    if (reportTypeForSync === "consumer") {
+      try {
+        const syncPayload = {
+          target_user_id: upload.user_id,
+          report_type: "consumer",
+          scores: analysisResult.scores,
+          score_model: analysisResult.score_model,
+          negative_items: (analysisResult.negative_items || []).map((item: any) => ({
+            creditor_name: item.creditor_name,
+            account_number: item.account_number || item.account_number_masked || null,
+            account_number_masked: item.account_number || item.account_number_masked || null,
+            bureau: item.bureau || item.bureaus_reporting?.[0] || "unknown",
+            item_type: item.category || "collection",
+            amount: item.amount,
+            original_amount: item.original_amount || null,
+            date_of_occurrence: item.date_of_occurrence,
+            date_reported: item.date_reported,
+            dispute_basis: item.dispute_reason_suggestion,
+            estimated_score_impact: item.estimated_score_impact,
+            status: item.status || "active",
+          })),
+          hard_inquiries: analysisResult.hard_inquiries || [],
+          positive_accounts: (analysisResult.positive_accounts || []).map((acct: any) => ({
+            creditor: acct.creditor,
+            account_number: acct.account_number || null,
+            account_type: acct.account_type,
+            balance: acct.balance,
+            credit_limit: acct.credit_limit,
+            original_amount: acct.original_amount || null,
+            utilization: acct.utilization,
+            payment_status: acct.payment_status,
+            payment_history_percentage: acct.payment_history_percentage || null,
+            account_open_date: acct.opened_date,
+            date_closed: acct.date_closed || null,
+            is_open: acct.is_open,
+            responsibility: acct.responsibility || null,
+          })),
+          discrepancies: analysisResult.cross_bureau_discrepancies || [],
+          priority_disputes: [],
+          report_upload_id: uploadId,
+          fraud_alerts: analysisResult.fraud_alerts,
+          security_freezes: analysisResult.security_freezes,
+          validation_flags: validationFlags,
+        };
+
+        const syncResp = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/sync-credit-report-data`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            // Service role lets the sync run for the report's actual owner, regardless of who triggered analysis (admin, coach, or client)
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          },
+          body: JSON.stringify(syncPayload),
+        });
+
+        if (!syncResp.ok) {
+          syncError = `sync-credit-report-data returned ${syncResp.status}`;
+          console.error("[ANALYZE] Auto-sync failed:", syncError, await syncResp.text().catch(() => ""));
+        } else {
+          syncResult = await syncResp.json().catch(() => ({ success: true }));
+          console.log("[ANALYZE] Auto-sync complete for upload", uploadId);
+        }
+      } catch (e: any) {
+        syncError = e?.message || "Unknown sync error";
+        console.error("[ANALYZE] Auto-sync threw:", syncError);
+      }
+
+      await supabase.from("audit_logs").insert({
+        user_id: upload.user_id,
+        entity: "credit_report_upload",
+        action: syncError ? "auto_sync_failed" : "auto_sync_completed",
+        entity_id: uploadId,
+        data: { sync_error: syncError, sync_result: syncResult ? { ok: true } : null },
+      });
+    }
+
+    return new Response(JSON.stringify({ success: true, analysis: analysisResult, validation_flags: validationFlags, sync: { ok: !syncError, error: syncError } }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
