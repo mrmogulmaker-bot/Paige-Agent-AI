@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye } from "lucide-react";
+import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye, LogOut } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
 import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
@@ -67,6 +67,10 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ type: "internal" | "auth"; id: string; name: string } | null>(null);
+
+  // Force sign-out confirmation state
+  const [forceSignOutTarget, setForceSignOutTarget] = useState<{ id: string; name: string } | null>(null);
+  const [forceSignOutLoading, setForceSignOutLoading] = useState(false);
 
   // Invite dialog state
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -254,6 +258,26 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
     setDeleteTarget(null);
   };
 
+  const handleForceSignOutConfirm = async () => {
+    if (!forceSignOutTarget) return;
+    setForceSignOutLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { error } = await supabase.functions.invoke("admin-force-signout", {
+        body: { user_id: forceSignOutTarget.id, scope: "global" },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (error) throw error;
+      toast.success(`${forceSignOutTarget.name} has been signed out of all devices`);
+      setForceSignOutTarget(null);
+    } catch (err: any) {
+      console.error("Error forcing sign out:", err);
+      toast.error(err?.message || "Failed to force sign out");
+    } finally {
+      setForceSignOutLoading(false);
+    }
+  };
+
   const sendInvite = async () => {
     if (!inviteEmail.trim()) {
       toast.error("Please enter an email address");
@@ -364,6 +388,11 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                               <ArrowRightLeft className="w-4 h-4 mr-2" /> Move to Internal
                             </DropdownMenuItem>
                           )}
+                          <DropdownMenuItem
+                            onClick={() => setForceSignOutTarget({ id: c.user_id, name: c.full_name || "this user" })}
+                          >
+                            <LogOut className="w-4 h-4 mr-2" /> Force Sign Out (All Devices)
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
@@ -598,6 +627,28 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Force Sign Out Confirmation Dialog */}
+      <AlertDialog open={!!forceSignOutTarget} onOpenChange={(open) => !open && !forceSignOutLoading && setForceSignOutTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Force sign out of all devices?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will revoke every active session for <strong>{forceSignOutTarget?.name}</strong> on every device. They'll be required to sign in again. Use this when a client is stuck on an old version or can't log out themselves.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={forceSignOutLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleForceSignOutConfirm}
+              disabled={forceSignOutLoading}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {forceSignOutLoading ? "Signing out..." : "Yes, force sign out"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

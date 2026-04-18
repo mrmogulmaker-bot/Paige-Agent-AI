@@ -5,13 +5,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle, Link2, Unlink } from "lucide-react";
+import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle, Link2, Unlink, LogOut, ShieldAlert } from "lucide-react";
 import { lovable } from "@/integrations/lovable/index";
 import { z } from "zod";
 import { Switch } from "@/components/ui/switch";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
+import { performSignOut } from "@/lib/auth/signOut";
 
 const ssnSchema = z.string().regex(/^\d{3}-?\d{2}-?\d{4}$/, "Invalid SSN format (XXX-XX-XXXX)");
 
@@ -600,6 +612,8 @@ export const ProfileSettings = () => {
             </div>
             )}
           </Card>
+
+          <SecurityCard />
         </TabsContent>
 
         <TabsContent value="business">
@@ -711,5 +725,88 @@ export const ProfileSettings = () => {
         </TabsContent>
       </Tabs>
     </div>
+  );
+};
+
+const SecurityCard = () => {
+  const [signingOut, setSigningOut] = useState(false);
+  const [signingOutAll, setSigningOutAll] = useState(false);
+
+  const handleLocalSignOut = async () => {
+    if (signingOut || signingOutAll) return;
+    setSigningOut(true);
+    await performSignOut("/");
+  };
+
+  const handleSignOutAllDevices = async () => {
+    if (signingOut || signingOutAll) return;
+    setSigningOutAll(true);
+    await performSignOut({ redirectTo: "/", scope: "global" });
+  };
+
+  return (
+    <Card className="p-6 mt-6">
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-accent" />
+            Account Security
+          </h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage where you're signed in. Signing out of all devices forces every browser, tablet, and phone using your account to sign back in.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button
+            variant="outline"
+            onClick={handleLocalSignOut}
+            disabled={signingOut || signingOutAll}
+            className="gap-2"
+          >
+            <LogOut className="w-4 h-4" />
+            {signingOut ? "Signing Out..." : "Sign Out"}
+          </Button>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="destructive"
+                disabled={signingOut || signingOutAll}
+                className="gap-2"
+              >
+                <ShieldAlert className="w-4 h-4" />
+                Sign Out of All Devices
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Sign out of all devices?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will end your session everywhere — including any phone, tablet, or browser where you're currently signed in. You'll need to sign in again on each device.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={signingOutAll}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleSignOutAllDevices}
+                  disabled={signingOutAll}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {signingOutAll ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Signing out...
+                    </>
+                  ) : (
+                    "Yes, sign me out everywhere"
+                  )}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </div>
+    </Card>
   );
 };

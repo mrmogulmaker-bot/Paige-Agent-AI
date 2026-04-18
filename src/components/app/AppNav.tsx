@@ -46,7 +46,7 @@ export function AppNav({ user }: AppNavProps) {
     if (isSigningOut) return;
     setMobileMenuOpen(false);
     setIsSigningOut(true);
-    await performSignOut("/auth");
+    await performSignOut("/");
   };
 
   if (isMobile) {
