@@ -12,6 +12,7 @@ import FundingMatches from "./pages/FundingMatches";
 import Auth from "./pages/Auth";
 import Admin from "./pages/Admin";
 const ResetPassword = React.lazy(() => import("./pages/ResetPassword"));
+const AffiliateApply = React.lazy(() => import("./pages/AffiliateApply"));
 import NotFound from "./pages/NotFound";
 import Unsubscribe from "./pages/Unsubscribe";
 import Terms from "./pages/Terms";
@@ -105,6 +106,12 @@ const App = () => (
             <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
+            <Route path="/affiliates" element={
+              <React.Suspense fallback={<SuspenseFallback />}>
+                <AffiliateApply />
+              </React.Suspense>
+            } />
+            <Route path="/become-an-affiliate" element={<Navigate to="/affiliates" replace />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

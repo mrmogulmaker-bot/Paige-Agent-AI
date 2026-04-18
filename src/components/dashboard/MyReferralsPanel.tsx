@@ -119,11 +119,19 @@ export default function MyReferralsPanel() {
         <CardHeader>
           <CardTitle className="text-[#1a2840]">My referrals</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <p className="text-sm text-[#1a2840]/70">
-            You&rsquo;re not enrolled in the referral program yet. An admin can
-            enroll you, or your role will auto-enroll you when assigned.
+            You&rsquo;re not enrolled in the referral program yet. Apply below
+            and an admin will review your request.
           </p>
+          <Button
+            asChild
+            className="bg-[#d4a574] text-[#1a2840] hover:bg-[#d4a574]/90"
+          >
+            <a href="/affiliates" target="_blank" rel="noreferrer">
+              Apply to join
+            </a>
+          </Button>
         </CardContent>
       </Card>
     );
