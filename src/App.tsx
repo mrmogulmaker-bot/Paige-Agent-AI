@@ -24,7 +24,7 @@ import { useReferralTracking } from "./hooks/useReferralTracking";
 import { GlobalAuthSessionManager } from "./lib/auth/GlobalAuthSessionManager";
 
 // Lazy-load existing dashboard sections for /app/* routes
-const DisputesManager = React.lazy(() => import("./components/dashboard/DisputesManager").then(m => ({ default: m.DisputesManager })));
+const RepositioningNotice = React.lazy(() => import("./components/dashboard/RepositioningNotice").then(m => ({ default: m.RepositioningNotice })));
 const LearningVault = React.lazy(() => import("./components/dashboard/LearningVault").then(m => ({ default: m.LearningVault })));
 const BusinessInfrastructureAssessment = React.lazy(() => import("./components/dashboard/business-profile/BusinessInfrastructureAssessment").then(m => ({ default: m.BusinessInfrastructureAssessment })));
 const ProfileSettings = React.lazy(() => import("./components/dashboard/ProfileSettings").then(m => ({ default: m.ProfileSettings })));
@@ -73,9 +73,10 @@ const App = () => (
               <Route index element={null} />
               <Route path="credit" element={<CreditIntelligence />} />
               <Route path="funding" element={<FundingMatches />} />
+              {/* Legacy dispute routes — repositioned to a notice + CFPB redirect + CSV export */}
               <Route path="disputes" element={
                 <React.Suspense fallback={<SuspenseFallback />}>
-                  <DisputesManager />
+                  <RepositioningNotice />
                 </React.Suspense>
               } />
               <Route path="learn" element={

@@ -11,37 +11,37 @@ import {
 const features = [
   {
     icon: Brain,
-    title: "Credit Intelligence Engine",
+    title: "Funding Readiness Score",
     description:
-      "5-factor FICO breakdown — Payment History, Utilization, Credit Age, Credit Mix, and Inquiries. Stop guessing. See the data.",
+      "0–100 composite metric combining personal FICO, business credit, time in business, revenue, utilization, and document completeness. Your north star for capital access.",
     accent: true,
   },
   {
     icon: DollarSign,
-    title: "Funding Match Engine",
+    title: "Funding Product Matrix",
     description:
-      'Real-time lender matching based on your complete underwriting profile. Plus "What If" projections to show exactly how to unlock more.',
+      "See which lender products you qualify for today — SBA 7(a), term loans, lines of credit, MCAs, equipment financing — with approximate amounts and APR ranges.",
     accent: false,
   },
   {
     icon: FileText,
-    title: "Dispute Automation",
+    title: "Credit → Funding Translator",
     description:
-      "AI-generated, FCRA-compliant dispute letters. Debt validation, method of verification — the whole arsenal, ready to send.",
+      "Paige explains every personal and business credit factor in funding terms. \"Your DTI of 42% reduces SBA qualification by ~$75K\" — not vague score talk.",
     accent: false,
   },
   {
     icon: GraduationCap,
-    title: "Learning Vault",
+    title: "Document Prep Assistant",
     description:
-      "Credit education courses built on the ACCEL and BUILD frameworks. Earn certificates. Build knowledge. Build power.",
+      "Compile tax returns, P&L, balance sheet, bank statements, and entity docs into a lender-ready packet. No more last-minute application scrambles.",
     accent: false,
   },
   {
     icon: Mic,
     title: "Voice Chat with Paige",
     description:
-      "Talk to your AI strategist hands-free. Ask questions, get analysis, run actions — all by voice.",
+      "Talk to your AI funding analyst hands-free. Ask about eligibility, lender matches, or document prep — all by voice.",
     accent: false,
   },
 ];
@@ -59,7 +59,7 @@ export function FeaturesSection() {
             <span className="text-accent font-extrabold">Get Funded</span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Paige doesn't just track your credit — she commands it.
+            Paige doesn't track scores — she translates them into capital.
           </p>
         </div>
 
