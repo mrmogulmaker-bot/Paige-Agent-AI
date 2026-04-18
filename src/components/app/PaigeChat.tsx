@@ -115,10 +115,26 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         const { data: { session: freshSession } } = await supabase.auth.getSession();
         if (!freshSession) return;
 
+        // Detect fresh sign-in: auth session created within the last 2 minutes.
+        // Supabase issues `expires_at` (epoch seconds) and tokens last ~1h, so
+        // session age = 3600 - (expires_at - now). If that's < 120s, the user
+        // just signed in and Paige should give a warm "welcome back."
+        const nowSec = Math.floor(Date.now() / 1000);
+        const expiresAt = (freshSession as any).expires_at as number | undefined;
+        const sessionAgeSec = expiresAt ? Math.max(0, 3600 - (expiresAt - nowSec)) : 9999;
+        const freshSignIn = sessionAgeSec < 120;
+
         setIsLoading(true);
         const firstName = (user.user_metadata?.full_name || "").split(" ")[0] || undefined;
-        const pageInstruction = getPageOpeningInstruction(currentPageRef.current, firstName);
+        const pageInstruction = getPageOpeningInstruction(currentPageRef.current, firstName, freshSignIn);
         const greetMessages = [{ role: "user" as const, content: pageInstruction }];
+
+        // Inject a session-age line into the context so Paige's system prompt
+        // can also see this signal independently of the user-message instruction.
+        const sessionLine = freshSignIn
+          ? `Session: client just signed in (${sessionAgeSec}s ago) — give a warm "welcome back" greeting, do NOT recite dashboard data on the opener.`
+          : `Session: client is mid-session (signed in ${Math.floor(sessionAgeSec / 60)}m ago).`;
+        const contextWithSession = `${sessionLine}\n\n${buildContextWithPage(contextBlock)}`;
 
         const response = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,
@@ -127,7 +143,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${freshSession.access_token}` },
             body: JSON.stringify({
               messages: greetMessages,
-              clientContext: buildContextWithPage(contextBlock),
+              clientContext: contextWithSession,
               ...(clientId ? { clientId } : {}),
             }),
           }
