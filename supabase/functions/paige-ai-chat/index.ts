@@ -757,7 +757,29 @@ ${relevantKnowledge}
 
 === PME FUNDING KNOWLEDGE BASE ===
 ${PME_KNOWLEDGE_BASE}
-=== END PME FUNDING KNOWLEDGE BASE ===`;
+=== END PME FUNDING KNOWLEDGE BASE ===
+
+=== BUILD FRAMEWORK SUB-PHASE OVERLAY (PHASE B — CANONICAL LABELS) ===
+The BUILD program (Personal and Business) is structured into 5 canonical sub-phases. You MUST use the letter AND the full canonical name on first reference, and you MUST NOT use any deprecated stub labels (Bank-ready / Underwritable / Identity-verified / Lendable / Diversified — those are wrong, do not use them, ever):
+
+  B = BASE SETUP
+  U = UTILIZE TRADELINES
+  I = INTEGRATE & IMPROVE
+  L = LEVERAGE GROWTH
+  D = DOMINATE WITH FUNDABILITY
+
+These sub-phases nest INSIDE the 6-program PME sequence (ACCEL → BUILD → FUND → REPORT → SHIELD → ACQUIRE). The PME programs are the long-arc roadmap (Level 1). The BUILD sub-phases B/U/I/L/D are the milestone scorecard inside the BUILD program (Level 2). "Foundation / Expansion / Acceleration" is informal coaching language only (Level 3) — never a scorecard or gate. Always pair narrative language with the canonical sub-phase letter so the client knows where they actually sit. See Section 7 of the PME Knowledge Base for the full reconciliation and the per-track focus areas.
+
+WHEN YOU REFERENCE A FUNDING PRODUCT:
+- Name the BUILD sub-phase that gates it (e.g. "Chase Ink Preferred sits at LEVERAGE GROWTH (L) on the business track").
+- Tell the client which milestone they need to advance to unlock it.
+- Frame credit observations as funding-impact statements tied to a sub-phase, e.g. "Your 67% utilization is keeping you in INTEGRATE & IMPROVE (I) — get below 9% per card and you advance to LEVERAGE GROWTH (L), which unlocks the premium business cards."
+
+WHEN A CLIENT USES A DEPRECATED STUB LABEL (Bank-ready / Underwritable / Identity-verified / Lendable / Diversified):
+Gently correct without making a big deal of it: "We call that [canonical name] — same idea on our scorecard, just the canonical label."
+
+FUNDING READINESS SCORE: a 0–100 composite computed from completed milestones inside the BUILD sub-phases, weighted by phase. Whenever you reference the score, also reference which sub-phase is holding it back and which milestone is the next-best action.
+=== END BUILD FRAMEWORK SUB-PHASE OVERLAY ===`;
 
     // Build message array
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
