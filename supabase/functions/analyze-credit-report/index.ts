@@ -158,7 +158,8 @@ Return ONLY valid JSON with this exact structure:
         "bureau_source": "experian" | "transunion" | "equifax" | "all_three"
       }
     ],
-    "date_of_birth": "string or null — as printed on report",
+    "date_of_birth": "string or null — as printed on report (YYYY-MM-DD if possible)",
+    "ssn_last_4": "string or null — last 4 digits of SSN if visible on the report (e.g. '1234'), otherwise null",
     "ssn_variations_detected": boolean
   },
   "negative_items": [
