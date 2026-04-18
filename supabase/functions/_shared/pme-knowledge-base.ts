@@ -430,6 +430,223 @@ Paige speaks at three levels of structure simultaneously. They are NOT competing
 
 ---
 
+## SECTION 12 — BUILD PERSONAL PROGRAM: FUNDABLE IDENTITY SYSTEM (CANONICAL 12-MONTH ROADMAP)
+
+The BUILD Personal program is the **personal-credit half** of the BUILD track. It engineers a **720+ FICO** profile with 10+ tradelines, <5 inquiries, and 2+ banking relationships — the foundation that unlocks $50K–$100K in EIN-only or low-PG business funding capacity. Total program cost: **~$1,408 over 12 months** (avg $60/mo + $675 one-time deposits).
+
+Every action in this section maps to one of the canonical BUILD sub-phases (B / U / I / L / D from Section 7). When a client asks "what's my next step in BUILD Personal," answer with the **specific action below** — not a generic milestone.
+
+### B — BASE SETUP (Months 1–2): Identity Consistency & Banking Foundation
+
+**Entry minimum:** FICO 680. If below, extend Phase B to 3 months and prioritize ACCEL disputes first.
+**Target FICO at end of B:** Stable 680, all bureau identity matched.
+
+1. **Identity verification** — Legal name, address, phone, email identical across Experian / Equifax / TransUnion. One physical address (no P.O. boxes). Dedicated business phone (Google Voice). Professional email.
+2. **Pull all 3 reports** at AnnualCreditReport.com. Dispute any misspellings, wrong addresses, mixed files.
+3. **Open 2 personal checking accounts:** one major bank (Chase / BofA / Wells — for future PLOC) + one credit union (Navy Fed / DCU / local — for secured loans + relationship banking). $500 deposit each.
+4. **Open 1 secured credit card:** DCU Visa Platinum Secured **or** Navy Federal nRewards Secured. $500 deposit = $500 limit. Reports to all 3 bureaus. Graduates to unsecured at 12 months.
+5. **Activate monitoring:** MyFICO 3B ($29.95/mo — **mandatory**, tracks all 3 FICO scores) + Experian Premium ($19.99/mo for Experian Boost) + Credit Karma (free, VantageScore trends).
+**Phase B cost:** $49.90/mo + $500 secured deposit = **$599.80**
+
+### U — UTILIZE TRADELINES (Months 3–4): Add 5+ revolving + 1 installment
+
+**Target FICO at end of U:** 720 across all 3 bureaus.
+
+**Month 3 — Dual build (revolving + installment):**
+- Use secured card at **1–9% utilization** every month (never $0, never >10%). Pay on Day 25 (5 days before due date).
+- Add **Self Credit Builder Loan** ($35/mo, "Build 18" plan = 18 months, $630 total) **OR** Credit Strong Personal "Build 1000" ($50/mo, 24 months). Choose one — both report to all 3 bureaus as installment.
+
+**Month 4 — Add 2–3 unsecured cards (staggered application cadence):**
+- **Week 1:** Store card (Kohl's or Macy's) — easy approval at 620+, 1 hard pull, $500–$2,000 limit.
+- **Week 5:** Cash-back card (Chase Freedom Flex if Chase relationship) — needs 720+ FICO, $200 bonus, 0% APR 15mo.
+- **Week 9:** Credit-union card (DCU Visa Platinum or Navy Fed CashRewards) — relationship-based, $2K–$5K limit.
+- **Rule:** Never apply for 2 cards in the same week. Inquiries stack and look desperate.
+
+**Total accounts at end of U:** 5 tradelines (1 secured + 1 installment + 1 store + 1 cash back + 1 CU card).
+
+### I — INTEGRATE & IMPROVE (Months 5–6): Utilization mastery & score sync
+
+**Target:** 700–720 across all 3 bureaus, <10% utilization per card, <5 recent inquiries.
+
+1. **The 3–9% rule (per card, every month):** Carry $25 on a $500 limit, $50 on $1,000, $100 on $2,000, $150 on $3,000. Pay on Day 25.
+2. **Never pay all cards to $0.** Leave $5–$10 on one card so the bureaus see active use.
+3. **Build a Utilization Calendar (Google Sheet)** tracking statement-closing date vs. due date for each card. Pay 5 days before statement close — that controls what balance reports.
+4. **Pull MyFICO 3B at Month 6.** All 3 bureaus should be 700–720, utilization <10%, inquiries <5.
+5. **Request soft-pull CLIs** from DCU / Navy Fed every 90 days. Trigger phrase: "I'd like to increase my limit to $10,000."
+6. **Add Experian Boost** (free) — link utility / phone / streaming bills for an instant +5–15 FICO points.
+
+### L — LEVERAGE GROWTH (Months 7–9): Banking relationships & premium cards
+
+**Target:** 3 bankers with documented relationships, 1 premium card open, transitioning toward business funding.
+
+1. **Schedule banker meetings at all 3 banks.** Use this exact opener: *"Hi [Banker], I'm building my personal credit profile for a business venture. I have 720 FICO, 7 tradelines, and perfect payment history. My goal is a personal line of credit in 6 months — what would you need to see from me?"*
+2. **Ask 3 questions every meeting:** (a) minimum FICO for unsecured line, (b) PG requirement for business accounts, (c) quarterly check-in cadence.
+3. **Document every relationship in the Vault:** banker name, phone, email, meeting date, commitments. Always send a thank-you email after — *"Great meeting you, here's my current credit summary."* Bankers have **discretion to override automated systems** — that's worth more than 30 FICO points.
+4. **Apply for travel/premium card** if FICO ≥ 720: Chase Sapphire Preferred ($95 AF waived year 1, 60K-pt bonus, 720+ FICO + $50K income).
+5. **(Optional) Add authorized user** — only if they have 720+ FICO and low utilization. Risk: their spending impacts your utilization.
+6. **Apply for first business credit card (PG route):** Amex Blue Business Plus (PG-friendly, won't report personal if paid on time) **or** Chase Ink Business Preferred (relationship-based — banker can advocate). Both require 720+ personal FICO.
+
+### D — DOMINATE WITH FUNDABILITY (Months 10–12): Maximize, optimize, transition
+
+**Target at Month 12:** 740+ FICO (private banking threshold), 10+ open accounts, <5 inquiries in last 6 months, <5% aggregate utilization, $50K+ available credit.
+
+1. **AZEO method (All Zero Except One):** Pay 5 of 6 cards to $0 before statement close. Leave $10 on the **highest-limit card** (e.g., Sapphire $10K). Result: +3–5 FICO point boost from optimized utilization calc.
+2. **CLI marathon:** Request soft-pull CLIs on every card that allows it (DCU, Navy Fed, Amex). Best timing: **December** (banks are generous for holiday spending). Ask: *"Can you review my account for a limit increase? My income is now $75K."*
+3. **Remove negative authorized users** (if any have late payments or high util) → instant +10–20 FICO points.
+4. **Pull final MyFICO 3B at Month 12.** Verify 740+ across all bureaus.
+5. **Generate Personal Fundability Report:** all 10+ accounts with limits & payment history, total available credit (>$50K), total used (<$2,500 = <5% util), 3 banker contacts.
+6. **Transition to BUILD BUSINESS:** personal credit now unlocks Amex Blue Business Plus, Chase Ink, BofA Business (PG waived after 12 months at Intelliscore 70+), and personal LOC ($25K–$50K seed capital).
+
+### CRITICAL RISK SAFEGUARDS (BUILD Personal)
+
+| Risk | Impact | Safeguard |
+|---|---|---|
+| Missed payment | –120 FICO points, 12 months to recover | **Three** auto-pay reminders (calendar + bank alert + email) |
+| Applying before 720 FICO | Rejection + wasted hard inquiry | Don't apply for ANY card until Month 3 (after secured card reports) |
+| Utilization >30% | –50 FICO points | Balance alerts at 10% of limit on every card |
+| Closing old accounts | Drops average age of accounts | **Never close old cards** — keep open, use once every 6 months |
+
+### PAIGE'S RULES — BUILD PERSONAL
+
+1. **MyFICO 3B ($29.95/mo) is mandatory** — not optional. Credit Karma alone is not enough; it shows VantageScore, but lenders pull FICO. If a client refuses MyFICO, document the gap and flag the funding-readiness score accordingly.
+2. **Never recommend applying for a new card before Month 3.** The secured card needs one full statement cycle to report.
+3. **The 3 banker relationships (Phase L) are non-negotiable** for graduating to D. A client can hit 720 FICO and still be denied at underwriting — relationships override that.
+4. **Never recommend AZEO (Phase D) before Month 10.** Doing it earlier leaves money on the table during the build phase when you want all cards reporting active use.
+5. **Total program cost ($1,408) unlocks ~$50K–$100K business funding capacity at single-digit APR** vs. 20–50% fintech debt. ROI is $10K–$15K/year in interest savings — quote this when a client questions the monthly monitoring cost.
+
+---
+
+## SECTION 13 — BUILD BUSINESS PROGRAM 2.0: MULTI-BUREAU ACCELERATION SYSTEM (CANONICAL 18-MONTH ROADMAP)
+
+The BUILD Business program transforms an entity from a legal shell into a **multi-bureau creditworthy institution** in 12–18 months. Unlike the legacy Uline/Grainger/Quill net-30-only path (60% success rate, 12–18 months for single-bureau D&B coverage), this program uses **guaranteed-approval credit builders** as the foundation to build Experian Intelliscore, Equifax Business Risk Score, and PAYDEX **simultaneously** — unlocking bank and SBA financing 6–12 months faster.
+
+**Outcome:** $100K–$500K in EIN-only credit lines, 3 banking relationships, FUND Stage-4 (institutional debt) ready. Total cost **~$1,418 over 18 months** vs. $300+ legacy program with 6+ months of lost funding-window opportunity.
+
+### B — BASE SETUP (Months 1–2): Multi-Bureau Identity Infrastructure
+
+**Week 1 — Entity & bureau registration:**
+1. Form LLC/S-Corp + obtain EIN (IRS.gov, instant, free).
+2. **Register with all 3 bureaus simultaneously** — do NOT wait for D&B alone:
+   - **D&B:** `iUpdate.dnb.com` → D-U-N-S Number (free, 7 days).
+   - **Experian Business:** `experian.com/small-business` → create account (free).
+   - **Equifax Commercial:** `equifax.com/business` → request file creation (free, 14 days).
+3. Verify all 3 files at Nav.com after 14 days — should show "No Data Yet" but exist.
+**Why this matters:** 60% of SBA lenders check **Experian Intelliscore first**. If you wait for D&B, you lose 6 months.
+
+**Week 2–3 — Banking infrastructure (SBFE reporting is critical):**
+4. **Open 2 business checking accounts.** Account #1 must report to **SBFE** (Small Business Financial Exchange — the "4th bureau" banks check internally). Confirmed reporters: Wells Fargo Business Checking, BofA Business Fundamentals, Chase Business Complete. Deposit $500–$1,000. Account #2 = credit union (Navy Fed if eligible / DCU / local CU).
+5. **Open business savings** at same bank as Checking #1. Deposit $100/month → shows cash-flow discipline.
+
+**Week 4 — Monitoring stack:**
+6. Nav.com (free dashboard, all 3 bureaus) + Experian Business Credit Advantage ($49/mo — **mandatory** for Intelliscore tracking) + CreditSignal (free PAYDEX alerts) + QuickBooks/Xero connected to bank accounts.
+
+### U — UTILIZE TRADELINES (Months 3–6): Guaranteed Multi-Bureau History in 90 Days
+
+**Month 3 Day 1 — Tier decision:**
+
+| Tier | Monthly Cost | Bureaus Covered | Timeline | Who Should Use |
+|---|---|---|---|---|
+| **Premium** | $199.95 | All 3 (D&B, Experian, Equifax) | 90 days | Want fastest results, can afford |
+| **Standard** | $49.95 | Experian + Equifax | 90 days | D&B already exists OR budget tight |
+| **Budget** | $0 | None (free vendors only) | 180 days | Can't afford any paid builders |
+
+**Premium Tier — Month 3 launch:**
+1. **eCredable Business Lift** ($49.95/mo) — `ecredable.com/products/ecredable-business-lift`. Link business checking (auto-verifies revenue). First report at 30 days to Experian + Equifax.
+2. **Credit Strong Business** ($150/mo "Build 15K" plan) — `creditstrong.com/business`. Reports a $15K installment loan to D&B + Experian + Equifax. **Cannot cancel early** (24-month term) — but can stop paying after 12 months when loan matures.
+**After 30 days:** Experian = 2 tradelines, Equifax = 2, D&B = 1.
+
+**Month 4 — Add free multi-bureau vendors (staggered):**
+3. **Day 35 — Summa Office Supplies** (`summaofficesupplies.com`): apply for Net-30, order $75+ supplies (must be >$50 to report), pay Day 25. Reports to D&B + Experian.
+4. **Day 42 — Strategic Network Solutions** (`strategicsupplies.com`): Net-30, $100+ IT supplies, pay Day 25. Reports to **D&B + Equifax** — only 5% of vendors report to Equifax, this is a **must-have**.
+5. **Day 49 — The CEO Creative** (`theceocreative.com`): Net-30, $50+ marketing templates. Reports to D&B + Experian.
+**After 60 days:** Experian = 4 tradelines, Equifax = 3, D&B = 4.
+
+**Month 5–6 — Assessment & optimization decision tree (Day 90 score check):**
+- If **Intelliscore ≥ 70 AND 6+ free tradelines** → cancel eCredable (save $49.95/mo), keep Credit Strong.
+- If **Intelliscore < 70** → keep both for 3 more months.
+- If budget tight → keep Credit Strong only (covers all 3 bureaus), cancel eCredable.
+
+**Risk:** One missed payment on Credit Strong or eCredable = **30-day delinquency on all 3 bureaus** = destroys 12 months of work. Auto-pay + calendar reminders are mandatory.
+
+### I — INTEGRATE & IMPROVE (Months 7–9): Verify Accuracy + Banker Relationships
+
+**Monthly verification cycle (repeat each month):**
+- **Day 1 — Experian:** Pull Intelliscore Plus ($49). Verify all paid tradelines listed. Dispute online with payment confirmation → 14-day resolution.
+- **Day 15 — Equifax:** Pull Business Credit Risk Report ($99). Disputes are **fax-only** to **404-458-1679**. Cover sheet template: *"Attn: Business Credit Disputes. Account #[EIN]. Tradeline [Vendor Name] missing. Attached: payment confirmation."*
+- **Day 30 — D&B:** `CreditSignal.dnb.com` (free). Add missing tradelines manually at `iUpdate.dnb.com` (free).
+
+**Banker relationship deepening (quarterly, 1 meeting per banker, 30-min agenda):**
+1. **Show progress (5 min):** *"My Experian Intelliscore is now [XX], up from 0 three months ago. I have [8] reporting tradelines across all 3 bureaus."*
+2. **Ask for guidance (10 min):** *"Based on your underwriting, what would I need to qualify for a $50K line of credit? My DSCR is [1.X] — is that within your range?"*
+3. **Request introduction (10 min):** *"Can you introduce me to your SBA lending specialist?"*
+4. **Document (5 min):** Banker name, phone, email, commitments → Vault Relationship Banking Log.
+
+**Phase I goal:** By Month 9, get **1 banker** to commit verbally: *"Based on what you've shown me, I think we can approve $25K–$50K once you hit [specific milestone, e.g., $100K revenue]."*
+
+### L — LEVERAGE GROWTH (Months 10–12): PAYDEX 80+, Intelliscore 70+, DSCR ≥ 1.2x
+
+**Month 10 — Credit limit expansion:**
+1. **Upgrade eCredable** ($49 → $99/mo) — call 844-374-3770 → reports as a higher-value tradeline.
+2. **Vendor CLI requests** (70% success if paid early ≥3×):
+   - Summa: 1-800-899-9866 — *"I'd like to increase my credit limit to $500. I've paid early 4 times."*
+   - Strategic: 1-800-574-2727 — *"Can you review my account for a limit increase?"*
+3. **Industry-specific fleet/retail credit:** Fuelman (trades, D&B + Experian) / Staples Business (office, D&B + Experian) / Home Depot Pro (contractors, D&B).
+
+**Month 11 — Build the Funding Package PDF (50 pages):**
+- 6 months bank statements (PDF, all pages — highlight consistent deposits, no NSF).
+- 12-month P&L (QuickBooks/Xero, accrual basis, gross profit >30%).
+- Balance sheet (month-end, positive equity).
+- Tax return (1120S/1065 if filed).
+- Personal Financial Statement (SBA Form 413) — for PG if required.
+- Business credit reports (Experian, Equifax, D&B) — must show 70+ / 100+ / 80+.
+
+**Month 12 — Pre-qualify for Stage-4 lenders:**
+- **SBA PLP banks:** Live Oak Bank (`sba@liveoakbank.com`, attach P&L + Experian + 6mo bank stmts; ask: *"Do I pre-qualify for SBA 7(a) up to $250K?"*) / Newtek (online, instant Intelliscore-based pre-qual) / Chase (requires Chase Business Complete Checking 3+ months, ask banker for SBA intro).
+- **Community banks:** PNC, Regions, SunTrust → in-person banker meeting with full package.
+- **Equipment finance:** Crest Capital (24-hr approval at Intelliscore ≥ 65) / Balboa (same-day at $100K+ revenue + Intelliscore ≥ 60).
+**Goal:** 1 conditional approval letter or pre-qualification email by end of Month 12.
+
+### D — DOMINATE WITH FUNDABILITY (Months 13–18): Institutional Funding Package Complete
+
+**Month 13–15 — Maintain & refine:**
+- Continue early payments: eCredable Day 1, Credit Strong auto-pay, Summa/Strategic Day 25.
+- Quarterly score pulls — verify Experian Intelliscore 70+, Equifax 100+, PAYDEX 80+.
+- For $500K+ funding needs: form **SPV (Special Purpose Vehicle) LLC** for liability shielding.
+
+**Month 16–18 — Execute funding campaign:**
+- **Apply to 3 lenders simultaneously** (creates competitive tension): SBA PLP bank ($50K–$250K term) + Regional bank ($25K–$100K LOC) + Equipment finance ($25K–$250K).
+- **Use bureau scores as leverage:** *"My Experian Intelliscore is 75. Your underwriting guidelines show approval at 65. Here's my report."*
+- **Timeline:** Day 1 submit → Day 7 banker phone follow-up → Day 14 supplemental docs → Day 30 approvals.
+
+### INTERNATIONAL MODULE (Months 6–12, optional decision point)
+
+Activate **only if** the client has international suppliers OR plans overseas expansion. Otherwise skip → focus on domestic.
+- **Month 6:** Creditsafe International ($199/yr, `creditsafe.com/us`) — international score 1–100 → unlocks Net-30 with European vendors (Euler Hermes), cross-border SBA export loans.
+- **Month 9:** D&B International QuickStart ($599/yr, `dnb.com/international`) — establish presence in 5 countries → unlocks foreign-entity funding, international PE/VC.
+- **Month 12:** HSBC Business Global Account ($50/mo) — reports to UK Experian + US Experian + D&B International.
+
+### CRITICAL RISK SAFEGUARDS (BUILD Business)
+
+| Risk | Impact | Safeguard |
+|---|---|---|
+| Missed Credit Strong / eCredable payment | 120-pt drop on **all 3 bureaus**, 12mo recovery | Three auto-pay reminders + auto-pay from business savings |
+| Applying for credit before Month 6 | Rejection + inquiry + signals desperation | DO NOT APPLY for ANY business credit until Intelliscore ≥ 60 |
+| Cancelling eCredable too early | –20 to –30 Intelliscore points | Keep until 6+ free tradelines reporting independently |
+| Skipping Equifax (fax-only disputes) | Equifax score never reaches 100+ | Built-in monthly Day-15 fax verification cycle |
+| Choosing legacy Uline/Grainger only | 60% success rate, 12+mo to single-bureau coverage | Use guaranteed-approval Premium Tier → 90-day multi-bureau |
+
+### PAIGE'S RULES — BUILD BUSINESS
+
+1. **Always register with all 3 bureaus in Week 1** — never wait for D&B alone. SBA lenders pull Experian first.
+2. **Account #1 MUST report to SBFE.** When recommending a bank, verify SBFE reporting (Wells / BofA / Chase confirmed). Credit unions generally do NOT report to SBFE — that's why Account #2 is the CU.
+3. **Equifax disputes are fax-only.** When a client says "I disputed online" for Equifax Business, correct them immediately and provide the fax number 404-458-1679 with the cover-sheet template.
+4. **Don't recommend any business credit application before Month 6 / Intelliscore ≥ 60.** Hard inquiries on a thin business file are catastrophic.
+5. **Quote the cost-vs-legacy ROI** when a client questions $199.95/mo: $1,418 total program → $100K–$250K credit lines at 6–9% APR (vs. 20–50% fintech) = **$15K–$25K Year-1 interest savings**.
+6. **The 3-bureau verification cycle (Phase I, Day 1 / Day 15 / Day 30) is non-negotiable.** Roughly 15% of paid tradelines fail to report on first cycle — without monthly verification, the client pays for tradelines that never count.
+7. **Phase L lender pre-qual at Month 12 is the BUILD Business graduation gate to FUND.** Without 1 conditional approval letter or pre-qual email, the client is not yet FUND-ready (see Section 11 entry criteria).
+
+---
+
 ## SECTION 11 — FUND PROGRAM: 36-MONTH CAPITAL DEPLOYMENT ROADMAP (CANONICAL)
 
 The FUND program is the institutional-debt accelerator that begins after a client graduates BUILD Business (typically Month 10–12). It runs in 4 named phases (F-U-N-D) layered over 24–36 months and is the *only* path Paige uses when answering "what funding can I get next" for a graduated client.
