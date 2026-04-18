@@ -9,9 +9,46 @@ const Terms = () => {
       <Header />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <h1 className="text-4xl font-bold mb-2 text-foreground">Terms of Service</h1>
-        <p className="text-sm text-muted-foreground mb-10">Last updated: March 18, 2026</p>
+        <p className="text-sm text-muted-foreground mb-10">Last updated: April 18, 2026</p>
 
         <div className="prose prose-sm max-w-none space-y-8 text-foreground/90">
+          {/* === Repositioning Addendum (April 18, 2026) === */}
+          <section className="border-l-4 border-accent bg-accent/5 p-5 rounded-r-lg">
+            <h2 className="text-xl font-semibold text-foreground mt-0">
+              Important Update — April 18, 2026
+            </h2>
+            <p className="text-sm">
+              <strong>PaigeAgent.ai is now a business funding intelligence platform.</strong>{" "}
+              Effective immediately, we are <strong>not</strong> a Credit Repair Organization (CRO) under the Credit Repair Organizations Act (CROA), 15 U.S.C. § 1679, and we do not provide credit repair services.
+            </p>
+            <p className="text-sm">
+              The Service helps small business owners (a) understand their personal and business credit profiles in the context of business funding eligibility and (b) connect with appropriate capital sources, including SBA loans, term loans, lines of credit, MCAs, and equipment financing. The Service does not generate dispute letters, file disputes with credit bureaus, or take any action to remove, delete, or modify items on your credit report.
+            </p>
+            <p className="text-sm">
+              <strong>Self-help credit disputes:</strong> If you wish to dispute information on your credit report, you have the right to do so directly with the credit bureaus at no cost. The Consumer Financial Protection Bureau (CFPB) provides free dispute templates and instructions at{" "}
+              <a
+                href="https://www.consumerfinance.gov/consumer-tools/credit-reports-and-scores/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                consumerfinance.gov/consumer-tools/credit-reports-and-scores
+              </a>.
+            </p>
+            <p className="text-sm">
+              <strong>Not legal, tax, or financial advice.</strong> Information provided through the Service, including by Paige AI, is for educational and informational purposes only. It is not legal, tax, accounting, or investment advice. Consult licensed professionals for advice specific to your situation.
+            </p>
+            <p className="text-sm">
+              <strong>Not a lender or broker.</strong> PaigeAgent.ai is not a lender, loan broker, financial institution, or registered investment advisor. Funding decisions are made solely by third-party lenders. Display of any lender, product, or estimated funding amount is not a guarantee of approval.
+            </p>
+            <p className="text-sm">
+              <strong>Cancellation.</strong> You may cancel your subscription at any time from your account settings. Cancellation takes effect at the end of the then-current billing period and is no harder than signup.
+            </p>
+            <p className="text-xs text-muted-foreground mt-3">
+              This addendum is being reviewed with our fintech counsel; the full Terms below will be rewritten in a subsequent update. In any conflict between this addendum and the legacy text below, this addendum controls.
+            </p>
+          </section>
+
           <section>
             <h2 className="text-2xl font-semibold text-foreground">1. Acceptance of Terms</h2>
             <p>
@@ -22,10 +59,10 @@ const Terms = () => {
           <section>
             <h2 className="text-2xl font-semibold text-foreground">2. Description of Service</h2>
             <p>
-              PaigeAgent.ai provides AI-powered credit education, credit repair guidance, business credit building tools, dispute management, and funding readiness assessment services. Our platform utilizes the A.C.C.E.L. and B.U.I.L.D. frameworks to guide users through structured credit improvement and business credit development programs.
+              PaigeAgent.ai provides AI-powered business funding intelligence tools, personal and business credit profile education, business credit-building guidance, and funding readiness assessment services.
             </p>
             <p>
-              <strong>Important:</strong> PaigeAgent.ai is not a credit repair organization as defined under the Credit Repair Organizations Act (CROA), 15 U.S.C. § 1679. We provide technology tools and educational resources. We do not guarantee specific credit score improvements or outcomes.
+              <strong>Important:</strong> PaigeAgent.ai is not a credit repair organization as defined under the Credit Repair Organizations Act (CROA), 15 U.S.C. § 1679. We provide technology tools and educational resources. We do not guarantee specific credit score improvements, dispute outcomes, or funding approvals.
             </p>
           </section>
 
