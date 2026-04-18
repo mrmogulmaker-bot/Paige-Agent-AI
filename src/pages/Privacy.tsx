@@ -9,16 +9,44 @@ const Privacy = () => {
       <Header />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <h1 className="text-4xl font-bold mb-2 text-foreground">Privacy Policy</h1>
-        <p className="text-sm text-muted-foreground mb-10">Last updated: March 18, 2026</p>
+        <p className="text-sm text-muted-foreground mb-10">Last updated: April 18, 2026</p>
 
         <div className="prose prose-sm max-w-none space-y-8 text-foreground/90">
+          {/* === Repositioning Addendum (April 18, 2026) === */}
+          <section className="border-l-4 border-accent bg-accent/5 p-5 rounded-r-lg">
+            <h2 className="text-xl font-semibold text-foreground mt-0">
+              Important Update — April 18, 2026
+            </h2>
+            <p className="text-sm">
+              <strong>PaigeAgent.ai has been repositioned as a business funding intelligence platform.</strong>{" "}
+              We are <strong>not</strong> a Credit Repair Organization (CRO) as defined under the Credit Repair Organizations Act (CROA), 15 U.S.C. § 1679. We do not perform, offer, or sell credit repair services.
+            </p>
+            <p className="text-sm">
+              We help small business owners understand how their personal and business credit profiles affect funding eligibility, and we connect them with appropriate capital sources. We do not generate dispute letters, file disputes with credit bureaus, or attempt to remove or modify items on your credit report.
+            </p>
+            <p className="text-sm">
+              For free, self-help credit dispute resources, please use the Consumer Financial Protection Bureau's templates at{" "}
+              <a
+                href="https://www.consumerfinance.gov/consumer-tools/credit-reports-and-scores/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                consumerfinance.gov/consumer-tools/credit-reports-and-scores
+              </a>.
+            </p>
+            <p className="text-xs text-muted-foreground mt-3">
+              This addendum is being reviewed with our fintech counsel; the full policy below will be rewritten in a subsequent update. In any conflict between this addendum and the legacy text below, this addendum controls.
+            </p>
+          </section>
+
           <section>
             <h2 className="text-2xl font-semibold text-foreground">1. Introduction</h2>
             <p>
               PaigeAgent.ai ("Company," "we," "us," or "our") is committed to protecting the privacy and security of your personal information. This Privacy Policy describes how we collect, use, disclose, and safeguard your information when you use the PaigeAgent.ai platform ("Service").
             </p>
             <p>
-              We comply with the Gramm-Leach-Bliley Act (GLBA), the Fair Credit Reporting Act (FCRA), the Credit Repair Organizations Act (CROA), and applicable state privacy laws.
+              We comply with the Gramm-Leach-Bliley Act (GLBA), the Equal Credit Opportunity Act (ECOA), the California Consumer Privacy Act (CCPA/CPRA), and applicable state privacy laws.
             </p>
           </section>
 
