@@ -59,6 +59,7 @@ import { InternalClientFileView } from "@/components/dashboard/InternalClientFil
 import { AllCreditReportsView } from "@/components/dashboard/AllCreditReportsView";
 import { QuickUploadReportModal } from "@/components/dashboard/QuickUploadReportModal";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
+import { performSignOut } from "@/lib/auth/signOut";
 
 const Dashboard = () => {
   const { mode, isCoachOrAdmin } = useDashboardMode();
@@ -77,30 +78,27 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+      (_event, nextSession) => {
+        setSession(nextSession);
+        setUser(nextSession?.user ?? null);
         setIsLoading(false);
-        
-        if (!session?.user) {
-          navigate("/auth");
+
+        if (!nextSession?.user) {
+          navigate("/auth", { replace: true });
         }
       }
     );
 
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession);
+      setUser(currentSession?.user ?? null);
       setIsLoading(false);
-      
-      if (!session?.user) {
-        navigate("/auth");
+
+      if (!currentSession?.user) {
+        navigate("/auth", { replace: true });
       } else {
-        // Check if user needs onboarding
-        checkOnboardingStatus(session.user.id);
+        checkOnboardingStatus(currentSession.user.id);
       }
     });
 
@@ -113,16 +111,14 @@ const Dashboard = () => {
       .select("full_name")
       .eq("user_id", userId)
       .maybeSingle();
-    
-    // Show onboarding if profile is incomplete
+
     if (!profile?.full_name) {
       setShowOnboarding(true);
     }
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/auth");
+    await performSignOut("/auth");
   };
 
   if (isLoading) {

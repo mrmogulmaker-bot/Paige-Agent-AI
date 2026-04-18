@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Users, FileText, DollarSign, BarChart3, Settings, LogOut,
-  Gavel, TrendingUp, Eye, ArrowLeft, Menu, X, BookOpen, Wrench, Share2,
+  Users, DollarSign, BarChart3, Settings, LogOut,
+  Gavel, TrendingUp, Eye, Menu, BookOpen, Wrench, Share2,
 } from "lucide-react";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
+import { performSignOut } from "@/lib/auth/signOut";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
 const adminNavItems = [
@@ -34,10 +34,13 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const { setMode } = useDashboardMode();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate("/");
+    if (isSigningOut) return;
+    setMobileSidebarOpen(false);
+    setIsSigningOut(true);
+    await performSignOut("/auth");
   };
 
   const handleSwitchToClientView = () => {
@@ -52,7 +55,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
   const Sidebar = ({ mobile = false }: { mobile?: boolean }) => (
     <div className={`flex flex-col h-full bg-primary text-primary-foreground ${mobile ? "w-64" : sidebarOpen ? "w-64" : "w-16"} transition-all duration-200`}>
-      {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-4 border-b border-sidebar-border">
         <img src={paigeLogoTransparent} alt="PaigeAgent" className="h-8 w-8 object-contain flex-shrink-0" />
         {(sidebarOpen || mobile) && (
@@ -60,7 +62,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         )}
       </div>
 
-      {/* Nav items */}
       <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
         {adminNavItems.map((item) => (
           <Link
@@ -79,7 +80,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         ))}
       </nav>
 
-      {/* Bottom actions */}
       <div className="p-3 border-t border-sidebar-border space-y-2">
         <button
           onClick={handleSwitchToClientView}
@@ -90,10 +90,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         </button>
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm text-primary-foreground/70 hover:text-primary-foreground hover:bg-sidebar-accent/50 transition-colors"
+          disabled={isSigningOut}
+          className="flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm text-primary-foreground/70 hover:text-primary-foreground hover:bg-sidebar-accent/50 transition-colors disabled:opacity-60"
         >
           <LogOut className="w-4 h-4 flex-shrink-0" />
-          {(sidebarOpen || mobile) && <span>Sign Out</span>}
+          {(sidebarOpen || mobile) && <span>{isSigningOut ? "Signing Out..." : "Sign Out"}</span>}
         </button>
       </div>
     </div>
@@ -101,12 +102,10 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
   return (
     <div className="h-screen flex bg-background">
-      {/* Desktop Sidebar */}
       <div className="hidden md:block">
         <Sidebar />
       </div>
 
-      {/* Mobile Sidebar Overlay */}
       {mobileSidebarOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileSidebarOpen(false)} />
@@ -116,9 +115,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         </div>
       )}
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
         <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-border bg-card">
           <div className="flex items-center gap-3">
             <button
@@ -136,10 +133,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           </div>
           <div className="flex items-center gap-3">
             <NotificationBell />
+            <Button variant="ghost" size="icon" onClick={handleSignOut} disabled={isSigningOut} aria-label="Sign out">
+              <LogOut className="w-4 h-4" />
+            </Button>
           </div>
         </div>
 
-        {/* Page content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6">
           {children}
         </div>

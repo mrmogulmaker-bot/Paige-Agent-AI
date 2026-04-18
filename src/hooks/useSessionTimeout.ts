@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { performSignOut } from "@/lib/auth/signOut";
 
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 const WARNING_BEFORE = 2 * 60 * 1000; // Show warning 2 min before
@@ -19,8 +19,7 @@ export const useSessionTimeout = () => {
     }, IDLE_TIMEOUT - WARNING_BEFORE);
 
     timeoutRef.current = setTimeout(async () => {
-      await supabase.auth.signOut();
-      window.location.href = "/auth";
+      await performSignOut("/auth");
     }, IDLE_TIMEOUT);
   }, []);
 

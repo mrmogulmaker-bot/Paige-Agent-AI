@@ -56,26 +56,27 @@ const AppShell = () => {
   useEffect(() => {
     if (DEV_MODE) return;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsLoading(false);
-
-      if (!session) {
-        navigate("/auth");
-      }
-    });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+      (_event, nextSession) => {
+        setSession(nextSession);
+        setUser(nextSession?.user ?? null);
+        setIsLoading(false);
 
-        if (!session && !isLoading) {
-          navigate("/auth");
+        if (!nextSession) {
+          navigate("/auth", { replace: true });
         }
       }
     );
+
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession);
+      setUser(currentSession?.user ?? null);
+      setIsLoading(false);
+
+      if (!currentSession) {
+        navigate("/auth", { replace: true });
+      }
+    });
 
     return () => subscription.unsubscribe();
   }, [navigate]);
