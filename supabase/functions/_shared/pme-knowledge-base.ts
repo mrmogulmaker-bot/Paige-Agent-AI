@@ -815,5 +815,73 @@ Ask 5 questions, count Yes:
 5. **For SaaS clients, FUND Stage 5 is equity (Series A/B), not debt.** Path 2 above explicitly skips traditional debt at Stage 5.
 6. **Refinance gospel:** the moment a client qualifies for SBA/bank pricing, propose refinancing fintech debt. Going from 30% APR (OnDeck) to 10% APR (SBA) is the single biggest capital cost reduction in the FUND program.
 7. **Never discuss specific deal returns or equity offerings yourself** (Reg D 506(c) compliance) — route those conversations to a placement agent.
+
+---
+
+## SECTION 14 — ACCEL TO PROFITS: THE FUNDABILITY ARCHITECT (Pro/Coach Curriculum)
+
+**Tagline:** *From DIY Disputes to 7-Figure Credit Empire — The Complete Legal, Technical & Business Blueprint.*
+
+This is the canonical 8-module curriculum that turns an ACCEL/BUILD graduate into a licensed, compliant, scalable **credit & funding services business**. Paige uses this as the syllabus when coaching Coach Candace persona users (or any client who asks "how do I turn this into a business?"). It is also the source of truth for the Learning Vault course catalog under the "Fundability Architect" track.
+
+### Learning Flow (sequence is non-negotiable)
+**1.** Legal Setup → **2.** Compliance Boundaries → **3.** Tools & Methods → **4.** Monetization → **5.** Launch Strategy → **6.** Service Delivery → **7.** Growth → **8.** Resources.
+
+Paige must never let a user jump to Module 4 (monetization) before completing Modules 1–2 (legal + CROA compliance). This is the #1 way credit-repair operators get sued by the FTC.
+
+### Module 1 — Legal Foundation & Entity Setup
+- **L1:** LLC vs Corp vs Non-Profit — choosing the right armor (liability shield + tax posture for a CROA-regulated service business).
+- **L2:** Licensing, Bonding & State Rules (CROA bond requirements vary by state — TX/FL/GA require surety bonds $10K–$100K).
+- **L3:** Banking Infrastructure Setup (separate operating + trust + payroll accounts; SBFE-reporting bank required).
+- **L4:** Entity Separation: Repair vs Report (the credit-repair entity must be legally distinct from any data-furnisher / reporting-services entity to avoid conflict-of-interest and FCRA furnisher liability).
+
+### Module 2 — Compliance & FTC Framework *(taught BEFORE tech stack on purpose)*
+- **L1:** CROA Rules: What Not To Do (no upfront fees, no guarantees, mandatory 3-day right of cancellation).
+- **L2:** Pre-Consultation Disclosures (Consumer Credit File Rights statement + written contract before any work).
+- **L3:** Avoiding FTC Red Flags (deceptive claims, file-segregation/CPN schemes, piggybacking-for-sale — all bright-line prohibited).
+- **L4:** Data Security & GLBA Compliance (Safeguards Rule: written InfoSec program, encryption at rest, designated qualified individual).
+
+### Module 3 — Tech Stack & Dispute Systems
+- **L1:** DisputeFox vs Credit Repair Cloud vs build-your-own SaaS (decision matrix by client volume).
+- **L2:** Metro 2 Method vs FCRA Letter Method (when to challenge data integrity vs request reinvestigation).
+- **L3:** Advanced Dispute Methodologies (factual disputes, MOV/method-of-verification demands, escalation to CFPB).
+- **L4:** Small Claims Litigation Prep (FCRA §1681n/o statutory damages $1,000/violation — when to sue furnishers).
+
+### Module 4 — Revenue Streams & Monetization
+- **L1:** Bizee Integration: Formation Income (affiliate revenue from LLC/EIN/Registered Agent referrals).
+- **L2:** Affiliate Income: Monitoring & Credit Builders (myFICO, Experian, Self, Kikoff, eCredable, Credit Strong).
+- **L3:** Broker Partnerships: Reporting Services (white-label tradeline reporting, business credit registration assist).
+- **L4:** Pricing Models & Package Tiers (monthly recurring $99–$199 vs flat-fee programs $1,500–$5,000 vs done-with-you coaching).
+
+### Module 5 — Progressive Launch: DIY to Pro
+- **L1:** Proof Phase: Fix Your Credit First (you cannot sell what you haven't done — must show personal 720+ FICO before charging clients).
+- **L2:** Friends & Family Beta Testing (free/discounted pilots to build case studies and refine SOPs).
+- **L3:** Building Your Team & Systems (first hire = VA for letter mailing/scanning; second = paralegal for disputes).
+- **L4:** Education as Revenue Layer (courses, masterminds, certifications — higher margin than DFY services).
+
+### Module 6 — Fundability Engineering
+- **L1:** ACCEL Protocol Execution (the personal-credit cleanup methodology Paige uses on every client).
+- **L2:** Banking Relationship Architecture (3 banker relationships minimum — community bank, credit union, SBA PLP).
+- **L3:** BUILD Personal Ascension Path (graduating clients from ACCEL → BUILD Personal → first PG card → unsecured stack).
+- **L4:** Mortgage & Auto Loan Prep (manual underwriting requirements, 12-month seasoning rules, DTI optimization).
+
+### Module 7 — Scaling Systems
+- **L1:** Team Building & Delegation (org chart by $50K/$100K/$250K MRR thresholds).
+- **L2:** Strategic Partner Networks (mortgage brokers, realtors, auto dealers, SBA lenders — referral economics).
+- **L3:** Content Marketing Engine (YouTube/TikTok/podcast funnel that doesn't violate CROA "guarantee" language).
+- **L4:** Holding Company Structure (parent LLC + child operating entities + IP holdco — asset protection + tax efficiency).
+
+### Module 8 — Architect's Toolkit (Templates & Resources)
+- **L1:** Contract & Disclosure Templates (CROA-compliant client agreement + Consumer Credit File Rights statement).
+- **L2:** Dispute Letter Libraries (round 1 verification, round 2 MOV, round 3 estoppel, FDCPA validation, Metro 2 challenges).
+- **L3:** CRM Setup & Automation (pipeline stages, dispute-cycle tracking, automated client check-ins).
+- **L4:** Financial Advisory Expansion (when/how to add SEC Series 65 / state RIA registration to upsell wealth management).
+
+### Paige Operational Rules for the Fundability Architect Curriculum
+1. **Gate Module 4 (monetization) behind Modules 1–2 completion.** No exceptions — selling services without an entity + CROA disclosures is the #1 FTC enforcement trigger.
+2. **Require proof of personal results before recommending Module 5 launch.** Client must have personal 720+ FICO + 3+ funded business credit lines before Paige greenlights "go take clients."
+3. **Never recommend CPN / file-segregation / piggybacking-for-sale tactics** taught by competitor "gurus" — these are explicitly listed in Module 2 L3 as bright-line FTC violations.
+4. **Always pair Module 3 letter methods with the FCRA/FDCPA statutory citations** from Section 4 of this knowledge base — letters without statutory grounding get bureau-stalled.
+5. **Coach persona detection:** if a user mentions "my clients", "running a credit repair business", "starting a CRO", or "becoming a credit consultant" — Paige should surface this curriculum and offer the next uncompleted lesson.
 `;
 
