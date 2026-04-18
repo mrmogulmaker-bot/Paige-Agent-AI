@@ -431,16 +431,63 @@ JSON:`;
     // Fetch user context
     let userContext = "";
     try {
-      const { data: profile } = await supabase.from("profiles").select("full_name, city, state").eq("user_id", user.id).maybeSingle();
-      const { data: subscription } = await supabase.from("user_subscriptions").select("plan_slug, status").eq("user_id", user.id).maybeSingle();
-      const { data: tasks } = await supabase.from("tasks").select("title, status, track, due_date").eq("user_id", user.id).order("created_at", { ascending: false }).limit(10);
-      const { data: disputes } = await supabase.from("disputes").select("bureau, creditor_name, status").eq("user_id", user.id).order("created_at", { ascending: false }).limit(5);
-      const { data: businesses } = await supabase.from("businesses").select("id, legal_name, entity_type, formation_status, business_type").eq("owner_user_id", user.id).order("created_at", { ascending: false }).limit(5);
-      const { data: documents } = await supabase.from("documents").select("document_type, file_name, business_id, uploaded_at").eq("user_id", user.id).order("uploaded_at", { ascending: false }).limit(20);
+      const contextUserId = payloadClientId || user.id;
+      const { data: profile } = await supabase.from("profiles").select("full_name, city, state, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu").eq("user_id", contextUserId).maybeSingle();
+      const { data: subscription } = await supabase.from("user_subscriptions").select("plan_slug, status").eq("user_id", contextUserId).maybeSingle();
+      const { data: tasks } = await supabase.from("tasks").select("title, status, track, due_date").eq("user_id", contextUserId).order("created_at", { ascending: false }).limit(10);
+      const { data: disputes } = await supabase.from("disputes").select("bureau, creditor_name, status").eq("user_id", contextUserId).order("created_at", { ascending: false }).limit(5);
+      const { data: businesses } = await supabase.from("businesses").select("id, legal_name, entity_type, formation_status, business_type").eq("owner_user_id", contextUserId).order("created_at", { ascending: false }).limit(5);
+      const { data: documents } = await supabase.from("documents").select("document_type, file_name, business_id, uploaded_at").eq("user_id", contextUserId).order("uploaded_at", { ascending: false }).limit(20);
+
+      // === Credit report awareness ===
+      const { data: creditReports } = await supabase
+        .from("credit_report_uploads")
+        .select("id, file_name, analysis_status, uploaded_at, bureau_source")
+        .eq("user_id", contextUserId)
+        .order("uploaded_at", { ascending: false })
+        .limit(3);
+
+      const { count: accountsCount } = await supabase
+        .from("credit_accounts")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", contextUserId);
+
+      const { data: negatives } = await supabase
+        .from("credit_negative_items")
+        .select("creditor_name, item_type, bureau, amount, status")
+        .eq("user_id", contextUserId)
+        .eq("status", "active")
+        .order("created_at", { ascending: false })
+        .limit(10);
 
       const contextParts: string[] = [];
       if (profile) contextParts.push(`User Profile: ${profile.full_name || "User"} from ${profile.city ? `${profile.city}, ${profile.state}` : "location not set"}`);
       if (subscription) contextParts.push(`Subscription: ${subscription.plan_slug} plan (${subscription.status})`);
+
+      // Credit report status — surface this PROMINENTLY
+      if (creditReports && creditReports.length > 0) {
+        const latest = creditReports[0];
+        const uploadedDate = new Date(latest.uploaded_at).toLocaleDateString();
+        const scoresParts: string[] = [];
+        if (profile?.estimated_fico_ex) scoresParts.push(`Experian ${profile.estimated_fico_ex}`);
+        if (profile?.estimated_fico_eq) scoresParts.push(`Equifax ${profile.estimated_fico_eq}`);
+        if (profile?.estimated_fico_tu) scoresParts.push(`TransUnion ${profile.estimated_fico_tu}`);
+        const scoreLine = scoresParts.length > 0 ? ` | Scores: ${scoresParts.join(", ")}` : " | Scores: not yet extracted";
+        contextParts.push(`✅ CREDIT REPORT ON FILE: "${latest.file_name}" uploaded ${uploadedDate} (status: ${latest.analysis_status})${scoreLine}`);
+        if (creditReports.length > 1) {
+          contextParts.push(`Total credit reports uploaded: ${creditReports.length}`);
+        }
+        if (accountsCount && accountsCount > 0) {
+          contextParts.push(`Synced credit accounts: ${accountsCount}`);
+        }
+        if (negatives && negatives.length > 0) {
+          const negSummary = negatives.slice(0, 5).map(n => `${n.creditor_name} (${n.item_type}, ${n.bureau}${n.amount ? `, $${n.amount}` : ""})`).join("; ");
+          contextParts.push(`Active negative items (${negatives.length}): ${negSummary}`);
+        }
+      } else {
+        contextParts.push(`❌ NO CREDIT REPORT UPLOADED YET — encourage the client to upload one to unlock dispute drafts, score analysis, and funding readiness scoring.`);
+      }
+
       if (tasks && tasks.length > 0) {
         const pendingTasks = tasks.filter(t => t.status === "pending").length;
         const completedTasks = tasks.filter(t => t.status === "completed").length;
@@ -463,7 +510,7 @@ JSON:`;
         if (businessDocs.length > 0) docSummary.push(`Business Documents (${businessDocs.length}): ${[...new Set(businessDocs.map(d => d.document_type))].join(", ")}`);
         if (docSummary.length > 0) contextParts.push(`Available Documents:\n${docSummary.join("\n")}`);
       }
-      userContext = contextParts.length > 0 ? "\n\n=== USER CONTEXT ===\n" + contextParts.join("\n") + "\n==================\n" : "";
+      userContext = contextParts.length > 0 ? "\n\n=== USER CONTEXT ===\n" + contextParts.join("\n") + "\n==================\nIMPORTANT: If a credit report IS on file, NEVER ask the client to upload one again. Reference the data above when answering questions about their scores, accounts, or negative items.\n" : "";
     } catch (error) {
       console.error("Error fetching user context:", error);
     }
