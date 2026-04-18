@@ -440,11 +440,14 @@ JSON:`;
       const { data: documents } = await supabase.from("documents").select("document_type, file_name, business_id, uploaded_at").eq("user_id", contextUserId).order("uploaded_at", { ascending: false }).limit(20);
 
       // === Credit report awareness ===
+      // NOTE: column is `created_at` (not `uploaded_at`). Wrong column name silently
+      // returned undefined results, causing Paige to either ignore fresh uploads or
+      // fall back to "no report on file." Also surface in-flight uploads explicitly.
       const { data: creditReports } = await supabase
         .from("credit_report_uploads")
-        .select("id, file_name, analysis_status, uploaded_at, bureau_source")
+        .select("id, file_name, analysis_status, created_at, last_analyzed_at, bureau_detected, error_message")
         .eq("user_id", contextUserId)
-        .order("uploaded_at", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(3);
 
       const { count: accountsCount } = await supabase
@@ -467,13 +470,39 @@ JSON:`;
       // Credit report status — surface this PROMINENTLY
       if (creditReports && creditReports.length > 0) {
         const latest = creditReports[0];
-        const uploadedDate = new Date(latest.uploaded_at).toLocaleDateString();
-        const scoresParts: string[] = [];
-        if (profile?.estimated_fico_ex) scoresParts.push(`Experian ${profile.estimated_fico_ex}`);
-        if (profile?.estimated_fico_eq) scoresParts.push(`Equifax ${profile.estimated_fico_eq}`);
-        if (profile?.estimated_fico_tu) scoresParts.push(`TransUnion ${profile.estimated_fico_tu}`);
-        const scoreLine = scoresParts.length > 0 ? ` | Scores: ${scoresParts.join(", ")}` : " | Scores: not yet extracted";
-        contextParts.push(`✅ CREDIT REPORT ON FILE: "${latest.file_name}" uploaded ${uploadedDate} (status: ${latest.analysis_status})${scoreLine}`);
+        const uploadedAt = new Date(latest.created_at);
+        const uploadedDate = uploadedAt.toLocaleDateString();
+        const minutesSinceUpload = (Date.now() - uploadedAt.getTime()) / 60000;
+        const isFresh = minutesSinceUpload < 10;
+        const isInFlight = latest.analysis_status !== "completed" && latest.analysis_status !== "failed";
+
+        // CRITICAL: if a report was uploaded in the last 10 minutes and is still processing,
+        // Paige MUST acknowledge the in-flight upload rather than describe stale data.
+        if (isInFlight && isFresh) {
+          contextParts.push(
+            `⏳ FRESH UPLOAD IN PROGRESS: "${latest.file_name}" was uploaded ${Math.round(minutesSinceUpload)} min ago (status: ${latest.analysis_status}). ` +
+            `Acknowledge to the client that their new report is being analyzed right now and ask them to give it ~30–60 seconds. ` +
+            `Do NOT claim no new report exists. Do NOT answer score/account questions from older data without flagging that the fresh report is still parsing.`
+          );
+        } else if (isInFlight) {
+          contextParts.push(
+            `⚠️ STUCK UPLOAD: "${latest.file_name}" uploaded ${uploadedDate} is still in status "${latest.analysis_status}"${latest.error_message ? ` (error: ${latest.error_message})` : ""}. ` +
+            `Tell the client the parser appears stalled and offer to retry analysis.`
+          );
+        } else if (latest.analysis_status === "failed") {
+          contextParts.push(
+            `❌ LAST UPLOAD FAILED: "${latest.file_name}" (${uploadedDate}) — ${latest.error_message || "unknown error"}. Offer to retry.`
+          );
+        } else {
+          const analyzedAt = latest.last_analyzed_at ? new Date(latest.last_analyzed_at).toLocaleDateString() : uploadedDate;
+          const scoresParts: string[] = [];
+          if (profile?.estimated_fico_ex) scoresParts.push(`Experian ${profile.estimated_fico_ex}`);
+          if (profile?.estimated_fico_eq) scoresParts.push(`Equifax ${profile.estimated_fico_eq}`);
+          if (profile?.estimated_fico_tu) scoresParts.push(`TransUnion ${profile.estimated_fico_tu}`);
+          const scoreLine = scoresParts.length > 0 ? ` | Scores: ${scoresParts.join(", ")}` : " | Scores: not yet extracted";
+          contextParts.push(`✅ CREDIT REPORT ON FILE: "${latest.file_name}" uploaded ${uploadedDate}, analyzed ${analyzedAt} (status: ${latest.analysis_status})${scoreLine}`);
+        }
+
         if (creditReports.length > 1) {
           contextParts.push(`Total credit reports uploaded: ${creditReports.length}`);
         }
