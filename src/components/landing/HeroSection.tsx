@@ -6,15 +6,15 @@ import { useState, useEffect } from "react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 
 const chatLines = [
-  { role: "user" as const, text: "What's my credit looking like?" },
+  { role: "user" as const, text: "Where do I stand for SBA funding?" },
   {
     role: "assistant" as const,
-    text: "Your Fundability Score is 62/100. Utilization at 68% — that's costing you 35 points. Here's the protocol: pay Capital One down to $1,500. That one move? 25-35 point boost and 3 new funding products unlock.",
+    text: "Your Funding Readiness Score is 62/100. Personal FICO 678, business credit on file with D&B. Lenders see utilization at 68% — that pulls your SBA qualification down by roughly $75K. Pay your highest revolver to 25% utilization and you re-open three additional product matches.",
   },
-  { role: "user" as const, text: "How do I get to $100K in funding?" },
+  { role: "user" as const, text: "What can I qualify for today?" },
   {
     role: "assistant" as const,
-    text: "$100K is a formula, not a dream. Drop utilization to 25%, remove 2 collections, wait 90 days. Projected score: 720. Projected funding: $135K across 14 products. That's not theory — that's math.",
+    text: "Today: business line of credit up to $40K, equipment financing up to $85K, and revenue-based financing up to 1.2x monthly revenue. SBA 7(a) is one move away — drop utilization below 30% and projected ceiling moves to $135K across 14 lenders.",
   },
 ];
 
@@ -49,14 +49,14 @@ export function HeroSection() {
             </Badge>
 
             <h1 className="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]">
-              Stop Begging Banks.{" "}
-              <span className="text-accent">Start Commanding Capital.</span>
+              Know What Lenders See.{" "}
+              <span className="text-accent">Get Funded Faster.</span>
             </h1>
 
             <p className="text-xl text-muted-foreground leading-relaxed max-w-lg">
-              Paige is your AI-powered credit strategist. She analyzes your
-              profile, matches you to real lenders, and builds your buying
-              power. No more guessing. Just the protocol.
+              Paige is your AI-powered funding intelligence platform. She
+              translates your personal and business credit into the funding
+              products you qualify for today — and what's one move away.
             </p>
 
             {/* Social proof stats */}
@@ -81,7 +81,7 @@ export function HeroSection() {
                 className="bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold"
                 onClick={() => navigate("/auth?mode=signup")}
               >
-                Build My Buying Power — Free
+                Get Funding-Ready — Free
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <Button
@@ -110,7 +110,7 @@ export function HeroSection() {
                 <div>
                   <div className="font-bold text-sm text-foreground">PaigeAgent.ai</div>
                   <div className="text-[11px] text-muted-foreground">
-                    Your credit & funding strategist
+                    Your funding intelligence analyst
                   </div>
                 </div>
                 <div className="ml-auto flex items-center gap-1">

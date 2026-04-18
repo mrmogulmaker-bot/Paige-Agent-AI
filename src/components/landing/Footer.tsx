@@ -16,7 +16,6 @@ const footerLinks = {
   legal: [
     { name: "Privacy", href: "/privacy" },
     { name: "Terms", href: "/terms" },
-    { name: "FCRA Compliance", href: "#" },
   ],
 };
 
@@ -28,7 +27,8 @@ export function Footer() {
           <div className="col-span-1">
             <h3 className="text-xl font-extrabold text-accent">PaigeAgent.ai</h3>
             <p className="text-sm opacity-80 leading-relaxed mt-2">
-              Stop begging. Start commanding. Built by Mr. Mogul Maker.
+              AI-powered funding intelligence for small business owners.
+              Built by Mr. Mogul Maker.
             </p>
           </div>
 
