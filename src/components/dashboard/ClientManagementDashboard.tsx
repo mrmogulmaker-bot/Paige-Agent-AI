@@ -388,6 +388,11 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                               <ArrowRightLeft className="w-4 h-4 mr-2" /> Move to Internal
                             </DropdownMenuItem>
                           )}
+                          <DropdownMenuItem
+                            onClick={() => setForceSignOutTarget({ id: c.user_id, name: c.full_name || "this user" })}
+                          >
+                            <LogOut className="w-4 h-4 mr-2" /> Force Sign Out (All Devices)
+                          </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
@@ -622,6 +627,28 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Force Sign Out Confirmation Dialog */}
+      <AlertDialog open={!!forceSignOutTarget} onOpenChange={(open) => !open && !forceSignOutLoading && setForceSignOutTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Force sign out of all devices?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will revoke every active session for <strong>{forceSignOutTarget?.name}</strong> on every device. They'll be required to sign in again. Use this when a client is stuck on an old version or can't log out themselves.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={forceSignOutLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleForceSignOutConfirm}
+              disabled={forceSignOutLoading}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {forceSignOutLoading ? "Signing out..." : "Yes, force sign out"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
