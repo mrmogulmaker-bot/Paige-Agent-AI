@@ -155,6 +155,22 @@ export function PricingSection() {
           <span className="font-bold text-accent">NOW.</span> — See you on the
           other side.
         </p>
+
+        <div className="mt-10 text-center">
+          <div className="inline-flex flex-col sm:flex-row items-center gap-3 rounded-lg border border-accent/30 bg-card/50 px-6 py-4">
+            <span className="text-sm text-muted-foreground">
+              Love what we're building?
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-accent text-accent hover:bg-accent hover:text-accent-foreground font-bold"
+              onClick={() => navigate("/affiliates")}
+            >
+              Earn commissions — become an affiliate
+            </Button>
+          </div>
+        </div>
       </div>
     </section>
   );

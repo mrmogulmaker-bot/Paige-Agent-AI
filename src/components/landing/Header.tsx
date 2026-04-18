@@ -24,6 +24,7 @@ export function Header() {
     { label: "Features", href: "#features" },
     { label: "How It Works", href: "#how-it-works" },
     { label: "Pricing", href: "#pricing" },
+    { label: "Affiliates", href: "/affiliates" },
   ];
 
   return (
@@ -36,11 +37,17 @@ export function Header() {
           </Link>
 
           <div className="hidden md:flex md:items-center md:space-x-8">
-            {navLinks.map((l) => (
-              <a key={l.label} href={l.href} className="text-sm font-medium text-foreground hover:text-accent transition-colors">
-                {l.label}
-              </a>
-            ))}
+            {navLinks.map((l) =>
+              l.href.startsWith("/") ? (
+                <Link key={l.label} to={l.href} className="text-sm font-medium text-foreground hover:text-accent transition-colors">
+                  {l.label}
+                </Link>
+              ) : (
+                <a key={l.label} href={l.href} className="text-sm font-medium text-foreground hover:text-accent transition-colors">
+                  {l.label}
+                </a>
+              )
+            )}
           </div>
 
           <div className="hidden md:flex md:items-center md:space-x-4">
@@ -73,16 +80,27 @@ export function Header() {
 
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-border py-4 space-y-4">
-            {navLinks.map((l) => (
-              <a
-                key={l.label}
-                href={l.href}
-                className="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {l.label}
-              </a>
-            ))}
+            {navLinks.map((l) =>
+              l.href.startsWith("/") ? (
+                <Link
+                  key={l.label}
+                  to={l.href}
+                  className="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {l.label}
+                </Link>
+              ) : (
+                <a
+                  key={l.label}
+                  href={l.href}
+                  className="block px-3 py-2 text-base font-medium text-foreground hover:bg-muted rounded-md"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {l.label}
+                </a>
+              )
+            )}
             <div className="px-3 pt-4 space-y-2">
               {user ? (
                 <Button className="w-full" onClick={() => navigate("/app")}>
