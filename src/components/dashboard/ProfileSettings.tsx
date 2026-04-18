@@ -727,3 +727,86 @@ export const ProfileSettings = () => {
     </div>
   );
 };
+
+const SecurityCard = () => {
+  const [signingOut, setSigningOut] = useState(false);
+  const [signingOutAll, setSigningOutAll] = useState(false);
+
+  const handleLocalSignOut = async () => {
+    if (signingOut || signingOutAll) return;
+    setSigningOut(true);
+    await performSignOut("/");
+  };
+
+  const handleSignOutAllDevices = async () => {
+    if (signingOut || signingOutAll) return;
+    setSigningOutAll(true);
+    await performSignOut({ redirectTo: "/", scope: "global" });
+  };
+
+  return (
+    <Card className="p-6 mt-6">
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-accent" />
+            Account Security
+          </h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage where you're signed in. Signing out of all devices forces every browser, tablet, and phone using your account to sign back in.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button
+            variant="outline"
+            onClick={handleLocalSignOut}
+            disabled={signingOut || signingOutAll}
+            className="gap-2"
+          >
+            <LogOut className="w-4 h-4" />
+            {signingOut ? "Signing Out..." : "Sign Out"}
+          </Button>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="destructive"
+                disabled={signingOut || signingOutAll}
+                className="gap-2"
+              >
+                <ShieldAlert className="w-4 h-4" />
+                Sign Out of All Devices
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Sign out of all devices?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will end your session everywhere — including any phone, tablet, or browser where you're currently signed in. You'll need to sign in again on each device.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={signingOutAll}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleSignOutAllDevices}
+                  disabled={signingOutAll}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {signingOutAll ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Signing out...
+                    </>
+                  ) : (
+                    "Yes, sign me out everywhere"
+                  )}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </div>
+    </Card>
+  );
+};
