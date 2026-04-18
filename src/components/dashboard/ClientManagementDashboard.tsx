@@ -258,6 +258,26 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
     setDeleteTarget(null);
   };
 
+  const handleForceSignOutConfirm = async () => {
+    if (!forceSignOutTarget) return;
+    setForceSignOutLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { error } = await supabase.functions.invoke("admin-force-signout", {
+        body: { user_id: forceSignOutTarget.id, scope: "global" },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (error) throw error;
+      toast.success(`${forceSignOutTarget.name} has been signed out of all devices`);
+      setForceSignOutTarget(null);
+    } catch (err: any) {
+      console.error("Error forcing sign out:", err);
+      toast.error(err?.message || "Failed to force sign out");
+    } finally {
+      setForceSignOutLoading(false);
+    }
+  };
+
   const sendInvite = async () => {
     if (!inviteEmail.trim()) {
       toast.error("Please enter an email address");
