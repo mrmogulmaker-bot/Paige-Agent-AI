@@ -11,6 +11,7 @@ import AffiliateDateRangePicker from "@/components/affiliates/AffiliateDateRange
 import AffiliateLeaderboard from "@/components/affiliates/AffiliateLeaderboard";
 import AffiliateFunnelChart from "@/components/affiliates/AffiliateFunnelChart";
 import AffiliateDrawer from "@/components/affiliates/AffiliateDrawer";
+import AffiliateApplicationsTab from "@/components/affiliates/AffiliateApplicationsTab";
 import CommissionTierEditor from "@/components/affiliates/CommissionTierEditor";
 import type {
   AffiliateStatRow,
@@ -89,6 +90,7 @@ export default function AffiliatesAdmin() {
       <Tabs defaultValue="leaderboard" className="w-full">
         <TabsList className="bg-[#1a2840]/5">
           <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+          <TabsTrigger value="applications">Applications</TabsTrigger>
           <TabsTrigger value="funnel">Funnel</TabsTrigger>
           <TabsTrigger value="tiers">Commission tiers</TabsTrigger>
         </TabsList>
@@ -107,6 +109,10 @@ export default function AffiliatesAdmin() {
               />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="applications">
+          <AffiliateApplicationsTab />
         </TabsContent>
 
         <TabsContent value="funnel">
