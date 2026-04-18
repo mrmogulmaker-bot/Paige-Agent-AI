@@ -527,9 +527,9 @@ The BUILD Business program transforms an entity from a legal shell into a **mult
 **Week 1 — Entity & bureau registration:**
 1. Form LLC/S-Corp + obtain EIN (IRS.gov, instant, free).
 2. **Register with all 3 bureaus simultaneously** — do NOT wait for D&B alone:
-   - **D&B:** `iUpdate.dnb.com` → D-U-N-S Number (free, 7 days).
-   - **Experian Business:** `experian.com/small-business` → create account (free).
-   - **Equifax Commercial:** `equifax.com/business` → request file creation (free, 14 days).
+   - **D&B:** \`iUpdate.dnb.com\` → D-U-N-S Number (free, 7 days).
+   - **Experian Business:** \`experian.com/small-business\` → create account (free).
+   - **Equifax Commercial:** \`equifax.com/business\` → request file creation (free, 14 days).
 3. Verify all 3 files at Nav.com after 14 days — should show "No Data Yet" but exist.
 **Why this matters:** 60% of SBA lenders check **Experian Intelliscore first**. If you wait for D&B, you lose 6 months.
 
@@ -551,14 +551,14 @@ The BUILD Business program transforms an entity from a legal shell into a **mult
 | **Budget** | $0 | None (free vendors only) | 180 days | Can't afford any paid builders |
 
 **Premium Tier — Month 3 launch:**
-1. **eCredable Business Lift** ($49.95/mo) — `ecredable.com/products/ecredable-business-lift`. Link business checking (auto-verifies revenue). First report at 30 days to Experian + Equifax.
-2. **Credit Strong Business** ($150/mo "Build 15K" plan) — `creditstrong.com/business`. Reports a $15K installment loan to D&B + Experian + Equifax. **Cannot cancel early** (24-month term) — but can stop paying after 12 months when loan matures.
+1. **eCredable Business Lift** ($49.95/mo) — \`ecredable.com/products/ecredable-business-lift\`. Link business checking (auto-verifies revenue). First report at 30 days to Experian + Equifax.
+2. **Credit Strong Business** ($150/mo "Build 15K" plan) — \`creditstrong.com/business\`. Reports a $15K installment loan to D&B + Experian + Equifax. **Cannot cancel early** (24-month term) — but can stop paying after 12 months when loan matures.
 **After 30 days:** Experian = 2 tradelines, Equifax = 2, D&B = 1.
 
 **Month 4 — Add free multi-bureau vendors (staggered):**
-3. **Day 35 — Summa Office Supplies** (`summaofficesupplies.com`): apply for Net-30, order $75+ supplies (must be >$50 to report), pay Day 25. Reports to D&B + Experian.
-4. **Day 42 — Strategic Network Solutions** (`strategicsupplies.com`): Net-30, $100+ IT supplies, pay Day 25. Reports to **D&B + Equifax** — only 5% of vendors report to Equifax, this is a **must-have**.
-5. **Day 49 — The CEO Creative** (`theceocreative.com`): Net-30, $50+ marketing templates. Reports to D&B + Experian.
+3. **Day 35 — Summa Office Supplies** (\`summaofficesupplies.com\`): apply for Net-30, order $75+ supplies (must be >$50 to report), pay Day 25. Reports to D&B + Experian.
+4. **Day 42 — Strategic Network Solutions** (\`strategicsupplies.com\`): Net-30, $100+ IT supplies, pay Day 25. Reports to **D&B + Equifax** — only 5% of vendors report to Equifax, this is a **must-have**.
+5. **Day 49 — The CEO Creative** (\`theceocreative.com\`): Net-30, $50+ marketing templates. Reports to D&B + Experian.
 **After 60 days:** Experian = 4 tradelines, Equifax = 3, D&B = 4.
 
 **Month 5–6 — Assessment & optimization decision tree (Day 90 score check):**
@@ -573,7 +573,7 @@ The BUILD Business program transforms an entity from a legal shell into a **mult
 **Monthly verification cycle (repeat each month):**
 - **Day 1 — Experian:** Pull Intelliscore Plus ($49). Verify all paid tradelines listed. Dispute online with payment confirmation → 14-day resolution.
 - **Day 15 — Equifax:** Pull Business Credit Risk Report ($99). Disputes are **fax-only** to **404-458-1679**. Cover sheet template: *"Attn: Business Credit Disputes. Account #[EIN]. Tradeline [Vendor Name] missing. Attached: payment confirmation."*
-- **Day 30 — D&B:** `CreditSignal.dnb.com` (free). Add missing tradelines manually at `iUpdate.dnb.com` (free).
+- **Day 30 — D&B:** \`CreditSignal.dnb.com\` (free). Add missing tradelines manually at \`iUpdate.dnb.com\` (free).
 
 **Banker relationship deepening (quarterly, 1 meeting per banker, 30-min agenda):**
 1. **Show progress (5 min):** *"My Experian Intelliscore is now [XX], up from 0 three months ago. I have [8] reporting tradelines across all 3 bureaus."*
@@ -601,7 +601,7 @@ The BUILD Business program transforms an entity from a legal shell into a **mult
 - Business credit reports (Experian, Equifax, D&B) — must show 70+ / 100+ / 80+.
 
 **Month 12 — Pre-qualify for Stage-4 lenders:**
-- **SBA PLP banks:** Live Oak Bank (`sba@liveoakbank.com`, attach P&L + Experian + 6mo bank stmts; ask: *"Do I pre-qualify for SBA 7(a) up to $250K?"*) / Newtek (online, instant Intelliscore-based pre-qual) / Chase (requires Chase Business Complete Checking 3+ months, ask banker for SBA intro).
+- **SBA PLP banks:** Live Oak Bank (\`sba@liveoakbank.com\`, attach P&L + Experian + 6mo bank stmts; ask: *"Do I pre-qualify for SBA 7(a) up to $250K?"*) / Newtek (online, instant Intelliscore-based pre-qual) / Chase (requires Chase Business Complete Checking 3+ months, ask banker for SBA intro).
 - **Community banks:** PNC, Regions, SunTrust → in-person banker meeting with full package.
 - **Equipment finance:** Crest Capital (24-hr approval at Intelliscore ≥ 65) / Balboa (same-day at $100K+ revenue + Intelliscore ≥ 60).
 **Goal:** 1 conditional approval letter or pre-qualification email by end of Month 12.
@@ -621,8 +621,8 @@ The BUILD Business program transforms an entity from a legal shell into a **mult
 ### INTERNATIONAL MODULE (Months 6–12, optional decision point)
 
 Activate **only if** the client has international suppliers OR plans overseas expansion. Otherwise skip → focus on domestic.
-- **Month 6:** Creditsafe International ($199/yr, `creditsafe.com/us`) — international score 1–100 → unlocks Net-30 with European vendors (Euler Hermes), cross-border SBA export loans.
-- **Month 9:** D&B International QuickStart ($599/yr, `dnb.com/international`) — establish presence in 5 countries → unlocks foreign-entity funding, international PE/VC.
+- **Month 6:** Creditsafe International ($199/yr, \`creditsafe.com/us\`) — international score 1–100 → unlocks Net-30 with European vendors (Euler Hermes), cross-border SBA export loans.
+- **Month 9:** D&B International QuickStart ($599/yr, \`dnb.com/international\`) — establish presence in 5 countries → unlocks foreign-entity funding, international PE/VC.
 - **Month 12:** HSBC Business Global Account ($50/mo) — reports to UK Experian + US Experian + D&B International.
 
 ### CRITICAL RISK SAFEGUARDS (BUILD Business)
