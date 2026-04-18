@@ -35,23 +35,23 @@ const Index = () => {
               {
                 icon: MessageSquare,
                 step: "01",
-                title: "Tell Paige About Your Credit",
+                title: "Tell Paige About Your Business",
                 description:
-                  "Conversational onboarding — no forms, no friction. Just tell Paige where you are and she builds your profile.",
+                  "Conversational onboarding — no forms, no friction. Share your credit, business, and revenue context and Paige builds your funding profile.",
               },
               {
                 icon: BarChart3,
                 step: "02",
-                title: "Get Your Credit Intelligence Report",
+                title: "Get Your Funding Readiness Score",
                 description:
-                  "5-factor FICO breakdown with actionable scores. See exactly what's costing you points and what to fix first.",
+                  "0–100 composite score with the personal and business credit factors that drive lender decisions. See exactly what's costing you capital and what to fix first.",
               },
               {
                 icon: Rocket,
                 step: "03",
                 title: "Unlock Your Funding Matches",
                 description:
-                  "Real lender products matched to your profile. See what you qualify for today and what's one move away.",
+                  "Real lender products matched to your profile. See what you qualify for today and what's one move away — SBA, term loans, lines of credit, equipment, and more.",
               },
             ].map((item, i) => (
               <Card
@@ -94,17 +94,17 @@ const Index = () => {
               {
                 stat: "$1.2M",
                 label: "Raised for Gabon",
-                sub: "From credit repair to seven figures in funding",
+                sub: "From understanding her credit to seven figures in funding",
               },
               {
                 stat: "5 AMEX Cards",
                 label: "With ONE Inquiry",
-                sub: "Lavelle used the protocol — 5 approvals, 1 hard pull",
+                sub: "Lavelle used the funding intelligence protocol — 5 approvals, 1 hard pull",
               },
               {
                 stat: "720+",
-                label: "Scores in 6 Months",
-                sub: "Average member score increase using ACCEL framework",
+                label: "Funding-Ready Scores in 6 Months",
+                sub: "Average member score increase using the Paige framework",
               },
             ].map((item, i) => (
               <Card
@@ -134,7 +134,7 @@ const Index = () => {
           <div>
             <div className="text-center mb-10">
               <Badge className="mb-4 bg-accent/10 text-accent border-accent/20">
-                Personal Credit Repair
+                Personal Credit for Funding
               </Badge>
               <h2 className="text-4xl font-bold">
                 The{" "}
@@ -146,11 +146,11 @@ const Index = () => {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
-                { letter: "A", title: "Analyze", desc: "Comprehensive credit report review" },
-                { letter: "C", title: "Challenge", desc: "FCRA-compliant dispute letters" },
-                { letter: "C", title: "Clean", desc: "Remove negatives & optimize" },
-                { letter: "E", title: "Elevate", desc: "Build positive history" },
-                { letter: "L", title: "Lock", desc: "Maintain & unlock funding" },
+                { letter: "A", title: "Analyze", desc: "Comprehensive credit profile review" },
+                { letter: "C", title: "Categorize", desc: "Sort accounts for funding application prep" },
+                { letter: "C", title: "Clean", desc: "Resolve through creditors, not third parties" },
+                { letter: "E", title: "Elevate", desc: "Build positive history that lenders weight" },
+                { letter: "L", title: "Leverage", desc: "Translate your profile into funding approvals" },
               ].map((s, i) => (
                 <Card
                   key={i}
