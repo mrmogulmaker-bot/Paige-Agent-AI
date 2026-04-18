@@ -1,0 +1,178 @@
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  ArrowRight,
+  ShieldAlert,
+  ListChecks,
+  TrendingUp,
+  Sparkles,
+  CheckCircle2,
+} from "lucide-react";
+
+/**
+ * PostUploadNextSteps
+ *
+ * Shown on the Credit Intelligence page once a client has at least one
+ * analyzed credit report. Gives them a clear, prioritized path so they
+ * never wonder "what now?" after uploading.
+ *
+ * Steps are dynamic — completed actions get a green checkmark, the next
+ * uncompleted action becomes the primary CTA.
+ */
+export function PostUploadNextSteps() {
+  const navigate = useNavigate();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["post-upload-next-steps"],
+    queryFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return null;
+      const uid = session.user.id;
+
+      const [
+        { count: negCount },
+        { count: acctCount },
+        { count: disputeCount },
+        { count: bizCount },
+      ] = await Promise.all([
+        supabase.from("credit_negative_items").select("id", { count: "exact", head: true }).eq("user_id", uid).eq("status", "active"),
+        supabase.from("credit_accounts").select("id", { count: "exact", head: true }).eq("user_id", uid),
+        supabase.from("disputes").select("id", { count: "exact", head: true }).eq("user_id", uid),
+        supabase.from("businesses").select("id", { count: "exact", head: true }).eq("owner_user_id", uid),
+      ]);
+
+      return {
+        negatives: negCount ?? 0,
+        accounts: acctCount ?? 0,
+        disputesStarted: (disputeCount ?? 0) > 0,
+        hasBusiness: (bizCount ?? 0) > 0,
+      };
+    },
+  });
+
+  if (isLoading || !data) return null;
+  // Hide entirely if the report didn't actually populate any data —
+  // the empty-state on the rest of the page already guides the user.
+  if (data.accounts === 0 && data.negatives === 0) return null;
+
+  const steps = [
+    {
+      key: "review",
+      icon: ListChecks,
+      title: "Review your accounts & negatives",
+      description: `We extracted ${data.accounts} account${data.accounts === 1 ? "" : "s"}${data.negatives > 0 ? ` and ${data.negatives} negative item${data.negatives === 1 ? "" : "s"}` : ""}. Confirm everything looks right.`,
+      done: data.accounts > 0,
+      cta: "Review accounts",
+      onClick: () => {
+        // Scroll to the file health assessment section on the same page
+        document.getElementById("credit-health-assessment")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      },
+    },
+    {
+      key: "dispute",
+      icon: ShieldAlert,
+      title: data.negatives > 0 ? "Start your first dispute" : "No negatives to dispute — nice work",
+      description: data.negatives > 0
+        ? "Use Paige's dispute strategy to challenge inaccurate negative items with the bureaus."
+        : "Your file is clean of active negatives. Focus on building credit depth and utilization.",
+      done: data.negatives === 0 || data.disputesStarted,
+      cta: data.negatives > 0 ? "Open Disputes" : undefined,
+      onClick: () => navigate("/app/disputes"),
+    },
+    {
+      key: "funding",
+      icon: TrendingUp,
+      title: "Check your funding readiness",
+      description: "See which lenders match your profile right now and what to fix to unlock more.",
+      done: false,
+      cta: "Open Funding Matches",
+      onClick: () => navigate("/app/funding"),
+    },
+    {
+      key: "paige",
+      icon: Sparkles,
+      title: "Ask Paige what to do next",
+      description: "Paige now has full context of your report. Ask her anything — disputes, utilization, funding strategy.",
+      done: false,
+      cta: "Talk to Paige",
+      onClick: () => {
+        // Open the floating chatbot
+        window.dispatchEvent(new CustomEvent("paige-open-chat"));
+      },
+    },
+  ];
+
+  // First uncompleted step becomes the highlighted "next action"
+  const nextIndex = steps.findIndex((s) => !s.done);
+
+  return (
+    <Card className="p-6 bg-gradient-to-br from-card to-accent/5 border-accent/30">
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div>
+          <div className="flex items-center gap-2">
+            <Badge className="bg-accent/20 text-accent border-accent/30">Next steps</Badge>
+            <h2 className="text-xl font-bold text-foreground">Your report is in — here's what to do</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            We've turned your report into an action plan. Work through these in order.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {steps.map((step, idx) => {
+          const Icon = step.icon;
+          const isNext = idx === nextIndex;
+          return (
+            <div
+              key={step.key}
+              className={`flex items-start gap-4 p-4 rounded-lg border transition-colors ${
+                isNext
+                  ? "bg-accent/10 border-accent/40"
+                  : step.done
+                    ? "bg-muted/30 border-border"
+                    : "bg-card border-border"
+              }`}
+            >
+              <div
+                className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
+                  step.done
+                    ? "bg-fundability-excellent/20 text-fundability-excellent"
+                    : isNext
+                      ? "bg-accent/20 text-accent"
+                      : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {step.done ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className={`font-semibold ${step.done ? "text-muted-foreground line-through" : "text-foreground"}`}>
+                    {step.title}
+                  </h3>
+                  {isNext && <Badge variant="outline" className="text-[10px] border-accent/40 text-accent">Do this next</Badge>}
+                </div>
+                <p className="text-sm text-muted-foreground mt-0.5">{step.description}</p>
+              </div>
+              {step.cta && !step.done && (
+                <Button
+                  size="sm"
+                  variant={isNext ? "default" : "outline"}
+                  onClick={step.onClick}
+                  className={isNext ? "bg-gradient-gold hover:opacity-90 shrink-0" : "shrink-0"}
+                >
+                  {step.cta}
+                  <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                </Button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}

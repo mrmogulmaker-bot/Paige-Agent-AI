@@ -15,6 +15,7 @@ import { CreditFactorsPanel } from "@/components/credit/CreditFactorsPanel";
 import { DataFreshnessIndicator } from "@/components/credit/DataFreshnessIndicator";
 import { CreditAlertBanner } from "@/components/credit/CreditAlertBanner";
 import { CreditAlertsTab } from "@/components/credit/CreditAlertsTab";
+import { PostUploadNextSteps } from "@/components/credit/PostUploadNextSteps";
 import { toast } from "sonner";
 
 export default function CreditIntelligence() {
@@ -246,6 +247,9 @@ export default function CreditIntelligence() {
         isRefreshing={reExtract.isPending}
       />
 
+      {/* What to do next — only shows once the report has populated data */}
+      <PostUploadNextSteps />
+
       {/* Bureau Score Panel */}
       <BureauScorePanel />
 
@@ -313,7 +317,9 @@ export default function CreditIntelligence() {
       ) : null}
 
       {/* Credit File Health Assessment */}
-      <CreditFileHealthAssessment />
+      <div id="credit-health-assessment">
+        <CreditFileHealthAssessment />
+      </div>
 
       {/* Alerts History */}
       <CreditAlertsTab />

@@ -50,6 +50,13 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
     });
   }, []);
 
+  // Allow other components (e.g. PostUploadNextSteps) to open Paige programmatically
+  useEffect(() => {
+    const handleOpen = () => setIsOpen(true);
+    window.addEventListener("paige-open-chat", handleOpen);
+    return () => window.removeEventListener("paige-open-chat", handleOpen);
+  }, []);
+
   // Check mic permission on mount
   useEffect(() => {
     if (navigator.permissions) {
