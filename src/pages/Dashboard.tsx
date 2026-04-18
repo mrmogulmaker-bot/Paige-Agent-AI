@@ -118,7 +118,7 @@ const Dashboard = () => {
   };
 
   const handleLogout = async () => {
-    await performSignOut("/auth");
+    await performSignOut("/");
   };
 
   if (isLoading) {

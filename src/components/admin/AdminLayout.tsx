@@ -40,7 +40,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     if (isSigningOut) return;
     setMobileSidebarOpen(false);
     setIsSigningOut(true);
-    await performSignOut("/auth");
+    await performSignOut("/");
   };
 
   const handleSwitchToClientView = () => {
