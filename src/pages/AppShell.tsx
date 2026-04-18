@@ -197,10 +197,10 @@ function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }
           href="/app/funding"
         />
         <QuickActionCard
-          title="Start a Dispute"
-          description="Challenge inaccurate items"
-          icon="📝"
-          href="/app/disputes"
+          title="Funding Readiness"
+          description="See where you stand for funding"
+          icon="🎯"
+          href="/app/funding"
         />
         <QuickActionCard
           title="Learn & Earn"
