@@ -29,5 +29,5 @@ export function referralUrlForCode(code: string, baseUrl?: string): string {
   const base =
     baseUrl ??
     (typeof window !== "undefined" ? window.location.origin : "https://paigeagent.ai");
-  return `${base.replace(/\/+$/, "")}/?ref=${encodeURIComponent(code)}`;
+  return `${base.replace(/\/+$/, "")}/pricing?ref=${encodeURIComponent(code)}`;
 }
