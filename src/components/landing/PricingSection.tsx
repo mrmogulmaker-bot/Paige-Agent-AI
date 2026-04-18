@@ -11,10 +11,10 @@ const tiers = [
     period: "",
     description: "See where you stand",
     features: [
+      "Personal three-bureau snapshot (weekly)",
       "Basic credit factor overview",
       "5 Paige messages/day",
-      "View-only fundability score",
-      "Credit education articles",
+      "Funding education library",
     ],
     cta: "Get Started Free",
     popular: false,
@@ -22,15 +22,17 @@ const tiers = [
   },
   {
     name: "Starter",
-    price: "$29",
+    price: "$49",
     period: "/month",
-    description: "Start repairing and building",
+    description: "Get funding-ready",
     features: [
-      "Full Paige AI access",
-      "5 dispute letters/month",
-      "Basic funding matches",
-      "Utilization alerts",
-      "ACCEL framework access",
+      "Daily personal credit monitoring",
+      "Business credit (D&B / Experian Biz / Equifax Biz)",
+      "Funding Readiness Score",
+      "Funding product eligibility matrix",
+      "Credit → funding impact translator",
+      "Personal/business separation audit",
+      "Full Paige AI access (text + voice)",
       "Email support",
     ],
     cta: "Start Building",
@@ -38,39 +40,53 @@ const tiers = [
     highlight: false,
   },
   {
-    name: "Pro",
-    price: "$49",
+    name: "Growth",
+    price: "$149",
     period: "/month",
-    description: "Unlock your buying power",
+    description: "Unlock your capital stack",
     features: [
       "Everything in Starter",
-      "Unlimited Paige AI",
-      "Unlimited dispute letters",
-      "Full funding match engine",
-      '"What If" projections',
-      "Inquiry tracking & alerts",
-      "Voice chat with Paige",
+      "Business banking integration (Plaid)",
+      "SBA loan evaluator",
+      "Document prep assistant",
+      "Lender marketplace access",
+      "Priority Paige AI",
       "Priority support",
     ],
-    cta: "Go Pro",
+    cta: "Go Growth",
     popular: true,
     highlight: true,
   },
   {
-    name: "Enterprise",
-    price: "$99",
+    name: "Scale",
+    price: "$397",
     period: "/month",
-    description: "Business credit + funding mastery",
+    description: "White-glove funding ops",
     features: [
-      "Everything in Pro",
-      "BUILD Business program",
-      "Business funding matches",
-      "Monthly strategy session",
-      "API access",
-      "Team collaboration",
-      "Dedicated account manager",
+      "Everything in Growth",
+      "Priority lender placement",
+      "Dedicated funding advisor",
+      "Monthly funding strategy session",
+      "Advanced funding analytics",
     ],
-    cta: "Go Enterprise",
+    cta: "Go Scale",
+    popular: false,
+    highlight: false,
+  },
+  {
+    name: "Broker",
+    price: "$497",
+    period: "/month",
+    description: "Multi-client funding desk",
+    features: [
+      "Everything in Growth",
+      "Multi-client dashboard",
+      "Unlimited active client seats",
+      "White-label client portal",
+      "Affiliate commission tracking",
+      "GHL pipeline integration",
+    ],
+    cta: "Go Broker",
     popular: false,
     highlight: false,
   },
@@ -95,7 +111,7 @@ export function PricingSection() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           {tiers.map((tier, index) => (
             <Card
               key={index}
@@ -137,7 +153,7 @@ export function PricingSection() {
                 className={`w-full ${
                   tier.popular
                     ? "bg-gradient-accent text-accent-foreground shadow-glow hover:shadow-glow-lg hover:scale-105"
-                    : tier.name === "Enterprise"
+                    : tier.name === "Broker"
                     ? "bg-gradient-gold text-primary hover:shadow-glow hover:scale-105"
                     : "bg-muted text-foreground hover:bg-accent hover:text-accent-foreground hover:scale-105"
                 } transition-all duration-300`}
@@ -151,9 +167,8 @@ export function PricingSection() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-8">
-          We don't have next. We got{" "}
-          <span className="font-bold text-accent">NOW.</span> — See you on the
-          other side.
+          AI-powered funding intelligence for small business owners.{" "}
+          <span className="font-bold text-accent">Not a credit repair organization.</span>
         </p>
 
         <div className="mt-10 text-center">
