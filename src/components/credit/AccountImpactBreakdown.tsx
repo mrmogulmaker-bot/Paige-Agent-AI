@@ -60,7 +60,7 @@ const NEGATIVE_IMPACT: Record<string, { label: string; impact: string; severity:
     impact: "Charge-offs signal the creditor wrote off the debt as a loss. Major negative — typically 50–150 point hit. Continues reporting 7 years.",
     severity: "high",
   },
-  charge-off: {
+  "charge-off": {
     label: "Charge-Off",
     impact: "Charge-offs signal the creditor wrote off the debt as a loss. Major negative — typically 50–150 point hit. Continues reporting 7 years.",
     severity: "high",
