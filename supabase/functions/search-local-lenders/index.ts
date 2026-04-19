@@ -389,30 +389,35 @@ serve(async (req) => {
     let creditUnionNote: string | null = null;
 
     const doSearch = async (c?: string) => {
-      // Credit unions are NCUA-regulated, not in FDIC data
+      // Credit-union-only search: query NCUA directly
       if (lenderType === "credit_union") {
-        creditUnionNote = `Credit unions are regulated by the NCUA, not the FDIC. Use the NCUA Credit Union Locator at https://mapping.ncua.gov to search for credit unions in ${stateAbbr}.`;
-        return [];
+        const r = await queryNCUA(stateAbbr, c);
+        allDiagnostics.push({ query: "credit_union (NCUA)", ...r.diagnostics });
+        return r.results;
       }
 
-      // Specific lender type from our plan map
+      // Specific bank type from our plan map
       if (lenderType && TYPE_PLANS[lenderType]) {
         const r = await queryFDIC(stateAbbr, c, TYPE_PLANS[lenderType]);
         allDiagnostics.push({ query: lenderType, ...r.diagnostics });
         return r.results;
       }
 
-      // "All" — pull a balanced mix across the most useful categories
-      const plans: { key: string; plan: QueryPlan }[] = [
+      // "All" — pull a balanced mix from FDIC AND NCUA in parallel so the client
+      // sees both banks (FDIC) and credit unions (NCUA) in one response.
+      const fdicPlans: { key: string; plan: QueryPlan }[] = [
         { key: "community_bank", plan: TYPE_PLANS.community_bank },
         { key: "national_bank", plan: TYPE_PLANS.national_bank },
         { key: "savings", plan: TYPE_PLANS.savings },
         { key: "mdi", plan: TYPE_PLANS.mdi },
       ];
-      const queries = await Promise.all(plans.map((p) => queryFDIC(stateAbbr, c, p.plan)));
-      queries.forEach((r, i) => allDiagnostics.push({ query: plans[i].key, ...r.diagnostics }));
-      creditUnionNote = `For credit unions, visit the NCUA Credit Union Locator at https://mapping.ncua.gov`;
-      return queries.flatMap((r) => r.results);
+      const [fdicResults, ncuaResult] = await Promise.all([
+        Promise.all(fdicPlans.map((p) => queryFDIC(stateAbbr, c, p.plan))),
+        queryNCUA(stateAbbr, c),
+      ]);
+      fdicResults.forEach((r, i) => allDiagnostics.push({ query: fdicPlans[i].key, ...r.diagnostics }));
+      allDiagnostics.push({ query: "credit_union (NCUA)", ...ncuaResult.diagnostics });
+      return [...fdicResults.flatMap((r) => r.results), ...ncuaResult.results];
     };
 
     let results = await doSearch(cleanCity);
