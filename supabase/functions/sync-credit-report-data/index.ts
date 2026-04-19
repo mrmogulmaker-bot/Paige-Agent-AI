@@ -14,11 +14,11 @@ const ScoreSchema = z.object({
 });
 
 const NegativeItemSchema = z.object({
-  creditor_name: z.string(),
+  creditor_name: z.string().nullable().optional(),
   account_number: z.string().nullable().optional(),
   account_number_masked: z.string().nullable().optional(),
-  bureau: z.string(),
-  item_type: z.string(),
+  bureau: z.string().nullable().optional(),
+  item_type: z.string().nullable().optional(),
   amount: z.number().nullable().optional(),
   original_amount: z.number().nullable().optional(),
   date_of_occurrence: z.string().nullable().optional(),
@@ -27,28 +27,28 @@ const NegativeItemSchema = z.object({
   date_closed: z.string().nullable().optional(),
   dispute_basis: z.string().nullable().optional(),
   estimated_score_impact: z.number().nullable().optional(),
-  status: z.string().optional().default("active"),
+  status: z.string().nullable().optional().default("active"),
   is_cross_bureau_discrepancy: z.boolean().optional().default(false),
   responsibility: z.string().nullable().optional(),
   payment_history_percentage: z.number().nullable().optional(),
   account_type: z.string().nullable().optional(),
-});
+}).passthrough();
 
 const InquirySchema = z.object({
-  creditor_name: z.string(),
-  inquiry_date: z.string(),
-  bureau: z.string(),
+  creditor_name: z.string().nullable().optional(),
+  inquiry_date: z.string().nullable().optional(),
+  bureau: z.string().nullable().optional(),
   is_authorized: z.boolean().optional().default(true),
-});
+}).passthrough();
 
 const PositiveAccountSchema = z.object({
-  creditor: z.string(),
+  creditor: z.string().nullable().optional(),
   account_number: z.string().nullable().optional(),
-  account_type: z.string(),
+  account_type: z.string().nullable().optional(),
   balance: z.number().nullable().optional(),
   credit_limit: z.number().nullable().optional(),
   utilization: z.number().nullable().optional(),
-  status: z.string().optional().default("current"),
+  status: z.string().nullable().optional().default("current"),
   account_open_date: z.string().nullable().optional(),
   is_open: z.boolean().optional().default(true),
   payment_status: z.string().nullable().optional(),
@@ -58,7 +58,7 @@ const PositiveAccountSchema = z.object({
   responsibility: z.string().nullable().optional(),
   payment_history_percentage: z.number().nullable().optional(),
   bureau_source: z.string().nullable().optional(),
-});
+}).passthrough();
 
 const DiscrepancySchema = z.object({
   account_name: z.string(),
