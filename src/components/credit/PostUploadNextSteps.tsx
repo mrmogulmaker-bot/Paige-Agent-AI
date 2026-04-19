@@ -15,6 +15,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { AccountImpactBreakdown } from "./AccountImpactBreakdown";
+import { BuildPersonalRoadmap } from "./BuildPersonalRoadmap";
 
 /**
  * PostUploadNextSteps
@@ -29,6 +30,7 @@ import { AccountImpactBreakdown } from "./AccountImpactBreakdown";
 export function PostUploadNextSteps() {
   const navigate = useNavigate();
   const [reviewExpanded, setReviewExpanded] = useState(true);
+  const [buildExpanded, setBuildExpanded] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["post-upload-next-steps"],
@@ -80,11 +82,12 @@ export function PostUploadNextSteps() {
       icon: TrendingUp,
       title: "Start BUILD Personal",
       description:
-        "BUILD Personal is the 12-month roadmap that turns this credit file into a fundable profile — paydown plan, secured cards, authorized-user tradelines, and MyFICO 3B monitoring across the Base → Utilize → Integrate → Leverage → Dominate phases.",
+        "BUILD Personal is the 12-month roadmap that turns this credit file into a fundable profile. Walk through each phase (Base → Utilize → Integrate → Leverage → Dominate) and see what tradelines you have, what's missing, and why each one matters.",
       done: false,
-      cta: "Open BUILD Personal",
-      ctaIcon: ArrowRight,
-      onClick: () => navigate("/app?section=personal-build"),
+      cta: buildExpanded ? "Hide roadmap" : "Show roadmap",
+      ctaIcon: buildExpanded ? ChevronUp : ChevronDown,
+      onClick: () => setBuildExpanded((v) => !v),
+      expandable: true,
     },
     {
       key: "paige",
@@ -124,6 +127,7 @@ export function PostUploadNextSteps() {
           const CtaIcon = step.ctaIcon || ArrowRight;
           const isNext = idx === nextIndex;
           const showBreakdown = step.key === "review" && reviewExpanded;
+          const showRoadmap = step.key === "build" && buildExpanded;
           return (
             <div
               key={step.key}
@@ -171,6 +175,11 @@ export function PostUploadNextSteps() {
               {showBreakdown && (
                 <div className="px-4 pb-4 pt-1 border-t border-border/50 mt-1">
                   <AccountImpactBreakdown />
+                </div>
+              )}
+              {showRoadmap && (
+                <div className="px-4 pb-4 pt-1 border-t border-border/50 mt-1">
+                  <BuildPersonalRoadmap />
                 </div>
               )}
             </div>
