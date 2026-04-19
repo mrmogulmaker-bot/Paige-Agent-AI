@@ -1,4 +1,26 @@
-import { useEffect, useState, Suspense, lazy } from "react";
+import React, { useEffect, useState, Suspense, lazy as reactLazy } from "react";
+
+// Auto-recover from stale chunk errors after a deploy: when index.html is
+// cached but references hashed JS chunks that no longer exist, dynamic imports
+// throw "Failed to fetch dynamically imported module". We reload once
+// (guarded by sessionStorage) to pick up the fresh index.html.
+const lazy = <T extends React.ComponentType<any>>(factory: () => Promise<{ default: T }>) =>
+  reactLazy(async () => {
+    try {
+      return await factory();
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (
+        /Failed to fetch dynamically imported module|Importing a module script failed/i.test(msg) &&
+        !sessionStorage.getItem("__chunk_reload__")
+      ) {
+        sessionStorage.setItem("__chunk_reload__", "1");
+        window.location.reload();
+        return new Promise<{ default: T }>(() => {});
+      }
+      throw err;
+    }
+  });
 import { useNavigate, Routes, Route, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
