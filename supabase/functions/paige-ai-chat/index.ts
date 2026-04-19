@@ -198,7 +198,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, clientContext } = validatedData;
+    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, clientContext, userTime, userTimezone, userTimeFormatted } = validatedData;
 
     // === SESSION SUMMARY GENERATION MODE ===
     if (generateSessionSummary && sessionMessages && sessionMessages.length > 0) {
@@ -559,8 +559,31 @@ JSON:`;
       }
     }
 
-    const currentDateTime = new Date();
-    const dateTimeString = currentDateTime.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZoneName: 'short' });
+    // Use the client's local clock when provided so greetings + time-of-day
+    // language match what the user sees on their phone — not the server's UTC.
+    let dateTimeString: string;
+    let timezoneNote = "";
+    if (userTimeFormatted) {
+      dateTimeString = userTimeFormatted;
+      if (userTimezone) timezoneNote = ` (timezone: ${userTimezone})`;
+    } else if (userTime && userTimezone) {
+      try {
+        const userNow = new Date(userTime);
+        dateTimeString = userNow.toLocaleString('en-US', {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+          hour: 'numeric', minute: '2-digit', hour12: true,
+          timeZone: userTimezone, timeZoneName: 'short',
+        });
+        timezoneNote = ` (timezone: ${userTimezone})`;
+      } catch {
+        const fallback = new Date();
+        dateTimeString = fallback.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZoneName: 'short' });
+      }
+    } else {
+      const currentDateTime = new Date();
+      dateTimeString = currentDateTime.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZoneName: 'short' });
+      timezoneNote = " (server time — user's local timezone unavailable)";
+    }
 
     const systemPrompt = `You are Paige — an AI-powered funding intelligence analyst built for small business owners. Your purpose is to help users understand their personal and business credit profiles in the context of business funding eligibility, and to guide them toward appropriate capital sources.
 
