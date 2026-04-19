@@ -84,13 +84,17 @@ export function PostUploadNextSteps() {
       onClick: () => navigate("/app/disputes"),
     },
     {
-      key: "funding",
+      key: "build",
       icon: TrendingUp,
-      title: "Check your funding readiness",
-      description: "See which lenders match your profile right now and what to fix to unlock more.",
+      title: data.hasBusiness
+        ? "Continue your BUILD program"
+        : "Start the BUILD program",
+      description: data.hasBusiness
+        ? "Your personal credit feeds your BUILD score. Move to your Business Profile to keep advancing through the BUILD phases (Base → Utilize → Integrate → Leverage → Dominate)."
+        : "BUILD is how you turn this credit profile into a fundable business. Set up your business entity, EIN, address, phone, and bank account — then we layer in tradelines.",
       done: false,
-      cta: "Open Funding Matches",
-      onClick: () => navigate("/app/funding"),
+      cta: data.hasBusiness ? "Open Business Profile" : "Start BUILD",
+      onClick: () => navigate("/app/business"),
     },
     {
       key: "paige",
