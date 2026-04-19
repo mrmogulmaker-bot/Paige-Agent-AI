@@ -428,14 +428,18 @@ serve(async (req) => {
       results = await doSearch(undefined);
     }
 
-    // Deduplicate by FDIC cert (most reliable) then by name
+    // Deduplicate by FDIC cert (banks) or NCUA charter number (credit unions),
+    // then by name as a final tiebreaker.
     const seenCert = new Set<string>();
+    const seenCharter = new Set<string>();
     const seenName = new Set<string>();
     results = results.filter((r) => {
       if (r.fdic_cert && seenCert.has(r.fdic_cert)) return false;
-      const nameKey = r.name.toUpperCase();
+      if (r.ncua_charter_number && seenCharter.has(r.ncua_charter_number)) return false;
+      const nameKey = `${r.source}::${r.name.toUpperCase()}`;
       if (seenName.has(nameKey)) return false;
       if (r.fdic_cert) seenCert.add(r.fdic_cert);
+      if (r.ncua_charter_number) seenCharter.add(r.ncua_charter_number);
       seenName.add(nameKey);
       return true;
     });
