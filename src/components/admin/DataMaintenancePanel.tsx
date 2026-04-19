@@ -356,11 +356,15 @@ export function DataMaintenancePanel() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => bulkBackfill.mutate(row.user_id)}
-                          disabled={bulkBackfill.isPending}
+                          onClick={() => reExtractLatest.mutate(row.user_id)}
+                          disabled={reExtractLatest.isPending && reExtractLatest.variables === row.user_id}
                           className="gap-1"
                         >
-                          <RefreshCw className="w-3 h-3" />
+                          {reExtractLatest.isPending && reExtractLatest.variables === row.user_id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-3 h-3" />
+                          )}
                           Re-extract
                         </Button>
                       </TableCell>
