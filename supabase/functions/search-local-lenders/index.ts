@@ -330,10 +330,10 @@ serve(async (req) => {
     const seenCert = new Set<string>();
     const seenName = new Set<string>();
     results = results.filter((r) => {
-      if (r.referenceId && seenCert.has(r.referenceId)) return false;
+      if (r.fdic_cert && seenCert.has(r.fdic_cert)) return false;
       const nameKey = r.name.toUpperCase();
       if (seenName.has(nameKey)) return false;
-      if (r.referenceId) seenCert.add(r.referenceId);
+      if (r.fdic_cert) seenCert.add(r.fdic_cert);
       seenName.add(nameKey);
       return true;
     });
@@ -350,8 +350,8 @@ serve(async (req) => {
 
       if (prefs && prefs.length > 0) {
         for (const result of results) {
-          const certMatch = result.referenceId
-            ? prefs.find((p: any) => p.fdic_cert && p.fdic_cert === result.referenceId)
+          const certMatch = result.fdic_cert
+            ? prefs.find((p: any) => p.fdic_cert && p.fdic_cert === result.fdic_cert)
             : null;
 
           if (certMatch) {
