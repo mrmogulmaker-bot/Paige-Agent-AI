@@ -152,13 +152,26 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
     }
   };
 
+  const handleSkipForNow = () => {
+    // Snooze the welcome modal for 24h. The checklist on the dashboard remains the persistent reminder.
+    const snoozeUntil = Date.now() + 24 * 60 * 60 * 1000;
+    try {
+      localStorage.setItem("onboarding_snoozed_until", String(snoozeUntil));
+    } catch {}
+    toast({
+      title: "No problem — explore freely",
+      description: "Your setup checklist stays on your dashboard. Finish it whenever you're ready.",
+    });
+    onComplete();
+  };
+
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto sm:max-h-[85vh]" onInteractOutside={(e) => e.preventDefault()}>
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) handleSkipForNow(); }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto sm:max-h-[85vh]">
         <DialogHeader>
           <DialogTitle className="text-xl sm:text-2xl">Welcome to PaigeAgent.ai! 🎉</DialogTitle>
           <DialogDescription>
-            Let's set up your profile to personalize your experience
+            Optional setup — takes ~2 minutes. Skip anytime; we'll keep your checklist on the dashboard.
           </DialogDescription>
         </DialogHeader>
 
