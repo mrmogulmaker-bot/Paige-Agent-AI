@@ -80,6 +80,12 @@ async function cleanupServiceWorkers() {
 
 cleanupServiceWorkers();
 
+// Clear the stale-chunk reload guard once the app successfully boots, so the
+// auto-reload recovery can run again on the next deploy.
+window.addEventListener("load", () => {
+  try { sessionStorage.removeItem("__chunk_reload__"); } catch {}
+});
+
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
