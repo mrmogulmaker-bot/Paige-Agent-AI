@@ -186,33 +186,18 @@ export function DataMaintenancePanel() {
             Monitor data quality and trigger re-extractions for client credit reports.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            onClick={() => memoryBackfill.mutate()}
-            disabled={memoryBackfill.isPending}
-            variant="outline"
-            className="gap-2"
-          >
-            {memoryBackfill.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Brain className="w-4 h-4" />
-            )}
-            Backfill Memory Embeddings
-          </Button>
-          <Button
-            onClick={() => bulkBackfill.mutate(undefined)}
-            disabled={bulkBackfill.isPending}
-            className="gap-2"
-          >
-            {bulkBackfill.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Play className="w-4 h-4" />
-            )}
-            Backfill Missing Data
-          </Button>
-        </div>
+        <Button
+          onClick={() => bulkBackfill.mutate(undefined)}
+          disabled={bulkBackfill.isPending}
+          className="gap-2"
+        >
+          {bulkBackfill.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Play className="w-4 h-4" />
+          )}
+          Backfill Missing Data
+        </Button>
       </div>
 
       {memoryBackfillResult && !memoryBackfill.isPending && (
