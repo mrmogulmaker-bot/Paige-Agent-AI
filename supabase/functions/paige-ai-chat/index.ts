@@ -291,13 +291,16 @@ JSON:`;
       const summaryData = await summaryResponse.json();
       const summaryContent = summaryData.choices?.[0]?.message?.content || "";
 
-      // Insert session summary memory
+      // Insert session summary memory (with embedding)
       if (summaryContent.trim()) {
+        const summaryEmbedding = await embedText(summaryContent.trim());
         const memoryInsert: any = {
           client_user_id: payloadClientId || user.id,
           memory_type: "session_summary",
           content: summaryContent.trim(),
           source_session_id: rawData.sessionId || null,
+          embedding: summaryEmbedding,
+          metadata: { channel: "text" },
         };
         if (payloadClientId) memoryInsert.client_id = payloadClientId;
         await supabase.from("client_memory").insert(memoryInsert);
@@ -321,11 +324,13 @@ JSON:`;
 
           for (const m of milestones) {
             if (labelMap[m]) {
+              const emb = await embedText(labelMap[m]);
               const milestoneMemory: any = {
                 client_user_id: payloadClientId || user.id,
                 memory_type: "milestone_completed",
                 content: labelMap[m],
                 source_session_id: rawData.sessionId || null,
+                embedding: emb,
               };
               if (payloadClientId) milestoneMemory.client_id = payloadClientId;
               await supabase.from("client_memory").insert(milestoneMemory);
@@ -333,6 +338,34 @@ JSON:`;
           }
         } catch (err) {
           console.error("Error parsing milestone detection:", err);
+        }
+      }
+
+      // Insert extracted user preferences (auto-extraction at session end)
+      if (preferenceResponse.ok) {
+        try {
+          const prefData = await preferenceResponse.json();
+          const prefRaw = prefData.choices?.[0]?.message?.content || "[]";
+          const cleaned = prefRaw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+          const preferences: string[] = JSON.parse(cleaned);
+          if (Array.isArray(preferences)) {
+            for (const p of preferences) {
+              if (typeof p !== "string" || !p.trim()) continue;
+              const emb = await embedText(p.trim());
+              const prefMemory: any = {
+                client_user_id: payloadClientId || user.id,
+                memory_type: "user_preference",
+                content: p.trim(),
+                source_session_id: rawData.sessionId || null,
+                embedding: emb,
+                metadata: { channel: "text", source: "auto_extracted" },
+              };
+              if (payloadClientId) prefMemory.client_id = payloadClientId;
+              await supabase.from("client_memory").insert(prefMemory);
+            }
+          }
+        } catch (err) {
+          console.error("Error parsing preference extraction:", err);
         }
       }
 
