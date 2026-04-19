@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useFundingProfile } from "@/hooks/useFundingProfile";
@@ -26,10 +26,9 @@ import { useNavigate } from "react-router-dom";
 
 function SeparationAuditFundingBanner({ onFix }: { onFix: () => void }) {
   const [uid, setUid] = useState<string | null>(null);
-  useState(() => {
+  useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null));
-    return undefined;
-  });
+  }, []);
   if (!uid) return null;
   return <SeparationAuditCard userId={uid} variant="compact" onFix={onFix} />;
 }
@@ -201,7 +200,7 @@ export default function FundingMatches() {
       )}
 
       {/* Personal/Business Separation warning */}
-      <SeparationAuditFundingBanner onFix={() => navigate("/app/build-program")} />
+      <SeparationAuditFundingBanner onFix={() => navigate("/app/business")} />
 
       {/* Profile Completeness */}
       <ProfileCompletenessPanel profile={profile} />
