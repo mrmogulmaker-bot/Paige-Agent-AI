@@ -5,6 +5,8 @@ import { PricingSection } from "@/components/landing/PricingSection";
 import { Footer } from "@/components/landing/Footer";
 import { SiteBackground } from "@/components/landing/SiteBackground";
 import { FloatingGraphics } from "@/components/landing/FloatingGraphics";
+import { WhoItsForSection } from "@/components/landing/WhoItsForSection";
+import { IntegrationsSection } from "@/components/landing/IntegrationsSection";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MessageSquare, BarChart3, Rocket } from "lucide-react";
@@ -75,6 +77,8 @@ const Index = () => {
       </section>
 
       <FeaturesSection />
+
+      <WhoItsForSection />
 
       {/* Social Proof / Results */}
       <section className="py-20">
@@ -203,6 +207,8 @@ const Index = () => {
           </div>
         </div>
       </section>
+
+      <IntegrationsSection />
 
       <PricingSection />
       <Footer />
