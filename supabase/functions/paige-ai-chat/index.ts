@@ -238,11 +238,11 @@ JSON:`;
 Return ONLY a JSON array of strings for items mentioned as completed. Use these exact labels: "entity_formed", "ein_obtained", "business_address_established", "business_phone_established", "business_bank_opened". If none were mentioned, return an empty array [].
 
 MESSAGES:
-${last20.map(m => `${m.role === 'user' ? 'Client' : 'Paige'}: ${m.content}`).join('\n')}
+${transcript}
 
 JSON:`;
 
-      const [summaryResponse, milestoneResponse] = await Promise.all([
+      const [summaryResponse, milestoneResponse, preferenceResponse] = await Promise.all([
         fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
@@ -252,6 +252,11 @@ JSON:`;
           method: "POST",
           headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: milestonePrompt }] }),
+        }),
+        fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: preferencePrompt }] }),
         }),
       ]);
 
