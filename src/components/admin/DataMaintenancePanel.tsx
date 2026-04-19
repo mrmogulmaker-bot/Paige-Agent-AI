@@ -9,7 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Database, RefreshCw, Loader2, CheckCircle, AlertTriangle, XCircle, Play,
+  Database, RefreshCw, Loader2, CheckCircle, AlertTriangle, XCircle, Play, Brain,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,6 +29,31 @@ interface BackfillSummary {
 export function DataMaintenancePanel() {
   const queryClient = useQueryClient();
   const [backfillResult, setBackfillResult] = useState<BackfillSummary | null>(null);
+  const [memoryBackfillResult, setMemoryBackfillResult] = useState<{
+    total_processed: number; total_updated: number; error_count: number;
+  } | null>(null);
+
+  const memoryBackfill = useMutation({
+    mutationFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      const response = await supabase.functions.invoke("backfill-memory-embeddings", {
+        body: {},
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (response.error) throw new Error(response.error.message);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      setMemoryBackfillResult({
+        total_processed: data.total_processed,
+        total_updated: data.total_updated,
+        error_count: data.error_count,
+      });
+      toast.success(`Embedded ${data.total_updated} of ${data.total_processed} memories${data.error_count ? ` (${data.error_count} errors)` : ""}.`);
+    },
+    onError: (err: Error) => toast.error(err.message || "Memory backfill failed"),
+  });
 
   // Fetch data quality overview
   const { data: qualityData, isLoading: qualityLoading } = useQuery({
@@ -161,19 +186,52 @@ export function DataMaintenancePanel() {
             Monitor data quality and trigger re-extractions for client credit reports.
           </p>
         </div>
-        <Button
-          onClick={() => bulkBackfill.mutate(undefined)}
-          disabled={bulkBackfill.isPending}
-          className="gap-2"
-        >
-          {bulkBackfill.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Play className="w-4 h-4" />
-          )}
-          Backfill Missing Data
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => memoryBackfill.mutate()}
+            disabled={memoryBackfill.isPending}
+            variant="outline"
+            className="gap-2"
+          >
+            {memoryBackfill.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Brain className="w-4 h-4" />
+            )}
+            Backfill Memory Embeddings
+          </Button>
+          <Button
+            onClick={() => bulkBackfill.mutate(undefined)}
+            disabled={bulkBackfill.isPending}
+            className="gap-2"
+          >
+            {bulkBackfill.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            Backfill Missing Data
+          </Button>
+        </div>
       </div>
+
+      {memoryBackfillResult && !memoryBackfill.isPending && (
+        <Card className="border-primary/30">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Brain className="w-5 h-5 text-primary" />
+              <span className="font-medium">Memory Embeddings Backfill Complete</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Processed <strong>{memoryBackfillResult.total_processed}</strong> memories ·{" "}
+              <strong className="text-foreground">{memoryBackfillResult.total_updated}</strong> embedded
+              {memoryBackfillResult.error_count > 0 && (
+                <> · <span className="text-destructive">{memoryBackfillResult.error_count} errors</span></>
+              )}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Backfill Progress */}
       {bulkBackfill.isPending && (
