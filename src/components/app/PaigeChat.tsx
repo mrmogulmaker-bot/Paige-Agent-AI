@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Send, Loader2, Mic, MicOff, Volume2, Paperclip } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
@@ -75,7 +76,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -624,12 +625,13 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
           <div className="space-y-1">
             <p className="text-[10px] text-muted-foreground text-center">Voice active — type to send a text message instead</p>
             <div className="flex gap-2 items-center">
-              <Input
+              <Textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-                placeholder="Type to Paige while talking..."
-                className="flex-1 text-sm bg-muted/30 border-border/50"
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                placeholder="Type to Paige while talking... (Shift+Enter for new line)"
+                rows={1}
+                className="flex-1 text-sm bg-muted/30 border-border/50 min-h-[40px] max-h-[160px] resize-none py-2"
               />
               <Button
                 onClick={() => handleSend()}
@@ -646,13 +648,14 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         {/* Mobile voice mode: simplified input */}
         {isMobile && conversation.status === "connected" && (
           <div className="flex gap-2 items-center">
-            <Input
+            <Textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-              placeholder="Or type to Paige..."
-              className="flex-1 text-sm bg-muted/30 border-border/50 h-10"
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+              placeholder="Or type to Paige... (Shift+Enter for new line)"
+              rows={1}
+              className="flex-1 text-sm bg-muted/30 border-border/50 min-h-[40px] max-h-[160px] resize-none py-2"
             />
             <Button
               onClick={() => handleSend()}
@@ -670,13 +673,14 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
             <Paperclip className="w-4 h-4" />
           </Button>
           {conversation.status !== "connected" && (
-            <Input
+            <Textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-              placeholder={attachedDoc ? "Add a message or send document..." : "Ask Paige anything..."}
-              className="flex-1 text-sm h-10"
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+              placeholder={attachedDoc ? "Add a message or send document... (Shift+Enter for new line)" : "Ask Paige anything... (Shift+Enter for new line)"}
+              rows={1}
+              className="flex-1 text-sm min-h-[40px] max-h-[200px] resize-none py-2"
               disabled={isLoading}
             />
           )}
