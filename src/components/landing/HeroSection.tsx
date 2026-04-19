@@ -49,8 +49,8 @@ export function HeroSection() {
             </Badge>
 
             <h1 className="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]">
-              Get Your Clients{" "}
-              <span className="text-accent">Funded.</span> Compliantly.
+              Know What Lenders See.{" "}
+              <span className="text-accent">Get Funded Faster.</span>
             </h1>
 
             <p className="text-xl text-muted-foreground leading-relaxed max-w-lg">
