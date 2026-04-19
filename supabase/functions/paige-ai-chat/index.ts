@@ -1080,7 +1080,7 @@ Always identify the document type and bureau in your response.`,
             type: "function",
             function: {
               name: "search_regional_lenders",
-              description: "Search the live FDIC institution database for real banks, savings institutions, MDIs (Minority Depository Institutions), and CDFI-proxy community banks in a given state and optional city. Use this whenever the client asks to find, locate, or connect with specific lenders or financial institutions. Returns up to 10 institutions with name, location, phone (when available), website, type, asset size, and MDI/community-bank flags.",
+              description: "Search live regulator databases for real lenders in a given state and optional city. Queries the FDIC institution database for banks (community banks, national banks, savings institutions, MDIs, CDFI-proxy banks) AND the NCUA credit union database for credit unions in parallel. Use this whenever the client asks to find, locate, or connect with specific lenders or financial institutions. Returns up to 10 institutions per source with name, location, website, type, asset size, MDI/community-bank flags, and (for credit unions) charter type and inferred membership openness.",
               parameters: {
                 type: "object",
                 properties: {
@@ -1095,7 +1095,7 @@ Always identify the document type and bureau in your response.`,
                   lender_type: {
                     type: "string",
                     enum: ["community_bank", "credit_union", "mdi", "cdfi", "all"],
-                    description: "Optional lender type filter. Defaults to 'all'. Use 'credit_union' to surface NCUA guidance — the FDIC database does not include credit unions."
+                    description: "Optional lender type filter. Defaults to 'all' (queries both FDIC banks and NCUA credit unions). Use 'credit_union' to query only NCUA credit unions, or 'community_bank' / 'mdi' / 'cdfi' / 'national_bank' / 'savings' / 'commercial' / 'agricultural' / 'regional_bank' / 'online_bank' for specific FDIC bank types."
                   },
                   min_score: {
                     type: "number",
@@ -1236,19 +1236,30 @@ Always identify the document type and bureau in your response.`,
             });
             const lrBody = await lrResponse.json();
 
-            // Trim to top 10 and only the fields Paige needs to present results conversationally
+            // Trim to top 10 and only the fields Paige needs to present results conversationally.
+            // Mix banks + credit unions; preserve source-specific fields (cu_* for NCUA, fdic_cert/CB flags for FDIC).
             const trimmed = (lrBody.results || []).slice(0, 10).map((r: any) => ({
               name: r.name,
               type: r.type,
+              source: r.source, // "FDIC" | "NCUA"
               city: r.city,
               state: r.state,
               address: r.address,
               zip: r.zip,
-              phone: null, // FDIC dataset does not return phone numbers; client should call for current contact
+              phone: r.phone || null,
               website: r.website || null,
+              // Bank-only fields
               is_minority_depository: r.is_minority_depository,
-              mdi_description: r.mdi_description,
-              is_community_bank: r.is_community_bank,
+              mdi_description: r.mdi_description || null,
+              is_community_bank: r.is_community_bank ?? null,
+              fdic_cert: r.fdic_cert || null,
+              office_count: r.office_count ?? null,
+              // Credit-union-only fields
+              ncua_charter_number: r.ncua_charter_number || null,
+              cu_charter_type: r.cu_charter_type || null,        // "Federal" (FCU) or "State" (FISCU)
+              cu_membership_type: r.cu_membership_type || null,  // "community" | "SEG/employer-based" | "unknown"
+              cu_member_count: r.cu_member_count ?? null,
+              // Shared
               asset_size_thousands: r.asset_size,
               asset_size_category:
                 r.asset_size == null ? null
@@ -1256,8 +1267,6 @@ Always identify the document type and bureau in your response.`,
                 : r.asset_size < 10_000_000 ? "mid-size"
                 : r.asset_size < 100_000_000 ? "regional"
                 : "large/national",
-              office_count: r.office_count,
-              fdic_cert: r.fdic_cert,
               bureau_preference: r.bureauPreference || null,
             }));
 
@@ -1270,11 +1279,13 @@ Always identify the document type and bureau in your response.`,
                 searched_city: lrBody.searchedCity || null,
                 searched_state: args.state,
                 lender_type: args.lender_type || "all",
-                credit_union_note: lrBody.creditUnionNote || null,
+                sources_queried: args.lender_type === "credit_union" ? ["NCUA"]
+                  : (TYPE_PLANS_BANK_ONLY.includes(args.lender_type) ? ["FDIC"]
+                  : ["FDIC", "NCUA"]),
                 lenders: trimmed,
                 note: trimmed.length === 0
-                  ? "No lenders matched this query. Suggest neighboring state, broader type, or NCUA for credit unions."
-                  : "Present these conversationally with the format from your system prompt. Tie each pick back to the client's bureau profile.",
+                  ? "No lenders matched this query. Suggest neighboring state or broader type."
+                  : "Present these conversationally per the LIVE LENDER SEARCH rules in your system prompt. Always lead with: 'I searched both the FDIC database for banks and the NCUA database for credit unions in [location].' Tie each pick back to the client's bureau profile.",
               }),
             });
           } catch (err) {
