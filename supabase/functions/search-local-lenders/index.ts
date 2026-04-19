@@ -266,6 +266,89 @@ async function queryFDIC(
   }
 }
 
+/**
+ * Heuristic for credit-union membership openness. NCUA's open dataset doesn't
+ * expose the field-of-membership rule directly in the locator layer, so we
+ * approximate from the credit union's name. Names with words like "community",
+ * "neighborhood", "city", "county", or a place name typically indicate a
+ * community charter (anyone in the area can join). Names with employer/SEG
+ * cues (company names, "employees", "associates") usually indicate SEG-based
+ * membership. Anything ambiguous is returned as "unknown".
+ */
+function inferCuMembershipType(name: string): "community" | "SEG/employer-based" | "unknown" {
+  const n = name.toUpperCase();
+  if (/\b(COMMUNITY|NEIGHBORHOOD|CITY|COUNTY|REGIONAL|AREA|VALLEY|MOUNTAIN|RIVER|FIRST|HERITAGE|HOMETOWN|UNITED|PEOPLE'S|PEOPLES|PUBLIC)\b/.test(n)) {
+    return "community";
+  }
+  if (/\b(EMPLOYEES|ASSOCIATES|TEACHERS|POLICE|FIRE(?:FIGHTERS)?|POSTAL|FEDERAL EMPLOYEES|HOSPITAL|UNIVERSITY|SCHOOLS?|MUNICIPAL|TELCO|RAILROAD|UTILITY|UTILITIES)\b/.test(n)) {
+    return "SEG/employer-based";
+  }
+  return "unknown";
+}
+
+async function queryNCUA(
+  stateAbbr: string,
+  city: string | undefined
+): Promise<{ results: LenderResult[]; diagnostics: any }> {
+  // ArcGIS WHERE clause — uppercase comparisons match the dataset's casing.
+  const whereParts: string[] = [`STATE='${stateAbbr}'`];
+  if (city) whereParts.push(`UPPER(CITY)='${city.toUpperCase().replace(/'/g, "''")}'`);
+  const where = whereParts.join(" AND ");
+
+  const url = new URL(NCUA_BASE);
+  url.searchParams.set("where", where);
+  url.searchParams.set("outFields", [
+    "CU_NUMBER", "CU_NAME", "ADDRESS", "CITY", "STATE", "ZIP_CODE",
+    "Charter_Type", "Asset", "Members", "LATITUDE", "LONGITUDE",
+  ].join(","));
+  url.searchParams.set("f", "json");
+  url.searchParams.set("orderByFields", "Asset DESC");
+  url.searchParams.set("resultRecordCount", "20");
+
+  const requestedUrl = url.toString();
+  const startTime = Date.now();
+
+  try {
+    const resp = await fetch(requestedUrl);
+    const elapsed = Date.now() - startTime;
+    if (!resp.ok) {
+      return { results: [], diagnostics: { url: requestedUrl, status: resp.status, error: `NCUA returned HTTP ${resp.status}`, elapsed_ms: elapsed } };
+    }
+    const data = await resp.json();
+    const features = data?.features || [];
+    const results: LenderResult[] = features.map((f: any) => {
+      const a = f.attributes || {};
+      const name = a.CU_NAME || "Unknown Credit Union";
+      const assetDollars = a.Asset != null ? Number(a.Asset) : null;
+      // Normalize NCUA assets ($) to thousands so consumers can compare to FDIC.
+      const assetThousands = assetDollars != null ? Math.round(assetDollars / 1000) : null;
+      return {
+        name,
+        type: "Credit Union (NCUA)" as const,
+        source: "NCUA" as const,
+        ncua_charter_number: String(a.CU_NUMBER || ""),
+        address: a.ADDRESS || "",
+        city: a.CITY || "",
+        state: a.STATE || stateAbbr,
+        zip: String(a.ZIP_CODE || ""),
+        latitude: a.LATITUDE != null ? Number(a.LATITUDE) : null,
+        longitude: a.LONGITUDE != null ? Number(a.LONGITUDE) : null,
+        website: "", // NCUA locator dataset does not expose website; client should look it up
+        phone: null, // Not in this dataset
+        cu_charter_type: a.Charter_Type || null,
+        cu_membership_type: inferCuMembershipType(name),
+        cu_member_count: a.Members != null ? Number(a.Members) : null,
+        is_minority_depository: false, // Not flagged in this layer
+        asset_size: assetThousands,
+        asset_size_units: "thousands" as const,
+      };
+    });
+    return { results, diagnostics: { url: requestedUrl, status: 200, returned: results.length, elapsed_ms: elapsed } };
+  } catch (e: any) {
+    return { results: [], diagnostics: { url: requestedUrl, error: e.message, elapsed_ms: Date.now() - startTime } };
+  }
+}
+
 function fuzzyMatch(a: string, b: string): boolean {
   const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
   const na = normalize(a);
