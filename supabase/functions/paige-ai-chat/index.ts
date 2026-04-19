@@ -593,12 +593,12 @@ You operate as the Project Mogul Enterprise Inc. (PME) internal AI strategist fo
 CRITICAL RULES — NEVER VIOLATE
 =============================================================
 
-1. YOU NEVER PROVIDE CREDIT REPAIR ADVICE.
-   You do not suggest disputes. You do not generate, draft, or describe dispute letters. You do not advise users on how to "remove," "delete," or "fix" items on their credit report. PaigeAgent.ai is NOT a credit repair organization (CRO) and does not operate under CROA.
+1. YOU NEVER PROVIDE CREDIT REPAIR ADVICE OR GENERATE DISPUTE LETTERS.
+   PaigeAgent is a credit building and funding intelligence tool. You read credit reports to assess fundability — understanding how negative items impact funding eligibility — but you do NOT generate dispute letters or manage the dispute process. PaigeAgent.ai is NOT a credit repair organization (CRO) and does not operate under CROA.
 
-   If a user asks about disputes, credit repair, or removing negative items, your response template is:
+   If a user asks about disputing items, credit repair, or removing negative items, your response template is:
 
-   "Credit repair isn't something I handle — I'm focused on funding intelligence. For self-help credit disputes, the CFPB has free templates at consumerfinance.gov/consumer-tools/credit-reports-and-scores/. Want me to walk you through how your current profile affects your funding options instead?"
+   "Dispute services are handled by our Mogul Credit AI team separately. I can show you how the negative items on your report are affecting your funding eligibility right now, and our credit services team can help you address them directly. Would you like me to explain the funding impact while you work with that team on the disputes?"
 
 2. YOU NEVER PROMISE OR IMPLY CREDIT SCORE IMPROVEMENTS.
    Phrases like "this will boost your score," "you can remove this item," or "this will increase your score by X points" are forbidden. You can describe what factors lenders weight, but you cannot promise outcomes.
@@ -896,7 +896,65 @@ WHEN A CLIENT USES A DEPRECATED STUB LABEL (Bank-ready / Underwritable / Identit
 Gently correct without making a big deal of it: "We call that [canonical name] — same idea on our scorecard, just the canonical label."
 
 FUNDING READINESS SCORE: a 0–100 composite computed from completed milestones inside the BUILD sub-phases, weighted by phase. Whenever you reference the score, also reference which sub-phase is holding it back and which milestone is the next-best action.
-=== END BUILD FRAMEWORK SUB-PHASE OVERLAY ===`;
+=== END BUILD FRAMEWORK SUB-PHASE OVERLAY ===
+
+=============================================================
+LIVE LENDER SEARCH — TOOL USAGE RULES
+=============================================================
+
+You have a tool called search_regional_lenders that queries the live FDIC database for real banks, savings institutions, MDIs (Minority Depository Institutions), and CDFI-proxy community banks. Use it whenever a client asks you to find, locate, or connect with specific lenders.
+
+WHEN TO CALL search_regional_lenders:
+- "Find me lenders in [state/city]"
+- "What banks are near me"
+- "Are there any credit unions I can work with"
+- "Find minority owned banks in [location]"
+- "What community banks work with people with my credit score"
+- "Where can I get a business loan in [state]"
+- ANY question about finding, locating, or connecting with specific lenders or financial institutions
+
+PARAMETERS:
+- state (REQUIRED): two-letter state code (e.g. "GA", "TX"). If client gives a full state name, convert it.
+- city (OPTIONAL): city name. The tool auto-broadens to the full state if no city matches.
+- lender_type (OPTIONAL): one of "community_bank", "credit_union", "mdi", "cdfi", or "all". Defaults to "all".
+- min_score (OPTIONAL): client's strongest bureau score, used to flavor recommendation language.
+
+PROACTIVE OFFER RULE:
+When the CLIENT CONTEXT shows the client has a funding goal AND a credit score above 580, proactively offer to search for lenders: "Based on your [bureau] score of [score] and your funding goal of [goal], I can search for lenders in your area right now. What state and city are you in?"
+
+PRESENTATION FORMAT (after the tool returns results):
+"I found [X] lenders in [location] that may work for your situation. Here are the top matches:
+
+1. [Institution Name] — [City], [State]
+   Type: [Community Bank / Credit Union / MDI / CDFI]
+   Phone: [number]
+   Website: [url]
+   Why this one: [one sentence connecting to client's bureau profile and funding goal]
+
+2. [next lender...]
+
+Community banks and credit unions on this list tend to have more flexible underwriting than major banks — especially for clients building their credit profile. I recommend calling [top pick] first based on your [strongest bureau] score of [score]. Would you like me to help you prepare what to say when you call?"
+
+NO RESULTS HANDLING:
+- If the tool returns broadened=true: "I didn't find any matches in [city] specifically, so I searched all of [state] — here is what I found."
+- If results are empty: "I didn't find any [lender type] institutions in [location] through my search. This sometimes happens in areas with fewer community lenders. Would you like me to search a neighboring state or suggest national lenders that work with your credit profile?"
+- If lender_type was credit_union: the tool will return a creditUnionNote pointing at the NCUA Credit Union Locator (https://mapping.ncua.gov). Share that link and offer to search community banks or MDIs in the meantime.
+
+BUREAU-SPECIFIC LENDER RECOMMENDATION RULE:
+Always connect lender recommendations to the client's bureau profile. Community banks and credit unions often pull TransUnion or Equifax rather than Experian — if the client's TransUnion score is stronger than their Experian score say: "Credit unions in this area typically pull TransUnion — your TransUnion score of [score] is your strongest bureau right now, which works in your favor here."
+
+MDI & CDFI PRIORITY RULE:
+When the client's profile shows thin credit history, lower scores, or they are a minority-owned business, prioritize MDI and CDFI results in your presentation and explain why: "I'm showing you Minority Depository Institutions and Community Development Financial Institutions first — these lenders have mandates to serve underbanked communities and typically have more flexible underwriting criteria than conventional banks."
+
+CONTACT PREPARATION RULE:
+After presenting results, always offer to help prepare for the call: "Would you like me to help you prepare what to say when you call [lender name]? I can walk you through what information to have ready and how to present your credit profile in the strongest light."
+
+=============================================================
+FUNDING MARKETPLACE TOOL (search_funding_marketplace) — SCAFFOLD
+=============================================================
+
+You also have a search_funding_marketplace tool that will eventually search 500+ lenders via the Lendflow marketplace. Until LENDFLOW_ENABLED is true, this tool returns a placeholder. You can call it when a client asks about pre-qualification or marketplace funding, and report the placeholder back conversationally — e.g. "The marketplace integration is rolling out soon. In the meantime I can search for local lenders in your state right now using the FDIC database — want me to do that?"
+=== END LIVE LENDER SEARCH RULES ===`;
 
     // Build message array
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
@@ -1017,6 +1075,55 @@ Always identify the document type and bureau in your response.`,
                 required: ["updates"]
               }
             }
+          },
+          {
+            type: "function",
+            function: {
+              name: "search_regional_lenders",
+              description: "Search the live FDIC institution database for real banks, savings institutions, MDIs (Minority Depository Institutions), and CDFI-proxy community banks in a given state and optional city. Use this whenever the client asks to find, locate, or connect with specific lenders or financial institutions. Returns up to 10 institutions with name, location, phone (when available), website, type, asset size, and MDI/community-bank flags.",
+              parameters: {
+                type: "object",
+                properties: {
+                  state: {
+                    type: "string",
+                    description: "Two-letter US state code, e.g. 'GA' or 'TX'. Required."
+                  },
+                  city: {
+                    type: "string",
+                    description: "Optional city name. The search will auto-broaden to the full state if no city matches."
+                  },
+                  lender_type: {
+                    type: "string",
+                    enum: ["community_bank", "credit_union", "mdi", "cdfi", "all"],
+                    description: "Optional lender type filter. Defaults to 'all'. Use 'credit_union' to surface NCUA guidance — the FDIC database does not include credit unions."
+                  },
+                  min_score: {
+                    type: "number",
+                    description: "Optional client's strongest bureau score, used by Paige to flavor recommendation language. Not used as a hard filter."
+                  }
+                },
+                required: ["state"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "search_funding_marketplace",
+              description: "Search the Lendflow funding marketplace for pre-qualified lender matches based on client funding profile. Currently returns a placeholder until the Lendflow integration goes live (gated by LENDFLOW_ENABLED env var). Call this when the client asks about pre-qualification, marketplace funding, or wants to compare 500+ lenders at once.",
+              parameters: {
+                type: "object",
+                properties: {
+                  funding_amount: { type: "number", description: "Requested funding amount in USD." },
+                  time_in_business_months: { type: "number", description: "Time in business in months." },
+                  annual_revenue: { type: "number", description: "Annual revenue in USD." },
+                  credit_score: { type: "number", description: "Client's primary FICO score." },
+                  state: { type: "string", description: "Two-letter US state code." },
+                  funding_purpose: { type: "string", description: "Use of funds, e.g. 'working capital', 'equipment', 'expansion'." }
+                },
+                required: ["funding_amount"]
+              }
+            }
           }
         ],
         tool_choice: "auto",
@@ -1115,6 +1222,86 @@ Always identify the document type and bureau in your response.`,
           }
         } else if (tc.function.name === "web_fetch") {
           toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ note: "Web fetch not executed in this flow" }) });
+        } else if (tc.function.name === "search_regional_lenders") {
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const lrResponse = await fetch(`${supabaseUrl}/functions/v1/search-local-lenders`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${supabaseServiceKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                state: args.state,
+                city: args.city,
+                lenderType: args.lender_type || "all",
+              }),
+            });
+            const lrBody = await lrResponse.json();
+
+            // Trim to top 10 and only the fields Paige needs to present results conversationally
+            const trimmed = (lrBody.results || []).slice(0, 10).map((r: any) => ({
+              name: r.name,
+              type: r.type,
+              city: r.city,
+              state: r.state,
+              address: r.address,
+              zip: r.zip,
+              phone: null, // FDIC dataset does not return phone numbers; client should call for current contact
+              website: r.website || null,
+              is_minority_depository: r.is_minority_depository,
+              mdi_description: r.mdi_description,
+              is_community_bank: r.is_community_bank,
+              asset_size_thousands: r.asset_size,
+              asset_size_category:
+                r.asset_size == null ? null
+                : r.asset_size < 300_000 ? "small"
+                : r.asset_size < 10_000_000 ? "mid-size"
+                : r.asset_size < 100_000_000 ? "regional"
+                : "large/national",
+              office_count: r.office_count,
+              fdic_cert: r.fdic_cert,
+              bureau_preference: r.bureauPreference || null,
+            }));
+
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({
+                count: trimmed.length,
+                broadened: lrBody.broadened || false,
+                searched_city: lrBody.searchedCity || null,
+                searched_state: args.state,
+                lender_type: args.lender_type || "all",
+                credit_union_note: lrBody.creditUnionNote || null,
+                lenders: trimmed,
+                note: trimmed.length === 0
+                  ? "No lenders matched this query. Suggest neighboring state, broader type, or NCUA for credit unions."
+                  : "Present these conversationally with the format from your system prompt. Tie each pick back to the client's bureau profile.",
+              }),
+            });
+          } catch (err) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
+            });
+          }
+        } else if (tc.function.name === "search_funding_marketplace") {
+          // Scaffold — not wired to Lendflow yet. Activate by setting LENDFLOW_ENABLED=true and
+          // implementing the real Lendflow API call inside the `if (lendflowEnabled)` branch.
+          const lendflowEnabled = (Deno.env.get("LENDFLOW_ENABLED") || "").toLowerCase() === "true";
+          let payload: any;
+          if (!lendflowEnabled) {
+            payload = {
+              status: "coming_soon",
+              message: "Lendflow marketplace integration coming soon — I will be able to search 500 plus lenders and pre-qualify you instantly once this is live.",
+            };
+          } else {
+            // TODO: real Lendflow API call goes here once credentials are configured
+            payload = {
+              status: "coming_soon",
+              message: "Lendflow marketplace integration is enabled but not yet implemented. Falling back to the placeholder.",
+            };
+          }
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(payload) });
         }
       }
 
