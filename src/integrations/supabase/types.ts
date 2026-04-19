@@ -3601,52 +3601,118 @@ export type Database = {
       }
       lender_bureau_preferences: {
         Row: {
+          application_url: string | null
+          business_credit_bureaus: string[] | null
           confidence_level: string
           confidence_source: string
           created_at: string
           fdic_cert: string | null
+          funding_speed: string | null
           geographic_scope: string
           id: string
           institution_name: string
           institution_type: string
+          interest_rate_range: string | null
+          is_active: boolean | null
+          is_sba_approved: boolean | null
+          max_loan_amount: number | null
+          min_annual_revenue: number | null
+          min_credit_score: number | null
+          min_loan_amount: number | null
+          min_time_in_business_months: number | null
           ncua_charter: string | null
           notes: string | null
+          personal_credit_impact: string | null
           primary_bureau: string
+          product_category: string | null
+          product_subcategory: string | null
+          requires_collateral: boolean | null
+          requires_personal_guarantee: boolean | null
+          sba_preferred_lender: boolean | null
           secondary_bureau: string | null
+          serves_bad_credit: boolean | null
+          serves_minority_owned: boolean | null
+          serves_startups: boolean | null
+          serves_veterans: boolean | null
+          serves_women_owned: boolean | null
           states_applicable: string[] | null
           updated_at: string
           updated_by: string | null
         }
         Insert: {
+          application_url?: string | null
+          business_credit_bureaus?: string[] | null
           confidence_level?: string
           confidence_source?: string
           created_at?: string
           fdic_cert?: string | null
+          funding_speed?: string | null
           geographic_scope?: string
           id?: string
           institution_name: string
           institution_type?: string
+          interest_rate_range?: string | null
+          is_active?: boolean | null
+          is_sba_approved?: boolean | null
+          max_loan_amount?: number | null
+          min_annual_revenue?: number | null
+          min_credit_score?: number | null
+          min_loan_amount?: number | null
+          min_time_in_business_months?: number | null
           ncua_charter?: string | null
           notes?: string | null
+          personal_credit_impact?: string | null
           primary_bureau?: string
+          product_category?: string | null
+          product_subcategory?: string | null
+          requires_collateral?: boolean | null
+          requires_personal_guarantee?: boolean | null
+          sba_preferred_lender?: boolean | null
           secondary_bureau?: string | null
+          serves_bad_credit?: boolean | null
+          serves_minority_owned?: boolean | null
+          serves_startups?: boolean | null
+          serves_veterans?: boolean | null
+          serves_women_owned?: boolean | null
           states_applicable?: string[] | null
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
+          application_url?: string | null
+          business_credit_bureaus?: string[] | null
           confidence_level?: string
           confidence_source?: string
           created_at?: string
           fdic_cert?: string | null
+          funding_speed?: string | null
           geographic_scope?: string
           id?: string
           institution_name?: string
           institution_type?: string
+          interest_rate_range?: string | null
+          is_active?: boolean | null
+          is_sba_approved?: boolean | null
+          max_loan_amount?: number | null
+          min_annual_revenue?: number | null
+          min_credit_score?: number | null
+          min_loan_amount?: number | null
+          min_time_in_business_months?: number | null
           ncua_charter?: string | null
           notes?: string | null
+          personal_credit_impact?: string | null
           primary_bureau?: string
+          product_category?: string | null
+          product_subcategory?: string | null
+          requires_collateral?: boolean | null
+          requires_personal_guarantee?: boolean | null
+          sba_preferred_lender?: boolean | null
           secondary_bureau?: string | null
+          serves_bad_credit?: boolean | null
+          serves_minority_owned?: boolean | null
+          serves_startups?: boolean | null
+          serves_veterans?: boolean | null
+          serves_women_owned?: boolean | null
           states_applicable?: string[] | null
           updated_at?: string
           updated_by?: string | null
