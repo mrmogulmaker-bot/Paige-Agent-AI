@@ -34,10 +34,10 @@ const personas = [
   {
     icon: Users,
     badge: "Pro & Coach Tier",
-    title: "The Credit Coach",
+    title: "The Funding Coach",
     subtitle: "Managing multiple clients",
     description:
-      "You're a credit professional, financial coach, or fractional CFO managing a book of clients. Paige gives you a full client CRM, dispute pipeline, compliance audit trail, and white-glove reporting — all FCRA/CROA aligned.",
+      "You're a funding professional, financial coach, or fractional CFO managing a book of clients. Paige gives you a full client CRM, readiness pipeline, compliance audit trail, and white-glove reporting — all FCRA/CROA/GLBA aligned.",
     bullets: [
       "Multi-client dashboard & CRM",
       "Compliance-logged audit trails",
