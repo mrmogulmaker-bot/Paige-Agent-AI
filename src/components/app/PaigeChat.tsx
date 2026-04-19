@@ -19,6 +19,7 @@ import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { getUserClock } from "@/lib/userClock";
 
 type Message = {
   role: "user" | "assistant";
