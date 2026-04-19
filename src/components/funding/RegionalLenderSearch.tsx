@@ -348,17 +348,86 @@ export function RegionalLenderSearch({
             const colorClass = TYPE_COLORS[lender.type] || "";
             const fullAddress = [lender.address, lender.city, `${lender.state} ${lender.zip}`].filter(Boolean).join(", ");
             const bp = lender.bureauPreference;
+            const assetSize = formatAssetSize(lender.asset_size);
+            const yearsActive = yearsInBusiness(lender.established_date);
+
+            // Profile chips: small "this institution is..." facts surfaced from FDIC data
+            const profileChips: { label: string; tone: "info" | "highlight" }[] = [];
+            if (lender.is_minority_depository && lender.mdi_description) {
+              profileChips.push({ label: `MDI: ${lender.mdi_description}`, tone: "highlight" });
+            }
+            if (lender.is_community_bank && lender.type !== "Community Bank") {
+              profileChips.push({ label: "Community Bank", tone: "info" });
+            }
+            if (lender.has_trust_powers) profileChips.push({ label: "Trust Powers", tone: "info" });
+            if (lender.is_mutual) profileChips.push({ label: "Mutual", tone: "info" });
 
             return (
-              <div key={`${lender.referenceId}-${i}`} className="p-3 rounded-lg bg-muted/30 border border-border">
+              <div key={`${lender.fdic_cert}-${i}`} className="p-3 rounded-lg bg-muted/30 border border-border">
                 <div className="flex items-start gap-3">
                   <Icon className="w-5 h-5 text-accent mt-0.5 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-foreground">{lender.name}</span>
                       <Badge variant="outline" className={`text-xs ${colorClass}`}>{lender.type}</Badge>
+                      {profileChips.map((chip) => (
+                        <Badge
+                          key={chip.label}
+                          variant="outline"
+                          className={`text-[10px] ${
+                            chip.tone === "highlight"
+                              ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                              : "bg-muted text-muted-foreground border-border"
+                          }`}
+                        >
+                          {chip.label}
+                        </Badge>
+                      ))}
                     </div>
-                    {fullAddress && <p className="text-xs text-muted-foreground mt-1">{fullAddress}</p>}
+                    {fullAddress && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {fullAddress}
+                        {lender.county && <span className="text-muted-foreground/60"> · {lender.county} County</span>}
+                      </p>
+                    )}
+
+                    {/* FDIC stats row */}
+                    {(assetSize || lender.office_count != null || yearsActive != null || lender.return_on_assets != null) && (
+                      <div className="flex items-center gap-3 mt-1.5 flex-wrap text-xs text-muted-foreground">
+                        {assetSize && (
+                          <span title="Total assets (FDIC call report)">
+                            Assets: <span className="text-foreground font-medium">{assetSize}</span>
+                          </span>
+                        )}
+                        {lender.office_count != null && lender.office_count > 0 && (
+                          <span>
+                            Branches: <span className="text-foreground font-medium">{lender.office_count}</span>
+                          </span>
+                        )}
+                        {yearsActive != null && yearsActive > 0 && (
+                          <span>
+                            Est. <span className="text-foreground font-medium">{yearsActive}y</span> ago
+                          </span>
+                        )}
+                        {lender.return_on_assets != null && (
+                          <span title="Return on Assets — health indicator">
+                            ROA:{" "}
+                            <span className={`font-medium ${lender.return_on_assets >= 1 ? "text-emerald-400" : "text-foreground"}`}>
+                              {lender.return_on_assets.toFixed(2)}%
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Charter / specialization line */}
+                    {(lender.bank_class_desc || lender.specialization) && (
+                      <p className="text-[11px] text-muted-foreground/70 mt-1">
+                        {lender.bank_class_desc}
+                        {lender.bank_class_desc && lender.specialization && " · "}
+                        {lender.specialization}
+                      </p>
+                    )}
 
                     {/* Bureau preference display */}
                     {bp ? (
@@ -392,8 +461,21 @@ export function RegionalLenderSearch({
                           <Globe className="w-3 h-3" /> Website
                         </a>
                       )}
-                      {lender.referenceId && (
-                        <span className="text-xs text-muted-foreground/60">CERT #{lender.referenceId}</span>
+                      {lender.latitude != null && lender.longitude != null && (
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${lender.latitude},${lender.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                        >
+                          <MapPin className="w-3 h-3" /> Map
+                        </a>
+                      )}
+                      {lender.fdic_cert && (
+                        <span className="text-[11px] text-muted-foreground/60">CERT #{lender.fdic_cert}</span>
+                      )}
+                      {lender.fed_rssd && (
+                        <span className="text-[11px] text-muted-foreground/60">RSSD #{lender.fed_rssd}</span>
                       )}
                     </div>
                   </div>
