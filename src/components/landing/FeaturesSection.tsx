@@ -11,37 +11,37 @@ import {
 const features = [
   {
     icon: Brain,
-    title: "Funding Readiness Score",
+    title: "Real-Time Readiness Score",
     description:
-      "0–100 composite metric combining personal FICO, business credit, time in business, revenue, utilization, and document completeness. Your north star for capital access.",
+      "One number tells you exactly where every client stands for capital — built from FICO, business bureaus, utilization, revenue, time in business, and doc completeness. Updates the moment data changes.",
     accent: true,
   },
   {
     icon: DollarSign,
-    title: "Funding Product Matrix",
+    title: "500+ Lender Match Engine",
     description:
-      "See which lender products you qualify for today — SBA 7(a), term loans, lines of credit, MCAs, equipment financing — with approximate amounts and APR ranges.",
+      "Live matching across SBA, banks, credit unions, CDFIs, MCAs, and equipment lenders — with bureau-aware filtering so you never waste a pull on a lender that won't say yes.",
     accent: false,
   },
   {
     icon: FileText,
-    title: "Credit → Funding Translator",
+    title: "Credit → Capital Translator",
     description:
-      "Paige explains every personal and business credit factor in funding terms. \"Your DTI of 42% reduces SBA qualification by ~$75K\" — not vague score talk.",
+      "\"Your 68% utilization is costing $75K of SBA capacity.\" Paige speaks dollars, not scores — every factor mapped to the exact funding it unlocks or blocks.",
     accent: false,
   },
   {
     icon: GraduationCap,
-    title: "Document Prep Assistant",
+    title: "Lender-Ready Doc Packets",
     description:
-      "Compile tax returns, P&L, balance sheet, bank statements, and entity docs into a lender-ready packet. No more last-minute application scrambles.",
+      "Tax returns, P&L, balance sheet, bank statements, entity docs — compiled, validated, and packaged in the format each lender actually wants. Zero last-minute scrambles.",
     accent: false,
   },
   {
     icon: Mic,
-    title: "Voice Chat with Paige",
+    title: "Paige in Full Agent Mode",
     description:
-      "Talk to your AI funding analyst hands-free. Ask about eligibility, lender matches, or document prep — all by voice.",
+      "Voice or text. She drafts disputes, queues lender outreach, schedules paydowns, and pre-fills applications — your coach approves, Paige executes.",
     accent: false,
   },
 ];
@@ -52,14 +52,14 @@ export function FeaturesSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <Badge className="mb-4 bg-accent/10 text-accent border-accent/20">
-            The Arsenal
+            The Stack
           </Badge>
           <h2 className="text-4xl lg:text-5xl font-bold mb-4">
-            Everything You Need to{" "}
-            <span className="text-accent font-extrabold">Get Funded</span>
+            Built to Move Money,{" "}
+            <span className="text-accent font-extrabold">Not Just Scores</span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Paige doesn't track scores — she translates them into capital.
+            Other platforms show you a credit number. Paige tells you the lender, the product, and the move that gets you funded this quarter.
           </p>
         </div>
 

@@ -6,15 +6,15 @@ import { useState, useEffect } from "react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 
 const chatLines = [
-  { role: "user" as const, text: "Where do I stand for SBA funding?" },
+  { role: "user" as const, text: "Am I fundable right now?" },
   {
     role: "assistant" as const,
-    text: "Your Funding Readiness Score is 62/100. Personal FICO 678, business credit on file with D&B. Lenders see utilization at 68% — that pulls your SBA qualification down by roughly $75K. Pay your highest revolver to 25% utilization and you re-open three additional product matches.",
+    text: "Readiness Score: 62/100. You're sitting on $40K in line-of-credit access today. One move — drop your top revolver from 68% to 25% utilization — unlocks SBA 7(a) up to $135K across 14 lenders. Want me to draft the paydown plan?",
   },
-  { role: "user" as const, text: "What can I qualify for today?" },
+  { role: "user" as const, text: "Yes, and queue the lender outreach." },
   {
     role: "assistant" as const,
-    text: "Today: business line of credit up to $40K, equipment financing up to $85K, and revenue-based financing up to 1.2x monthly revenue. SBA 7(a) is one move away — drop utilization below 30% and projected ceiling moves to $135K across 14 lenders.",
+    text: "Done. Paydown plan sent to your tasks, three lender intros drafted for your coach to approve. I'll re-score you the moment your next bureau pull lands.",
   },
 ];
 
@@ -45,33 +45,33 @@ export function HeroSection() {
           {/* Left */}
           <div className="space-y-8 animate-fade-in">
             <Badge className="bg-gold/10 text-gold-dark border-gold/20">
-              Built by Mr. Mogul Maker
+              The AI Funding Coach
             </Badge>
 
             <h1 className="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]">
-              Know What Lenders See.{" "}
-              <span className="text-accent">Get Funded Faster.</span>
+              Get Your Clients{" "}
+              <span className="text-accent">Funded.</span> Compliantly.
             </h1>
 
             <p className="text-xl text-muted-foreground leading-relaxed max-w-lg">
-              Paige is your AI-powered funding intelligence platform. She
-              translates your personal and business credit into the funding
-              products you qualify for today — and what's one move away.
+              Paige reads every credit file, scores funding readiness in real time,
+              and matches you to the lenders that say yes today — across 500+
+              banks, credit unions, CDFIs, and SBA lenders.
             </p>
 
             {/* Social proof stats */}
             <div className="grid grid-cols-3 gap-6 py-4 border-t border-border">
               <div>
-                <div className="text-2xl font-bold text-foreground">$1.2M+</div>
-                <div className="text-xs text-muted-foreground">Funding Raised</div>
+                <div className="text-2xl font-bold text-foreground">500+</div>
+                <div className="text-xs text-muted-foreground">Lenders in Network</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-foreground">720+</div>
-                <div className="text-xs text-muted-foreground">Avg Score in 6mo</div>
+                <div className="text-2xl font-bold text-foreground">$1.2M+</div>
+                <div className="text-xs text-muted-foreground">Funded for Clients</div>
               </div>
               <div>
                 <div className="text-2xl font-bold text-foreground">89%</div>
-                <div className="text-xs text-muted-foreground">Success Rate</div>
+                <div className="text-xs text-muted-foreground">Match-to-Approval</div>
               </div>
             </div>
 
@@ -81,7 +81,7 @@ export function HeroSection() {
                 className="bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold"
                 onClick={() => navigate("/auth?mode=signup")}
               >
-                Get Funding-Ready — Free
+                Start Free — Score Your Readiness
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <Button
@@ -92,9 +92,13 @@ export function HeroSection() {
                   document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" });
                 }}
               >
-                See How It Works
+                See Paige in Action
               </Button>
             </div>
+
+            <p className="text-xs text-muted-foreground">
+              No credit card. FCRA & CROA compliant. Cancel anytime.
+            </p>
           </div>
 
           {/* Right — animated chat demo */}
