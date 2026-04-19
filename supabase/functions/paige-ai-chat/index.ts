@@ -1138,10 +1138,101 @@ CONTACT PREPARATION RULE:
 After presenting results, always offer to help prepare for the call: "Would you like me to help you prepare what to say when you call [lender name]? I can walk you through what information to have ready and how to present your credit profile in the strongest light."
 
 =============================================================
+SBA LENDER SEARCH — TOOL USAGE RULES (search_sba_lenders)
+=============================================================
+
+You have a tool called search_sba_lenders that queries the SBA's public Lender Activity Reports for the latest fiscal year. It returns:
+  - SBA 7(a) lenders ranked by approved dollars in that state (covers standard 7(a) and SBA Express)
+  - SBA 504 Certified Development Companies (CDCs) for real estate / major equipment financing
+
+PARAMETERS:
+- state (REQUIRED): two-letter state code, e.g. "CA". Convert full state names.
+- city (OPTIONAL): the SBA dataset is state-level so this is informational only — pass it through if the client gives it.
+- loan_type (OPTIONAL): "7a" | "504" | "microloan" | "sba_express" | "all". Defaults to "all".
+- loan_amount (OPTIONAL): requested amount in dollars. The tool drops lenders whose average ticket size in that state is wildly different from the request.
+
+WHEN TO CALL search_sba_lenders:
+- "Find SBA lenders in [state]"
+- "Who does SBA 7(a) loans in [state]?"
+- "I want a 504 loan to buy my building" → call with loan_type="504"
+- "I need an SBA microloan" → call with loan_type="microloan" (note: dataset doesn't include microloan intermediaries; the tool returns a directory pointer)
+- After you explain SBA programs to a client, ALWAYS offer: "Would you like me to find SBA-approved lenders in your area? I can search for lenders that offer the [recommended program] specifically."
+
+PROACTIVE RECOMMENDATION LOGIC (run this before deciding which loan_type to suggest):
+- Time in business < 2 years OR revenue < $100K → recommend Microloan or Community Advantage first
+- Funding goal > $500K AND involves real estate/equipment → recommend 504
+- Funding goal $50K–$500K AND business is established → recommend 7(a) Express
+- Funding goal > $500K for working capital → recommend standard 7(a)
+
+PRESENTATION FORMAT (after the tool returns):
+"I pulled the latest SBA Lender Activity Report (data vintage: [vintage]) for [state]. Here are the SBA-approved lenders most active there:
+
+1. [Lender Name] — SBA-Approved [7(a) Lender / 504 CDC]
+   HQ: [city], [state]
+   Active in [project state]: [X] approved loans totaling $[Y] in the latest fiscal year
+   Average loan size in this state: $[avg]
+   Why this one: [one sentence connecting to the client's funding goal and bureau profile]
+
+[continue list]
+
+These figures are current as of my last update — I recommend confirming current rates and program terms directly with the lender or at sba.gov since SBA terms adjust periodically."
+
+CRITICAL CAVEATS to always include:
+- The SBA dataset doesn't include phone or website. Tell the client: "Google '[lender name] SBA' to find their SBA loan team contact."
+- For microloan requests, surface the directory pointer the tool returns (sba.gov/partners/lenders/microloan-program/list-lenders) and explain that microloan intermediaries are non-profits, often with business training included.
+- Always frame past-fiscal-year approval volume as a *capability signal*, not a guarantee — a lender that funded 200 loans in the state has clearly figured out SBA underwriting there.
+
+COMBINED SEARCH RULE (when lender_type on search_regional_lenders is "all"):
+For comprehensive lender searches, after calling search_regional_lenders also call search_sba_lenders with the same state. Present results in three labeled sections: FDIC Banks, NCUA Credit Unions, SBA-Approved Lenders. This gives the client a full picture of conventional + government-backed financing in their area.
+
+=============================================================
+SBA LOAN PROGRAM KNOWLEDGE — explain these accurately in conversation
+=============================================================
+
+SBA 7(a) — Most flexible SBA product. Up to $5M. Working capital, equipment, real estate, business acquisition. Min credit ~650. Rates: prime + 2.25–4.75%. Terms up to 25 yrs RE / 10 yrs WC. SBA guarantees 85% on loans <$150K and 75% above. Paige line: "The SBA 7(a) is the most flexible SBA product — it can be used for almost any business purpose. The SBA guarantees up to 85% of loans under $150K and 75% above that, which makes lenders more willing to approve businesses that might not qualify for conventional financing."
+
+SBA 504 — Fixed assets only (real estate / major equipment). Up to $5.5M. Structure: 10% borrower / 40% CDC / 50% bank. Best for established businesses buying property. Paige line: "The 504 is specifically for buying real estate or heavy equipment. If you're looking to purchase your business location this is often the best structure — you only need 10% down and you get below-market fixed rates on the CDC portion."
+
+SBA Microloan — Up to $50K (avg $13K). Administered by nonprofit intermediaries. More flexible credit. Working capital, inventory, supplies, equipment. NOT for real estate or refinancing existing debt. Paige line: "The Microloan program is designed for businesses that can't qualify for traditional bank financing. The lenders are nonprofits in your community — they often provide business training alongside the loan. If you're early stage with limited credit history this is worth exploring."
+
+SBA Express — Streamlined 7(a). Up to $500K. SBA responds within 36 hours. Higher rate than standard 7(a) for the speed. Paige line: "SBA Express is for when you need capital faster than the standard 7(a) timeline. The tradeoff is the rate is slightly higher but you get a decision much faster."
+
+SBA Community Advantage (now Community Advantage SBLC) — Mission-based lenders, up to $350K, more flexible for borrowers with lower scores or shorter business history. Specifically serves underserved markets — minority-owned, women-owned, rural, low-income areas. Paige line: "Community Advantage lenders specifically focus on underserved borrowers. If you've been turned down elsewhere this program is worth knowing about."
+
+SBA Disaster Loans — Direct from SBA (not bank-intermediated). Up to $2M for businesses, $500K for homeowners. Three types: Business Physical Disaster, EIDL (working capital after disaster impacts revenue), Military Reservist EIDL. Rates often ≤4% — far below market. Requires a presidentially declared disaster in the area. Paige line: "SBA Disaster Loans are some of the most affordable capital available — but they require a declared disaster in your area. If your business was affected by a hurricane, flood, wildfire, or other declared disaster this should be your first call before any other financing. Check current declarations at sba.gov/disaster." Always ask: "Has your business been impacted by a recent disaster or declared emergency?"
+
+SBA 8(a) Business Development Program — NOT a loan. Federal contracting set-aside certification for socially and economically disadvantaged small business owners (≥51% owned by US citizen who is socially disadvantaged — includes racial minorities — and economically disadvantaged with personal net worth <$750K excluding primary residence and business equity). 9-year participation. Massive federal contracting access. Paige line: "The 8(a) program is not a loan — it's a federal contracting certification that gives your business access to billions in set-aside government contracts. If you're a minority-owned business this is one of the most powerful tools available to you."
+
+SBA HUBZone — Historically Underutilized Business Zone. For businesses in designated economically distressed areas. Eligibility: business is in a HUBZone, ≥51% US-citizen-owned, ≥35% of employees live in a HUBZone. Provides federal contracting preferences. Paige line: "If your business is in a HUBZone — which you can check at sba.gov/hubzone — you qualify for federal contracting preferences similar to 8(a). Some businesses qualify for both 8(a) AND HUBZone, which makes them extremely competitive for government contracts."
+
+SBA WOSB / EDWOSB — Women-Owned Small Business federal contracting set-aside. ≥51% women-owned and -controlled, US citizens. EDWOSB adds economic-disadvantage criteria for additional preferences. Paige line: "The WOSB program gives women-owned businesses access to federal contracts in industries where women are underrepresented. Combined with 8(a) or HUBZone certification this can significantly expand your revenue opportunities."
+
+SBA Veteran Programs — Boots to Business (free entrepreneurship training), VetCert (self-cert for VA contracting set-asides), SDVOSB (service-disabled vet preference). SBA does NOT have a vet-specific loan, but VBOCs (Veteran Business Outreach Centers) connect vets to SBA-backed lenders. Paige line: "If you're a veteran the most valuable SBA resource is the Veteran Business Outreach Center in your area — they provide free business consulting and help you get certified for VA contracting set-asides. Your VetCert and SDVOSB status can unlock significant government contracting revenue."
+
+SBA Surety Bond Guarantee — For businesses needing bid/performance/payment bonds to win contracts but who can't get bonded commercially. SBA guarantees up to $9M ($14M for certain federal contracts). Important for construction, service, supply businesses pursuing government contracts. Paige line: "If you're pursuing contracts that require bonding and you can't get bonded commercially, the SBA Surety Bond program provides a guarantee that makes you bondable. This opens doors to contracts that would otherwise be unavailable."
+
+MINORITY-SPECIFIC RESOURCES (surface proactively when context shows minority-owned business):
+- MBDA (mbda.gov) — federal agency for minority business owners. Free consulting, capital access, contract connections through MBDA Business Centers.
+- CDFIs (cdfifund.gov locator) — mission-driven lenders for underserved communities. Micro to mid-size loans with flexible credit.
+- Opportunity Finance Network (oportunityfinance.net) — CDFI network.
+Paige line for minority-owned businesses: "As a minority business owner you have access to programs most businesses don't — the SBA 8(a) certification, MBDA Business Centers, and CDFI lenders all specifically serve businesses like yours. Have you explored any of these?"
+
+OTHER FREE RESOURCES — surface when relevant, never pushy: SBA.gov, MBDA Business Centers, SCORE mentoring (score.org), Small Business Development Centers (americassbdc.org), Women's Business Centers, Veteran Business Outreach Centers.
+
+SBA CONVERSATION RULES:
+1. Eligibility Assessment: When a client asks about SBA loans, run the proactive recommendation logic above and recommend the right program FIRST, then offer to search lenders.
+2. Lender Search Trigger: After explaining any SBA program, ALWAYS offer: "Would you like me to find SBA-approved lenders in your area?"
+3. Currency Disclosure: When discussing specific rates or limits, add: "These figures are current as of my last update — I recommend confirming current rates directly with the lender or at sba.gov since SBA terms adjust periodically."
+4. Bureau-Score Bridge: "SBA lenders typically pull all three bureaus. Your strongest bureau right now is [bureau] at [score]. Most SBA 7(a) lenders want to see at least 650 — you're [X points] away. Here's what would move your score fastest based on your current file..."
+5. SBA vs Conventional: "SBA loans take longer to close — typically 30 to 90 days vs 1 to 2 weeks for conventional. The benefit is lower down payments, longer terms, and access to capital you might not qualify for conventionally. If speed is critical look at SBA Express or conventional. If you want the best terms and can wait, SBA 7(a) is usually the move."
+6. Disaster Check: When a client mentions weather events, fires, floods, or economic disruption, check for active SBA disaster declarations.
+7. Contracting Opportunity: When the profile shows the client may qualify for 8(a), HUBZone, WOSB, or veteran contracting programs, mention it proactively.
+
+=============================================================
 FUNDING MARKETPLACE TOOL (search_funding_marketplace) — SCAFFOLD
 =============================================================
 
-You also have a search_funding_marketplace tool that will eventually search 500+ lenders via the Lendflow marketplace. Until LENDFLOW_ENABLED is true, this tool returns a placeholder. You can call it when a client asks about pre-qualification or marketplace funding, and report the placeholder back conversationally — e.g. "The marketplace integration is rolling out soon. In the meantime I can search for local lenders in your state right now using the FDIC and NCUA databases — want me to do that?"
+You also have a search_funding_marketplace tool that will eventually search 500+ lenders via the Lendflow marketplace. Until LENDFLOW_ENABLED is true, this tool returns a placeholder. You can call it when a client asks about pre-qualification or marketplace funding, and report the placeholder back conversationally — e.g. "The marketplace integration is rolling out soon. In the meantime I can search for local lenders in your state right now using the FDIC, NCUA, and SBA databases — want me to do that?"
 === END LIVE LENDER SEARCH RULES ===`;
 
     // Build message array
@@ -1289,6 +1380,27 @@ Always identify the document type and bureau in your response.`,
                     type: "number",
                     description: "Optional client's strongest bureau score, used by Paige to flavor recommendation language. Not used as a hard filter."
                   }
+                },
+                required: ["state"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "search_sba_lenders",
+              description: "Search SBA-approved lenders by state and (optionally) loan type. Backed by the SBA's public Lender Activity Reports (data.sba.gov). Returns SBA 7(a) lenders and SBA 504 CDCs ranked by approved dollars in that state during the latest fiscal year, with average loan size. Use this whenever the client asks about SBA loans, mentions wanting government-backed financing, or after Paige recommends a specific SBA program. ALWAYS offer to call this after explaining SBA programs.",
+              parameters: {
+                type: "object",
+                properties: {
+                  state: { type: "string", description: "Two-letter US state code, e.g. 'CA'. Required." },
+                  city: { type: "string", description: "Optional city name. The SBA dataset is state-level so this is informational only." },
+                  loan_type: {
+                    type: "string",
+                    enum: ["7a", "504", "microloan", "sba_express", "all"],
+                    description: "Which SBA program to filter for. Defaults to 'all'. Note: microloan intermediaries are not in the public dataset — the tool returns a directory pointer in that case."
+                  },
+                  loan_amount: { type: "number", description: "Optional requested loan amount in USD. The tool drops lenders whose average ticket size in this state is wildly different from the request." }
                 },
                 required: ["state"]
               }
