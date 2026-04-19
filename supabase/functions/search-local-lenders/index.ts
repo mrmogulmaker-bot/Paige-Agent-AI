@@ -31,42 +31,49 @@ interface LenderResult {
   // Identity
   name: string;
   type: LenderTypeLabel;
-  fdic_cert: string;
-  fed_rssd: string | null;
+  source: "FDIC" | "NCUA";
+  fdic_cert?: string;
+  fed_rssd?: string | null;
+  ncua_charter_number?: string;          // NCUA CU_NUMBER
   // Location
   address: string;
-  address2: string | null;
+  address2?: string | null;
   city: string;
   state: string;
   zip: string;
-  county: string | null;
+  county?: string | null;
   latitude: number | null;
   longitude: number | null;
   // Web
   website: string;
-  // Charter & class
-  bank_class: string | null;          // BKCLASS: N, NM, SM, SB, SA, OI
-  bank_class_desc: string | null;     // human-readable charter
-  specialization: string | null;      // SPECGRPN
-  specialization_code: number | null; // SPECGRP
-  is_community_bank: boolean;         // CB == "1"
-  is_minority_depository: boolean;    // MDI_STATUS_CODE > 0
-  mdi_description: string | null;     // MDI_STATUS_DESC
-  has_trust_powers: boolean;          // TRUST != "00"
-  is_mutual: boolean;                 // MUTUAL == "1"
-  is_subchapter_s: boolean;           // SUBCHAPS == "1"
+  phone?: string | null;
+  // Bank-only — charter & class
+  bank_class?: string | null;
+  bank_class_desc?: string | null;
+  specialization?: string | null;
+  specialization_code?: number | null;
+  is_community_bank?: boolean;
+  has_trust_powers?: boolean;
+  is_mutual?: boolean;
+  is_subchapter_s?: boolean;
+  // Credit-union-only — charter & membership
+  cu_charter_type?: "Federal" | "State" | string | null;  // FCU vs FISCU
+  cu_membership_type?: "community" | "SEG/employer-based" | "unknown";
+  cu_member_count?: number | null;
+  // Shared — institution profile
+  is_minority_depository: boolean;
+  mdi_description?: string | null;
   // Financial health
-  asset_size: number | null;          // ASSET (in $ thousands)
-  deposits: number | null;            // DEP (in $ thousands)
-  net_income: number | null;          // NETINC (in $ thousands)
-  return_on_assets: number | null;    // ROA (%)
-  return_on_equity: number | null;    // ROE (%)
+  asset_size: number | null;          // $ thousands for FDIC, $ raw for NCUA (normalized below)
+  asset_size_units: "thousands" | "dollars";
+  deposits?: number | null;
+  net_income?: number | null;
+  return_on_assets?: number | null;
+  return_on_equity?: number | null;
   // Footprint
-  office_count: number | null;        // OFFICES
-  established_date: string | null;    // ESTYMD
-  fdic_insured_date: string | null;   // INSDATE
-  // Source
-  source: "FDIC";
+  office_count?: number | null;
+  established_date?: string | null;
+  fdic_insured_date?: string | null;
   // Enrichment
   bureauPreference?: {
     primary_bureau: string;
