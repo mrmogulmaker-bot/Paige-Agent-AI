@@ -54,9 +54,10 @@ export function HeroSection() {
             </h1>
 
             <p className="text-xl text-muted-foreground leading-relaxed max-w-lg">
-              Paige reads every credit file, scores funding readiness in real time,
-              and matches you to the lenders that say yes today — across 500+
-              banks, credit unions, CDFIs, and SBA lenders.
+              Paige maps your full picture the way banks actually underwrite —
+              personal credit, business formation, state filings, public presence,
+              banking, and revenue — then tells you exactly what to fix and which
+              of 500+ lenders will say yes. The things school never taught you.
             </p>
 
             {/* Social proof stats */}
