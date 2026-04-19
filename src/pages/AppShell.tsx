@@ -37,12 +37,14 @@ const AppShell = () => {
   // Show context panel on non-root /app routes
   const showContextPanel = location.pathname !== "/app" || !isMobile;
 
-  // Check if user is new and needs onboarding (respects 24h snooze)
+  // Check if user is new and needs onboarding (respects snooze + permanent dismissal).
+  // Users can browse freely — the OnboardingChecklist on the dashboard is the persistent reminder.
   useEffect(() => {
     if (!user) return;
     try {
       const snoozedUntil = Number(localStorage.getItem("onboarding_snoozed_until") || 0);
       if (snoozedUntil && Date.now() < snoozedUntil) return;
+      if (localStorage.getItem("onboarding_dismissed") === "true") return;
     } catch {}
     supabase
       .from("profiles")
