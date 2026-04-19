@@ -19,6 +19,7 @@ import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { getUserClock } from "@/lib/userClock";
 
 type Message = {
   role: "user" | "assistant";
@@ -147,6 +148,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
               messages: greetMessages,
               clientContext: contextWithSession,
               ...(clientId ? { clientId } : {}),
+              ...getUserClock(),
             }),
           }
         );
@@ -394,6 +396,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         })),
         sessionDocumentContext: getSessionDocumentContext(),
         ...(clientId ? { clientId } : {}),
+        ...getUserClock(),
         // Always include current_page even if there's no credit context block yet,
         // so Paige can still tailor responses to the section the client is viewing.
         clientContext: buildContextWithPage(contextBlock || ""),

@@ -19,6 +19,7 @@ import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { getUserClock } from "@/lib/userClock";
 
 type Message = {
   role: "user" | "assistant";
@@ -255,6 +256,7 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
         sessionDocumentContext: getSessionDocumentContext(),
         ...(clientId ? { clientId } : {}),
         ...(contextBlock ? { clientContext: contextBlock } : {}),
+        ...getUserClock(),
       };
 
       if (currentDoc) {

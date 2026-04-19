@@ -36,6 +36,11 @@ const messageSchema = z.object({
   ).optional(),
   clientId: z.string().uuid().nullable().optional(),
   clientContext: z.string().max(10000).optional(),
+  // Client-provided local clock so Paige can greet/refer to time in the
+  // user's actual timezone instead of server UTC.
+  userTime: z.string().max(64).optional(),
+  userTimezone: z.string().max(80).optional(),
+  userTimeFormatted: z.string().max(200).optional(),
 });
 
 const DOCUMENT_SOURCE_INSTRUCTION = `You are analyzing a specific PDF document that has been provided to you. You must ONLY report information that you can directly read from this document. Do not use your training data or prior knowledge to fill in account details, creditor names, balances, or scores. If you cannot read a specific piece of information from the document, state "Not visible in document" rather than providing an estimate or assumption. Every account name, balance, score, and date you report must be directly extractable from the uploaded document text.`;
@@ -193,7 +198,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, clientContext } = validatedData;
+    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, clientContext, userTime, userTimezone, userTimeFormatted } = validatedData;
 
     // === SESSION SUMMARY GENERATION MODE ===
     if (generateSessionSummary && sessionMessages && sessionMessages.length > 0) {
@@ -554,8 +559,31 @@ JSON:`;
       }
     }
 
-    const currentDateTime = new Date();
-    const dateTimeString = currentDateTime.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZoneName: 'short' });
+    // Use the client's local clock when provided so greetings + time-of-day
+    // language match what the user sees on their phone — not the server's UTC.
+    let dateTimeString: string;
+    let timezoneNote = "";
+    if (userTimeFormatted) {
+      dateTimeString = userTimeFormatted;
+      if (userTimezone) timezoneNote = ` (timezone: ${userTimezone})`;
+    } else if (userTime && userTimezone) {
+      try {
+        const userNow = new Date(userTime);
+        dateTimeString = userNow.toLocaleString('en-US', {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+          hour: 'numeric', minute: '2-digit', hour12: true,
+          timeZone: userTimezone, timeZoneName: 'short',
+        });
+        timezoneNote = ` (timezone: ${userTimezone})`;
+      } catch {
+        const fallback = new Date();
+        dateTimeString = fallback.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZoneName: 'short' });
+      }
+    } else {
+      const currentDateTime = new Date();
+      dateTimeString = currentDateTime.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZoneName: 'short' });
+      timezoneNote = " (server time — user's local timezone unavailable)";
+    }
 
     const systemPrompt = `You are Paige — an AI-powered funding intelligence analyst built for small business owners. Your purpose is to help users understand their personal and business credit profiles in the context of business funding eligibility, and to guide them toward appropriate capital sources.
 
@@ -685,9 +713,11 @@ NATURAL LANGUAGE TICS:
 - Mirror the user's energy. Short message → short reply. Long detailed question → fuller answer.
 
 =============================================================
-CURRENT DATE & TIME
+CURRENT DATE & TIME (USER'S LOCAL CLOCK)
 =============================================================
-Right now it is: ${dateTimeString}
+Right now it is: ${dateTimeString}${timezoneNote}
+
+This is the user's actual local time. Use it for greetings ("good morning", "evening"), for any "what time is it" question, and for time-sensitive recommendations (e.g. "the bureaus' phone lines are closed right now — let's draft this and send first thing tomorrow morning your time"). Never reply with UTC or server time.
 
 =============================================================
 COMPLIANCE

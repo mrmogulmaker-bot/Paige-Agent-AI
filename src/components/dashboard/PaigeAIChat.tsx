@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useConversation } from "@11labs/react";
 import { ResponseFeedback } from "@/components/chat/ResponseFeedback";
 import { useQuery } from "@tanstack/react-query";
+import { getUserClock } from "@/lib/userClock";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -166,7 +167,7 @@ export const PaigeAIChat = () => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ messages: newMessages }),
+          body: JSON.stringify({ messages: newMessages, ...getUserClock() }),
         }
       );
 
