@@ -4,9 +4,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useFundingProfile } from "@/hooks/useFundingProfile";
 import { scoreProduct, generateFundingSequence } from "@/lib/fundingMatchScoring";
 import { ProfileCompletenessPanel } from "@/components/funding/ProfileCompletenessPanel";
-import { FundingTrack } from "@/components/funding/FundingTrack";
 import { FundingSequence } from "@/components/funding/FundingSequence";
 import { RegionalLenderSearch } from "@/components/funding/RegionalLenderSearch";
+import { ProductMatchCard } from "@/components/funding/ProductMatchCard";
+import { CategoryTabs } from "@/components/funding/CategoryTabs";
 import {
   FundingGoalIntake,
   FundingGoalBanner,
@@ -19,10 +20,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, AlertTriangle, Target } from "lucide-react";
-import type { ProductMatch } from "@/lib/fundingMatchScoring";
+import { CATEGORIES, type ProductCategoryKey } from "@/lib/lenderCategories";
 import { SeparationAuditCard } from "@/components/dashboard/business-profile/SeparationAuditCard";
 import { FundingWalkthrough } from "@/components/funding/FundingWalkthrough";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 function SeparationAuditFundingBanner({ onFix }: { onFix: () => void }) {
   const [uid, setUid] = useState<string | null>(null);
@@ -38,8 +40,9 @@ export default function FundingMatches() {
   const navigate = useNavigate();
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<ProductCategoryKey | "all">("all");
 
-  // Parse funding goals from profile
+  // Parse funding goals
   const fundingGoals: FundingGoals | null = useMemo(() => {
     const fg = profile.fundingGoals;
     if (fg && typeof fg === "object" && "objective" in (fg as any)) return fg as unknown as FundingGoals;
@@ -47,13 +50,12 @@ export default function FundingMatches() {
   }, [profile.fundingGoals]);
 
   const needsIntake = !profile.isLoading && !fundingGoals;
-  // Auto-open modal on first visit only if goals not set
   const [autoOpened, setAutoOpened] = useState(false);
   const shouldAutoOpen = needsIntake && !autoOpened && !bannerDismissed;
 
-  // Fetch all active lender products
+  // Fetch all active lender products from unified table
   const { data: products, isLoading: productsLoading } = useQuery({
-    queryKey: ["lender-products-all"],
+    queryKey: ["lender-products-categorized"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("lender_products")
@@ -65,61 +67,86 @@ export default function FundingMatches() {
     },
   });
 
-  // Score all products, then apply goal-based sorting/filtering — BUSINESS ONLY
-  const { primaryMatches, prerequisiteMatches, businessMatches } = useMemo(() => {
+  // Score & smart-sort all products
+  const { scoredAll, categoryCounts, prerequisiteMatches } = useMemo(() => {
     if (!products || profile.isLoading) {
-      return { primaryMatches: [], prerequisiteMatches: [], businessMatches: [] };
+      return { scoredAll: [], categoryCounts: {} as Record<string, number>, prerequisiteMatches: [] };
     }
 
-    let scored = products.map(p => scoreProduct(p, profile));
+    const score = profile.middleScore || 0;
+    const lowScore = score > 0 && score < 620;
 
-    // Filter to business track only — personal credit products moved to Credit Intelligence tab
-    scored = scored.filter(m => m.track === "business");
+    // Score every product
+    let scored = products.map(p => ({ ...scoreProduct(p, profile), product: p }));
 
+    // Apply funding-goal sort hints
     if (fundingGoals) {
       scored = scored.map(m => ({
         ...m,
         _relevance: getGoalRelevanceBoost(m.product.product_type, fundingGoals),
         _urgency: getTimelineUrgencySort(m.product.product_type, fundingGoals),
         _isPrereq: isPrerequisiteProduct(m.product.product_type, fundingGoals),
-      }));
-
-      scored.sort((a: any, b: any) => {
-        if (a._isPrereq !== b._isPrereq) return a._isPrereq ? 1 : -1;
-        if (a._relevance !== b._relevance) return b._relevance - a._relevance;
-        if (a._urgency !== b._urgency) return b._urgency - a._urgency;
-        return b.score - a.score;
-      });
+      } as any));
     }
 
-    const prereqs = fundingGoals
-      ? scored.filter((m: any) => m._isPrereq)
-      : [];
-    const primary = fundingGoals
-      ? scored.filter((m: any) => !m._isPrereq)
-      : scored;
+    // Smart sort: low-score clients see CDFI/serves_bad_credit lenders first
+    scored.sort((a: any, b: any) => {
+      // Prereqs go to bottom
+      if (fundingGoals) {
+        if (a._isPrereq !== b._isPrereq) return a._isPrereq ? 1 : -1;
+      }
+      // Low-score clients: prioritize accessible lenders
+      if (lowScore) {
+        const aAccessible = a.product.serves_bad_credit || a.product.product_category === "cdfi_loan" ? 1 : 0;
+        const bAccessible = b.product.serves_bad_credit || b.product.product_category === "cdfi_loan" ? 1 : 0;
+        if (aAccessible !== bAccessible) return bAccessible - aAccessible;
+      }
+      // Goal relevance
+      if (fundingGoals && a._relevance !== b._relevance) return b._relevance - a._relevance;
+      if (fundingGoals && a._urgency !== b._urgency) return b._urgency - a._urgency;
+      // Default: by match score
+      return b.score - a.score;
+    });
 
-    const business = primary.sort((a, b) => b.score - a.score);
+    const prereqs = fundingGoals ? scored.filter((m: any) => m._isPrereq) : [];
+    const primary = fundingGoals ? scored.filter((m: any) => !m._isPrereq) : scored;
 
-    return {
-      primaryMatches: primary,
-      prerequisiteMatches: prereqs,
-      businessMatches: business,
-    };
+    // Build category counts (excluding prereqs)
+    const counts: Record<string, number> = {};
+    primary.forEach((m: any) => {
+      const cat = m.product.product_category || m.product.product_type;
+      if (cat) counts[cat] = (counts[cat] || 0) + 1;
+    });
+
+    return { scoredAll: primary, categoryCounts: counts, prerequisiteMatches: prereqs };
   }, [products, profile, fundingGoals]);
+
+  // Filter by selected category
+  const visibleMatches = useMemo(() => {
+    if (selectedCategory === "all") return scoredAll;
+    return scoredAll.filter((m: any) =>
+      (m.product.product_category || m.product.product_type) === selectedCategory
+    );
+  }, [scoredAll, selectedCategory]);
 
   const fundingSequence = useMemo(() => generateFundingSequence(profile), [profile]);
 
-  // Summary stats
-  const allMatches = [...primaryMatches, ...prerequisiteMatches];
+  // Summary stats over ALL primary matches
+  const allMatches = [...scoredAll, ...prerequisiteMatches];
   const eligible = allMatches.filter(m => m.category === "eligible");
   const nearEligible = allMatches.filter(m => m.category === "near_eligible");
   const totalEstimated = eligible.reduce((s, m) => s + (m.estimatedAmount || 0), 0);
 
   const isLoading = profile.isLoading || productsLoading;
-
-  // Urgent timeline warning
   const isUrgent = fundingGoals?.timeline === "90_days";
+
+  function handleAskPaige(product: any) {
+    const lenderQuery = `Tell me about ${product.lender_name} ${product.product_subcategory || product.product_category} — am I a fit and what's the strategy to apply?`;
+    sessionStorage.setItem("paige_prefill", lenderQuery);
+    toast.info("Opening Paige with this lender pre-loaded…");
+    // Trigger floating chatbot to open if listening
+    window.dispatchEvent(new CustomEvent("paige:open", { detail: { prompt: lenderQuery } }));
+  }
 
   if (isLoading) {
     return (
@@ -131,7 +158,6 @@ export default function FundingMatches() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Goal Intake Modal — auto-open once, always dismissable */}
       <FundingGoalIntake
         open={shouldAutoOpen || goalModalOpen}
         onOpenChange={open => {
@@ -146,7 +172,7 @@ export default function FundingMatches() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Funding Intelligence</h1>
         <p className="text-muted-foreground mt-1">
-          Business funding products matched to your real profile — every score explained by data, not thresholds.
+          Lenders matched to your real profile across {Object.keys(categoryCounts).length} product categories — every score explained by data, not thresholds.
         </p>
         {profile.middleScore && (
           <p className="text-xs text-muted-foreground mt-1">
@@ -155,10 +181,9 @@ export default function FundingMatches() {
         )}
       </div>
 
-      {/* Page Walkthrough */}
       <FundingWalkthrough />
 
-      {/* Current Goal Banner — or CTA if no goal set */}
+      {/* Goal banner */}
       {fundingGoals ? (
         <FundingGoalBanner goals={fundingGoals} onEdit={() => setGoalModalOpen(true)} />
       ) : !bannerDismissed ? (
@@ -183,7 +208,6 @@ export default function FundingMatches() {
         </Card>
       ) : null}
 
-      {/* Urgent Timeline Warning */}
       {isUrgent && (
         <Card className="p-4 bg-fundability-fair/5 border-fundability-fair/30">
           <div className="flex items-start gap-3">
@@ -191,21 +215,18 @@ export default function FundingMatches() {
             <div>
               <p className="text-sm font-medium text-foreground">90-Day Urgent Timeline Active</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Fast-access products are shown first. MCAs and revenue-based products provide speed but at higher cost — review factor rates carefully before applying.
-                Traditional bank products typically require 30-90 day underwriting.
+                Fast-access products are prioritized. MCAs and revenue-based products are quick but high-cost — review factor rates carefully before applying.
               </p>
             </div>
           </div>
         </Card>
       )}
 
-      {/* Personal/Business Separation warning */}
       <SeparationAuditFundingBanner onFix={() => navigate("/app/business")} />
 
-      {/* Profile Completeness */}
       <ProfileCompletenessPanel profile={profile} />
 
-      {/* Summary cards */}
+      {/* Stats */}
       {allMatches.length > 0 && (
         <div className="grid grid-cols-3 gap-4">
           <Card className="p-5 bg-card border-border text-center">
@@ -217,17 +238,41 @@ export default function FundingMatches() {
             <div className="text-sm text-muted-foreground mt-1">Near Eligible</div>
           </Card>
           <Card className="p-5 bg-card border-border text-center">
-            <div className="text-3xl font-bold text-accent">
-              ${totalEstimated.toLocaleString()}
-            </div>
+            <div className="text-3xl font-bold text-accent">${totalEstimated.toLocaleString()}</div>
             <div className="text-sm text-muted-foreground mt-1">Est. Total Funding</div>
           </Card>
         </div>
       )}
 
-      {/* Business Funding Track */}
-      {businessMatches.length > 0 && (
-        <FundingTrack title="Business Funding Products" icon="business" matches={businessMatches} />
+      {/* Category Tabs + Matches */}
+      {scoredAll.length > 0 && (
+        <div className="space-y-4">
+          <CategoryTabs
+            selected={selectedCategory}
+            onSelect={setSelectedCategory}
+            counts={categoryCounts}
+            totalCount={scoredAll.length}
+          />
+
+          {selectedCategory !== "all" && CATEGORIES[selectedCategory] && (
+            <div className="px-1">
+              <h2 className="text-lg font-semibold text-foreground">{CATEGORIES[selectedCategory].label}</h2>
+              <p className="text-xs text-muted-foreground">{CATEGORIES[selectedCategory].description}</p>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {visibleMatches.map(match => (
+              <ProductMatchCard key={match.product.id} match={match} onAskPaige={handleAskPaige} />
+            ))}
+          </div>
+
+          {visibleMatches.length === 0 && (
+            <Card className="p-6 text-center">
+              <p className="text-sm text-muted-foreground">No products in this category match your profile yet.</p>
+            </Card>
+          )}
+        </div>
       )}
 
       {/* Prerequisite Section */}
@@ -243,7 +288,7 @@ export default function FundingMatches() {
           <div className="space-y-3">
             {prerequisiteMatches.map(match => (
               <div key={match.product.id} className="opacity-80">
-                <FundingTrack title="" icon="personal" matches={[match]} />
+                <ProductMatchCard match={match} onAskPaige={handleAskPaige} />
               </div>
             ))}
           </div>
@@ -254,16 +299,14 @@ export default function FundingMatches() {
         <Card className="p-8 text-center">
           <p className="text-muted-foreground">
             {profile.middleScore
-              ? "No lender products are currently in the database. An admin can add products in the Lender Research section."
+              ? "No lender products are currently in the database. An admin can add products in the Lender Bureau Preferences section."
               : "Upload a credit report via Paige chat first to see matched funding products."}
           </p>
         </Card>
       )}
 
-      {/* Recommended Funding Sequence */}
       <FundingSequence steps={fundingSequence} />
 
-      {/* Regional Lender Search */}
       <RegionalLenderSearch
         userState={profile.businesses[0]?.state_of_formation || undefined}
         userCity={undefined}
