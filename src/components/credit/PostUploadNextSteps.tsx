@@ -15,6 +15,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { AccountImpactBreakdown } from "./AccountImpactBreakdown";
+import { BuildPersonalRoadmap } from "./BuildPersonalRoadmap";
 
 /**
  * PostUploadNextSteps
@@ -29,6 +30,7 @@ import { AccountImpactBreakdown } from "./AccountImpactBreakdown";
 export function PostUploadNextSteps() {
   const navigate = useNavigate();
   const [reviewExpanded, setReviewExpanded] = useState(true);
+  const [buildExpanded, setBuildExpanded] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["post-upload-next-steps"],
