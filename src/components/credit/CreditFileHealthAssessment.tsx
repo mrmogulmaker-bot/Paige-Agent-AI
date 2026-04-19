@@ -17,8 +17,6 @@ import {
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { differenceInMonths } from "date-fns";
-  clock: <Clock className="w-5 h-5" />,
-};
 
 /* ─── Types ─── */
 export interface CreditAccount {
