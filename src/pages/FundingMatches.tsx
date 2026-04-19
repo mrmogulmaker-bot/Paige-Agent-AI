@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, AlertTriangle, Target } from "lucide-react";
 import type { ProductMatch } from "@/lib/fundingMatchScoring";
 import { SeparationAuditCard } from "@/components/dashboard/business-profile/SeparationAuditCard";
+import { FundingWalkthrough } from "@/components/funding/FundingWalkthrough";
 import { useNavigate } from "react-router-dom";
 
 function SeparationAuditFundingBanner({ onFix }: { onFix: () => void }) {
@@ -154,6 +155,9 @@ export default function FundingMatches() {
           </p>
         )}
       </div>
+
+      {/* Page Walkthrough */}
+      <FundingWalkthrough />
 
       {/* Current Goal Banner — or CTA if no goal set */}
       {fundingGoals ? (
