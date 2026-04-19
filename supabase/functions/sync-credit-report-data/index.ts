@@ -226,7 +226,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
   const clientId = payload.client_id || null;
   const negativeItemLogs: any[] = [];
 
-  console.log("=== SYNC PAYLOAD COUNTS ===", {
+  console.log("=== SYNC PAYLOAD COUNTS (raw) ===", {
     negative_items: payload.negative_items?.length ?? 0,
     positive_accounts: payload.positive_accounts?.length ?? 0,
     hard_inquiries: payload.hard_inquiries?.length ?? 0,
@@ -234,6 +234,62 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
     client_id: clientId,
     target_user_id: targetUserId,
   });
+
+  // Defensive filter: drop rows missing the minimum identifiers required to be useful.
+  // The AI sometimes returns partial rows (e.g. a creditor with no name on a tri-merge column gap).
+  // Filtering here lets the sync succeed for the rest of the report instead of failing the whole upload.
+  const droppedNegatives: any[] = [];
+  payload.negative_items = (payload.negative_items || []).filter((n: any) => {
+    if (!n || typeof n !== "object") return false;
+    const hasName = typeof n.creditor_name === "string" && n.creditor_name.trim().length > 0;
+    const hasBureau = typeof n.bureau === "string" && n.bureau.trim().length > 0;
+    const hasType = typeof n.item_type === "string" && n.item_type.trim().length > 0;
+    if (!hasName || !hasBureau || !hasType) {
+      droppedNegatives.push({ creditor_name: n.creditor_name, bureau: n.bureau, item_type: n.item_type });
+      return false;
+    }
+    return true;
+  });
+
+  const droppedPositives: any[] = [];
+  payload.positive_accounts = (payload.positive_accounts || []).filter((a: any) => {
+    if (!a || typeof a !== "object") return false;
+    const hasName = typeof a.creditor === "string" && a.creditor.trim().length > 0;
+    if (!hasName) {
+      droppedPositives.push({ creditor: a.creditor, account_type: a.account_type });
+      return false;
+    }
+    // account_type missing → default to "unknown" so we keep the row
+    if (!a.account_type || typeof a.account_type !== "string" || a.account_type.trim().length === 0) {
+      a.account_type = "unknown";
+    }
+    return true;
+  });
+
+  const droppedInquiries: any[] = [];
+  payload.hard_inquiries = (payload.hard_inquiries || []).filter((q: any) => {
+    if (!q || typeof q !== "object") return false;
+    const hasName = typeof q.creditor_name === "string" && q.creditor_name.trim().length > 0;
+    const hasBureau = typeof q.bureau === "string" && q.bureau.trim().length > 0;
+    const hasDate = typeof q.inquiry_date === "string" && q.inquiry_date.trim().length > 0;
+    if (!hasName || !hasBureau || !hasDate) {
+      droppedInquiries.push({ creditor_name: q.creditor_name, bureau: q.bureau, inquiry_date: q.inquiry_date });
+      return false;
+    }
+    return true;
+  });
+
+  console.log("=== SYNC PAYLOAD COUNTS (filtered) ===", {
+    negative_items: payload.negative_items.length,
+    positive_accounts: payload.positive_accounts.length,
+    hard_inquiries: payload.hard_inquiries.length,
+    dropped_negatives: droppedNegatives.length,
+    dropped_positives: droppedPositives.length,
+    dropped_inquiries: droppedInquiries.length,
+  });
+  if (droppedNegatives.length || droppedPositives.length || droppedInquiries.length) {
+    console.warn("Dropped incomplete rows:", { droppedNegatives, droppedPositives, droppedInquiries });
+  }
 
   const withClientId = (obj: any) => clientId ? { ...obj, client_id: clientId } : obj;
 
