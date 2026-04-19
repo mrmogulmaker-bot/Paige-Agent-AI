@@ -86,15 +86,12 @@ export function PostUploadNextSteps() {
     {
       key: "build",
       icon: TrendingUp,
-      title: data.hasBusiness
-        ? "Continue your BUILD program"
-        : "Start the BUILD program",
-      description: data.hasBusiness
-        ? "Your personal credit feeds your BUILD score. Move to your Business Profile to keep advancing through the BUILD phases (Base → Utilize → Integrate → Leverage → Dominate)."
-        : "BUILD is how you turn this credit profile into a fundable business. Set up your business entity, EIN, address, phone, and bank account — then we layer in tradelines.",
+      title: "Start BUILD Personal",
+      description:
+        "BUILD Personal is the 12-month roadmap that turns this credit file into a fundable profile — paydown plan, secured cards, authorized-user tradelines, and MyFICO 3B monitoring across the Base → Utilize → Integrate → Leverage → Dominate phases.",
       done: false,
-      cta: data.hasBusiness ? "Open Business Profile" : "Start BUILD",
-      onClick: () => navigate("/app/business"),
+      cta: "Open BUILD Personal",
+      onClick: () => navigate("/app?section=personal-build"),
     },
     {
       key: "paige",

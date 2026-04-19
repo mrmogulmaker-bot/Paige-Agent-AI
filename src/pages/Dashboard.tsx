@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -63,7 +63,21 @@ import { performSignOut } from "@/lib/auth/signOut";
 
 const Dashboard = () => {
   const { mode, isCoachOrAdmin } = useDashboardMode();
-  const [activeSection, setActiveSection] = useState("dashboard");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeSection, setActiveSection] = useState(() => searchParams.get("section") || "dashboard");
+
+  // Sync ?section= query param → activeSection (allows deep-linking from other pages)
+  useEffect(() => {
+    const s = searchParams.get("section");
+    if (s && s !== activeSection) {
+      setActiveSection(s);
+      // Clear the param so navigating sections inside the dashboard isn't sticky in URL
+      const next = new URLSearchParams(searchParams);
+      next.delete("section");
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [selectedInternalClientId, setSelectedInternalClientId] = useState<string | null>(null);
   const [showAccel, setShowAccel] = useState(true);
