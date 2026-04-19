@@ -1,5 +1,30 @@
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+// Auto-recover from stale chunk errors after a new deploy.
+// When index.html is cached but references hashed JS chunks that no longer
+// exist, dynamic imports throw "Failed to fetch dynamically imported module".
+// We reload once (guarded by sessionStorage) to pick up the fresh index.html.
+const lazyWithReload = <T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+) =>
+  React.lazy(async () => {
+    try {
+      return await factory();
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (
+        /Failed to fetch dynamically imported module|Importing a module script failed/i.test(msg) &&
+        !sessionStorage.getItem("__chunk_reload__")
+      ) {
+        sessionStorage.setItem("__chunk_reload__", "1");
+        window.location.reload();
+        // Return a never-resolving promise while the page reloads.
+        return new Promise<{ default: T }>(() => {});
+      }
+      throw err;
+    }
+  });
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
