@@ -15,8 +15,51 @@ import {
   Landmark, Zap, UserCheck, Clock, ExternalLink, Loader2, ChevronDown,
   ChevronRight, Target, Shield, TrendingUp, BarChart3,
 } from "lucide-react";
-import { differenceInMonths } from "date-fns";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  type CreditAccount,
+  type NegativeItem,
+  type LenderPref,
+  type BureauScores,
+  type BureauKey,
+  type SuggestionContent,
+  type FileCategory,
+  type ComparableAccount,
+  type FileAnalysis,
+  BUREAU_META,
+  DEFAULT_LENDERS,
+  accountMatchesBureau,
+  formatBureauSource,
+  analyzeFile,
+  analyzeNegativesForBureau,
+  getLendersForBureau,
+  scoreColor,
+  scoreBg,
+  buildBureauHealthContext,
+} from "@/lib/creditFileHealth";
+
+// Re-export types + context builder for backward compatibility
+// (useClientChatContext.ts imports buildBureauHealthContext from this file)
+export type {
+  CreditAccount,
+  NegativeItem,
+  LenderPref,
+  BureauScores,
+  FileCategory,
+  FileAnalysis,
+};
+export { buildBureauHealthContext };
+
+// Map iconKey strings (from pure analysis layer) to Lucide icons (UI layer).
+const ICON_MAP: Record<FileCategory["iconKey"], React.ReactNode> = {
+  credit_card: <CreditCard className="w-5 h-5" />,
+  user_check: <UserCheck className="w-5 h-5" />,
+  home: <Home className="w-5 h-5" />,
+  zap: <Zap className="w-5 h-5" />,
+  car: <Car className="w-5 h-5" />,
+  landmark: <Landmark className="w-5 h-5" />,
+  clock: <Clock className="w-5 h-5" />,
+};
 
 /* ─── Types ─── */
 export interface CreditAccount {
