@@ -237,7 +237,10 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
               </Card>
             </div>
 
-            <div className="flex justify-center">
+            <div className="flex flex-col-reverse sm:flex-row justify-center gap-2 sm:gap-3">
+              <Button onClick={handleSkipForNow} variant="ghost" size="lg" className="w-full sm:w-auto">
+                Skip for now
+              </Button>
               <Button onClick={() => setStep(1)} size="lg" className="bg-gradient-gold w-full sm:w-auto">
                 Get Started
                 <ArrowRight className="w-4 h-4 ml-2" />
