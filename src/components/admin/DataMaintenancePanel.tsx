@@ -200,24 +200,6 @@ export function DataMaintenancePanel() {
         </Button>
       </div>
 
-      {memoryBackfillResult && !memoryBackfill.isPending && (
-        <Card className="border-primary/30">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 mb-2">
-              <Brain className="w-5 h-5 text-primary" />
-              <span className="font-medium">Memory Embeddings Backfill Complete</span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Processed <strong>{memoryBackfillResult.total_processed}</strong> memories ·{" "}
-              <strong className="text-foreground">{memoryBackfillResult.total_updated}</strong> embedded
-              {memoryBackfillResult.error_count > 0 && (
-                <> · <span className="text-destructive">{memoryBackfillResult.error_count} errors</span></>
-              )}
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Backfill Progress */}
       {bulkBackfill.isPending && (
         <Card className="border-blue-500/30">
@@ -331,6 +313,56 @@ export function DataMaintenancePanel() {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Memory & AI Backfill */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Brain className="w-5 h-5 text-primary" />
+            Memory & AI Backfill
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Backfill Memory Embeddings</p>
+              <p className="text-xs text-muted-foreground max-w-xl">
+                Generate vector embeddings for any client_memory rows that are missing them.
+                Required for semantic recall in Paige's AI chat and voice context. Safe to
+                re-run; only processes records where embeddings are NULL.
+              </p>
+            </div>
+            <Button
+              onClick={() => memoryBackfill.mutate()}
+              disabled={memoryBackfill.isPending}
+              className="gap-2 shrink-0"
+            >
+              {memoryBackfill.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Brain className="w-4 h-4" />
+              )}
+              {memoryBackfill.isPending ? "Backfilling..." : "Backfill Memory Embeddings"}
+            </Button>
+          </div>
+
+          {memoryBackfillResult && !memoryBackfill.isPending && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <CheckCircle className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium">Last run complete</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Processed <strong className="text-foreground">{memoryBackfillResult.total_processed}</strong> memories ·{" "}
+                <strong className="text-foreground">{memoryBackfillResult.total_updated}</strong> embedded
+                {memoryBackfillResult.error_count > 0 && (
+                  <> · <span className="text-destructive font-medium">{memoryBackfillResult.error_count} errors</span></>
+                )}
+              </p>
             </div>
           )}
         </CardContent>
