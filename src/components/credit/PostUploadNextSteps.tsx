@@ -73,17 +73,6 @@ export function PostUploadNextSteps() {
       },
     },
     {
-      key: "dispute",
-      icon: ShieldAlert,
-      title: data.negatives > 0 ? "Start your first dispute" : "No negatives to dispute — nice work",
-      description: data.negatives > 0
-        ? "Use Paige's dispute strategy to challenge inaccurate negative items with the bureaus."
-        : "Your file is clean of active negatives. Focus on building credit depth and utilization.",
-      done: data.negatives === 0 || data.disputesStarted,
-      cta: data.negatives > 0 ? "Open Disputes" : undefined,
-      onClick: () => navigate("/app/disputes"),
-    },
-    {
       key: "build",
       icon: TrendingUp,
       title: "Start BUILD Personal",
