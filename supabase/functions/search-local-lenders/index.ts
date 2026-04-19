@@ -138,9 +138,9 @@ const TYPE_PLANS: Record<string, QueryPlan> = {
   savings:           { label: "Savings Institution", filter: '(BKCLASS:"SB" OR BKCLASS:"SA")' },
   commercial:        { label: "Commercial Bank", filter: "SPECGRP:4" },
   agricultural:      { label: "Agricultural Bank", filter: "SPECGRP:2" },
-  mdi:               { label: "Minority Depository Institution", filter: "MDI_STATUS_CODE:[1 TO 5]" },
+  mdi:               { label: "Minority Depository Institution", filter: "MDI_STATUS_CODE:[1 TO 99]" },
   // CDFI proxy: small community banks + MDIs (true CDFI list lives at Treasury)
-  cdfi:              { label: "CDFI", filter: '(CB:"1" AND ASSET:[* TO 1000000]) OR MDI_STATUS_CODE:[1 TO 5]' },
+  cdfi:              { label: "CDFI", filter: '(CB:"1" AND ASSET:[* TO 1000000]) OR MDI_STATUS_CODE:[1 TO 99]' },
   online_bank:       { label: "Online Bank", filter: 'BKCLASS:"N" AND ASSET:[1000000 TO *]' },
 };
 
