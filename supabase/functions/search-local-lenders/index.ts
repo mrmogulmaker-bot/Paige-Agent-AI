@@ -6,7 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const FDIC_BASE = "https://banks.data.fdic.gov/api/institutions";
+// Updated FDIC endpoint (banks.data.fdic.gov 301-redirects to api.fdic.gov/banks)
+const FDIC_BASE = "https://api.fdic.gov/banks/institutions";
 
 type LenderTypeLabel =
   | "Credit Union"
@@ -21,16 +22,46 @@ type LenderTypeLabel =
   | "Online Bank";
 
 interface LenderResult {
+  // Identity
   name: string;
   type: LenderTypeLabel;
+  fdic_cert: string;
+  fed_rssd: string | null;
+  // Location
   address: string;
+  address2: string | null;
   city: string;
   state: string;
   zip: string;
+  county: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  // Web
   website: string;
-  referenceId: string;
+  // Charter & class
+  bank_class: string | null;          // BKCLASS: N, NM, SM, SB, SA, OI
+  bank_class_desc: string | null;     // human-readable charter
+  specialization: string | null;      // SPECGRPN
+  specialization_code: number | null; // SPECGRP
+  is_community_bank: boolean;         // CB == "1"
+  is_minority_depository: boolean;    // MDI_STATUS_CODE > 0
+  mdi_description: string | null;     // MDI_STATUS_DESC
+  has_trust_powers: boolean;          // TRUST != "00"
+  is_mutual: boolean;                 // MUTUAL == "1"
+  is_subchapter_s: boolean;           // SUBCHAPS == "1"
+  // Financial health
+  asset_size: number | null;          // ASSET (in $ thousands)
+  deposits: number | null;            // DEP (in $ thousands)
+  net_income: number | null;          // NETINC (in $ thousands)
+  return_on_assets: number | null;    // ROA (%)
+  return_on_equity: number | null;    // ROE (%)
+  // Footprint
+  office_count: number | null;        // OFFICES
+  established_date: string | null;    // ESTYMD
+  fdic_insured_date: string | null;   // INSDATE
+  // Source
   source: "FDIC";
-  asset_size?: number | null;
+  // Enrichment
   bureauPreference?: {
     primary_bureau: string;
     secondary_bureau: string | null;
@@ -39,6 +70,15 @@ interface LenderResult {
     notes: string | null;
   } | null;
 }
+
+const BKCLASS_DESC: Record<string, string> = {
+  N: "National Commercial Bank",
+  NM: "State-Chartered Non-Member",
+  SM: "State-Chartered Federal Reserve Member",
+  SB: "State Savings Bank",
+  SA: "Federal Savings Association",
+  OI: "Insured U.S. Branch of Foreign Bank",
+};
 
 const STATE_ABBR: Record<string, string> = {
   Alabama: "AL", Alaska: "AK", Arizona: "AZ", Arkansas: "AR", California: "CA",
