@@ -213,7 +213,7 @@ export function RegionalLenderSearch({
         <h2 className="text-lg font-bold text-foreground">Find Local Lenders</h2>
       </div>
       <p className="text-sm text-muted-foreground mb-4">
-        Search the FDIC database for community banks and CDFIs in your area.
+        Search the FDIC database for community banks, national & regional banks, savings institutions, CDFIs, MDIs, and more in your area. Credit unions link out to the NCUA locator.
       </p>
 
       <div className="flex flex-wrap gap-3 mb-4">
