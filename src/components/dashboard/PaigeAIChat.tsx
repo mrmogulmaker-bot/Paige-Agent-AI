@@ -166,7 +166,7 @@ export const PaigeAIChat = () => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ messages: newMessages }),
+          body: JSON.stringify({ messages: newMessages, ...getUserClock() }),
         }
       );
 

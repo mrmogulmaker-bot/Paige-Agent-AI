@@ -255,6 +255,7 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
         sessionDocumentContext: getSessionDocumentContext(),
         ...(clientId ? { clientId } : {}),
         ...(contextBlock ? { clientContext: contextBlock } : {}),
+        ...getUserClock(),
       };
 
       if (currentDoc) {
