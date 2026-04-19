@@ -27,8 +27,8 @@ export function Footer() {
           <div className="col-span-1">
             <h3 className="text-xl font-extrabold text-accent">PaigeAgent.ai</h3>
             <p className="text-sm opacity-80 leading-relaxed mt-2">
-              AI-powered funding intelligence for small business owners.
-              Built by Mr. Mogul Maker.
+              The AI funding coach that shows you what lenders see — and teaches
+              what school never did. Built by Mr. Mogul Maker.
             </p>
           </div>
 

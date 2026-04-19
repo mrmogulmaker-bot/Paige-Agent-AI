@@ -37,23 +37,23 @@ const Index = () => {
               {
                 icon: MessageSquare,
                 step: "01",
-                title: "Tell Paige About Your Business",
+                title: "Tell Paige Your Full Picture",
                 description:
-                  "Conversational onboarding — no forms, no friction. Share your credit, business, and revenue context and Paige builds your funding profile.",
+                  "Personal credit, business formation, state filings, public presence, banking, revenue — Paige reads it the way an underwriter does. No forms, no friction.",
               },
               {
                 icon: BarChart3,
                 step: "02",
-                title: "Get Your Funding Readiness Score",
+                title: "See What Lenders See",
                 description:
-                  "0–100 composite score with the personal and business credit factors that drive lender decisions. See exactly what's costing you capital and what to fix first.",
+                  "A real Funding Readiness Score (0–100) with the exact gaps costing you capital — the things school never taught you and lenders never explain.",
               },
               {
                 icon: Rocket,
                 step: "03",
                 title: "Unlock Your Funding Matches",
                 description:
-                  "Real lender products matched to your profile. See what you qualify for today and what's one move away — SBA, term loans, lines of credit, equipment, and more.",
+                  "Real lender products matched to your profile across SBA, banks, credit unions, CDFIs, and more. See what you qualify for today and what's one move away.",
               },
             ].map((item, i) => (
               <Card
@@ -147,13 +147,16 @@ const Index = () => {
                 </span>{" "}
                 Framework
               </h2>
+              <p className="text-sm text-muted-foreground mt-3 max-w-xl mx-auto">
+                The personal-credit playbook lenders never explain — and school never taught.
+              </p>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
-                { letter: "A", title: "Analyze", desc: "Comprehensive credit profile review" },
-                { letter: "C", title: "Categorize", desc: "Sort accounts for funding application prep" },
-                { letter: "C", title: "Clean", desc: "Resolve through creditors, not third parties" },
-                { letter: "E", title: "Elevate", desc: "Build positive history that lenders weight" },
+                { letter: "A", title: "Analyze", desc: "Full bureau-by-bureau profile review" },
+                { letter: "C", title: "Categorize", desc: "Sort accounts the way underwriters do" },
+                { letter: "C", title: "Course-Correct", desc: "Direction on what to fix — repair routes to Mogul Credit AI" },
+                { letter: "E", title: "Elevate", desc: "Build the positive history lenders weight" },
                 { letter: "L", title: "Leverage", desc: "Translate your profile into funding approvals" },
               ].map((s, i) => (
                 <Card
