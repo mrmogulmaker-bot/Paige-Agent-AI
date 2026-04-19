@@ -37,9 +37,13 @@ const AppShell = () => {
   // Show context panel on non-root /app routes
   const showContextPanel = location.pathname !== "/app" || !isMobile;
 
-  // Check if user is new and needs onboarding
+  // Check if user is new and needs onboarding (respects 24h snooze)
   useEffect(() => {
     if (!user) return;
+    try {
+      const snoozedUntil = Number(localStorage.getItem("onboarding_snoozed_until") || 0);
+      if (snoozedUntil && Date.now() < snoozedUntil) return;
+    } catch {}
     supabase
       .from("profiles")
       .select("full_name, phone, address")
