@@ -97,6 +97,11 @@ const App = () => (
             <Route path="/affiliates" element={<PageSuspense><AffiliateApply /></PageSuspense>} />
             <Route path="/become-an-affiliate" element={<Navigate to="/affiliates" replace />} />
             <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
+
+            {/* Backward-compat: bare /clients links route into the admin workspace */}
+            <Route path="/clients" element={<Navigate to="/admin/clients" replace />} />
+            <Route path="/clients/user/:userId" element={<Navigate to="/admin/clients" replace />} />
+            <Route path="/clients/internal/:clientId" element={<Navigate to="/admin/clients" replace />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
