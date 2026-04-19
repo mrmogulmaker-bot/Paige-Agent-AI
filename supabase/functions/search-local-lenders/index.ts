@@ -9,17 +9,23 @@ const corsHeaders = {
 // Updated FDIC endpoint (banks.data.fdic.gov 301-redirects to api.fdic.gov/banks)
 const FDIC_BASE = "https://api.fdic.gov/banks/institutions";
 
+// NCUA Credit Union public dataset (ArcGIS FeatureServer hosted by NCUA's GIS provider).
+// This is the same source the NCUA Credit Union Locator surfaces and is queryable
+// without an API key. Schema reference:
+//   https://services.arcgis.com/VTyQ9soqVukalItT/ArcGIS/rest/services/NCUA/FeatureServer/0
+const NCUA_BASE = "https://services.arcgis.com/VTyQ9soqVukalItT/ArcGIS/rest/services/NCUA/FeatureServer/0/query";
+
 type LenderTypeLabel =
-  | "Credit Union"
-  | "Community Bank"
-  | "National Bank"
-  | "Regional Bank"
-  | "Savings Institution"
-  | "Commercial Bank"
-  | "Agricultural Bank"
-  | "Minority Depository Institution"
-  | "CDFI"
-  | "Online Bank";
+  | "Credit Union (NCUA)"
+  | "Bank (FDIC) — Community Bank"
+  | "Bank (FDIC) — National Bank"
+  | "Bank (FDIC) — Regional Bank"
+  | "Bank (FDIC) — Savings Institution"
+  | "Bank (FDIC) — Commercial Bank"
+  | "Bank (FDIC) — Agricultural Bank"
+  | "Bank (FDIC) — Minority Depository Institution"
+  | "Bank (FDIC) — CDFI"
+  | "Bank (FDIC) — Online Bank";
 
 interface LenderResult {
   // Identity
