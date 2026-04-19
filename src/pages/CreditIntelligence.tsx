@@ -15,6 +15,7 @@ import { CreditFactorsPanel } from "@/components/credit/CreditFactorsPanel";
 import { DataFreshnessIndicator } from "@/components/credit/DataFreshnessIndicator";
 import { CreditAlertBanner } from "@/components/credit/CreditAlertBanner";
 import { CreditAlertsTab } from "@/components/credit/CreditAlertsTab";
+import { CreditIntelWalkthrough } from "@/components/credit/CreditIntelWalkthrough";
 import { toast } from "sonner";
 
 export default function CreditIntelligence() {
@@ -234,6 +235,9 @@ export default function CreditIntelligence() {
           )}
         </div>
       </div>
+
+      {/* Page Walkthrough */}
+      <CreditIntelWalkthrough />
 
       {/* Credit Alert Banner */}
       <CreditAlertBanner />
