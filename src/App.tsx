@@ -41,24 +41,24 @@ import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
 // Everything else is lazy-loaded for a smaller initial bundle
-const Dashboard = React.lazy(() => import("./pages/Dashboard"));
-const AppShell = React.lazy(() => import("./pages/AppShell"));
-const CreditIntelligence = React.lazy(() => import("./pages/CreditIntelligence"));
-const FundingMatches = React.lazy(() => import("./pages/FundingMatches"));
-const Admin = React.lazy(() => import("./pages/Admin"));
-const ResetPassword = React.lazy(() => import("./pages/ResetPassword"));
-const AffiliateApply = React.lazy(() => import("./pages/AffiliateApply"));
-const Unsubscribe = React.lazy(() => import("./pages/Unsubscribe"));
-const Terms = React.lazy(() => import("./pages/Terms"));
-const Privacy = React.lazy(() => import("./pages/Privacy"));
+const Dashboard = lazyWithReload(() => import("./pages/Dashboard"));
+const AppShell = lazyWithReload(() => import("./pages/AppShell"));
+const CreditIntelligence = lazyWithReload(() => import("./pages/CreditIntelligence"));
+const FundingMatches = lazyWithReload(() => import("./pages/FundingMatches"));
+const Admin = lazyWithReload(() => import("./pages/Admin"));
+const ResetPassword = lazyWithReload(() => import("./pages/ResetPassword"));
+const AffiliateApply = lazyWithReload(() => import("./pages/AffiliateApply"));
+const Unsubscribe = lazyWithReload(() => import("./pages/Unsubscribe"));
+const Terms = lazyWithReload(() => import("./pages/Terms"));
+const Privacy = lazyWithReload(() => import("./pages/Privacy"));
 
 // Lazy-load existing dashboard sections for /app/* routes
-const RepositioningNotice = React.lazy(() => import("./components/dashboard/RepositioningNotice").then(m => ({ default: m.RepositioningNotice })));
-const LearningVault = React.lazy(() => import("./components/dashboard/LearningVault").then(m => ({ default: m.LearningVault })));
-const CourseViewer = React.lazy(() => import("./pages/CourseViewer"));
-const BusinessInfrastructureAssessment = React.lazy(() => import("./components/dashboard/business-profile/BusinessInfrastructureAssessment").then(m => ({ default: m.BusinessInfrastructureAssessment })));
-const ProfileSettings = React.lazy(() => import("./components/dashboard/ProfileSettings").then(m => ({ default: m.ProfileSettings })));
-const AffiliateTracking = React.lazy(() => import("./components/dashboard/AffiliateTracking").then(m => ({ default: m.AffiliateTracking })));
+const RepositioningNotice = lazyWithReload(() => import("./components/dashboard/RepositioningNotice").then(m => ({ default: m.RepositioningNotice })));
+const LearningVault = lazyWithReload(() => import("./components/dashboard/LearningVault").then(m => ({ default: m.LearningVault })));
+const CourseViewer = lazyWithReload(() => import("./pages/CourseViewer"));
+const BusinessInfrastructureAssessment = lazyWithReload(() => import("./components/dashboard/business-profile/BusinessInfrastructureAssessment").then(m => ({ default: m.BusinessInfrastructureAssessment })));
+const ProfileSettings = lazyWithReload(() => import("./components/dashboard/ProfileSettings").then(m => ({ default: m.ProfileSettings })));
+const AffiliateTracking = lazyWithReload(() => import("./components/dashboard/AffiliateTracking").then(m => ({ default: m.AffiliateTracking })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
