@@ -107,12 +107,23 @@ function titleCase(s: string): string {
  * Lender-type query plans for the FDIC API.
  *
  * FDIC field reference:
- *   - BKCLASS: Charter class (N=National, SM/NM=State Member/Non-Member,
- *              SB=Savings Bank, SA=Savings Assoc, OI=Insured Branch Foreign)
- *   - SPECGRP: Specialization group (2=Ag, 4=Commercial, 5=Mortgage, 6=Consumer)
- *   - ASSET:   Total assets in $ thousands
- *   - MDI_STATUS_CODE: Minority Depository Institution status (>0 = MDI)
- *   - CB_SA: Community bank designation flag
+ *   - BKCLASS:           Charter class (N=National, NM/SM=State Non-Member/Member,
+ *                        SB=Savings Bank, SA=Savings Assoc, OI=Insured Branch Foreign)
+ *   - SPECGRP / SPECGRPN: Specialization (1=Intl, 2=Ag, 3=Credit Card, 4=Commercial,
+ *                        5=Mortgage, 6=Consumer, 7=Other Specialized <$1B,
+ *                        8=All Other <$1B, 9=All Other >$1B)
+ *   - ASSET:             Total assets in $ thousands
+ *   - DEP:               Total deposits in $ thousands
+ *   - NETINC, ROA, ROE:  Net income, return on assets, return on equity
+ *   - OFFICES:           Branch count
+ *   - MDI_STATUS_CODE:   Minority Depository Institution (1-5 = MDI types, 0/null = not MDI)
+ *   - CB:                Community bank designation (FDIC's official flag)
+ *   - TRUST:             Trust powers (00 = none)
+ *   - MUTUAL:            1 = mutual ownership
+ *   - SUBCHAPS:          1 = Subchapter S corporation
+ *
+ * NOTE: CDFI status is maintained by Treasury's CDFI Fund, NOT FDIC.
+ *       We approximate by filtering for community-oriented MDIs / small community banks.
  */
 interface QueryPlan {
   label: LenderTypeLabel;
@@ -121,14 +132,15 @@ interface QueryPlan {
 }
 
 const TYPE_PLANS: Record<string, QueryPlan> = {
-  community_bank:    { label: "Community Bank", filter: 'CB_SA:"1"' },
+  community_bank:    { label: "Community Bank", filter: 'CB:"1"' },
   national_bank:     { label: "National Bank", filter: 'BKCLASS:"N"' },
   regional_bank:     { label: "Regional Bank", filter: "ASSET:[10000000 TO 100000000]" },
   savings:           { label: "Savings Institution", filter: '(BKCLASS:"SB" OR BKCLASS:"SA")' },
   commercial:        { label: "Commercial Bank", filter: "SPECGRP:4" },
   agricultural:      { label: "Agricultural Bank", filter: "SPECGRP:2" },
   mdi:               { label: "Minority Depository Institution", filter: "MDI_STATUS_CODE:[1 TO 5]" },
-  cdfi:              { label: "CDFI", filter: 'CERT_CDFI:"1"' },
+  // CDFI proxy: small community banks + MDIs (true CDFI list lives at Treasury)
+  cdfi:              { label: "CDFI", filter: '(CB:"1" AND ASSET:[* TO 1000000]) OR MDI_STATUS_CODE:[1 TO 5]' },
   online_bank:       { label: "Online Bank", filter: 'BKCLASS:"N" AND ASSET:[1000000 TO *]' },
 };
 
@@ -144,7 +156,23 @@ async function queryFDIC(
   if (plan.filter) filters += ` AND ${plan.filter}`;
 
   url.searchParams.set("filters", filters);
-  url.searchParams.set("fields", "NAME,CITY,STALP,ADDRESS,ZIP,CERT,WEBADDR,SPECGRP,BKCLASS,ASSET,MDI_STATUS_CODE,CB_SA");
+  url.searchParams.set(
+    "fields",
+    [
+      // Identity & location
+      "NAME", "CERT", "FED_RSSD",
+      "ADDRESS", "ADDRESS2", "CITY", "STALP", "ZIP", "COUNTY", "LATITUDE", "LONGITUDE",
+      "WEBADDR",
+      // Charter & class
+      "BKCLASS", "SPECGRP", "SPECGRPN", "CB",
+      "MDI_STATUS_CODE", "MDI_STATUS_DESC",
+      "TRUST", "MUTUAL", "SUBCHAPS",
+      // Financial health
+      "ASSET", "DEP", "NETINC", "ROA", "ROE",
+      // Footprint
+      "OFFICES", "ESTYMD", "INSDATE",
+    ].join(",")
+  );
   url.searchParams.set("limit", "20");
   url.searchParams.set("offset", "0");
   url.searchParams.set("sort_by", "ASSET");
@@ -173,17 +201,48 @@ async function queryFDIC(
     const institutions = data?.data || [];
     const results: LenderResult[] = institutions.map((inst: any) => {
       const d = inst.data || inst;
+      const bkClass = d.BKCLASS || null;
+      const mdiCode = d.MDI_STATUS_CODE != null ? Number(d.MDI_STATUS_CODE) : 0;
       return {
+        // Identity
         name: d.NAME || "Unknown Institution",
         type: plan.label,
+        fdic_cert: String(d.CERT || ""),
+        fed_rssd: d.FED_RSSD ? String(d.FED_RSSD) : null,
+        // Location
         address: d.ADDRESS || "",
+        address2: d.ADDRESS2 || null,
         city: d.CITY || "",
         state: d.STALP || stateAbbr,
         zip: String(d.ZIP || ""),
+        county: d.COUNTY || null,
+        latitude: d.LATITUDE != null ? Number(d.LATITUDE) : null,
+        longitude: d.LONGITUDE != null ? Number(d.LONGITUDE) : null,
+        // Web
         website: d.WEBADDR || "",
-        referenceId: String(d.CERT || ""),
+        // Charter & class
+        bank_class: bkClass,
+        bank_class_desc: bkClass ? BKCLASS_DESC[bkClass] || bkClass : null,
+        specialization: d.SPECGRPN || null,
+        specialization_code: d.SPECGRP != null ? Number(d.SPECGRP) : null,
+        is_community_bank: String(d.CB || "") === "1",
+        is_minority_depository: mdiCode > 0,
+        mdi_description: d.MDI_STATUS_DESC && d.MDI_STATUS_DESC !== "NONE" ? d.MDI_STATUS_DESC : null,
+        has_trust_powers: d.TRUST != null && String(d.TRUST) !== "00",
+        is_mutual: String(d.MUTUAL || "") === "1",
+        is_subchapter_s: String(d.SUBCHAPS || "") === "1",
+        // Financial health (all in $ thousands from FDIC)
+        asset_size: d.ASSET != null ? Number(d.ASSET) : null,
+        deposits: d.DEP != null ? Number(d.DEP) : null,
+        net_income: d.NETINC != null ? Number(d.NETINC) : null,
+        return_on_assets: d.ROA != null ? Number(d.ROA) : null,
+        return_on_equity: d.ROE != null ? Number(d.ROE) : null,
+        // Footprint
+        office_count: d.OFFICES != null ? Number(d.OFFICES) : null,
+        established_date: d.ESTYMD || null,
+        fdic_insured_date: d.INSDATE || null,
+        // Source
         source: "FDIC" as const,
-        asset_size: d.ASSET ? Number(d.ASSET) : null,
       };
     });
 
