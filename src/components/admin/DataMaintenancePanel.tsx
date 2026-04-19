@@ -55,6 +55,61 @@ export function DataMaintenancePanel() {
     onError: (err: Error) => toast.error(err.message || "Memory backfill failed"),
   });
 
+  // Re-extract: runs analyze-credit-report on the user's latest upload, which auto-syncs accounts
+  const reExtractLatest = useMutation({
+    mutationFn: async (targetUserId: string) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      const { data: latestUpload, error: uploadErr } = await supabase
+        .from("credit_report_uploads")
+        .select("id, file_name, created_at")
+        .eq("user_id", targetUserId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (uploadErr) throw new Error(uploadErr.message);
+      if (!latestUpload) throw new Error("No credit report uploads found for this client");
+
+      const analyzeResp = await supabase.functions.invoke("analyze-credit-report", {
+        body: { uploadId: latestUpload.id },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (analyzeResp.error) throw new Error(analyzeResp.error.message || "Analysis failed");
+      const data: any = analyzeResp.data;
+      if (data?.error) throw new Error(data.error);
+
+      const analysis = data?.analysis || {};
+      const positiveCount = analysis.positive_accounts?.length || 0;
+      const negativeCount = analysis.negative_items?.length || 0;
+      const inquiryCount = analysis.hard_inquiries?.length || 0;
+
+      return {
+        userId: targetUserId,
+        fileName: latestUpload.file_name,
+        positiveCount,
+        negativeCount,
+        inquiryCount,
+        syncOk: data?.sync?.ok !== false,
+        syncError: data?.sync?.error || null,
+      };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-data-quality"] });
+      const total = result.positiveCount + result.negativeCount;
+      if (total === 0) {
+        toast.warning(`Re-extraction of "${result.fileName}" returned 0 accounts — the PDF may be unreadable or not a credit report.`);
+      } else if (!result.syncOk) {
+        toast.error(`Extracted ${total} accounts but sync failed: ${result.syncError}`);
+      } else {
+        toast.success(`Re-extraction complete: ${result.positiveCount} accounts, ${result.negativeCount} negatives, ${result.inquiryCount} inquiries.`);
+      }
+    },
+    onError: (err: Error) => toast.error(err.message || "Re-extraction failed"),
+  });
+
   // Fetch data quality overview
   const { data: qualityData, isLoading: qualityLoading } = useQuery({
     queryKey: ["admin-data-quality"],
