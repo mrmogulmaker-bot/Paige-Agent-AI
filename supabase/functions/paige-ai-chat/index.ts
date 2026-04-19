@@ -467,17 +467,42 @@ JSON:`;
       }
     }
 
-    // === LOAD CLIENT MEMORY ===
+    // === LOAD CLIENT MEMORY (recent + semantic) ===
     let memoryBlock = "";
     try {
       const memoryQuery = payloadClientId
-        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", payloadClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(10)
-        : supabase.from("client_memory").select("memory_type, content, created_at").eq("client_user_id", user.id).eq("is_active", true).order("created_at", { ascending: false }).limit(10);
-      const { data: memories } = await memoryQuery;
+        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", payloadClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(15)
+        : supabase.from("client_memory").select("memory_type, content, created_at").eq("client_user_id", user.id).eq("is_active", true).order("created_at", { ascending: false }).limit(15);
+
+      // Embed the latest user message so we can retrieve semantically-relevant
+      // memories and past chat snippets in parallel with the recent-memory pull.
+      const lastUserContent = lastUserMessage?.content?.slice(0, 4000) || "";
+      const semanticPromise = lastUserContent
+        ? embedText(lastUserContent).then(async (queryEmbedding) => {
+            if (!queryEmbedding) return [] as any[];
+            const { data, error } = await supabase.rpc("match_paige_memory", {
+              _query_embedding: queryEmbedding,
+              _target_user_id: payloadClientId || user.id,
+              _target_client_id: payloadClientId || null,
+              _match_threshold: 0.7,
+              _memory_count: 5,
+              _message_count: 3,
+            });
+            if (error) {
+              console.error("match_paige_memory error:", error);
+              return [] as any[];
+            }
+            return data || [];
+          }).catch((e) => { console.error("semantic search failed:", e); return [] as any[]; })
+        : Promise.resolve([] as any[]);
+
+      const [{ data: memories }, semanticHits] = await Promise.all([memoryQuery, semanticPromise]);
 
       if (memories && memories.length > 0) {
+        // Always-on: surface user_preference at the top so Paige respects communication style.
+        // Recent operational events follow.
         const priorityOrder: Record<string, number> = {
-          report_upload: 1, funding_secured: 2, dispute_generated: 3,
+          user_preference: 0, report_upload: 1, funding_secured: 2, dispute_generated: 3,
           milestone_completed: 4, lender_researched: 5, coach_note: 6, session_summary: 7,
         };
         const sorted = [...memories].sort((a, b) => (priorityOrder[a.memory_type] || 99) - (priorityOrder[b.memory_type] || 99));
@@ -492,12 +517,81 @@ JSON:`;
           included.push(entry);
         }
 
-        if (included.length > 0) {
-          memoryBlock = `\n\n=== PAIGE MEMORY — What I know about this client from previous sessions ===\n${included.join("\n")}\n=== END MEMORY ===\n\nIMPORTANT: Use this memory to personalize your responses. If this is the start of a new conversation (only 1 user message), open with a personalized greeting that references what you know from memory.\n`;
+        // Append semantic hits that aren't already in the recent batch
+        const includedContents = new Set(included.map(e => e.toLowerCase()));
+        const semanticEntries: string[] = [];
+        for (const hit of semanticHits) {
+          const label = hit.source === "chat"
+            ? `PAST CHAT (${hit.memory_type})`
+            : hit.memory_type.replace(/_/g, ' ').toUpperCase();
+          const sim = typeof hit.similarity === "number" ? ` ~${(hit.similarity * 100).toFixed(0)}% match` : "";
+          const entry = `• [${label}${sim}]: ${hit.content?.slice(0, 400) || ""}`;
+          if (!includedContents.has(entry.toLowerCase())) {
+            const t = Math.ceil(entry.length / 4);
+            if (tokenEstimate + t > 1500) break;
+            tokenEstimate += t;
+            semanticEntries.push(entry);
+          }
+        }
+
+        if (included.length > 0 || semanticEntries.length > 0) {
+          const semanticBlock = semanticEntries.length > 0
+            ? `\n\n--- Semantically-relevant past context for this question ---\n${semanticEntries.join("\n")}`
+            : "";
+          memoryBlock = `\n\n=== PAIGE MEMORY — What I know about this client from previous sessions ===\n${included.join("\n")}${semanticBlock}\n=== END MEMORY ===\n\nIMPORTANT: Honor any user_preference items (tone, length, formats) in every response. Use the rest of the memory to personalize. If this is the start of a new conversation (only 1 user message), open with a personalized greeting that references what you know.\n`;
         }
       }
     } catch (err) {
       console.error("Error loading client memory:", err);
+    }
+
+    // === EXPLICIT PREFERENCE SIGNAL DETECTION (real-time, lightweight) ===
+    // Fast keyword scan on the latest user message — if the client explicitly
+    // states a preference, persist it immediately as a user_preference memory
+    // so the next turn already honors it. We intentionally keep this cheap
+    // (no extra AI call) — auto-extraction at session end catches subtler ones.
+    try {
+      const text = (lastUserMessage?.content || "").toLowerCase();
+      if (text && text.length < 600) {
+        const preferenceTriggers = [
+          /\b(be|stay|keep it)\s+(brief|short|concise|terse)\b/,
+          /\b(stop|don'?t|do not)\s+(explain|lecture|repeat|summari[sz]e|give me bullets|use bullets)/,
+          /\bno (more )?bullet/,
+          /\b(skip|cut) (the )?(greeting|intro|preamble|small talk)/,
+          /\bget (to|straight to) the point\b/,
+          /\bjust (give me|tell me|the answer)/,
+          /\bi (prefer|want|need|like) (it|you to|my answers)/,
+          /\bplease (be|stop|don'?t|use|avoid)/,
+        ];
+        const matched = preferenceTriggers.some((re) => re.test(text));
+        if (matched) {
+          const targetUserId = payloadClientId || user.id;
+          // Avoid dupes: skip if we wrote the exact same content in the last 7 days.
+          const { data: dup } = await supabase
+            .from("client_memory")
+            .select("id")
+            .eq("client_user_id", targetUserId)
+            .eq("memory_type", "user_preference")
+            .eq("content", lastUserMessage!.content.trim())
+            .gte("created_at", new Date(Date.now() - 7 * 86400_000).toISOString())
+            .limit(1)
+            .maybeSingle();
+          if (!dup) {
+            const emb = await embedText(lastUserMessage!.content);
+            const row: any = {
+              client_user_id: targetUserId,
+              memory_type: "user_preference",
+              content: lastUserMessage!.content.trim(),
+              embedding: emb,
+              metadata: { source: "explicit_signal", channel: "text" },
+            };
+            if (payloadClientId) row.client_id = payloadClientId;
+            await supabase.from("client_memory").insert(row);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Explicit preference detection failed:", err);
     }
 
     // === BUILD WITHIN-SESSION DOCUMENT CONTEXT ===
