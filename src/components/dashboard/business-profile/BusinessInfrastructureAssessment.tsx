@@ -12,6 +12,7 @@ import { PublicPresenceSection } from "./PublicPresenceSection";
 import { BusinessCreditSection } from "./BusinessCreditSection";
 import { FinancialDocsSection } from "./FinancialDocsSection";
 import { SeparationAuditCard } from "./SeparationAuditCard";
+import { BusinessWalkthrough } from "@/components/business/BusinessWalkthrough";
 
 interface Props {
   clientId?: string; // For internal client mode
@@ -71,6 +72,9 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Page Walkthrough */}
+      <BusinessWalkthrough />
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1">
