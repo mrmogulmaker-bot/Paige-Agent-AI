@@ -11,12 +11,12 @@ const tiers = [
     period: "",
     description: "See where you stand",
     features: [
-      "Personal three-bureau snapshot (weekly)",
-      "Basic credit factor overview",
+      "Weekly 3-bureau personal snapshot",
+      "Readiness Score preview",
       "5 Paige messages/day",
       "Funding education library",
     ],
-    cta: "Get Started Free",
+    cta: "Start Free",
     popular: false,
     highlight: false,
   },
@@ -24,18 +24,17 @@ const tiers = [
     name: "Starter",
     price: "$49",
     period: "/month",
-    description: "Get funding-ready",
+    description: "Get fundable",
     features: [
-      "Daily personal credit monitoring",
-      "Business credit (D&B / Experian Biz / Equifax Biz)",
-      "Funding Readiness Score",
-      "Funding product eligibility matrix",
-      "Credit → funding impact translator",
+      "Daily personal + business credit monitoring",
+      "Full Readiness Score (live)",
+      "500+ lender match engine",
+      "Credit → capital translator",
       "Personal/business separation audit",
-      "Full Paige AI access (text + voice)",
+      "Paige AI — text + voice",
       "Email support",
     ],
-    cta: "Start Building",
+    cta: "Get Fundable",
     popular: false,
     highlight: false,
   },
@@ -43,17 +42,17 @@ const tiers = [
     name: "Growth",
     price: "$149",
     period: "/month",
-    description: "Unlock your capital stack",
+    description: "Close your first round",
     features: [
       "Everything in Starter",
-      "Business banking integration (Plaid)",
-      "SBA loan evaluator",
-      "Document prep assistant",
-      "Lender marketplace access",
-      "Priority Paige AI",
+      "Bank connection (Plaid) for cash-flow underwriting",
+      "SBA 7(a) / 504 evaluator",
+      "Lender-ready doc packet builder",
+      "Direct lender intro requests",
+      "Priority Paige (faster + agent mode)",
       "Priority support",
     ],
-    cta: "Go Growth",
+    cta: "Close Capital",
     popular: true,
     highlight: true,
   },
@@ -61,15 +60,15 @@ const tiers = [
     name: "Scale",
     price: "$397",
     period: "/month",
-    description: "White-glove funding ops",
+    description: "Stack capital, repeatedly",
     features: [
       "Everything in Growth",
-      "Priority lender placement",
+      "Priority lender placement queue",
       "Dedicated funding advisor",
-      "Monthly funding strategy session",
-      "Advanced funding analytics",
+      "Monthly capital strategy session",
+      "Advanced funding analytics & forecasting",
     ],
-    cta: "Go Scale",
+    cta: "Scale Capital",
     popular: false,
     highlight: false,
   },
@@ -77,16 +76,16 @@ const tiers = [
     name: "Broker",
     price: "$497",
     period: "/month",
-    description: "Multi-client funding desk",
+    description: "Run a funding desk",
     features: [
       "Everything in Growth",
-      "Multi-client dashboard",
+      "Multi-client command center",
       "Unlimited active client seats",
       "White-label client portal",
-      "Affiliate commission tracking",
-      "GHL pipeline integration",
+      "Affiliate + commission tracking",
+      "GHL / n8n pipeline integration",
     ],
-    cta: "Go Broker",
+    cta: "Open Your Desk",
     popular: false,
     highlight: false,
   },
@@ -100,14 +99,14 @@ export function PricingSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <Badge className="mb-4 bg-gold/10 text-gold-dark border-gold/20">
-            Simple Pricing
+            Plans That Pay For Themselves
           </Badge>
           <h2 className="text-4xl lg:text-5xl font-bold mb-4">
-            Invest in Your{" "}
-            <span className="text-accent font-extrabold">Buying Power</span>
+            One Funded Deal Covers{" "}
+            <span className="text-accent font-extrabold">a Year of Paige</span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            No hidden fees. No contracts. Cancel anytime.
+            Start free. Upgrade when you're ready to close. No contracts, cancel anytime.
           </p>
         </div>
 
@@ -166,9 +165,9 @@ export function PricingSection() {
           ))}
         </div>
 
-        <p className="text-center text-xs text-muted-foreground mt-8">
-          AI-powered funding intelligence for small business owners.{" "}
-          <span className="font-bold text-accent">Not a credit repair organization.</span>
+        <p className="text-center text-xs text-muted-foreground mt-8 max-w-2xl mx-auto">
+          Paige is an AI funding intelligence platform. We educate, organize, and match — we do not furnish data, repair credit, or guarantee approvals.{" "}
+          <span className="font-bold text-accent">FCRA, CROA & GLBA compliant.</span>
         </p>
 
         <div className="mt-10 text-center">
