@@ -15,6 +15,7 @@ import { useClientChatContext } from "@/hooks/useClientChatContext";
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
+import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -354,10 +355,10 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
       {isOpen && !hideChatbot && (
         <Card
-          className={`fixed z-[9999] flex flex-col relative ${isDragOver ? "ring-2 ring-primary" : ""} ${
+          className={`fixed z-[9999] flex flex-col ${isDragOver ? "ring-2 ring-primary" : ""} ${
             isMobile
-              ? "inset-0 w-full h-full rounded-none"
-              : "bottom-6 right-6 w-[380px] max-w-[calc(100vw-32px)] h-[min(600px,calc(100vh-48px))]"
+              ? "inset-0 w-full h-full rounded-none animate-in fade-in slide-in-from-bottom-4 duration-200"
+              : "bottom-6 right-6 w-[380px] max-w-[calc(100vw-32px)] h-[min(600px,calc(100vh-48px))] origin-bottom-right animate-in fade-in slide-in-from-bottom-4 zoom-in-95 duration-200"
           } shadow-glow`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -425,7 +426,13 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
                   )}
                   <div className={`rounded-lg px-3 py-2 sm:px-4 sm:py-2 max-w-[85%] sm:max-w-[80%] ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
                     {message.documentFileName && <DocumentMessageBubble fileName={message.documentFileName} />}
-                    {message.content && <p className="text-[13px] sm:text-sm whitespace-pre-wrap">{message.content}</p>}
+                    {message.content && (
+                      message.role === "assistant" ? (
+                        <MarkdownMessage content={message.content} />
+                      ) : (
+                        <p className="text-[13px] sm:text-sm whitespace-pre-wrap">{message.content}</p>
+                      )
+                    )}
                     {message.syncStatus && <SyncStatusPanel syncStatus={message.syncStatus} />}
                   </div>
                 </div>
