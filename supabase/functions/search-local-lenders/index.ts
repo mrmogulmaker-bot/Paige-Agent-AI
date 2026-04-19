@@ -145,16 +145,16 @@ interface QueryPlan {
 }
 
 const TYPE_PLANS: Record<string, QueryPlan> = {
-  community_bank:    { label: "Community Bank", filter: 'CB:"1"' },
-  national_bank:     { label: "National Bank", filter: 'BKCLASS:"N"' },
-  regional_bank:     { label: "Regional Bank", filter: "ASSET:[10000000 TO 100000000]" },
-  savings:           { label: "Savings Institution", filter: '(BKCLASS:"SB" OR BKCLASS:"SA")' },
-  commercial:        { label: "Commercial Bank", filter: "SPECGRP:4" },
-  agricultural:      { label: "Agricultural Bank", filter: "SPECGRP:2" },
-  mdi:               { label: "Minority Depository Institution", filter: "MDI_STATUS_CODE:[1 TO 99]" },
+  community_bank:    { label: "Bank (FDIC) — Community Bank", filter: 'CB:"1"' },
+  national_bank:     { label: "Bank (FDIC) — National Bank", filter: 'BKCLASS:"N"' },
+  regional_bank:     { label: "Bank (FDIC) — Regional Bank", filter: "ASSET:[10000000 TO 100000000]" },
+  savings:           { label: "Bank (FDIC) — Savings Institution", filter: '(BKCLASS:"SB" OR BKCLASS:"SA")' },
+  commercial:        { label: "Bank (FDIC) — Commercial Bank", filter: "SPECGRP:4" },
+  agricultural:      { label: "Bank (FDIC) — Agricultural Bank", filter: "SPECGRP:2" },
+  mdi:               { label: "Bank (FDIC) — Minority Depository Institution", filter: "MDI_STATUS_CODE:[1 TO 99]" },
   // CDFI proxy: small community banks + MDIs (true CDFI list lives at Treasury)
-  cdfi:              { label: "CDFI", filter: '(CB:"1" AND ASSET:[* TO 1000000]) OR MDI_STATUS_CODE:[1 TO 99]' },
-  online_bank:       { label: "Online Bank", filter: 'BKCLASS:"N" AND ASSET:[1000000 TO *]' },
+  cdfi:              { label: "Bank (FDIC) — CDFI", filter: '(CB:"1" AND ASSET:[* TO 1000000]) OR MDI_STATUS_CODE:[1 TO 99]' },
+  online_bank:       { label: "Bank (FDIC) — Online Bank", filter: 'BKCLASS:"N" AND ASSET:[1000000 TO *]' },
 };
 
 async function queryFDIC(
@@ -246,6 +246,7 @@ async function queryFDIC(
         is_subchapter_s: String(d.SUBCHAPS || "") === "1",
         // Financial health (all in $ thousands from FDIC)
         asset_size: d.ASSET != null ? Number(d.ASSET) : null,
+        asset_size_units: "thousands" as const,
         deposits: d.DEP != null ? Number(d.DEP) : null,
         net_income: d.NETINC != null ? Number(d.NETINC) : null,
         return_on_assets: d.ROA != null ? Number(d.ROA) : null,
