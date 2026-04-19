@@ -47,17 +47,62 @@ type LenderTypeLabel =
   | "Online Bank";
 
 interface LenderResult {
+  // Identity
   name: string;
   type: LenderTypeLabel;
+  fdic_cert: string;
+  fed_rssd: string | null;
+  // Location
   address: string;
+  address2: string | null;
   city: string;
   state: string;
   zip: string;
+  county: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  // Web
   website: string;
-  referenceId: string;
+  // Charter & class
+  bank_class: string | null;
+  bank_class_desc: string | null;
+  specialization: string | null;
+  specialization_code: number | null;
+  is_community_bank: boolean;
+  is_minority_depository: boolean;
+  mdi_description: string | null;
+  has_trust_powers: boolean;
+  is_mutual: boolean;
+  is_subchapter_s: boolean;
+  // Financials (in $ thousands from FDIC)
+  asset_size: number | null;
+  deposits: number | null;
+  net_income: number | null;
+  return_on_assets: number | null;
+  return_on_equity: number | null;
+  // Footprint
+  office_count: number | null;
+  established_date: string | null;
+  fdic_insured_date: string | null;
+  // Source & enrichment
   source: "FDIC";
-  asset_size?: number | null;
   bureauPreference?: BureauPreference | null;
+}
+
+function formatAssetSize(thousands: number | null): string | null {
+  if (thousands == null) return null;
+  const dollars = thousands * 1000;
+  if (dollars >= 1e9) return `$${(dollars / 1e9).toFixed(1)}B`;
+  if (dollars >= 1e6) return `$${(dollars / 1e6).toFixed(0)}M`;
+  return `$${(dollars / 1e3).toFixed(0)}K`;
+}
+
+function yearsInBusiness(estymd: string | null): number | null {
+  if (!estymd) return null;
+  const match = estymd.match(/(\d{4})/);
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  return isNaN(year) ? null : new Date().getFullYear() - year;
 }
 
 interface BureauScores {
