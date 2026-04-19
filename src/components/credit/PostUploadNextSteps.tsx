@@ -127,6 +127,7 @@ export function PostUploadNextSteps() {
           const CtaIcon = step.ctaIcon || ArrowRight;
           const isNext = idx === nextIndex;
           const showBreakdown = step.key === "review" && reviewExpanded;
+          const showRoadmap = step.key === "build" && buildExpanded;
           return (
             <div
               key={step.key}
@@ -174,6 +175,11 @@ export function PostUploadNextSteps() {
               {showBreakdown && (
                 <div className="px-4 pb-4 pt-1 border-t border-border/50 mt-1">
                   <AccountImpactBreakdown />
+                </div>
+              )}
+              {showRoadmap && (
+                <div className="px-4 pb-4 pt-1 border-t border-border/50 mt-1">
+                  <BuildPersonalRoadmap />
                 </div>
               )}
             </div>
