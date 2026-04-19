@@ -9,9 +9,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 
 const LENDER_TYPES = [
-  { value: "credit_union", label: "Credit Union" },
-  { value: "community_bank", label: "Community Bank" },
-  { value: "cdfi", label: "CDFI" },
+  { value: "community_bank", label: "Community Bank", group: "Banks" },
+  { value: "national_bank", label: "National Bank", group: "Banks" },
+  { value: "regional_bank", label: "Regional Bank", group: "Banks" },
+  { value: "commercial", label: "Commercial Bank", group: "Banks" },
+  { value: "savings", label: "Savings Institution", group: "Banks" },
+  { value: "agricultural", label: "Agricultural Bank", group: "Banks" },
+  { value: "mdi", label: "Minority Depository (MDI)", group: "Mission-Based" },
+  { value: "cdfi", label: "CDFI", group: "Mission-Based" },
+  { value: "credit_union", label: "Credit Union (NCUA)", group: "Credit Unions" },
 ];
 
 const US_STATES = [
@@ -28,9 +34,21 @@ interface BureauPreference {
   notes: string | null;
 }
 
+type LenderTypeLabel =
+  | "Credit Union"
+  | "Community Bank"
+  | "National Bank"
+  | "Regional Bank"
+  | "Savings Institution"
+  | "Commercial Bank"
+  | "Agricultural Bank"
+  | "Minority Depository Institution"
+  | "CDFI"
+  | "Online Bank";
+
 interface LenderResult {
   name: string;
-  type: "Credit Union" | "Community Bank" | "CDFI";
+  type: LenderTypeLabel;
   address: string;
   city: string;
   state: string;
@@ -38,6 +56,7 @@ interface LenderResult {
   website: string;
   referenceId: string;
   source: "FDIC";
+  asset_size?: number | null;
   bureauPreference?: BureauPreference | null;
 }
 
@@ -50,13 +69,27 @@ interface BureauScores {
 const TYPE_COLORS: Record<string, string> = {
   "Credit Union": "bg-blue-500/10 text-blue-400 border-blue-500/30",
   "Community Bank": "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+  "National Bank": "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
+  "Regional Bank": "bg-violet-500/10 text-violet-400 border-violet-500/30",
+  "Savings Institution": "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",
+  "Commercial Bank": "bg-sky-500/10 text-sky-400 border-sky-500/30",
+  "Agricultural Bank": "bg-lime-500/10 text-lime-400 border-lime-500/30",
+  "Minority Depository Institution": "bg-rose-500/10 text-rose-400 border-rose-500/30",
   CDFI: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+  "Online Bank": "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/30",
 };
 
 const TYPE_ICONS: Record<string, typeof Building2> = {
   "Credit Union": Landmark,
   "Community Bank": Building2,
+  "National Bank": Landmark,
+  "Regional Bank": Landmark,
+  "Savings Institution": Building2,
+  "Commercial Bank": Building2,
+  "Agricultural Bank": Building2,
+  "Minority Depository Institution": Building2,
   CDFI: Building2,
+  "Online Bank": Globe,
 };
 
 const BUREAU_LABELS: Record<string, string> = {
