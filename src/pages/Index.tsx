@@ -93,13 +93,13 @@ const Index = () => {
             {[
               {
                 stat: "$1.2M",
-                label: "Raised for Gabon",
+                label: "Raised for One Founder",
                 sub: "From understanding her credit to seven figures in funding",
               },
               {
                 stat: "5 AMEX Cards",
                 label: "With ONE Inquiry",
-                sub: "Lavelle used the funding intelligence protocol — 5 approvals, 1 hard pull",
+                sub: "A member used the funding intelligence protocol — 5 approvals, 1 hard pull",
               },
               {
                 stat: "720+",
