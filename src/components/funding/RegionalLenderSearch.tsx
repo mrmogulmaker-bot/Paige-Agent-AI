@@ -233,10 +233,19 @@ export function RegionalLenderSearch({
         />
 
         <Select value={lenderType} onValueChange={setLenderType}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Lender Type" /></SelectTrigger>
+          <SelectTrigger className="w-56"><SelectValue placeholder="Lender Type" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            {LENDER_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+            <SelectItem value="all">All Banks (Recommended)</SelectItem>
+            {(["Banks", "Mission-Based", "Credit Unions"] as const).map((group) => (
+              <div key={group}>
+                <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">
+                  {group}
+                </div>
+                {LENDER_TYPES.filter((t) => t.group === group).map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
+              </div>
+            ))}
           </SelectContent>
         </Select>
 
