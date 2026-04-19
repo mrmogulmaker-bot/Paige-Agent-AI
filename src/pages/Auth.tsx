@@ -191,7 +191,7 @@ const Auth = () => {
   const features = [
     { icon: Shield, title: "Bank-Grade Security", desc: "256-bit encryption protects your data" },
     { icon: TrendingUp, title: "Credit Intelligence", desc: "AI-powered insights across all 3 bureaus" },
-    { icon: Zap, title: "Automated Disputes", desc: "Smart dispute letters generated instantly" },
+    { icon: Zap, title: "Funding Readiness", desc: "Real-time score banks actually use" },
   ];
 
   return (

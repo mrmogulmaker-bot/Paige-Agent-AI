@@ -9,12 +9,12 @@ const chatLines = [
   { role: "user" as const, text: "Am I fundable right now?" },
   {
     role: "assistant" as const,
-    text: "Readiness Score: 62/100. You're sitting on $40K in line-of-credit access today. One move — drop your top revolver from 68% to 25% utilization — unlocks SBA 7(a) up to $135K across 14 lenders. Want me to draft the paydown plan?",
+    text: "Readiness Score: 62/100. Your LLC is in good standing, but your business address isn't 411-listed and your D&B file is thin — both flags banks pull. Fix those plus drop your top revolver from 68% to 25% utilization and you unlock SBA 7(a) up to $135K across 14 lenders.",
   },
-  { role: "user" as const, text: "Yes, and queue the lender outreach." },
+  { role: "user" as const, text: "Walk me through it." },
   {
     role: "assistant" as const,
-    text: "Done. Paydown plan sent to your tasks, three lender intros drafted for your coach to approve. I'll re-score you the moment your next bureau pull lands.",
+    text: "Done. 411 listing queued, D&B trade-line plan in your tasks, paydown schedule built, and 3 lender intros drafted for your coach to approve. I'll re-score the moment your next bureau pull lands.",
   },
 ];
 
@@ -54,9 +54,10 @@ export function HeroSection() {
             </h1>
 
             <p className="text-xl text-muted-foreground leading-relaxed max-w-lg">
-              Paige reads every credit file, scores funding readiness in real time,
-              and matches you to the lenders that say yes today — across 500+
-              banks, credit unions, CDFIs, and SBA lenders.
+              Paige maps your full picture the way banks actually underwrite —
+              personal credit, business formation, state filings, public presence,
+              banking, and revenue — then tells you exactly what to fix and which
+              of 500+ lenders will say yes. The things school never taught you.
             </p>
 
             {/* Social proof stats */}
