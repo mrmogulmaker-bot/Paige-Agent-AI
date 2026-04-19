@@ -2,8 +2,10 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
-import { ExternalLink, AlertTriangle, XCircle, Info, CheckCircle2, MinusCircle } from "lucide-react";
+import { ExternalLink, AlertTriangle, XCircle, Info, CheckCircle2, MinusCircle, Zap, Clock, DollarSign, TrendingUp } from "lucide-react";
 import type { ProductMatch } from "@/lib/fundingMatchScoring";
+import { getCategoryMeta, getSpeedClass } from "@/lib/lenderCategories";
+import { LenderFlagBadges } from "./LenderFlagBadges";
 
 const CATEGORY_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   eligible: { bg: "bg-fundability-excellent/10", text: "text-fundability-excellent", label: "Eligible" },
@@ -33,9 +35,21 @@ const BUREAU_COLORS: Record<string, string> = {
   flexible: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
 };
 
-export function ProductMatchCard({ match }: { match: ProductMatch }) {
+function formatRequirement(label: string, value: string | number | null | undefined, icon: React.ReactNode) {
+  if (value == null || value === "" || value === 0) return null;
+  return (
+    <div className="flex items-center gap-1.5 text-xs">
+      {icon}
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="font-medium text-foreground">{value}</span>
+    </div>
+  );
+}
+
+export function ProductMatchCard({ match, onAskPaige }: { match: ProductMatch; onAskPaige?: (product: any) => void }) {
   const { product, score, category, deductions, estimatedAmount, estimateExplanation, dataPoints, primaryBureau, bureauPullLabel } = match;
   const style = CATEGORY_STYLES[category];
+  const categoryMeta = getCategoryMeta(product.product_category || product.product_type);
 
   return (
     <Card className="p-4 bg-card border-border hover:shadow-md transition-all">
@@ -44,14 +58,22 @@ export function ProductMatchCard({ match }: { match: ProductMatch }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-semibold text-foreground">{product.lender_name}</h3>
-            <span className="text-sm text-muted-foreground">{product.product_name}</span>
+            {product.product_subcategory && (
+              <span className="text-sm text-muted-foreground">{product.product_subcategory.replace(/_/g, " ")}</span>
+            )}
           </div>
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <Badge variant="outline" className="text-xs">{product.product_type?.replace(/_/g, " ")}</Badge>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <Badge className={`text-xs border ${categoryMeta.badgeClass}`}>{categoryMeta.shortLabel}</Badge>
             <Badge className={`text-xs ${style.bg} ${style.text} border-0`}>{style.label}</Badge>
             <Badge variant="outline" className={`text-xs border-0 ${BUREAU_COLORS[primaryBureau] || BUREAU_COLORS.middle_score}`}>
               {bureauPullLabel}
             </Badge>
+            {product.confidence_level === "verified" && (
+              <Badge variant="outline" className="text-xs">Verified</Badge>
+            )}
+          </div>
+          <div className="mt-2">
+            <LenderFlagBadges product={product} />
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -73,9 +95,37 @@ export function ProductMatchCard({ match }: { match: ProductMatch }) {
         </div>
       </div>
 
-      {/* Data Points Summary */}
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 bg-muted/30 rounded-lg p-3">
-        {dataPoints.map((dp, i) => (
+      {/* Key requirements */}
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 bg-muted/30 rounded-lg p-3">
+        {formatRequirement("Min Score", product.min_fico_score, <TrendingUp className="w-3.5 h-3.5 text-muted-foreground shrink-0" />)}
+        {formatRequirement("Min Revenue", product.min_annual_revenue ? `$${Number(product.min_annual_revenue).toLocaleString()}` : null, <DollarSign className="w-3.5 h-3.5 text-muted-foreground shrink-0" />)}
+        {formatRequirement("Min TIB", product.min_business_age_months ? `${product.min_business_age_months} mo` : null, <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />)}
+        {product.funding_speed && (
+          <div className="flex items-center gap-1.5 text-xs">
+            <Zap className={`w-3.5 h-3.5 shrink-0 ${getSpeedClass(product.funding_speed)}`} />
+            <span className="text-muted-foreground">Speed:</span>
+            <span className={`font-medium ${getSpeedClass(product.funding_speed)}`}>{product.funding_speed}</span>
+          </div>
+        )}
+        {product.max_amount && (
+          <div className="flex items-center gap-1.5 text-xs">
+            <DollarSign className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-muted-foreground">Up to:</span>
+            <span className="font-medium text-foreground">${Number(product.max_amount).toLocaleString()}</span>
+          </div>
+        )}
+        {product.interest_rate_range && (
+          <div className="flex items-center gap-1.5 text-xs">
+            <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <span className="text-muted-foreground">Rate:</span>
+            <span className="font-medium text-foreground">{product.interest_rate_range}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Profile Data Points */}
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 bg-card border border-border rounded-lg p-3">
+        {dataPoints.slice(0, 6).map((dp, i) => (
           <div key={i} className="flex items-center gap-1.5 text-xs">
             {STATUS_ICON[dp.status]}
             <span className="text-muted-foreground">{dp.label}:</span>
@@ -91,22 +141,34 @@ export function ProductMatchCard({ match }: { match: ProductMatch }) {
             <div key={i} className="flex items-start gap-2 text-xs">
               {SEVERITY_ICON[d.severity]}
               <span className="text-foreground">{d.label}</span>
-              <span className="text-destructive font-semibold ml-auto shrink-0">-{d.points}</span>
+              {d.points > 0 && <span className="text-destructive font-semibold ml-auto shrink-0">-{d.points}</span>}
             </div>
           ))}
         </div>
       )}
 
-      {/* Apply button for eligible */}
-      {category === "eligible" && product.application_url && (
-        <div className="mt-3">
+      {/* Notes */}
+      {product.notes && (
+        <p className="mt-3 text-xs text-muted-foreground italic border-l-2 border-border pl-3">
+          {product.notes}
+        </p>
+      )}
+
+      {/* Actions */}
+      <div className="mt-3 flex items-center gap-2 flex-wrap">
+        {category === "eligible" && product.application_url && (
           <Button size="sm" variant="outline" className="text-xs" asChild>
             <a href={product.affiliate_url || product.application_url} target="_blank" rel="noopener noreferrer">
               Apply <ExternalLink className="w-3 h-3 ml-1" />
             </a>
           </Button>
-        </div>
-      )}
+        )}
+        {onAskPaige && (
+          <Button size="sm" variant="ghost" className="text-xs" onClick={() => onAskPaige(product)}>
+            Ask Paige about this lender
+          </Button>
+        )}
+      </div>
     </Card>
   );
 }

@@ -3726,10 +3726,15 @@ export type Database = {
           application_url: string | null
           apr_range_high: number | null
           apr_range_low: number | null
+          business_credit_bureaus: string[] | null
+          confidence_level: string | null
           created_at: string | null
           ein_only: boolean | null
+          funding_speed: string | null
           id: string
+          interest_rate_range: string | null
           is_active: boolean | null
+          is_sba_approved: boolean | null
           last_verified: string | null
           lender_name: string
           max_amount: number | null
@@ -3750,10 +3755,23 @@ export type Database = {
           min_open_accounts: number | null
           min_paydex: number | null
           notes: string | null
+          personal_credit_impact: string | null
+          primary_bureau: string | null
+          product_category: string | null
           product_name: string
+          product_subcategory: string | null
           product_type: string
+          requires_collateral: boolean | null
           requires_duns: boolean
+          requires_personal_guarantee: boolean | null
           requires_pg: boolean | null
+          sba_preferred_lender: boolean | null
+          secondary_bureau: string | null
+          serves_bad_credit: boolean | null
+          serves_minority_owned: boolean | null
+          serves_startups: boolean | null
+          serves_veterans: boolean | null
+          serves_women_owned: boolean | null
           term_months: number | null
           updated_at: string | null
         }
@@ -3763,10 +3781,15 @@ export type Database = {
           application_url?: string | null
           apr_range_high?: number | null
           apr_range_low?: number | null
+          business_credit_bureaus?: string[] | null
+          confidence_level?: string | null
           created_at?: string | null
           ein_only?: boolean | null
+          funding_speed?: string | null
           id?: string
+          interest_rate_range?: string | null
           is_active?: boolean | null
+          is_sba_approved?: boolean | null
           last_verified?: string | null
           lender_name: string
           max_amount?: number | null
@@ -3787,10 +3810,23 @@ export type Database = {
           min_open_accounts?: number | null
           min_paydex?: number | null
           notes?: string | null
+          personal_credit_impact?: string | null
+          primary_bureau?: string | null
+          product_category?: string | null
           product_name: string
+          product_subcategory?: string | null
           product_type: string
+          requires_collateral?: boolean | null
           requires_duns?: boolean
+          requires_personal_guarantee?: boolean | null
           requires_pg?: boolean | null
+          sba_preferred_lender?: boolean | null
+          secondary_bureau?: string | null
+          serves_bad_credit?: boolean | null
+          serves_minority_owned?: boolean | null
+          serves_startups?: boolean | null
+          serves_veterans?: boolean | null
+          serves_women_owned?: boolean | null
           term_months?: number | null
           updated_at?: string | null
         }
@@ -3800,10 +3836,15 @@ export type Database = {
           application_url?: string | null
           apr_range_high?: number | null
           apr_range_low?: number | null
+          business_credit_bureaus?: string[] | null
+          confidence_level?: string | null
           created_at?: string | null
           ein_only?: boolean | null
+          funding_speed?: string | null
           id?: string
+          interest_rate_range?: string | null
           is_active?: boolean | null
+          is_sba_approved?: boolean | null
           last_verified?: string | null
           lender_name?: string
           max_amount?: number | null
@@ -3824,10 +3865,23 @@ export type Database = {
           min_open_accounts?: number | null
           min_paydex?: number | null
           notes?: string | null
+          personal_credit_impact?: string | null
+          primary_bureau?: string | null
+          product_category?: string | null
           product_name?: string
+          product_subcategory?: string | null
           product_type?: string
+          requires_collateral?: boolean | null
           requires_duns?: boolean
+          requires_personal_guarantee?: boolean | null
           requires_pg?: boolean | null
+          sba_preferred_lender?: boolean | null
+          secondary_bureau?: string | null
+          serves_bad_credit?: boolean | null
+          serves_minority_owned?: boolean | null
+          serves_startups?: boolean | null
+          serves_veterans?: boolean | null
+          serves_women_owned?: boolean | null
           term_months?: number | null
           updated_at?: string | null
         }
