@@ -28,6 +28,7 @@ import { AccountImpactBreakdown } from "./AccountImpactBreakdown";
  */
 export function PostUploadNextSteps() {
   const navigate = useNavigate();
+  const [reviewExpanded, setReviewExpanded] = useState(true);
 
   const { data, isLoading } = useQuery({
     queryKey: ["post-upload-next-steps"],
@@ -66,14 +67,13 @@ export function PostUploadNextSteps() {
     {
       key: "review",
       icon: ListChecks,
-      title: "Review your accounts & negatives",
-      description: `We extracted ${data.accounts} account${data.accounts === 1 ? "" : "s"}${data.negatives > 0 ? ` and ${data.negatives} negative item${data.negatives === 1 ? "" : "s"}` : ""}. Confirm everything looks right.`,
-      done: data.accounts > 0,
-      cta: "Review accounts",
-      onClick: () => {
-        // Scroll to the file health assessment section on the same page
-        document.getElementById("credit-health-assessment")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      },
+      title: "Review what's hurting your score",
+      description: `We extracted ${data.accounts} account${data.accounts === 1 ? "" : "s"}${data.negatives > 0 ? ` and flagged ${data.negatives} negative item${data.negatives === 1 ? "" : "s"}` : ""}. Here's exactly what each one is doing to your credit — account by account.`,
+      done: false,
+      cta: reviewExpanded ? "Hide details" : "Show details",
+      ctaIcon: reviewExpanded ? ChevronUp : ChevronDown,
+      onClick: () => setReviewExpanded((v) => !v),
+      expandable: true,
     },
     {
       key: "build",
@@ -83,6 +83,7 @@ export function PostUploadNextSteps() {
         "BUILD Personal is the 12-month roadmap that turns this credit file into a fundable profile — paydown plan, secured cards, authorized-user tradelines, and MyFICO 3B monitoring across the Base → Utilize → Integrate → Leverage → Dominate phases.",
       done: false,
       cta: "Open BUILD Personal",
+      ctaIcon: ArrowRight,
       onClick: () => navigate("/app?section=personal-build"),
     },
     {
@@ -92,6 +93,7 @@ export function PostUploadNextSteps() {
       description: "Paige now has full context of your report. Ask her anything — disputes, utilization, funding strategy.",
       done: false,
       cta: "Talk to Paige",
+      ctaIcon: ArrowRight,
       onClick: () => {
         // Open the floating chatbot
         window.dispatchEvent(new CustomEvent("paige-open-chat"));
@@ -119,11 +121,13 @@ export function PostUploadNextSteps() {
       <div className="space-y-3">
         {steps.map((step, idx) => {
           const Icon = step.icon;
+          const CtaIcon = step.ctaIcon || ArrowRight;
           const isNext = idx === nextIndex;
+          const showBreakdown = step.key === "review" && reviewExpanded;
           return (
             <div
               key={step.key}
-              className={`flex items-start gap-4 p-4 rounded-lg border transition-colors ${
+              className={`rounded-lg border transition-colors ${
                 isNext
                   ? "bg-accent/10 border-accent/40"
                   : step.done
@@ -131,36 +135,43 @@ export function PostUploadNextSteps() {
                     : "bg-card border-border"
               }`}
             >
-              <div
-                className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
-                  step.done
-                    ? "bg-fundability-excellent/20 text-fundability-excellent"
-                    : isNext
-                      ? "bg-accent/20 text-accent"
-                      : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {step.done ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className={`font-semibold ${step.done ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                    {step.title}
-                  </h3>
-                  {isNext && <Badge variant="outline" className="text-[10px] border-accent/40 text-accent">Do this next</Badge>}
-                </div>
-                <p className="text-sm text-muted-foreground mt-0.5">{step.description}</p>
-              </div>
-              {step.cta && !step.done && (
-                <Button
-                  size="sm"
-                  variant={isNext ? "default" : "outline"}
-                  onClick={step.onClick}
-                  className={isNext ? "bg-gradient-gold hover:opacity-90 shrink-0" : "shrink-0"}
+              <div className="flex items-start gap-4 p-4">
+                <div
+                  className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${
+                    step.done
+                      ? "bg-fundability-excellent/20 text-fundability-excellent"
+                      : isNext
+                        ? "bg-accent/20 text-accent"
+                        : "bg-muted text-muted-foreground"
+                  }`}
                 >
-                  {step.cta}
-                  <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                </Button>
+                  {step.done ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className={`font-semibold ${step.done ? "text-muted-foreground line-through" : "text-foreground"}`}>
+                      {step.title}
+                    </h3>
+                    {isNext && <Badge variant="outline" className="text-[10px] border-accent/40 text-accent">Do this next</Badge>}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-0.5">{step.description}</p>
+                </div>
+                {step.cta && !step.done && (
+                  <Button
+                    size="sm"
+                    variant={isNext ? "default" : "outline"}
+                    onClick={step.onClick}
+                    className={isNext ? "bg-gradient-gold hover:opacity-90 shrink-0" : "shrink-0"}
+                  >
+                    {step.cta}
+                    <CtaIcon className="w-3.5 h-3.5 ml-1" />
+                  </Button>
+                )}
+              </div>
+              {showBreakdown && (
+                <div className="px-4 pb-4 pt-1 border-t border-border/50 mt-1">
+                  <AccountImpactBreakdown />
+                </div>
               )}
             </div>
           );
