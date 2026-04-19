@@ -166,7 +166,7 @@ export function AccountImpactBreakdown() {
 
       // Find revolving cards with meaningful utilization
       const revolvingCards = (accounts || []).filter(
-        (a) => a.type === "revolving" && a.is_open !== false
+        (a) => a.type === "credit_card" && a.is_open !== false
       ) as CreditAccount[];
 
       const flaggedCards = revolvingCards

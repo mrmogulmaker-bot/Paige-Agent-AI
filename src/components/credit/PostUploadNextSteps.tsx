@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   ArrowRight,
-  ShieldAlert,
   ListChecks,
   TrendingUp,
   Sparkles,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import { AccountImpactBreakdown } from "./AccountImpactBreakdown";
 
 /**
  * PostUploadNextSteps
