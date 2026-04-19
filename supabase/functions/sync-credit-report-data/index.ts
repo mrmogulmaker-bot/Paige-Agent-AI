@@ -14,11 +14,11 @@ const ScoreSchema = z.object({
 });
 
 const NegativeItemSchema = z.object({
-  creditor_name: z.string(),
+  creditor_name: z.string().nullable().optional(),
   account_number: z.string().nullable().optional(),
   account_number_masked: z.string().nullable().optional(),
-  bureau: z.string(),
-  item_type: z.string(),
+  bureau: z.string().nullable().optional(),
+  item_type: z.string().nullable().optional(),
   amount: z.number().nullable().optional(),
   original_amount: z.number().nullable().optional(),
   date_of_occurrence: z.string().nullable().optional(),
@@ -27,28 +27,28 @@ const NegativeItemSchema = z.object({
   date_closed: z.string().nullable().optional(),
   dispute_basis: z.string().nullable().optional(),
   estimated_score_impact: z.number().nullable().optional(),
-  status: z.string().optional().default("active"),
+  status: z.string().nullable().optional().default("active"),
   is_cross_bureau_discrepancy: z.boolean().optional().default(false),
   responsibility: z.string().nullable().optional(),
   payment_history_percentage: z.number().nullable().optional(),
   account_type: z.string().nullable().optional(),
-});
+}).passthrough();
 
 const InquirySchema = z.object({
-  creditor_name: z.string(),
-  inquiry_date: z.string(),
-  bureau: z.string(),
+  creditor_name: z.string().nullable().optional(),
+  inquiry_date: z.string().nullable().optional(),
+  bureau: z.string().nullable().optional(),
   is_authorized: z.boolean().optional().default(true),
-});
+}).passthrough();
 
 const PositiveAccountSchema = z.object({
-  creditor: z.string(),
+  creditor: z.string().nullable().optional(),
   account_number: z.string().nullable().optional(),
-  account_type: z.string(),
+  account_type: z.string().nullable().optional(),
   balance: z.number().nullable().optional(),
   credit_limit: z.number().nullable().optional(),
   utilization: z.number().nullable().optional(),
-  status: z.string().optional().default("current"),
+  status: z.string().nullable().optional().default("current"),
   account_open_date: z.string().nullable().optional(),
   is_open: z.boolean().optional().default(true),
   payment_status: z.string().nullable().optional(),
@@ -58,7 +58,7 @@ const PositiveAccountSchema = z.object({
   responsibility: z.string().nullable().optional(),
   payment_history_percentage: z.number().nullable().optional(),
   bureau_source: z.string().nullable().optional(),
-});
+}).passthrough();
 
 const DiscrepancySchema = z.object({
   account_name: z.string(),
@@ -226,7 +226,7 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
   const clientId = payload.client_id || null;
   const negativeItemLogs: any[] = [];
 
-  console.log("=== SYNC PAYLOAD COUNTS ===", {
+  console.log("=== SYNC PAYLOAD COUNTS (raw) ===", {
     negative_items: payload.negative_items?.length ?? 0,
     positive_accounts: payload.positive_accounts?.length ?? 0,
     hard_inquiries: payload.hard_inquiries?.length ?? 0,
@@ -234,6 +234,62 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
     client_id: clientId,
     target_user_id: targetUserId,
   });
+
+  // Defensive filter: drop rows missing the minimum identifiers required to be useful.
+  // The AI sometimes returns partial rows (e.g. a creditor with no name on a tri-merge column gap).
+  // Filtering here lets the sync succeed for the rest of the report instead of failing the whole upload.
+  const droppedNegatives: any[] = [];
+  payload.negative_items = (payload.negative_items || []).filter((n: any) => {
+    if (!n || typeof n !== "object") return false;
+    const hasName = typeof n.creditor_name === "string" && n.creditor_name.trim().length > 0;
+    const hasBureau = typeof n.bureau === "string" && n.bureau.trim().length > 0;
+    const hasType = typeof n.item_type === "string" && n.item_type.trim().length > 0;
+    if (!hasName || !hasBureau || !hasType) {
+      droppedNegatives.push({ creditor_name: n.creditor_name, bureau: n.bureau, item_type: n.item_type });
+      return false;
+    }
+    return true;
+  });
+
+  const droppedPositives: any[] = [];
+  payload.positive_accounts = (payload.positive_accounts || []).filter((a: any) => {
+    if (!a || typeof a !== "object") return false;
+    const hasName = typeof a.creditor === "string" && a.creditor.trim().length > 0;
+    if (!hasName) {
+      droppedPositives.push({ creditor: a.creditor, account_type: a.account_type });
+      return false;
+    }
+    // account_type missing → default to "unknown" so we keep the row
+    if (!a.account_type || typeof a.account_type !== "string" || a.account_type.trim().length === 0) {
+      a.account_type = "unknown";
+    }
+    return true;
+  });
+
+  const droppedInquiries: any[] = [];
+  payload.hard_inquiries = (payload.hard_inquiries || []).filter((q: any) => {
+    if (!q || typeof q !== "object") return false;
+    const hasName = typeof q.creditor_name === "string" && q.creditor_name.trim().length > 0;
+    const hasBureau = typeof q.bureau === "string" && q.bureau.trim().length > 0;
+    const hasDate = typeof q.inquiry_date === "string" && q.inquiry_date.trim().length > 0;
+    if (!hasName || !hasBureau || !hasDate) {
+      droppedInquiries.push({ creditor_name: q.creditor_name, bureau: q.bureau, inquiry_date: q.inquiry_date });
+      return false;
+    }
+    return true;
+  });
+
+  console.log("=== SYNC PAYLOAD COUNTS (filtered) ===", {
+    negative_items: payload.negative_items.length,
+    positive_accounts: payload.positive_accounts.length,
+    hard_inquiries: payload.hard_inquiries.length,
+    dropped_negatives: droppedNegatives.length,
+    dropped_positives: droppedPositives.length,
+    dropped_inquiries: droppedInquiries.length,
+  });
+  if (droppedNegatives.length || droppedPositives.length || droppedInquiries.length) {
+    console.warn("Dropped incomplete rows:", { droppedNegatives, droppedPositives, droppedInquiries });
+  }
 
   const withClientId = (obj: any) => clientId ? { ...obj, client_id: clientId } : obj;
 
