@@ -1222,6 +1222,86 @@ Always identify the document type and bureau in your response.`,
           }
         } else if (tc.function.name === "web_fetch") {
           toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ note: "Web fetch not executed in this flow" }) });
+        } else if (tc.function.name === "search_regional_lenders") {
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const lrResponse = await fetch(`${supabaseUrl}/functions/v1/search-local-lenders`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${supabaseServiceKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                state: args.state,
+                city: args.city,
+                lenderType: args.lender_type || "all",
+              }),
+            });
+            const lrBody = await lrResponse.json();
+
+            // Trim to top 10 and only the fields Paige needs to present results conversationally
+            const trimmed = (lrBody.results || []).slice(0, 10).map((r: any) => ({
+              name: r.name,
+              type: r.type,
+              city: r.city,
+              state: r.state,
+              address: r.address,
+              zip: r.zip,
+              phone: null, // FDIC dataset does not return phone numbers; client should call for current contact
+              website: r.website || null,
+              is_minority_depository: r.is_minority_depository,
+              mdi_description: r.mdi_description,
+              is_community_bank: r.is_community_bank,
+              asset_size_thousands: r.asset_size,
+              asset_size_category:
+                r.asset_size == null ? null
+                : r.asset_size < 300_000 ? "small"
+                : r.asset_size < 10_000_000 ? "mid-size"
+                : r.asset_size < 100_000_000 ? "regional"
+                : "large/national",
+              office_count: r.office_count,
+              fdic_cert: r.fdic_cert,
+              bureau_preference: r.bureauPreference || null,
+            }));
+
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({
+                count: trimmed.length,
+                broadened: lrBody.broadened || false,
+                searched_city: lrBody.searchedCity || null,
+                searched_state: args.state,
+                lender_type: args.lender_type || "all",
+                credit_union_note: lrBody.creditUnionNote || null,
+                lenders: trimmed,
+                note: trimmed.length === 0
+                  ? "No lenders matched this query. Suggest neighboring state, broader type, or NCUA for credit unions."
+                  : "Present these conversationally with the format from your system prompt. Tie each pick back to the client's bureau profile.",
+              }),
+            });
+          } catch (err) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
+            });
+          }
+        } else if (tc.function.name === "search_funding_marketplace") {
+          // Scaffold — not wired to Lendflow yet. Activate by setting LENDFLOW_ENABLED=true and
+          // implementing the real Lendflow API call inside the `if (lendflowEnabled)` branch.
+          const lendflowEnabled = (Deno.env.get("LENDFLOW_ENABLED") || "").toLowerCase() === "true";
+          let payload: any;
+          if (!lendflowEnabled) {
+            payload = {
+              status: "coming_soon",
+              message: "Lendflow marketplace integration coming soon — I will be able to search 500 plus lenders and pre-qualify you instantly once this is live.",
+            };
+          } else {
+            // TODO: real Lendflow API call goes here once credentials are configured
+            payload = {
+              status: "coming_soon",
+              message: "Lendflow marketplace integration is enabled but not yet implemented. Falling back to the placeholder.",
+            };
+          }
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(payload) });
         }
       }
 
