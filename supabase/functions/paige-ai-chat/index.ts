@@ -1588,6 +1588,35 @@ Always identify the document type and bureau in your response.`,
               content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
             });
           }
+        } else if (tc.function.name === "search_sba_lenders") {
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const sbaResponse = await fetch(`${supabaseUrl}/functions/v1/search-sba-lenders`, {
+              method: "POST",
+              headers: { Authorization: authHeader, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                state: args.state,
+                city: args.city,
+                loan_type: args.loan_type || "all",
+                loan_amount: args.loan_amount,
+              }),
+            });
+            const sbaBody = await sbaResponse.json();
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({
+                ...sbaBody,
+                note: "Present these SBA lenders per the SBA RULES. Label each 'SBA-Approved Lender'. Tie the recommended SBA program to bureau profile and funding goal. Close with the SBA UPDATES disclaimer.",
+              }),
+            });
+          } catch (err) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
+            });
+          }
         } else if (tc.function.name === "search_funding_marketplace") {
           // Scaffold — not wired to Lendflow yet. Activate by setting LENDFLOW_ENABLED=true and
           // implementing the real Lendflow API call inside the `if (lendflowEnabled)` branch.
