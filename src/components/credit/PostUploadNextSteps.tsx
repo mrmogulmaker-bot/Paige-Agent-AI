@@ -82,11 +82,12 @@ export function PostUploadNextSteps() {
       icon: TrendingUp,
       title: "Start BUILD Personal",
       description:
-        "BUILD Personal is the 12-month roadmap that turns this credit file into a fundable profile — paydown plan, secured cards, authorized-user tradelines, and MyFICO 3B monitoring across the Base → Utilize → Integrate → Leverage → Dominate phases.",
+        "BUILD Personal is the 12-month roadmap that turns this credit file into a fundable profile. Walk through each phase (Base → Utilize → Integrate → Leverage → Dominate) and see what tradelines you have, what's missing, and why each one matters.",
       done: false,
-      cta: "Open BUILD Personal",
-      ctaIcon: ArrowRight,
-      onClick: () => navigate("/app?section=personal-build"),
+      cta: buildExpanded ? "Hide roadmap" : "Show roadmap",
+      ctaIcon: buildExpanded ? ChevronUp : ChevronDown,
+      onClick: () => setBuildExpanded((v) => !v),
+      expandable: true,
     },
     {
       key: "paige",
