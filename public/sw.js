@@ -1,13 +1,33 @@
 // PaigeAgent Push Notification Service Worker
-// Handles incoming web push events and notification clicks
+// Handles incoming web push events and notification clicks.
+// IMPORTANT: This SW does NOT cache any app assets — Vite/CDN handles freshness.
+// Bumping SW_VERSION forces old workers to be replaced + clears any stray caches.
+
+const SW_VERSION = 'paige-sw-v2';
 
 self.addEventListener('install', (event) => {
+  // Activate this SW immediately, replacing any older version
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    (async () => {
+      // Defensive: nuke any caches a previous SW version may have created.
+      // (Older builds had Workbox precaching that caused stale-build issues.)
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch (_e) {
+        // ignore
+      }
+      await self.clients.claim();
+    })()
+  );
 });
+
+// Never intercept fetches — let the browser/CDN serve fresh assets every time.
+// (No fetch listener on purpose.)
 
 self.addEventListener('push', (event) => {
   if (!event.data) return;
@@ -54,4 +74,11 @@ self.addEventListener('notificationclick', (event) => {
       }
     })
   );
+});
+
+// Allow the app to ask the SW to update immediately
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
