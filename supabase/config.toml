@@ -35,6 +35,8 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = true
   [functions.schedule-automated-tasks]
     verify_jwt = true
+  [functions.search-sba-lenders]
+    verify_jwt = true
   [functions.send-funding-report]
     verify_jwt = true
   [functions.send-sms-reminder]
