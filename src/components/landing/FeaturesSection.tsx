@@ -41,7 +41,7 @@ const features = [
     icon: Mic,
     title: "Paige in Full Agent Mode",
     description:
-      "Voice or text. She drafts disputes, queues lender outreach, schedules paydowns, and pre-fills applications — your coach approves, Paige executes.",
+      "Voice or text. She maps your credit file, queues lender outreach, schedules paydowns, and pre-fills applications — your coach approves, Paige executes. Repair work routes to Mogul Credit AI.",
     accent: false,
   },
 ];
