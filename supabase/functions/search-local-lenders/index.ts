@@ -8,9 +8,21 @@ const corsHeaders = {
 
 const FDIC_BASE = "https://banks.data.fdic.gov/api/institutions";
 
+type LenderTypeLabel =
+  | "Credit Union"
+  | "Community Bank"
+  | "National Bank"
+  | "Regional Bank"
+  | "Savings Institution"
+  | "Commercial Bank"
+  | "Agricultural Bank"
+  | "Minority Depository Institution"
+  | "CDFI"
+  | "Online Bank";
+
 interface LenderResult {
   name: string;
-  type: "Credit Union" | "Community Bank" | "CDFI";
+  type: LenderTypeLabel;
   address: string;
   city: string;
   state: string;
@@ -18,6 +30,7 @@ interface LenderResult {
   website: string;
   referenceId: string;
   source: "FDIC";
+  asset_size?: number | null;
   bureauPreference?: {
     primary_bureau: string;
     secondary_bureau: string | null;
@@ -50,24 +63,52 @@ function titleCase(s: string): string {
   return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/**
+ * Lender-type query plans for the FDIC API.
+ *
+ * FDIC field reference:
+ *   - BKCLASS: Charter class (N=National, SM/NM=State Member/Non-Member,
+ *              SB=Savings Bank, SA=Savings Assoc, OI=Insured Branch Foreign)
+ *   - SPECGRP: Specialization group (2=Ag, 4=Commercial, 5=Mortgage, 6=Consumer)
+ *   - ASSET:   Total assets in $ thousands
+ *   - MDI_STATUS_CODE: Minority Depository Institution status (>0 = MDI)
+ *   - CB_SA: Community bank designation flag
+ */
+interface QueryPlan {
+  label: LenderTypeLabel;
+  /** Extra FDIC filter clause appended after STALP/ACTIVE. */
+  filter?: string;
+}
+
+const TYPE_PLANS: Record<string, QueryPlan> = {
+  community_bank:    { label: "Community Bank", filter: 'CB_SA:"1"' },
+  national_bank:     { label: "National Bank", filter: 'BKCLASS:"N"' },
+  regional_bank:     { label: "Regional Bank", filter: "ASSET:[10000000 TO 100000000]" },
+  savings:           { label: "Savings Institution", filter: '(BKCLASS:"SB" OR BKCLASS:"SA")' },
+  commercial:        { label: "Commercial Bank", filter: "SPECGRP:4" },
+  agricultural:      { label: "Agricultural Bank", filter: "SPECGRP:2" },
+  mdi:               { label: "Minority Depository Institution", filter: "MDI_STATUS_CODE:[1 TO 5]" },
+  cdfi:              { label: "CDFI", filter: 'CERT_CDFI:"1"' },
+  online_bank:       { label: "Online Bank", filter: 'BKCLASS:"N" AND ASSET:[1000000 TO *]' },
+};
+
 async function queryFDIC(
   stateAbbr: string,
   city: string | undefined,
-  specgrpFilter: string | undefined,
-  label: LenderResult["type"]
+  plan: QueryPlan
 ): Promise<{ results: LenderResult[]; diagnostics: any }> {
   const url = new URL(FDIC_BASE);
 
   let filters = `STALP:"${stateAbbr}" AND ACTIVE:1`;
   if (city) filters += ` AND CITY:"${titleCase(city)}"`;
-  if (specgrpFilter) filters += ` AND ${specgrpFilter}`;
+  if (plan.filter) filters += ` AND ${plan.filter}`;
 
   url.searchParams.set("filters", filters);
-  url.searchParams.set("fields", "NAME,CITY,STALP,ADDRESS,ZIP,CERT,WEBADDR,SPECGRP");
-  url.searchParams.set("limit", "15");
+  url.searchParams.set("fields", "NAME,CITY,STALP,ADDRESS,ZIP,CERT,WEBADDR,SPECGRP,BKCLASS,ASSET,MDI_STATUS_CODE,CB_SA");
+  url.searchParams.set("limit", "20");
   url.searchParams.set("offset", "0");
-  url.searchParams.set("sort_by", "NAME");
-  url.searchParams.set("sort_order", "ASC");
+  url.searchParams.set("sort_by", "ASSET");
+  url.searchParams.set("sort_order", "DESC");
 
   const requestedUrl = url.toString();
   const startTime = Date.now();
@@ -94,7 +135,7 @@ async function queryFDIC(
       const d = inst.data || inst;
       return {
         name: d.NAME || "Unknown Institution",
-        type: label,
+        type: plan.label,
         address: d.ADDRESS || "",
         city: d.CITY || "",
         state: d.STALP || stateAbbr,
@@ -102,7 +143,7 @@ async function queryFDIC(
         website: d.WEBADDR || "",
         referenceId: String(d.CERT || ""),
         source: "FDIC" as const,
-        bureauPreference: null,
+        asset_size: d.ASSET ? Number(d.ASSET) : null,
       };
     });
 
@@ -152,28 +193,30 @@ serve(async (req) => {
     let creditUnionNote: string | null = null;
 
     const doSearch = async (c?: string) => {
+      // Credit unions are NCUA-regulated, not in FDIC data
       if (lenderType === "credit_union") {
         creditUnionNote = `Credit unions are regulated by the NCUA, not the FDIC. Use the NCUA Credit Union Locator at https://mapping.ncua.gov to search for credit unions in ${stateAbbr}.`;
-        const r = await queryFDIC(stateAbbr, c, "SPECGRP:2", "Community Bank");
-        allDiagnostics.push({ query: "savings_institutions", ...r.diagnostics });
-        return r.results;
-      } else if (lenderType === "cdfi") {
-        const r = await queryFDIC(stateAbbr, c, "SPECGRP:5", "CDFI");
-        allDiagnostics.push({ query: "cdfi", ...r.diagnostics });
-        return r.results;
-      } else if (lenderType === "community_bank") {
-        const r = await queryFDIC(stateAbbr, c, undefined, "Community Bank");
-        allDiagnostics.push({ query: "community_bank", ...r.diagnostics });
-        return r.results;
-      } else {
-        const [banks, cdfis] = await Promise.all([
-          queryFDIC(stateAbbr, c, undefined, "Community Bank"),
-          queryFDIC(stateAbbr, c, "SPECGRP:5", "CDFI"),
-        ]);
-        allDiagnostics.push({ query: "community_bank", ...banks.diagnostics }, { query: "cdfi", ...cdfis.diagnostics });
-        creditUnionNote = `For credit unions, visit the NCUA Credit Union Locator at https://mapping.ncua.gov`;
-        return [...banks.results, ...cdfis.results];
+        return [];
       }
+
+      // Specific lender type from our plan map
+      if (lenderType && TYPE_PLANS[lenderType]) {
+        const r = await queryFDIC(stateAbbr, c, TYPE_PLANS[lenderType]);
+        allDiagnostics.push({ query: lenderType, ...r.diagnostics });
+        return r.results;
+      }
+
+      // "All" — pull a balanced mix across the most useful categories
+      const plans: { key: string; plan: QueryPlan }[] = [
+        { key: "community_bank", plan: TYPE_PLANS.community_bank },
+        { key: "national_bank", plan: TYPE_PLANS.national_bank },
+        { key: "savings", plan: TYPE_PLANS.savings },
+        { key: "mdi", plan: TYPE_PLANS.mdi },
+      ];
+      const queries = await Promise.all(plans.map((p) => queryFDIC(stateAbbr, c, p.plan)));
+      queries.forEach((r, i) => allDiagnostics.push({ query: plans[i].key, ...r.diagnostics }));
+      creditUnionNote = `For credit unions, visit the NCUA Credit Union Locator at https://mapping.ncua.gov`;
+      return queries.flatMap((r) => r.results);
     };
 
     let results = await doSearch(cleanCity);
@@ -184,12 +227,15 @@ serve(async (req) => {
       results = await doSearch(undefined);
     }
 
-    // Deduplicate by name
-    const seen = new Set<string>();
+    // Deduplicate by FDIC cert (most reliable) then by name
+    const seenCert = new Set<string>();
+    const seenName = new Set<string>();
     results = results.filter((r) => {
-      const key = r.name.toUpperCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
+      if (r.referenceId && seenCert.has(r.referenceId)) return false;
+      const nameKey = r.name.toUpperCase();
+      if (seenName.has(nameKey)) return false;
+      if (r.referenceId) seenCert.add(r.referenceId);
+      seenName.add(nameKey);
       return true;
     });
 
@@ -205,7 +251,6 @@ serve(async (req) => {
 
       if (prefs && prefs.length > 0) {
         for (const result of results) {
-          // 1. Try exact FDIC cert match
           const certMatch = result.referenceId
             ? prefs.find((p: any) => p.fdic_cert && p.fdic_cert === result.referenceId)
             : null;
@@ -221,7 +266,6 @@ serve(async (req) => {
             continue;
           }
 
-          // 2. Try fuzzy name match
           const nameMatch = prefs.find((p: any) => fuzzyMatch(result.name, p.institution_name));
           if (nameMatch) {
             result.bureauPreference = {
@@ -232,7 +276,6 @@ serve(async (req) => {
               notes: nameMatch.notes,
             };
           }
-          // If no match, bureauPreference stays null
         }
       }
     } catch (enrichErr: any) {
