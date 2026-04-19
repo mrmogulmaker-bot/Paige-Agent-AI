@@ -1075,6 +1075,55 @@ Always identify the document type and bureau in your response.`,
                 required: ["updates"]
               }
             }
+          },
+          {
+            type: "function",
+            function: {
+              name: "search_regional_lenders",
+              description: "Search the live FDIC institution database for real banks, savings institutions, MDIs (Minority Depository Institutions), and CDFI-proxy community banks in a given state and optional city. Use this whenever the client asks to find, locate, or connect with specific lenders or financial institutions. Returns up to 10 institutions with name, location, phone (when available), website, type, asset size, and MDI/community-bank flags.",
+              parameters: {
+                type: "object",
+                properties: {
+                  state: {
+                    type: "string",
+                    description: "Two-letter US state code, e.g. 'GA' or 'TX'. Required."
+                  },
+                  city: {
+                    type: "string",
+                    description: "Optional city name. The search will auto-broaden to the full state if no city matches."
+                  },
+                  lender_type: {
+                    type: "string",
+                    enum: ["community_bank", "credit_union", "mdi", "cdfi", "all"],
+                    description: "Optional lender type filter. Defaults to 'all'. Use 'credit_union' to surface NCUA guidance — the FDIC database does not include credit unions."
+                  },
+                  min_score: {
+                    type: "number",
+                    description: "Optional client's strongest bureau score, used by Paige to flavor recommendation language. Not used as a hard filter."
+                  }
+                },
+                required: ["state"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "search_funding_marketplace",
+              description: "Search the Lendflow funding marketplace for pre-qualified lender matches based on client funding profile. Currently returns a placeholder until the Lendflow integration goes live (gated by LENDFLOW_ENABLED env var). Call this when the client asks about pre-qualification, marketplace funding, or wants to compare 500+ lenders at once.",
+              parameters: {
+                type: "object",
+                properties: {
+                  funding_amount: { type: "number", description: "Requested funding amount in USD." },
+                  time_in_business_months: { type: "number", description: "Time in business in months." },
+                  annual_revenue: { type: "number", description: "Annual revenue in USD." },
+                  credit_score: { type: "number", description: "Client's primary FICO score." },
+                  state: { type: "string", description: "Two-letter US state code." },
+                  funding_purpose: { type: "string", description: "Use of funds, e.g. 'working capital', 'equipment', 'expansion'." }
+                },
+                required: ["funding_amount"]
+              }
+            }
           }
         ],
         tool_choice: "auto",
