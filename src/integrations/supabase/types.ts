@@ -1380,6 +1380,35 @@ export type Database = {
           },
         ]
       }
+      connected_bank_account_secrets: {
+        Row: {
+          account_row_id: string
+          created_at: string
+          plaid_access_token: string
+          updated_at: string
+        }
+        Insert: {
+          account_row_id: string
+          created_at?: string
+          plaid_access_token: string
+          updated_at?: string
+        }
+        Update: {
+          account_row_id?: string
+          created_at?: string
+          plaid_access_token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connected_bank_account_secrets_account_row_id_fkey"
+            columns: ["account_row_id"]
+            isOneToOne: true
+            referencedRelation: "connected_bank_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       connected_bank_accounts: {
         Row: {
           account_id: string
@@ -1394,7 +1423,6 @@ export type Database = {
           institution_name: string
           is_active: boolean | null
           last_sync_at: string | null
-          plaid_access_token: string
           plaid_item_id: string
           transactions_cursor: string | null
           updated_at: string | null
@@ -1413,7 +1441,6 @@ export type Database = {
           institution_name: string
           is_active?: boolean | null
           last_sync_at?: string | null
-          plaid_access_token: string
           plaid_item_id: string
           transactions_cursor?: string | null
           updated_at?: string | null
@@ -1432,7 +1459,6 @@ export type Database = {
           institution_name?: string
           is_active?: boolean | null
           last_sync_at?: string | null
-          plaid_access_token?: string
           plaid_item_id?: string
           transactions_cursor?: string | null
           updated_at?: string | null

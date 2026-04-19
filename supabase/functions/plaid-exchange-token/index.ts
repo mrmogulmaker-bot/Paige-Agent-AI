@@ -125,10 +125,11 @@ serve(async (req) => {
       );
     }
 
-    // SECURITY: Store access token using admin client only — never expose to client
+    // SECURITY: Insert account metadata WITHOUT the access token. The token
+    // is stored separately in `connected_bank_account_secrets` which is
+    // accessible only via the service role.
     const accountInserts = accountsData.accounts.map((account: any) => ({
       user_id: user.id,
-      plaid_access_token: tokenData.access_token,
       plaid_item_id: tokenData.item_id,
       institution_id: institution.institution_id,
       institution_name: institution.name,
@@ -139,14 +140,38 @@ serve(async (req) => {
       account_subtype: account.subtype,
     }));
 
-    const { error: insertError } = await supabaseAdmin
+    const { data: insertedRows, error: insertError } = await supabaseAdmin
       .from('connected_bank_accounts')
-      .insert(accountInserts);
+      .insert(accountInserts)
+      .select('id');
 
-    if (insertError) {
+    if (insertError || !insertedRows) {
       console.error('Database insert error:', insertError);
       return new Response(
         JSON.stringify({ error: 'Failed to save account data' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Store the Plaid access token in the server-only secrets table
+    const secretRows = insertedRows.map((row: any) => ({
+      account_row_id: row.id,
+      plaid_access_token: tokenData.access_token,
+    }));
+
+    const { error: secretError } = await supabaseAdmin
+      .from('connected_bank_account_secrets')
+      .insert(secretRows);
+
+    if (secretError) {
+      console.error('Failed to store Plaid access token:', secretError);
+      // Roll back the account inserts so we don't end up with token-less rows
+      await supabaseAdmin
+        .from('connected_bank_accounts')
+        .delete()
+        .in('id', insertedRows.map((r: any) => r.id));
+      return new Response(
+        JSON.stringify({ error: 'Failed to save account credentials' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

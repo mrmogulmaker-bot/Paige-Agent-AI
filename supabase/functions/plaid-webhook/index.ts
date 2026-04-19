@@ -100,14 +100,23 @@ serve(async (req) => {
       });
     }
 
-    // Find user and account — use admin client, never expose access_token
+    // Find user and account — token lives in a server-only sibling table.
     const { data: account } = await supabaseAdmin
       .from('connected_bank_accounts')
-      .select('user_id, id, plaid_access_token, transactions_cursor')
+      .select('user_id, id, transactions_cursor')
       .eq('plaid_item_id', item_id)
       .single();
 
-    if (!account) {
+    if (account) {
+      const { data: secret } = await supabaseAdmin
+        .from('connected_bank_account_secrets')
+        .select('plaid_access_token')
+        .eq('account_row_id', account.id)
+        .single();
+      (account as any).plaid_access_token = secret?.plaid_access_token ?? null;
+    }
+
+    if (!account || !(account as any).plaid_access_token) {
       console.error('No account found for item_id:', item_id);
       await supabaseAdmin.from('plaid_webhook_events').insert({
         event_id,

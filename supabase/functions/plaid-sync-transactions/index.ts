@@ -41,7 +41,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Get account
+    // Get account (token lives in a server-only sibling table)
     const { data: account, error: accountError } = await supabaseAdmin
       .from('connected_bank_accounts')
       .select('*')
@@ -55,6 +55,22 @@ serve(async (req) => {
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const { data: secret, error: secretError } = await supabaseAdmin
+      .from('connected_bank_account_secrets')
+      .select('plaid_access_token')
+      .eq('account_row_id', account.id)
+      .single();
+
+    if (secretError || !secret?.plaid_access_token) {
+      console.error('Missing Plaid access token for account:', account.id);
+      return new Response(
+        JSON.stringify({ error: 'Account credentials missing — please reconnect' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    account.plaid_access_token = secret.plaid_access_token;
 
     const PLAID_CLIENT_ID = Deno.env.get('PLAID_CLIENT_ID');
     const PLAID_SECRET = Deno.env.get('PLAID_SECRET');
