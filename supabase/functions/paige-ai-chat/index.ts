@@ -902,7 +902,11 @@ FUNDING READINESS SCORE: a 0–100 composite computed from completed milestones 
 LIVE LENDER SEARCH — TOOL USAGE RULES
 =============================================================
 
-You have a tool called search_regional_lenders that queries the live FDIC database for real banks, savings institutions, MDIs (Minority Depository Institutions), and CDFI-proxy community banks. Use it whenever a client asks you to find, locate, or connect with specific lenders.
+You have a tool called search_regional_lenders that queries TWO live regulator databases in parallel:
+  1. FDIC institution database — for banks (community banks, national banks, savings institutions, MDIs, CDFI-proxy banks)
+  2. NCUA credit union database — for credit unions (federal FCUs and state-chartered FISCUs)
+
+Use it whenever a client asks you to find, locate, or connect with specific lenders.
 
 WHEN TO CALL search_regional_lenders:
 - "Find me lenders in [state/city]"
@@ -916,29 +920,43 @@ WHEN TO CALL search_regional_lenders:
 PARAMETERS:
 - state (REQUIRED): two-letter state code (e.g. "GA", "TX"). If client gives a full state name, convert it.
 - city (OPTIONAL): city name. The tool auto-broadens to the full state if no city matches.
-- lender_type (OPTIONAL): one of "community_bank", "credit_union", "mdi", "cdfi", or "all". Defaults to "all".
+- lender_type (OPTIONAL): one of "community_bank", "credit_union", "mdi", "cdfi", or "all". Defaults to "all" — which queries BOTH FDIC banks and NCUA credit unions in one call.
 - min_score (OPTIONAL): client's strongest bureau score, used to flavor recommendation language.
 
 PROACTIVE OFFER RULE:
 When the CLIENT CONTEXT shows the client has a funding goal AND a credit score above 580, proactively offer to search for lenders: "Based on your [bureau] score of [score] and your funding goal of [goal], I can search for lenders in your area right now. What state and city are you in?"
 
+OPENING LINE (when results include both sources or when lender_type is credit_union or all):
+Always lead with: "I searched both the FDIC database for banks and the NCUA database for credit unions in [location]. Here is what I found..."
+
 PRESENTATION FORMAT (after the tool returns results):
 "I found [X] lenders in [location] that may work for your situation. Here are the top matches:
 
 1. [Institution Name] — [City], [State]
-   Type: [Community Bank / Credit Union / MDI / CDFI]
-   Phone: [number]
-   Website: [url]
+   Type: [Credit Union (NCUA) / Community Bank (FDIC) / MDI (FDIC) / CDFI / etc.]
+   Charter: [Federal CU / State CU / National Bank / State Bank — when relevant]
+   Membership: [community charter — anyone can join / SEG-based — employer or affinity required] (CREDIT UNIONS ONLY)
+   Members: [count] (CREDIT UNIONS ONLY, when available)
+   Phone: [number if available, otherwise omit this line]
+   Website: [url if available, otherwise omit this line]
    Why this one: [one sentence connecting to client's bureau profile and funding goal]
 
 2. [next lender...]
 
+[If list contains credit unions, append:] Credit unions are member-owned and typically offer lower rates and more flexible underwriting than banks. If the membership is open to the community anyone can join — I'll note which ones have open membership.
+
 Community banks and credit unions on this list tend to have more flexible underwriting than major banks — especially for clients building their credit profile. I recommend calling [top pick] first based on your [strongest bureau] score of [score]. Would you like me to help you prepare what to say when you call?"
+
+CREDIT UNION-SPECIFIC NOTES:
+- "cu_membership_type": "community" → openly joinable by anyone in the area; flag this as a positive.
+- "cu_membership_type": "SEG/employer-based" → membership requires an employer, association, or family connection. Tell the client to call and ask about field-of-membership eligibility.
+- "cu_membership_type": "unknown" → ambiguous from name alone; tell the client to check the credit union's membership page or call.
+- "cu_charter_type": "Federal" means an FCU (regulated by NCUA); "State" means a state-chartered FISCU (also NCUA-insured but state-regulated). Both share the same NCUSIF deposit insurance.
+- The NCUA dataset does not include phone or website. Tell the client: "I don't have a phone or website for this credit union in my dataset — Google '[name] credit union [city]' to find the membership and contact page."
 
 NO RESULTS HANDLING:
 - If the tool returns broadened=true: "I didn't find any matches in [city] specifically, so I searched all of [state] — here is what I found."
 - If results are empty: "I didn't find any [lender type] institutions in [location] through my search. This sometimes happens in areas with fewer community lenders. Would you like me to search a neighboring state or suggest national lenders that work with your credit profile?"
-- If lender_type was credit_union: the tool will return a creditUnionNote pointing at the NCUA Credit Union Locator (https://mapping.ncua.gov). Share that link and offer to search community banks or MDIs in the meantime.
 
 BUREAU-SPECIFIC LENDER RECOMMENDATION RULE:
 Always connect lender recommendations to the client's bureau profile. Community banks and credit unions often pull TransUnion or Equifax rather than Experian — if the client's TransUnion score is stronger than their Experian score say: "Credit unions in this area typically pull TransUnion — your TransUnion score of [score] is your strongest bureau right now, which works in your favor here."
@@ -953,7 +971,7 @@ After presenting results, always offer to help prepare for the call: "Would you 
 FUNDING MARKETPLACE TOOL (search_funding_marketplace) — SCAFFOLD
 =============================================================
 
-You also have a search_funding_marketplace tool that will eventually search 500+ lenders via the Lendflow marketplace. Until LENDFLOW_ENABLED is true, this tool returns a placeholder. You can call it when a client asks about pre-qualification or marketplace funding, and report the placeholder back conversationally — e.g. "The marketplace integration is rolling out soon. In the meantime I can search for local lenders in your state right now using the FDIC database — want me to do that?"
+You also have a search_funding_marketplace tool that will eventually search 500+ lenders via the Lendflow marketplace. Until LENDFLOW_ENABLED is true, this tool returns a placeholder. You can call it when a client asks about pre-qualification or marketplace funding, and report the placeholder back conversationally — e.g. "The marketplace integration is rolling out soon. In the meantime I can search for local lenders in your state right now using the FDIC and NCUA databases — want me to do that?"
 === END LIVE LENDER SEARCH RULES ===`;
 
     // Build message array
@@ -1080,7 +1098,7 @@ Always identify the document type and bureau in your response.`,
             type: "function",
             function: {
               name: "search_regional_lenders",
-              description: "Search the live FDIC institution database for real banks, savings institutions, MDIs (Minority Depository Institutions), and CDFI-proxy community banks in a given state and optional city. Use this whenever the client asks to find, locate, or connect with specific lenders or financial institutions. Returns up to 10 institutions with name, location, phone (when available), website, type, asset size, and MDI/community-bank flags.",
+              description: "Search live regulator databases for real lenders in a given state and optional city. Queries the FDIC institution database for banks (community banks, national banks, savings institutions, MDIs, CDFI-proxy banks) AND the NCUA credit union database for credit unions in parallel. Use this whenever the client asks to find, locate, or connect with specific lenders or financial institutions. Returns up to 10 institutions per source with name, location, website, type, asset size, MDI/community-bank flags, and (for credit unions) charter type and inferred membership openness.",
               parameters: {
                 type: "object",
                 properties: {
@@ -1095,7 +1113,7 @@ Always identify the document type and bureau in your response.`,
                   lender_type: {
                     type: "string",
                     enum: ["community_bank", "credit_union", "mdi", "cdfi", "all"],
-                    description: "Optional lender type filter. Defaults to 'all'. Use 'credit_union' to surface NCUA guidance — the FDIC database does not include credit unions."
+                    description: "Optional lender type filter. Defaults to 'all' (queries both FDIC banks and NCUA credit unions). Use 'credit_union' to query only NCUA credit unions, or 'community_bank' / 'mdi' / 'cdfi' / 'national_bank' / 'savings' / 'commercial' / 'agricultural' / 'regional_bank' / 'online_bank' for specific FDIC bank types."
                   },
                   min_score: {
                     type: "number",
@@ -1236,19 +1254,30 @@ Always identify the document type and bureau in your response.`,
             });
             const lrBody = await lrResponse.json();
 
-            // Trim to top 10 and only the fields Paige needs to present results conversationally
+            // Trim to top 10 and only the fields Paige needs to present results conversationally.
+            // Mix banks + credit unions; preserve source-specific fields (cu_* for NCUA, fdic_cert/CB flags for FDIC).
             const trimmed = (lrBody.results || []).slice(0, 10).map((r: any) => ({
               name: r.name,
               type: r.type,
+              source: r.source, // "FDIC" | "NCUA"
               city: r.city,
               state: r.state,
               address: r.address,
               zip: r.zip,
-              phone: null, // FDIC dataset does not return phone numbers; client should call for current contact
+              phone: r.phone || null,
               website: r.website || null,
+              // Bank-only fields
               is_minority_depository: r.is_minority_depository,
-              mdi_description: r.mdi_description,
-              is_community_bank: r.is_community_bank,
+              mdi_description: r.mdi_description || null,
+              is_community_bank: r.is_community_bank ?? null,
+              fdic_cert: r.fdic_cert || null,
+              office_count: r.office_count ?? null,
+              // Credit-union-only fields
+              ncua_charter_number: r.ncua_charter_number || null,
+              cu_charter_type: r.cu_charter_type || null,        // "Federal" (FCU) or "State" (FISCU)
+              cu_membership_type: r.cu_membership_type || null,  // "community" | "SEG/employer-based" | "unknown"
+              cu_member_count: r.cu_member_count ?? null,
+              // Shared
               asset_size_thousands: r.asset_size,
               asset_size_category:
                 r.asset_size == null ? null
@@ -1256,8 +1285,6 @@ Always identify the document type and bureau in your response.`,
                 : r.asset_size < 10_000_000 ? "mid-size"
                 : r.asset_size < 100_000_000 ? "regional"
                 : "large/national",
-              office_count: r.office_count,
-              fdic_cert: r.fdic_cert,
               bureau_preference: r.bureauPreference || null,
             }));
 
@@ -1270,11 +1297,13 @@ Always identify the document type and bureau in your response.`,
                 searched_city: lrBody.searchedCity || null,
                 searched_state: args.state,
                 lender_type: args.lender_type || "all",
-                credit_union_note: lrBody.creditUnionNote || null,
+                sources_queried: args.lender_type === "credit_union" ? ["NCUA"]
+                  : (args.lender_type && args.lender_type !== "all" ? ["FDIC"]
+                  : ["FDIC", "NCUA"]),
                 lenders: trimmed,
                 note: trimmed.length === 0
-                  ? "No lenders matched this query. Suggest neighboring state, broader type, or NCUA for credit unions."
-                  : "Present these conversationally with the format from your system prompt. Tie each pick back to the client's bureau profile.",
+                  ? "No lenders matched this query. Suggest neighboring state or broader type."
+                  : "Present these conversationally per the LIVE LENDER SEARCH rules in your system prompt. Always lead with: 'I searched both the FDIC database for banks and the NCUA database for credit unions in [location].' Tie each pick back to the client's bureau profile.",
               }),
             });
           } catch (err) {

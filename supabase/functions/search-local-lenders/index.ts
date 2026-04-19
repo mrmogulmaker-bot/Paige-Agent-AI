@@ -9,58 +9,71 @@ const corsHeaders = {
 // Updated FDIC endpoint (banks.data.fdic.gov 301-redirects to api.fdic.gov/banks)
 const FDIC_BASE = "https://api.fdic.gov/banks/institutions";
 
+// NCUA Credit Union public dataset (ArcGIS FeatureServer hosted by NCUA's GIS provider).
+// This is the same source the NCUA Credit Union Locator surfaces and is queryable
+// without an API key. Schema reference:
+//   https://services.arcgis.com/VTyQ9soqVukalItT/ArcGIS/rest/services/NCUA/FeatureServer/0
+const NCUA_BASE = "https://services.arcgis.com/VTyQ9soqVukalItT/ArcGIS/rest/services/NCUA/FeatureServer/0/query";
+
 type LenderTypeLabel =
-  | "Credit Union"
-  | "Community Bank"
-  | "National Bank"
-  | "Regional Bank"
-  | "Savings Institution"
-  | "Commercial Bank"
-  | "Agricultural Bank"
-  | "Minority Depository Institution"
-  | "CDFI"
-  | "Online Bank";
+  | "Credit Union (NCUA)"
+  | "Bank (FDIC) — Community Bank"
+  | "Bank (FDIC) — National Bank"
+  | "Bank (FDIC) — Regional Bank"
+  | "Bank (FDIC) — Savings Institution"
+  | "Bank (FDIC) — Commercial Bank"
+  | "Bank (FDIC) — Agricultural Bank"
+  | "Bank (FDIC) — Minority Depository Institution"
+  | "Bank (FDIC) — CDFI"
+  | "Bank (FDIC) — Online Bank";
 
 interface LenderResult {
   // Identity
   name: string;
   type: LenderTypeLabel;
-  fdic_cert: string;
-  fed_rssd: string | null;
+  source: "FDIC" | "NCUA";
+  fdic_cert?: string;
+  fed_rssd?: string | null;
+  ncua_charter_number?: string;          // NCUA CU_NUMBER
   // Location
   address: string;
-  address2: string | null;
+  address2?: string | null;
   city: string;
   state: string;
   zip: string;
-  county: string | null;
+  county?: string | null;
   latitude: number | null;
   longitude: number | null;
   // Web
   website: string;
-  // Charter & class
-  bank_class: string | null;          // BKCLASS: N, NM, SM, SB, SA, OI
-  bank_class_desc: string | null;     // human-readable charter
-  specialization: string | null;      // SPECGRPN
-  specialization_code: number | null; // SPECGRP
-  is_community_bank: boolean;         // CB == "1"
-  is_minority_depository: boolean;    // MDI_STATUS_CODE > 0
-  mdi_description: string | null;     // MDI_STATUS_DESC
-  has_trust_powers: boolean;          // TRUST != "00"
-  is_mutual: boolean;                 // MUTUAL == "1"
-  is_subchapter_s: boolean;           // SUBCHAPS == "1"
+  phone?: string | null;
+  // Bank-only — charter & class
+  bank_class?: string | null;
+  bank_class_desc?: string | null;
+  specialization?: string | null;
+  specialization_code?: number | null;
+  is_community_bank?: boolean;
+  has_trust_powers?: boolean;
+  is_mutual?: boolean;
+  is_subchapter_s?: boolean;
+  // Credit-union-only — charter & membership
+  cu_charter_type?: "Federal" | "State" | string | null;  // FCU vs FISCU
+  cu_membership_type?: "community" | "SEG/employer-based" | "unknown";
+  cu_member_count?: number | null;
+  // Shared — institution profile
+  is_minority_depository: boolean;
+  mdi_description?: string | null;
   // Financial health
-  asset_size: number | null;          // ASSET (in $ thousands)
-  deposits: number | null;            // DEP (in $ thousands)
-  net_income: number | null;          // NETINC (in $ thousands)
-  return_on_assets: number | null;    // ROA (%)
-  return_on_equity: number | null;    // ROE (%)
+  asset_size: number | null;          // $ thousands for FDIC, $ raw for NCUA (normalized below)
+  asset_size_units: "thousands" | "dollars";
+  deposits?: number | null;
+  net_income?: number | null;
+  return_on_assets?: number | null;
+  return_on_equity?: number | null;
   // Footprint
-  office_count: number | null;        // OFFICES
-  established_date: string | null;    // ESTYMD
-  fdic_insured_date: string | null;   // INSDATE
-  // Source
-  source: "FDIC";
+  office_count?: number | null;
+  established_date?: string | null;
+  fdic_insured_date?: string | null;
   // Enrichment
   bureauPreference?: {
     primary_bureau: string;
@@ -132,16 +145,16 @@ interface QueryPlan {
 }
 
 const TYPE_PLANS: Record<string, QueryPlan> = {
-  community_bank:    { label: "Community Bank", filter: 'CB:"1"' },
-  national_bank:     { label: "National Bank", filter: 'BKCLASS:"N"' },
-  regional_bank:     { label: "Regional Bank", filter: "ASSET:[10000000 TO 100000000]" },
-  savings:           { label: "Savings Institution", filter: '(BKCLASS:"SB" OR BKCLASS:"SA")' },
-  commercial:        { label: "Commercial Bank", filter: "SPECGRP:4" },
-  agricultural:      { label: "Agricultural Bank", filter: "SPECGRP:2" },
-  mdi:               { label: "Minority Depository Institution", filter: "MDI_STATUS_CODE:[1 TO 99]" },
+  community_bank:    { label: "Bank (FDIC) — Community Bank", filter: 'CB:"1"' },
+  national_bank:     { label: "Bank (FDIC) — National Bank", filter: 'BKCLASS:"N"' },
+  regional_bank:     { label: "Bank (FDIC) — Regional Bank", filter: "ASSET:[10000000 TO 100000000]" },
+  savings:           { label: "Bank (FDIC) — Savings Institution", filter: '(BKCLASS:"SB" OR BKCLASS:"SA")' },
+  commercial:        { label: "Bank (FDIC) — Commercial Bank", filter: "SPECGRP:4" },
+  agricultural:      { label: "Bank (FDIC) — Agricultural Bank", filter: "SPECGRP:2" },
+  mdi:               { label: "Bank (FDIC) — Minority Depository Institution", filter: "MDI_STATUS_CODE:[1 TO 99]" },
   // CDFI proxy: small community banks + MDIs (true CDFI list lives at Treasury)
-  cdfi:              { label: "CDFI", filter: '(CB:"1" AND ASSET:[* TO 1000000]) OR MDI_STATUS_CODE:[1 TO 99]' },
-  online_bank:       { label: "Online Bank", filter: 'BKCLASS:"N" AND ASSET:[1000000 TO *]' },
+  cdfi:              { label: "Bank (FDIC) — CDFI", filter: '(CB:"1" AND ASSET:[* TO 1000000]) OR MDI_STATUS_CODE:[1 TO 99]' },
+  online_bank:       { label: "Bank (FDIC) — Online Bank", filter: 'BKCLASS:"N" AND ASSET:[1000000 TO *]' },
 };
 
 async function queryFDIC(
@@ -233,6 +246,7 @@ async function queryFDIC(
         is_subchapter_s: String(d.SUBCHAPS || "") === "1",
         // Financial health (all in $ thousands from FDIC)
         asset_size: d.ASSET != null ? Number(d.ASSET) : null,
+        asset_size_units: "thousands" as const,
         deposits: d.DEP != null ? Number(d.DEP) : null,
         net_income: d.NETINC != null ? Number(d.NETINC) : null,
         return_on_assets: d.ROA != null ? Number(d.ROA) : null,
@@ -247,6 +261,89 @@ async function queryFDIC(
     });
 
     return { results, diagnostics: { url: requestedUrl, status: 200, total: data?.meta?.total || results.length, returned: results.length, elapsed_ms: elapsed } };
+  } catch (e: any) {
+    return { results: [], diagnostics: { url: requestedUrl, error: e.message, elapsed_ms: Date.now() - startTime } };
+  }
+}
+
+/**
+ * Heuristic for credit-union membership openness. NCUA's open dataset doesn't
+ * expose the field-of-membership rule directly in the locator layer, so we
+ * approximate from the credit union's name. Names with words like "community",
+ * "neighborhood", "city", "county", or a place name typically indicate a
+ * community charter (anyone in the area can join). Names with employer/SEG
+ * cues (company names, "employees", "associates") usually indicate SEG-based
+ * membership. Anything ambiguous is returned as "unknown".
+ */
+function inferCuMembershipType(name: string): "community" | "SEG/employer-based" | "unknown" {
+  const n = name.toUpperCase();
+  if (/\b(COMMUNITY|NEIGHBORHOOD|CITY|COUNTY|REGIONAL|AREA|VALLEY|MOUNTAIN|RIVER|FIRST|HERITAGE|HOMETOWN|UNITED|PEOPLE'S|PEOPLES|PUBLIC)\b/.test(n)) {
+    return "community";
+  }
+  if (/\b(EMPLOYEES|ASSOCIATES|TEACHERS|POLICE|FIRE(?:FIGHTERS)?|POSTAL|FEDERAL EMPLOYEES|HOSPITAL|UNIVERSITY|SCHOOLS?|MUNICIPAL|TELCO|RAILROAD|UTILITY|UTILITIES)\b/.test(n)) {
+    return "SEG/employer-based";
+  }
+  return "unknown";
+}
+
+async function queryNCUA(
+  stateAbbr: string,
+  city: string | undefined
+): Promise<{ results: LenderResult[]; diagnostics: any }> {
+  // ArcGIS WHERE clause — uppercase comparisons match the dataset's casing.
+  const whereParts: string[] = [`STATE='${stateAbbr}'`];
+  if (city) whereParts.push(`UPPER(CITY)='${city.toUpperCase().replace(/'/g, "''")}'`);
+  const where = whereParts.join(" AND ");
+
+  const url = new URL(NCUA_BASE);
+  url.searchParams.set("where", where);
+  url.searchParams.set("outFields", [
+    "CU_NUMBER", "CU_NAME", "ADDRESS", "CITY", "STATE", "ZIP_CODE",
+    "Charter_Type", "Asset", "Members", "LATITUDE", "LONGITUDE",
+  ].join(","));
+  url.searchParams.set("f", "json");
+  url.searchParams.set("orderByFields", "Asset DESC");
+  url.searchParams.set("resultRecordCount", "20");
+
+  const requestedUrl = url.toString();
+  const startTime = Date.now();
+
+  try {
+    const resp = await fetch(requestedUrl);
+    const elapsed = Date.now() - startTime;
+    if (!resp.ok) {
+      return { results: [], diagnostics: { url: requestedUrl, status: resp.status, error: `NCUA returned HTTP ${resp.status}`, elapsed_ms: elapsed } };
+    }
+    const data = await resp.json();
+    const features = data?.features || [];
+    const results: LenderResult[] = features.map((f: any) => {
+      const a = f.attributes || {};
+      const name = a.CU_NAME || "Unknown Credit Union";
+      const assetDollars = a.Asset != null ? Number(a.Asset) : null;
+      // Normalize NCUA assets ($) to thousands so consumers can compare to FDIC.
+      const assetThousands = assetDollars != null ? Math.round(assetDollars / 1000) : null;
+      return {
+        name,
+        type: "Credit Union (NCUA)" as const,
+        source: "NCUA" as const,
+        ncua_charter_number: String(a.CU_NUMBER || ""),
+        address: a.ADDRESS || "",
+        city: a.CITY || "",
+        state: a.STATE || stateAbbr,
+        zip: String(a.ZIP_CODE || ""),
+        latitude: a.LATITUDE != null ? Number(a.LATITUDE) : null,
+        longitude: a.LONGITUDE != null ? Number(a.LONGITUDE) : null,
+        website: "", // NCUA locator dataset does not expose website; client should look it up
+        phone: null, // Not in this dataset
+        cu_charter_type: a.Charter_Type || null,
+        cu_membership_type: inferCuMembershipType(name),
+        cu_member_count: a.Members != null ? Number(a.Members) : null,
+        is_minority_depository: false, // Not flagged in this layer
+        asset_size: assetThousands,
+        asset_size_units: "thousands" as const,
+      };
+    });
+    return { results, diagnostics: { url: requestedUrl, status: 200, returned: results.length, elapsed_ms: elapsed } };
   } catch (e: any) {
     return { results: [], diagnostics: { url: requestedUrl, error: e.message, elapsed_ms: Date.now() - startTime } };
   }
@@ -292,30 +389,35 @@ serve(async (req) => {
     let creditUnionNote: string | null = null;
 
     const doSearch = async (c?: string) => {
-      // Credit unions are NCUA-regulated, not in FDIC data
+      // Credit-union-only search: query NCUA directly
       if (lenderType === "credit_union") {
-        creditUnionNote = `Credit unions are regulated by the NCUA, not the FDIC. Use the NCUA Credit Union Locator at https://mapping.ncua.gov to search for credit unions in ${stateAbbr}.`;
-        return [];
+        const r = await queryNCUA(stateAbbr, c);
+        allDiagnostics.push({ query: "credit_union (NCUA)", ...r.diagnostics });
+        return r.results;
       }
 
-      // Specific lender type from our plan map
+      // Specific bank type from our plan map
       if (lenderType && TYPE_PLANS[lenderType]) {
         const r = await queryFDIC(stateAbbr, c, TYPE_PLANS[lenderType]);
         allDiagnostics.push({ query: lenderType, ...r.diagnostics });
         return r.results;
       }
 
-      // "All" — pull a balanced mix across the most useful categories
-      const plans: { key: string; plan: QueryPlan }[] = [
+      // "All" — pull a balanced mix from FDIC AND NCUA in parallel so the client
+      // sees both banks (FDIC) and credit unions (NCUA) in one response.
+      const fdicPlans: { key: string; plan: QueryPlan }[] = [
         { key: "community_bank", plan: TYPE_PLANS.community_bank },
         { key: "national_bank", plan: TYPE_PLANS.national_bank },
         { key: "savings", plan: TYPE_PLANS.savings },
         { key: "mdi", plan: TYPE_PLANS.mdi },
       ];
-      const queries = await Promise.all(plans.map((p) => queryFDIC(stateAbbr, c, p.plan)));
-      queries.forEach((r, i) => allDiagnostics.push({ query: plans[i].key, ...r.diagnostics }));
-      creditUnionNote = `For credit unions, visit the NCUA Credit Union Locator at https://mapping.ncua.gov`;
-      return queries.flatMap((r) => r.results);
+      const [fdicResults, ncuaResult] = await Promise.all([
+        Promise.all(fdicPlans.map((p) => queryFDIC(stateAbbr, c, p.plan))),
+        queryNCUA(stateAbbr, c),
+      ]);
+      fdicResults.forEach((r, i) => allDiagnostics.push({ query: fdicPlans[i].key, ...r.diagnostics }));
+      allDiagnostics.push({ query: "credit_union (NCUA)", ...ncuaResult.diagnostics });
+      return [...fdicResults.flatMap((r) => r.results), ...ncuaResult.results];
     };
 
     let results = await doSearch(cleanCity);
@@ -326,14 +428,18 @@ serve(async (req) => {
       results = await doSearch(undefined);
     }
 
-    // Deduplicate by FDIC cert (most reliable) then by name
+    // Deduplicate by FDIC cert (banks) or NCUA charter number (credit unions),
+    // then by name as a final tiebreaker.
     const seenCert = new Set<string>();
+    const seenCharter = new Set<string>();
     const seenName = new Set<string>();
     results = results.filter((r) => {
       if (r.fdic_cert && seenCert.has(r.fdic_cert)) return false;
-      const nameKey = r.name.toUpperCase();
+      if (r.ncua_charter_number && seenCharter.has(r.ncua_charter_number)) return false;
+      const nameKey = `${r.source}::${r.name.toUpperCase()}`;
       if (seenName.has(nameKey)) return false;
       if (r.fdic_cert) seenCert.add(r.fdic_cert);
+      if (r.ncua_charter_number) seenCharter.add(r.ncua_charter_number);
       seenName.add(nameKey);
       return true;
     });
