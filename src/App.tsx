@@ -26,6 +26,7 @@ import { GlobalAuthSessionManager } from "./lib/auth/GlobalAuthSessionManager";
 // Lazy-load existing dashboard sections for /app/* routes
 const RepositioningNotice = React.lazy(() => import("./components/dashboard/RepositioningNotice").then(m => ({ default: m.RepositioningNotice })));
 const LearningVault = React.lazy(() => import("./components/dashboard/LearningVault").then(m => ({ default: m.LearningVault })));
+const CourseViewer = React.lazy(() => import("./pages/CourseViewer"));
 const BusinessInfrastructureAssessment = React.lazy(() => import("./components/dashboard/business-profile/BusinessInfrastructureAssessment").then(m => ({ default: m.BusinessInfrastructureAssessment })));
 const ProfileSettings = React.lazy(() => import("./components/dashboard/ProfileSettings").then(m => ({ default: m.ProfileSettings })));
 const AffiliateTracking = React.lazy(() => import("./components/dashboard/AffiliateTracking").then(m => ({ default: m.AffiliateTracking })));
@@ -82,6 +83,11 @@ const App = () => (
               <Route path="learn" element={
                 <React.Suspense fallback={<SuspenseFallback />}>
                   <LearningVault />
+                </React.Suspense>
+              } />
+              <Route path="learn/:courseId" element={
+                <React.Suspense fallback={<SuspenseFallback />}>
+                  <CourseViewer />
                 </React.Suspense>
               } />
               <Route path="business" element={
