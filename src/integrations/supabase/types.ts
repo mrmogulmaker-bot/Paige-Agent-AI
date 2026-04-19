@@ -1059,6 +1059,50 @@ export type Database = {
           },
         ]
       }
+      chat_message_embeddings: {
+        Row: {
+          client_user_id: string | null
+          content_excerpt: string
+          created_at: string
+          embedding: string | null
+          id: string
+          message_id: string
+          role: string
+          session_id: string | null
+          user_id: string
+        }
+        Insert: {
+          client_user_id?: string | null
+          content_excerpt: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          message_id: string
+          role: string
+          session_id?: string | null
+          user_id: string
+        }
+        Update: {
+          client_user_id?: string | null
+          content_excerpt?: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          message_id?: string
+          role?: string
+          session_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_message_embeddings_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           audio_transcript: string | null
@@ -1101,9 +1145,11 @@ export type Database = {
           client_user_id: string
           content: string
           created_at: string
+          embedding: string | null
           id: string
           is_active: boolean
           memory_type: string
+          metadata: Json | null
           source_session_id: string | null
           updated_at: string
         }
@@ -1112,9 +1158,11 @@ export type Database = {
           client_user_id: string
           content: string
           created_at?: string
+          embedding?: string | null
           id?: string
           is_active?: boolean
           memory_type: string
+          metadata?: Json | null
           source_session_id?: string | null
           updated_at?: string
         }
@@ -1123,9 +1171,11 @@ export type Database = {
           client_user_id?: string
           content?: string
           created_at?: string
+          embedding?: string | null
           id?: string
           is_active?: boolean
           memory_type?: string
+          metadata?: Json | null
           source_session_id?: string | null
           updated_at?: string
         }
@@ -5370,6 +5420,24 @@ export type Database = {
       }
       is_admin: { Args: { p_user_id: string }; Returns: boolean }
       is_platform_owner: { Args: never; Returns: boolean }
+      match_paige_memory: {
+        Args: {
+          _match_threshold?: number
+          _memory_count?: number
+          _message_count?: number
+          _query_embedding: string
+          _target_client_id?: string
+          _target_user_id: string
+        }
+        Returns: {
+          content: string
+          created_at: string
+          id: string
+          memory_type: string
+          similarity: number
+          source: string
+        }[]
+      }
       move_to_dlq: {
         Args: {
           dlq_name: string

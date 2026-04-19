@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, EyeOff, Brain, FileText, Target, DollarSign, Search, MessageSquare, StickyNote } from "lucide-react";
+import { Plus, EyeOff, Brain, FileText, Target, DollarSign, Search, MessageSquare, StickyNote, Sliders } from "lucide-react";
 
 interface ClientMemoryTabProps {
   clientUserId: string;
@@ -28,6 +28,7 @@ const typeIcons: Record<string, React.ReactNode> = {
   lender_researched: <Search className="w-3.5 h-3.5" />,
   session_summary: <MessageSquare className="w-3.5 h-3.5" />,
   coach_note: <StickyNote className="w-3.5 h-3.5" />,
+  user_preference: <Sliders className="w-3.5 h-3.5" />,
 };
 
 const typeLabels: Record<string, string> = {
@@ -38,6 +39,7 @@ const typeLabels: Record<string, string> = {
   lender_researched: "Lender Research",
   session_summary: "Session Summary",
   coach_note: "Coach Note",
+  user_preference: "Preference",
 };
 
 const typeBadgeVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -48,6 +50,7 @@ const typeBadgeVariants: Record<string, "default" | "secondary" | "destructive" 
   lender_researched: "secondary",
   session_summary: "outline",
   coach_note: "secondary",
+  user_preference: "default",
 };
 
 export function ClientMemoryTab({ clientUserId }: ClientMemoryTabProps) {

@@ -208,12 +208,40 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
   } = useChatDocumentUpload();
 
   // --- ElevenLabs voice ---
+  // Track voice messages separately so we can summarize them on disconnect
+  const voiceMessagesRef = useRef<Array<{ role: "user" | "assistant"; content: string }>>([]);
+
   const conversation = useConversation({
-    onConnect: () => { toast({ title: "Voice chat started", description: "You can now speak with Paige" }); },
-    onDisconnect: () => { toast({ title: "Voice chat ended", description: "The conversation has been closed" }); },
+    onConnect: () => {
+      voiceMessagesRef.current = [];
+      toast({ title: "Voice chat started", description: "You can now speak with Paige" });
+    },
+    onDisconnect: async () => {
+      toast({ title: "Voice chat ended", description: "The conversation has been closed" });
+      // Generate summary + extract preferences from the voice transcript
+      const transcript = voiceMessagesRef.current;
+      if (transcript.length >= 2) {
+        try {
+          await supabase.functions.invoke("paige-voice-summary", {
+            body: {
+              messages: transcript,
+              sessionId: sessionIdRef.current,
+              clientId,
+              channel: "voice_elevenlabs",
+            },
+          });
+        } catch (err) {
+          console.warn("Voice summary failed:", err);
+        }
+      }
+      voiceMessagesRef.current = [];
+    },
     onMessage: (message) => {
-      if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content: message.message || "" }]);
-      else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content: message.message || "" }]);
+      const role = message.source === "ai" ? "assistant" : "user";
+      const content = message.message || "";
+      if (content) voiceMessagesRef.current.push({ role, content });
+      if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content }]);
+      else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content }]);
     },
     onError: (error) => {
       console.error("ElevenLabs error:", error);

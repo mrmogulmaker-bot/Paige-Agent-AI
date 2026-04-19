@@ -137,6 +137,27 @@ Rules:
 - All scores must be between 300-850 or null
 - Set extraction_verified to false if you cannot confidently extract the data`;
 
+// Lightweight embedding helper for memory writes. Returns null on any failure
+// so the caller can still persist the row without blocking the user-facing
+// response. Uses OpenAI text-embedding-3-small (1536 dims) to match schema.
+async function embedText(text: string): Promise<number[] | null> {
+  try {
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiKey || !text) return null;
+    const trimmed = text.length > 8000 ? text.slice(0, 8000) : text;
+    const r = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "text-embedding-3-small", input: trimmed }),
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j.data?.[0]?.embedding ?? null;
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -203,12 +224,29 @@ serve(async (req) => {
     // === SESSION SUMMARY GENERATION MODE ===
     if (generateSessionSummary && sessionMessages && sessionMessages.length > 0) {
       const last20 = sessionMessages.slice(-20);
+      const transcript = last20.map(m => `${m.role === 'user' ? 'Client' : 'Paige'}: ${m.content}`).join('\n');
       const summaryPrompt = `You are a session summarizer. Given the following chat messages between a client and Paige (an AI credit strategist), produce a 3-5 sentence plain-language summary of what was discussed, what was decided, what documents were uploaded, and what next steps were identified. Be specific about names, scores, and actions. Do NOT use bullet points — write flowing sentences.
 
 MESSAGES:
-${last20.map(m => `${m.role === 'user' ? 'Client' : 'Paige'}: ${m.content}`).join('\n')}
+${transcript}
 
 SUMMARY:`;
+
+      // Preference extraction prompt — runs alongside summary so we can persist
+      // conversational preferences (tone, length, topics) for future sessions.
+      const preferencePrompt = `Analyze the following conversation and extract any communication preferences the CLIENT has expressed — either explicitly ("be brief", "stop explaining basics", "no bullet points") or implicitly through repeated short replies, frustration, or specific format requests.
+
+Return ONLY a JSON array of concise sentences. Each sentence must describe ONE preference in language suitable for a system prompt. If none, return [].
+
+Examples:
+- "Prefers brief, conversational replies with no bullet points."
+- "Wants Paige to skip greetings and get to the answer."
+- "Has asked Paige not to suggest disputes."
+
+MESSAGES:
+${transcript}
+
+JSON:`;
 
       // Also check for foundation milestone mentions
       const milestonePrompt = `Analyze the following conversation and determine if the client mentioned completing any of these Business Foundation items:
@@ -221,11 +259,11 @@ SUMMARY:`;
 Return ONLY a JSON array of strings for items mentioned as completed. Use these exact labels: "entity_formed", "ein_obtained", "business_address_established", "business_phone_established", "business_bank_opened". If none were mentioned, return an empty array [].
 
 MESSAGES:
-${last20.map(m => `${m.role === 'user' ? 'Client' : 'Paige'}: ${m.content}`).join('\n')}
+${transcript}
 
 JSON:`;
 
-      const [summaryResponse, milestoneResponse] = await Promise.all([
+      const [summaryResponse, milestoneResponse, preferenceResponse] = await Promise.all([
         fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
@@ -235,6 +273,11 @@ JSON:`;
           method: "POST",
           headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: milestonePrompt }] }),
+        }),
+        fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: preferencePrompt }] }),
         }),
       ]);
 
@@ -248,13 +291,16 @@ JSON:`;
       const summaryData = await summaryResponse.json();
       const summaryContent = summaryData.choices?.[0]?.message?.content || "";
 
-      // Insert session summary memory
+      // Insert session summary memory (with embedding)
       if (summaryContent.trim()) {
+        const summaryEmbedding = await embedText(summaryContent.trim());
         const memoryInsert: any = {
           client_user_id: payloadClientId || user.id,
           memory_type: "session_summary",
           content: summaryContent.trim(),
           source_session_id: rawData.sessionId || null,
+          embedding: summaryEmbedding,
+          metadata: { channel: "text" },
         };
         if (payloadClientId) memoryInsert.client_id = payloadClientId;
         await supabase.from("client_memory").insert(memoryInsert);
@@ -278,11 +324,13 @@ JSON:`;
 
           for (const m of milestones) {
             if (labelMap[m]) {
+              const emb = await embedText(labelMap[m]);
               const milestoneMemory: any = {
                 client_user_id: payloadClientId || user.id,
                 memory_type: "milestone_completed",
                 content: labelMap[m],
                 source_session_id: rawData.sessionId || null,
+                embedding: emb,
               };
               if (payloadClientId) milestoneMemory.client_id = payloadClientId;
               await supabase.from("client_memory").insert(milestoneMemory);
@@ -290,6 +338,34 @@ JSON:`;
           }
         } catch (err) {
           console.error("Error parsing milestone detection:", err);
+        }
+      }
+
+      // Insert extracted user preferences (auto-extraction at session end)
+      if (preferenceResponse.ok) {
+        try {
+          const prefData = await preferenceResponse.json();
+          const prefRaw = prefData.choices?.[0]?.message?.content || "[]";
+          const cleaned = prefRaw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+          const preferences: string[] = JSON.parse(cleaned);
+          if (Array.isArray(preferences)) {
+            for (const p of preferences) {
+              if (typeof p !== "string" || !p.trim()) continue;
+              const emb = await embedText(p.trim());
+              const prefMemory: any = {
+                client_user_id: payloadClientId || user.id,
+                memory_type: "user_preference",
+                content: p.trim(),
+                source_session_id: rawData.sessionId || null,
+                embedding: emb,
+                metadata: { channel: "text", source: "auto_extracted" },
+              };
+              if (payloadClientId) prefMemory.client_id = payloadClientId;
+              await supabase.from("client_memory").insert(prefMemory);
+            }
+          }
+        } catch (err) {
+          console.error("Error parsing preference extraction:", err);
         }
       }
 
@@ -391,17 +467,42 @@ JSON:`;
       }
     }
 
-    // === LOAD CLIENT MEMORY ===
+    // === LOAD CLIENT MEMORY (recent + semantic) ===
     let memoryBlock = "";
     try {
       const memoryQuery = payloadClientId
-        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", payloadClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(10)
-        : supabase.from("client_memory").select("memory_type, content, created_at").eq("client_user_id", user.id).eq("is_active", true).order("created_at", { ascending: false }).limit(10);
-      const { data: memories } = await memoryQuery;
+        ? supabase.from("client_memory").select("memory_type, content, created_at").eq("client_id", payloadClientId).eq("is_active", true).order("created_at", { ascending: false }).limit(15)
+        : supabase.from("client_memory").select("memory_type, content, created_at").eq("client_user_id", user.id).eq("is_active", true).order("created_at", { ascending: false }).limit(15);
+
+      // Embed the latest user message so we can retrieve semantically-relevant
+      // memories and past chat snippets in parallel with the recent-memory pull.
+      const lastUserContent = lastUserMessage?.content?.slice(0, 4000) || "";
+      const semanticPromise = lastUserContent
+        ? embedText(lastUserContent).then(async (queryEmbedding) => {
+            if (!queryEmbedding) return [] as any[];
+            const { data, error } = await supabase.rpc("match_paige_memory", {
+              _query_embedding: queryEmbedding,
+              _target_user_id: payloadClientId || user.id,
+              _target_client_id: payloadClientId || null,
+              _match_threshold: 0.7,
+              _memory_count: 5,
+              _message_count: 3,
+            });
+            if (error) {
+              console.error("match_paige_memory error:", error);
+              return [] as any[];
+            }
+            return data || [];
+          }).catch((e) => { console.error("semantic search failed:", e); return [] as any[]; })
+        : Promise.resolve([] as any[]);
+
+      const [{ data: memories }, semanticHits] = await Promise.all([memoryQuery, semanticPromise]);
 
       if (memories && memories.length > 0) {
+        // Always-on: surface user_preference at the top so Paige respects communication style.
+        // Recent operational events follow.
         const priorityOrder: Record<string, number> = {
-          report_upload: 1, funding_secured: 2, dispute_generated: 3,
+          user_preference: 0, report_upload: 1, funding_secured: 2, dispute_generated: 3,
           milestone_completed: 4, lender_researched: 5, coach_note: 6, session_summary: 7,
         };
         const sorted = [...memories].sort((a, b) => (priorityOrder[a.memory_type] || 99) - (priorityOrder[b.memory_type] || 99));
@@ -416,12 +517,81 @@ JSON:`;
           included.push(entry);
         }
 
-        if (included.length > 0) {
-          memoryBlock = `\n\n=== PAIGE MEMORY — What I know about this client from previous sessions ===\n${included.join("\n")}\n=== END MEMORY ===\n\nIMPORTANT: Use this memory to personalize your responses. If this is the start of a new conversation (only 1 user message), open with a personalized greeting that references what you know from memory.\n`;
+        // Append semantic hits that aren't already in the recent batch
+        const includedContents = new Set(included.map(e => e.toLowerCase()));
+        const semanticEntries: string[] = [];
+        for (const hit of semanticHits) {
+          const label = hit.source === "chat"
+            ? `PAST CHAT (${hit.memory_type})`
+            : hit.memory_type.replace(/_/g, ' ').toUpperCase();
+          const sim = typeof hit.similarity === "number" ? ` ~${(hit.similarity * 100).toFixed(0)}% match` : "";
+          const entry = `• [${label}${sim}]: ${hit.content?.slice(0, 400) || ""}`;
+          if (!includedContents.has(entry.toLowerCase())) {
+            const t = Math.ceil(entry.length / 4);
+            if (tokenEstimate + t > 1500) break;
+            tokenEstimate += t;
+            semanticEntries.push(entry);
+          }
+        }
+
+        if (included.length > 0 || semanticEntries.length > 0) {
+          const semanticBlock = semanticEntries.length > 0
+            ? `\n\n--- Semantically-relevant past context for this question ---\n${semanticEntries.join("\n")}`
+            : "";
+          memoryBlock = `\n\n=== PAIGE MEMORY — What I know about this client from previous sessions ===\n${included.join("\n")}${semanticBlock}\n=== END MEMORY ===\n\nIMPORTANT: Honor any user_preference items (tone, length, formats) in every response. Use the rest of the memory to personalize. If this is the start of a new conversation (only 1 user message), open with a personalized greeting that references what you know.\n`;
         }
       }
     } catch (err) {
       console.error("Error loading client memory:", err);
+    }
+
+    // === EXPLICIT PREFERENCE SIGNAL DETECTION (real-time, lightweight) ===
+    // Fast keyword scan on the latest user message — if the client explicitly
+    // states a preference, persist it immediately as a user_preference memory
+    // so the next turn already honors it. We intentionally keep this cheap
+    // (no extra AI call) — auto-extraction at session end catches subtler ones.
+    try {
+      const text = (lastUserMessage?.content || "").toLowerCase();
+      if (text && text.length < 600) {
+        const preferenceTriggers = [
+          /\b(be|stay|keep it)\s+(brief|short|concise|terse)\b/,
+          /\b(stop|don'?t|do not)\s+(explain|lecture|repeat|summari[sz]e|give me bullets|use bullets)/,
+          /\bno (more )?bullet/,
+          /\b(skip|cut) (the )?(greeting|intro|preamble|small talk)/,
+          /\bget (to|straight to) the point\b/,
+          /\bjust (give me|tell me|the answer)/,
+          /\bi (prefer|want|need|like) (it|you to|my answers)/,
+          /\bplease (be|stop|don'?t|use|avoid)/,
+        ];
+        const matched = preferenceTriggers.some((re) => re.test(text));
+        if (matched) {
+          const targetUserId = payloadClientId || user.id;
+          // Avoid dupes: skip if we wrote the exact same content in the last 7 days.
+          const { data: dup } = await supabase
+            .from("client_memory")
+            .select("id")
+            .eq("client_user_id", targetUserId)
+            .eq("memory_type", "user_preference")
+            .eq("content", lastUserMessage!.content.trim())
+            .gte("created_at", new Date(Date.now() - 7 * 86400_000).toISOString())
+            .limit(1)
+            .maybeSingle();
+          if (!dup) {
+            const emb = await embedText(lastUserMessage!.content);
+            const row: any = {
+              client_user_id: targetUserId,
+              memory_type: "user_preference",
+              content: lastUserMessage!.content.trim(),
+              embedding: emb,
+              metadata: { source: "explicit_signal", channel: "text" },
+            };
+            if (payloadClientId) row.client_id = payloadClientId;
+            await supabase.from("client_memory").insert(row);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Explicit preference detection failed:", err);
     }
 
     // === BUILD WITHIN-SESSION DOCUMENT CONTEXT ===
