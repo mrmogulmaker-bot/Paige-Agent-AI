@@ -203,12 +203,29 @@ serve(async (req) => {
     // === SESSION SUMMARY GENERATION MODE ===
     if (generateSessionSummary && sessionMessages && sessionMessages.length > 0) {
       const last20 = sessionMessages.slice(-20);
+      const transcript = last20.map(m => `${m.role === 'user' ? 'Client' : 'Paige'}: ${m.content}`).join('\n');
       const summaryPrompt = `You are a session summarizer. Given the following chat messages between a client and Paige (an AI credit strategist), produce a 3-5 sentence plain-language summary of what was discussed, what was decided, what documents were uploaded, and what next steps were identified. Be specific about names, scores, and actions. Do NOT use bullet points — write flowing sentences.
 
 MESSAGES:
-${last20.map(m => `${m.role === 'user' ? 'Client' : 'Paige'}: ${m.content}`).join('\n')}
+${transcript}
 
 SUMMARY:`;
+
+      // Preference extraction prompt — runs alongside summary so we can persist
+      // conversational preferences (tone, length, topics) for future sessions.
+      const preferencePrompt = `Analyze the following conversation and extract any communication preferences the CLIENT has expressed — either explicitly ("be brief", "stop explaining basics", "no bullet points") or implicitly through repeated short replies, frustration, or specific format requests.
+
+Return ONLY a JSON array of concise sentences. Each sentence must describe ONE preference in language suitable for a system prompt. If none, return [].
+
+Examples:
+- "Prefers brief, conversational replies with no bullet points."
+- "Wants Paige to skip greetings and get to the answer."
+- "Has asked Paige not to suggest disputes."
+
+MESSAGES:
+${transcript}
+
+JSON:`;
 
       // Also check for foundation milestone mentions
       const milestonePrompt = `Analyze the following conversation and determine if the client mentioned completing any of these Business Foundation items:
