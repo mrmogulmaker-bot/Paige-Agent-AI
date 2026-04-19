@@ -31,13 +31,12 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-20 items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/" className="flex items-center">
             <img
               src={paigeLogo}
               alt="Paige Agent AI"
-              className="h-14 md:h-16 w-auto bg-transparent drop-shadow-[0_0_12px_hsl(var(--accent)/0.35)]"
+              className="h-16 md:h-20 w-auto"
             />
-            <span className="text-xl font-extrabold text-accent">PaigeAgent.ai</span>
           </Link>
 
           <div className="hidden md:flex md:items-center md:space-x-8">
