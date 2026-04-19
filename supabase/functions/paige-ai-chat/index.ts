@@ -137,6 +137,27 @@ Rules:
 - All scores must be between 300-850 or null
 - Set extraction_verified to false if you cannot confidently extract the data`;
 
+// Lightweight embedding helper for memory writes. Returns null on any failure
+// so the caller can still persist the row without blocking the user-facing
+// response. Uses OpenAI text-embedding-3-small (1536 dims) to match schema.
+async function embedText(text: string): Promise<number[] | null> {
+  try {
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiKey || !text) return null;
+    const trimmed = text.length > 8000 ? text.slice(0, 8000) : text;
+    const r = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "text-embedding-3-small", input: trimmed }),
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j.data?.[0]?.embedding ?? null;
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
