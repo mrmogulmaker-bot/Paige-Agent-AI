@@ -47,17 +47,62 @@ type LenderTypeLabel =
   | "Online Bank";
 
 interface LenderResult {
+  // Identity
   name: string;
   type: LenderTypeLabel;
+  fdic_cert: string;
+  fed_rssd: string | null;
+  // Location
   address: string;
+  address2: string | null;
   city: string;
   state: string;
   zip: string;
+  county: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  // Web
   website: string;
-  referenceId: string;
+  // Charter & class
+  bank_class: string | null;
+  bank_class_desc: string | null;
+  specialization: string | null;
+  specialization_code: number | null;
+  is_community_bank: boolean;
+  is_minority_depository: boolean;
+  mdi_description: string | null;
+  has_trust_powers: boolean;
+  is_mutual: boolean;
+  is_subchapter_s: boolean;
+  // Financials (in $ thousands from FDIC)
+  asset_size: number | null;
+  deposits: number | null;
+  net_income: number | null;
+  return_on_assets: number | null;
+  return_on_equity: number | null;
+  // Footprint
+  office_count: number | null;
+  established_date: string | null;
+  fdic_insured_date: string | null;
+  // Source & enrichment
   source: "FDIC";
-  asset_size?: number | null;
   bureauPreference?: BureauPreference | null;
+}
+
+function formatAssetSize(thousands: number | null): string | null {
+  if (thousands == null) return null;
+  const dollars = thousands * 1000;
+  if (dollars >= 1e9) return `$${(dollars / 1e9).toFixed(1)}B`;
+  if (dollars >= 1e6) return `$${(dollars / 1e6).toFixed(0)}M`;
+  return `$${(dollars / 1e3).toFixed(0)}K`;
+}
+
+function yearsInBusiness(estymd: string | null): number | null {
+  if (!estymd) return null;
+  const match = estymd.match(/(\d{4})/);
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  return isNaN(year) ? null : new Date().getFullYear() - year;
 }
 
 interface BureauScores {
@@ -303,17 +348,86 @@ export function RegionalLenderSearch({
             const colorClass = TYPE_COLORS[lender.type] || "";
             const fullAddress = [lender.address, lender.city, `${lender.state} ${lender.zip}`].filter(Boolean).join(", ");
             const bp = lender.bureauPreference;
+            const assetSize = formatAssetSize(lender.asset_size);
+            const yearsActive = yearsInBusiness(lender.established_date);
+
+            // Profile chips: small "this institution is..." facts surfaced from FDIC data
+            const profileChips: { label: string; tone: "info" | "highlight" }[] = [];
+            if (lender.is_minority_depository && lender.mdi_description) {
+              profileChips.push({ label: `MDI: ${lender.mdi_description}`, tone: "highlight" });
+            }
+            if (lender.is_community_bank && lender.type !== "Community Bank") {
+              profileChips.push({ label: "Community Bank", tone: "info" });
+            }
+            if (lender.has_trust_powers) profileChips.push({ label: "Trust Powers", tone: "info" });
+            if (lender.is_mutual) profileChips.push({ label: "Mutual", tone: "info" });
 
             return (
-              <div key={`${lender.referenceId}-${i}`} className="p-3 rounded-lg bg-muted/30 border border-border">
+              <div key={`${lender.fdic_cert}-${i}`} className="p-3 rounded-lg bg-muted/30 border border-border">
                 <div className="flex items-start gap-3">
                   <Icon className="w-5 h-5 text-accent mt-0.5 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-foreground">{lender.name}</span>
                       <Badge variant="outline" className={`text-xs ${colorClass}`}>{lender.type}</Badge>
+                      {profileChips.map((chip) => (
+                        <Badge
+                          key={chip.label}
+                          variant="outline"
+                          className={`text-[10px] ${
+                            chip.tone === "highlight"
+                              ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                              : "bg-muted text-muted-foreground border-border"
+                          }`}
+                        >
+                          {chip.label}
+                        </Badge>
+                      ))}
                     </div>
-                    {fullAddress && <p className="text-xs text-muted-foreground mt-1">{fullAddress}</p>}
+                    {fullAddress && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {fullAddress}
+                        {lender.county && <span className="text-muted-foreground/60"> · {lender.county} County</span>}
+                      </p>
+                    )}
+
+                    {/* FDIC stats row */}
+                    {(assetSize || lender.office_count != null || yearsActive != null || lender.return_on_assets != null) && (
+                      <div className="flex items-center gap-3 mt-1.5 flex-wrap text-xs text-muted-foreground">
+                        {assetSize && (
+                          <span title="Total assets (FDIC call report)">
+                            Assets: <span className="text-foreground font-medium">{assetSize}</span>
+                          </span>
+                        )}
+                        {lender.office_count != null && lender.office_count > 0 && (
+                          <span>
+                            Branches: <span className="text-foreground font-medium">{lender.office_count}</span>
+                          </span>
+                        )}
+                        {yearsActive != null && yearsActive > 0 && (
+                          <span>
+                            Est. <span className="text-foreground font-medium">{yearsActive}y</span> ago
+                          </span>
+                        )}
+                        {lender.return_on_assets != null && (
+                          <span title="Return on Assets — health indicator">
+                            ROA:{" "}
+                            <span className={`font-medium ${lender.return_on_assets >= 1 ? "text-emerald-400" : "text-foreground"}`}>
+                              {lender.return_on_assets.toFixed(2)}%
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Charter / specialization line */}
+                    {(lender.bank_class_desc || lender.specialization) && (
+                      <p className="text-[11px] text-muted-foreground/70 mt-1">
+                        {lender.bank_class_desc}
+                        {lender.bank_class_desc && lender.specialization && " · "}
+                        {lender.specialization}
+                      </p>
+                    )}
 
                     {/* Bureau preference display */}
                     {bp ? (
@@ -347,8 +461,21 @@ export function RegionalLenderSearch({
                           <Globe className="w-3 h-3" /> Website
                         </a>
                       )}
-                      {lender.referenceId && (
-                        <span className="text-xs text-muted-foreground/60">CERT #{lender.referenceId}</span>
+                      {lender.latitude != null && lender.longitude != null && (
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${lender.latitude},${lender.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                        >
+                          <MapPin className="w-3 h-3" /> Map
+                        </a>
+                      )}
+                      {lender.fdic_cert && (
+                        <span className="text-[11px] text-muted-foreground/60">CERT #{lender.fdic_cert}</span>
+                      )}
+                      {lender.fed_rssd && (
+                        <span className="text-[11px] text-muted-foreground/60">RSSD #{lender.fed_rssd}</span>
                       )}
                     </div>
                   </div>
