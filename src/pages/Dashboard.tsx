@@ -120,6 +120,13 @@ const Dashboard = () => {
   }, [navigate]);
 
   const checkOnboardingStatus = async (userId: string) => {
+    // Respect snooze + permanent dismissal so users aren't trapped on the welcome screen.
+    try {
+      const snoozedUntil = Number(localStorage.getItem("onboarding_snoozed_until") || 0);
+      if (snoozedUntil && Date.now() < snoozedUntil) return;
+      if (localStorage.getItem("onboarding_dismissed") === "true") return;
+    } catch {}
+
     const { data: profile } = await supabase
       .from("profiles")
       .select("full_name")

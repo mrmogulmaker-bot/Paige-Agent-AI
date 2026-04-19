@@ -153,10 +153,17 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
   };
 
   const handleSkipForNow = () => {
-    // Snooze the welcome modal for 24h. The checklist on the dashboard remains the persistent reminder.
-    const snoozeUntil = Date.now() + 24 * 60 * 60 * 1000;
+    // Track dismissals — after 3 skips, stop nagging entirely. Otherwise snooze for 7 days.
     try {
-      localStorage.setItem("onboarding_snoozed_until", String(snoozeUntil));
+      const prevSkips = Number(localStorage.getItem("onboarding_skip_count") || 0);
+      const nextSkips = prevSkips + 1;
+      localStorage.setItem("onboarding_skip_count", String(nextSkips));
+      if (nextSkips >= 3) {
+        localStorage.setItem("onboarding_dismissed", "true");
+      } else {
+        const snoozeUntil = Date.now() + 7 * 24 * 60 * 60 * 1000;
+        localStorage.setItem("onboarding_snoozed_until", String(snoozeUntil));
+      }
     } catch {}
     toast({
       title: "No problem — explore freely",
