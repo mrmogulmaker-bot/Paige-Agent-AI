@@ -6,14 +6,14 @@ const personas = [
   {
     icon: Sparkles,
     badge: "ACCEL Framework",
-    title: "The Credit Rebuilder",
-    subtitle: "Starting your credit journey",
+    title: "The Credit Navigator",
+    subtitle: "Mapping your credit journey",
     description:
-      "You've had setbacks — collections, late payments, or a thin file — and you're ready to fix it the right way. Paige walks you through every dispute, every paydown, and every score-moving action with full transparency.",
+      "You've had setbacks — collections, late payments, or a thin file — and you need a clear map forward. Paige reads your full credit picture, shows you exactly what's hurting you, what's missing, and the score-moving actions that get you fundable. If repair work is needed, she hands you off to our sister platform, Mogul Credit AI.",
     bullets: [
-      "Bureau-specific dispute strategy",
+      "Bureau-by-bureau file health analysis",
       "Score simulator before you act",
-      "Compliance-safe creditor outreach",
+      "Smart referral to Mogul Credit AI when repair is needed",
     ],
     accent: "accent",
   },
