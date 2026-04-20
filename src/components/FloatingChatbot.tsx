@@ -121,8 +121,20 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content }]);
     },
     onError: (error) => {
-      console.error("ElevenLabs error:", error);
-      const errorMsg = typeof error === 'string' ? error : "Failed to connect to voice chat";
+      // Verbose logging to capture exact ElevenLabs failure (deprecated voice, bad agent, etc.)
+      const e: any = error;
+      console.error("[FloatingChatbot] ElevenLabs onError raw:", error);
+      console.error("[FloatingChatbot] ElevenLabs onError details:", {
+        type: typeof error,
+        name: e?.name,
+        code: e?.code,
+        reason: e?.reason,
+        message: e?.message,
+        context: e?.context,
+        stack: e?.stack,
+        stringified: (() => { try { return JSON.stringify(error); } catch { return String(error); } })(),
+      });
+      const errorMsg = typeof error === 'string' ? error : (e?.message || e?.reason || "Failed to connect to voice chat");
       if (errorMsg.includes("NotAllowed") || errorMsg.includes("Permission")) {
         toast({ title: "Microphone Access Required", description: "Please allow microphone access in your browser settings, then try again.", variant: "destructive" });
         setMicPermission('denied');
