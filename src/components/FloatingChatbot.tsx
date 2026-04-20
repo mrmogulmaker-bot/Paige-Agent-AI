@@ -21,6 +21,8 @@ import { useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
 import { primeMicAndAudio, fetchVoiceCredentials, describeVoiceError } from "@/lib/voice/startVoiceSession";
+import { getCurrentPageName } from "@/lib/pageContext";
+import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
 
 type Message = {
   role: "user" | "assistant";
@@ -93,12 +95,30 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
     setAttachedDoc,
   } = useChatDocumentUpload();
 
+  // Modal-driven voice UI state
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceModalStatus>("connecting");
+  const [voiceTranscript, setVoiceTranscript] = useState<VoiceTranscriptEntry[]>([]);
+  const [voiceMuted, setVoiceMuted] = useState(false);
+  const currentPageName = getCurrentPageName(location.pathname);
+
   const conversation = useConversation({
-    onConnect: () => { toast({ title: "Voice chat started", description: "You can now speak with Paige" }); },
-    onDisconnect: () => { toast({ title: "Voice chat ended", description: "The conversation has been closed" }); },
+    onConnect: () => {
+      setVoiceTranscript([]);
+      setVoiceStatus("listening");
+      setVoiceModalOpen(true);
+    },
+    onDisconnect: () => {
+      setVoiceModalOpen(false);
+      setVoiceStatus("connecting");
+      toast({ title: "Voice chat ended", description: "The conversation has been closed" });
+    },
     onMessage: (message) => {
-      if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content: message.message || "" }]);
-      else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content: message.message || "" }]);
+      const role = message.source === "ai" ? "assistant" : "user";
+      const content = message.message || "";
+      if (content) setVoiceTranscript(prev => [...prev, { role, content }]);
+      if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content }]);
+      else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content }]);
     },
     onError: (error) => {
       console.error("ElevenLabs error:", error);
@@ -111,6 +131,13 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       }
     },
   });
+
+  // Sync ElevenLabs speaking state -> modal status
+  useEffect(() => {
+    if (!voiceModalOpen) return;
+    if (conversation.status !== "connected") return;
+    setVoiceStatus(conversation.isSpeaking ? "speaking" : "listening");
+  }, [conversation.isSpeaking, conversation.status, voiceModalOpen]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
