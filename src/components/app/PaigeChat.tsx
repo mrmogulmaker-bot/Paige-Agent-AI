@@ -308,6 +308,13 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
     },
   });
 
+  // Sync ElevenLabs speaking state -> modal status pill
+  useEffect(() => {
+    if (!voiceModalOpen) return;
+    if (conversation.status !== "connected") return;
+    setVoiceStatus(conversation.isSpeaking ? "speaking" : "listening");
+  }, [conversation.isSpeaking, conversation.status, voiceModalOpen]);
+
   const startVoiceChat = async () => {
     if (micPermission === 'denied') {
       toast({
@@ -322,6 +329,12 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
 
     let audioCtx: AudioContext | null = null;
     try {
+      // Open the modal immediately (status: connecting) so user gets feedback.
+      setVoiceTranscript([]);
+      setVoiceMuted(false);
+      setVoiceStatus("connecting");
+      setVoiceModalOpen(true);
+
       // Prime mic + audio output INSIDE the click gesture (iOS Safari requirement).
       const primed = await primeMicAndAudio();
       audioCtx = primed.audioContext;
@@ -330,20 +343,42 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
       const { data: { session: freshSession } } = await supabase.auth.getSession();
       const creds = await fetchVoiceCredentials(freshSession?.access_token);
 
+      // Last 5 messages from current chat for continuity context.
+      const recentChatMessages = messages
+        .filter(m => m.content && m.content.trim())
+        .slice(-5)
+        .map(m => ({ role: m.role, content: m.content }));
+
+      // Fetch dynamic, page-aware greeting from edge function.
+      let greeting: string | undefined;
+      try {
+        const { data: greetingData } = await supabase.functions.invoke("paige-voice-greeting", {
+          body: {
+            currentPage: currentPageRef.current,
+            recentChatMessages,
+          },
+          headers: freshSession?.access_token ? { Authorization: `Bearer ${freshSession.access_token}` } : undefined,
+        });
+        greeting = greetingData?.greeting;
+        console.log("[PaigeChat] Voice greeting:", greeting);
+      } catch (greetErr) {
+        console.warn("[PaigeChat] Greeting fetch failed; falling back:", greetErr);
+      }
+
       const voicePageLine = `Current page: ${currentPageRef.current}`;
+      const historyBlock = recentChatMessages.length > 0
+        ? `\n\nRECENT CHAT HISTORY (last ${recentChatMessages.length} turns — pick up from here):\n${recentChatMessages.map(m => `${m.role === "user" ? "Client" : "Paige"}: ${m.content}`).join("\n")}`
+        : "";
+
       const voiceSystemPrompt = contextBlock
-        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\n${voicePageLine}\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- The client is currently viewing the "${currentPageRef.current}" page — assume their questions relate to what they are seeing there and tailor your answers to that section\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
-        : `You are Paige, the AI credit strategist for PaigeAgent.ai. ${voicePageLine}. Tailor responses to that section of the app.`;
+        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\n${voicePageLine}\n\nCLIENT DATA:\n${contextBlock}${historyBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- The client is currently viewing the "${currentPageRef.current}" page — assume their questions relate to what they are seeing there\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- Never fabricate data\n- VOICE: Be conversational and concise (1-2 short sentences per turn). Use natural acknowledgments like "Got it", "Right", "Exactly". Never read bullet points aloud — convert to natural speech.\n- Connect insights to their funding goals when relevant`
+        : `You are Paige, the AI credit strategist for PaigeAgent.ai. ${voicePageLine}.${historyBlock}\n\nVOICE: Be conversational and concise. Use short sentences and natural acknowledgments.`;
 
       const overrides = {
         overrides: {
           agent: {
             prompt: { prompt: voiceSystemPrompt },
-            firstMessage: contextBlock
-              ? hasCreditData
-                ? `Hey ${user.user_metadata?.full_name?.split(" ")[0] || "there"} — I've got your file pulled up and I see you're on the ${currentPageRef.current} page. What do you want to work on?`
-                : "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation."
-              : undefined,
+            firstMessage: greeting,
           },
         },
       };
@@ -364,6 +399,7 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
       }
     } catch (err: any) {
       console.error("[PaigeChat] Voice start failed:", err);
+      setVoiceModalOpen(false);
       if (audioCtx) { try { await audioCtx.close(); } catch {} }
       if (err?.name === "NotAllowedError" || err?.message?.toLowerCase?.().includes("permission")) {
         setMicPermission('denied');
@@ -375,7 +411,23 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
 
   const stopVoiceChat = async () => {
     try { await conversation.endSession(); } catch (e) { console.warn("Error ending session", e); }
+    setVoiceModalOpen(false);
   };
+
+  const toggleVoiceMute = useCallback(async () => {
+    const next = !voiceMuted;
+    setVoiceMuted(next);
+    try {
+      const conv: any = conversation;
+      if (typeof conv.setMicMuted === "function") {
+        await conv.setMicMuted(next);
+      } else if (typeof conv.setVolume === "function") {
+        await conv.setVolume({ volume: next ? 0 : 1 });
+      }
+    } catch (err) {
+      console.warn("Mute toggle failed:", err);
+    }
+  }, [conversation, voiceMuted]);
 
   useEffect(() => {
     const handleFactoryReset = async () => {
