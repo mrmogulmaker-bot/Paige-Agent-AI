@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain, TrendingUp, Database, User, Phone, AtSign, MapPin, Calendar, Shield, MessageSquare, Trash2, Edit3, Briefcase } from "lucide-react";
+import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain, TrendingUp, Database, User, Phone, AtSign, MapPin, Calendar, Shield, MessageSquare, Trash2, Edit3, Briefcase, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
 import { OutreachCenter } from "./OutreachCenter";
@@ -41,6 +44,7 @@ interface ClientProfile {
   last_report_analyzed_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+  is_complimentary: boolean | null;
 }
 
 export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: ClientFileViewProps) {
@@ -63,7 +67,7 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
     const [profileRes, subRes, rolesRes] = await Promise.all([
       supabase
         .from("profiles")
-        .select("full_name, phone, city, state, street_address, zip_code, date_of_birth, ssn_last_4, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed, has_discrepancies, cross_bureau_discrepancies, last_report_analyzed_at, created_at, updated_at")
+        .select("full_name, phone, city, state, street_address, zip_code, date_of_birth, ssn_last_4, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed, has_discrepancies, cross_bureau_discrepancies, last_report_analyzed_at, created_at, updated_at, is_complimentary")
         .eq("user_id", clientUserId)
         .maybeSingle(),
       supabase
