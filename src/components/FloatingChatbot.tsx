@@ -20,6 +20,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
+import { primeMicAndAudio, fetchVoiceCredentials, describeVoiceError } from "@/lib/voice/startVoiceSession";
 
 type Message = {
   role: "user" | "assistant";
@@ -141,58 +142,69 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
   }, []);
 
   const startVoiceChat = async () => {
-    try {
-      if (micPermission === 'denied') {
-        toast({
-          title: "Microphone Blocked",
-          description: isMobile
-            ? "Enable microphone in your browser settings. On iPhone: Settings > Safari > Microphone."
-            : "Tap the lock icon in your browser's address bar to enable microphone access.",
-          variant: "destructive",
-        });
-        return;
-      }
+    if (micPermission === 'denied') {
+      toast({
+        title: "Microphone Blocked",
+        description: isMobile
+          ? "Enable microphone in your browser settings. On iPhone: Settings > Safari > Microphone."
+          : "Tap the lock icon in your browser's address bar to enable microphone access.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+    let audioCtx: AudioContext | null = null;
+    try {
+      // 1) Prime mic + audio output INSIDE the click gesture (iOS Safari requirement).
+      const primed = await primeMicAndAudio();
+      audioCtx = primed.audioContext;
       setMicPermission('granted');
 
+      // 2) Fetch credentials (WebRTC token preferred; signed URL fallback).
       const { data: { session } } = await supabase.auth.getSession();
-      const { data, error } = await supabase.functions.invoke("elevenlabs-signed-url", {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      if (error) throw error;
+      const creds = await fetchVoiceCredentials(session?.access_token);
 
       const voiceSystemPrompt = contextBlock
         ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
         : undefined;
 
-      await conversation.startSession({
-        signedUrl: data.signedUrl,
-        ...(voiceSystemPrompt ? {
-          overrides: {
-            agent: {
-              prompt: { prompt: voiceSystemPrompt },
-              firstMessage: hasCreditData ? "Hey — I've got your file pulled up. What do you want to work on?" : "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation.",
+      const overrides = voiceSystemPrompt
+        ? {
+            overrides: {
+              agent: {
+                prompt: { prompt: voiceSystemPrompt },
+                firstMessage: hasCreditData
+                  ? "Hey — I've got your file pulled up. What do you want to work on?"
+                  : "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation.",
+              },
             },
-          },
-        } : {}),
-      });
-    } catch (err: any) {
-      console.error("Error starting widget voice chat:", err);
-      if (err?.name === "NotAllowedError" || err?.message?.includes("Permission")) {
-        setMicPermission('denied');
-        toast({
-          title: "Microphone Access Required",
-          description: isMobile
-            ? "Please enable microphone in your browser settings. On iPhone: Settings > Safari > Microphone."
-            : "Please allow microphone access when prompted.",
-          variant: "destructive",
-        });
-      } else if (err?.name === "NotFoundError") {
-        toast({ title: "No Microphone Found", description: "Please connect a microphone and try again.", variant: "destructive" });
+          }
+        : {};
+
+      // 3) Start session — prefer WebRTC token, fall back to signedUrl.
+      if (creds.conversationToken) {
+        await conversation.startSession({
+          conversationToken: creds.conversationToken,
+          connectionType: "webrtc",
+          ...overrides,
+        } as any);
+      } else if (creds.signedUrl) {
+        await conversation.startSession({
+          signedUrl: creds.signedUrl,
+          ...overrides,
+        } as any);
       } else {
-        toast({ title: "Error", description: "Failed to start voice chat. Please try again.", variant: "destructive" });
+        throw new Error("No voice credentials returned");
       }
+    } catch (err: any) {
+      console.error("[FloatingChatbot] Voice start failed:", err);
+      // Tear down audio context if start failed.
+      if (audioCtx) { try { await audioCtx.close(); } catch {} }
+      if (err?.name === "NotAllowedError" || err?.message?.toLowerCase?.().includes("permission")) {
+        setMicPermission('denied');
+      }
+      const { title, description } = describeVoiceError(err, isMobile);
+      toast({ title, description, variant: "destructive" });
     }
   };
 
