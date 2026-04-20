@@ -686,6 +686,25 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           }
         }
 
+        // ===== Active Predictions (Paige Predictive Engine) =====
+        if (resolvedUserId) {
+          const { data: preds } = await supabase
+            .from("credit_predictions")
+            .select("title, description, impact_score, deadline_date, prediction_type, action_required")
+            .eq("user_id", resolvedUserId)
+            .eq("is_dismissed", false)
+            .order("created_at", { ascending: false })
+            .limit(5);
+          if (preds && preds.length > 0) {
+            const lines = preds.map((p: any, i: number) => {
+              const impact = p.impact_score ? ` — Impact: ${p.impact_score > 0 ? "+" : ""}${p.impact_score} pts` : "";
+              const deadline = p.deadline_date ? ` — Deadline: ${new Date(p.deadline_date).toLocaleDateString()}` : "";
+              return `${i + 1}. ${p.title}${impact}${deadline}`;
+            });
+            parts.push(`Active Predictions: ${preds.length} predictions require attention.\n${lines.join("\n")}`);
+          }
+        }
+
         if (!cancelled) {
           setContextBlock(parts.length > 1 ? parts.join("\n") : "");
           setIsLoading(false);

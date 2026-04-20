@@ -867,6 +867,22 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
       console.error("Auto-stage-disputes setup failed (non-blocking):", stageErr);
     }
 
+    // ========== STEP 12: GENERATE PREDICTIONS (fire-and-forget) ==========
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      fetch(`${supabaseUrl}/functions/v1/generate-credit-predictions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+        },
+        body: JSON.stringify({ user_id: targetUserId }),
+      }).catch(err => console.error("generate-credit-predictions fire-and-forget failed:", err));
+    } catch (predErr) {
+      console.error("Predictions setup failed (non-blocking):", predErr);
+    }
+
     return new Response(JSON.stringify({ success: true, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
