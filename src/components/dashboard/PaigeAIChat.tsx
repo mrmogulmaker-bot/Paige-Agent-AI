@@ -72,8 +72,20 @@ export const PaigeAIChat = () => {
       else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content }]);
     },
     onError: (error) => {
-      console.error("ElevenLabs error:", error);
-      toast({ title: "Voice chat error", description: typeof error === 'string' ? error : "Failed to connect to voice chat", variant: "destructive" });
+      const e: any = error;
+      console.error("[PaigeAIChat] ElevenLabs onError raw:", error);
+      console.error("[PaigeAIChat] ElevenLabs onError details:", {
+        type: typeof error,
+        name: e?.name,
+        code: e?.code,
+        reason: e?.reason,
+        message: e?.message,
+        context: e?.context,
+        stack: e?.stack,
+        stringified: (() => { try { return JSON.stringify(error); } catch { return String(error); } })(),
+      });
+      const msg = typeof error === 'string' ? error : (e?.message || e?.reason || "Failed to connect to voice chat");
+      toast({ title: "Voice chat error", description: msg, variant: "destructive" });
     },
   });
 

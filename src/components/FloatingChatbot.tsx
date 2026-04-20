@@ -121,8 +121,20 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content }]);
     },
     onError: (error) => {
-      console.error("ElevenLabs error:", error);
-      const errorMsg = typeof error === 'string' ? error : "Failed to connect to voice chat";
+      // Verbose logging to capture exact ElevenLabs failure (deprecated voice, bad agent, etc.)
+      const e: any = error;
+      console.error("[FloatingChatbot] ElevenLabs onError raw:", error);
+      console.error("[FloatingChatbot] ElevenLabs onError details:", {
+        type: typeof error,
+        name: e?.name,
+        code: e?.code,
+        reason: e?.reason,
+        message: e?.message,
+        context: e?.context,
+        stack: e?.stack,
+        stringified: (() => { try { return JSON.stringify(error); } catch { return String(error); } })(),
+      });
+      const errorMsg = typeof error === 'string' ? error : (e?.message || e?.reason || "Failed to connect to voice chat");
       if (errorMsg.includes("NotAllowed") || errorMsg.includes("Permission")) {
         toast({ title: "Microphone Access Required", description: "Please allow microphone access in your browser settings, then try again.", variant: "destructive" });
         setMicPermission('denied');
@@ -234,6 +246,12 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       };
 
       // 3) Start session — prefer WebRTC token, fall back to signedUrl.
+      console.log("[FloatingChatbot] Starting session", {
+        agentId: creds.agentId,
+        connectionType: creds.conversationToken ? "webrtc" : "websocket",
+        hasToken: !!creds.conversationToken,
+        hasSignedUrl: !!creds.signedUrl,
+      });
       if (creds.conversationToken) {
         await conversation.startSession({
           conversationToken: creds.conversationToken,
@@ -248,8 +266,13 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       } else {
         throw new Error("No voice credentials returned");
       }
+      console.log("[FloatingChatbot] startSession resolved (status pending onConnect)");
     } catch (err: any) {
       console.error("[FloatingChatbot] Voice start failed:", err);
+      console.error("[FloatingChatbot] Voice start error details:", {
+        name: err?.name, code: err?.code, message: err?.message, reason: err?.reason,
+        stringified: (() => { try { return JSON.stringify(err); } catch { return String(err); } })(),
+      });
       setVoiceModalOpen(false);
       // Tear down audio context if start failed.
       if (audioCtx) { try { await audioCtx.close(); } catch {} }
