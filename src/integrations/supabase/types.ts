@@ -5399,6 +5399,109 @@ export type Database = {
           },
         ]
       }
+      rag_documents: {
+        Row: {
+          client_id: string | null
+          content: string
+          created_at: string
+          document_type: string
+          embedding: string | null
+          helpful_count: number
+          id: string
+          is_anonymized: boolean
+          is_published: boolean
+          metadata: Json
+          quality_score: number
+          source: string
+          summary: string | null
+          title: string
+          updated_at: string
+          usage_count: number
+        }
+        Insert: {
+          client_id?: string | null
+          content: string
+          created_at?: string
+          document_type: string
+          embedding?: string | null
+          helpful_count?: number
+          id?: string
+          is_anonymized?: boolean
+          is_published?: boolean
+          metadata?: Json
+          quality_score?: number
+          source?: string
+          summary?: string | null
+          title: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Update: {
+          client_id?: string | null
+          content?: string
+          created_at?: string
+          document_type?: string
+          embedding?: string | null
+          helpful_count?: number
+          id?: string
+          is_anonymized?: boolean
+          is_published?: boolean
+          metadata?: Json
+          quality_score?: number
+          source?: string
+          summary?: string | null
+          title?: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rag_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      rag_retrieval_log: {
+        Row: {
+          created_at: string
+          id: string
+          query_embedding: string | null
+          query_text: string | null
+          retrieved_document_ids: string[]
+          user_id: string | null
+          was_helpful: boolean | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          query_embedding?: string | null
+          query_text?: string | null
+          retrieved_document_ids?: string[]
+          user_id?: string | null
+          was_helpful?: boolean | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          query_embedding?: string | null
+          query_text?: string | null
+          retrieved_document_ids?: string[]
+          user_id?: string | null
+          was_helpful?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rag_retrieval_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       referral_clicks: {
         Row: {
           affiliate_id: string | null
@@ -6271,6 +6374,26 @@ export type Database = {
           source: string
         }[]
       }
+      match_rag_documents: {
+        Args: {
+          _document_types?: string[]
+          _match_count?: number
+          _match_threshold?: number
+          _metadata_filter?: Json
+          _query_embedding: string
+          _query_text?: string
+        }
+        Returns: {
+          content: string
+          document_type: string
+          id: string
+          metadata: Json
+          quality_score: number
+          similarity: number
+          summary: string
+          title: string
+        }[]
+      }
       move_to_dlq: {
         Args: {
           dlq_name: string
@@ -6282,6 +6405,13 @@ export type Database = {
       }
       qb_decrypt_token: { Args: { _ciphertext: string }; Returns: string }
       qb_encrypt_token: { Args: { _plaintext: string }; Returns: string }
+      rag_recalibrate_quality: {
+        Args: never
+        Returns: {
+          boosted_high: number
+          flagged_low: number
+        }[]
+      }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
         Returns: {
