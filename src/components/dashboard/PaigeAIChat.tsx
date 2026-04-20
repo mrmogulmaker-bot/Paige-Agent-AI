@@ -373,6 +373,17 @@ export const PaigeAIChat = () => {
           </div>
         </Card>
       </div>
+
+      {/* Premium voice session UI — full-screen modal with avatar, transcript, controls. */}
+      <VoiceSessionModal
+        open={voiceModalOpen}
+        status={voiceStatus}
+        isMuted={voiceMuted}
+        pageName={currentPageName}
+        transcript={voiceTranscript}
+        onToggleMute={toggleVoiceMute}
+        onEndCall={stopVoiceChat}
+      />
     </div>
   );
 };
