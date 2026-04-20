@@ -30,6 +30,24 @@ export interface BusinessInfraData {
   buildScore: number | null;
 }
 
+export interface DemographicProfile {
+  gender_identity: string | null;
+  ethnicity: string[] | null;
+  is_veteran: boolean | null;
+  is_service_disabled_veteran: boolean | null;
+  is_us_citizen: boolean | null;
+  is_minority_owned: boolean | null;
+  is_women_owned: boolean | null;
+  is_veteran_owned: boolean | null;
+  is_service_disabled_veteran_owned: boolean | null;
+  is_hubzone_located: boolean | null;
+  has_8a_certification: boolean | null;
+  has_wosb_certification: boolean | null;
+  has_vetcert_certification: boolean | null;
+  /** True when client appears to be a startup (TIB < 24mo OR no business yet) */
+  is_startup: boolean;
+}
+
 export interface FundingProfileData {
   // Bureau scores
   middleScore: number | null;
