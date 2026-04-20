@@ -17,9 +17,13 @@ const messageSchema = z.object({
     })
   ).min(1).max(50),
   document: z.object({
-    base64: z.string(),
+    base64: z.string().optional(),
     fileName: z.string(),
-    mimeType: z.literal('application/pdf'),
+    mimeType: z.string(),
+    /** Plain-text content extracted client-side (DOCX). */
+    textContent: z.string().max(200_000).optional(),
+    /** "pdf" | "image" | "docx" — set by the chat client */
+    kind: z.enum(["pdf", "image", "docx"]).optional(),
   }).optional(),
   sessionDocumentContext: z.array(
     z.object({
