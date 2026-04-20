@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Globe, BarChart3, FileText, Award, Sparkles } from "lucide-react";
+import { Building2, Globe, BarChart3, FileText, Award, Sparkles, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { FoundationSection } from "./FoundationSection";
 import { BuildProgramSection } from "./BuildProgramSection";
@@ -13,6 +13,7 @@ import { BusinessCreditSection } from "./BusinessCreditSection";
 import { FinancialDocsSection } from "./FinancialDocsSection";
 import { SeparationAuditCard } from "./SeparationAuditCard";
 import { FundingProfileSection } from "./FundingProfileSection";
+import { FinancialIntelligenceSection } from "./FinancialIntelligenceSection";
 import { BusinessWalkthrough } from "@/components/business/BusinessWalkthrough";
 
 interface Props {
