@@ -224,19 +224,28 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
   // --- ElevenLabs voice ---
   // Track voice messages separately so we can summarize them on disconnect
   const voiceMessagesRef = useRef<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  // Modal-driven voice UI state
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceModalStatus>("connecting");
+  const [voiceTranscript, setVoiceTranscript] = useState<VoiceTranscriptEntry[]>([]);
+  const [voiceMuted, setVoiceMuted] = useState(false);
 
   const conversation = useConversation({
     onConnect: () => {
       voiceMessagesRef.current = [];
-      toast({ title: "Voice chat started", description: "You can now speak with Paige" });
+      setVoiceTranscript([]);
+      setVoiceStatus("listening");
+      setVoiceModalOpen(true);
     },
     onDisconnect: async () => {
+      setVoiceModalOpen(false);
+      setVoiceStatus("connecting");
       toast({ title: "Voice chat ended", description: "The conversation has been closed" });
       // Generate summary + extract preferences from the voice transcript
       const transcript = voiceMessagesRef.current;
       if (transcript.length >= 2) {
         try {
-          await supabase.functions.invoke("paige-voice-summary", {
+          const { data: summaryData } = await supabase.functions.invoke("paige-voice-summary", {
             body: {
               messages: transcript,
               sessionId: sessionIdRef.current,
@@ -244,6 +253,28 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
               channel: "voice_elevenlabs",
             },
           });
+          // Surface any extraction proposal returned from the voice transcript
+          // as an inline confirmation card on the most recent assistant message.
+          const proposal: ExtractionProposal | undefined = summaryData?.extractionProposal;
+          if (proposal && Array.isArray(proposal.fields) && proposal.fields.length > 0) {
+            const filteredFields = proposal.fields.filter(
+              (f) => !declinedFieldsRef.current.has(f.key)
+            );
+            if (filteredFields.length > 0) {
+              const finalProposal: ExtractionProposal = { ...proposal, fields: filteredFields };
+              setMessages(prev => {
+                const next = [...prev];
+                for (let i = next.length - 1; i >= 0; i--) {
+                  if (next[i].role === "assistant") {
+                    next[i] = { ...next[i], extractionProposal: finalProposal };
+                    return next;
+                  }
+                }
+                next.push({ role: "assistant", content: "", extractionProposal: finalProposal });
+                return next;
+              });
+            }
+          }
         } catch (err) {
           console.warn("Voice summary failed:", err);
         }
@@ -253,7 +284,10 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
     onMessage: (message) => {
       const role = message.source === "ai" ? "assistant" : "user";
       const content = message.message || "";
-      if (content) voiceMessagesRef.current.push({ role, content });
+      if (content) {
+        voiceMessagesRef.current.push({ role, content });
+        setVoiceTranscript(prev => [...prev, { role, content }]);
+      }
       if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content }]);
       else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content }]);
     },
