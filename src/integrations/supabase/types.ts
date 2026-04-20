@@ -5185,6 +5185,9 @@ export type Database = {
           id: string
           is_active: boolean
           last_synced_at: string | null
+          last_webhook_received_at: string | null
+          needs_expense_sync: boolean
+          needs_revenue_sync: boolean
           qb_company_name: string | null
           qb_realm_id: string
           refresh_token_encrypted: string
@@ -5201,6 +5204,9 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_synced_at?: string | null
+          last_webhook_received_at?: string | null
+          needs_expense_sync?: boolean
+          needs_revenue_sync?: boolean
           qb_company_name?: string | null
           qb_realm_id: string
           refresh_token_encrypted: string
@@ -5217,6 +5223,9 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_synced_at?: string | null
+          last_webhook_received_at?: string | null
+          needs_expense_sync?: boolean
+          needs_revenue_sync?: boolean
           qb_company_name?: string | null
           qb_realm_id?: string
           refresh_token_encrypted?: string
