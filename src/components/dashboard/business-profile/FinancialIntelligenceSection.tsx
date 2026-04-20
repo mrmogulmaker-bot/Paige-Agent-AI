@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Loader2, RefreshCw, Plug, CheckCircle2, AlertTriangle, TrendingUp, Wallet, PieChart as PieIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { QuickBooksConsentDialog } from "./QuickBooksConsentDialog";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, PieChart, Pie, Cell, Legend } from "recharts";
 import { formatDistanceToNow } from "date-fns";
 
