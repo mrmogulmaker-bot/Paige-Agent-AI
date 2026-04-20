@@ -21,12 +21,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
 import { primeMicAndAudio, fetchVoiceCredentials, describeVoiceError } from "@/lib/voice/startVoiceSession";
+import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
+import { extractFromMessage } from "@/lib/conversationalExtractor";
+import { fieldToWriteBackUpdate } from "@/lib/extractionProposal";
+import { useProfileSnapshot } from "@/hooks/useProfileSnapshot";
 
 type Message = {
   role: "user" | "assistant";
   content: string;
   documentFileName?: string;
   syncStatus?: any;
+  /** Inline extraction proposal rendered as a confirmation card after this message. */
+  extractionProposal?: ExtractionProposal;
 };
 
 interface PaigeChatProps {
