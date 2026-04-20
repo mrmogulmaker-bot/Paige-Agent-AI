@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Globe, BarChart3, FileText, Award, Sparkles, TrendingUp } from "lucide-react";
+import { Building2, Globe, BarChart3, FileText, Award, Sparkles, TrendingUp, Plug } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { FoundationSection } from "./FoundationSection";
 import { BuildProgramSection } from "./BuildProgramSection";
@@ -14,6 +14,7 @@ import { FinancialDocsSection } from "./FinancialDocsSection";
 import { SeparationAuditCard } from "./SeparationAuditCard";
 import { FundingProfileSection } from "./FundingProfileSection";
 import { FinancialIntelligenceSection } from "./FinancialIntelligenceSection";
+import { ConnectionsSection } from "./ConnectionsSection";
 import { BusinessWalkthrough } from "@/components/business/BusinessWalkthrough";
 
 interface Props {
@@ -24,7 +25,7 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
   const [businesses, setBusinesses] = useState<{ id: string; legal_name: string }[]>([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState<string>("");
   const [userId, setUserId] = useState<string>("");
-  const [activeTab, setActiveTab] = useState("financials");
+  const [activeTab, setActiveTab] = useState("connections");
 
   // Completion percentages
   const [foundationPct, setFoundationPct] = useState(0);
@@ -68,6 +69,7 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
   }, []);
 
   const tabs = [
+    { value: "connections", label: "Connections", icon: Plug, pct: 0 },
     { value: "financials", label: "Financial Intel", icon: TrendingUp, pct: 0 },
     { value: "foundation", label: "Foundation", icon: Building2, pct: foundationPct },
     { value: "presence", label: "Public Presence", icon: Globe, pct: presencePct },
@@ -151,16 +153,16 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
             <TabsTrigger
               key={t.value}
               value={t.value}
-              className={`text-xs gap-1.5 ${t.value === "financials" ? "data-[state=inactive]:bg-primary/10 data-[state=inactive]:text-primary data-[state=inactive]:border data-[state=inactive]:border-primary/30" : ""}`}
+              className={`text-xs gap-1.5 ${t.value === "connections" ? "data-[state=inactive]:bg-primary/10 data-[state=inactive]:text-primary data-[state=inactive]:border data-[state=inactive]:border-primary/30" : ""}`}
             >
               <t.icon className="w-3 h-3" />
               {t.label}
-              {t.value === "financials" && (
+              {t.value === "connections" && (
                 <Badge variant="outline" className="text-[9px] px-1 py-0 ml-1 bg-primary text-primary-foreground border-primary">
-                  Connect QB
+                  Apps
                 </Badge>
               )}
-              {t.value !== "financials" && (
+              {t.value !== "connections" && t.value !== "financials" && t.value !== "funding-profile" && (
                 <Badge variant="outline" className={`text-[10px] px-1 py-0 ml-1 ${t.pct >= 80 ? "bg-emerald-500/20 text-emerald-600 border-emerald-500/30" : t.pct >= 40 ? "bg-amber-500/20 text-amber-600 border-amber-500/30" : ""}`}>
                   {t.pct}%
                 </Badge>
@@ -168,6 +170,14 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
             </TabsTrigger>
           ))}
         </TabsList>
+
+        <TabsContent value="connections" className="mt-4">
+          {!userId ? (
+            <Card><CardContent className="py-12 text-center text-muted-foreground">Loading...</CardContent></Card>
+          ) : (
+            <ConnectionsSection businessId={selectedBusinessId} userId={userId} />
+          )}
+        </TabsContent>
 
         <TabsContent value="foundation" className="mt-4">
           {businesses.length === 0 ? (
