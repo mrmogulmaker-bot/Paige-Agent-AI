@@ -597,6 +597,17 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
           </div>
         </Card>
       )}
+
+      {/* Premium voice session UI — full-screen modal */}
+      <VoiceSessionModal
+        open={voiceModalOpen}
+        status={voiceStatus}
+        isMuted={voiceMuted}
+        pageName={currentPageName}
+        transcript={voiceTranscript}
+        onToggleMute={toggleVoiceMute}
+        onEndCall={stopVoiceChat}
+      />
     </>
   );
 
