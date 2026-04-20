@@ -1602,7 +1602,13 @@ WHEN TO CALL get_current_rates (automatic triggers):
 - Client mentions wanting to lock in rates or asks about rate timing
 Always call this tool BEFORE quoting any specific rate number — never use static estimates from your training data.
 
-LIVE RATE RULE: When discussing any loan product use current rates from the tool, not generic ranges. Format: "As of [observation_date], the prime rate is [X]% which means SBA 7(a) rates are currently running [Y]% to [Z]% APR" rather than "SBA rates are typically 7-10%."
+LIVE RATE RULE: When discussing any loan product use current rates from the tool, not generic ranges. ALWAYS explain the observation_date in plain language — clients get confused when they see an "old" date. PRIME and FEDFUNDS only change when the Federal Reserve adjusts rates at FOMC meetings (8 per year, roughly every 6 weeks). Treasury yields and mortgage rates update weekly.
+
+Preferred phrasing for PRIME/FEDFUNDS: "The Bank Prime Loan Rate is currently [X]% — this rate has been in effect since [observation_date in long form, e.g. December 11, 2025] and hasn't changed since. The Fed only adjusts the prime rate when they change the federal funds rate at FOMC meetings, and the next meeting is [next_fomc_meeting from tool]. That means SBA 7(a) rates are currently running [Y]% to [Z]% APR."
+
+Preferred phrasing for mortgage/treasury rates (which update weekly): "The 30-year fixed mortgage rate as of [observation_date] is [X]%. These update weekly so this is current within the last few business days."
+
+NEVER just say "as of December 11, 2025" without explaining WHY that date is correct — it sounds stale otherwise.
 
 RATE FORMULAS (apply to live PRIME and MORTGAGE30US values):
 - SBA 7(a) standard (over $50K): Prime + 2.25% to Prime + 4.75%
@@ -2045,16 +2051,26 @@ COST OF WAITING RULE: When a client is on the fence about timing, calculate rate
               series_name: r.series_name,
               value: Number(r.value),
               observation_date: r.observation_date,
+              fetched_at: r.fetched_at,
             }));
+            // Compute next FOMC meeting (8/year, ~every 6 weeks). 2026 scheduled meetings:
+            const fomc2026 = [
+              "2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17",
+              "2026-07-29", "2026-09-16", "2026-11-04", "2026-12-16",
+            ];
+            const today = new Date().toISOString().slice(0, 10);
+            const nextFomc = fomc2026.find((d) => d > today) || "2027-01-28 (estimated)";
             toolResults.push({
               tool_call_id: tc.id,
               role: "tool",
               content: JSON.stringify({
                 rates: trimmed,
                 count: trimmed.length,
+                next_fomc_meeting: nextFomc,
+                data_freshness_note: "observation_date = the date the rate was last set/measured by the Fed. fetched_at = when we pulled from FRED. PRIME and FEDFUNDS only change when the Fed adjusts at FOMC meetings (~8/year), so observation_date may be weeks/months old and that is correct. Treasury yields (DGS10/DGS30) and mortgage rates update weekly. Always explain to the client: rate was set on [observation_date], has not changed since, next FOMC meeting is [next_fomc_meeting].",
                 note: trimmed.length === 0
                   ? "No rate data available. FRED_API_KEY may be missing — fall back to disclosing that live rates are unavailable rather than quoting static numbers."
-                  : "Use these live rates with the formulas in your LIVE RATE INTELLIGENCE rules. Always cite the observation_date when quoting rates."
+                  : "Use these live rates with the formulas in your LIVE RATE INTELLIGENCE rules. ALWAYS cite both observation_date AND explain that PRIME/FEDFUNDS only change at FOMC meetings."
               }),
             });
           } catch (err) {
