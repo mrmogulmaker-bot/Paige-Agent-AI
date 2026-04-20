@@ -56,7 +56,7 @@ export function UnlockProgramsBanner({ userId }: Props) {
   }, [userId]);
 
   const dismiss = () => {
-    try { localStorage.setItem(DISMISS_KEY, "true"); } catch {}
+    try { localStorage.setItem(dismissKeyFor(userId), "true"); } catch {}
     setShow(false);
   };
 
@@ -65,7 +65,7 @@ export function UnlockProgramsBanner({ userId }: Props) {
     try {
       await saveDemographicAnswers(supabase, userId, answers);
       toast.success("Profile updated — Paige will surface targeted programs in your next chat");
-      try { localStorage.setItem(DISMISS_KEY, "true"); } catch {}
+      try { localStorage.setItem(dismissKeyFor(userId), "true"); } catch {}
       setDialogOpen(false);
       setShow(false);
     } catch {
