@@ -30,7 +30,7 @@ interface LenderOption {
   id: string;
   lender_name: string;
   product_name: string;
-  category: string | null;
+  product_category: string | null;
 }
 
 export function LogApplicationDialog({ open, onOpenChange, applicationId, targetUserId }: Props) {
@@ -53,7 +53,7 @@ export function LogApplicationDialog({ open, onOpenChange, applicationId, target
     if (!open) return;
     supabase
       .from("lender_products")
-      .select("id, lender_name, product_name, category")
+      .select("id, lender_name, product_name, product_category")
       .eq("is_active", true)
       .order("lender_name")
       .limit(500)
@@ -184,7 +184,7 @@ export function LogApplicationDialog({ open, onOpenChange, applicationId, target
                             setLenderName(l.lender_name);
                             setLenderId(l.id);
                             setProductName(l.product_name);
-                            if (l.category) setProductCategory(l.category as ProductCategoryKey);
+                            if (l.product_category) setProductCategory(l.product_category as ProductCategoryKey);
                             setLenderPickerOpen(false);
                           }}
                         >
