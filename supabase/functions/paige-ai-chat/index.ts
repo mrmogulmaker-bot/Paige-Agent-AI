@@ -791,6 +791,101 @@ JSON:`;
       }
     }
 
+    // ===== RAG: Helpfulness heuristic (judge previous turn) =====
+    // Before retrieving fresh RAG context, look for the most recent retrieval log
+    // row for this user that hasn't been judged yet. Classify the new user message
+    // and write back was_helpful + bump helpful_count on referenced documents.
+    try {
+      if (lastUserMessage) {
+        const { data: prevLog } = await supabase
+          .from("rag_retrieval_log")
+          .select("id, retrieved_document_ids")
+          .eq("user_id", user.id)
+          .is("was_helpful", null)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (prevLog && Array.isArray(prevLog.retrieved_document_ids) && prevLog.retrieved_document_ids.length > 0) {
+          const txt = (lastUserMessage.content || "").toLowerCase().trim();
+          const positiveSignals = [
+            "thanks", "thank you", "great", "perfect", "makes sense", "that helps",
+            "got it", "love that", "exactly", "yes", "good point", "tell me more",
+            "how do i", "what about", "appreciate",
+          ];
+          const negativeSignals = [
+            "confused", "don't understand", "dont understand", "doesn't make sense",
+            "doesnt make sense", "what does that mean", "no idea",
+          ];
+          const hasPositive = positiveSignals.some((sig) => txt.includes(sig)) || txt.length > 50;
+          const hasNegative = negativeSignals.some((sig) => txt.includes(sig));
+          const helpful = hasPositive && !hasNegative;
+
+          await supabase
+            .from("rag_retrieval_log")
+            .update({ was_helpful: helpful })
+            .eq("id", prevLog.id);
+
+          if (helpful) {
+            for (const docId of prevLog.retrieved_document_ids) {
+              const { data: doc } = await supabase
+                .from("rag_documents")
+                .select("helpful_count")
+                .eq("id", docId)
+                .maybeSingle();
+              if (doc) {
+                await supabase
+                  .from("rag_documents")
+                  .update({ helpful_count: (doc.helpful_count ?? 0) + 1 })
+                  .eq("id", docId);
+              }
+            }
+          }
+        }
+      }
+    } catch (heurErr) {
+      console.warn("[paige] RAG helpfulness heuristic failed:", heurErr);
+    }
+
+    // ===== RAG: Retrieve relevant cases & insights for this turn =====
+    let ragContext = "";
+    let ragRetrievedIds: string[] = [];
+    try {
+      if (lastUserMessage && lastUserMessage.content?.trim()) {
+        const queryText = lastUserMessage.content.trim();
+        const queryEmbedding = await embedText(queryText);
+        if (queryEmbedding) {
+          const { data: ragProfile } = await supabase
+            .from("profiles")
+            .select("state")
+            .eq("user_id", payloadClientId || user.id)
+            .maybeSingle();
+          const filter: Record<string, unknown> = {};
+          if (ragProfile?.state) filter.state = ragProfile.state;
+
+          const { data: ragRows, error: ragErr } = await supabase.rpc("match_rag_documents", {
+            _query_embedding: queryEmbedding as any,
+            _match_threshold: 0.75,
+            _match_count: 3,
+            _document_types: null,
+            _metadata_filter: Object.keys(filter).length ? filter : null,
+            _query_text: queryText.slice(0, 500),
+          });
+          if (ragErr) {
+            console.warn("[paige] match_rag_documents error:", ragErr.message);
+          } else if (Array.isArray(ragRows) && ragRows.length > 0) {
+            ragRetrievedIds = ragRows.map((r: any) => r.id);
+            const blocks = ragRows.map((r: any) => {
+              const pct = Math.round((Number(r.similarity) || 0) * 100);
+              return `${r.title} (relevance: ${pct}%)\n${r.summary || (r.content || "").slice(0, 240)}\n---`;
+            }).join("\n");
+            ragContext = `\n\n=== RELEVANT KNOWLEDGE BASE ===\nUse these real outcomes and insights to inform your response. Reference naturally as "clients in similar situations" or "outcomes we have tracked" \u2014 never quote verbatim:\n\n${blocks}\n=== END KNOWLEDGE BASE ===\n`;
+          }
+        }
+      }
+    } catch (ragErr) {
+      console.warn("[paige] RAG retrieval failed:", ragErr);
+    }
+
     // Use the client's local clock when provided so greetings + time-of-day
     // language match what the user sees on their phone — not the server's UTC.
     let dateTimeString: string;
