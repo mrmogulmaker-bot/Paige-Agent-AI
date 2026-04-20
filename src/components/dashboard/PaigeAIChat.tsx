@@ -7,7 +7,7 @@ import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useConversation } from "@11labs/react";
-import { primeMicAndAudio, fetchVoiceCredentials, describeVoiceError } from "@/lib/voice/startVoiceSession";
+import { primeMicAndAudio, startManagedVoiceSession, describeVoiceError } from "@/lib/voice/startVoiceSession";
 import { ResponseFeedback } from "@/components/chat/ResponseFeedback";
 import { useQuery } from "@tanstack/react-query";
 import { getUserClock } from "@/lib/userClock";
@@ -59,7 +59,8 @@ export const PaigeAIChat = () => {
       setVoiceStatus("listening");
       setVoiceModalOpen(true);
     },
-    onDisconnect: () => {
+    onDisconnect: (details) => {
+      console.warn("[PaigeAIChat] Voice session disconnected", details);
       setVoiceModalOpen(false);
       setVoiceStatus("connecting");
       toast({ title: "Voice chat ended", description: "The conversation has been closed" });
@@ -116,7 +117,6 @@ export const PaigeAIChat = () => {
       audioCtx = primed.audioContext;
 
       const { data: { session } } = await supabase.auth.getSession();
-      const creds = await fetchVoiceCredentials(session?.access_token);
 
       const recentChatMessages = messages.filter(m => m.content?.trim()).slice(-5).map(m => ({ role: m.role, content: m.content }));
 
@@ -134,13 +134,14 @@ export const PaigeAIChat = () => {
 
       const overrides = greeting ? { overrides: { agent: { firstMessage: greeting } } } : {};
 
-      if (creds.conversationToken) {
-        await conversation.startSession({ conversationToken: creds.conversationToken, connectionType: "webrtc", ...overrides } as any);
-      } else if (creds.signedUrl) {
-        await conversation.startSession({ signedUrl: creds.signedUrl, ...overrides } as any);
-      } else {
-        throw new Error("No voice credentials returned");
-      }
+      const voiceSession = await startManagedVoiceSession({
+        conversation,
+        authToken: session?.access_token,
+        overrides,
+        logLabel: "[PaigeAIChat]",
+        forceWebSocket: isMobile,
+      });
+      console.log("[PaigeAIChat] startSession resolved", voiceSession);
     } catch (error) {
       console.error("[PaigeAIChat] Error starting voice chat:", error);
       setVoiceModalOpen(false);
