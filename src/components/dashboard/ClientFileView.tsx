@@ -114,6 +114,22 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
     profile?.estimated_fico_tu || 0
   );
 
+  const toggleComplimentary = async (next: boolean) => {
+    if (userRole !== "admin") return;
+    // Optimistic update
+    setProfile((prev) => prev ? { ...prev, is_complimentary: next } : prev);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ is_complimentary: next })
+      .eq("user_id", clientUserId);
+    if (error) {
+      setProfile((prev) => prev ? { ...prev, is_complimentary: !next } : prev);
+      toast.error("Failed to update complimentary access", { description: error.message });
+      return;
+    }
+    toast.success(next ? "Complimentary access granted" : "Complimentary access revoked");
+  };
+
   const ProfileField = ({ label, value, icon: Icon }: { label: string; value: string | null | undefined; icon?: any }) => (
     <div className="space-y-1">
       <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</label>
@@ -146,6 +162,12 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
             <Badge variant={profile?.onboarding_completed ? "default" : "outline"}>
               {profile?.onboarding_completed ? "Active" : "Pending"}
             </Badge>
+            {profile?.is_complimentary && (
+              <Badge className="bg-gradient-gold text-foreground border-0 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                Complimentary
+              </Badge>
+            )}
             {profile?.has_discrepancies && (
               <Badge variant="destructive" className="flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
@@ -155,9 +177,22 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           </div>
         </div>
         {userRole === "admin" && (
-          <Button variant="destructive" size="sm" onClick={() => setShowFactoryReset(true)}>
-            <Trash2 className="w-4 h-4 mr-1" /> Factory Reset
-          </Button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-card">
+              <Sparkles className="w-4 h-4 text-accent" />
+              <Label htmlFor="complimentary-toggle" className="text-xs font-medium cursor-pointer">
+                Complimentary
+              </Label>
+              <Switch
+                id="complimentary-toggle"
+                checked={!!profile?.is_complimentary}
+                onCheckedChange={toggleComplimentary}
+              />
+            </div>
+            <Button variant="destructive" size="sm" onClick={() => setShowFactoryReset(true)}>
+              <Trash2 className="w-4 h-4 mr-1" /> Factory Reset
+            </Button>
+          </div>
         )}
       </div>
 
