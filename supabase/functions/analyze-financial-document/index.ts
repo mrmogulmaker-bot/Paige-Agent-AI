@@ -233,7 +233,49 @@ Be thorough. Return ONLY valid JSON — no markdown.`;
       });
     }
 
-    // Save results
+    // Branch: denial letter — store separately and surface guidance
+    if (analysis.doc_type === "denial_letter" && analysis.denial_letter) {
+      const dl = analysis.denial_letter;
+      await supabase.from('financial_document_analyses')
+        .update({
+          analysis_status: 'completed',
+          doc_type_detected: 'denial_letter',
+          full_analysis: analysis,
+        })
+        .eq('document_id', documentId);
+
+      await supabase.from('audit_logs').insert({
+        user_id: user.id,
+        entity: 'financial_document_analysis',
+        action: 'denial_letter_parsed',
+        entity_id: documentId,
+        data: {
+          lender_name: dl.lender_name,
+          denial_reason_category: dl.denial_reason_category,
+        },
+      });
+
+      return new Response(JSON.stringify({
+        success: true,
+        analysis,
+        denial_letter_proposal: {
+          lender_name: dl.lender_name,
+          application_date: dl.denial_date || new Date().toISOString().split("T")[0],
+          decision_date: dl.denial_date,
+          status: "denied",
+          denial_reason_category: dl.denial_reason_category,
+          denial_reason_detail: dl.denial_reason_text,
+          credit_score_at_application: dl.credit_score_referenced,
+          bureau_pulled: dl.bureau_referenced,
+          product_name: dl.product_referenced,
+          denial_letter_url: doc.file_path,
+        },
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Save results (financial documents)
     await supabase.from('financial_document_analyses')
       .update({
         analysis_status: 'completed',
