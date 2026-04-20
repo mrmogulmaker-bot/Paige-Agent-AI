@@ -11,6 +11,7 @@ import { BureauScorePanel } from "@/components/dashboard/BureauScorePanel";
 import { CreditFileHealthAssessment } from "@/components/credit/CreditFileHealthAssessment";
 import { AccountManager } from "@/components/credit/AccountManager";
 import { CreditReportUploader } from "@/components/credit/CreditReportUploader";
+import { SoftPullAuthorizationCard } from "@/components/credit/SoftPullAuthorizationCard";
 import { CreditFactorsPanel } from "@/components/credit/CreditFactorsPanel";
 import { DataFreshnessIndicator } from "@/components/credit/DataFreshnessIndicator";
 import { CreditAlertBanner } from "@/components/credit/CreditAlertBanner";
@@ -246,6 +247,9 @@ export default function CreditIntelligence() {
 
       {/* Credit Alert Banner */}
       <CreditAlertBanner />
+
+      {/* iSoftpull Soft Pull Authorization */}
+      <SoftPullAuthorizationCard />
 
       {/* Credit Report Uploader */}
       <CreditReportUploader
