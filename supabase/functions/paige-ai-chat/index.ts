@@ -1697,37 +1697,40 @@ INTEGRATION WITH search_regional_lenders: When the client asks about ALL lenders
       async pull(controller) {
         const { done, value } = await reader.read();
         if (done) {
-          // After stream ends, run structured extraction + sync, then send sync status as final SSE event
-          try {
-            const syncResult = await runStructuredExtractionAndSync(
-              fullAssistantResponse,
-              attachedDocument.base64,
-              user.id,
-              authHeader,
-              supabaseUrl,
-              supabaseServiceKey,
-              lovableApiKey,
-              supabase,
-              payloadClientId || null,
-              paigeChatUploadId
-            );
-
-            // Send sync status as a final SSE data event before closing
-            const syncEvent = `data: ${JSON.stringify({ sync_status: syncResult })}\n\n`;
-            controller.enqueue(new TextEncoder().encode(syncEvent));
-          } catch (err) {
-            console.error("Sync pipeline error:", err);
-            const errorEvent = `data: ${JSON.stringify({ sync_status: { success: false, error: err instanceof Error ? err.message : "Unknown sync error" } })}\n\n`;
-            controller.enqueue(new TextEncoder().encode(errorEvent));
+          // Credit-report PDF path: run structured extraction + sync.
+          if (isCreditReportPdf && attachedDocument?.base64) {
+            try {
+              const syncResult = await runStructuredExtractionAndSync(
+                fullAssistantResponse,
+                attachedDocument.base64,
+                user.id,
+                authHeader,
+                supabaseUrl,
+                supabaseServiceKey,
+                lovableApiKey,
+                supabase,
+                payloadClientId || null,
+                paigeChatUploadId
+              );
+              const syncEvent = `data: ${JSON.stringify({ sync_status: syncResult })}\n\n`;
+              controller.enqueue(new TextEncoder().encode(syncEvent));
+            } catch (err) {
+              console.error("Sync pipeline error:", err);
+              const errorEvent = `data: ${JSON.stringify({ sync_status: { success: false, error: err instanceof Error ? err.message : "Unknown sync error" } })}\n\n`;
+              controller.enqueue(new TextEncoder().encode(errorEvent));
+            }
+          } else if (extractionProposal && extractionProposal.fields?.length > 0) {
+            // General document path: emit extraction proposal for inline confirmation card.
+            const proposalEvent = `data: ${JSON.stringify({ extraction_proposal: extractionProposal })}\n\n`;
+            controller.enqueue(new TextEncoder().encode(proposalEvent));
           }
 
           controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
           controller.close();
           return;
         }
-        
+
         controller.enqueue(value);
-        
         const chunk = decoder.decode(value, { stream: true });
         const lines = chunk.split("\n");
         for (const line of lines) {
