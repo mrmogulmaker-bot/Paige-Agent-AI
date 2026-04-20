@@ -426,6 +426,29 @@ export function DataMaintenancePanel() {
           )}
         </CardContent>
       </Card>
+
+      {/* FRED API Key Notice */}
+      <Card className="border-accent/30 bg-accent/5">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-accent" />
+            FRED API Key Required (Optional)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            To enable <strong className="text-foreground">live interest rate data</strong> for Paige (current Prime rate, mortgage rates, Fed Funds rate, etc.), add a free FRED API key as a backend secret named{" "}
+            <code className="px-1 py-0.5 rounded bg-muted text-foreground font-mono text-xs">FRED_API_KEY</code>.
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Get a free key at{" "}
+            <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" rel="noopener noreferrer" className="text-accent underline">
+              fred.stlouisfed.org/docs/api/api_key.html
+            </a>
+            . Without this key Paige will fall back to static rate estimates and rate-aware lender cards will be hidden.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
