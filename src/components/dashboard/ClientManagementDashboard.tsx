@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye, LogOut } from "lucide-react";
+import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye, LogOut, Sparkles } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
 import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
@@ -51,6 +51,7 @@ interface AuthClient {
   is_veteran_owned?: boolean | null;
   primary_goal_category?: string | null;
   intake_completed?: boolean | null;
+  is_complimentary?: boolean | null;
 }
 
 interface ClientManagementDashboardProps {
@@ -115,7 +116,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
         const [profilesRes, allRolesRes, bizRes] = await Promise.all([
           supabase
             .from("profiles")
-            .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed, primary_goal_category, intake_completed")
+            .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed, primary_goal_category, intake_completed, is_complimentary")
             .order("created_at", { ascending: false }),
           supabase
             .from("user_roles")
@@ -363,7 +364,17 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                 : null;
               return (
                 <TableRow key={c.user_id}>
-                  <TableCell className="font-medium">{c.full_name || "—"}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <span>{c.full_name || "—"}</span>
+                      {c.is_complimentary && (
+                        <Badge className="bg-gradient-gold text-foreground border-0 text-[10px] flex items-center gap-1 px-1.5 py-0">
+                          <Sparkles className="w-3 h-3" />
+                          Complimentary
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>{c.city && c.state ? `${c.city}, ${c.state}` : "—"}</TableCell>
                   <TableCell>
                     {goalLabel ? (

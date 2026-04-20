@@ -4873,6 +4873,7 @@ export type Database = {
           intake_completed: boolean
           intake_completed_at: string | null
           intake_responses: Json | null
+          is_complimentary: boolean
           is_permanent_resident: boolean | null
           is_service_disabled_veteran: boolean | null
           is_us_citizen: boolean | null
@@ -4923,6 +4924,7 @@ export type Database = {
           intake_completed?: boolean
           intake_completed_at?: string | null
           intake_responses?: Json | null
+          is_complimentary?: boolean
           is_permanent_resident?: boolean | null
           is_service_disabled_veteran?: boolean | null
           is_us_citizen?: boolean | null
@@ -4973,6 +4975,7 @@ export type Database = {
           intake_completed?: boolean
           intake_completed_at?: string | null
           intake_responses?: Json | null
+          is_complimentary?: boolean
           is_permanent_resident?: boolean | null
           is_service_disabled_veteran?: boolean | null
           is_us_citizen?: boolean | null
@@ -5949,6 +5952,7 @@ export type Database = {
           intake_completed: boolean
           intake_completed_at: string | null
           intake_responses: Json | null
+          is_complimentary: boolean
           is_permanent_resident: boolean | null
           is_service_disabled_veteran: boolean | null
           is_us_citizen: boolean | null
