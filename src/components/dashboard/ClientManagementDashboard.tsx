@@ -49,6 +49,8 @@ interface AuthClient {
   is_minority_owned?: boolean | null;
   is_women_owned?: boolean | null;
   is_veteran_owned?: boolean | null;
+  primary_goal_category?: string | null;
+  intake_completed?: boolean | null;
 }
 
 interface ClientManagementDashboardProps {
@@ -113,7 +115,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
         const [profilesRes, allRolesRes, bizRes] = await Promise.all([
           supabase
             .from("profiles")
-            .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed")
+            .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed, primary_goal_category, intake_completed")
             .order("created_at", { ascending: false }),
           supabase
             .from("user_roles")
@@ -345,6 +347,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Location</TableHead>
+              <TableHead>Goal</TableHead>
               <TableHead>FICO</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Status</TableHead>
@@ -355,10 +358,22 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
             {filtered.map((c) => {
               const bestFICO = Math.max(c.estimated_fico_eq || 0, c.estimated_fico_ex || 0, c.estimated_fico_tu || 0);
               const primaryRole = c.roles?.[0] || "user";
+              const goalLabel = c.primary_goal_category
+                ? c.primary_goal_category.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
+                : null;
               return (
                 <TableRow key={c.user_id}>
                   <TableCell className="font-medium">{c.full_name || "—"}</TableCell>
                   <TableCell>{c.city && c.state ? `${c.city}, ${c.state}` : "—"}</TableCell>
+                  <TableCell>
+                    {goalLabel ? (
+                      <Badge variant="secondary" className="bg-gradient-gold text-foreground border-0 text-[10px]">
+                        {goalLabel}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No intake</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     {bestFICO > 0 ? (
                       <Badge variant={bestFICO >= 700 ? "default" : bestFICO >= 600 ? "secondary" : "destructive"}>

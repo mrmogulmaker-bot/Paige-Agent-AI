@@ -48,6 +48,16 @@ const ALLOWED_FIELDS: Record<string, { table: string; column: string; type: "str
   "profile.address": { table: "profiles", column: "address", type: "string" },
   "profile.postal_code": { table: "profiles", column: "postal_code", type: "string" },
   "profile.phone": { table: "profiles", column: "phone", type: "string" },
+  // Intake / goal discovery fields (written by Paige after the intake conversation)
+  "intake.primary_goal": { table: "profiles", column: "primary_goal", type: "string" },
+  "intake.primary_goal_category": { table: "profiles", column: "primary_goal_category", type: "string" },
+  "intake.goal_timeline": { table: "profiles", column: "goal_timeline", type: "string" },
+  "intake.goal_amount": { table: "profiles", column: "goal_amount", type: "number" },
+  "intake.experience_level": { table: "profiles", column: "experience_level", type: "string" },
+  "intake.financing_preference": { table: "profiles", column: "financing_preference", type: "string" },
+  "intake.biggest_obstacle": { table: "profiles", column: "biggest_obstacle", type: "string" },
+  "intake.intake_responses": { table: "profiles", column: "intake_responses", type: "string" },
+  "intake.complete": { table: "_intake_op", column: "complete", type: "boolean" },
   // Sensitive PII fields — routed through update_profile_ssn with server-side encryption key
   "profile.ssn": { table: "_ssn_op", column: "ssn", type: "string" },
   "profile.date_of_birth": { table: "_ssn_op", column: "date_of_birth", type: "date" },
@@ -313,8 +323,42 @@ serve(async (req) => {
           }
           await supabase.from("credit_report_personal_info").update({ [column]: update.field_value }).eq("id", update.record_id).eq("user_id", targetUserId);
           results.push({ field_path: update.field_path, success: true });
+        } else if (table === "_intake_op") {
+          // intake.complete: marks intake_completed=true and inserts a client_goals row
+          // using the latest profile values written in this same batch (or already on file).
+          if (column === "complete" && update.field_value === true) {
+            const { data: prof } = await supabase
+              .from("profiles")
+              .select("primary_goal, primary_goal_category, goal_amount")
+              .eq("user_id", targetUserId)
+              .maybeSingle();
+            await supabase.from("profiles").update({
+              intake_completed: true,
+              intake_completed_at: new Date().toISOString(),
+            }).eq("user_id", targetUserId);
+
+            // Create a client_goals row only if we have at least the category
+            if ((prof as any)?.primary_goal_category) {
+              await supabase.from("client_goals").insert({
+                user_id: targetUserId,
+                goal_category: (prof as any).primary_goal_category,
+                goal_description: (prof as any).primary_goal,
+                target_amount: (prof as any).goal_amount,
+                status: "active",
+              });
+            }
+            results.push({ field_path: update.field_path, success: true });
+          } else {
+            results.push({ field_path: update.field_path, success: false, error: "Unknown intake operation" });
+          }
         } else if (table === "profiles") {
-          await supabase.from("profiles").update({ [column]: update.field_value }).eq("user_id", targetUserId);
+          // intake.intake_responses comes through as a string from the JSON-only schema —
+          // try to parse it back into an object so it lands as JSONB.
+          let value: any = update.field_value;
+          if (column === "intake_responses" && typeof value === "string") {
+            try { value = JSON.parse(value); } catch { /* keep as string */ }
+          }
+          await supabase.from("profiles").update({ [column]: value }).eq("user_id", targetUserId);
           results.push({ field_path: update.field_path, success: true });
         } else if (table === "funding_profiles") {
           const { data: fp } = await supabase

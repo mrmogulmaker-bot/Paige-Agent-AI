@@ -9,6 +9,7 @@ export interface ClientChatContext {
   contextBlock: string;
   isLoading: boolean;
   hasCreditData: boolean;
+  hasCompletedIntake: boolean;
 }
 
 type Bureau = "experian" | "transunion" | "equifax";
@@ -43,11 +44,13 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
   const [contextBlock, setContextBlock] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [hasCreditData, setHasCreditData] = useState(false);
+  const [hasCompletedIntake, setHasCompletedIntake] = useState(false);
 
   useEffect(() => {
     if (!clientId && !userId) {
       setContextBlock("");
       setHasCreditData(false);
+      setHasCompletedIntake(false);
       return;
     }
 
@@ -788,6 +791,63 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           }
         }
 
+        // ===== Goal discovery / intake state =====
+        if (resolvedUserId) {
+          const { data: goalProfile } = await supabase
+            .from("profiles")
+            .select("intake_completed, intake_completed_at, primary_goal, primary_goal_category, goal_timeline, goal_amount, experience_level, financing_preference, biggest_obstacle")
+            .eq("user_id", resolvedUserId)
+            .maybeSingle();
+
+          const intakeDone = !!(goalProfile as any)?.intake_completed;
+          setHasCompletedIntake(intakeDone);
+
+          parts.push("");
+          if (intakeDone && (goalProfile as any)?.primary_goal) {
+            const gp: any = goalProfile;
+            parts.push("CLIENT GOAL PROFILE");
+            parts.push(`Primary Goal: ${gp.primary_goal}`);
+            if (gp.primary_goal_category) parts.push(`Goal Category: ${gp.primary_goal_category}`);
+            if (gp.goal_timeline) parts.push(`Timeline: ${gp.goal_timeline}`);
+            if (gp.goal_amount) parts.push(`Target Amount: $${Number(gp.goal_amount).toLocaleString()}`);
+            if (gp.experience_level) parts.push(`Experience Level: ${gp.experience_level}`);
+            if (gp.financing_preference) parts.push(`Financing Preference: ${gp.financing_preference}`);
+            if (gp.biggest_obstacle) parts.push(`Biggest Obstacle: ${gp.biggest_obstacle}`);
+
+            // Active goal record(s)
+            const { data: activeGoals } = await supabase
+              .from("client_goals" as any)
+              .select("goal_category, goal_description, status, target_amount, target_date")
+              .eq("user_id", resolvedUserId)
+              .eq("status", "active")
+              .order("created_at", { ascending: false })
+              .limit(3);
+            if (activeGoals && activeGoals.length > 0) {
+              parts.push(`Active Goals: ${activeGoals.length}`);
+              for (const ag of activeGoals as any[]) {
+                const amt = ag.target_amount ? ` $${Number(ag.target_amount).toLocaleString()}` : "";
+                const dt = ag.target_date ? ` by ${new Date(ag.target_date).toLocaleDateString()}` : "";
+                parts.push(`  - ${ag.goal_category}${amt}${dt}: ${ag.goal_description || ""} [${ag.status}]`);
+              }
+            }
+          } else {
+            // Determine if this is a brand-new client or an existing one who never did intake
+            const { data: msgCount } = await supabase
+              .from("chat_messages")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", resolvedUserId);
+            const sessionCount = (msgCount as any)?.length ?? 0;
+            const isExisting = sessionCount > 2 || hasCreditData;
+
+            parts.push("INTAKE REQUIRED: This client has not completed goal discovery. Begin with the intake protocol before any credit assessment or funding discussion.");
+            if (isExisting) {
+              parts.push("INTAKE FLOW: existing_client_catchup — use the shorter catch-up opening (acknowledge their existing profile), then run Questions 3, 4, 5.");
+            } else {
+              parts.push("INTAKE FLOW: new_client — use the full opening message and run all 5 intake questions one at a time.");
+            }
+          }
+        }
+
         if (!cancelled) {
           setContextBlock(parts.length > 1 ? parts.join("\n") : "");
           setIsLoading(false);
@@ -797,6 +857,7 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
         if (!cancelled) {
           setContextBlock("");
           setHasCreditData(false);
+          setHasCompletedIntake(false);
           setIsLoading(false);
         }
       }
@@ -806,7 +867,7 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
     return () => { cancelled = true; };
   }, [clientId, userId]);
 
-  return { contextBlock, isLoading, hasCreditData };
+  return { contextBlock, isLoading, hasCreditData, hasCompletedIntake };
 }
 
 async function resolveUserIdFromClient(clientId: string): Promise<string | null> {
