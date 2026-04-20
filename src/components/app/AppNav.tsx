@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { BarChart3, CreditCard, DollarSign, BookOpen, Building2, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye } from "lucide-react";
+import { BarChart3, CreditCard, DollarSign, BookOpen, Building2, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye, Briefcase } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
@@ -23,6 +23,7 @@ const navItems = [
   { label: "Credit", href: "/app/credit", icon: CreditCard },
   { label: "Business", href: "/app/business", icon: Building2 },
   { label: "Funding", href: "/app/funding", icon: DollarSign },
+  { label: "Journey", href: "/app/funding-journey", icon: Briefcase },
   { label: "Learn", href: "/app/learn", icon: BookOpen },
 ];
 
