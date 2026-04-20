@@ -971,11 +971,13 @@ export type Database = {
           dnb_last_verified: string | null
           dnb_paydex: number | null
           ein: string | null
+          employee_count: number | null
           entity_type: Database["public"]["Enums"]["entity_type"] | null
           equifax_credit_risk: number | null
           equifax_failure_score: number | null
           equifax_last_verified: string | null
           equifax_payment_index: number | null
+          estimated_annual_revenue: number | null
           experian_intelliscore: number | null
           experian_last_verified: string | null
           fico_sbss: number | null
@@ -1005,6 +1007,7 @@ export type Database = {
           revenue_band: string | null
           state_of_formation: string | null
           updated_at: string | null
+          website: string | null
         }
         Insert: {
           bank_account_opened_date?: string | null
@@ -1031,11 +1034,13 @@ export type Database = {
           dnb_last_verified?: string | null
           dnb_paydex?: number | null
           ein?: string | null
+          employee_count?: number | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
           equifax_credit_risk?: number | null
           equifax_failure_score?: number | null
           equifax_last_verified?: string | null
           equifax_payment_index?: number | null
+          estimated_annual_revenue?: number | null
           experian_intelliscore?: number | null
           experian_last_verified?: string | null
           fico_sbss?: number | null
@@ -1065,6 +1070,7 @@ export type Database = {
           revenue_band?: string | null
           state_of_formation?: string | null
           updated_at?: string | null
+          website?: string | null
         }
         Update: {
           bank_account_opened_date?: string | null
@@ -1091,11 +1097,13 @@ export type Database = {
           dnb_last_verified?: string | null
           dnb_paydex?: number | null
           ein?: string | null
+          employee_count?: number | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
           equifax_credit_risk?: number | null
           equifax_failure_score?: number | null
           equifax_last_verified?: string | null
           equifax_payment_index?: number | null
+          estimated_annual_revenue?: number | null
           experian_intelliscore?: number | null
           experian_last_verified?: string | null
           fico_sbss?: number | null
@@ -1125,6 +1133,7 @@ export type Database = {
           revenue_band?: string | null
           state_of_formation?: string | null
           updated_at?: string | null
+          website?: string | null
         }
         Relationships: [
           {
@@ -3402,6 +3411,98 @@ export type Database = {
           },
         ]
       }
+      funding_journey_applications: {
+        Row: {
+          amount_approved: number | null
+          amount_requested: number | null
+          application_date: string
+          bureau_pulled: string | null
+          business_id: string | null
+          created_at: string
+          credit_score_at_application: number | null
+          decision_date: string | null
+          denial_letter_url: string | null
+          denial_reason_category:
+            | Database["public"]["Enums"]["denial_reason_category"]
+            | null
+          denial_reason_detail: string | null
+          id: string
+          interest_rate: number | null
+          lender_id: string | null
+          lender_name: string
+          next_steps: string | null
+          notes: string | null
+          product_category: string | null
+          product_name: string | null
+          status: Database["public"]["Enums"]["funding_journey_status"]
+          term_months: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_approved?: number | null
+          amount_requested?: number | null
+          application_date?: string
+          bureau_pulled?: string | null
+          business_id?: string | null
+          created_at?: string
+          credit_score_at_application?: number | null
+          decision_date?: string | null
+          denial_letter_url?: string | null
+          denial_reason_category?:
+            | Database["public"]["Enums"]["denial_reason_category"]
+            | null
+          denial_reason_detail?: string | null
+          id?: string
+          interest_rate?: number | null
+          lender_id?: string | null
+          lender_name: string
+          next_steps?: string | null
+          notes?: string | null
+          product_category?: string | null
+          product_name?: string | null
+          status?: Database["public"]["Enums"]["funding_journey_status"]
+          term_months?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_approved?: number | null
+          amount_requested?: number | null
+          application_date?: string
+          bureau_pulled?: string | null
+          business_id?: string | null
+          created_at?: string
+          credit_score_at_application?: number | null
+          decision_date?: string | null
+          denial_letter_url?: string | null
+          denial_reason_category?:
+            | Database["public"]["Enums"]["denial_reason_category"]
+            | null
+          denial_reason_detail?: string | null
+          id?: string
+          interest_rate?: number | null
+          lender_id?: string | null
+          lender_name?: string
+          next_steps?: string | null
+          notes?: string | null
+          product_category?: string | null
+          product_name?: string | null
+          status?: Database["public"]["Enums"]["funding_journey_status"]
+          term_months?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funding_journey_applications_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funding_matches: {
         Row: {
           ai_generated: boolean | null
@@ -3474,6 +3575,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      funding_milestones: {
+        Row: {
+          amount: number | null
+          created_at: string
+          id: string
+          lender_name: string | null
+          milestone_date: string
+          milestone_type: Database["public"]["Enums"]["funding_milestone_type"]
+          notes: string | null
+          user_id: string
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string
+          id?: string
+          lender_name?: string | null
+          milestone_date?: string
+          milestone_type: Database["public"]["Enums"]["funding_milestone_type"]
+          notes?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string
+          id?: string
+          lender_name?: string | null
+          milestone_date?: string
+          milestone_type?: Database["public"]["Enums"]["funding_milestone_type"]
+          notes?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       funding_offers: {
         Row: {
@@ -5947,6 +6081,20 @@ export type Database = {
         | "payment_history_risk"
         | "credit_mix_opportunity"
         | "funding_window_alert"
+      denial_reason_category:
+        | "credit_score_too_low"
+        | "insufficient_time_in_business"
+        | "insufficient_revenue"
+        | "too_much_existing_debt"
+        | "no_collateral"
+        | "incomplete_application"
+        | "industry_restriction"
+        | "too_many_recent_inquiries"
+        | "derogatory_items"
+        | "insufficient_cash_flow"
+        | "personal_guarantee_declined"
+        | "entity_structure_issue"
+        | "other"
       disclosure_type:
         | "credit_report_access"
         | "croa_rights_notice"
@@ -5961,6 +6109,23 @@ export type Database = {
         | "resolved"
         | "rejected"
       entity_type: "LLC" | "Corporation" | "Sole Proprietorship" | "Partnership"
+      funding_journey_status:
+        | "draft"
+        | "submitted"
+        | "under_review"
+        | "approved"
+        | "denied"
+        | "withdrawn"
+        | "funded"
+      funding_milestone_type:
+        | "first_application"
+        | "first_approval"
+        | "first_funding"
+        | "score_threshold_crossed"
+        | "debt_cleared"
+        | "business_credit_established"
+        | "dscr_qualified"
+        | "sba_eligible"
       knowledge_category:
         | "framework"
         | "principle"
@@ -6146,6 +6311,21 @@ export const Constants = {
         "credit_mix_opportunity",
         "funding_window_alert",
       ],
+      denial_reason_category: [
+        "credit_score_too_low",
+        "insufficient_time_in_business",
+        "insufficient_revenue",
+        "too_much_existing_debt",
+        "no_collateral",
+        "incomplete_application",
+        "industry_restriction",
+        "too_many_recent_inquiries",
+        "derogatory_items",
+        "insufficient_cash_flow",
+        "personal_guarantee_declined",
+        "entity_structure_issue",
+        "other",
+      ],
       disclosure_type: [
         "credit_report_access",
         "croa_rights_notice",
@@ -6162,6 +6342,25 @@ export const Constants = {
         "rejected",
       ],
       entity_type: ["LLC", "Corporation", "Sole Proprietorship", "Partnership"],
+      funding_journey_status: [
+        "draft",
+        "submitted",
+        "under_review",
+        "approved",
+        "denied",
+        "withdrawn",
+        "funded",
+      ],
+      funding_milestone_type: [
+        "first_application",
+        "first_approval",
+        "first_funding",
+        "score_threshold_crossed",
+        "debt_cleared",
+        "business_credit_established",
+        "dscr_qualified",
+        "sba_eligible",
+      ],
       knowledge_category: [
         "framework",
         "principle",
