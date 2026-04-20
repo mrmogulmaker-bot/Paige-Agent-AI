@@ -878,7 +878,7 @@ JSON:`;
               const pct = Math.round((Number(r.similarity) || 0) * 100);
               return `${r.title} (relevance: ${pct}%)\n${r.summary || (r.content || "").slice(0, 240)}\n---`;
             }).join("\n");
-            ragContext = `\n\n=== RELEVANT KNOWLEDGE BASE ===\nUse these real outcomes and insights to inform your response. Reference naturally as "clients in similar situations" or "outcomes we have tracked" \u2014 never quote verbatim:\n\n${blocks}\n=== END KNOWLEDGE BASE ===\n`;
+            ragContext = `\n\n=== RELEVANT KNOWLEDGE BASE ===\nUse these real outcomes and insights to inform your response. Reference naturally as "clients in similar situations" or "outcomes we have tracked" — never quote verbatim:\n\n${blocks}\n=== END KNOWLEDGE BASE ===\n`;
           }
         }
       }
