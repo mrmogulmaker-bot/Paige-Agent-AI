@@ -399,3 +399,9 @@ const PaigeAIChatInner = () => {
     </div>
   );
 };
+
+export const PaigeAIChat = () => (
+  <ConversationProvider>
+    <PaigeAIChatInner />
+  </ConversationProvider>
+);

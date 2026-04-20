@@ -49,7 +49,7 @@ const quickActions = [
   { label: "What Should I Do Next?", prompt: "What's the highest impact action I should take right now?" },
 ];
 
-export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
+function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   // Snapshot of profile/business fields used by the conversational extractor
   // to skip already-populated values. Refreshed after every successful save.

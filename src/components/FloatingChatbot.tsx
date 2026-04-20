@@ -620,3 +620,13 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
 
   return createPortal(chatContent, document.body);
 };
+
+/**
+ * v1.x SDK requires useConversation to live inside ConversationProvider.
+ * This wrapper preserves the public API so existing imports keep working.
+ */
+export const FloatingChatbot = (props: { clientId?: string }) => (
+  <ConversationProvider>
+    <FloatingChatbotInner {...props} />
+  </ConversationProvider>
+);
