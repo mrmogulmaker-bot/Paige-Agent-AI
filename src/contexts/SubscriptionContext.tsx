@@ -7,6 +7,7 @@ interface SubscriptionContextType {
   planSlug: string;
   subscriptionEnd: string | null;
   loading: boolean;
+  isComplimentary: boolean;
   checkSubscription: () => Promise<void>;
   openCustomerPortal: () => Promise<void>;
 }
@@ -18,27 +19,48 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [planSlug, setPlanSlug] = useState('free');
   const [subscriptionEnd, setSubscriptionEnd] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isComplimentary, setIsComplimentary] = useState(false);
 
   const checkSubscription = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Check if user is admin - admins get full access
-      const { data: adminRole } = await supabase
+      // Staff bypass — admins and coaches always get full access
+      const { data: roleRows } = await supabase
         .from("user_roles")
         .select("role")
-        .eq("user_id", user.id)
-        .eq("role", "admin")
-        .maybeSingle();
+        .eq("user_id", user.id);
 
-      if (adminRole) {
+      const roles = (roleRows || []).map((r: any) => r.role);
+      const isStaff = roles.includes("admin") || roles.includes("coach");
+
+      if (isStaff) {
         setSubscribed(true);
         setPlanSlug('enterprise');
         setSubscriptionEnd(null);
+        setIsComplimentary(false);
         setLoading(false);
         return;
       }
+
+      // Complimentary access bypass — full Pro-level access without Stripe
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("is_complimentary")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (profileRow?.is_complimentary) {
+        setSubscribed(true);
+        setPlanSlug('premium');
+        setSubscriptionEnd(null);
+        setIsComplimentary(true);
+        setLoading(false);
+        return;
+      }
+
+      setIsComplimentary(false);
 
       const { data, error } = await supabase.functions.invoke('check-subscription');
       
@@ -87,6 +109,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         setSubscribed(false);
         setPlanSlug('free');
         setSubscriptionEnd(null);
+        setIsComplimentary(false);
       }
     });
 
@@ -135,6 +158,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         planSlug,
         subscriptionEnd,
         loading,
+        isComplimentary,
         checkSubscription,
         openCustomerPortal,
       }}
