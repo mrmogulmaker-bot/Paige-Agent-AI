@@ -33,6 +33,12 @@ export type StartManagedVoiceSessionOptions = {
   authToken?: string;
   overrides?: Record<string, unknown>;
   logLabel?: string;
+  /**
+   * Keep WebSocket as the default transport for stability with the current
+   * ElevenLabs React SDK. WebRTC tokens are still supported when explicitly
+   * requested, but the provider's v1 startSession lifecycle is async/fire-and-
+   * forget, which makes our old catch-and-fallback flow unreliable.
+   */
   forceWebSocket?: boolean;
 };
 
@@ -191,7 +197,7 @@ export async function startManagedVoiceSession({
   authToken,
   overrides,
   logLabel = "[voice]",
-  forceWebSocket = false,
+  forceWebSocket = true,
 }: StartManagedVoiceSessionOptions): Promise<StartManagedVoiceSessionResult> {
   if (forceWebSocket) {
     const wsCreds = await fetchSignedUrlCredentials(authToken);
