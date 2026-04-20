@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import { primeMicAndAudio, fetchVoiceCredentials, describeVoiceError } from "@/l
 import { ResponseFeedback } from "@/components/chat/ResponseFeedback";
 import { useQuery } from "@tanstack/react-query";
 import { getUserClock } from "@/lib/userClock";
+import { useLocation } from "react-router-dom";
+import { getCurrentPageName } from "@/lib/pageContext";
+import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
 
 type Message = { role: "user" | "assistant"; content: string };
 
