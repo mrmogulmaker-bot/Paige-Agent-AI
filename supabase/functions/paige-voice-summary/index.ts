@@ -254,6 +254,7 @@ serve(async (req) => {
       summary,
       preferences,
       memoriesWritten: inserts.length,
+      coachingInsightIngested,
       extractionProposal,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
