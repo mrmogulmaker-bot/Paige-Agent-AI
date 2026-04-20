@@ -23,7 +23,13 @@ const SERIES = [
 async function fetchSeries(seriesId: string, apiKey: string) {
   const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=10`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`FRED ${seriesId} ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text();
+    console.error(
+      `FRED ${seriesId} HTTP ${res.status} — body: ${body.slice(0, 500)}`
+    );
+    throw new Error(`FRED ${seriesId} ${res.status}: ${body.slice(0, 200)}`);
+  }
   const data = await res.json();
   // Find most recent non-"." observation
   const obs = (data.observations || []).find(
@@ -39,7 +45,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const apiKey = Deno.env.get("FRED_API_KEY");
+    const rawKey = Deno.env.get("FRED_API_KEY");
+    const apiKey = rawKey?.trim().replace(/[\r\n\s]/g, "") || undefined;
+    console.log(
+      `FRED_API_KEY status: ${
+        rawKey ? `populated (raw len=${rawKey.length}, trimmed len=${apiKey?.length}, valid_format=${apiKey && /^[a-z0-9]{32}$/i.test(apiKey)})` : "NULL"
+      }`
+    );
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
