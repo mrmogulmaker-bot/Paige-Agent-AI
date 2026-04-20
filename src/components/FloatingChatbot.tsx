@@ -249,7 +249,6 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
         authToken: session?.access_token,
         overrides,
         logLabel: "[FloatingChatbot]",
-        forceWebSocket: isMobile,
       });
       console.log("[FloatingChatbot] startSession resolved", voiceSession);
     } catch (err: any) {

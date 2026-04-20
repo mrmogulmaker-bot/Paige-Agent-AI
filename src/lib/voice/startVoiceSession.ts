@@ -50,28 +50,39 @@ export type StartManagedVoiceSessionResult = {
  * Returns the AudioContext so the caller can keep it alive until disconnect.
  */
 export async function primeMicAndAudio(): Promise<{ audioContext: AudioContext | null }> {
-  // 1) Create + resume AudioContext synchronously (iOS Safari speaker unlock).
-  let audioContext: AudioContext | null = null;
+  // iOS Safari speaker unlock: briefly open + close an AudioContext inside the
+  // user gesture. We DO NOT keep it alive — the ElevenLabs SDK creates its own
+  // AudioContext for playback, and a second one held open by us starves the
+  // mic worklet on Chrome/Safari (symptom: "listening" but no audio reaches
+  // the agent).
   try {
     const Ctor: typeof AudioContext | undefined =
       (window as any).AudioContext || (window as any).webkitAudioContext;
     if (Ctor) {
-      audioContext = new Ctor();
-      // resume() must be called inside the gesture — do not await elsewhere first.
-      if (audioContext.state === "suspended") {
-        await audioContext.resume();
+      const ctx = new Ctor();
+      if (ctx.state === "suspended") {
+        await ctx.resume();
       }
+      // Release immediately — the SDK will own its own context.
+      try { await ctx.close(); } catch { /* ignore */ }
     }
   } catch (e) {
-    console.warn("[voice] AudioContext init failed (will continue without speaker unlock):", e);
+    console.warn("[voice] AudioContext unlock failed (continuing):", e);
   }
 
-  // 2) Probe mic permission, then immediately release the tracks so the SDK can grab them.
-  // iOS will refuse a second concurrent mic stream — releasing here is critical.
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  stream.getTracks().forEach((t) => t.stop());
+  // Permission probe: request the mic inside the gesture so the browser shows
+  // the prompt while we still have user-activation. Stop the tracks immediately
+  // so the SDK can acquire its own stream (iOS refuses two concurrent streams).
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+  } catch (e) {
+    // Re-throw so the caller can show the right permission error UI.
+    throw e;
+  }
 
-  return { audioContext };
+  // Returned for backwards compat; always null now.
+  return { audioContext: null };
 }
 
 /**
