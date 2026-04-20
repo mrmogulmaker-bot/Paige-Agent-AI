@@ -22,6 +22,8 @@ export interface ProductMatch {
   bureauScoreUsed: number | null;
   /** Label for the bureau pull indicator */
   bureauPullLabel: string;
+  /** Demographic boosts that were applied to this match (purely additive — never penalizing) */
+  demographicBoosts: { label: "minority-owned" | "women-owned" | "veteran-owned" | "startups"; points: number }[];
 }
 
 export type BureauPull = "experian" | "transunion" | "equifax" | "all_three" | "middle_score" | "flexible";
@@ -423,7 +425,29 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
     deductions.push({ label: `Business age ${profile.timeInBusinessMonths ?? 0} months, minimum ${product.min_business_age_months} months required`, points: 20, severity: "warning" });
   }
 
-  score = Math.max(0, score);
+  // === Demographic boosts (purely additive — never penalize) ===
+  const demographicBoosts: ProductMatch["demographicBoosts"] = [];
+  const demo = profile.demographics;
+  if (demo) {
+    if (demo.is_minority_owned === true && product.serves_minority_owned === true) {
+      score += 20;
+      demographicBoosts.push({ label: "minority-owned", points: 20 });
+    }
+    if (demo.is_women_owned === true && product.serves_women_owned === true) {
+      score += 20;
+      demographicBoosts.push({ label: "women-owned", points: 20 });
+    }
+    if ((demo.is_veteran_owned === true || demo.is_veteran === true) && product.serves_veterans === true) {
+      score += 20;
+      demographicBoosts.push({ label: "veteran-owned", points: 20 });
+    }
+    if (demo.is_startup === true && product.serves_startups === true) {
+      score += 15;
+      demographicBoosts.push({ label: "startups", points: 15 });
+    }
+  }
+
+  score = Math.max(0, Math.min(100, score));
 
   // Category
   let category: ProductMatch["category"];
@@ -492,6 +516,7 @@ export function scoreProduct(product: any, profile: FundingProfileData): Product
     primaryBureau,
     bureauScoreUsed,
     bureauPullLabel,
+    demographicBoosts,
   };
 }
 

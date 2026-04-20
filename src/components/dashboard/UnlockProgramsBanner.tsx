@@ -12,7 +12,7 @@ import {
 } from "@/components/onboarding/DemographicQuestionsStep";
 import { toast } from "sonner";
 
-const DISMISS_KEY = "unlock_programs_banner_dismissed";
+const dismissKeyFor = (userId: string) => `unlock_programs_banner_dismissed_${userId}`;
 
 interface Props {
   userId: string;
@@ -26,7 +26,7 @@ export function UnlockProgramsBanner({ userId }: Props) {
 
   useEffect(() => {
     if (!userId) return;
-    if (typeof window !== "undefined" && localStorage.getItem(DISMISS_KEY) === "true") return;
+    if (typeof window !== "undefined" && localStorage.getItem(dismissKeyFor(userId)) === "true") return;
 
     let cancelled = false;
     (async () => {
@@ -56,7 +56,7 @@ export function UnlockProgramsBanner({ userId }: Props) {
   }, [userId]);
 
   const dismiss = () => {
-    try { localStorage.setItem(DISMISS_KEY, "true"); } catch {}
+    try { localStorage.setItem(dismissKeyFor(userId), "true"); } catch {}
     setShow(false);
   };
 
@@ -65,7 +65,7 @@ export function UnlockProgramsBanner({ userId }: Props) {
     try {
       await saveDemographicAnswers(supabase, userId, answers);
       toast.success("Profile updated — Paige will surface targeted programs in your next chat");
-      try { localStorage.setItem(DISMISS_KEY, "true"); } catch {}
+      try { localStorage.setItem(dismissKeyFor(userId), "true"); } catch {}
       setDialogOpen(false);
       setShow(false);
     } catch {

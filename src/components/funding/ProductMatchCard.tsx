@@ -47,9 +47,13 @@ function formatRequirement(label: string, value: string | number | null | undefi
 }
 
 export function ProductMatchCard({ match, onAskPaige }: { match: ProductMatch; onAskPaige?: (product: any) => void }) {
-  const { product, score, category, deductions, estimatedAmount, estimateExplanation, dataPoints, primaryBureau, bureauPullLabel } = match;
+  const { product, score, category, deductions, estimatedAmount, estimateExplanation, dataPoints, primaryBureau, bureauPullLabel, demographicBoosts } = match;
   const style = CATEGORY_STYLES[category];
   const categoryMeta = getCategoryMeta(product.product_category || product.product_type);
+  const hasDemographicBoost = demographicBoosts && demographicBoosts.length > 0;
+  const boostTooltip = hasDemographicBoost
+    ? `This lender has programs specifically for ${demographicBoosts.map((b) => b.label).join(" / ")} businesses.`
+    : "";
 
   return (
     <Card className="p-4 bg-card border-border hover:shadow-md transition-all">
@@ -58,6 +62,20 @@ export function ProductMatchCard({ match, onAskPaige }: { match: ProductMatch; o
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-semibold text-foreground">{product.lender_name}</h3>
+            {hasDemographicBoost && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge className="text-[10px] bg-gradient-gold text-white border-0 cursor-help font-semibold tracking-wide">
+                      ★ Matched for You
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="text-xs">{boostTooltip}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {product.product_subcategory && (
               <span className="text-sm text-muted-foreground">{product.product_subcategory.replace(/_/g, " ")}</span>
             )}

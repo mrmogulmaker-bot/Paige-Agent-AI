@@ -12,6 +12,7 @@ import { OnboardingChecklist } from "./OnboardingChecklist";
 import { CreditScoreSimulator } from "./CreditScoreSimulator";
 import { SeparationAuditCard } from "./business-profile/SeparationAuditCard";
 import { PredictionsPanel } from "./PredictionsPanel";
+import { UnlockProgramsBanner } from "./UnlockProgramsBanner";
 
 // ── Helpers ──
 
@@ -474,6 +475,9 @@ export function DashboardCommandCenter({ userId, onNavigate }: DashboardCommandC
     <div className="space-y-6">
       {/* Quick Upload - prominent for new users */}
       <QuickUpload onNavigate={onNavigate} />
+
+      {/* Unlock Programs Built For You — banner shown only when demographics missing */}
+      {userId && <UnlockProgramsBanner userId={userId} />}
 
       {/* Paige's Predictions — proactive intelligence */}
       <PredictionsPanel userId={userId} variant="compact" onNavigate={onNavigate} />

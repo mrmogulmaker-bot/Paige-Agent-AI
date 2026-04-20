@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { countUniqueNegativeAccounts, deduplicateNegativeItems } from "@/lib/deduplicateNegatives";
 import { differenceInMonths } from "date-fns";
 import { buildBureauHealthContext } from "@/components/credit/CreditFileHealthAssessment";
+import { getUnlockedPrograms, summarizeDemographics, type DemographicProfile } from "@/lib/unlockedPrograms";
 
 export interface ClientChatContext {
   contextBlock: string;
@@ -702,6 +703,88 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
               return `${i + 1}. ${p.title}${impact}${deadline}`;
             });
             parts.push(`Active Predictions: ${preds.length} predictions require attention.\n${lines.join("\n")}`);
+          }
+        }
+
+        // ===== Demographic profile + unlocked programs (Paige targets here) =====
+        if (resolvedUserId) {
+          const [{ data: demoProfile }, { data: demoBiz }] = await Promise.all([
+            supabase
+              .from("profiles")
+              .select("gender_identity, ethnicity, is_veteran, is_service_disabled_veteran, is_us_citizen")
+              .eq("user_id", resolvedUserId)
+              .maybeSingle(),
+            supabase
+              .from("businesses")
+              .select("is_minority_owned, is_women_owned, is_veteran_owned, is_service_disabled_veteran_owned, is_hubzone_located, has_8a_certification, has_wosb_certification, has_vetcert_certification")
+              .eq("owner_user_id", resolvedUserId)
+              .limit(1)
+              .maybeSingle(),
+          ]);
+
+          const merged: DemographicProfile = {
+            gender_identity: (demoProfile as any)?.gender_identity ?? null,
+            ethnicity: (demoProfile as any)?.ethnicity ?? null,
+            is_veteran: (demoProfile as any)?.is_veteran ?? null,
+            is_service_disabled_veteran: (demoProfile as any)?.is_service_disabled_veteran ?? null,
+            is_us_citizen: (demoProfile as any)?.is_us_citizen ?? null,
+            is_minority_owned: (demoBiz as any)?.is_minority_owned ?? null,
+            is_women_owned: (demoBiz as any)?.is_women_owned ?? null,
+            is_veteran_owned: (demoBiz as any)?.is_veteran_owned ?? null,
+            is_service_disabled_veteran_owned: (demoBiz as any)?.is_service_disabled_veteran_owned ?? null,
+            is_hubzone_located: (demoBiz as any)?.is_hubzone_located ?? null,
+            has_8a_certification: (demoBiz as any)?.has_8a_certification ?? null,
+            has_wosb_certification: (demoBiz as any)?.has_wosb_certification ?? null,
+            has_vetcert_certification: (demoBiz as any)?.has_vetcert_certification ?? null,
+          };
+
+          const hasAnyDemo =
+            merged.gender_identity != null ||
+            (merged.ethnicity && merged.ethnicity.length > 0) ||
+            merged.is_veteran != null ||
+            merged.is_service_disabled_veteran != null ||
+            merged.is_us_citizen != null ||
+            merged.is_minority_owned != null ||
+            merged.is_women_owned != null ||
+            merged.is_veteran_owned != null ||
+            merged.is_hubzone_located != null;
+
+          parts.push("");
+          if (hasAnyDemo) {
+            const genderMap: Record<string, string> = {
+              male: "Man", female: "Woman", non_binary: "Non-binary", prefer_not_to_say: "Prefer not to say",
+            };
+            const gender = merged.gender_identity ? (genderMap[merged.gender_identity] || merged.gender_identity) : "Not provided";
+            const ethnicities = merged.ethnicity && merged.ethnicity.length > 0
+              ? merged.ethnicity.filter((e) => e !== "prefer_not_to_say").join(", ").replace(/_/g, " ") || "prefer not to say"
+              : "Not provided";
+            const veteran = merged.is_service_disabled_veteran === true
+              ? "yes — service-disabled"
+              : merged.is_veteran === true
+                ? "yes"
+                : merged.is_veteran === false
+                  ? "no"
+                  : "not provided";
+            const certs: string[] = [];
+            if (merged.has_8a_certification) certs.push("8(a)");
+            if (merged.has_wosb_certification) certs.push("WOSB");
+            if (merged.has_vetcert_certification) certs.push("VetCert");
+            if (merged.is_hubzone_located) certs.push("HUBZone-located");
+            const certStr = certs.length ? certs.join(", ") : "none";
+
+            parts.push(`Client Demographics: ${gender} — Ethnicity: ${ethnicities} — Veteran: ${veteran} — Certifications: ${certStr}`);
+            parts.push(`Demographics Summary: ${summarizeDemographics(merged)}`);
+
+            const unlocked = getUnlockedPrograms(merged);
+            if (unlocked.length > 0) {
+              parts.push(`Unlocked Programs: ${unlocked.map((p) => p.name).join(", ")}`);
+              parts.push(`(Use these proactively when funding/contracting questions arise — see DEMOGRAPHIC AWARENESS rules in your system prompt.)`);
+            } else {
+              parts.push("Unlocked Programs: None identified");
+            }
+          } else {
+            parts.push("Client Demographics: Not provided — do not ask about demographics in chat. The onboarding banner and Funding Profile tab handle collection.");
+            parts.push("Unlocked Programs: None identified");
           }
         }
 
