@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import { primeMicAndAudio, fetchVoiceCredentials, describeVoiceError } from "@/l
 import { ResponseFeedback } from "@/components/chat/ResponseFeedback";
 import { useQuery } from "@tanstack/react-query";
 import { getUserClock } from "@/lib/userClock";
+import { useLocation } from "react-router-dom";
+import { getCurrentPageName } from "@/lib/pageContext";
+import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -40,48 +43,46 @@ export const PaigeAIChat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  
+  const location = useLocation();
+  const currentPageName = getCurrentPageName(location.pathname);
+
+  // Modal-driven voice UI state
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceModalStatus>("connecting");
+  const [voiceTranscript, setVoiceTranscript] = useState<VoiceTranscriptEntry[]>([]);
+  const [voiceMuted, setVoiceMuted] = useState(false);
+
   // ElevenLabs conversation hook
   const conversation = useConversation({
     onConnect: () => {
-      console.log("ElevenLabs connected - conversation ready");
-      toast({
-        title: "Voice chat started",
-        description: "You can now speak with Paige",
-      });
+      setVoiceTranscript([]);
+      setVoiceStatus("listening");
+      setVoiceModalOpen(true);
     },
     onDisconnect: () => {
-      console.log("ElevenLabs disconnected");
-      toast({
-        title: "Voice chat ended",
-        description: "The conversation has been closed",
-      });
+      setVoiceModalOpen(false);
+      setVoiceStatus("connecting");
+      toast({ title: "Voice chat ended", description: "The conversation has been closed" });
     },
     onMessage: (message) => {
-      console.log("Received message:", message);
-      
-      // ElevenLabs message format: { message: string, source: 'user' | 'ai' }
-      if (message.source === "ai") {
-        setMessages(prev => [...prev, {
-          role: "assistant",
-          content: message.message || ""
-        }]);
-      } else if (message.source === "user") {
-        setMessages(prev => [...prev, {
-          role: "user",
-          content: message.message || ""
-        }]);
-      }
+      const role = message.source === "ai" ? "assistant" : "user";
+      const content = message.message || "";
+      if (content) setVoiceTranscript(prev => [...prev, { role, content }]);
+      if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content }]);
+      else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content }]);
     },
     onError: (error) => {
       console.error("ElevenLabs error:", error);
-      toast({
-        title: "Voice chat error",
-        description: typeof error === 'string' ? error : "Failed to connect to voice chat",
-        variant: "destructive",
-      });
+      toast({ title: "Voice chat error", description: typeof error === 'string' ? error : "Failed to connect to voice chat", variant: "destructive" });
     },
   });
+
+  // Sync ElevenLabs speaking state -> modal status
+  useEffect(() => {
+    if (!voiceModalOpen) return;
+    if (conversation.status !== "connected") return;
+    setVoiceStatus(conversation.isSpeaking ? "speaking" : "listening");
+  }, [conversation.isSpeaking, conversation.status, voiceModalOpen]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -94,38 +95,65 @@ export const PaigeAIChat = () => {
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     let audioCtx: AudioContext | null = null;
     try {
-      console.log("[PaigeAIChat] Starting voice chat...");
-      // Prime mic + audio output INSIDE the click gesture.
+      setVoiceTranscript([]);
+      setVoiceMuted(false);
+      setVoiceStatus("connecting");
+      setVoiceModalOpen(true);
+
       const primed = await primeMicAndAudio();
       audioCtx = primed.audioContext;
-      console.log("[PaigeAIChat] Mic primed; AudioContext state:", audioCtx?.state);
 
       const { data: { session } } = await supabase.auth.getSession();
       const creds = await fetchVoiceCredentials(session?.access_token);
-      console.log("[PaigeAIChat] Got credentials; using", creds.conversationToken ? "WebRTC token" : "signed URL");
+
+      const recentChatMessages = messages.filter(m => m.content?.trim()).slice(-5).map(m => ({ role: m.role, content: m.content }));
+
+      let greeting: string | undefined;
+      try {
+        const { data: greetingData } = await supabase.functions.invoke("paige-voice-greeting", {
+          body: { currentPage: currentPageName, recentChatMessages },
+          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+        });
+        greeting = greetingData?.greeting;
+        console.log("[PaigeAIChat] Voice greeting:", greeting);
+      } catch (greetErr) {
+        console.warn("[PaigeAIChat] Greeting fetch failed:", greetErr);
+      }
+
+      const overrides = greeting ? { overrides: { agent: { firstMessage: greeting } } } : {};
 
       if (creds.conversationToken) {
-        await conversation.startSession({
-          conversationToken: creds.conversationToken,
-          connectionType: "webrtc",
-        } as any);
+        await conversation.startSession({ conversationToken: creds.conversationToken, connectionType: "webrtc", ...overrides } as any);
       } else if (creds.signedUrl) {
-        await conversation.startSession({ signedUrl: creds.signedUrl } as any);
+        await conversation.startSession({ signedUrl: creds.signedUrl, ...overrides } as any);
       } else {
         throw new Error("No voice credentials returned");
       }
-      console.log("[PaigeAIChat] Voice session started");
     } catch (error) {
       console.error("[PaigeAIChat] Error starting voice chat:", error);
+      setVoiceModalOpen(false);
       if (audioCtx) { try { await audioCtx.close(); } catch {} }
       const { title, description } = describeVoiceError(error, isMobile);
       toast({ title, description, variant: "destructive" });
     }
   };
-  
+
   const stopVoiceChat = async () => {
-    await conversation.endSession();
+    try { await conversation.endSession(); } catch (e) { console.warn(e); }
+    setVoiceModalOpen(false);
   };
+
+  const toggleVoiceMute = useCallback(async () => {
+    const next = !voiceMuted;
+    setVoiceMuted(next);
+    try {
+      const conv: any = conversation;
+      if (typeof conv.setMicMuted === "function") await conv.setMicMuted(next);
+      else if (typeof conv.setVolume === "function") await conv.setVolume({ volume: next ? 0 : 1 });
+    } catch (err) { console.warn("Mute toggle failed:", err); }
+  }, [conversation, voiceMuted]);
+
+
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;

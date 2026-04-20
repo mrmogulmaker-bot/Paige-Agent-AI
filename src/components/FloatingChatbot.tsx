@@ -21,6 +21,8 @@ import { useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
 import { primeMicAndAudio, fetchVoiceCredentials, describeVoiceError } from "@/lib/voice/startVoiceSession";
+import { getCurrentPageName } from "@/lib/pageContext";
+import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
 
 type Message = {
   role: "user" | "assistant";
@@ -93,12 +95,30 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
     setAttachedDoc,
   } = useChatDocumentUpload();
 
+  // Modal-driven voice UI state
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceModalStatus>("connecting");
+  const [voiceTranscript, setVoiceTranscript] = useState<VoiceTranscriptEntry[]>([]);
+  const [voiceMuted, setVoiceMuted] = useState(false);
+  const currentPageName = getCurrentPageName(location.pathname);
+
   const conversation = useConversation({
-    onConnect: () => { toast({ title: "Voice chat started", description: "You can now speak with Paige" }); },
-    onDisconnect: () => { toast({ title: "Voice chat ended", description: "The conversation has been closed" }); },
+    onConnect: () => {
+      setVoiceTranscript([]);
+      setVoiceStatus("listening");
+      setVoiceModalOpen(true);
+    },
+    onDisconnect: () => {
+      setVoiceModalOpen(false);
+      setVoiceStatus("connecting");
+      toast({ title: "Voice chat ended", description: "The conversation has been closed" });
+    },
     onMessage: (message) => {
-      if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content: message.message || "" }]);
-      else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content: message.message || "" }]);
+      const role = message.source === "ai" ? "assistant" : "user";
+      const content = message.message || "";
+      if (content) setVoiceTranscript(prev => [...prev, { role, content }]);
+      if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content }]);
+      else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content }]);
     },
     onError: (error) => {
       console.error("ElevenLabs error:", error);
@@ -111,6 +131,13 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       }
     },
   });
+
+  // Sync ElevenLabs speaking state -> modal status
+  useEffect(() => {
+    if (!voiceModalOpen) return;
+    if (conversation.status !== "connected") return;
+    setVoiceStatus(conversation.isSpeaking ? "speaking" : "listening");
+  }, [conversation.isSpeaking, conversation.status, voiceModalOpen]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -155,6 +182,12 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
     let audioCtx: AudioContext | null = null;
     try {
+      // Open the modal immediately so user sees feedback while we connect.
+      setVoiceTranscript([]);
+      setVoiceMuted(false);
+      setVoiceStatus("connecting");
+      setVoiceModalOpen(true);
+
       // 1) Prime mic + audio output INSIDE the click gesture (iOS Safari requirement).
       const primed = await primeMicAndAudio();
       audioCtx = primed.audioContext;
@@ -164,22 +197,41 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       const { data: { session } } = await supabase.auth.getSession();
       const creds = await fetchVoiceCredentials(session?.access_token);
 
-      const voiceSystemPrompt = contextBlock
-        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
-        : undefined;
+      // Last 5 messages from current chat for continuity context.
+      const recentChatMessages = messages
+        .filter(m => m.content && m.content.trim())
+        .slice(-5)
+        .map(m => ({ role: m.role, content: m.content }));
 
-      const overrides = voiceSystemPrompt
-        ? {
-            overrides: {
-              agent: {
-                prompt: { prompt: voiceSystemPrompt },
-                firstMessage: hasCreditData
-                  ? "Hey — I've got your file pulled up. What do you want to work on?"
-                  : "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation.",
-              },
-            },
-          }
-        : {};
+      // Fetch dynamic, page-aware greeting.
+      let greeting: string | undefined;
+      try {
+        const { data: greetingData } = await supabase.functions.invoke("paige-voice-greeting", {
+          body: { currentPage: currentPageName, recentChatMessages },
+          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+        });
+        greeting = greetingData?.greeting;
+        console.log("[FloatingChatbot] Voice greeting:", greeting);
+      } catch (greetErr) {
+        console.warn("[FloatingChatbot] Greeting fetch failed; using default:", greetErr);
+      }
+
+      const historyBlock = recentChatMessages.length > 0
+        ? `\n\nRECENT CHAT HISTORY (last ${recentChatMessages.length} turns — pick up from here):\n${recentChatMessages.map(m => `${m.role === "user" ? "Client" : "Paige"}: ${m.content}`).join("\n")}`
+        : "";
+
+      const voiceSystemPrompt = contextBlock
+        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data.\n\nCurrent page: ${currentPageName}\n\nCLIENT DATA:\n${contextBlock}${historyBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data\n- Never fabricate data\n- VOICE: Be conversational and concise (1-2 short sentences per turn). Use natural acknowledgments like "Got it", "Right". Never read bullet points aloud.\n- Connect insights to funding goals when relevant`
+        : `You are Paige, the AI credit strategist for PaigeAgent.ai. Current page: ${currentPageName}.${historyBlock}\n\nVOICE: Be conversational and concise. Use short sentences and natural acknowledgments.`;
+
+      const overrides = {
+        overrides: {
+          agent: {
+            prompt: { prompt: voiceSystemPrompt },
+            firstMessage: greeting,
+          },
+        },
+      };
 
       // 3) Start session — prefer WebRTC token, fall back to signedUrl.
       if (creds.conversationToken) {
@@ -198,6 +250,7 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       }
     } catch (err: any) {
       console.error("[FloatingChatbot] Voice start failed:", err);
+      setVoiceModalOpen(false);
       // Tear down audio context if start failed.
       if (audioCtx) { try { await audioCtx.close(); } catch {} }
       if (err?.name === "NotAllowedError" || err?.message?.toLowerCase?.().includes("permission")) {
@@ -210,7 +263,23 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
   const stopVoiceChat = async () => {
     try { await conversation.endSession(); } catch (e) { console.warn("Error ending session", e); }
+    setVoiceModalOpen(false);
   };
+
+  const toggleVoiceMute = useCallback(async () => {
+    const next = !voiceMuted;
+    setVoiceMuted(next);
+    try {
+      const conv: any = conversation;
+      if (typeof conv.setMicMuted === "function") {
+        await conv.setMicMuted(next);
+      } else if (typeof conv.setVolume === "function") {
+        await conv.setVolume({ volume: next ? 0 : 1 });
+      }
+    } catch (err) {
+      console.warn("Mute toggle failed:", err);
+    }
+  }, [conversation, voiceMuted]);
 
   useEffect(() => {
     const handleFactoryReset = async () => {
@@ -528,6 +597,17 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
           </div>
         </Card>
       )}
+
+      {/* Premium voice session UI — full-screen modal */}
+      <VoiceSessionModal
+        open={voiceModalOpen}
+        status={voiceStatus}
+        isMuted={voiceMuted}
+        pageName={currentPageName}
+        transcript={voiceTranscript}
+        onToggleMute={toggleVoiceMute}
+        onEndCall={stopVoiceChat}
+      />
     </>
   );
 
