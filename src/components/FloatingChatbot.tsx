@@ -182,6 +182,12 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
     let audioCtx: AudioContext | null = null;
     try {
+      // Open the modal immediately so user sees feedback while we connect.
+      setVoiceTranscript([]);
+      setVoiceMuted(false);
+      setVoiceStatus("connecting");
+      setVoiceModalOpen(true);
+
       // 1) Prime mic + audio output INSIDE the click gesture (iOS Safari requirement).
       const primed = await primeMicAndAudio();
       audioCtx = primed.audioContext;
@@ -191,22 +197,41 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       const { data: { session } } = await supabase.auth.getSession();
       const creds = await fetchVoiceCredentials(session?.access_token);
 
-      const voiceSystemPrompt = contextBlock
-        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\nCLIENT DATA:\n${contextBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- If the client asks about their scores, read them from the data\n- If they ask about utilization, calculate from the data\n- If there are active alerts, mention them proactively at the start\n- Never fabricate data — only reference what is in the client data above\n- Be conversational and concise (2-3 sentences per response)\n- Connect insights to their funding goals when relevant`
-        : undefined;
+      // Last 5 messages from current chat for continuity context.
+      const recentChatMessages = messages
+        .filter(m => m.content && m.content.trim())
+        .slice(-5)
+        .map(m => ({ role: m.role, content: m.content }));
 
-      const overrides = voiceSystemPrompt
-        ? {
-            overrides: {
-              agent: {
-                prompt: { prompt: voiceSystemPrompt },
-                firstMessage: hasCreditData
-                  ? "Hey — I've got your file pulled up. What do you want to work on?"
-                  : "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation.",
-              },
-            },
-          }
-        : {};
+      // Fetch dynamic, page-aware greeting.
+      let greeting: string | undefined;
+      try {
+        const { data: greetingData } = await supabase.functions.invoke("paige-voice-greeting", {
+          body: { currentPage: currentPageName, recentChatMessages },
+          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
+        });
+        greeting = greetingData?.greeting;
+        console.log("[FloatingChatbot] Voice greeting:", greeting);
+      } catch (greetErr) {
+        console.warn("[FloatingChatbot] Greeting fetch failed; using default:", greetErr);
+      }
+
+      const historyBlock = recentChatMessages.length > 0
+        ? `\n\nRECENT CHAT HISTORY (last ${recentChatMessages.length} turns — pick up from here):\n${recentChatMessages.map(m => `${m.role === "user" ? "Client" : "Paige"}: ${m.content}`).join("\n")}`
+        : "";
+
+      const voiceSystemPrompt = contextBlock
+        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data.\n\nCurrent page: ${currentPageName}\n\nCLIENT DATA:\n${contextBlock}${historyBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data\n- Never fabricate data\n- VOICE: Be conversational and concise (1-2 short sentences per turn). Use natural acknowledgments like "Got it", "Right". Never read bullet points aloud.\n- Connect insights to funding goals when relevant`
+        : `You are Paige, the AI credit strategist for PaigeAgent.ai. Current page: ${currentPageName}.${historyBlock}\n\nVOICE: Be conversational and concise. Use short sentences and natural acknowledgments.`;
+
+      const overrides = {
+        overrides: {
+          agent: {
+            prompt: { prompt: voiceSystemPrompt },
+            firstMessage: greeting,
+          },
+        },
+      };
 
       // 3) Start session — prefer WebRTC token, fall back to signedUrl.
       if (creds.conversationToken) {
@@ -225,6 +250,7 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       }
     } catch (err: any) {
       console.error("[FloatingChatbot] Voice start failed:", err);
+      setVoiceModalOpen(false);
       // Tear down audio context if start failed.
       if (audioCtx) { try { await audioCtx.close(); } catch {} }
       if (err?.name === "NotAllowedError" || err?.message?.toLowerCase?.().includes("permission")) {
@@ -237,7 +263,23 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
   const stopVoiceChat = async () => {
     try { await conversation.endSession(); } catch (e) { console.warn("Error ending session", e); }
+    setVoiceModalOpen(false);
   };
+
+  const toggleVoiceMute = useCallback(async () => {
+    const next = !voiceMuted;
+    setVoiceMuted(next);
+    try {
+      const conv: any = conversation;
+      if (typeof conv.setMicMuted === "function") {
+        await conv.setMicMuted(next);
+      } else if (typeof conv.setVolume === "function") {
+        await conv.setVolume({ volume: next ? 0 : 1 });
+      }
+    } catch (err) {
+      console.warn("Mute toggle failed:", err);
+    }
+  }, [conversation, voiceMuted]);
 
   useEffect(() => {
     const handleFactoryReset = async () => {
