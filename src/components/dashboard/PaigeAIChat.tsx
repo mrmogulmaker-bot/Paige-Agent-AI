@@ -6,7 +6,7 @@ import { Send, Loader2, Mic, MicOff } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useConversation } from "@11labs/react";
+import { useConversation } from "@elevenlabs/react";
 import { primeMicAndAudio, startManagedVoiceSession, describeVoiceError } from "@/lib/voice/startVoiceSession";
 import { ResponseFeedback } from "@/components/chat/ResponseFeedback";
 import { useQuery } from "@tanstack/react-query";

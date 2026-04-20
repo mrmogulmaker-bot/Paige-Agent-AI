@@ -6,7 +6,8 @@
       "name": "vite_react_shadcn_ts",
       "dependencies": {
         "@11labs/react": "^0.2.0",
-        "@elevenlabs/client": "^0.8.0",
+        "@elevenlabs/client": "^1.2.1",
+        "@elevenlabs/react": "^1.1.1",
         "@hookform/resolvers": "^3.10.0",
         "@lovable.dev/cloud-auth-js": "^1.1.1",
         "@radix-ui/react-accordion": "^1.2.11",
@@ -128,9 +129,11 @@
 
     "@csstools/css-tokenizer": ["@csstools/css-tokenizer@4.0.0", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@csstools/css-tokenizer/-/css-tokenizer-4.0.0.tgz", {}, "sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA=="],
 
-    "@elevenlabs/client": ["@elevenlabs/client@0.8.0", "", { "dependencies": { "@elevenlabs/types": "0.0.2", "livekit-client": "^2.11.4" } }, "sha512-QjBvC0fdCS58TCcnIEz34ZXjxdzRW272lRR61dYZIHW0TR4nISFFlQLuPWHIpHA7Aw4yB/zzKYX7JVg4ms3/CQ=="],
+    "@elevenlabs/client": ["@elevenlabs/client@1.2.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@elevenlabs/client/-/client-1.2.1.tgz", { "dependencies": { "@elevenlabs/types": "0.9.1", "livekit-client": "^2.11.4" } }, "sha512-As4IXftct0vHuQ6+7gQNT4IGQfCmqD4TOshNByBkdBcSrV3oH/Of+D+ET7HxMha/KNBKU3mlkSgismHTsL3fEw=="],
 
-    "@elevenlabs/types": ["@elevenlabs/types@0.0.2", "", {}, "sha512-bwNWV/YyWowe8VV1Goin2EItarPYmhjK5byihBrIyxRVkEUU1nuho6xz0XHKxTzm6sqSc8HxU/Q43hdNnyIoBA=="],
+    "@elevenlabs/react": ["@elevenlabs/react@1.1.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@elevenlabs/react/-/react-1.1.1.tgz", { "dependencies": { "@elevenlabs/client": "1.2.1" }, "peerDependencies": { "react": ">=16.8.0" } }, "sha512-KCvFEv+QaHUbiLiZxCo6D8DZHio5d34BFf8nccMoWK+Eo4ySWez6hl7zHxwOjbXHCtPhAGh9gzUll5RIyt8vbw=="],
+
+    "@elevenlabs/types": ["@elevenlabs/types@0.9.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@elevenlabs/types/-/types-0.9.1.tgz", {}, "sha512-lkWAMaFJLsGNWcblryBRHbtozMh7wHy0YsqURLwQwjhpvycuFN5qUa94CZtVU01jFwrfr5h1ca24+nYEkKf0Ew=="],
 
     "@emnapi/core": ["@emnapi/core@1.9.2", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@emnapi/core/-/core-1.9.2.tgz", { "dependencies": { "@emnapi/wasi-threads": "1.2.1", "tslib": "^2.4.0" } }, "sha512-UC+ZhH3XtczQYfOlu3lNEkdW/p4dsJ1r/bP7H8+rhao3TTTMO1ATq/4DdIi23XuGoFY+Cz0JmCbdVl0hz9jZcA=="],
 
