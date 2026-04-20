@@ -577,6 +577,35 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         }
       }
 
+      // Run conversational extractor against the user message AFTER the assistant
+      // reply renders. Attach an inline confirmation card to the last assistant message.
+      if (!currentDoc && messageText.trim()) {
+        try {
+          const proposal = extractFromMessage(messageText, profileSnapshot);
+          if (proposal) {
+            const filteredFields = proposal.fields.filter(
+              (f) => !declinedFieldsRef.current.has(f.key)
+            );
+            if (filteredFields.length > 0) {
+              const finalProposal: ExtractionProposal = { ...proposal, fields: filteredFields };
+              setMessages(prev => {
+                const next = [...prev];
+                for (let i = next.length - 1; i >= 0; i--) {
+                  if (next[i].role === "assistant") {
+                    next[i] = { ...next[i], extractionProposal: finalProposal };
+                    return next;
+                  }
+                }
+                next.push({ role: "assistant", content: "", extractionProposal: finalProposal });
+                return next;
+              });
+            }
+          }
+        } catch (err) {
+          console.warn("Conversational extractor failed:", err);
+        }
+      }
+
       setIsLoading(false);
     } catch (error) {
       console.error("Chat error:", error);
