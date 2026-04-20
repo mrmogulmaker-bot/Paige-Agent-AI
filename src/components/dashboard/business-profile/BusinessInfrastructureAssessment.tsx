@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Globe, BarChart3, FileText, Award } from "lucide-react";
+import { Building2, Globe, BarChart3, FileText, Award, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { FoundationSection } from "./FoundationSection";
 import { BuildProgramSection } from "./BuildProgramSection";
@@ -12,6 +12,7 @@ import { PublicPresenceSection } from "./PublicPresenceSection";
 import { BusinessCreditSection } from "./BusinessCreditSection";
 import { FinancialDocsSection } from "./FinancialDocsSection";
 import { SeparationAuditCard } from "./SeparationAuditCard";
+import { FundingProfileSection } from "./FundingProfileSection";
 import { BusinessWalkthrough } from "@/components/business/BusinessWalkthrough";
 
 interface Props {
@@ -54,12 +55,24 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
     }
   };
 
+  const [isAdminOrCoach, setIsAdminOrCoach] = useState(false);
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
+      const roles = (data || []).map((r: any) => r.role);
+      setIsAdminOrCoach(roles.includes("admin") || roles.includes("coach"));
+    })();
+  }, []);
+
   const tabs = [
     { value: "foundation", label: "Foundation", icon: Building2, pct: foundationPct },
     { value: "presence", label: "Public Presence", icon: Globe, pct: presencePct },
     { value: "credit", label: "Business Credit", icon: BarChart3, pct: bureauPct },
     { value: "docs", label: "Financial Docs", icon: FileText, pct: docsPct },
     { value: "build", label: "BUILD Program", icon: Award, pct: buildPct },
+    { value: "funding-profile", label: "Funding Profile", icon: Sparkles, pct: 0 },
   ];
 
   const PlaceholderTab = ({ label }: { label: string }) => (
@@ -190,6 +203,18 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
             </CardContent></Card>
           ) : (
             <FinancialDocsSection businessId={selectedBusinessId} userId={userId} onCompletionChange={setDocsPct} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="funding-profile" className="mt-4">
+          {businesses.length === 0 || !selectedBusinessId ? (
+            <Card><CardContent className="py-12 text-center">
+              <Sparkles className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+              <h3 className="text-lg font-semibold mb-2">No Business Entity Found</h3>
+              <p className="text-sm text-muted-foreground">Add a business entity first.</p>
+            </CardContent></Card>
+          ) : (
+            <FundingProfileSection businessId={selectedBusinessId} userId={userId} isAdminOrCoach={isAdminOrCoach} />
           )}
         </TabsContent>
 
