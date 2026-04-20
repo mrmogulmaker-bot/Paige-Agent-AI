@@ -193,6 +193,40 @@ serve(async (req) => {
       }
     }
 
+    // Coaching insight ingestion → fire-and-forget call to ingest-rag-outcome
+    let coachingInsightIngested = false;
+    try {
+      const cleaned = (coachingInsightRaw || "").replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      if (cleaned) {
+        const parsed = JSON.parse(cleaned);
+        const title = typeof parsed?.title === "string" ? parsed.title.trim() : "";
+        const content = typeof parsed?.content === "string" ? parsed.content.trim() : "";
+        if (title && content && title.toLowerCase() !== "null" && content.toLowerCase() !== "null") {
+          const ingestResp = await fetch(`${supabaseUrl}/functions/v1/ingest-rag-outcome`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              trigger: "coaching_insight",
+              user_id: clientId || user.id,
+              insight_title: title.slice(0, 200),
+              insight_content: content.slice(0, 8000),
+              session_id: sessionId,
+            }),
+          });
+          coachingInsightIngested = ingestResp.ok;
+          if (!ingestResp.ok) {
+            const t = await ingestResp.text();
+            console.warn("ingest-rag-outcome (coaching_insight) non-200:", ingestResp.status, t);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("coaching insight ingestion skipped:", err);
+    }
+
     // Run conversational extraction over the transcript so the chat UI can
     // surface a confirmation card after the call ends.
     let extractionProposal: any = null;
