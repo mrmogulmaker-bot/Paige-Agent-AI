@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
-import { useConversation } from "@elevenlabs/react";
+import { useConversation, ConversationProvider } from "@elevenlabs/react";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
 import { usePaigeMemory } from "@/hooks/usePaigeMemory";
 import { useClientChatContext } from "@/hooks/useClientChatContext";
@@ -31,7 +31,7 @@ type Message = {
   syncStatus?: any;
 };
 
-export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
+const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
   const location = useLocation();
   const isMobile = useIsMobile();
   const [isOpen, setIsOpen] = useState(false);

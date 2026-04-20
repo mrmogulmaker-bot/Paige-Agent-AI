@@ -6,7 +6,7 @@ import { Send, Loader2, Mic, MicOff } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useConversation } from "@elevenlabs/react";
+import { useConversation, ConversationProvider } from "@elevenlabs/react";
 import { primeMicAndAudio, startManagedVoiceSession, describeVoiceError } from "@/lib/voice/startVoiceSession";
 import { ResponseFeedback } from "@/components/chat/ResponseFeedback";
 import { useQuery } from "@tanstack/react-query";
@@ -17,7 +17,7 @@ import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } f
 
 type Message = { role: "user" | "assistant"; content: string };
 
-export const PaigeAIChat = () => {
+const PaigeAIChatInner = () => {
   const sessionId = useRef(`session-${Date.now()}`).current;
   
   // Check if user is admin or coach for feedback visibility

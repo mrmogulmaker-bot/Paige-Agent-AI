@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useLocation } from "react-router-dom";
 import { getCurrentPageName, getPageOpeningInstruction } from "@/lib/pageContext";
 import type { User, Session } from "@supabase/supabase-js";
-import { useConversation } from "@elevenlabs/react";
+import { useConversation, ConversationProvider } from "@elevenlabs/react";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
 import { usePaigeMemory } from "@/hooks/usePaigeMemory";
 import { useClientChatContext } from "@/hooks/useClientChatContext";
