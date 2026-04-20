@@ -17,9 +17,13 @@ const messageSchema = z.object({
     })
   ).min(1).max(50),
   document: z.object({
-    base64: z.string(),
+    base64: z.string().optional(),
     fileName: z.string(),
-    mimeType: z.literal('application/pdf'),
+    mimeType: z.string(),
+    /** Plain-text content extracted client-side (DOCX). */
+    textContent: z.string().max(200_000).optional(),
+    /** "pdf" | "image" | "docx" — set by the chat client */
+    kind: z.enum(["pdf", "image", "docx"]).optional(),
   }).optional(),
   sessionDocumentContext: z.array(
     z.object({
@@ -385,60 +389,67 @@ JSON:`;
 
     let documentReadCheck: any = null;
     let paigeChatUploadId: string | null = null;
+    let extractionProposal: any = null;
+    let isCreditReportPdf = false;
     if (attachedDocument) {
-      documentReadCheck = await runDocumentReadCheck(attachedDocument.base64, lovableApiKey);
-      if (!documentReadCheck?.can_read_document || documentReadCheck?.document_kind !== 'credit_report' || (documentReadCheck?.first_five_account_names || []).length < 1) {
-        const message = documentReadCheck?.parse_error || 'Unable to parse document content — please ensure the uploaded file is a readable PDF credit report';
-        return new Response(
-          JSON.stringify({ error: message }),
-          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      const docKind = attachedDocument.kind || (attachedDocument.mimeType === "application/pdf" ? "pdf" : attachedDocument.mimeType?.startsWith("image/") ? "image" : "docx");
+
+      // Only run the credit-report read-check on PDFs — images/docx can't be credit reports here.
+      if (docKind === "pdf" && attachedDocument.base64) {
+        try {
+          documentReadCheck = await runDocumentReadCheck(attachedDocument.base64, lovableApiKey);
+          isCreditReportPdf = !!(documentReadCheck?.can_read_document
+            && documentReadCheck?.document_kind === "credit_report"
+            && (documentReadCheck?.first_five_account_names || []).length >= 1);
+        } catch (e) {
+          console.warn("[Paige] read-check failed, treating as general document:", e);
+        }
       }
 
-      // Store the uploaded PDF to standard storage so Refresh can find it later
-      try {
-        const targetUserId = payloadClientId || user.id;
-        const timestamp = Date.now();
-        const safeName = (attachedDocument.fileName || "report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
-        const storagePath = `${targetUserId}/${timestamp}_paige_${safeName}`;
+      // Credit-report path: keep existing storage + sync behaviour.
+      if (isCreditReportPdf) {
+        try {
+          const targetUserId = payloadClientId || user.id;
+          const timestamp = Date.now();
+          const safeName = (attachedDocument.fileName || "report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
+          const storagePath = `${targetUserId}/${timestamp}_paige_${safeName}`;
+          const binaryString = atob(attachedDocument.base64!);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
 
-        // Decode base64 to binary
-        const binaryString = atob(attachedDocument.base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
+          const { error: storageErr } = await supabase.storage
+            .from("credit-report-uploads")
+            .upload(storagePath, bytes.buffer, { contentType: "application/pdf" });
 
-        const { error: storageErr } = await supabase.storage
-          .from("credit-report-uploads")
-          .upload(storagePath, bytes.buffer, { contentType: "application/pdf" });
-
-        if (storageErr) {
-          console.error("[Paige] Failed to store PDF to storage:", storageErr);
-        } else {
-          // Create credit_report_uploads record
-          const { data: uploadRec, error: insertErr } = await supabase
-            .from("credit_report_uploads")
-            .insert({
-              user_id: targetUserId,
-              uploaded_by: user.id,
-              file_name: attachedDocument.fileName || "credit-report.pdf",
-              file_path: storagePath,
-              file_size: bytes.length,
-              analysis_status: "processing",
-            })
-            .select("id")
-            .single();
-
-          if (insertErr) {
-            console.error("[Paige] Failed to create upload record:", insertErr);
-          } else {
-            paigeChatUploadId = uploadRec.id;
-            console.log("[Paige] Stored PDF to credit-report-uploads, record id:", paigeChatUploadId);
+          if (!storageErr) {
+            const { data: uploadRec, error: insertErr } = await supabase
+              .from("credit_report_uploads")
+              .insert({
+                user_id: targetUserId,
+                uploaded_by: user.id,
+                file_name: attachedDocument.fileName || "credit-report.pdf",
+                file_path: storagePath,
+                file_size: bytes.length,
+                analysis_status: "processing",
+              })
+              .select("id")
+              .single();
+            if (!insertErr) paigeChatUploadId = uploadRec.id;
           }
+        } catch (storeErr) {
+          console.error("[Paige] Error storing PDF:", storeErr);
         }
-      } catch (storeErr) {
-        console.error("[Paige] Error storing PDF:", storeErr);
+      } else {
+        // General document path — run a lightweight structured-field extraction
+        // and emit an extraction_proposal SSE event after the chat stream.
+        try {
+          extractionProposal = await runGeneralDocumentExtraction(
+            attachedDocument,
+            lovableApiKey,
+          );
+        } catch (e) {
+          console.warn("[Paige] general extraction failed:", e);
+        }
       }
     }
 
@@ -1267,56 +1278,28 @@ INTEGRATION WITH search_regional_lenders: When the client asks about ALL lenders
       const msg = messages[i];
       
       if (attachedDocument && msg.role === "user" && i === messages.length - 1) {
-        const contentParts: any[] = [
-          {
+        const docKind = attachedDocument.kind || (attachedDocument.mimeType === "application/pdf" ? "pdf" : attachedDocument.mimeType?.startsWith("image/") ? "image" : "docx");
+        const contentParts: any[] = [];
+
+        if ((docKind === "pdf" || docKind === "image") && attachedDocument.base64) {
+          contentParts.push({
             type: "image_url",
-            image_url: { url: `data:application/pdf;base64,${attachedDocument.base64}` },
-          },
-          {
-            type: "text",
-            text: msg.content + `\n\n[Attached document: ${attachedDocument.fileName}]
+            image_url: { url: `data:${attachedDocument.mimeType};base64,${attachedDocument.base64}` },
+          });
+        }
 
-=== CREDIT REPORT ANALYSIS INSTRUCTIONS ===
-If this document is a credit report (especially a tri-merge report from MyFreeScoreNow, IdentityIQ, SmartCredit, or similar), produce a STRUCTURED analysis in the following exact format. Use a professional, precise, advisory tone — like a senior credit analyst.
+        const docxBlock = docKind === "docx" && attachedDocument.textContent
+          ? `\n\n=== DOCX TEXT CONTENT (${attachedDocument.fileName}) ===\n${attachedDocument.textContent.slice(0, 80_000)}\n=== END DOCX ===\n`
+          : "";
 
-**TRI-MERGE FORMAT**: These reports present each account in three columns — TransUnion (left), Experian (middle), Equifax (right). Dashes (--) mean NOT reported at that bureau. Read each column independently.
+        const baseInstruction = isCreditReportPdf
+          ? `[Attached document: ${attachedDocument.fileName}]\n\n=== CREDIT REPORT ANALYSIS INSTRUCTIONS ===\nIf this document is a credit report (especially a tri-merge report), produce a STRUCTURED analysis. Tri-merge column order is TransUnion (left), Experian (middle), Equifax (right). Dashes (--) mean NOT reported at that bureau. Always identify document type and bureau in your response.`
+          : `[Attached document: ${attachedDocument.fileName} — ${docKind.toUpperCase()}]\n\nThe client has shared a document. Acknowledge it briefly and naturally — e.g. "Got it — I've read through your [document type]." If you can identify what kind of document this is (EIN letter, articles of incorporation, business license, bank statement, ID, W-9, voided check, or other), name it. The system will offer the client a save dialog separately for any extracted fields, so do NOT recite them as a checklist; just confirm what you saw and ask what they'd like to do next.`;
 
-**SECTION 0 — FRAUD ALERTS & SECURITY FREEZES (if present)**
-Check the Consumer Statement section FIRST. If fraud alerts or security freezes exist, display them BEFORE any other content.
-
-**SECTION 1 — BUREAU SCORES SUMMARY**
-Three-column table: Equifax | Experian | TransUnion. Show score, classification, primary suppressing factor.
-
-**SECTION 2 — BUREAU-BY-BUREAU NEGATIVE ITEM BREAKDOWN**
-Per bureau: Account Name, Original Creditor, Type, Account Number (masked), Date of Last Activity, Balance, Creditor Remarks, Dispute Basis.
-Extract ALL negative types including charge-offs, collections, late payments, public records.
-Use LEGITIMATE STATUTORY LANGUAGE ONLY for dispute bases.
-NEVER fabricate creditor agreements or promises.
-
-**SECTION 3 — CROSS-BUREAU DISCREPANCIES — DISPUTE PRIORITY ITEMS**
-Compare the same debt across all three bureaus. Flag inconsistencies.
-
-**SECTION 4 — POSITIVE ACCOUNTS SUMMARY**
-Accounts in good standing: creditor, type, limit, balance, utilization %, payment status, age, bureaus.
-
-**SECTION 5 — HARD INQUIRIES**
-List all hard inquiries with creditor name, date, bureau.
-
-**SECTION 6 — FUNDING STRATEGY IMPACT**
-Specific to actual scores and negatives found.
-
-**SECTION 7 — PRIORITY ACTION PLAN**
-Top 5-7 actions ranked by score impact. Include bureau(s), estimated impact range, statutory basis.
-
-**SECTION 8 — COMPLIANCE DISCLAIMER**
-"*This analysis is provided for educational purposes only...*"
-
-=== FINANCIAL DOCUMENT INSTRUCTIONS ===
-If financial document (bank statement, P&L, tax return), offer lender-ready summary.
-
-Always identify the document type and bureau in your response.`,
-          },
-        ];
+        contentParts.push({
+          type: "text",
+          text: `${msg.content}\n\n${baseInstruction}${docxBlock}`,
+        });
         aiMessages.push({ role: "user", content: contentParts });
       } else {
         aiMessages.push({ role: msg.role, content: msg.content });
@@ -1714,37 +1697,40 @@ Always identify the document type and bureau in your response.`,
       async pull(controller) {
         const { done, value } = await reader.read();
         if (done) {
-          // After stream ends, run structured extraction + sync, then send sync status as final SSE event
-          try {
-            const syncResult = await runStructuredExtractionAndSync(
-              fullAssistantResponse,
-              attachedDocument.base64,
-              user.id,
-              authHeader,
-              supabaseUrl,
-              supabaseServiceKey,
-              lovableApiKey,
-              supabase,
-              payloadClientId || null,
-              paigeChatUploadId
-            );
-
-            // Send sync status as a final SSE data event before closing
-            const syncEvent = `data: ${JSON.stringify({ sync_status: syncResult })}\n\n`;
-            controller.enqueue(new TextEncoder().encode(syncEvent));
-          } catch (err) {
-            console.error("Sync pipeline error:", err);
-            const errorEvent = `data: ${JSON.stringify({ sync_status: { success: false, error: err instanceof Error ? err.message : "Unknown sync error" } })}\n\n`;
-            controller.enqueue(new TextEncoder().encode(errorEvent));
+          // Credit-report PDF path: run structured extraction + sync.
+          if (isCreditReportPdf && attachedDocument?.base64) {
+            try {
+              const syncResult = await runStructuredExtractionAndSync(
+                fullAssistantResponse,
+                attachedDocument.base64,
+                user.id,
+                authHeader,
+                supabaseUrl,
+                supabaseServiceKey,
+                lovableApiKey,
+                supabase,
+                payloadClientId || null,
+                paigeChatUploadId
+              );
+              const syncEvent = `data: ${JSON.stringify({ sync_status: syncResult })}\n\n`;
+              controller.enqueue(new TextEncoder().encode(syncEvent));
+            } catch (err) {
+              console.error("Sync pipeline error:", err);
+              const errorEvent = `data: ${JSON.stringify({ sync_status: { success: false, error: err instanceof Error ? err.message : "Unknown sync error" } })}\n\n`;
+              controller.enqueue(new TextEncoder().encode(errorEvent));
+            }
+          } else if (extractionProposal && extractionProposal.fields?.length > 0) {
+            // General document path: emit extraction proposal for inline confirmation card.
+            const proposalEvent = `data: ${JSON.stringify({ extraction_proposal: extractionProposal })}\n\n`;
+            controller.enqueue(new TextEncoder().encode(proposalEvent));
           }
 
           controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
           controller.close();
           return;
         }
-        
+
         controller.enqueue(value);
-        
         const chunk = decoder.decode(value, { stream: true });
         const lines = chunk.split("\n");
         for (const line of lines) {
