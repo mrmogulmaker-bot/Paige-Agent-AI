@@ -23,8 +23,9 @@ export type StartVoiceSessionResult = {
 export type VoiceTransport = "webrtc" | "websocket";
 
 type VoiceConversationController = {
-  startSession: (options: any) => Promise<unknown>;
-  endSession: () => Promise<void>;
+  // SDK 1.x returns void; older 0.x returned Promise. Accept both.
+  startSession: (options: any) => unknown;
+  endSession: () => Promise<void> | void;
 };
 
 export type StartManagedVoiceSessionOptions = {
