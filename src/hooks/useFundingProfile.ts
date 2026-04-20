@@ -355,6 +355,22 @@ export function useFundingProfile(): FundingProfileData {
         hasFraudAlert: false,
         hasSecurityFreeze: false,
         fundingGoals: profile?.funding_goals || null,
+        demographics: {
+          gender_identity: (profile as any)?.gender_identity ?? null,
+          ethnicity: (profile as any)?.ethnicity ?? null,
+          is_veteran: (profile as any)?.is_veteran ?? null,
+          is_service_disabled_veteran: (profile as any)?.is_service_disabled_veteran ?? null,
+          is_us_citizen: (profile as any)?.is_us_citizen ?? null,
+          is_minority_owned: (primaryBiz as any)?.is_minority_owned ?? null,
+          is_women_owned: (primaryBiz as any)?.is_women_owned ?? null,
+          is_veteran_owned: (primaryBiz as any)?.is_veteran_owned ?? null,
+          is_service_disabled_veteran_owned: (primaryBiz as any)?.is_service_disabled_veteran_owned ?? null,
+          is_hubzone_located: (primaryBiz as any)?.is_hubzone_located ?? null,
+          has_8a_certification: (primaryBiz as any)?.has_8a_certification ?? null,
+          has_wosb_certification: (primaryBiz as any)?.has_wosb_certification ?? null,
+          has_vetcert_certification: (primaryBiz as any)?.has_vetcert_certification ?? null,
+          is_startup: !primaryBiz || (timeInBusinessMonths != null && timeInBusinessMonths < 24),
+        },
         isLoading: false,
       };
     },
@@ -373,6 +389,7 @@ export function useFundingProfile(): FundingProfileData {
       completeness: 0, missingItems: [],
       hasFraudAlert: false, hasSecurityFreeze: false,
       fundingGoals: null,
+      demographics: { ...defaultDemographics },
       isLoading: true,
     };
   }
