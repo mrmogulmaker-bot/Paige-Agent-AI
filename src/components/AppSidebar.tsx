@@ -147,7 +147,17 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
                   }`}
                 >
                   <mainMenuItem.icon className="w-5 h-5" />
-                  <span className="text-sm">{mainMenuItem.title}</span>
+                  <span className="text-sm flex-1 flex items-center justify-between gap-2">
+                    {mainMenuItem.title}
+                    {predictionsCount > 0 && (
+                      <Badge
+                        className="h-5 min-w-5 px-1.5 rounded-full bg-gold text-primary border-0 text-[10px] font-bold tabular-nums"
+                        title={`${predictionsCount} active prediction${predictionsCount === 1 ? "" : "s"}`}
+                      >
+                        {predictionsCount > 99 ? "99+" : predictionsCount}
+                      </Badge>
+                    )}
+                  </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
