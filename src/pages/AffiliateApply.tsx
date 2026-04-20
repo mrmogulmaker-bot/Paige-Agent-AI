@@ -333,7 +333,7 @@ function StatPill({
   icon: Icon,
   label,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   label: string;
 }) {
   return (
@@ -387,7 +387,7 @@ function TierCard({
   features,
   featured = false,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   name: string;
   rate: string;
   duration: string;
@@ -652,7 +652,7 @@ function PersonaCard({
   title,
   body,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   title: string;
   body: string;
 }) {
