@@ -46,6 +46,9 @@ interface AuthClient {
   estimated_fico_tu: number | null;
   onboarding_completed: boolean | null;
   roles: string[];
+  is_minority_owned?: boolean | null;
+  is_women_owned?: boolean | null;
+  is_veteran_owned?: boolean | null;
 }
 
 interface ClientManagementDashboardProps {
@@ -64,6 +67,9 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
   const [addLegacyOpen, setAddLegacyOpen] = useState(false);
   const [quickUploadOpen, setQuickUploadOpen] = useState(false);
   const [activeView, setActiveView] = useState<"internal" | "auth" | "team">("internal");
+  const [demoFilter, setDemoFilter] = useState<{ minority: boolean; women: boolean; veteran: boolean }>({
+    minority: false, women: false, veteran: false,
+  });
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ type: "internal" | "auth"; id: string; name: string } | null>(null);

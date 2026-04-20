@@ -13,6 +13,7 @@ import { ClientOutcomesTab } from "./ClientOutcomesTab";
 import { AdminAccountManagement } from "./AdminAccountManagement";
 import { DisputesManager } from "./DisputesManager";
 import { AdminFactoryResetDialog, AdminChatHistory, AdminFundingOverride } from "./admin/AdminClientTools";
+import { ClientDemographicsCard } from "./ClientDemographicsCard";
 
 interface ClientFileViewProps {
   clientUserId: string;
@@ -296,6 +297,11 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
                 </CardContent>
               </Card>
             </div>
+          </div>
+
+          {/* Demographics & Funding Profile (read-only for admins/coaches) */}
+          <div className="mt-6">
+            <ClientDemographicsCard clientUserId={clientUserId} />
           </div>
         </TabsContent>
 
