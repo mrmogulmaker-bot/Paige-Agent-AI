@@ -922,6 +922,17 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
           </Button>
         </div>
       </div>
+
+      {/* Premium voice session UI — full-screen modal with avatar, transcript, controls. */}
+      <VoiceSessionModal
+        open={voiceModalOpen}
+        status={voiceStatus}
+        isMuted={voiceMuted}
+        pageName={currentPage}
+        transcript={voiceTranscript}
+        onToggleMute={toggleVoiceMute}
+        onEndCall={stopVoiceChat}
+      />
     </div>
   );
 }
