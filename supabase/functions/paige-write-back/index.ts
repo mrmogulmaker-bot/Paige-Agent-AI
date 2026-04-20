@@ -323,8 +323,42 @@ serve(async (req) => {
           }
           await supabase.from("credit_report_personal_info").update({ [column]: update.field_value }).eq("id", update.record_id).eq("user_id", targetUserId);
           results.push({ field_path: update.field_path, success: true });
+        } else if (table === "_intake_op") {
+          // intake.complete: marks intake_completed=true and inserts a client_goals row
+          // using the latest profile values written in this same batch (or already on file).
+          if (column === "complete" && update.field_value === true) {
+            const { data: prof } = await supabase
+              .from("profiles")
+              .select("primary_goal, primary_goal_category, goal_amount")
+              .eq("user_id", targetUserId)
+              .maybeSingle();
+            await supabase.from("profiles").update({
+              intake_completed: true,
+              intake_completed_at: new Date().toISOString(),
+            }).eq("user_id", targetUserId);
+
+            // Create a client_goals row only if we have at least the category
+            if ((prof as any)?.primary_goal_category) {
+              await supabase.from("client_goals").insert({
+                user_id: targetUserId,
+                goal_category: (prof as any).primary_goal_category,
+                goal_description: (prof as any).primary_goal,
+                target_amount: (prof as any).goal_amount,
+                status: "active",
+              });
+            }
+            results.push({ field_path: update.field_path, success: true });
+          } else {
+            results.push({ field_path: update.field_path, success: false, error: "Unknown intake operation" });
+          }
         } else if (table === "profiles") {
-          await supabase.from("profiles").update({ [column]: update.field_value }).eq("user_id", targetUserId);
+          // intake.intake_responses comes through as a string from the JSON-only schema —
+          // try to parse it back into an object so it lands as JSONB.
+          let value: any = update.field_value;
+          if (column === "intake_responses" && typeof value === "string") {
+            try { value = JSON.parse(value); } catch { /* keep as string */ }
+          }
+          await supabase.from("profiles").update({ [column]: value }).eq("user_id", targetUserId);
           results.push({ field_path: update.field_path, success: true });
         } else if (table === "funding_profiles") {
           const { data: fp } = await supabase
