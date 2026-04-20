@@ -13,6 +13,7 @@ import { CreditScoreSimulator } from "./CreditScoreSimulator";
 import { SeparationAuditCard } from "./business-profile/SeparationAuditCard";
 import { PredictionsPanel } from "./PredictionsPanel";
 import { UnlockProgramsBanner } from "./UnlockProgramsBanner";
+import { JourneyDashboardCard } from "@/components/funding-journey/JourneyDashboardCard";
 
 // ── Helpers ──
 
@@ -502,6 +503,9 @@ export function DashboardCommandCenter({ userId, onNavigate }: DashboardCommandC
         <DisputeStatus onNavigate={onNavigate} />
         <CreditFileCompletion onNavigate={onNavigate} />
       </div>
+
+      {/* Funding Journey summary */}
+      <JourneyDashboardCard />
 
       {/* Onboarding Checklist */}
       <OnboardingChecklist userId={userId} />

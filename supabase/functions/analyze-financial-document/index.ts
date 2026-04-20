@@ -110,12 +110,43 @@ serve(async (req) => {
     const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
 
     const systemPrompt = `You are a financial document analysis expert working for a business credit and funding platform.
-You will receive a financial document (bank statement, P&L statement, tax return, balance sheet, or similar).
-Your job is to extract ALL relevant financial data into structured JSON.
+You will receive a financial document. Detect the document type FIRST, then extract relevant data.
 
-IMPORTANT: Detect the document type and adapt your extraction accordingly.
+DOCUMENT TYPES:
+- bank_statement, profit_and_loss, tax_return, balance_sheet, income_statement
+- denial_letter — adverse action notice from a lender. Detect by phrases like "we are unable to approve", "your application has been denied", "adverse action", "we regret to inform", "credit decision", lender letterhead + denial language.
+- other
 
-Return ONLY valid JSON with this structure:
+If the document is a DENIAL LETTER, return ONLY this JSON shape (do NOT include the financial fields below):
+{
+  "doc_type": "denial_letter",
+  "denial_letter": {
+    "lender_name": "string",
+    "denial_date": "YYYY-MM-DD or null",
+    "denial_reason_text": "the verbatim reason language from the letter",
+    "denial_reason_category": "credit_score_too_low" | "insufficient_time_in_business" | "insufficient_revenue" | "too_much_existing_debt" | "no_collateral" | "incomplete_application" | "industry_restriction" | "too_many_recent_inquiries" | "derogatory_items" | "insufficient_cash_flow" | "personal_guarantee_declined" | "entity_structure_issue" | "other",
+    "credit_score_referenced": number or null,
+    "bureau_referenced": "Experian" | "Equifax" | "TransUnion" | null,
+    "product_referenced": "string or null"
+  },
+  "summary": "1-2 sentence plain-language summary of the denial and the most likely category map."
+}
+
+Map common denial language to categories:
+- "credit score below our minimum" / "FICO too low" → credit_score_too_low
+- "time in business" / "newly established" → insufficient_time_in_business
+- "annual revenue" / "monthly revenue" / "below our minimum revenue" → insufficient_revenue
+- "debt-to-income" / "existing obligations" / "DTI" → too_much_existing_debt
+- "collateral" / "secured" → no_collateral
+- "incomplete" / "missing documentation" → incomplete_application
+- "industry" / "SIC" / "NAICS" → industry_restriction
+- "inquiries" / "recent credit applications" → too_many_recent_inquiries
+- "delinquencies" / "collections" / "charge-offs" / "bankruptcy" → derogatory_items
+- "cash flow" / "DSCR" → insufficient_cash_flow
+- "personal guarantor" / "personal guarantee" → personal_guarantee_declined
+- "entity structure" / "business formation" → entity_structure_issue
+
+For ALL OTHER document types, return:
 {
   "doc_type": "bank_statement" | "profit_and_loss" | "tax_return" | "balance_sheet" | "income_statement" | "other",
   "institution_name": "string or null",
@@ -129,29 +160,23 @@ Return ONLY valid JSON with this structure:
   "ending_balance": number or null,
   "revenue_trend": "increasing" | "decreasing" | "stable" | "volatile" | "insufficient_data",
   "revenue_trend_detail": "string explaining the trend",
-  "nsf_count": number (0 if none found),
-  "overdraft_count": number (0 if none found),
+  "nsf_count": number,
+  "overdraft_count": number,
   "largest_deposit": { "amount": number, "date": "YYYY-MM-DD or null", "description": "string" },
   "largest_withdrawal": { "amount": number, "date": "YYYY-MM-DD or null", "description": "string" },
-  "monthly_breakdown": [
-    { "month": "YYYY-MM", "revenue": number, "expenses": number, "net": number }
-  ],
-  "lender_red_flags": [
-    { "flag": "string description", "severity": "high" | "medium" | "low", "recommendation": "string" }
-  ],
-  "lender_green_flags": [
-    { "flag": "string description" }
-  ],
+  "monthly_breakdown": [{ "month": "YYYY-MM", "revenue": number, "expenses": number, "net": number }],
+  "lender_red_flags": [{ "flag": "string", "severity": "high" | "medium" | "low", "recommendation": "string" }],
+  "lender_green_flags": [{ "flag": "string" }],
   "key_metrics": {
     "debt_service_coverage_ratio": number or null,
     "profit_margin": number or null,
     "monthly_burn_rate": number or null,
     "runway_months": number or null
   },
-  "summary": "2-3 sentence plain-language summary of financial health from a lender's perspective"
+  "summary": "2-3 sentence plain-language summary"
 }
 
-Be thorough. Look for NSF fees, overdraft charges, negative balances, irregular large deposits, and any patterns that would concern a lender. Also identify positive signals like consistent revenue growth, healthy balances, and low debt.`;
+Be thorough. Return ONLY valid JSON — no markdown.`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -208,7 +233,49 @@ Be thorough. Look for NSF fees, overdraft charges, negative balances, irregular 
       });
     }
 
-    // Save results
+    // Branch: denial letter — store separately and surface guidance
+    if (analysis.doc_type === "denial_letter" && analysis.denial_letter) {
+      const dl = analysis.denial_letter;
+      await supabase.from('financial_document_analyses')
+        .update({
+          analysis_status: 'completed',
+          doc_type_detected: 'denial_letter',
+          full_analysis: analysis,
+        })
+        .eq('document_id', documentId);
+
+      await supabase.from('audit_logs').insert({
+        user_id: user.id,
+        entity: 'financial_document_analysis',
+        action: 'denial_letter_parsed',
+        entity_id: documentId,
+        data: {
+          lender_name: dl.lender_name,
+          denial_reason_category: dl.denial_reason_category,
+        },
+      });
+
+      return new Response(JSON.stringify({
+        success: true,
+        analysis,
+        denial_letter_proposal: {
+          lender_name: dl.lender_name,
+          application_date: dl.denial_date || new Date().toISOString().split("T")[0],
+          decision_date: dl.denial_date,
+          status: "denied",
+          denial_reason_category: dl.denial_reason_category,
+          denial_reason_detail: dl.denial_reason_text,
+          credit_score_at_application: dl.credit_score_referenced,
+          bureau_pulled: dl.bureau_referenced,
+          product_name: dl.product_referenced,
+          denial_letter_url: doc.file_path,
+        },
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Save results (financial documents)
     await supabase.from('financial_document_analyses')
       .update({
         analysis_status: 'completed',

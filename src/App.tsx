@@ -45,6 +45,7 @@ const Dashboard = lazyWithReload(() => import("./pages/Dashboard"));
 const AppShell = lazyWithReload(() => import("./pages/AppShell"));
 const CreditIntelligence = lazyWithReload(() => import("./pages/CreditIntelligence"));
 const FundingMatches = lazyWithReload(() => import("./pages/FundingMatches"));
+const FundingJourney = lazyWithReload(() => import("./pages/FundingJourney"));
 const Admin = lazyWithReload(() => import("./pages/Admin"));
 const ResetPassword = lazyWithReload(() => import("./pages/ResetPassword"));
 const AffiliateApply = lazyWithReload(() => import("./pages/AffiliateApply"));
@@ -103,6 +104,7 @@ const App = () => (
               <Route index element={null} />
               <Route path="credit" element={<PageSuspense><CreditIntelligence /></PageSuspense>} />
               <Route path="funding" element={<PageSuspense><FundingMatches /></PageSuspense>} />
+              <Route path="funding-journey" element={<PageSuspense><FundingJourney /></PageSuspense>} />
               {/* Legacy dispute routes — repositioned to a notice + CFPB redirect + CSV export */}
               <Route path="disputes" element={<PageSuspense><RepositioningNotice /></PageSuspense>} />
               <Route path="learn" element={<PageSuspense><LearningVault /></PageSuspense>} />

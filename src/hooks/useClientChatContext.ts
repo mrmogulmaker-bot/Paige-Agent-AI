@@ -848,6 +848,42 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           }
         }
 
+        // ===== Funding Journey context =====
+        if (resolvedUserId) {
+          const { data: journeyApps } = await supabase
+            .from("funding_journey_applications")
+            .select("lender_name, product_name, status, application_date, decision_date, amount_approved, amount_requested, denial_reason_category")
+            .eq("user_id", resolvedUserId)
+            .order("application_date", { ascending: false });
+
+          const apps = journeyApps || [];
+          if (apps.length > 0) {
+            const approved = apps.filter((a: any) => a.status === "approved" || a.status === "funded").length;
+            const denied = apps.filter((a: any) => a.status === "denied").length;
+            const pending = apps.filter((a: any) => ["draft", "submitted", "under_review"].includes(a.status)).length;
+            const capitalSecured = apps
+              .filter((a: any) => a.status === "funded")
+              .reduce((s: number, a: any) => s + (a.amount_approved || a.amount_requested || 0), 0);
+            const reasonCounts = new Map<string, number>();
+            for (const a of apps) {
+              if (a.denial_reason_category) reasonCounts.set(a.denial_reason_category, (reasonCounts.get(a.denial_reason_category) || 0) + 1);
+            }
+            const topReason = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+            const recent = apps[0];
+
+            parts.push("");
+            parts.push("FUNDING JOURNEY");
+            parts.push(`Funding Journey: ${apps.length} applications total — ${approved} approved — ${denied} denied — ${pending} pending`);
+            const recentLine = `Most Recent: ${recent.lender_name}${recent.product_name ? ` ${recent.product_name}` : ""} — ${recent.status} on ${new Date(recent.application_date).toLocaleDateString()}`;
+            parts.push(recentLine);
+            parts.push(`Capital Secured: $${capitalSecured.toLocaleString()}`);
+            if (topReason) parts.push(`Top Denial Reason: ${topReason.replace(/_/g, " ")}`);
+          } else {
+            parts.push("");
+            parts.push("Funding Journey: No applications logged yet. If the client mentions applying for funding, offer to log it.");
+          }
+        }
+
         if (!cancelled) {
           setContextBlock(parts.length > 1 ? parts.join("\n") : "");
           setIsLoading(false);

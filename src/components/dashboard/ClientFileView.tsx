@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain, TrendingUp, Database, User, Phone, AtSign, MapPin, Calendar, Shield, MessageSquare, Trash2, Edit3 } from "lucide-react";
+import { ArrowLeft, DollarSign, FileText, Mail, StickyNote, Upload, AlertTriangle, Brain, TrendingUp, Database, User, Phone, AtSign, MapPin, Calendar, Shield, MessageSquare, Trash2, Edit3, Briefcase } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { ReportUploadTab } from "./ReportUploadTab";
 import { OutreachCenter } from "./OutreachCenter";
@@ -15,6 +15,7 @@ import { DisputesManager } from "./DisputesManager";
 import { AdminFactoryResetDialog, AdminChatHistory, AdminFundingOverride } from "./admin/AdminClientTools";
 import { ClientDemographicsCard } from "./ClientDemographicsCard";
 import { ClientGoalsCard } from "./ClientGoalsCard";
+import { ClientFundingJourneyTab } from "@/components/funding-journey/ClientFundingJourneyTab";
 
 interface ClientFileViewProps {
   clientUserId: string;
@@ -180,6 +181,9 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           <TabsTrigger value="funding" className="text-xs">
             <DollarSign className="w-3 h-3 mr-1" /> Funding Readiness
           </TabsTrigger>
+          <TabsTrigger value="funding-journey" className="text-xs">
+            <Briefcase className="w-3 h-3 mr-1" /> Funding Journey
+          </TabsTrigger>
           <TabsTrigger value="documents" className="text-xs">
             <FileText className="w-3 h-3 mr-1" /> Documents
           </TabsTrigger>
@@ -328,6 +332,10 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
             <PMEFundingReadiness />
             {userRole === "admin" && <AdminFundingOverride clientUserId={clientUserId} />}
           </div>
+        </TabsContent>
+
+        <TabsContent value="funding-journey" className="mt-4">
+          <ClientFundingJourneyTab clientUserId={clientUserId} />
         </TabsContent>
 
         <TabsContent value="documents" className="mt-4">
