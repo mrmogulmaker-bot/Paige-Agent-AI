@@ -344,6 +344,8 @@ serve(async (req) => {
       action: "paige_write_back",
       data: {
         target_user_id: targetUserId,
+        source: validated.source || "paige_chat",
+        document_type: validated.document_type || null,
         updates: validated.updates.map(u => ({ field_path: u.field_path, success: results.find(r => r.field_path === u.field_path)?.success })),
         timestamp: new Date().toISOString(),
       },
