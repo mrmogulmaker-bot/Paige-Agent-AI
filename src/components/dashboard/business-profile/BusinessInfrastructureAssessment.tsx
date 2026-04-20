@@ -72,6 +72,7 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
     { value: "presence", label: "Public Presence", icon: Globe, pct: presencePct },
     { value: "credit", label: "Business Credit", icon: BarChart3, pct: bureauPct },
     { value: "docs", label: "Financial Docs", icon: FileText, pct: docsPct },
+    { value: "financials", label: "Financial Intel", icon: TrendingUp, pct: 0 },
     { value: "build", label: "BUILD Program", icon: Award, pct: buildPct },
     { value: "funding-profile", label: "Funding Profile", icon: Sparkles, pct: 0 },
   ];
