@@ -24,7 +24,7 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
   const [businesses, setBusinesses] = useState<{ id: string; legal_name: string }[]>([]);
   const [selectedBusinessId, setSelectedBusinessId] = useState<string>("");
   const [userId, setUserId] = useState<string>("");
-  const [activeTab, setActiveTab] = useState("build");
+  const [activeTab, setActiveTab] = useState("financials");
 
   // Completion percentages
   const [foundationPct, setFoundationPct] = useState(0);
@@ -68,11 +68,11 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
   }, []);
 
   const tabs = [
+    { value: "financials", label: "Financial Intel", icon: TrendingUp, pct: 0 },
     { value: "foundation", label: "Foundation", icon: Building2, pct: foundationPct },
     { value: "presence", label: "Public Presence", icon: Globe, pct: presencePct },
     { value: "credit", label: "Business Credit", icon: BarChart3, pct: bureauPct },
     { value: "docs", label: "Financial Docs", icon: FileText, pct: docsPct },
-    { value: "financials", label: "Financial Intel", icon: TrendingUp, pct: 0 },
     { value: "build", label: "BUILD Program", icon: Award, pct: buildPct },
     { value: "funding-profile", label: "Funding Profile", icon: Sparkles, pct: 0 },
   ];
@@ -146,14 +146,25 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
 
       {/* Tabbed Sections */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex flex-wrap h-auto gap-1">
+        <TabsList className="flex flex-wrap h-auto gap-1 w-full justify-start">
           {tabs.map(t => (
-            <TabsTrigger key={t.value} value={t.value} className="text-xs gap-1.5">
+            <TabsTrigger
+              key={t.value}
+              value={t.value}
+              className={`text-xs gap-1.5 ${t.value === "financials" ? "data-[state=inactive]:bg-primary/10 data-[state=inactive]:text-primary data-[state=inactive]:border data-[state=inactive]:border-primary/30" : ""}`}
+            >
               <t.icon className="w-3 h-3" />
               {t.label}
-              <Badge variant="outline" className={`text-[10px] px-1 py-0 ml-1 ${t.pct >= 80 ? "bg-emerald-500/20 text-emerald-600 border-emerald-500/30" : t.pct >= 40 ? "bg-amber-500/20 text-amber-600 border-amber-500/30" : ""}`}>
-                {t.pct}%
-              </Badge>
+              {t.value === "financials" && (
+                <Badge variant="outline" className="text-[9px] px-1 py-0 ml-1 bg-primary text-primary-foreground border-primary">
+                  Connect QB
+                </Badge>
+              )}
+              {t.value !== "financials" && (
+                <Badge variant="outline" className={`text-[10px] px-1 py-0 ml-1 ${t.pct >= 80 ? "bg-emerald-500/20 text-emerald-600 border-emerald-500/30" : t.pct >= 40 ? "bg-amber-500/20 text-amber-600 border-amber-500/30" : ""}`}>
+                  {t.pct}%
+                </Badge>
+              )}
             </TabsTrigger>
           ))}
         </TabsList>
