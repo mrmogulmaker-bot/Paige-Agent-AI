@@ -336,8 +336,8 @@ async function generateForUser(
       description:
         "Your file currently shows only revolving accounts (credit cards). FICO scoring rewards a healthy mix of revolving and installment credit. Adding one small installment account — a credit-builder loan, a personal loan, or an auto loan — can improve your score 15 to 25 points within 6 months.",
       impact_score: 20,
-      action_required: "Consider a credit-builder account designed specifically to add an installment tradeline starting around $15/month.",
-      action_url: "#",
+      action_required: "Credit Strong offers a credit-builder account designed specifically to add an installment tradeline to your file starting around $15/month.",
+      action_url: "https://creditstrong.referralrock.com/l/3ANTONIO94/",
       bureau: "all",
       confidence: "high",
       metadata: { vendor_suggestion: "credit_strong" },
