@@ -1216,6 +1216,45 @@ export type Database = {
         }
         Relationships: []
       }
+      client_goals: {
+        Row: {
+          created_at: string
+          goal_category: string
+          goal_description: string | null
+          id: string
+          progress_notes: string | null
+          status: string
+          target_amount: number | null
+          target_date: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          goal_category: string
+          goal_description?: string | null
+          id?: string
+          progress_notes?: string | null
+          status?: string
+          target_amount?: number | null
+          target_date?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          goal_category?: string
+          goal_description?: string | null
+          id?: string
+          progress_notes?: string | null
+          status?: string
+          target_amount?: number | null
+          target_date?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       client_memory: {
         Row: {
           client_id: string | null
@@ -4639,6 +4678,7 @@ export type Database = {
         Row: {
           address: string | null
           avatar_url: string | null
+          biggest_obstacle: string | null
           city: string | null
           created_at: string | null
           credit_goals: Json | null
@@ -4650,12 +4690,19 @@ export type Database = {
           estimated_fico_ex: number | null
           estimated_fico_tu: number | null
           ethnicity: string[] | null
+          experience_level: string | null
+          financing_preference: string | null
           full_name: string | null
           funding_goals: Json | null
           gender_identity: string | null
           ghl_contact_id: string | null
+          goal_amount: number | null
+          goal_timeline: string | null
           has_discrepancies: boolean | null
           id: string
+          intake_completed: boolean
+          intake_completed_at: string | null
+          intake_responses: Json | null
           is_permanent_resident: boolean | null
           is_service_disabled_veteran: boolean | null
           is_us_citizen: boolean | null
@@ -4667,6 +4714,8 @@ export type Database = {
           phone: string | null
           pme_phase: string | null
           postal_code: string | null
+          primary_goal: string | null
+          primary_goal_category: string | null
           referral_code: string | null
           score_model: string | null
           ssn_encrypted: string | null
@@ -4679,6 +4728,7 @@ export type Database = {
         Insert: {
           address?: string | null
           avatar_url?: string | null
+          biggest_obstacle?: string | null
           city?: string | null
           created_at?: string | null
           credit_goals?: Json | null
@@ -4690,12 +4740,19 @@ export type Database = {
           estimated_fico_ex?: number | null
           estimated_fico_tu?: number | null
           ethnicity?: string[] | null
+          experience_level?: string | null
+          financing_preference?: string | null
           full_name?: string | null
           funding_goals?: Json | null
           gender_identity?: string | null
           ghl_contact_id?: string | null
+          goal_amount?: number | null
+          goal_timeline?: string | null
           has_discrepancies?: boolean | null
           id?: string
+          intake_completed?: boolean
+          intake_completed_at?: string | null
+          intake_responses?: Json | null
           is_permanent_resident?: boolean | null
           is_service_disabled_veteran?: boolean | null
           is_us_citizen?: boolean | null
@@ -4707,6 +4764,8 @@ export type Database = {
           phone?: string | null
           pme_phase?: string | null
           postal_code?: string | null
+          primary_goal?: string | null
+          primary_goal_category?: string | null
           referral_code?: string | null
           score_model?: string | null
           ssn_encrypted?: string | null
@@ -4719,6 +4778,7 @@ export type Database = {
         Update: {
           address?: string | null
           avatar_url?: string | null
+          biggest_obstacle?: string | null
           city?: string | null
           created_at?: string | null
           credit_goals?: Json | null
@@ -4730,12 +4790,19 @@ export type Database = {
           estimated_fico_ex?: number | null
           estimated_fico_tu?: number | null
           ethnicity?: string[] | null
+          experience_level?: string | null
+          financing_preference?: string | null
           full_name?: string | null
           funding_goals?: Json | null
           gender_identity?: string | null
           ghl_contact_id?: string | null
+          goal_amount?: number | null
+          goal_timeline?: string | null
           has_discrepancies?: boolean | null
           id?: string
+          intake_completed?: boolean
+          intake_completed_at?: string | null
+          intake_responses?: Json | null
           is_permanent_resident?: boolean | null
           is_service_disabled_veteran?: boolean | null
           is_us_citizen?: boolean | null
@@ -4747,6 +4814,8 @@ export type Database = {
           phone?: string | null
           pme_phase?: string | null
           postal_code?: string | null
+          primary_goal?: string | null
+          primary_goal_category?: string | null
           referral_code?: string | null
           score_model?: string | null
           ssn_encrypted?: string | null
@@ -5685,6 +5754,7 @@ export type Database = {
         Returns: {
           address: string | null
           avatar_url: string | null
+          biggest_obstacle: string | null
           city: string | null
           created_at: string | null
           credit_goals: Json | null
@@ -5696,12 +5766,19 @@ export type Database = {
           estimated_fico_ex: number | null
           estimated_fico_tu: number | null
           ethnicity: string[] | null
+          experience_level: string | null
+          financing_preference: string | null
           full_name: string | null
           funding_goals: Json | null
           gender_identity: string | null
           ghl_contact_id: string | null
+          goal_amount: number | null
+          goal_timeline: string | null
           has_discrepancies: boolean | null
           id: string
+          intake_completed: boolean
+          intake_completed_at: string | null
+          intake_responses: Json | null
           is_permanent_resident: boolean | null
           is_service_disabled_veteran: boolean | null
           is_us_citizen: boolean | null
@@ -5713,6 +5790,8 @@ export type Database = {
           phone: string | null
           pme_phase: string | null
           postal_code: string | null
+          primary_goal: string | null
+          primary_goal_category: string | null
           referral_code: string | null
           score_model: string | null
           ssn_encrypted: string | null
