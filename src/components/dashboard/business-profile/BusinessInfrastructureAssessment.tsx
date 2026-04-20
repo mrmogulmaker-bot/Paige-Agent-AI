@@ -72,6 +72,7 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
     { value: "presence", label: "Public Presence", icon: Globe, pct: presencePct },
     { value: "credit", label: "Business Credit", icon: BarChart3, pct: bureauPct },
     { value: "docs", label: "Financial Docs", icon: FileText, pct: docsPct },
+    { value: "financials", label: "Financial Intel", icon: TrendingUp, pct: 0 },
     { value: "build", label: "BUILD Program", icon: Award, pct: buildPct },
     { value: "funding-profile", label: "Funding Profile", icon: Sparkles, pct: 0 },
   ];
@@ -204,6 +205,15 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
             </CardContent></Card>
           ) : (
             <FinancialDocsSection businessId={selectedBusinessId} userId={userId} onCompletionChange={setDocsPct} />
+          )}
+        </TabsContent>
+
+
+        <TabsContent value="financials" className="mt-4">
+          {!userId ? (
+            <Card><CardContent className="py-12 text-center text-muted-foreground">Loading...</CardContent></Card>
+          ) : (
+            <FinancialIntelligenceSection businessId={selectedBusinessId} userId={userId} />
           )}
         </TabsContent>
 

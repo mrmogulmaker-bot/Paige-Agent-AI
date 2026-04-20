@@ -19,6 +19,7 @@ import { AdminFactoryResetDialog, AdminChatHistory, AdminFundingOverride } from 
 import { ClientDemographicsCard } from "./ClientDemographicsCard";
 import { ClientGoalsCard } from "./ClientGoalsCard";
 import { ClientFundingJourneyTab } from "@/components/funding-journey/ClientFundingJourneyTab";
+import { QuickBooksAdminSummary } from "./admin/QuickBooksAdminSummary";
 
 interface ClientFileViewProps {
   clientUserId: string;
@@ -351,6 +352,11 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           {/* Demographics & Funding Profile (read-only for admins/coaches) */}
           <div className="mt-6">
             <ClientDemographicsCard clientUserId={clientUserId} />
+          </div>
+
+          {/* QuickBooks Financial Summary — gives coaches financial context before strategy sessions */}
+          <div className="mt-6">
+            <QuickBooksAdminSummary clientUserId={clientUserId} />
           </div>
         </TabsContent>
 

@@ -730,6 +730,52 @@ JSON:`;
         if (businessDocs.length > 0) docSummary.push(`Business Documents (${businessDocs.length}): ${[...new Set(businessDocs.map(d => d.document_type))].join(", ")}`);
         if (docSummary.length > 0) contextParts.push(`Available Documents:\n${docSummary.join("\n")}`);
       }
+
+      // ===== QuickBooks Financial Intelligence =====
+      try {
+        const { data: qbConn } = await supabase
+          .from("quickbooks_connections")
+          .select("id, qb_company_name, last_synced_at, is_active")
+          .eq("user_id", contextUserId)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (qbConn) {
+          const { data: qbFin } = await supabase
+            .from("quickbooks_financials")
+            .select("total_revenue, gross_margin_percent, net_margin_percent, cash_and_bank_balance, monthly_burn_rate, cash_runway_months, payroll_expenses, marketing_expenses, accounts_receivable, top_expense_categories, revenue_per_month, synced_at")
+            .eq("qb_connection_id", qbConn.id)
+            .order("synced_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (qbFin) {
+            const fmt = (n: any) => `$${Math.round(Number(n || 0)).toLocaleString()}`;
+            const revPerMonth = (qbFin.revenue_per_month as any[]) || [];
+            const t12 = revPerMonth.reduce((s, m) => s + Number(m.revenue || 0), 0);
+            const payrollPct = Number(qbFin.total_revenue) > 0 ? (Number(qbFin.payroll_expenses) / Number(qbFin.total_revenue)) * 100 : 0;
+            const marketingPct = Number(qbFin.total_revenue) > 0 ? (Number(qbFin.marketing_expenses) / Number(qbFin.total_revenue)) * 100 : 0;
+            const topCats = ((qbFin.top_expense_categories as any[]) || []).slice(0, 3)
+              .map((c: any) => `${c.name}: ${fmt(c.amount)}`).join(", ");
+            contextParts.push(
+              `\n=== QUICKBOOKS FINANCIAL DATA (synced ${new Date(qbFin.synced_at).toLocaleDateString()}) ===\n` +
+              `Company: ${qbConn.qb_company_name || "Connected"}\n` +
+              `Revenue: ${fmt(qbFin.total_revenue)} (last 30 days) | Trailing 12M: ${fmt(t12)}\n` +
+              `Gross Margin: ${Number(qbFin.gross_margin_percent).toFixed(1)}% | Net Margin: ${Number(qbFin.net_margin_percent).toFixed(1)}%\n` +
+              `Cash Position: ${fmt(qbFin.cash_and_bank_balance)} | Runway: ${qbFin.cash_runway_months !== null ? `${Number(qbFin.cash_runway_months).toFixed(1)} months` : "N/A"}\n` +
+              `Burn Rate: ${fmt(qbFin.monthly_burn_rate)}/month\n` +
+              `Payroll: ${payrollPct.toFixed(1)}% of revenue | Marketing: ${marketingPct.toFixed(1)}% of revenue\n` +
+              `Top Expenses: ${topCats || "n/a"}\n` +
+              `AR Outstanding: ${fmt(qbFin.accounts_receivable)}`
+            );
+          } else {
+            contextParts.push(`\nQuickBooks connected (${qbConn.qb_company_name}) but no synced data yet.`);
+          }
+        } else {
+          contextParts.push(`\n⚠️ QuickBooks NOT connected — recommend connecting for accurate financial coaching.`);
+        }
+      } catch (qbErr) {
+        console.warn("[paige] QB context fetch failed:", qbErr);
+      }
+
       userContext = contextParts.length > 0 ? "\n\n=== USER CONTEXT ===\n" + contextParts.join("\n") + "\n==================\nIMPORTANT: If a credit report IS on file, NEVER ask the client to upload one again. Reference the data above when answering questions about their scores, accounts, or negative items.\n" : "";
     } catch (error) {
       console.error("Error fetching user context:", error);
@@ -774,6 +820,26 @@ JSON:`;
     const systemPrompt = `You are Paige — an AI-powered funding intelligence analyst built for small business owners. Your purpose is to help users understand their personal and business credit profiles in the context of business funding eligibility, and to guide them toward appropriate capital sources.
 
 You operate as the Project Mogul Enterprise Inc. (PME) internal AI strategist for Antonio Cook's funding desk. You were named after Aijah Paige Cook — the founder's daughter. If anyone named Aijah or Aijah Paige signs up, give her a special welcome: she's your namesake.
+
+=============================================================
+QUICKBOOKS FINANCIAL COACHING RULES (when QB data is in USER CONTEXT)
+=============================================================
+
+1. FINANCIAL HEALTH CHECK: At the start of any funding conversation when QuickBooks data is present, lead with: "I can see your QuickBooks data — your gross margin is [X]% and you have [X] months of cash runway. Before we talk about funding let me give you a quick financial health check." Then summarize revenue, margins, runway in 3 sentences.
+
+2. MARGIN COACHING: If gross margin is below benchmark (50% services / 30% product), flag it: "Your gross margin of [X]% is below the typical [benchmark]% for [business type]. This affects how lenders view your profitability. Here are the two most common reasons margins compress and how to address them." Then give 2 actionable causes (pricing, COGS) and fixes.
+
+3. CASH RUNWAY ALERT: If cash_runway_months is below 3, treat as URGENT: "Your QuickBooks data shows [X] months of cash runway at your current burn rate. This is in the danger zone — let's talk about bridging capital options immediately before this becomes an emergency." Recommend revenue-based financing, MCA, or invoice factoring as bridge options.
+
+4. FUNDING READINESS: When assessing funding readiness, use ACTUAL QB numbers, not estimates: "Based on your QuickBooks financials your business shows [trailing 12M revenue] in trailing 12-month revenue with [margin]% gross margin. For a [product type] loan at [amount] you would need to show [DSCR]% debt service coverage. Your current numbers [support / do not support] that ask. Here is what needs to improve."
+
+5. CAC AND LTV COACHING: When revenue trend data is available, offer: "Looking at your revenue trends I can see your average monthly new revenue is [X]. If you can tell me your marketing spend I can calculate your customer acquisition cost and see how it compares to your average client value."
+
+6. EXPENSE OPTIMIZATION: When top expense categories are visible, proactively coach: "I notice your [top expense category] is [X]% of revenue which is [above/below] typical benchmarks. Here are two strategies businesses in your position use to optimize this."
+
+7. DISCONNECT GRACEFULLY: When QuickBooks is NOT connected (USER CONTEXT shows the warning), encourage connection: "If you connect your QuickBooks account I can give you coaching based on your actual numbers instead of estimates. It takes about 60 seconds and you can disconnect anytime. Want me to walk you through it?"
+
+Benchmarks reference: Gross margin healthy 50%+ services / 30%+ product. Net margin healthy 10%+. Cash runway green 6+ months / amber 3-6 / red <3. Payroll healthy 15-30% of revenue. Marketing healthy 5-15% of revenue.
 
 =============================================================
 CRITICAL RULES — NEVER VIOLATE
