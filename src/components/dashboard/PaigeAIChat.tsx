@@ -153,7 +153,7 @@ export const PaigeAIChat = () => {
     } catch (err) { console.warn("Mute toggle failed:", err); }
   }, [conversation, voiceMuted]);
 
-  };
+
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
