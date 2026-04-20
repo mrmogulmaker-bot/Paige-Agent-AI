@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, ArrowRight, ArrowLeft, Target, TrendingUp, DollarSign, CheckCircle2, Sparkles, FileText } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { DemographicQuestionsStep, EMPTY_ANSWERS, saveDemographicAnswers, type DemographicAnswers } from "@/components/onboarding/DemographicQuestionsStep";
 
 interface OnboardingFlowProps {
   open: boolean;
@@ -37,7 +38,12 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
   const [ein, setEin] = useState("");
   const [entityType, setEntityType] = useState("");
 
-  const totalSteps = hasBusinessCredit ? 5 : 4;
+  // Demographic answers (Unlock Programs step)
+  const [demographicAnswers, setDemographicAnswers] = useState<DemographicAnswers>(EMPTY_ANSWERS);
+
+  // Steps: 1=goals, 2=personal, 3=business?, 4=business info (if biz), 5=demographics
+  const totalSteps = hasBusinessCredit ? 6 : 5;
+  const demographicStep = hasBusinessCredit ? 5 : 4;
   const progress = (step / totalSteps) * 100;
 
   const toggleGoal = (goal: string) => {
@@ -132,6 +138,9 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
 
         if (businessError) throw businessError;
       }
+
+      // Save demographic answers (additive — only writes provided fields)
+      try { await saveDemographicAnswers(supabase, user.id, demographicAnswers); } catch {}
 
       toast({
         title: "Welcome to PaigeAgent.ai!",
@@ -462,6 +471,15 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
               </Select>
             </div>
           </div>
+        )}
+
+        {/* Step N: Demographics — Unlock Programs */}
+        {step === demographicStep && (
+          <DemographicQuestionsStep
+            answers={demographicAnswers}
+            onChange={setDemographicAnswers}
+            onSkipAll={() => { setDemographicAnswers(EMPTY_ANSWERS); handleNext(); }}
+          />
         )}
 
         {/* Navigation */}
