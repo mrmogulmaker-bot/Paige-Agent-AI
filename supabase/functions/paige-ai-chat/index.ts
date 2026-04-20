@@ -2045,16 +2045,26 @@ COST OF WAITING RULE: When a client is on the fence about timing, calculate rate
               series_name: r.series_name,
               value: Number(r.value),
               observation_date: r.observation_date,
+              fetched_at: r.fetched_at,
             }));
+            // Compute next FOMC meeting (8/year, ~every 6 weeks). 2026 scheduled meetings:
+            const fomc2026 = [
+              "2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17",
+              "2026-07-29", "2026-09-16", "2026-11-04", "2026-12-16",
+            ];
+            const today = new Date().toISOString().slice(0, 10);
+            const nextFomc = fomc2026.find((d) => d > today) || "2027-01-28 (estimated)";
             toolResults.push({
               tool_call_id: tc.id,
               role: "tool",
               content: JSON.stringify({
                 rates: trimmed,
                 count: trimmed.length,
+                next_fomc_meeting: nextFomc,
+                data_freshness_note: "observation_date = the date the rate was last set/measured by the Fed. fetched_at = when we pulled from FRED. PRIME and FEDFUNDS only change when the Fed adjusts at FOMC meetings (~8/year), so observation_date may be weeks/months old and that is correct. Treasury yields (DGS10/DGS30) and mortgage rates update weekly. Always explain to the client: rate was set on [observation_date], has not changed since, next FOMC meeting is [next_fomc_meeting].",
                 note: trimmed.length === 0
                   ? "No rate data available. FRED_API_KEY may be missing — fall back to disclosing that live rates are unavailable rather than quoting static numbers."
-                  : "Use these live rates with the formulas in your LIVE RATE INTELLIGENCE rules. Always cite the observation_date when quoting rates."
+                  : "Use these live rates with the formulas in your LIVE RATE INTELLIGENCE rules. ALWAYS cite both observation_date AND explain that PRIME/FEDFUNDS only change at FOMC meetings."
               }),
             });
           } catch (err) {
