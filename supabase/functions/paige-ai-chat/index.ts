@@ -730,6 +730,52 @@ JSON:`;
         if (businessDocs.length > 0) docSummary.push(`Business Documents (${businessDocs.length}): ${[...new Set(businessDocs.map(d => d.document_type))].join(", ")}`);
         if (docSummary.length > 0) contextParts.push(`Available Documents:\n${docSummary.join("\n")}`);
       }
+
+      // ===== QuickBooks Financial Intelligence =====
+      try {
+        const { data: qbConn } = await supabase
+          .from("quickbooks_connections")
+          .select("id, qb_company_name, last_synced_at, is_active")
+          .eq("user_id", contextUserId)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (qbConn) {
+          const { data: qbFin } = await supabase
+            .from("quickbooks_financials")
+            .select("total_revenue, gross_margin_percent, net_margin_percent, cash_and_bank_balance, monthly_burn_rate, cash_runway_months, payroll_expenses, marketing_expenses, accounts_receivable, top_expense_categories, revenue_per_month, synced_at")
+            .eq("qb_connection_id", qbConn.id)
+            .order("synced_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (qbFin) {
+            const fmt = (n: any) => `$${Math.round(Number(n || 0)).toLocaleString()}`;
+            const revPerMonth = (qbFin.revenue_per_month as any[]) || [];
+            const t12 = revPerMonth.reduce((s, m) => s + Number(m.revenue || 0), 0);
+            const payrollPct = Number(qbFin.total_revenue) > 0 ? (Number(qbFin.payroll_expenses) / Number(qbFin.total_revenue)) * 100 : 0;
+            const marketingPct = Number(qbFin.total_revenue) > 0 ? (Number(qbFin.marketing_expenses) / Number(qbFin.total_revenue)) * 100 : 0;
+            const topCats = ((qbFin.top_expense_categories as any[]) || []).slice(0, 3)
+              .map((c: any) => `${c.name}: ${fmt(c.amount)}`).join(", ");
+            contextParts.push(
+              `\n=== QUICKBOOKS FINANCIAL DATA (synced ${new Date(qbFin.synced_at).toLocaleDateString()}) ===\n` +
+              `Company: ${qbConn.qb_company_name || "Connected"}\n` +
+              `Revenue: ${fmt(qbFin.total_revenue)} (last 30 days) | Trailing 12M: ${fmt(t12)}\n` +
+              `Gross Margin: ${Number(qbFin.gross_margin_percent).toFixed(1)}% | Net Margin: ${Number(qbFin.net_margin_percent).toFixed(1)}%\n` +
+              `Cash Position: ${fmt(qbFin.cash_and_bank_balance)} | Runway: ${qbFin.cash_runway_months !== null ? `${Number(qbFin.cash_runway_months).toFixed(1)} months` : "N/A"}\n` +
+              `Burn Rate: ${fmt(qbFin.monthly_burn_rate)}/month\n` +
+              `Payroll: ${payrollPct.toFixed(1)}% of revenue | Marketing: ${marketingPct.toFixed(1)}% of revenue\n` +
+              `Top Expenses: ${topCats || "n/a"}\n` +
+              `AR Outstanding: ${fmt(qbFin.accounts_receivable)}`
+            );
+          } else {
+            contextParts.push(`\nQuickBooks connected (${qbConn.qb_company_name}) but no synced data yet.`);
+          }
+        } else {
+          contextParts.push(`\n⚠️ QuickBooks NOT connected — recommend connecting for accurate financial coaching.`);
+        }
+      } catch (qbErr) {
+        console.warn("[paige] QB context fetch failed:", qbErr);
+      }
+
       userContext = contextParts.length > 0 ? "\n\n=== USER CONTEXT ===\n" + contextParts.join("\n") + "\n==================\nIMPORTANT: If a credit report IS on file, NEVER ask the client to upload one again. Reference the data above when answering questions about their scores, accounts, or negative items.\n" : "";
     } catch (error) {
       console.error("Error fetching user context:", error);
