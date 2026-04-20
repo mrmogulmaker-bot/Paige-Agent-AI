@@ -568,6 +568,59 @@ export type Database = {
         }
         Relationships: []
       }
+      business_certifications: {
+        Row: {
+          applied_at: string | null
+          business_id: string
+          certification_number: string | null
+          certification_type: string
+          certified_at: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          notes: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          applied_at?: string | null
+          business_id: string
+          certification_number?: string | null
+          certification_type: string
+          certified_at?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          applied_at?: string | null
+          business_id?: string
+          certification_number?: string | null
+          certification_type?: string
+          certified_at?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          notes?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_certifications_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_credit_history: {
         Row: {
           bureau: string
@@ -929,8 +982,16 @@ export type Database = {
           fico_sbss_last_verified: string | null
           formation_date: string | null
           formation_status: string | null
+          has_8a_certification: boolean | null
           has_bank_account: boolean | null
+          has_vetcert_certification: boolean | null
+          has_wosb_certification: boolean | null
           id: string
+          is_hubzone_located: boolean | null
+          is_minority_owned: boolean | null
+          is_service_disabled_veteran_owned: boolean | null
+          is_veteran_owned: boolean | null
+          is_women_owned: boolean | null
           legal_name: string
           naics: string | null
           organizational_level: number | null
@@ -981,8 +1042,16 @@ export type Database = {
           fico_sbss_last_verified?: string | null
           formation_date?: string | null
           formation_status?: string | null
+          has_8a_certification?: boolean | null
           has_bank_account?: boolean | null
+          has_vetcert_certification?: boolean | null
+          has_wosb_certification?: boolean | null
           id?: string
+          is_hubzone_located?: boolean | null
+          is_minority_owned?: boolean | null
+          is_service_disabled_veteran_owned?: boolean | null
+          is_veteran_owned?: boolean | null
+          is_women_owned?: boolean | null
           legal_name: string
           naics?: string | null
           organizational_level?: number | null
@@ -1033,8 +1102,16 @@ export type Database = {
           fico_sbss_last_verified?: string | null
           formation_date?: string | null
           formation_status?: string | null
+          has_8a_certification?: boolean | null
           has_bank_account?: boolean | null
+          has_vetcert_certification?: boolean | null
+          has_wosb_certification?: boolean | null
           id?: string
+          is_hubzone_located?: boolean | null
+          is_minority_owned?: boolean | null
+          is_service_disabled_veteran_owned?: boolean | null
+          is_veteran_owned?: boolean | null
+          is_women_owned?: boolean | null
           legal_name?: string
           naics?: string | null
           organizational_level?: number | null
@@ -4572,11 +4649,17 @@ export type Database = {
           estimated_fico_eq: number | null
           estimated_fico_ex: number | null
           estimated_fico_tu: number | null
+          ethnicity: string[] | null
           full_name: string | null
           funding_goals: Json | null
+          gender_identity: string | null
           ghl_contact_id: string | null
           has_discrepancies: boolean | null
           id: string
+          is_permanent_resident: boolean | null
+          is_service_disabled_veteran: boolean | null
+          is_us_citizen: boolean | null
+          is_veteran: boolean | null
           last_report_analyzed_at: string | null
           last_report_source: string | null
           onboarding_completed: boolean | null
@@ -4606,11 +4689,17 @@ export type Database = {
           estimated_fico_eq?: number | null
           estimated_fico_ex?: number | null
           estimated_fico_tu?: number | null
+          ethnicity?: string[] | null
           full_name?: string | null
           funding_goals?: Json | null
+          gender_identity?: string | null
           ghl_contact_id?: string | null
           has_discrepancies?: boolean | null
           id?: string
+          is_permanent_resident?: boolean | null
+          is_service_disabled_veteran?: boolean | null
+          is_us_citizen?: boolean | null
+          is_veteran?: boolean | null
           last_report_analyzed_at?: string | null
           last_report_source?: string | null
           onboarding_completed?: boolean | null
@@ -4640,11 +4729,17 @@ export type Database = {
           estimated_fico_eq?: number | null
           estimated_fico_ex?: number | null
           estimated_fico_tu?: number | null
+          ethnicity?: string[] | null
           full_name?: string | null
           funding_goals?: Json | null
+          gender_identity?: string | null
           ghl_contact_id?: string | null
           has_discrepancies?: boolean | null
           id?: string
+          is_permanent_resident?: boolean | null
+          is_service_disabled_veteran?: boolean | null
+          is_us_citizen?: boolean | null
+          is_veteran?: boolean | null
           last_report_analyzed_at?: string | null
           last_report_source?: string | null
           onboarding_completed?: boolean | null
@@ -5600,11 +5695,17 @@ export type Database = {
           estimated_fico_eq: number | null
           estimated_fico_ex: number | null
           estimated_fico_tu: number | null
+          ethnicity: string[] | null
           full_name: string | null
           funding_goals: Json | null
+          gender_identity: string | null
           ghl_contact_id: string | null
           has_discrepancies: boolean | null
           id: string
+          is_permanent_resident: boolean | null
+          is_service_disabled_veteran: boolean | null
+          is_us_citizen: boolean | null
+          is_veteran: boolean | null
           last_report_analyzed_at: string | null
           last_report_source: string | null
           onboarding_completed: boolean | null
