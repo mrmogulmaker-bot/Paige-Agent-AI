@@ -81,6 +81,7 @@ export function UpdateOutcomeDialog({ open, onOpenChange, application }: Props) 
         payload.denial_reason_detail = denialDetail.trim() || null;
       }
 
+      const previousStatus = application.status;
       const { error } = await supabase
         .from("funding_journey_applications")
         .update(payload)
@@ -104,6 +105,31 @@ export function UpdateOutcomeDialog({ open, onOpenChange, application }: Props) 
             lender_name: application.lender_name,
           });
         }
+      }
+
+      // RAG ingestion: only on transition INTO funded/denied (not edits within same state)
+      const becameFunded = status === "funded" && previousStatus !== "funded";
+      const becameDenied = status === "denied" && previousStatus !== "denied";
+      if (becameFunded || becameDenied) {
+        // Fire-and-forget — never block the UX on knowledge-base ingestion
+        supabase.functions
+          .invoke("ingest-rag-outcome", {
+            body: {
+              trigger: becameFunded ? "funding_funded" : "funding_denied",
+              user_id: application.user_id,
+              application_id: application.id,
+            },
+          })
+          .then(({ error: ingestErr }) => {
+            if (ingestErr) {
+              console.warn("ingest-rag-outcome failed:", ingestErr);
+              return;
+            }
+            toast.message("Outcome recorded — Paige's knowledge base updated", {
+              duration: 3500,
+            });
+          })
+          .catch((e) => console.warn("ingest-rag-outcome threw:", e));
       }
 
       toast.success("Outcome updated");
