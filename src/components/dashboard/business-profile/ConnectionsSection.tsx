@@ -19,6 +19,10 @@ import {
   Receipt,
   Wallet,
   Store,
+  BarChart3,
+  ShieldCheck,
+  LineChart,
+  Database,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
