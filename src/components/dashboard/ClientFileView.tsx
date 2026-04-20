@@ -14,6 +14,7 @@ import { AdminAccountManagement } from "./AdminAccountManagement";
 import { DisputesManager } from "./DisputesManager";
 import { AdminFactoryResetDialog, AdminChatHistory, AdminFundingOverride } from "./admin/AdminClientTools";
 import { ClientDemographicsCard } from "./ClientDemographicsCard";
+import { ClientGoalsCard } from "./ClientGoalsCard";
 
 interface ClientFileViewProps {
   clientUserId: string;
@@ -297,6 +298,11 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
                 </CardContent>
               </Card>
             </div>
+          </div>
+
+          {/* Goals & Discovery (coaches/admins can update status + notes) */}
+          <div className="mt-6">
+            <ClientGoalsCard clientUserId={clientUserId} canEdit />
           </div>
 
           {/* Demographics & Funding Profile (read-only for admins/coaches) */}

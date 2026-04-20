@@ -48,6 +48,16 @@ const ALLOWED_FIELDS: Record<string, { table: string; column: string; type: "str
   "profile.address": { table: "profiles", column: "address", type: "string" },
   "profile.postal_code": { table: "profiles", column: "postal_code", type: "string" },
   "profile.phone": { table: "profiles", column: "phone", type: "string" },
+  // Intake / goal discovery fields (written by Paige after the intake conversation)
+  "intake.primary_goal": { table: "profiles", column: "primary_goal", type: "string" },
+  "intake.primary_goal_category": { table: "profiles", column: "primary_goal_category", type: "string" },
+  "intake.goal_timeline": { table: "profiles", column: "goal_timeline", type: "string" },
+  "intake.goal_amount": { table: "profiles", column: "goal_amount", type: "number" },
+  "intake.experience_level": { table: "profiles", column: "experience_level", type: "string" },
+  "intake.financing_preference": { table: "profiles", column: "financing_preference", type: "string" },
+  "intake.biggest_obstacle": { table: "profiles", column: "biggest_obstacle", type: "string" },
+  "intake.intake_responses": { table: "profiles", column: "intake_responses", type: "string" },
+  "intake.complete": { table: "_intake_op", column: "complete", type: "boolean" },
   // Sensitive PII fields — routed through update_profile_ssn with server-side encryption key
   "profile.ssn": { table: "_ssn_op", column: "ssn", type: "string" },
   "profile.date_of_birth": { table: "_ssn_op", column: "date_of_birth", type: "date" },
