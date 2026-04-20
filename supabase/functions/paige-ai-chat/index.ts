@@ -862,7 +862,7 @@ JSON:`;
           const filter: Record<string, unknown> = {};
           if (ragProfile?.state) filter.state = ragProfile.state;
 
-          const { data: ragRows, error: ragErr } = await supabase.rpc("match_rag_documents", {
+          const { data: ragRows, error: ragErr } = await supabaseClient.rpc("match_rag_documents", {
             _query_embedding: queryEmbedding as any,
             _match_threshold: 0.75,
             _match_count: 3,
