@@ -38,42 +38,9 @@ function topicFromMessages(msgs: ChatMsg[]): string | undefined {
   return firstSentence.slice(0, 77).trimEnd() + "…";
 }
 
-function pageGreeting(page: string, name: string, predictionsCount: number, lastTopic: string | undefined, isReturning: boolean, primaryGoal: string | null): string {
-  // Returning client with a recent chat topic — strongest continuity signal
-  if (lastTopic) {
-    return `Welcome back ${name}! I'm Paige. Last we talked it was about "${lastTopic}". Want to pick up there or start something new?`;
-  }
-
-  // Page-specific openers
-  switch (page) {
-    case "Credit Intelligence":
-      return `Hey ${name}! I'm Paige. I can see you're looking at your credit intelligence — want me to walk you through what I'm seeing in your file?`;
-    case "Funding Intelligence":
-      return `Hey ${name}! I'm Paige. I can see you're browsing funding options — want to talk through which ones make the most sense for your goal?`;
-    case "Funding Journey":
-      return `Hey ${name}! I'm Paige. I can see your funding journey — want to talk through your next move?`;
-    case "Business Profile":
-      return `Hey ${name}! I'm Paige. I can see your business profile — want to work on strengthening your foundation for funding?`;
-    case "Disputes":
-      return `Hey ${name}! I'm Paige. I can see your dispute file — want to walk through which bureau to attack first?`;
-    case "Bank Accounts":
-      return `Hey ${name}! I'm Paige. I can see your connected accounts — want to look at cashflow signals or funding readiness?`;
-    case "Learning Vault":
-      return `Hey ${name}! I'm Paige. I can recommend a lesson based on what's in your file — want me to point you somewhere?`;
-    case "Dashboard":
-    default:
-      if (predictionsCount > 0) {
-        const noun = predictionsCount === 1 ? "insight" : "insights";
-        return `Hey ${name}! I'm Paige. I've got ${predictionsCount} ${noun} about your credit file I want to walk you through — got a minute?`;
-      }
-      if (isReturning) {
-        if (primaryGoal) {
-          return `Welcome back ${name}! I'm Paige. Last time we were focused on ${primaryGoal}. Want to keep going or shift gears?`;
-        }
-        return `Welcome back ${name}! I'm Paige — what's on the agenda today?`;
-      }
-      return `Hey ${name}! I'm Paige, your personal credit and funding advisor. I can see your profile — I'm ready to help. What would you like to work on today?`;
-  }
+function pageGreeting(_page: string, name: string, _predictionsCount: number, _lastTopic: string | undefined, _isReturning: boolean, _primaryGoal: string | null): string {
+  // Keep the opener short so Paige doesn't burn the speaking window before the user replies.
+  return `Hi ${name}!`;
 }
 
 serve(async (req) => {
