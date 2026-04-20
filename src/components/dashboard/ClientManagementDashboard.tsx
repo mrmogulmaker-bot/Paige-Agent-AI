@@ -523,6 +523,36 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
               <TabsTrigger value="team">Team / Admin ({teamUsers.length})</TabsTrigger>
             </TabsList>
 
+            {activeView === "auth" && (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="text-xs text-muted-foreground mr-1">Filter:</span>
+                {[
+                  { key: "minority" as const, label: "Minority-Owned" },
+                  { key: "women" as const, label: "Women-Owned" },
+                  { key: "veteran" as const, label: "Veteran-Owned" },
+                ].map((f) => {
+                  const active = demoFilter[f.key];
+                  return (
+                    <Button
+                      key={f.key}
+                      size="sm"
+                      variant={active ? "default" : "outline"}
+                      className={`h-7 text-xs ${active ? "bg-gradient-gold border-0" : ""}`}
+                      onClick={() => setDemoFilter({ ...demoFilter, [f.key]: !active })}
+                    >
+                      {f.label}
+                    </Button>
+                  );
+                })}
+                {(demoFilter.minority || demoFilter.women || demoFilter.veteran) && (
+                  <Button size="sm" variant="ghost" className="h-7 text-xs"
+                    onClick={() => setDemoFilter({ minority: false, women: false, veteran: false })}>
+                    Clear
+                  </Button>
+                )}
+              </div>
+            )}
+
             {/* Internal Clients Tab */}
             <TabsContent value="internal">
               {filteredInternal.length === 0 ? (
