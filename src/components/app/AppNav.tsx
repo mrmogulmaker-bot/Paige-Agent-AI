@@ -21,7 +21,7 @@ import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 const navItems = [
   { label: "Dashboard", href: "/app", icon: BarChart3 },
   { label: "Credit", href: "/app/credit", icon: CreditCard },
-  { label: "Business", href: "/app/business", icon: Building2 },
+  { label: "Business Profile", href: "/app/business-profile", icon: Building2 },
   { label: "Funding", href: "/app/funding", icon: DollarSign },
   { label: "Journey", href: "/app/funding-journey", icon: Briefcase },
   { label: "Learn", href: "/app/learn", icon: BookOpen },

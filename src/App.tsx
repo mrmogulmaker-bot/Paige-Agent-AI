@@ -110,6 +110,7 @@ const App = () => (
               <Route path="learn" element={<PageSuspense><LearningVault /></PageSuspense>} />
               <Route path="learn/:courseId" element={<PageSuspense><CourseViewer /></PageSuspense>} />
               <Route path="business" element={<PageSuspense><BusinessInfrastructureAssessment /></PageSuspense>} />
+              <Route path="business-profile" element={<PageSuspense><BusinessInfrastructureAssessment /></PageSuspense>} />
               <Route path="settings" element={<PageSuspense><ProfileSettings /></PageSuspense>} />
               <Route path="affiliate" element={<PageSuspense><AffiliateTracking /></PageSuspense>} />
             </Route>
