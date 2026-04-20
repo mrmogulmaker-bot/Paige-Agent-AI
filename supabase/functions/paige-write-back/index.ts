@@ -40,10 +40,14 @@ const ALLOWED_FIELDS: Record<string, { table: string; column: string; type: "str
   "public_presence.google_business_claimed": { table: "business_public_presence", column: "google_business_claimed", type: "boolean" },
   // Personal info audit fields (credit_report_personal_info table)
   "personal_info.status": { table: "credit_report_personal_info", column: "status", type: "string" },
+  "foundation.business_email": { table: "businesses", column: "business_email", type: "string" },
   // Profile fields
   "profile.full_name": { table: "profiles", column: "full_name", type: "string" },
   "profile.city": { table: "profiles", column: "city", type: "string" },
   "profile.state": { table: "profiles", column: "state", type: "string" },
+  "profile.address": { table: "profiles", column: "address", type: "string" },
+  "profile.postal_code": { table: "profiles", column: "postal_code", type: "string" },
+  "profile.phone": { table: "profiles", column: "phone", type: "string" },
   // Sensitive PII fields — routed through update_profile_ssn with server-side encryption key
   "profile.ssn": { table: "_ssn_op", column: "ssn", type: "string" },
   "profile.date_of_birth": { table: "_ssn_op", column: "date_of_birth", type: "date" },
@@ -64,8 +68,13 @@ const writeBackSchema = z.object({
     field_value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
     record_id: z.string().uuid().optional(),
     merge_into_id: z.string().uuid().optional(),
-  })).min(1).max(10),
+  })).min(1).max(20),
   target_user_id: z.string().uuid().optional(),
+  // Optional provenance metadata recorded in audit_logs.
+  // Set by the chat UI when writes originate from a document drop or
+  // a conversational data-capture confirmation.
+  source: z.enum(["document", "conversation", "manual", "paige_chat"]).optional(),
+  document_type: z.string().max(120).optional(),
 });
 
 serve(async (req) => {
