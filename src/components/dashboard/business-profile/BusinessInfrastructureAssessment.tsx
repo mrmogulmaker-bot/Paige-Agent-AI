@@ -208,6 +208,15 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
           )}
         </TabsContent>
 
+
+        <TabsContent value="financials" className="mt-4">
+          {!userId ? (
+            <Card><CardContent className="py-12 text-center text-muted-foreground">Loading...</CardContent></Card>
+          ) : (
+            <FinancialIntelligenceSection businessId={selectedBusinessId} userId={userId} />
+          )}
+        </TabsContent>
+
         <TabsContent value="funding-profile" className="mt-4">
           {businesses.length === 0 || !selectedBusinessId ? (
             <Card><CardContent className="py-12 text-center">
