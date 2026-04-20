@@ -16,6 +16,7 @@ import { DataFreshnessIndicator } from "@/components/credit/DataFreshnessIndicat
 import { CreditAlertBanner } from "@/components/credit/CreditAlertBanner";
 import { CreditAlertsTab } from "@/components/credit/CreditAlertsTab";
 import { CreditIntelWalkthrough } from "@/components/credit/CreditIntelWalkthrough";
+import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { toast } from "sonner";
 
 export default function CreditIntelligence() {
@@ -24,6 +25,10 @@ export default function CreditIntelligence() {
   const queryClient = useQueryClient();
   const [accountManagerOpen, setAccountManagerOpen] = useState(false);
   const [selectedBureau, setSelectedBureau] = useState<"experian" | "transunion" | "equifax" | "all">("all");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  useMemo(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => setCurrentUserId(session?.user?.id ?? null));
+  }, []);
 
   // Check if client has any accounts
   const { data: hasAccounts } = useQuery({
@@ -315,6 +320,9 @@ export default function CreditIntelligence() {
       ) : !hasData && !lastReport ? (
         null
       ) : null}
+
+      {/* Paige's Predictions — full panel */}
+      <PredictionsPanel userId={currentUserId} variant="full" onNavigate={(s) => navigate(`/app?section=${s}`)} />
 
       {/* Credit File Health Assessment */}
       <div id="credit-health-assessment">

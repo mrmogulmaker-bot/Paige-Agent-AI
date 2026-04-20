@@ -2078,6 +2078,77 @@ export type Database = {
           },
         ]
       }
+      credit_predictions: {
+        Row: {
+          account_id: string | null
+          action_required: string | null
+          action_url: string | null
+          bureau: string | null
+          confidence: Database["public"]["Enums"]["credit_prediction_confidence"]
+          created_at: string
+          deadline_date: string | null
+          description: string
+          expires_at: string | null
+          id: string
+          impact_score: number | null
+          is_acted_on: boolean
+          is_dismissed: boolean
+          metadata: Json | null
+          prediction_type: Database["public"]["Enums"]["credit_prediction_type"]
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          action_required?: string | null
+          action_url?: string | null
+          bureau?: string | null
+          confidence?: Database["public"]["Enums"]["credit_prediction_confidence"]
+          created_at?: string
+          deadline_date?: string | null
+          description: string
+          expires_at?: string | null
+          id?: string
+          impact_score?: number | null
+          is_acted_on?: boolean
+          is_dismissed?: boolean
+          metadata?: Json | null
+          prediction_type: Database["public"]["Enums"]["credit_prediction_type"]
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string | null
+          action_required?: string | null
+          action_url?: string | null
+          bureau?: string | null
+          confidence?: Database["public"]["Enums"]["credit_prediction_confidence"]
+          created_at?: string
+          deadline_date?: string | null
+          description?: string
+          expires_at?: string | null
+          id?: string
+          impact_score?: number | null
+          is_acted_on?: boolean
+          is_dismissed?: boolean
+          metadata?: Json | null
+          prediction_type?: Database["public"]["Enums"]["credit_prediction_type"]
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_predictions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "credit_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       credit_report_personal_info: {
         Row: {
           bureau_source: string
@@ -5648,6 +5719,18 @@ export type Database = {
         | "data_sharing"
         | "offer_display"
         | "adverse_action"
+      credit_prediction_confidence: "high" | "medium" | "low"
+      credit_prediction_type:
+        | "score_drop_warning"
+        | "score_increase_opportunity"
+        | "reporting_date_optimization"
+        | "account_age_risk"
+        | "utilization_spike_warning"
+        | "inquiry_strategy"
+        | "new_account_timing"
+        | "payment_history_risk"
+        | "credit_mix_opportunity"
+        | "funding_window_alert"
       disclosure_type:
         | "credit_report_access"
         | "croa_rights_notice"
@@ -5833,6 +5916,19 @@ export const Constants = {
         "data_sharing",
         "offer_display",
         "adverse_action",
+      ],
+      credit_prediction_confidence: ["high", "medium", "low"],
+      credit_prediction_type: [
+        "score_drop_warning",
+        "score_increase_opportunity",
+        "reporting_date_optimization",
+        "account_age_risk",
+        "utilization_spike_warning",
+        "inquiry_strategy",
+        "new_account_timing",
+        "payment_history_risk",
+        "credit_mix_opportunity",
+        "funding_window_alert",
       ],
       disclosure_type: [
         "credit_report_access",
