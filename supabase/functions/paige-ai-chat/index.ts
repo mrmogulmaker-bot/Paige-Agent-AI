@@ -389,60 +389,67 @@ JSON:`;
 
     let documentReadCheck: any = null;
     let paigeChatUploadId: string | null = null;
+    let extractionProposal: any = null;
+    let isCreditReportPdf = false;
     if (attachedDocument) {
-      documentReadCheck = await runDocumentReadCheck(attachedDocument.base64, lovableApiKey);
-      if (!documentReadCheck?.can_read_document || documentReadCheck?.document_kind !== 'credit_report' || (documentReadCheck?.first_five_account_names || []).length < 1) {
-        const message = documentReadCheck?.parse_error || 'Unable to parse document content — please ensure the uploaded file is a readable PDF credit report';
-        return new Response(
-          JSON.stringify({ error: message }),
-          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      const docKind = attachedDocument.kind || (attachedDocument.mimeType === "application/pdf" ? "pdf" : attachedDocument.mimeType?.startsWith("image/") ? "image" : "docx");
+
+      // Only run the credit-report read-check on PDFs — images/docx can't be credit reports here.
+      if (docKind === "pdf" && attachedDocument.base64) {
+        try {
+          documentReadCheck = await runDocumentReadCheck(attachedDocument.base64, lovableApiKey);
+          isCreditReportPdf = !!(documentReadCheck?.can_read_document
+            && documentReadCheck?.document_kind === "credit_report"
+            && (documentReadCheck?.first_five_account_names || []).length >= 1);
+        } catch (e) {
+          console.warn("[Paige] read-check failed, treating as general document:", e);
+        }
       }
 
-      // Store the uploaded PDF to standard storage so Refresh can find it later
-      try {
-        const targetUserId = payloadClientId || user.id;
-        const timestamp = Date.now();
-        const safeName = (attachedDocument.fileName || "report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
-        const storagePath = `${targetUserId}/${timestamp}_paige_${safeName}`;
+      // Credit-report path: keep existing storage + sync behaviour.
+      if (isCreditReportPdf) {
+        try {
+          const targetUserId = payloadClientId || user.id;
+          const timestamp = Date.now();
+          const safeName = (attachedDocument.fileName || "report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
+          const storagePath = `${targetUserId}/${timestamp}_paige_${safeName}`;
+          const binaryString = atob(attachedDocument.base64!);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
 
-        // Decode base64 to binary
-        const binaryString = atob(attachedDocument.base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
+          const { error: storageErr } = await supabase.storage
+            .from("credit-report-uploads")
+            .upload(storagePath, bytes.buffer, { contentType: "application/pdf" });
 
-        const { error: storageErr } = await supabase.storage
-          .from("credit-report-uploads")
-          .upload(storagePath, bytes.buffer, { contentType: "application/pdf" });
-
-        if (storageErr) {
-          console.error("[Paige] Failed to store PDF to storage:", storageErr);
-        } else {
-          // Create credit_report_uploads record
-          const { data: uploadRec, error: insertErr } = await supabase
-            .from("credit_report_uploads")
-            .insert({
-              user_id: targetUserId,
-              uploaded_by: user.id,
-              file_name: attachedDocument.fileName || "credit-report.pdf",
-              file_path: storagePath,
-              file_size: bytes.length,
-              analysis_status: "processing",
-            })
-            .select("id")
-            .single();
-
-          if (insertErr) {
-            console.error("[Paige] Failed to create upload record:", insertErr);
-          } else {
-            paigeChatUploadId = uploadRec.id;
-            console.log("[Paige] Stored PDF to credit-report-uploads, record id:", paigeChatUploadId);
+          if (!storageErr) {
+            const { data: uploadRec, error: insertErr } = await supabase
+              .from("credit_report_uploads")
+              .insert({
+                user_id: targetUserId,
+                uploaded_by: user.id,
+                file_name: attachedDocument.fileName || "credit-report.pdf",
+                file_path: storagePath,
+                file_size: bytes.length,
+                analysis_status: "processing",
+              })
+              .select("id")
+              .single();
+            if (!insertErr) paigeChatUploadId = uploadRec.id;
           }
+        } catch (storeErr) {
+          console.error("[Paige] Error storing PDF:", storeErr);
         }
-      } catch (storeErr) {
-        console.error("[Paige] Error storing PDF:", storeErr);
+      } else {
+        // General document path — run a lightweight structured-field extraction
+        // and emit an extraction_proposal SSE event after the chat stream.
+        try {
+          extractionProposal = await runGeneralDocumentExtraction(
+            attachedDocument,
+            lovableApiKey,
+          );
+        } catch (e) {
+          console.warn("[Paige] general extraction failed:", e);
+        }
       }
     }
 
