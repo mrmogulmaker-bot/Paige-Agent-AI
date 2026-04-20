@@ -12,6 +12,7 @@ import { formatDistanceToNow } from "date-fns";
 interface Props {
   businessId?: string;
   userId: string;
+  onGoToConnections?: () => void;
 }
 
 interface QBConnection {
@@ -76,11 +77,10 @@ function marginColor(pct: number, type: "gross" | "net" | "payroll" | "marketing
   return "text-red-500";
 }
 
-export function FinancialIntelligenceSection({ businessId, userId }: Props) {
+export function FinancialIntelligenceSection({ businessId, userId, onGoToConnections }: Props) {
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState<QBConnection | null>(null);
   const [financials, setFinancials] = useState<QBFinancials | null>(null);
-  const [consentOpen, setConsentOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   const fetchAll = async () => {
@@ -156,30 +156,33 @@ export function FinancialIntelligenceSection({ businessId, userId }: Props) {
     );
   }
 
-  // ====== Not connected ======
+  // ====== Not connected — empty state directing to Connections tab ======
   if (!connection) {
     return (
-      <>
-        <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plug className="w-5 h-5 text-primary" /> Connect QuickBooks
-            </CardTitle>
-            <CardDescription>
-              Give Paige real-time access to your financials so she can coach you with actual numbers — margins, cash runway, burn rate, and expense intelligence.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => setConsentOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90">
-              Connect QuickBooks
-            </Button>
-            <p className="text-xs text-muted-foreground mt-3">
-              Read-only access · OAuth secured · Disconnect anytime
+      <Card className="border-dashed border-primary/30">
+        <CardContent className="py-16 text-center space-y-5">
+          <div className="w-14 h-14 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+            <Plug className="w-6 h-6 text-primary" />
+          </div>
+          <div className="space-y-2 max-w-md mx-auto">
+            <h3 className="text-lg font-semibold text-foreground">
+              Connect QuickBooks to unlock your Financial Intelligence dashboard
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Once connected, Paige coaches you with real revenue, margins, cash runway, burn rate, and expense intelligence — not estimates.
             </p>
-          </CardContent>
-        </Card>
-        <QuickBooksConsentDialog open={consentOpen} onOpenChange={setConsentOpen} businessId={businessId} />
-      </>
+          </div>
+          <Button
+            onClick={() => onGoToConnections?.()}
+            className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
+          >
+            Go to Connections
+          </Button>
+          <p className="text-[11px] text-muted-foreground">
+            Read-only access · OAuth secured · Disconnect anytime
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 

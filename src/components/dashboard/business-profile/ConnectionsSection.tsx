@@ -16,10 +16,9 @@ import {
   ShoppingBag,
   Users2,
   FileSpreadsheet,
-  Calendar,
-  Briefcase,
   Receipt,
   Wallet,
+  Store,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -30,53 +29,24 @@ interface Props {
   userId: string;
 }
 
-type ConnStatus = "connected" | "available" | "coming_soon";
-
-interface ConnectionCard {
+interface ComingSoonItem {
   key: string;
   name: string;
-  category: "Accounting & Finance" | "Banking & Payments" | "Public Presence" | "CRM & Marketing" | "Operations & Ops" | "Productivity";
   description: string;
   icon: React.ElementType;
-  status: ConnStatus;
-  badge?: string;
 }
 
-const COMING_SOON: Omit<ConnectionCard, "status">[] = [
-  // Accounting & Finance
-  { key: "xero", name: "Xero", category: "Accounting & Finance", description: "Alternative accounting platform sync", icon: Receipt },
-  { key: "wave", name: "Wave", category: "Accounting & Finance", description: "Free accounting for small business", icon: Receipt },
-  // Banking & Payments
-  { key: "stripe", name: "Stripe", category: "Banking & Payments", description: "Payment processing and revenue intelligence", icon: CreditCard, badge: "Q2" },
-  { key: "square", name: "Square", category: "Banking & Payments", description: "POS, payments, and merchant data", icon: CreditCard },
-  { key: "paypal", name: "PayPal", category: "Banking & Payments", description: "Payment volume and merchant history", icon: Wallet },
-  { key: "shopify", name: "Shopify", category: "Banking & Payments", description: "E-commerce revenue and order data", icon: ShoppingBag },
-  // Public Presence
-  { key: "google_business", name: "Google Business Profile", category: "Public Presence", description: "Verify NAP consistency and reviews", icon: Globe },
-  { key: "yelp", name: "Yelp", category: "Public Presence", description: "Business listing and review monitoring", icon: Globe },
-  { key: "facebook_business", name: "Facebook Business", category: "Public Presence", description: "Business page presence verification", icon: Globe },
-  { key: "linkedin_company", name: "LinkedIn Company", category: "Public Presence", description: "Professional presence and credibility", icon: Briefcase },
-  // CRM & Marketing
-  { key: "hubspot", name: "HubSpot", category: "CRM & Marketing", description: "Pipeline, deals, and customer data", icon: Users2 },
-  { key: "mailchimp", name: "Mailchimp", category: "CRM & Marketing", description: "Email marketing and audience reach", icon: Mail },
-  { key: "salesforce", name: "Salesforce", category: "CRM & Marketing", description: "Enterprise CRM and revenue forecasting", icon: Users2 },
-  // Operations
-  { key: "gusto", name: "Gusto", category: "Operations & Ops", description: "Payroll and employee verification", icon: Users2 },
-  { key: "adp", name: "ADP", category: "Operations & Ops", description: "Enterprise payroll and HR data", icon: Users2 },
-  { key: "slack", name: "Slack", category: "Operations & Ops", description: "Team communications and alerts", icon: MessageSquare },
-  // Productivity
-  { key: "google_drive", name: "Google Drive", category: "Productivity", description: "Document storage and financial PDFs", icon: FileSpreadsheet },
-  { key: "google_calendar", name: "Google Calendar", category: "Productivity", description: "Schedule funding milestones and reviews", icon: Calendar },
-  { key: "microsoft_365", name: "Microsoft 365", category: "Productivity", description: "Outlook, OneDrive, and Excel sync", icon: FileSpreadsheet },
-];
-
-const CATEGORY_ORDER: ConnectionCard["category"][] = [
-  "Accounting & Finance",
-  "Banking & Payments",
-  "Public Presence",
-  "CRM & Marketing",
-  "Operations & Ops",
-  "Productivity",
+const COMING_SOON: ComingSoonItem[] = [
+  { key: "stripe", name: "Stripe", description: "Connect your payment processing for revenue analytics and MRR tracking", icon: CreditCard },
+  { key: "google_business", name: "Google Business Profile", description: "Sync your business listing for credibility scoring with lenders", icon: Globe },
+  { key: "gusto", name: "Gusto", description: "Connect payroll data for payroll-to-revenue ratio coaching", icon: Users2 },
+  { key: "square", name: "Square", description: "Connect point-of-sale data for retail revenue intelligence", icon: Store },
+  { key: "shopify", name: "Shopify", description: "Connect your store for eCommerce revenue and inventory coaching", icon: ShoppingBag },
+  { key: "xero", name: "Xero", description: "Alternative accounting integration for non-QuickBooks users", icon: Receipt },
+  { key: "hubspot", name: "HubSpot", description: "Connect your CRM for CAC and pipeline analytics", icon: Users2 },
+  { key: "google_drive", name: "Google Drive", description: "Sync financial documents and statements directly", icon: FileSpreadsheet },
+  { key: "mailchimp", name: "Mailchimp", description: "Connect email marketing for CAC attribution", icon: Mail },
+  { key: "slack", name: "Slack", description: "Get Paige notifications and alerts in your Slack workspace", icon: MessageSquare },
 ];
 
 export function ConnectionsSection({ businessId, userId }: Props) {
@@ -165,37 +135,7 @@ export function ConnectionsSection({ businessId, userId }: Props) {
     );
   }
 
-  const liveCards: ConnectionCard[] = [
-    {
-      key: "quickbooks",
-      name: "QuickBooks Online",
-      category: "Accounting & Finance",
-      description: "Real-time financial data — revenue, margins, runway, expense intelligence",
-      icon: Receipt,
-      status: qbConnected ? "connected" : "available",
-    },
-    {
-      key: "plaid",
-      name: "Bank Accounts (Plaid)",
-      category: "Banking & Payments",
-      description: "Cashflow, balances, and funding signals via secure bank connections",
-      icon: Building2,
-      status: plaidCount > 0 ? "connected" : "available",
-    },
-  ];
-
-  const allCards: ConnectionCard[] = [
-    ...liveCards,
-    ...COMING_SOON.map((c) => ({ ...c, status: "coming_soon" as ConnStatus })),
-  ];
-
-  const grouped = CATEGORY_ORDER.map((cat) => ({
-    category: cat,
-    cards: allCards.filter((c) => c.category === cat),
-  })).filter((g) => g.cards.length > 0);
-
-  const connectedCount = allCards.filter((c) => c.status === "connected").length;
-  const availableCount = allCards.filter((c) => c.status === "available").length;
+  const liveConnectedCount = (qbConnected ? 1 : 0) + (plaidCount > 0 ? 1 : 0);
 
   return (
     <div className="space-y-6">
@@ -213,146 +153,186 @@ export function ConnectionsSection({ businessId, userId }: Props) {
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
-              {connectedCount} connected
+              {liveConnectedCount} connected
             </Badge>
             <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-              {availableCount} ready to connect
+              2 live · {COMING_SOON.length} coming soon
             </Badge>
           </div>
         </CardContent>
       </Card>
 
-      {/* Grouped connection cards */}
-      {grouped.map((group) => (
-        <div key={group.category} className="space-y-3">
-          <h3 className="text-sm font-semibold text-foreground/80 uppercase tracking-wide">
-            {group.category}
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {group.cards.map((card) => {
-              const Icon = card.icon;
-              const isQB = card.key === "quickbooks";
-              const isPlaid = card.key === "plaid";
-
-              return (
-                <Card
-                  key={card.key}
-                  className={`relative transition-all ${
-                    card.status === "connected"
-                      ? "border-emerald-500/30 bg-emerald-500/5"
-                      : card.status === "available"
-                      ? "border-primary/30 hover:border-primary/60 hover:shadow-md"
-                      : "border-border/50 opacity-70"
-                  }`}
-                >
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`p-2 rounded-md ${
-                            card.status === "connected"
-                              ? "bg-emerald-500/15 text-emerald-600"
-                              : card.status === "available"
-                              ? "bg-primary/15 text-primary"
-                              : "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <CardTitle className="text-sm">{card.name}</CardTitle>
-                      </div>
-                      {card.status === "connected" && (
-                        <Badge variant="outline" className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px] gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> Connected
-                        </Badge>
-                      )}
-                      {card.status === "coming_soon" && (
-                        <Badge variant="outline" className="text-[10px] gap-1">
-                          <Sparkles className="w-3 h-3" /> {card.badge || "Coming soon"}
-                        </Badge>
-                      )}
-                    </div>
-                    <CardDescription className="text-xs leading-snug pt-1">
-                      {card.description}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="pt-0 pb-3">
-                    {/* QuickBooks actions */}
-                    {isQB && card.status === "connected" && (
-                      <div className="space-y-2">
-                        <div className="text-xs text-muted-foreground">
-                          {qbCompanyName || "Connected"}
-                          {qbLastSync && (
-                            <> · Last sync {new Date(qbLastSync).toLocaleDateString()}</>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={handleQBSync} disabled={syncing} className="h-7 text-xs">
-                            {syncing ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
-                            Sync
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={handleQBDisconnect} className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10">
-                            Disconnect
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                    {isQB && card.status === "available" && (
-                      <Button
-                        size="sm"
-                        onClick={() => setConsentOpen(true)}
-                        className="w-full h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-                      >
-                        Connect QuickBooks
-                      </Button>
-                    )}
-
-                    {/* Plaid actions */}
-                    {isPlaid && card.status === "connected" && (
-                      <div className="space-y-2">
-                        <div className="text-xs text-muted-foreground">
-                          {plaidCount} account{plaidCount === 1 ? "" : "s"} linked
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => (window.location.href = "/app/business")}
-                          className="w-full h-7 text-xs"
-                        >
-                          Manage in Bank Accounts
-                        </Button>
-                      </div>
-                    )}
-                    {isPlaid && card.status === "available" && (
-                      <Button
-                        size="sm"
-                        onClick={() => (window.location.href = "/app/business")}
-                        className="w-full h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-                      >
-                        Connect Bank Account
-                      </Button>
-                    )}
-
-                    {/* Coming soon */}
-                    {card.status === "coming_soon" && (
-                      <Button size="sm" variant="outline" disabled className="w-full h-8 text-xs">
-                        Coming soon
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+      {/* ===================== CONNECTED APPS ===================== */}
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">Connected Apps</h3>
+          <p className="text-xs text-muted-foreground">Live integrations — connect now to power Paige's coaching with real data.</p>
         </div>
-      ))}
 
-      {/* Footer note */}
-      <Card className="border-dashed">
-        <CardContent className="py-4 text-center text-xs text-muted-foreground">
-          More integrations on the way. Have a tool you need? Tell Paige in chat and we will prioritize it.
-        </CardContent>
-      </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {/* QuickBooks Online */}
+          <Card
+            className={`relative flex flex-col transition-all ${
+              qbConnected
+                ? "border-emerald-500/30 bg-emerald-500/5"
+                : "border-primary/30 hover:border-primary/60 hover:shadow-md"
+            }`}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-md bg-[#2CA01C] text-white flex items-center justify-center font-bold text-sm shrink-0">
+                    qb
+                  </div>
+                  <CardTitle className="text-sm">QuickBooks Online</CardTitle>
+                </div>
+                {qbConnected ? (
+                  <Badge variant="outline" className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px] gap-1 shrink-0">
+                    <CheckCircle2 className="w-3 h-3" /> Connected
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] shrink-0">Not Connected</Badge>
+                )}
+              </div>
+              <CardDescription className="text-xs leading-snug pt-1">
+                Connect your books for real-time P&L coaching, cash flow analysis, and expense optimization
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0 pb-3 mt-auto">
+              {qbConnected ? (
+                <div className="space-y-2">
+                  <div className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                    {qbCompanyName || "Connected"}
+                  </div>
+                  {qbLastSync && (
+                    <div className="text-[10px] text-muted-foreground">
+                      Last sync {new Date(qbLastSync).toLocaleDateString()}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={handleQBSync} disabled={syncing} className="h-7 text-xs flex-1">
+                      {syncing ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                      Sync
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={handleQBDisconnect} className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10">
+                      Disconnect
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => setConsentOpen(true)}
+                  className="w-full h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  Connect
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Plaid */}
+          <Card
+            className={`relative flex flex-col transition-all ${
+              plaidCount > 0
+                ? "border-emerald-500/30 bg-emerald-500/5"
+                : "border-primary/30 hover:border-primary/60 hover:shadow-md"
+            }`}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-md bg-foreground text-background flex items-center justify-center shrink-0">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <CardTitle className="text-sm">Plaid — Bank Accounts</CardTitle>
+                </div>
+                {plaidCount > 0 ? (
+                  <Badge variant="outline" className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px] gap-1 shrink-0">
+                    <CheckCircle2 className="w-3 h-3" /> Connected
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] shrink-0">Not Connected</Badge>
+                )}
+              </div>
+              <CardDescription className="text-xs leading-snug pt-1">
+                Link your personal and business bank accounts for cash flow visibility and funding readiness assessment
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0 pb-3 mt-auto">
+              {plaidCount > 0 ? (
+                <div className="space-y-2">
+                  <div className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+                    {plaidCount} account{plaidCount === 1 ? "" : "s"} linked
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => (window.location.href = "/app/business")}
+                    className="w-full h-7 text-xs"
+                  >
+                    Manage
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => (window.location.href = "/app/business")}
+                  className="w-full h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  Connect
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* ===================== COMING SOON ===================== */}
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">
+            Coming Soon — Vote for what you want next
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            We add integrations based on member demand. Tell Paige in chat which one you need most.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {COMING_SOON.map((card) => {
+            const Icon = card.icon;
+            return (
+              <Card key={card.key} className="relative flex flex-col border-border/50 opacity-75">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-md bg-muted text-muted-foreground flex items-center justify-center shrink-0">
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <CardTitle className="text-sm">{card.name}</CardTitle>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="bg-primary/10 text-primary border-primary/40 text-[10px] gap-1 shrink-0"
+                    >
+                      <Sparkles className="w-3 h-3" /> Coming Soon
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs leading-snug pt-1">
+                    {card.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0 pb-3 mt-auto">
+                  <Button size="sm" variant="outline" disabled className="w-full h-8 text-xs cursor-not-allowed">
+                    Coming Soon
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
 
       <QuickBooksConsentDialog open={consentOpen} onOpenChange={setConsentOpen} businessId={businessId} />
     </div>

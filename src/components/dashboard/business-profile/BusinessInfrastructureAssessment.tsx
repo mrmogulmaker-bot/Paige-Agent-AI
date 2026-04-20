@@ -234,7 +234,11 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
           {!userId ? (
             <Card><CardContent className="py-12 text-center text-muted-foreground">Loading...</CardContent></Card>
           ) : (
-            <FinancialIntelligenceSection businessId={selectedBusinessId} userId={userId} />
+            <FinancialIntelligenceSection
+              businessId={selectedBusinessId}
+              userId={userId}
+              onGoToConnections={() => setActiveTab("connections")}
+            />
           )}
         </TabsContent>
 
