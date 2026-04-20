@@ -2850,6 +2850,42 @@ export type Database = {
           },
         ]
       }
+      economic_rates_cache: {
+        Row: {
+          created_at: string
+          expires_at: string
+          fetched_at: string
+          id: string
+          observation_date: string
+          series_id: string
+          series_name: string
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          fetched_at?: string
+          id?: string
+          observation_date: string
+          series_id: string
+          series_name: string
+          updated_at?: string
+          value: number
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          fetched_at?: string
+          id?: string
+          observation_date?: string
+          series_id?: string
+          series_name?: string
+          updated_at?: string
+          value?: number
+        }
+        Relationships: []
+      }
       email_send_log: {
         Row: {
           created_at: string
