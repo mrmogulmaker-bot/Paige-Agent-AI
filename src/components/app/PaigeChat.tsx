@@ -397,6 +397,47 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Confirm a conversational extraction proposal — POST selected fields to
+   * paige-write-back, then refresh the local profile snapshot so the extractor
+   * stops re-detecting them. Throws on failure so the card can show the error.
+   */
+  const handleExtractionConfirm = async (proposal: ExtractionProposal, selectedKeys: string[]) => {
+    const selected = proposal.fields.filter(f => selectedKeys.includes(f.key));
+    if (selected.length === 0) return;
+
+    const { data: { session: freshSession } } = await supabase.auth.getSession();
+    if (!freshSession) throw new Error("Session expired — please sign in again.");
+
+    const { data, error } = await supabase.functions.invoke("paige-write-back", {
+      body: {
+        updates: selected.map(fieldToWriteBackUpdate),
+        source: "conversation",
+      },
+      headers: { Authorization: `Bearer ${freshSession.access_token}` },
+    });
+    if (error) throw error;
+
+    const failed = (data?.results || []).filter((r: any) => !r.success);
+    if (failed.length > 0 && failed.length === selected.length) {
+      throw new Error(failed[0]?.error || "Save failed.");
+    }
+    if (failed.length > 0) {
+      toast({
+        title: "Saved with warnings",
+        description: `${failed.length} field${failed.length === 1 ? "" : "s"} could not be saved.`,
+      });
+    }
+    // Refresh snapshot so the extractor will skip these fields next time.
+    await refreshProfileSnapshot();
+    queryClient.invalidateQueries({ queryKey: ["client-chat-context"] });
+  };
+
+  const handleExtractionSkip = (proposal: ExtractionProposal) => {
+    // Remember declined fields so we don't re-prompt for them this session.
+    for (const f of proposal.fields) declinedFieldsRef.current.add(f.key);
+  };
+
   const handleSend = async (overrideInput?: string) => {
     const messageText = overrideInput || input;
     if ((!messageText.trim() && !attachedDoc) || isLoading) return;
