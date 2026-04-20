@@ -19,6 +19,10 @@ import {
   Receipt,
   Wallet,
   Store,
+  BarChart3,
+  ShieldCheck,
+  LineChart,
+  Database,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -285,6 +289,60 @@ export function ConnectionsSection({ businessId, userId }: Props) {
               )}
             </CardContent>
           </Card>
+        </div>
+      </div>
+
+      {/* ===================== BUSINESS CREDIT DATA ===================== */}
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">Business Credit Data</h3>
+          <p className="text-xs text-muted-foreground">
+            Direct API connections to the major business credit bureaus. We're finalizing API agreements — request early access from Paige.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {[
+            { key: "nav", name: "Nav.com", description: "Aggregated business credit profile across D&B, Experian, and Equifax in one feed", icon: BarChart3 },
+            { key: "dnb", name: "D&B Direct+", description: "DUNS-based PAYDEX, Delinquency Predictor, and Failure Score from Dun & Bradstreet", icon: ShieldCheck },
+            { key: "experian_biz", name: "Experian Business", description: "Intelliscore Plus, FSR, and full Business Credit Advantage report", icon: LineChart },
+            { key: "equifax_biz", name: "Equifax Business", description: "Business Credit Risk Score, Payment Index, and Business Failure Score", icon: Database },
+          ].map((card) => {
+            const Icon = card.icon;
+            return (
+              <Card key={card.key} className="relative flex flex-col border-border/50 opacity-75">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-md bg-muted text-muted-foreground flex items-center justify-center shrink-0">
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <CardTitle className="text-sm">{card.name}</CardTitle>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="bg-primary/10 text-primary border-primary/40 text-[10px] gap-1 shrink-0"
+                    >
+                      <Sparkles className="w-3 h-3" /> Coming Soon
+                    </Badge>
+                  </div>
+                  <CardDescription className="text-xs leading-snug pt-1">
+                    {card.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0 pb-3 mt-auto">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => toast.info(`We'll notify you the moment ${card.name} goes live.`)}
+                    className="w-full h-8 text-xs"
+                  >
+                    Request Early Access
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
 
