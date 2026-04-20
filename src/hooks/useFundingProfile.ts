@@ -107,6 +107,9 @@ export interface FundingProfileData {
   // Funding goals
   fundingGoals: any | null;
 
+  // Demographics & ownership flags (purely additive — used for "Matched for You" boosts)
+  demographics: DemographicProfile;
+
   isLoading: boolean;
 }
 
@@ -125,6 +128,15 @@ const defaultInfra: BusinessInfraData = {
   dnbLastVerified: null, experianLastVerified: null, equifaxLastVerified: null, ficoSbssLastVerified: null,
   presenceComplete: 0, presenceTotal: 7, hasConsistencyIssues: false,
   hasTaxReturns: false, hasPnL: false, hasBankStatements: false, buildScore: null,
+};
+
+const defaultDemographics: DemographicProfile = {
+  gender_identity: null, ethnicity: null,
+  is_veteran: null, is_service_disabled_veteran: null, is_us_citizen: null,
+  is_minority_owned: null, is_women_owned: null, is_veteran_owned: null,
+  is_service_disabled_veteran_owned: null, is_hubzone_located: null,
+  has_8a_certification: null, has_wosb_certification: null, has_vetcert_certification: null,
+  is_startup: false,
 };
 
 export function useFundingProfile(): FundingProfileData {
