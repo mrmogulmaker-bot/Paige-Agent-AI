@@ -20,7 +20,7 @@ import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
-import { primeMicAndAudio, fetchVoiceCredentials, describeVoiceError } from "@/lib/voice/startVoiceSession";
+import { primeMicAndAudio, startManagedVoiceSession, describeVoiceError } from "@/lib/voice/startVoiceSession";
 import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
 import { extractFromMessage } from "@/lib/conversationalExtractor";
 import { fieldToWriteBackUpdate } from "@/lib/extractionProposal";
@@ -237,7 +237,8 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
       setVoiceStatus("listening");
       setVoiceModalOpen(true);
     },
-    onDisconnect: async () => {
+    onDisconnect: async (details) => {
+      console.warn("[PaigeChat] Voice session disconnected", details);
       setVoiceModalOpen(false);
       setVoiceStatus("connecting");
       toast({ title: "Voice chat ended", description: "The conversation has been closed" });
@@ -352,7 +353,6 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
       setMicPermission('granted');
 
       const { data: { session: freshSession } } = await supabase.auth.getSession();
-      const creds = await fetchVoiceCredentials(freshSession?.access_token);
 
       // Last 5 messages from current chat for continuity context.
       const recentChatMessages = messages
@@ -394,20 +394,14 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         },
       };
 
-      if (creds.conversationToken) {
-        await conversation.startSession({
-          conversationToken: creds.conversationToken,
-          connectionType: "webrtc",
-          ...overrides,
-        } as any);
-      } else if (creds.signedUrl) {
-        await conversation.startSession({
-          signedUrl: creds.signedUrl,
-          ...overrides,
-        } as any);
-      } else {
-        throw new Error("No voice credentials returned");
-      }
+      const voiceSession = await startManagedVoiceSession({
+        conversation,
+        authToken: freshSession?.access_token,
+        overrides,
+        logLabel: "[PaigeChat]",
+        forceWebSocket: isMobile,
+      });
+      console.log("[PaigeChat] startSession resolved", voiceSession);
     } catch (err: any) {
       console.error("[PaigeChat] Voice start failed:", err);
       setVoiceModalOpen(false);

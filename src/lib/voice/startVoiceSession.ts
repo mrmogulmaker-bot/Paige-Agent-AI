@@ -20,6 +20,27 @@ export type StartVoiceSessionResult = {
   agentId?: string;
 };
 
+export type VoiceTransport = "webrtc" | "websocket";
+
+type VoiceConversationController = {
+  startSession: (options: any) => Promise<unknown>;
+  endSession: () => Promise<void>;
+};
+
+export type StartManagedVoiceSessionOptions = {
+  conversation: VoiceConversationController;
+  authToken?: string;
+  overrides?: Record<string, unknown>;
+  logLabel?: string;
+  forceWebSocket?: boolean;
+};
+
+export type StartManagedVoiceSessionResult = {
+  connectionType: VoiceTransport;
+  agentId?: string;
+  usedFallback: boolean;
+};
+
 /**
  * Run inside the click handler — BEFORE any `await` — to:
  *   1) Unlock the iOS audio output by creating + resuming an AudioContext.
@@ -89,6 +110,108 @@ export async function fetchVoiceCredentials(authToken?: string): Promise<{
   if (error) throw error;
   if (!data?.signedUrl) throw new Error("Voice service did not return a signed URL");
   return { signedUrl: data.signedUrl, agentId: data.agentId };
+}
+
+async function fetchSignedUrlCredentials(authToken?: string): Promise<{
+  signedUrl?: string;
+  agentId?: string;
+}> {
+  const headers = authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+  const { data, error } = await supabase.functions.invoke(
+    "elevenlabs-signed-url",
+    { headers },
+  );
+  if (error) throw error;
+  if (!data?.signedUrl) throw new Error("Voice service did not return a signed URL");
+  return { signedUrl: data.signedUrl, agentId: data.agentId };
+}
+
+function isRecoverableWebRtcError(err: unknown): boolean {
+  const e = err as any;
+  const combined = `${e?.name || ""} ${e?.message || ""} ${e?.reason || ""}`.toLowerCase();
+  return [
+    "peer connection",
+    "createoffer",
+    "webrtc",
+    "rtc",
+    "ice",
+    "sdp",
+    "closed",
+    "transport",
+  ].some((token) => combined.includes(token));
+}
+
+async function startSessionWithCredentials(
+  conversation: VoiceConversationController,
+  creds: { conversationToken?: string; signedUrl?: string; agentId?: string },
+  overrides?: Record<string, unknown>,
+  logLabel = "[voice]",
+): Promise<VoiceTransport> {
+  const connectionType: VoiceTransport = creds.conversationToken ? "webrtc" : "websocket";
+  console.log(`${logLabel} starting ${connectionType} voice session`, {
+    agentId: creds.agentId,
+    hasToken: !!creds.conversationToken,
+    hasSignedUrl: !!creds.signedUrl,
+  });
+
+  if (creds.conversationToken) {
+    await conversation.startSession({
+      conversationToken: creds.conversationToken,
+      connectionType: "webrtc",
+      ...(overrides ?? {}),
+    });
+    return "webrtc";
+  }
+
+  if (creds.signedUrl) {
+    await conversation.startSession({
+      signedUrl: creds.signedUrl,
+      ...(overrides ?? {}),
+    });
+    return "websocket";
+  }
+
+  throw new Error("No voice credentials returned");
+}
+
+export async function startManagedVoiceSession({
+  conversation,
+  authToken,
+  overrides,
+  logLabel = "[voice]",
+  forceWebSocket = false,
+}: StartManagedVoiceSessionOptions): Promise<StartManagedVoiceSessionResult> {
+  if (forceWebSocket) {
+    const wsCreds = await fetchSignedUrlCredentials(authToken);
+    await startSessionWithCredentials(conversation, wsCreds, overrides, logLabel);
+    return { connectionType: "websocket", agentId: wsCreds.agentId, usedFallback: true };
+  }
+
+  const creds = await fetchVoiceCredentials(authToken);
+
+  try {
+    const connectionType = await startSessionWithCredentials(conversation, creds, overrides, logLabel);
+    return { connectionType, agentId: creds.agentId, usedFallback: false };
+  } catch (err) {
+    if (!creds.conversationToken || !isRecoverableWebRtcError(err)) {
+      throw err;
+    }
+
+    console.warn(`${logLabel} WebRTC session failed, retrying over signed URL`, err);
+    try {
+      await conversation.endSession();
+    } catch {
+      // ignore partial session cleanup failure before fallback
+    }
+
+    const wsCreds = await fetchSignedUrlCredentials(authToken);
+    await startSessionWithCredentials(conversation, wsCreds, overrides, `${logLabel} [fallback]`);
+    return {
+      connectionType: "websocket",
+      agentId: wsCreds.agentId ?? creds.agentId,
+      usedFallback: true,
+    };
+  }
 }
 
 /**

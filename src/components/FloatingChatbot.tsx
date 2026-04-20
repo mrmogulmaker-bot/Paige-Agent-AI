@@ -20,7 +20,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
-import { primeMicAndAudio, fetchVoiceCredentials, describeVoiceError } from "@/lib/voice/startVoiceSession";
+import { primeMicAndAudio, startManagedVoiceSession, describeVoiceError } from "@/lib/voice/startVoiceSession";
 import { getCurrentPageName } from "@/lib/pageContext";
 import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
 
@@ -108,7 +108,8 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       setVoiceStatus("listening");
       setVoiceModalOpen(true);
     },
-    onDisconnect: () => {
+    onDisconnect: (details) => {
+      console.warn("[FloatingChatbot] Voice session disconnected", details);
       setVoiceModalOpen(false);
       setVoiceStatus("connecting");
       toast({ title: "Voice chat ended", description: "The conversation has been closed" });
@@ -207,8 +208,6 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
 
       // 2) Fetch credentials (WebRTC token preferred; signed URL fallback).
       const { data: { session } } = await supabase.auth.getSession();
-      const creds = await fetchVoiceCredentials(session?.access_token);
-
       // Last 5 messages from current chat for continuity context.
       const recentChatMessages = messages
         .filter(m => m.content && m.content.trim())
@@ -245,28 +244,14 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
         },
       };
 
-      // 3) Start session — prefer WebRTC token, fall back to signedUrl.
-      console.log("[FloatingChatbot] Starting session", {
-        agentId: creds.agentId,
-        connectionType: creds.conversationToken ? "webrtc" : "websocket",
-        hasToken: !!creds.conversationToken,
-        hasSignedUrl: !!creds.signedUrl,
+      const voiceSession = await startManagedVoiceSession({
+        conversation,
+        authToken: session?.access_token,
+        overrides,
+        logLabel: "[FloatingChatbot]",
+        forceWebSocket: isMobile,
       });
-      if (creds.conversationToken) {
-        await conversation.startSession({
-          conversationToken: creds.conversationToken,
-          connectionType: "webrtc",
-          ...overrides,
-        } as any);
-      } else if (creds.signedUrl) {
-        await conversation.startSession({
-          signedUrl: creds.signedUrl,
-          ...overrides,
-        } as any);
-      } else {
-        throw new Error("No voice credentials returned");
-      }
-      console.log("[FloatingChatbot] startSession resolved (status pending onConnect)");
+      console.log("[FloatingChatbot] startSession resolved", voiceSession);
     } catch (err: any) {
       console.error("[FloatingChatbot] Voice start failed:", err);
       console.error("[FloatingChatbot] Voice start error details:", {
