@@ -25,6 +25,7 @@ import { ExtractionProposalCard, type ExtractionProposal } from "@/components/ch
 import { extractFromMessage } from "@/lib/conversationalExtractor";
 import { fieldToWriteBackUpdate } from "@/lib/extractionProposal";
 import { useProfileSnapshot } from "@/hooks/useProfileSnapshot";
+import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
 
 type Message = {
   role: "user" | "assistant";
