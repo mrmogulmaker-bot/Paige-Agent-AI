@@ -1587,7 +1587,52 @@ Capital Stack Rule: Before significant capital raises: "Before we talk lenders, 
 Tax and Legal Disclaimer Rule: ALWAYS add when discussing entity structure: "Entity structure has significant tax and legal implications beyond capital raising. Everything I am sharing is from a capital strategy perspective — work with a business attorney and CPA to set up and maintain your entity structure properly."
 
 Funding Goal Multi-Entity Trigger: When funding goal exceeds what a single entity can realistically raise: "[Goal amount] may be challenging through a single entity. Sophisticated capital raisers structure multiple entities that each raise capital independently, then deploy through a HoldCo. Want me to walk through how that works?"
-=== END CORPORATE STRUCTURE RULES ===`;
+=== END CORPORATE STRUCTURE RULES ===
+
+=== LIVE RATE INTELLIGENCE (FRED API) ===
+
+You have access to a get_current_rates tool that returns LIVE interest rate data from the Federal Reserve Economic Data (FRED) API. Available series include: PRIME (Bank Prime Loan Rate), FEDFUNDS (Federal Funds Rate), DGS10 (10-Year Treasury), DGS30 (30-Year Treasury), MORTGAGE30US (30-Year Fixed Mortgage), MORTGAGE15US (15-Year Fixed Mortgage), DPCREDIT (Discount Window Rate), TERMCBPER24NS (Personal Loan Rate).
+
+WHEN TO CALL get_current_rates (automatic triggers):
+- Client asks about SBA loan rates, mortgage rates, DSCR rates, or any specific loan rate
+- Client asks if now is a good time to get financing or to refinance
+- Client asks about interest rates for any loan product
+- You are calculating DSCR ratios and need current rate data
+- Client asks about the cost difference between loan products
+- Client mentions wanting to lock in rates or asks about rate timing
+Always call this tool BEFORE quoting any specific rate number — never use static estimates from your training data.
+
+LIVE RATE RULE: When discussing any loan product use current rates from the tool, not generic ranges. Format: "As of [observation_date], the prime rate is [X]% which means SBA 7(a) rates are currently running [Y]% to [Z]% APR" rather than "SBA rates are typically 7-10%."
+
+RATE FORMULAS (apply to live PRIME and MORTGAGE30US values):
+- SBA 7(a) standard (over $50K): Prime + 2.25% to Prime + 4.75%
+- SBA 7(a) small (under $25K): Prime + 4.25% to Prime + 6.5%
+- SBA Express: Prime + 4.5% to Prime + 6.5%
+- SBA Microloan: 8% to 13% fixed (not prime-based)
+- DSCR 720+ score, LTV under 65%: Prime + 1.5% to 2.5%
+- DSCR 680-719, LTV under 75%: Prime + 2.5% to 3.5%
+- DSCR 640-679, LTV under 80%: Prime + 3.5% to 5%
+- Hard money: 9% to 14% (asset-based, not prime-tied)
+- Conventional investment property: current 30-year mortgage rate + 0.5% to 0.75% premium
+- Mortgage 720+: 30-year rate - 0.25%
+- Mortgage 680-719: at 30-year rate
+- Mortgage 640-679: 30-year rate + 0.5%
+- Mortgage 620-639: 30-year rate + 0.75% to 1%
+- Mortgage below 620: 30-year rate + 1.5% to 2% (subprime)
+- FHA: 30-year rate + 0.25%
+- VA: 30-year rate - 0.25% (best rates)
+- Business LOC 680+ score, 2+ years: Prime + 1.5% to 4%
+- Business LOC 640-679, 1+ year: Prime + 4% to 8%
+
+RATE CONTEXT RULE: Always tie rates to the client's specific credit tier: "At your [bureau] score of [score] you would qualify for the [tier] pricing on this product, currently around [rate]. Getting your score to [next threshold] would move you to [better rate range] — saving you approximately $[amount] over the life of a $[loan amount] loan."
+
+RATE TREND COMMENTARY RULE: Reference whether rates are high or low relative to historical norms when relevant. Historical prime average ~5-6%. If current prime is above 7%, note "elevated relative to historical norms." If below 5%, note "favorable relative to historical norms."
+
+DSCR LIVE CALCULATION RULE: When discussing DSCR loans, use live rates in calculations: "At today's DSCR rates of approximately [rate]% for your credit tier, a $[loan] loan amortized over 30 years has a monthly payment of approximately $[payment]. You would need at least $[payment x 1.25] in monthly rent to meet the 1.25x DSCR threshold most lenders require." Use the formula: monthly payment = principal * (r/12) / (1 - (1 + r/12)^-360) where r is annual rate as decimal.
+
+COST OF WAITING RULE: When a client is on the fence about timing, calculate rate impact: "If rates drop 0.5% before you apply that saves approximately $[X] per month on a $[loan] amount or $[total] over [term] years. If rates rise 0.5% it costs $[X] more per month. Based on your profile the bigger risk to your timeline is [credit score / market timing / other]."
+
+=== END LIVE RATE INTELLIGENCE ===`;
 
     // Build message array
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
@@ -1729,6 +1774,23 @@ Funding Goal Multi-Entity Trigger: When funding goal exceeds what a single entit
                   loan_amount: { type: "number", description: "Optional funding amount in USD — filters by lender min/max loan size." }
                 },
                 required: ["state"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "get_current_rates",
+              description: "Fetch LIVE interest rate data from the FRED (Federal Reserve Economic Data) API. Returns the most recent observations for: PRIME (Bank Prime Loan Rate), FEDFUNDS (Federal Funds Rate), DGS10 (10-Year Treasury), DGS30 (30-Year Treasury), MORTGAGE30US (30-Year Fixed Mortgage), MORTGAGE15US (15-Year Fixed Mortgage), DPCREDIT (Discount Window Rate), TERMCBPER24NS (Personal Loan Rate). Cached for 6 hours to avoid excessive API calls. ALWAYS call this before quoting any specific interest rate — never use static estimates. Triggers: SBA/mortgage/DSCR rate questions, 'is now a good time to refinance', DSCR ratio calculations, cost-of-waiting analysis, comparing loan product costs.",
+              parameters: {
+                type: "object",
+                properties: {
+                  series_ids: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Optional list of specific FRED series IDs to fetch. If omitted returns all available series."
+                  }
+                }
               }
             }
           },
@@ -1941,6 +2003,58 @@ Funding Goal Multi-Entity Trigger: When funding goal exceeds what a single entit
               content: JSON.stringify({
                 ...sbaBody,
                 note: "Present these SBA lenders per the SBA RULES. Label each 'SBA-Approved Lender'. Tie the recommended SBA program to bureau profile and funding goal. Close with the SBA UPDATES disclaimer.",
+              }),
+            });
+          } catch (err) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
+            });
+          }
+        } else if (tc.function.name === "get_current_rates") {
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            // Pull cache first
+            const { data: cached } = await supabase
+              .from("economic_rates_cache")
+              .select("*");
+            const now = Date.now();
+            const stale = !cached || cached.length === 0 ||
+              cached.some((c: any) => new Date(c.expires_at).getTime() < now);
+            let rates: any[] = cached || [];
+            if (stale) {
+              try {
+                const refreshRes = await fetch(`${supabaseUrl}/functions/v1/fetch-economic-rates`, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${supabaseServiceKey}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({}),
+                });
+                const refreshed = await refreshRes.json();
+                if (refreshed?.rates) rates = refreshed.rates;
+              } catch (e) {
+                console.warn("rate refresh failed", e);
+              }
+            }
+            // Optional series filter
+            if (Array.isArray(args.series_ids) && args.series_ids.length > 0) {
+              rates = rates.filter((r: any) => args.series_ids.includes(r.series_id));
+            }
+            const trimmed = rates.map((r: any) => ({
+              series_id: r.series_id,
+              series_name: r.series_name,
+              value: Number(r.value),
+              observation_date: r.observation_date,
+            }));
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({
+                rates: trimmed,
+                count: trimmed.length,
+                note: trimmed.length === 0
+                  ? "No rate data available. FRED_API_KEY may be missing — fall back to disclosing that live rates are unavailable rather than quoting static numbers."
+                  : "Use these live rates with the formulas in your LIVE RATE INTELLIGENCE rules. Always cite the observation_date when quoting rates."
               }),
             });
           } catch (err) {
