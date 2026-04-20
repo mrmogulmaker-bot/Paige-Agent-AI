@@ -246,6 +246,12 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       };
 
       // 3) Start session — prefer WebRTC token, fall back to signedUrl.
+      console.log("[FloatingChatbot] Starting session", {
+        agentId: creds.agentId,
+        connectionType: creds.conversationToken ? "webrtc" : "websocket",
+        hasToken: !!creds.conversationToken,
+        hasSignedUrl: !!creds.signedUrl,
+      });
       if (creds.conversationToken) {
         await conversation.startSession({
           conversationToken: creds.conversationToken,
@@ -260,8 +266,13 @@ export const FloatingChatbot = ({ clientId }: { clientId?: string }) => {
       } else {
         throw new Error("No voice credentials returned");
       }
+      console.log("[FloatingChatbot] startSession resolved (status pending onConnect)");
     } catch (err: any) {
       console.error("[FloatingChatbot] Voice start failed:", err);
+      console.error("[FloatingChatbot] Voice start error details:", {
+        name: err?.name, code: err?.code, message: err?.message, reason: err?.reason,
+        stringified: (() => { try { return JSON.stringify(err); } catch { return String(err); } })(),
+      });
       setVoiceModalOpen(false);
       // Tear down audio context if start failed.
       if (audioCtx) { try { await audioCtx.close(); } catch {} }
