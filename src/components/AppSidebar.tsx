@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { Lock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -57,12 +58,44 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isCoachOrAdmin, setIsCoachOrAdmin] = useState(false);
+  const [predictionsCount, setPredictionsCount] = useState(0);
   const { planSlug } = useSubscription();
   const { mode, isCoachOrAdmin: modeCoachOrAdmin } = useDashboardMode();
 
   useEffect(() => {
     checkRoles();
+    loadPredictionsCount();
+
+    // Realtime: refresh badge as predictions are inserted/dismissed/acted on
+    const channel = supabase
+      .channel("sidebar-predictions-count")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "credit_predictions" },
+        () => loadPredictionsCount(),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
+
+  const loadPredictionsCount = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { count } = await supabase
+        .from("credit_predictions")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("is_dismissed", false)
+        .eq("is_acted_on", false);
+      setPredictionsCount(count ?? 0);
+    } catch (err) {
+      console.error("Error loading predictions count:", err);
+    }
+  };
 
   const checkRoles = async () => {
     try {
