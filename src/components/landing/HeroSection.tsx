@@ -1,80 +1,81 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, Mic } from "lucide-react";
+import { ArrowRight, TrendingUp, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
-import paigeAvatar from "@/assets/paige-ai-avatar.png";
+import { useEffect, useState } from "react";
 
-const chatLines = [
-  { role: "user" as const, text: "Am I fundable right now?" },
-  {
-    role: "assistant" as const,
-    text: "Readiness Score: 62/100. Your LLC is in good standing, but your business address isn't 411-listed and your D&B file is thin — both flags banks pull. Fix those plus drop your top revolver from 68% to 25% utilization and you unlock SBA 7(a) up to $135K across 14 lenders.",
-  },
-  { role: "user" as const, text: "Walk me through it." },
-  {
-    role: "assistant" as const,
-    text: "Done. 411 listing queued, D&B trade-line plan in your tasks, paydown schedule built, and 3 lender intros drafted for your coach to approve. I'll re-score the moment your next bureau pull lands.",
-  },
-];
-
+/**
+ * Hero — "Your Personal AI Funding Advisor"
+ * Right column = floating data visualization (animated 3-bureau credit gauge
+ * + lender match cards) instead of a static chat mock.
+ */
 export function HeroSection() {
   const navigate = useNavigate();
-  const [visibleLines, setVisibleLines] = useState(0);
+
+  // Animated score that ticks up on mount (premium "alive" feel)
+  const targets = { exp: 712, tu: 698, eq: 705 };
+  const [scores, setScores] = useState({ exp: 0, tu: 0, eq: 0 });
 
   useEffect(() => {
-    if (visibleLines < chatLines.length) {
-      const timer = setTimeout(
-        () => setVisibleLines((v) => v + 1),
-        visibleLines === 0 ? 1200 : 2200
-      );
-      return () => clearTimeout(timer);
-    }
-  }, [visibleLines]);
+    const start = performance.now();
+    const duration = 1600;
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const ease = 1 - Math.pow(1 - t, 3);
+      setScores({
+        exp: Math.round(targets.exp * ease),
+        tu: Math.round(targets.tu * ease),
+        eq: Math.round(targets.eq * ease),
+      });
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const bureaus = [
+    { name: "Experian", short: "EXP", value: scores.exp, target: targets.exp, color: "from-accent to-gold" },
+    { name: "TransUnion", short: "TU", value: scores.tu, target: targets.tu, color: "from-gold to-accent" },
+    { name: "Equifax", short: "EQ", value: scores.eq, target: targets.eq, color: "from-accent to-gold-dark" },
+  ];
 
   return (
     <section className="relative overflow-hidden py-20 lg:py-28">
+      {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-accent/5 to-background -z-20" />
       <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
         <div className="absolute top-20 right-1/4 w-72 h-72 bg-accent/10 rounded-full blur-3xl animate-float" />
         <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-gold/10 rounded-full blur-3xl animate-float-slow" />
+        {/* Soft animated gold pulse behind the headline */}
+        <div className="absolute top-1/3 left-1/3 w-[40rem] h-[40rem] -translate-x-1/2 -translate-y-1/2 bg-gold/10 rounded-full blur-3xl animate-pulse" />
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
-          {/* Left */}
-          <div className="space-y-8 animate-fade-in">
+          {/* Left — copy */}
+          <div className="space-y-7 animate-fade-in">
             <Badge className="bg-gold/10 text-gold-dark border-gold/20">
-              The AI Funding Coach
+              <Sparkles className="w-3 h-3 mr-1.5" />
+              Founding Beta — Limited Spots
             </Badge>
 
-            <h1 className="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]">
-              Know What Lenders See.{" "}
-              <span className="text-accent">Get Funded Faster.</span>
+            <h1 className="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]">
+              Your Personal{" "}
+              <span className="text-accent">AI Funding Advisor</span>
             </h1>
 
-            <p className="text-xl text-muted-foreground leading-relaxed max-w-lg">
-              Paige maps your full picture the way banks actually underwrite —
-              personal credit, business formation, state filings, public presence,
-              banking, and revenue — then tells you exactly what to fix and which
-              of 500+ lenders will say yes. The things school never taught you.
+            <p className="text-2xl text-foreground/90 font-medium leading-snug">
+              Built for Entrepreneurs Who Are Serious About Building Wealth.
             </p>
 
-            {/* Social proof stats */}
-            <div className="grid grid-cols-3 gap-6 py-4 border-t border-border">
-              <div>
-                <div className="text-2xl font-bold text-foreground">500+</div>
-                <div className="text-xs text-muted-foreground">Lenders in Network</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-foreground">$1.2M+</div>
-                <div className="text-xs text-muted-foreground">Funded for Clients</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-foreground">89%</div>
-                <div className="text-xs text-muted-foreground">Match-to-Approval</div>
-              </div>
-            </div>
+            <p className="text-lg text-muted-foreground leading-relaxed max-w-lg">
+              Paige analyzes your credit across all three bureaus, builds your
+              personalized funding roadmap, coaches your business strategy, and
+              searches thousands of lenders — all in one conversation. Stop
+              guessing. Start building.
+            </p>
 
             <div className="flex flex-col sm:flex-row gap-4">
               <Button
@@ -82,101 +83,148 @@ export function HeroSection() {
                 className="bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold"
                 onClick={() => navigate("/auth?mode=signup")}
               >
-                Start Free — Score Your Readiness
+                Start Your Free Assessment
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <Button
                 size="lg"
                 variant="outline"
-                className="group hover:scale-105 transition-all duration-300"
+                className="hover:scale-105 transition-all duration-300"
                 onClick={() => {
-                  document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" });
+                  document
+                    .getElementById("how-paige-works")
+                    ?.scrollIntoView({ behavior: "smooth" });
                 }}
               >
-                See Paige in Action
+                See How Paige Works
               </Button>
             </div>
 
             <p className="text-xs text-muted-foreground">
-              No credit card. FCRA & CROA compliant. Cancel anytime.
+              7-day free trial · No credit card required · FCRA &amp; CROA compliant
             </p>
           </div>
 
-          {/* Right — animated chat demo */}
-          <div className="relative animate-fade-in" style={{ animationDelay: "0.3s" }}>
-            <div className="bg-card border border-border rounded-xl shadow-card overflow-hidden">
-              {/* Chat header */}
-              <div className="px-4 py-3 border-b border-border flex items-center gap-3 bg-primary/5">
-                <img
-                  src={paigeAvatar}
-                  alt="Paige AI"
-                  className="w-8 h-8 rounded-full border-2 border-accent"
-                />
+          {/* Right — animated data viz */}
+          <div className="relative animate-fade-in" style={{ animationDelay: "0.2s" }}>
+            {/* Floating card 1 — 3-bureau intelligence */}
+            <div className="relative bg-card border border-border rounded-2xl shadow-card overflow-hidden">
+              <div className="px-5 py-4 border-b border-border flex items-center gap-3 bg-primary/5">
+                <div className="w-9 h-9 rounded-full bg-gradient-gold flex items-center justify-center">
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                </div>
                 <div>
-                  <div className="font-bold text-sm text-foreground">PaigeAgent.ai</div>
+                  <div className="font-bold text-sm text-foreground">
+                    Three-Bureau Intelligence
+                  </div>
                   <div className="text-[11px] text-muted-foreground">
-                    Your funding intelligence analyst
+                    Updated 2 minutes ago · Live
                   </div>
                 </div>
-                <div className="ml-auto flex items-center gap-1">
+                <div className="ml-auto flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-fundability-excellent animate-pulse" />
-                  <span className="text-[10px] text-muted-foreground">Online</span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                    Synced
+                  </span>
                 </div>
               </div>
 
-              {/* Chat body */}
-              <div className="p-4 space-y-3 min-h-[280px]">
-                {chatLines.slice(0, visibleLines).map((line, i) => (
-                  <div
-                    key={i}
-                    className={`flex gap-2.5 animate-slide-up ${
-                      line.role === "user" ? "flex-row-reverse" : "flex-row"
-                    }`}
-                  >
-                    {line.role === "assistant" && (
-                      <img
-                        src={paigeAvatar}
-                        alt="Paige"
-                        className="w-7 h-7 rounded-full border border-accent flex-shrink-0 mt-0.5"
-                      />
-                    )}
-                    <div
-                      className={`max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed ${
-                        line.role === "user"
-                          ? "bg-accent text-accent-foreground"
-                          : "bg-muted/40 border border-border text-foreground"
-                      }`}
-                    >
-                      {line.text}
-                    </div>
-                  </div>
-                ))}
-                {visibleLines < chatLines.length && (
-                  <div className="flex gap-2.5">
-                    <img
-                      src={paigeAvatar}
-                      alt="Paige"
-                      className="w-7 h-7 rounded-full border border-accent flex-shrink-0"
-                    />
-                    <div className="bg-muted/40 border border-border rounded-lg px-3 py-2.5">
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
-                        <div className="w-2 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
-                        <div className="w-2 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
+              {/* Bureau gauges */}
+              <div className="p-5 space-y-4">
+                {bureaus.map((b, i) => {
+                  const pct = Math.min(100, (b.value / 850) * 100);
+                  return (
+                    <div key={b.name} className="space-y-1.5">
+                      <div className="flex items-baseline justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold tracking-widest text-muted-foreground">
+                            {b.short}
+                          </span>
+                          <span className="text-xs font-semibold text-foreground">
+                            {b.name}
+                          </span>
+                        </div>
+                        <div className="font-bold text-lg text-foreground tabular-nums">
+                          {b.value}
+                        </div>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full bg-gradient-to-r ${b.color} rounded-full transition-all duration-1000`}
+                          style={{
+                            width: `${pct}%`,
+                            transitionDelay: `${i * 120}ms`,
+                          }}
+                        />
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  );
+                })}
 
-              {/* Chat input mock */}
-              <div className="px-4 py-3 border-t border-border flex items-center gap-2">
-                <div className="flex-1 h-9 rounded-md bg-muted/30 border border-border px-3 flex items-center text-sm text-muted-foreground">
-                  Ask Paige anything...
+                <div className="pt-3 mt-3 border-t border-border grid grid-cols-3 gap-3">
+                  <div className="text-center">
+                    <div className="text-xl font-bold text-accent tabular-nums">
+                      87
+                    </div>
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                      Readiness
+                    </div>
+                  </div>
+                  <div className="text-center border-x border-border">
+                    <div className="text-xl font-bold text-foreground tabular-nums">
+                      $185K
+                    </div>
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                      Pre-Qual
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xl font-bold text-fundability-excellent tabular-nums">
+                      14
+                    </div>
+                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                      Lenders
+                    </div>
+                  </div>
                 </div>
-                <div className="w-9 h-9 rounded-md bg-gradient-gold flex items-center justify-center">
-                  <Mic className="w-4 h-4 text-primary" />
-                </div>
+              </div>
+            </div>
+
+            {/* Floating card 2 — lender match (offset) */}
+            <div
+              className="hidden sm:block absolute -bottom-8 -left-6 bg-card border border-accent/30 rounded-xl shadow-glow p-4 w-64 animate-float-slow"
+              style={{ animationDelay: "0.4s" }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full bg-fundability-excellent animate-pulse" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-fundability-excellent">
+                  Match Found
+                </span>
+              </div>
+              <div className="text-sm font-bold text-foreground">
+                SBA 7(a) — Live Oak Bank
+              </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">
+                Pulls Experian · 87% match
+              </div>
+              <div className="mt-2 text-xs font-semibold text-accent">
+                Up to $135,000
+              </div>
+            </div>
+
+            {/* Floating card 3 — rate (offset) */}
+            <div
+              className="hidden sm:block absolute -top-6 -right-4 bg-card border border-gold/30 rounded-xl shadow-glow p-3 w-48 animate-float"
+              style={{ animationDelay: "0.6s" }}
+            >
+              <div className="text-[10px] font-bold uppercase tracking-widest text-gold-dark">
+                Live Prime Rate
+              </div>
+              <div className="text-xl font-bold text-foreground mt-0.5 tabular-nums">
+                7.50%
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                Federal Reserve · Today
               </div>
             </div>
           </div>
