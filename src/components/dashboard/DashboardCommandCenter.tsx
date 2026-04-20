@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { OnboardingChecklist } from "./OnboardingChecklist";
 import { CreditScoreSimulator } from "./CreditScoreSimulator";
 import { SeparationAuditCard } from "./business-profile/SeparationAuditCard";
+import { PredictionsPanel } from "./PredictionsPanel";
 
 // ── Helpers ──
 
@@ -473,6 +474,9 @@ export function DashboardCommandCenter({ userId, onNavigate }: DashboardCommandC
     <div className="space-y-6">
       {/* Quick Upload - prominent for new users */}
       <QuickUpload onNavigate={onNavigate} />
+
+      {/* Paige's Predictions — proactive intelligence */}
+      <PredictionsPanel userId={userId} variant="compact" onNavigate={onNavigate} />
 
       {/* Top row: Scores + Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
