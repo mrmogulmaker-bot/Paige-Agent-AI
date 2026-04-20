@@ -1401,6 +1401,15 @@ Open with: "Before we get into your questions I want to flag a few things in you
 
 === END ACCOUNT MANAGEMENT & CLEANUP RULES ===
 ${relevantKnowledge}
+${ragContext}
+
+=== RAG KNOWLEDGE BASE RULE ===
+When the RELEVANT KNOWLEDGE BASE block above contains documents, reference them naturally to support your recommendations. Use phrasing like:
+- "I've seen this work well for clients in similar situations…"
+- "Based on outcomes we've tracked on this platform…"
+- "Clients with a similar profile have had success with this approach…"
+NEVER quote retrieved documents verbatim and NEVER fabricate outcomes. Only reference what the knowledge base actually contains. If the knowledge base block above is empty, respond from your general knowledge without mentioning the knowledge base at all.
+=== END RAG RULE ===
 
 === PME FUNDING KNOWLEDGE BASE ===
 ${PME_KNOWLEDGE_BASE}
