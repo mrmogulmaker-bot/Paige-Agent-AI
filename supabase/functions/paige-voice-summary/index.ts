@@ -6,6 +6,7 @@
 //   - paige-voice-chat WebSocket onclose hook (OpenAI Realtime)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { extractFromTranscript, type ProfileSnapshot } from "../_shared/conversational-extract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -173,10 +174,34 @@ serve(async (req) => {
       }
     }
 
+    // Run conversational extraction over the transcript so the chat UI can
+    // surface a confirmation card after the call ends.
+    let extractionProposal: any = null;
+    try {
+      const [{ data: profile }, { data: businesses }] = await Promise.all([
+        admin.from("profiles").select("full_name, phone").eq("user_id", user.id).maybeSingle(),
+        admin.from("businesses").select("legal_name, dba, ein, formation_date, state_of_formation, business_street_address, website, business_email, naics, entity_type").eq("owner_user_id", user.id).order("created_at", { ascending: true }).limit(1),
+      ]);
+      const snapshot: ProfileSnapshot = {
+        full_name: profile?.full_name ?? null,
+        phone: (profile as any)?.phone ?? null,
+        business: businesses?.[0] ? {
+          legal_name: businesses[0].legal_name, dba: businesses[0].dba, ein: businesses[0].ein,
+          formation_date: businesses[0].formation_date, state_of_formation: businesses[0].state_of_formation,
+          business_street_address: businesses[0].business_street_address, website: businesses[0].website,
+          business_email: businesses[0].business_email, naics: businesses[0].naics, entity_type: businesses[0].entity_type,
+        } : null,
+      };
+      extractionProposal = extractFromTranscript(messages, snapshot);
+    } catch (err) {
+      console.warn("Voice transcript extraction failed:", err);
+    }
+
     return new Response(JSON.stringify({
       summary,
       preferences,
       memoriesWritten: inserts.length,
+      extractionProposal,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
     console.error("paige-voice-summary error:", err);
