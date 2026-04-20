@@ -1278,56 +1278,28 @@ INTEGRATION WITH search_regional_lenders: When the client asks about ALL lenders
       const msg = messages[i];
       
       if (attachedDocument && msg.role === "user" && i === messages.length - 1) {
-        const contentParts: any[] = [
-          {
+        const docKind = attachedDocument.kind || (attachedDocument.mimeType === "application/pdf" ? "pdf" : attachedDocument.mimeType?.startsWith("image/") ? "image" : "docx");
+        const contentParts: any[] = [];
+
+        if ((docKind === "pdf" || docKind === "image") && attachedDocument.base64) {
+          contentParts.push({
             type: "image_url",
-            image_url: { url: `data:application/pdf;base64,${attachedDocument.base64}` },
-          },
-          {
-            type: "text",
-            text: msg.content + `\n\n[Attached document: ${attachedDocument.fileName}]
+            image_url: { url: `data:${attachedDocument.mimeType};base64,${attachedDocument.base64}` },
+          });
+        }
 
-=== CREDIT REPORT ANALYSIS INSTRUCTIONS ===
-If this document is a credit report (especially a tri-merge report from MyFreeScoreNow, IdentityIQ, SmartCredit, or similar), produce a STRUCTURED analysis in the following exact format. Use a professional, precise, advisory tone — like a senior credit analyst.
+        const docxBlock = docKind === "docx" && attachedDocument.textContent
+          ? `\n\n=== DOCX TEXT CONTENT (${attachedDocument.fileName}) ===\n${attachedDocument.textContent.slice(0, 80_000)}\n=== END DOCX ===\n`
+          : "";
 
-**TRI-MERGE FORMAT**: These reports present each account in three columns — TransUnion (left), Experian (middle), Equifax (right). Dashes (--) mean NOT reported at that bureau. Read each column independently.
+        const baseInstruction = isCreditReportPdf
+          ? `[Attached document: ${attachedDocument.fileName}]\n\n=== CREDIT REPORT ANALYSIS INSTRUCTIONS ===\nIf this document is a credit report (especially a tri-merge report), produce a STRUCTURED analysis. Tri-merge column order is TransUnion (left), Experian (middle), Equifax (right). Dashes (--) mean NOT reported at that bureau. Always identify document type and bureau in your response.`
+          : `[Attached document: ${attachedDocument.fileName} — ${docKind.toUpperCase()}]\n\nThe client has shared a document. Acknowledge it briefly and naturally — e.g. "Got it — I've read through your [document type]." If you can identify what kind of document this is (EIN letter, articles of incorporation, business license, bank statement, ID, W-9, voided check, or other), name it. The system will offer the client a save dialog separately for any extracted fields, so do NOT recite them as a checklist; just confirm what you saw and ask what they'd like to do next.`;
 
-**SECTION 0 — FRAUD ALERTS & SECURITY FREEZES (if present)**
-Check the Consumer Statement section FIRST. If fraud alerts or security freezes exist, display them BEFORE any other content.
-
-**SECTION 1 — BUREAU SCORES SUMMARY**
-Three-column table: Equifax | Experian | TransUnion. Show score, classification, primary suppressing factor.
-
-**SECTION 2 — BUREAU-BY-BUREAU NEGATIVE ITEM BREAKDOWN**
-Per bureau: Account Name, Original Creditor, Type, Account Number (masked), Date of Last Activity, Balance, Creditor Remarks, Dispute Basis.
-Extract ALL negative types including charge-offs, collections, late payments, public records.
-Use LEGITIMATE STATUTORY LANGUAGE ONLY for dispute bases.
-NEVER fabricate creditor agreements or promises.
-
-**SECTION 3 — CROSS-BUREAU DISCREPANCIES — DISPUTE PRIORITY ITEMS**
-Compare the same debt across all three bureaus. Flag inconsistencies.
-
-**SECTION 4 — POSITIVE ACCOUNTS SUMMARY**
-Accounts in good standing: creditor, type, limit, balance, utilization %, payment status, age, bureaus.
-
-**SECTION 5 — HARD INQUIRIES**
-List all hard inquiries with creditor name, date, bureau.
-
-**SECTION 6 — FUNDING STRATEGY IMPACT**
-Specific to actual scores and negatives found.
-
-**SECTION 7 — PRIORITY ACTION PLAN**
-Top 5-7 actions ranked by score impact. Include bureau(s), estimated impact range, statutory basis.
-
-**SECTION 8 — COMPLIANCE DISCLAIMER**
-"*This analysis is provided for educational purposes only...*"
-
-=== FINANCIAL DOCUMENT INSTRUCTIONS ===
-If financial document (bank statement, P&L, tax return), offer lender-ready summary.
-
-Always identify the document type and bureau in your response.`,
-          },
-        ];
+        contentParts.push({
+          type: "text",
+          text: `${msg.content}\n\n${baseInstruction}${docxBlock}`,
+        });
         aiMessages.push({ role: "user", content: contentParts });
       } else {
         aiMessages.push({ role: msg.role, content: msg.content });
