@@ -21,12 +21,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
 import { primeMicAndAudio, fetchVoiceCredentials, describeVoiceError } from "@/lib/voice/startVoiceSession";
+import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
+import { extractFromMessage } from "@/lib/conversationalExtractor";
+import { fieldToWriteBackUpdate } from "@/lib/extractionProposal";
+import { useProfileSnapshot } from "@/hooks/useProfileSnapshot";
 
 type Message = {
   role: "user" | "assistant";
   content: string;
   documentFileName?: string;
   syncStatus?: any;
+  /** Inline extraction proposal rendered as a confirmation card after this message. */
+  extractionProposal?: ExtractionProposal;
 };
 
 interface PaigeChatProps {
@@ -44,6 +50,12 @@ const quickActions = [
 
 export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
+  // Snapshot of profile/business fields used by the conversational extractor
+  // to skip already-populated values. Refreshed after every successful save.
+  const { snapshot: profileSnapshot, refresh: refreshProfileSnapshot } = useProfileSnapshot(user.id);
+  // Tracks fields a client has explicitly declined in this session so we don't
+  // re-prompt them with the same proposal again.
+  const declinedFieldsRef = useRef<Set<string>>(new Set());
   const contextInjectedRef = useRef(false);
   const isMobile = useIsMobile();
   const location = useLocation();
@@ -385,6 +397,47 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Confirm a conversational extraction proposal — POST selected fields to
+   * paige-write-back, then refresh the local profile snapshot so the extractor
+   * stops re-detecting them. Throws on failure so the card can show the error.
+   */
+  const handleExtractionConfirm = async (proposal: ExtractionProposal, selectedKeys: string[]) => {
+    const selected = proposal.fields.filter(f => selectedKeys.includes(f.key));
+    if (selected.length === 0) return;
+
+    const { data: { session: freshSession } } = await supabase.auth.getSession();
+    if (!freshSession) throw new Error("Session expired — please sign in again.");
+
+    const { data, error } = await supabase.functions.invoke("paige-write-back", {
+      body: {
+        updates: selected.map(fieldToWriteBackUpdate),
+        source: "conversation",
+      },
+      headers: { Authorization: `Bearer ${freshSession.access_token}` },
+    });
+    if (error) throw error;
+
+    const failed = (data?.results || []).filter((r: any) => !r.success);
+    if (failed.length > 0 && failed.length === selected.length) {
+      throw new Error(failed[0]?.error || "Save failed.");
+    }
+    if (failed.length > 0) {
+      toast({
+        title: "Saved with warnings",
+        description: `${failed.length} field${failed.length === 1 ? "" : "s"} could not be saved.`,
+      });
+    }
+    // Refresh snapshot so the extractor will skip these fields next time.
+    await refreshProfileSnapshot();
+    queryClient.invalidateQueries({ queryKey: ["client-chat-context"] });
+  };
+
+  const handleExtractionSkip = (proposal: ExtractionProposal) => {
+    // Remember declined fields so we don't re-prompt for them this session.
+    for (const f of proposal.fields) declinedFieldsRef.current.add(f.key);
+  };
+
   const handleSend = async (overrideInput?: string) => {
     const messageText = overrideInput || input;
     if ((!messageText.trim() && !attachedDoc) || isLoading) return;
@@ -524,6 +577,35 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         }
       }
 
+      // Run conversational extractor against the user message AFTER the assistant
+      // reply renders. Attach an inline confirmation card to the last assistant message.
+      if (!currentDoc && messageText.trim()) {
+        try {
+          const proposal = extractFromMessage(messageText, profileSnapshot);
+          if (proposal) {
+            const filteredFields = proposal.fields.filter(
+              (f) => !declinedFieldsRef.current.has(f.key)
+            );
+            if (filteredFields.length > 0) {
+              const finalProposal: ExtractionProposal = { ...proposal, fields: filteredFields };
+              setMessages(prev => {
+                const next = [...prev];
+                for (let i = next.length - 1; i >= 0; i--) {
+                  if (next[i].role === "assistant") {
+                    next[i] = { ...next[i], extractionProposal: finalProposal };
+                    return next;
+                  }
+                }
+                next.push({ role: "assistant", content: "", extractionProposal: finalProposal });
+                return next;
+              });
+            }
+          }
+        } catch (err) {
+          console.warn("Conversational extractor failed:", err);
+        }
+      }
+
       setIsLoading(false);
     } catch (error) {
       console.error("Chat error:", error);
@@ -605,6 +687,13 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
                 )
               )}
               {message.syncStatus && <SyncStatusPanel syncStatus={message.syncStatus} />}
+              {message.extractionProposal && (
+                <ExtractionProposalCard
+                  proposal={message.extractionProposal}
+                  onConfirm={(selectedKeys) => handleExtractionConfirm(message.extractionProposal!, selectedKeys)}
+                  onSkip={() => handleExtractionSkip(message.extractionProposal!)}
+                />
+              )}
             </div>
           </div>
         ))}
