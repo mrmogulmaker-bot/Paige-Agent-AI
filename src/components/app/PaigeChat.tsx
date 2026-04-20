@@ -399,7 +399,6 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
         authToken: freshSession?.access_token,
         overrides,
         logLabel: "[PaigeChat]",
-        forceWebSocket: isMobile,
       });
       console.log("[PaigeChat] startSession resolved", voiceSession);
     } catch (err: any) {

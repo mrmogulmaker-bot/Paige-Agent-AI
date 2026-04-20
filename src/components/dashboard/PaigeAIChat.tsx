@@ -139,7 +139,6 @@ export const PaigeAIChat = () => {
         authToken: session?.access_token,
         overrides,
         logLabel: "[PaigeAIChat]",
-        forceWebSocket: isMobile,
       });
       console.log("[PaigeAIChat] startSession resolved", voiceSession);
     } catch (error) {
