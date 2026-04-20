@@ -35,7 +35,7 @@ const messageSchema = z.object({
     })
   ).optional(),
   clientId: z.string().uuid().nullable().optional(),
-  clientContext: z.string().max(10000).optional(),
+  clientContext: z.string().max(100000).optional().transform((v) => (v && v.length > 50000 ? v.slice(0, 50000) : v)),
   // Client-provided local clock so Paige can greet/refer to time in the
   // user's actual timezone instead of server UTC.
   userTime: z.string().max(64).optional(),
