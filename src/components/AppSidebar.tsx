@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { Lock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
@@ -57,12 +58,44 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isCoachOrAdmin, setIsCoachOrAdmin] = useState(false);
+  const [predictionsCount, setPredictionsCount] = useState(0);
   const { planSlug } = useSubscription();
   const { mode, isCoachOrAdmin: modeCoachOrAdmin } = useDashboardMode();
 
   useEffect(() => {
     checkRoles();
+    loadPredictionsCount();
+
+    // Realtime: refresh badge as predictions are inserted/dismissed/acted on
+    const channel = supabase
+      .channel("sidebar-predictions-count")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "credit_predictions" },
+        () => loadPredictionsCount(),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
+
+  const loadPredictionsCount = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { count } = await supabase
+        .from("credit_predictions")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("is_dismissed", false)
+        .eq("is_acted_on", false);
+      setPredictionsCount(count ?? 0);
+    } catch (err) {
+      console.error("Error loading predictions count:", err);
+    }
+  };
 
   const checkRoles = async () => {
     try {
@@ -114,7 +147,17 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
                   }`}
                 >
                   <mainMenuItem.icon className="w-5 h-5" />
-                  <span className="text-sm">{mainMenuItem.title}</span>
+                  <span className="text-sm flex-1 flex items-center justify-between gap-2">
+                    {mainMenuItem.title}
+                    {predictionsCount > 0 && (
+                      <Badge
+                        className="h-5 min-w-5 px-1.5 rounded-full bg-gold text-primary border-0 text-[10px] font-bold tabular-nums"
+                        title={`${predictionsCount} active prediction${predictionsCount === 1 ? "" : "s"}`}
+                      >
+                        {predictionsCount > 99 ? "99+" : predictionsCount}
+                      </Badge>
+                    )}
+                  </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
