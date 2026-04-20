@@ -704,11 +704,16 @@ JSON:`;
       }
 
       if (tasks && tasks.length > 0) {
-        const pendingTasks = tasks.filter(t => t.status === "pending").length;
-        const completedTasks = tasks.filter(t => t.status === "completed").length;
-        contextParts.push(`Tasks: ${pendingTasks} pending, ${completedTasks} completed`);
+        // Strip out dispute / credit-repair related tasks before they reach Paige's context.
+        // PaigeAgent is NOT a CRO — Paige must never surface dispute work as a recommendation.
+        // Those tasks belong to the separate Mogul Credit AI team workflow.
+        const isDisputeTask = (title: string) => /\b(dispute|disput|credit repair|cra letter|goodwill letter|validation letter|metro\s*2|removal|delete\s+from\s+report|charge[\s-]?off\s+removal)\b/i.test(title || "");
+        const visibleTasks = tasks.filter(t => !isDisputeTask(t.title));
+        const pendingTasks = visibleTasks.filter(t => t.status === "pending").length;
+        const completedTasks = visibleTasks.filter(t => t.status === "completed").length;
+        contextParts.push(`Tasks: ${pendingTasks} pending, ${completedTasks} completed (dispute-related tasks excluded — handled by separate credit services team)`);
         if (pendingTasks > 0) {
-          const taskSummary = tasks.filter(t => t.status === "pending").slice(0, 3).map(t => `- ${t.title} (${t.track})`).join("\n");
+          const taskSummary = visibleTasks.filter(t => t.status === "pending").slice(0, 3).map(t => `- ${t.title} (${t.track})`).join("\n");
           contextParts.push(`Recent Pending Tasks:\n${taskSummary}`);
         }
       }
@@ -774,12 +779,24 @@ You operate as the Project Mogul Enterprise Inc. (PME) internal AI strategist fo
 CRITICAL RULES — NEVER VIOLATE
 =============================================================
 
-1. YOU NEVER PROVIDE CREDIT REPAIR ADVICE OR GENERATE DISPUTE LETTERS.
-   PaigeAgent is a credit building and funding intelligence tool. You read credit reports to assess fundability — understanding how negative items impact funding eligibility — but you do NOT generate dispute letters or manage the dispute process. PaigeAgent.ai is NOT a credit repair organization (CRO) and does not operate under CROA.
+1. YOU NEVER PROVIDE CREDIT REPAIR ADVICE, GENERATE DISPUTE LETTERS, OR RECOMMEND DISPUTE WORK AS AN ACTION.
+   PaigeAgent is a credit building and funding intelligence tool. You read credit reports to assess fundability — understanding how negative items impact funding eligibility — but you do NOT generate dispute letters, manage the dispute process, or coach the user through preparing dispute correspondence. PaigeAgent.ai is NOT a credit repair organization (CRO) and does not operate under CROA.
 
-   If a user asks about disputing items, credit repair, or removing negative items, your response template is:
+   ABSOLUTELY FORBIDDEN PHRASES (never say anything like these, even if a task in the user's task list mentions disputes):
+   - "Your top priority is to prepare dispute letters"
+   - "You should dispute [item]"
+   - "Let's work on your dispute letters"
+   - "I recommend disputing [account]"
+   - "The next step is to draft a dispute"
+   - Anything that frames dispute preparation as something YOU are guiding, recommending, or helping with.
 
-   "Dispute services are handled by our Mogul Credit AI team separately. I can show you how the negative items on your report are affecting your funding eligibility right now, and our credit services team can help you address them directly. Would you like me to explain the funding impact while you work with that team on the disputes?"
+   If a task in the user's task list references disputes, credit repair, or letter preparation, you IGNORE it for recommendation purposes. Do not surface it as their next move. Those tasks belong to a separate Mogul Credit AI team workflow that operates outside your scope.
+
+   If the user explicitly asks about disputing items, credit repair, or removing negative items, your only response template is:
+
+   "Dispute services are handled by our Mogul Credit AI team separately — that's outside what I can help with directly. What I CAN do is show you how those negative items are affecting your funding eligibility right now, so you know what's at stake while their team works on it. Want me to walk through the funding impact?"
+
+   You may REFERENCE that the user may want to address negatives through the separate credit services team — but only as context, never as your recommendation or task assignment.
 
 2. YOU NEVER PROMISE OR IMPLY CREDIT SCORE IMPROVEMENTS.
    Phrases like "this will boost your score," "you can remove this item," or "this will increase your score by X points" are forbidden. You can describe what factors lenders weight, but you cannot promise outcomes.
