@@ -5176,6 +5176,220 @@ export type Database = {
         }
         Relationships: []
       }
+      quickbooks_connections: {
+        Row: {
+          access_token_encrypted: string
+          business_id: string | null
+          created_at: string
+          environment: string
+          id: string
+          is_active: boolean
+          last_synced_at: string | null
+          qb_company_name: string | null
+          qb_realm_id: string
+          refresh_token_encrypted: string
+          scope: string | null
+          token_expires_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token_encrypted: string
+          business_id?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          qb_company_name?: string | null
+          qb_realm_id: string
+          refresh_token_encrypted: string
+          scope?: string | null
+          token_expires_at: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token_encrypted?: string
+          business_id?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          qb_company_name?: string | null
+          qb_realm_id?: string
+          refresh_token_encrypted?: string
+          scope?: string | null
+          token_expires_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quickbooks_connections_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quickbooks_financials: {
+        Row: {
+          accounts_payable: number | null
+          accounts_receivable: number | null
+          business_id: string | null
+          cash_and_bank_balance: number | null
+          cash_runway_months: number | null
+          cogs: number | null
+          created_at: string
+          gross_margin_percent: number | null
+          gross_profit: number | null
+          id: string
+          marketing_expenses: number | null
+          monthly_burn_rate: number | null
+          net_income: number | null
+          net_margin_percent: number | null
+          operating_expenses: number | null
+          payroll_expenses: number | null
+          period_end: string
+          period_start: string
+          professional_fees: number | null
+          qb_connection_id: string
+          revenue_per_month: Json | null
+          synced_at: string
+          top_expense_categories: Json | null
+          total_expenses: number | null
+          total_revenue: number | null
+          user_id: string
+        }
+        Insert: {
+          accounts_payable?: number | null
+          accounts_receivable?: number | null
+          business_id?: string | null
+          cash_and_bank_balance?: number | null
+          cash_runway_months?: number | null
+          cogs?: number | null
+          created_at?: string
+          gross_margin_percent?: number | null
+          gross_profit?: number | null
+          id?: string
+          marketing_expenses?: number | null
+          monthly_burn_rate?: number | null
+          net_income?: number | null
+          net_margin_percent?: number | null
+          operating_expenses?: number | null
+          payroll_expenses?: number | null
+          period_end: string
+          period_start: string
+          professional_fees?: number | null
+          qb_connection_id: string
+          revenue_per_month?: Json | null
+          synced_at?: string
+          top_expense_categories?: Json | null
+          total_expenses?: number | null
+          total_revenue?: number | null
+          user_id: string
+        }
+        Update: {
+          accounts_payable?: number | null
+          accounts_receivable?: number | null
+          business_id?: string | null
+          cash_and_bank_balance?: number | null
+          cash_runway_months?: number | null
+          cogs?: number | null
+          created_at?: string
+          gross_margin_percent?: number | null
+          gross_profit?: number | null
+          id?: string
+          marketing_expenses?: number | null
+          monthly_burn_rate?: number | null
+          net_income?: number | null
+          net_margin_percent?: number | null
+          operating_expenses?: number | null
+          payroll_expenses?: number | null
+          period_end?: string
+          period_start?: string
+          professional_fees?: number | null
+          qb_connection_id?: string
+          revenue_per_month?: Json | null
+          synced_at?: string
+          top_expense_categories?: Json | null
+          total_expenses?: number | null
+          total_revenue?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quickbooks_financials_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quickbooks_financials_qb_connection_id_fkey"
+            columns: ["qb_connection_id"]
+            isOneToOne: false
+            referencedRelation: "quickbooks_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quickbooks_transactions: {
+        Row: {
+          amount: number
+          category: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_business_expense: boolean | null
+          qb_connection_id: string
+          qb_transaction_id: string
+          transaction_date: string
+          transaction_type: string
+          user_id: string
+          vendor_or_customer: string | null
+        }
+        Insert: {
+          amount: number
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_business_expense?: boolean | null
+          qb_connection_id: string
+          qb_transaction_id: string
+          transaction_date: string
+          transaction_type: string
+          user_id: string
+          vendor_or_customer?: string | null
+        }
+        Update: {
+          amount?: number
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_business_expense?: boolean | null
+          qb_connection_id?: string
+          qb_transaction_id?: string
+          transaction_date?: string
+          transaction_type?: string
+          user_id?: string
+          vendor_or_customer?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quickbooks_transactions_qb_connection_id_fkey"
+            columns: ["qb_connection_id"]
+            isOneToOne: false
+            referencedRelation: "quickbooks_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       referral_clicks: {
         Row: {
           affiliate_id: string | null
@@ -6057,6 +6271,8 @@ export type Database = {
         }
         Returns: number
       }
+      qb_decrypt_token: { Args: { _ciphertext: string }; Returns: string }
+      qb_encrypt_token: { Args: { _plaintext: string }; Returns: string }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
         Returns: {
