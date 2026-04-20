@@ -110,7 +110,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       const isAdmin = roles.includes("admin");
 
       if (isAdmin) {
-        const [profilesRes, allRolesRes] = await Promise.all([
+        const [profilesRes, allRolesRes, bizRes] = await Promise.all([
           supabase
             .from("profiles")
             .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed")
@@ -118,13 +118,23 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
           supabase
             .from("user_roles")
             .select("user_id, role"),
+          supabase
+            .from("businesses")
+            .select("owner_user_id, is_minority_owned, is_women_owned, is_veteran_owned"),
         ]);
 
         const allRoles = allRolesRes.data || [];
-        const enriched = (profilesRes.data || []).map((p: any) => ({
-          ...p,
-          roles: allRoles.filter((r: any) => r.user_id === p.user_id).map((r: any) => r.role),
-        }));
+        const allBiz = (bizRes.data || []) as any[];
+        const enriched = (profilesRes.data || []).map((p: any) => {
+          const ownerBiz = allBiz.filter((b) => b.owner_user_id === p.user_id);
+          return {
+            ...p,
+            roles: allRoles.filter((r: any) => r.user_id === p.user_id).map((r: any) => r.role),
+            is_minority_owned: ownerBiz.some((b) => b.is_minority_owned === true),
+            is_women_owned: ownerBiz.some((b) => b.is_women_owned === true),
+            is_veteran_owned: ownerBiz.some((b) => b.is_veteran_owned === true),
+          };
+        });
         setAuthClients(enriched as AuthClient[]);
       }
     } catch (err) {
@@ -156,9 +166,14 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
 
   const filterAuth = (list: AuthClient[]) =>
     list.filter((c) => {
-      if (!searchQuery) return true;
-      const q = searchQuery.toLowerCase();
-      return (c.full_name || "").toLowerCase().includes(q);
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!(c.full_name || "").toLowerCase().includes(q)) return false;
+      }
+      if (demoFilter.minority && !c.is_minority_owned) return false;
+      if (demoFilter.women && !c.is_women_owned) return false;
+      if (demoFilter.veteran && !c.is_veteran_owned) return false;
+      return true;
     });
 
   const activeCount = internalClients.filter((c) => c.status === "active").length;
