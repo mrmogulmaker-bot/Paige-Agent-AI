@@ -40,6 +40,21 @@ CONVERSATION:
 
 SUMMARY:`;
 
+const COACHING_INSIGHT_PROMPT = `You are reviewing a conversation between a client and Paige (AI credit/funding strategist) to find ONE genuinely novel coaching insight worth saving to a shared knowledge base.
+
+Save an insight ONLY if BOTH conditions are met:
+1. Paige explained a SPECIFIC strategy, framework, connection between concepts, or non-obvious tactical approach (not generic advice).
+2. The client responded positively in a way that signals the insight landed — phrases like: "I didn't know that", "that makes sense", "that's helpful", "great idea", "I'll try that", "got it", "ohhh okay", an enthusiastic follow-up question, or any clear signal of engagement.
+
+If both are met, return JSON: { "title": "<6-12 word title>", "content": "<3-6 sentence anonymized insight written as a reusable strategy — no client names, no business names, no specific dollar amounts unless they're industry rules of thumb>" }
+
+If either condition is missing (no novel insight, or no positive client signal), return: { "title": null, "content": null }
+
+CONVERSATION:
+{{TRANSCRIPT}}
+
+JSON:`;
+
 async function callAI(prompt: string, lovableApiKey: string, model = "google/gemini-2.5-flash-lite") {
   const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -115,10 +130,14 @@ serve(async (req) => {
       .map((m) => `${m.role === "user" ? "Client" : "Paige"}: ${m.content}`)
       .join("\n");
 
-    // Run summary + preference extraction in parallel
-    const [summary, preferencesRaw] = await Promise.all([
+    // Run summary + preference extraction + coaching-insight extraction in parallel
+    const [summary, preferencesRaw, coachingInsightRaw] = await Promise.all([
       callAI(SUMMARY_PROMPT.replace("{{TRANSCRIPT}}", transcript), lovableApiKey),
       callAI(PREFERENCE_EXTRACTION_PROMPT.replace("{{TRANSCRIPT}}", transcript), lovableApiKey),
+      callAI(COACHING_INSIGHT_PROMPT.replace("{{TRANSCRIPT}}", transcript), lovableApiKey).catch((e) => {
+        console.warn("coaching insight extraction failed:", e);
+        return "";
+      }),
     ]);
 
     // Use service role for inserts so RLS doesn't block writes when client_id differs from auth.uid()
