@@ -940,3 +940,11 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     </div>
   );
 }
+
+export function PaigeChat(props: PaigeChatProps) {
+  return (
+    <ConversationProvider>
+      <PaigeChatInner {...props} />
+    </ConversationProvider>
+  );
+}
