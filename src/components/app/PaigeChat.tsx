@@ -50,6 +50,12 @@ const quickActions = [
 
 export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
+  // Snapshot of profile/business fields used by the conversational extractor
+  // to skip already-populated values. Refreshed after every successful save.
+  const { snapshot: profileSnapshot, refresh: refreshProfileSnapshot } = useProfileSnapshot(user.id);
+  // Tracks fields a client has explicitly declined in this session so we don't
+  // re-prompt them with the same proposal again.
+  const declinedFieldsRef = useRef<Set<string>>(new Set());
   const contextInjectedRef = useRef(false);
   const isMobile = useIsMobile();
   const location = useLocation();
@@ -611,6 +617,13 @@ export function PaigeChat({ user, session, clientId }: PaigeChatProps) {
                 )
               )}
               {message.syncStatus && <SyncStatusPanel syncStatus={message.syncStatus} />}
+              {message.extractionProposal && (
+                <ExtractionProposalCard
+                  proposal={message.extractionProposal}
+                  onConfirm={(selectedKeys) => handleExtractionConfirm(message.extractionProposal!, selectedKeys)}
+                  onSkip={() => handleExtractionSkip(message.extractionProposal!)}
+                />
+              )}
             </div>
           </div>
         ))}
