@@ -11,7 +11,7 @@ const footerLinks = {
     { name: "About", href: "#" },
     { name: "Blog", href: "#" },
     { name: "Contact", href: "#" },
-    { name: "Become an Affiliate", href: "/affiliates" },
+    { name: "Partners", href: "/affiliates" },
   ],
   legal: [
     { name: "Privacy", href: "/privacy" },
