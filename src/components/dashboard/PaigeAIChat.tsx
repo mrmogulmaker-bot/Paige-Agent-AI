@@ -7,6 +7,7 @@ import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useConversation } from "@11labs/react";
+import { primeMicAndAudio, fetchVoiceCredentials, describeVoiceError } from "@/lib/voice/startVoiceSession";
 import { ResponseFeedback } from "@/components/chat/ResponseFeedback";
 import { useQuery } from "@tanstack/react-query";
 import { getUserClock } from "@/lib/userClock";
@@ -90,45 +91,35 @@ export const PaigeAIChat = () => {
 
   // Voice chat functions
   const startVoiceChat = async () => {
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    let audioCtx: AudioContext | null = null;
     try {
-      console.log("Starting voice chat...");
-      
-      // Request microphone permission
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log("Microphone access granted");
-      
-      // Get signed URL from backend
+      console.log("[PaigeAIChat] Starting voice chat...");
+      // Prime mic + audio output INSIDE the click gesture.
+      const primed = await primeMicAndAudio();
+      audioCtx = primed.audioContext;
+      console.log("[PaigeAIChat] Mic primed; AudioContext state:", audioCtx?.state);
+
       const { data: { session } } = await supabase.auth.getSession();
-      console.log("Got session, invoking elevenlabs-signed-url...");
-      
-      const { data, error } = await supabase.functions.invoke("elevenlabs-signed-url", {
-        headers: {
-          Authorization: `Bearer ${session?.access_token}`,
-        },
-      });
+      const creds = await fetchVoiceCredentials(session?.access_token);
+      console.log("[PaigeAIChat] Got credentials; using", creds.conversationToken ? "WebRTC token" : "signed URL");
 
-      if (error) {
-        console.error("Edge function error:", error);
-        throw error;
+      if (creds.conversationToken) {
+        await conversation.startSession({
+          conversationToken: creds.conversationToken,
+          connectionType: "webrtc",
+        } as any);
+      } else if (creds.signedUrl) {
+        await conversation.startSession({ signedUrl: creds.signedUrl } as any);
+      } else {
+        throw new Error("No voice credentials returned");
       }
-      
-      console.log("Got signed URL, starting session...");
-      console.log("Using ElevenLabs Agent ID:", data.agentId);
-
-      // Start conversation with signed URL
-      await conversation.startSession({
-        signedUrl: data.signedUrl
-      });
-
-      console.log("Voice chat started successfully");
-
+      console.log("[PaigeAIChat] Voice session started");
     } catch (error) {
-      console.error("Error starting voice chat:", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to start voice chat",
-        variant: "destructive",
-      });
+      console.error("[PaigeAIChat] Error starting voice chat:", error);
+      if (audioCtx) { try { await audioCtx.close(); } catch {} }
+      const { title, description } = describeVoiceError(error, isMobile);
+      toast({ title, description, variant: "destructive" });
     }
   };
   
