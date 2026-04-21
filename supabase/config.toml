@@ -25,6 +25,8 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = true
   [functions.paige-voice-chat]
     verify_jwt = false
+  [functions.paige-web-search]
+    verify_jwt = false
   [functions.paige-write-back]
     verify_jwt = true
   [functions.personal-build-suggestions]
