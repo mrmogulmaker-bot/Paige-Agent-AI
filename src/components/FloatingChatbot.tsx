@@ -519,9 +519,16 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
                   <div className={`rounded-lg px-3 py-2 sm:px-4 sm:py-2 max-w-[85%] sm:max-w-[80%] ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
                     {message.documentFileName && <DocumentMessageBubble fileName={message.documentFileName} />}
                     {message.content && (
-                      message.role === "assistant" ? (
-                        <MarkdownMessage content={message.content} />
-                      ) : (
+                      message.role === "assistant" ? (() => {
+                        const { before, diagram, after } = extractEntityDiagram(message.content);
+                        return (
+                          <>
+                            {before && <MarkdownMessage content={before} />}
+                            {diagram && <EntityDiagramCard data={diagram} />}
+                            {after && <MarkdownMessage content={after} />}
+                          </>
+                        );
+                      })() : (
                         <p className="text-[13px] sm:text-sm whitespace-pre-wrap">{message.content}</p>
                       )
                     )}
