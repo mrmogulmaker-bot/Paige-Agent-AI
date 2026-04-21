@@ -200,6 +200,11 @@ const Admin = () => {
             {userRole === "admin" ? <AffiliatesAdmin /> : <MyReferralsPanel />}
           </Suspense>
         } />
+        <Route path="knowledge-base" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <KnowledgeBaseAdmin />
+          </Suspense>
+        } />
         <Route path="settings" element={
           <Suspense fallback={<SuspenseFallback />}>
             <UserManagement />
@@ -259,6 +264,10 @@ function AdminOverview({ stats }: { stats: { totalUsers: number; activeSubscript
           </CardContent>
         </Card>
       </div>
+
+      <Suspense fallback={<SuspenseFallback />}>
+        <AILearningOverview />
+      </Suspense>
 
       <Suspense fallback={<SuspenseFallback />}>
         <UserPerformance />
