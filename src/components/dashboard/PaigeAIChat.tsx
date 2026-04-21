@@ -56,6 +56,29 @@ const PaigeAIChatInner = () => {
 
   // ElevenLabs conversation hook
   const conversation = useConversation({
+    // IMPORTANT: Register web_search as a client tool in your ElevenLabs agent dashboard at
+    // elevenlabs.io under your Paige agent → Conversational AI → Tools → Add Client Tool.
+    // Name: web_search
+    // Description: Search the web for current vehicle financing rates, lender requirements, and real-time information.
+    // Parameter: query (string, required) — the search query to execute.
+    clientTools: {
+      web_search: async ({ query }: { query: string }) => {
+        try {
+          const { data, error } = await supabase.functions.invoke("paige-web-search", {
+            body: { query },
+          });
+          if (error) throw error;
+          return JSON.stringify({
+            query,
+            results: data?.results ?? [],
+            note: data?.note,
+          });
+        } catch (err) {
+          console.error("[PaigeAIChat] web_search tool failed:", err);
+          return JSON.stringify({ error: err instanceof Error ? err.message : "Search failed", results: [] });
+        }
+      },
+    },
     onConnect: () => {
       setVoiceTranscript([]);
       setVoiceStatus("listening");
