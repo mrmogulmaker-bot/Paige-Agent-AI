@@ -240,7 +240,8 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
       // ElevenLabs rejects firstMessage/prompt overrides unless explicitly
       // enabled in the agent dashboard. Skip the override payload so the
       // session can connect; rely on the agent's default first message.
-      voicePendingContextRef.current = { systemPrompt: voiceSystemPrompt, greeting };
+      void voiceSystemPrompt;
+      void greeting;
 
       const voiceSession = await startManagedVoiceSession({
         conversation,

@@ -390,10 +390,9 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       // NOTE: ElevenLabs rejects `firstMessage` and `prompt` overrides unless
       // they are explicitly enabled in the agent dashboard config. Sending them
       // causes a 1008 close ("Override for field 'X' is not allowed by config").
-      // Keep the session payload empty and let the agent's dashboard defaults
-      // drive greeting + system prompt. We still send context as the first
-      // user/contextual message after connect (see onConnect handler).
-      voicePendingContextRef.current = { systemPrompt: voiceSystemPrompt, greeting };
+      // Rely on the agent's dashboard defaults for greeting + system prompt.
+      void voiceSystemPrompt; // built above for future use once overrides are enabled
+      void greeting;
 
       const voiceSession = await startManagedVoiceSession({
         conversation,
