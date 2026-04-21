@@ -18,26 +18,31 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
-  plugins: [
-    react(),
-    mode === "development" && componentTagger(),
-  ].filter(Boolean),
+  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    dedupe: ["react", "react-dom", "react/jsx-runtime"],
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', '@tanstack/react-query'],
+    include: [
+      "react",
+      "react-dom",
+      "react/jsx-runtime",
+      "@tanstack/react-query",
+      "@radix-ui/react-tooltip",
+    ],
+    force: true,
   },
   build: {
     rollupOptions: {
       output: {
         manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'query-vendor': ['@tanstack/react-query'],
-          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-tabs'],
-          'chart-vendor': ['recharts'],
+          "react-vendor": ["react", "react-dom", "react-router-dom"],
+          "query-vendor": ["@tanstack/react-query"],
+          "ui-vendor": ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-tabs"],
+          "chart-vendor": ["recharts"],
         },
       },
     },
