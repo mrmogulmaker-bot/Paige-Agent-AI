@@ -23,7 +23,7 @@ serve(async (req) => {
       );
     }
 
-    const apiKey = Deno.env.get("BRAVE_SEARCH_API_KEY");
+    const apiKey = Deno.env.get("FIRECRAWL_API_KEY");
 
     if (!apiKey) {
       return new Response(
@@ -31,50 +31,63 @@ serve(async (req) => {
           configured: false,
           query: q,
           results: [] as SearchResult[],
-          note: "Web search is not yet configured. The site owner needs to add a BRAVE_SEARCH_API_KEY from https://api.search.brave.com to enable live web search.",
+          note: "Web search is not yet configured. Connect Firecrawl in Lovable Cloud to enable live web search.",
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const url = new URL("https://api.search.brave.com/res/v1/web/search");
-    url.searchParams.set("q", q);
-    url.searchParams.set("count", "5");
-    url.searchParams.set("safesearch", "moderate");
-
-    const braveRes = await fetch(url.toString(), {
-      method: "GET",
+    const fcRes = await fetch("https://api.firecrawl.dev/v2/search", {
+      method: "POST",
       headers: {
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip",
-        "X-Subscription-Token": apiKey,
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        query: q,
+        limit: 5,
+      }),
     });
 
-    if (!braveRes.ok) {
-      const body = await braveRes.text().catch(() => "");
-      console.error(`[paige-web-search] Brave API error ${braveRes.status}: ${body.slice(0, 500)}`);
+    if (!fcRes.ok) {
+      const body = await fcRes.text().catch(() => "");
+      console.error(`[paige-web-search] Firecrawl API error ${fcRes.status}: ${body.slice(0, 500)}`);
       return new Response(
         JSON.stringify({
           configured: true,
           query: q,
           results: [] as SearchResult[],
-          error: `Search provider returned ${braveRes.status}.`,
+          error: `Search provider returned ${fcRes.status}.`,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const data = await braveRes.json();
-    const raw = data?.web?.results ?? [];
-    const results: SearchResult[] = (Array.isArray(raw) ? raw : [])
+    const data = await fcRes.json();
+    // Firecrawl v2 search response shape: { success, data: { web: [...], news: [...], images: [...] } }
+    // Older shapes also possible: data.data (array), data.web (array), data.results (array)
+    let raw: any[] = [];
+    if (Array.isArray(data?.data?.web)) {
+      raw = data.data.web;
+    } else if (Array.isArray(data?.data)) {
+      raw = data.data;
+    } else if (Array.isArray(data?.web)) {
+      raw = data.web;
+    } else if (Array.isArray(data?.results)) {
+      raw = data.results;
+    }
+    console.log(`[paige-web-search] firecrawl returned ${raw.length} raw results. Top-level keys: ${Object.keys(data ?? {}).join(",")}`);
+
+    const results: SearchResult[] = raw
       .slice(0, 5)
       .map((r: any) => ({
-        title: String(r?.title ?? "").slice(0, 240),
-        description: String(r?.description ?? "").replace(/<[^>]+>/g, "").slice(0, 600),
-        url: String(r?.url ?? ""),
+        title: String(r?.title ?? r?.metadata?.title ?? "").slice(0, 240),
+        description: String(r?.description ?? r?.snippet ?? r?.metadata?.description ?? "")
+          .replace(/<[^>]+>/g, "")
+          .slice(0, 600),
+        url: String(r?.url ?? r?.metadata?.sourceURL ?? ""),
       }))
-      .filter((r) => r.url);
+      .filter((r: SearchResult) => r.url);
 
     return new Response(
       JSON.stringify({
@@ -82,6 +95,7 @@ serve(async (req) => {
         query: q,
         results,
         count: results.length,
+        provider: "firecrawl",
         fetched_at: new Date().toISOString(),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
