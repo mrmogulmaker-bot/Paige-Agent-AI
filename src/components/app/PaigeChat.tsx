@@ -387,19 +387,17 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\n${voicePageLine}\n\nCLIENT DATA:\n${contextBlock}${historyBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- The client is currently viewing the "${currentPageRef.current}" page — assume their questions relate to what they are seeing there\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- Never fabricate data\n- VOICE: Be conversational and concise (1-2 short sentences per turn). Use natural acknowledgments like "Got it", "Right", "Exactly". Never read bullet points aloud — convert to natural speech.\n- Connect insights to their funding goals when relevant`
         : `You are Paige, the AI credit strategist for PaigeAgent.ai. ${voicePageLine}.${historyBlock}\n\nVOICE: Be conversational and concise. Use short sentences and natural acknowledgments.`;
 
-      const overrides = {
-        overrides: {
-          agent: {
-            prompt: { prompt: voiceSystemPrompt },
-            firstMessage: greeting,
-          },
-        },
-      };
+      // NOTE: ElevenLabs rejects `firstMessage` and `prompt` overrides unless
+      // they are explicitly enabled in the agent dashboard config. Sending them
+      // causes a 1008 close ("Override for field 'X' is not allowed by config").
+      // Keep the session payload empty and let the agent's dashboard defaults
+      // drive greeting + system prompt. We still send context as the first
+      // user/contextual message after connect (see onConnect handler).
+      voicePendingContextRef.current = { systemPrompt: voiceSystemPrompt, greeting };
 
       const voiceSession = await startManagedVoiceSession({
         conversation,
         authToken: freshSession?.access_token,
-        overrides,
         logLabel: "[PaigeChat]",
       });
       console.log("[PaigeChat] startSession resolved", voiceSession);

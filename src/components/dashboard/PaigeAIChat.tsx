@@ -134,12 +134,12 @@ const PaigeAIChatInner = () => {
         console.warn("[PaigeAIChat] Greeting fetch failed:", greetErr);
       }
 
-      const overrides = greeting ? { overrides: { agent: { firstMessage: greeting } } } : {};
-
+      // ElevenLabs rejects `firstMessage` overrides unless explicitly enabled
+      // in the agent dashboard config — sending one closes the socket with
+      // code 1008. Skip the override and rely on the agent's default greeting.
       const voiceSession = await startManagedVoiceSession({
         conversation,
         authToken: session?.access_token,
-        overrides,
         logLabel: "[PaigeAIChat]",
       });
       console.log("[PaigeAIChat] startSession resolved", voiceSession);
