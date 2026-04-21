@@ -2489,9 +2489,6 @@ VEHICLE FINANCING CONVERSATION RULES
                 required: ["funding_amount"]
               }
             }
-          }
-              }
-            }
           },
           {
             type: "function",
