@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
-  Gavel, TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase,
+  Gavel, TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain,
 } from "lucide-react";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
@@ -18,6 +18,7 @@ const adminNavItems = [
   { label: "Funding Pipeline", href: "/admin/funding", icon: DollarSign },
   { label: "Funding Journey", href: "/admin/funding-pipeline", icon: Briefcase },
   { label: "Analytics", href: "/admin/analytics", icon: TrendingUp },
+  { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
   { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench },

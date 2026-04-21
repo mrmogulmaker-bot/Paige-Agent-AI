@@ -45,6 +45,8 @@ const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformanc
 const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
 const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
 const MyReferralsPanel = lazy(() => import("@/components/dashboard/MyReferralsPanel"));
+const KnowledgeBaseAdmin = lazy(() => import("@/pages/admin/KnowledgeBaseAdmin"));
+const AILearningOverview = lazy(() => import("@/components/admin/AILearningOverview").then(m => ({ default: m.AILearningOverview })));
 
 const SuspenseFallback = () => (
   <div className="flex items-center justify-center py-12">
