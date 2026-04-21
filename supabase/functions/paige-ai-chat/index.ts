@@ -2314,6 +2314,26 @@ NEVER return the JSON without a written explanation around it.
               }
             }
           }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "web_search",
+              description: "Search the web for current information about vehicle financing rates, lender requirements, dealer programs, auction inventory, credit score requirements, exotic car pricing, captive financing programs, Section 179 vehicle eligibility, and any other real-time information needed to help the client. Use proactively when a client asks about current rates, specific lender requirements, vehicle pricing, auction inventory, or anything that changes frequently. Returns the top 5 results with title, description, and URL.",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: {
+                    type: "string",
+                    description: "The web search query — be specific. E.g. 'Woodside Credit exotic car loan rates 2026', 'Mercedes G-Wagon GVWR Section 179 eligibility', 'Ferrari Financial Services credit score requirement'.",
+                  },
+                },
+                required: ["query"],
+              },
+            },
+          },
         ],
         tool_choice: "auto",
         stream: true,
