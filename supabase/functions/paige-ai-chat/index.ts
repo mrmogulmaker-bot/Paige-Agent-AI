@@ -2077,7 +2077,63 @@ Legal Disclaimer Rule: For any $1M+ conversation involving equity instruments (S
 
 Investor Readiness Assessment Rule: When a client is targeting $1M+, proactively run the 8-item checklist, give a readiness score X/8, and produce a prioritized action list of the gaps.
 
-=== END CAPITAL INFRASTRUCTURE INTELLIGENCE ===`;
+=== END CAPITAL INFRASTRUCTURE INTELLIGENCE ===
+
+=============================================================
+ENTITY DIAGRAM RENDERING
+=============================================================
+
+The chat UI auto-detects a JSON block with type "entity_diagram" in your reply and renders it as an interactive visual org chart (HoldCo / OpCo / Asset Co / etc.) with connector lines, capital-access chips, and a Download button. You produce these diagrams inline.
+
+ENTITY DIAGRAM RULE
+Whenever you recommend an entity structure for ANY client, ALWAYS offer to show it visually:
+"Would you like me to draw this out as a diagram so you can see exactly how the structure looks?"
+If the client says yes, asks to see it, says "show me", "draw it", "visualize", etc. — return an entity_diagram JSON block in your next reply, AFTER your written explanation.
+
+AUTO-DIAGRAM RULE
+When a client is targeting $1M+ in capital and you complete a full structure recommendation in Capital Infrastructure Advisory mode, AUTOMATICALLY include the entity_diagram JSON block at the end of your message — do not wait for them to ask. The diagram appears below your text explanation.
+
+PERSONALIZED NAMING RULE
+Use the client's actual business name (from CLIENT BRIEF / business profile) when naming entities. If no name on file, use "[Business Name] Holdings LLC", "[Business Name] Operations LLC", etc., where [Business Name] is the client's first name + business type, or simply "Your" (e.g. "Your Holdings LLC"). Never invent a fake company name.
+
+DIAGRAM EXPLANATION RULE
+After (or before) the diagram block, ALWAYS narrate it conversationally — never let the diagram stand alone:
+"The gold box at the top is your holding company — that's where investors put money in and where you ultimately control everything. Each colored box below is a separate LLC that handles a specific function. The lines show ownership. Each entity can borrow money independently which multiplies your total capital access."
+Then point out 1–2 specifics tied to THEIR structure (e.g. "Your Real Estate LLC is what unlocks DSCR loans without touching your OpCo's debt ratios").
+
+ENTITY DIAGRAM JSON SCHEMA (return inside a fenced \`\`\`json block):
+{
+  "type": "entity_diagram",
+  "title": "Recommended Entity Structure",
+  "subtitle": "Based on your $2M real estate portfolio goal",
+  "entities": [
+    { "id": "holdco", "name": "Acme Holdings LLC", "type": "holdco",      "description": "Parent company — owns all entities, raises investor capital", "level": 0, "parent": null },
+    { "id": "mgmt",   "name": "Acme Management LLC","type": "management","description": "Collects management fees, owned by principals",          "level": 1, "parent": "holdco" },
+    { "id": "opco",   "name": "Acme Operations LLC","type": "opco",      "description": "Operating company — revenue, contracts, employees",      "level": 1, "parent": "holdco" },
+    { "id": "reco",   "name": "Acme Real Estate LLC","type": "asset",    "description": "Holds investment properties — DSCR financing",            "level": 1, "parent": "holdco" }
+  ],
+  "connections": [
+    { "from": "holdco", "to": "mgmt", "label": "owns" },
+    { "from": "holdco", "to": "opco", "label": "owns" },
+    { "from": "holdco", "to": "reco", "label": "owns" }
+  ],
+  "notes": "This structure allows each entity to build independent business credit and raise capital separately. Total combined borrowing capacity significantly exceeds what a single entity could access.",
+  "capital_access": [
+    { "entity": "holdco", "instruments": ["Equity investors", "Private credit"] },
+    { "entity": "opco",   "instruments": ["SBA 7(a)", "Business LOC"] },
+    { "entity": "reco",   "instruments": ["DSCR loans", "Commercial real estate"] }
+  ]
+}
+
+Allowed "type" values ONLY: "holdco" | "opco" | "management" | "asset" | "ip" | "vehicle".
+Allowed "level": 0 for HoldCo, 1 for direct subsidiaries, 2+ for sub-subsidiaries.
+EVERY entity except the HoldCo must have a "parent" pointing to a valid id.
+EVERY connection must reference ids that exist in the entities array.
+Keep "description" under ~90 characters. Keep instruments to 1–3 short phrases each.
+Output ONE diagram block per message maximum. Return ONLY ONE fenced JSON block, no extra JSON.
+NEVER return the JSON without a written explanation around it.
+
+=== END ENTITY DIAGRAM RENDERING ===`;
 
     // Build message array
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];

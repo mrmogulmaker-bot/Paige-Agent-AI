@@ -14,6 +14,8 @@ import { getUserClock } from "@/lib/userClock";
 import { useLocation } from "react-router-dom";
 import { getCurrentPageName } from "@/lib/pageContext";
 import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
+import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
+import { extractEntityDiagram } from "@/lib/entityDiagram";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -315,9 +317,18 @@ const PaigeAIChatInner = () => {
                       : "bg-muted/30 border border-border"
                   }`}
                 >
-                  <p className={`text-sm ${message.role === "assistant" ? "text-foreground" : ""}`}>
-                    {message.content}
-                  </p>
+                  {message.role === "assistant" ? (() => {
+                    const { before, diagram, after } = extractEntityDiagram(message.content);
+                    return (
+                      <>
+                        {before && <p className="text-sm text-foreground whitespace-pre-wrap">{before}</p>}
+                        {diagram && <EntityDiagramCard data={diagram} />}
+                        {after && <p className="text-sm text-foreground whitespace-pre-wrap">{after}</p>}
+                      </>
+                    );
+                  })() : (
+                    <p className="text-sm">{message.content}</p>
+                  )}
                   {message.role === "assistant" && showFeedback && message.content && (
                     <div className="mt-2 flex items-center">
                       <ResponseFeedback

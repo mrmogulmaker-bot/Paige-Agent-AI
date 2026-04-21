@@ -16,6 +16,8 @@ import { useClientChatContext } from "@/hooks/useClientChatContext";
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
+import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
+import { extractEntityDiagram } from "@/lib/entityDiagram";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -769,9 +771,16 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             <div className={`max-w-[88%] sm:max-w-[85%] rounded-lg px-3 py-2 sm:px-3.5 sm:py-2.5 ${message.role === "user" ? "bg-accent text-accent-foreground" : "bg-muted/40 border border-border"}`}>
               {message.documentFileName && <DocumentMessageBubble fileName={message.documentFileName} />}
               {message.content && (
-                message.role === "assistant" ? (
-                  <MarkdownMessage content={message.content} />
-                ) : (
+                message.role === "assistant" ? (() => {
+                  const { before, diagram, after } = extractEntityDiagram(message.content);
+                  return (
+                    <>
+                      {before && <MarkdownMessage content={before} />}
+                      {diagram && <EntityDiagramCard data={diagram} />}
+                      {after && <MarkdownMessage content={after} />}
+                    </>
+                  );
+                })() : (
                   <p className="text-[13px] sm:text-sm leading-relaxed whitespace-pre-wrap">
                     {message.content}
                   </p>
