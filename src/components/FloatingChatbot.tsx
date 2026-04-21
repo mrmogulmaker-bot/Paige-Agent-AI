@@ -237,19 +237,15 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
         ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data.\n\nCurrent page: ${currentPageName}\n\nCLIENT DATA:\n${contextBlock}${historyBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data\n- Never fabricate data\n- VOICE: Be conversational and concise (1-2 short sentences per turn). Use natural acknowledgments like "Got it", "Right". Never read bullet points aloud.\n- Connect insights to funding goals when relevant`
         : `You are Paige, the AI credit strategist for PaigeAgent.ai. Current page: ${currentPageName}.${historyBlock}\n\nVOICE: Be conversational and concise. Use short sentences and natural acknowledgments.`;
 
-      const overrides = {
-        overrides: {
-          agent: {
-            prompt: { prompt: voiceSystemPrompt },
-            firstMessage: greeting,
-          },
-        },
-      };
+      // ElevenLabs rejects firstMessage/prompt overrides unless explicitly
+      // enabled in the agent dashboard. Skip the override payload so the
+      // session can connect; rely on the agent's default first message.
+      void voiceSystemPrompt;
+      void greeting;
 
       const voiceSession = await startManagedVoiceSession({
         conversation,
         authToken: session?.access_token,
-        overrides,
         logLabel: "[FloatingChatbot]",
       });
       console.log("[FloatingChatbot] startSession resolved", voiceSession);
