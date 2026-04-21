@@ -2595,6 +2595,32 @@ NEVER return the JSON without a written explanation around it.
               content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
             });
           }
+        } else if (tc.function.name === "web_search") {
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const wsResp = await fetch(`${supabaseUrl}/functions/v1/paige-web-search`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${supabaseServiceKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ query: args.query }),
+            });
+            const wsBody = await wsResp.json();
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({
+                ...wsBody,
+                note: wsBody?.configured === false
+                  ? "Web search not configured. Tell the client live web lookup is not yet enabled and answer from your knowledge instead."
+                  : "Synthesize these results into a conversational answer. Cite that you searched for current information — e.g. 'I just looked this up — ...'. Do not dump raw URLs unless the client asks for sources.",
+              }),
+            });
+          } catch (err) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
+            });
+          }
         } else if (tc.function.name === "search_funding_marketplace") {
           // Scaffold — not wired to Lendflow yet. Activate by setting LENDFLOW_ENABLED=true and
           // implementing the real Lendflow API call inside the `if (lendflowEnabled)` branch.
