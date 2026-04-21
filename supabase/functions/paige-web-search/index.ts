@@ -64,14 +64,19 @@ serve(async (req) => {
     }
 
     const data = await fcRes.json();
-    // Firecrawl v2 search: results may be in data.data (array) or data.web (array)
-    const raw = Array.isArray(data?.data)
-      ? data.data
-      : Array.isArray(data?.web)
-        ? data.web
-        : Array.isArray(data?.results)
-          ? data.results
-          : [];
+    // Firecrawl v2 search response shape: { success, data: { web: [...], news: [...], images: [...] } }
+    // Older shapes also possible: data.data (array), data.web (array), data.results (array)
+    let raw: any[] = [];
+    if (Array.isArray(data?.data?.web)) {
+      raw = data.data.web;
+    } else if (Array.isArray(data?.data)) {
+      raw = data.data;
+    } else if (Array.isArray(data?.web)) {
+      raw = data.web;
+    } else if (Array.isArray(data?.results)) {
+      raw = data.results;
+    }
+    console.log(`[paige-web-search] firecrawl returned ${raw.length} raw results. Top-level keys: ${Object.keys(data ?? {}).join(",")}`);
 
     const results: SearchResult[] = raw
       .slice(0, 5)
