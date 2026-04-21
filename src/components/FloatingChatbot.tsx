@@ -16,6 +16,8 @@ import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
+import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
+import { extractEntityDiagram } from "@/lib/entityDiagram";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
