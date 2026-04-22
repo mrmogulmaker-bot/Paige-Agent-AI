@@ -8,6 +8,7 @@ import { Gauge, TrendingUp, Lightbulb, RefreshCw, ChevronDown, ChevronUp } from 
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { BankingSourceBadge } from "./bank-accounts/BankingSourceBadge";
+import { ThreeFundabilityScoresPanel } from "./ThreeFundabilityScoresPanel";
 
 function ScoreGauge({ score }: { score: number }) {
   const radius = 80;
@@ -141,18 +142,24 @@ export function PMEFundingReadiness() {
 
   if (!result) {
     return (
-      <Card>
-        <CardContent className="py-8 text-center">
-          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Calculating your funding readiness score...</p>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <ThreeFundabilityScoresPanel />
+        <Card>
+          <CardContent className="py-8 text-center">
+            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Calculating your funding readiness score...</p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
-    <Card className="border-2">
-      <CardHeader className="pb-2">
+    <div className="space-y-6">
+      <ThreeFundabilityScoresPanel />
+
+      <Card className="border-2">
+        <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Gauge className="w-5 h-5 text-primary" />
@@ -219,5 +226,6 @@ export function PMEFundingReadiness() {
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }

@@ -1,0 +1,202 @@
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Lock, HelpCircle, Loader2, ArrowRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useThreeFundabilityScores } from "@/hooks/useThreeFundabilityScores";
+import type { FundabilityScoreResult, FundabilityBand } from "@/lib/fundabilityScores";
+
+function bandColor(band: FundabilityBand | null): string {
+  switch (band) {
+    case "excellent":
+    case "elite":
+      return "text-fundability-excellent";
+    case "very_good":
+    case "established":
+      return "text-fundability-good";
+    case "good":
+    case "emerging":
+      return "text-fundability-good";
+    case "fair":
+    case "building":
+      return "text-fundability-fair";
+    default:
+      return "text-fundability-poor";
+  }
+}
+
+function bandBg(band: FundabilityBand | null): string {
+  switch (band) {
+    case "excellent":
+    case "elite":
+      return "bg-fundability-excellent";
+    case "very_good":
+    case "established":
+    case "good":
+    case "emerging":
+      return "bg-fundability-good";
+    case "fair":
+    case "building":
+      return "bg-fundability-fair";
+    default:
+      return "bg-fundability-poor";
+  }
+}
+
+function ScoreCard({ result }: { result: FundabilityScoreResult }) {
+  const navigate = useNavigate();
+  const typeLabel =
+    result.type === "personal"
+      ? "Personal credit products"
+      : result.type === "small_business"
+      ? "PG-required products"
+      : "EIN-only products";
+
+  if (result.locked) {
+    return (
+      <Card className="p-5 bg-card border-border flex flex-col h-full">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">{result.title}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{typeLabel}</p>
+          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className="text-muted-foreground hover:text-foreground" aria-label="Inputs required">
+                  <HelpCircle className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p className="text-xs font-semibold mb-1">Inputs required</p>
+                <ul className="text-xs space-y-0.5 list-disc pl-4">
+                  {result.inputsRequired.map((i) => (
+                    <li key={i}>{i}</li>
+                  ))}
+                </ul>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        <div className="flex flex-col items-center justify-center flex-1 py-6 text-center">
+          <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center mb-3">
+            <Lock className="w-6 h-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm text-muted-foreground mb-4 px-2">{result.lockedReason}</p>
+          {result.lockedCta && (
+            <Button
+              size="sm"
+              className="bg-accent text-accent-foreground hover:bg-accent/90"
+              onClick={() => navigate(result.lockedCta!.route)}
+            >
+              {result.lockedCta.label}
+              <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Button>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
+  const score = result.score ?? 0;
+  const color = bandColor(result.band);
+  const bg = bandBg(result.band);
+
+  return (
+    <Card className="p-5 bg-card border-border flex flex-col h-full">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{result.title}</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">{typeLabel}</p>
+        </div>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button className="text-muted-foreground hover:text-foreground" aria-label="Inputs required">
+                <HelpCircle className="w-4 h-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="text-xs font-semibold mb-1">Inputs used</p>
+              <ul className="text-xs space-y-0.5 list-disc pl-4">
+                {result.inputsRequired.map((i) => (
+                  <li key={i}>{i}</li>
+                ))}
+              </ul>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
+      <div className="flex items-baseline gap-2 mb-1">
+        <span className={`text-4xl font-bold ${color}`}>{score}</span>
+        <span className="text-sm text-muted-foreground">/ 100</span>
+        {result.bandLabel && (
+          <Badge variant="outline" className={`ml-auto ${color} border-current`}>
+            {result.bandLabel}
+          </Badge>
+        )}
+      </div>
+
+      <div className="h-2 w-full bg-muted rounded-full overflow-hidden mb-3">
+        <div className={`h-full ${bg} transition-all duration-700`} style={{ width: `${score}%` }} />
+      </div>
+
+      <p className="text-xs text-foreground mb-3">{result.meaning}</p>
+
+      {result.unlocks.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Unlocks</p>
+          <ul className="text-xs text-foreground space-y-0.5">
+            {result.unlocks.map((u) => (
+              <li key={u}>• {u}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {result.improvements.length > 0 && (
+        <div className="mt-auto">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+            How to improve
+          </p>
+          <ul className="text-xs text-muted-foreground space-y-0.5">
+            {result.improvements.map((i) => (
+              <li key={i}>• {i}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export function ThreeFundabilityScoresPanel() {
+  const { personal, small_business, commercial, isLoading } = useThreeFundabilityScores();
+
+  if (isLoading) {
+    return (
+      <Card className="p-8 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </Card>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-3">
+        <h2 className="text-lg font-semibold text-foreground">Fundability Scores</h2>
+        <p className="text-xs text-muted-foreground">
+          Three distinct scores — each one tells you what you can fund right now and what's blocking the next tier.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <ScoreCard result={personal} />
+        <ScoreCard result={small_business} />
+        <ScoreCard result={commercial} />
+      </div>
+    </div>
+  );
+}
