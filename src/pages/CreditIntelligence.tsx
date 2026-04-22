@@ -18,6 +18,9 @@ import { CreditAlertBanner } from "@/components/credit/CreditAlertBanner";
 import { CreditAlertsTab } from "@/components/credit/CreditAlertsTab";
 import { CreditIntelWalkthrough } from "@/components/credit/CreditIntelWalkthrough";
 import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
+import { BusinessCreditTab } from "@/components/credit/BusinessCreditTab";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { User, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function CreditIntelligence() {
