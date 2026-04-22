@@ -1461,6 +1461,114 @@ export type Database = {
           },
         ]
       }
+      communication_log: {
+        Row: {
+          channel: string
+          created_at: string
+          error_message: string | null
+          id: string
+          message_type: string
+          preview: string | null
+          provider_message_id: string | null
+          status: string
+          subject: string | null
+          user_id: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_type: string
+          preview?: string | null
+          provider_message_id?: string | null
+          status: string
+          subject?: string | null
+          user_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          message_type?: string
+          preview?: string | null
+          provider_message_id?: string | null
+          status?: string
+          subject?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      communication_preferences: {
+        Row: {
+          created_at: string
+          email_coaching_reminders: boolean
+          email_credit_alerts: boolean
+          email_enabled: boolean
+          email_funding_alerts: boolean
+          email_onboarding: boolean
+          email_score_milestones: boolean
+          email_weekly_summary: boolean
+          id: string
+          sms_coaching_reminders: boolean
+          sms_credit_alerts: boolean
+          sms_enabled: boolean
+          sms_funding_alerts: boolean
+          sms_phone_number: string | null
+          sms_phone_verified: boolean
+          sms_score_milestones: boolean
+          unsubscribed_all: boolean
+          unsubscribed_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_coaching_reminders?: boolean
+          email_credit_alerts?: boolean
+          email_enabled?: boolean
+          email_funding_alerts?: boolean
+          email_onboarding?: boolean
+          email_score_milestones?: boolean
+          email_weekly_summary?: boolean
+          id?: string
+          sms_coaching_reminders?: boolean
+          sms_credit_alerts?: boolean
+          sms_enabled?: boolean
+          sms_funding_alerts?: boolean
+          sms_phone_number?: string | null
+          sms_phone_verified?: boolean
+          sms_score_milestones?: boolean
+          unsubscribed_all?: boolean
+          unsubscribed_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email_coaching_reminders?: boolean
+          email_credit_alerts?: boolean
+          email_enabled?: boolean
+          email_funding_alerts?: boolean
+          email_onboarding?: boolean
+          email_score_milestones?: boolean
+          email_weekly_summary?: boolean
+          id?: string
+          sms_coaching_reminders?: boolean
+          sms_credit_alerts?: boolean
+          sms_enabled?: boolean
+          sms_funding_alerts?: boolean
+          sms_phone_number?: string | null
+          sms_phone_verified?: boolean
+          sms_score_milestones?: boolean
+          unsubscribed_all?: boolean
+          unsubscribed_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       compliance_checkpoints: {
         Row: {
           api_endpoint: string | null
@@ -5691,6 +5799,39 @@ export type Database = {
           reviewed_at?: string | null
           reviewed_by?: string | null
           session_id?: string
+        }
+        Relationships: []
+      }
+      sms_verifications: {
+        Row: {
+          attempts: number
+          created_at: string
+          expires_at: string
+          id: string
+          phone_number: string
+          user_id: string
+          verification_code: string
+          verified_at: string | null
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          expires_at: string
+          id?: string
+          phone_number: string
+          user_id: string
+          verification_code: string
+          verified_at?: string | null
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          expires_at?: string
+          id?: string
+          phone_number?: string
+          user_id?: string
+          verification_code?: string
+          verified_at?: string | null
         }
         Relationships: []
       }
