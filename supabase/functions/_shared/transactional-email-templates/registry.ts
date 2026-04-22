@@ -30,6 +30,10 @@ import { template as brokerApprovedWelcome } from './broker-approved-welcome.tsx
 import { template as brokerClientInvite } from './broker-client-invite.tsx'
 import { template as mccNewServiceRequest } from './mcc-new-service-request.tsx'
 import { template as businessSlotAdded } from './business-slot-added.tsx'
+import { template as supportTicketCreated } from './support-ticket-created.tsx'
+import { template as supportTicketReply } from './support-ticket-reply.tsx'
+import { template as supportTicketResolved } from './support-ticket-resolved.tsx'
+import { template as featureRequestStatusUpdate } from './feature-request-status-update.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'role-invitation': roleInvitation,
@@ -53,4 +57,8 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'broker-client-invite': brokerClientInvite,
   'mcc-new-service-request': mccNewServiceRequest,
   'business-slot-added': businessSlotAdded,
+  'support-ticket-created': supportTicketCreated,
+  'support-ticket-reply': supportTicketReply,
+  'support-ticket-resolved': supportTicketResolved,
+  'feature-request-status-update': featureRequestStatusUpdate,
 }
