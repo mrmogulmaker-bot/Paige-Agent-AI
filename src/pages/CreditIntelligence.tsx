@@ -347,8 +347,14 @@ export default function CreditIntelligence() {
         <CreditFileHealthAssessment />
       </div>
 
-      {/* Alerts History */}
-      <CreditAlertsTab />
+          {/* Alerts History */}
+          <CreditAlertsTab />
+        </TabsContent>
+
+        <TabsContent value="business" className="mt-6">
+          <BusinessCreditTab />
+        </TabsContent>
+      </Tabs>
 
       {/* Account Manager */}
       <AccountManager isOpen={accountManagerOpen} onClose={() => setAccountManagerOpen(false)} />
