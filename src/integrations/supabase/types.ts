@@ -347,6 +347,317 @@ export type Database = {
           },
         ]
       }
+      broker_client_relationships: {
+        Row: {
+          added_at: string
+          broker_id: string
+          client_email: string
+          client_first_name: string
+          client_goal: string | null
+          client_last_name: string
+          client_phone: string | null
+          client_stripe_subscription_id: string | null
+          client_subscription_status: string
+          client_user_id: string | null
+          created_at: string
+          discount_code: string | null
+          id: string
+          is_active: boolean
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          added_at?: string
+          broker_id: string
+          client_email: string
+          client_first_name: string
+          client_goal?: string | null
+          client_last_name: string
+          client_phone?: string | null
+          client_stripe_subscription_id?: string | null
+          client_subscription_status?: string
+          client_user_id?: string | null
+          created_at?: string
+          discount_code?: string | null
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          added_at?: string
+          broker_id?: string
+          client_email?: string
+          client_first_name?: string
+          client_goal?: string | null
+          client_last_name?: string
+          client_phone?: string | null
+          client_stripe_subscription_id?: string | null
+          client_subscription_status?: string
+          client_user_id?: string | null
+          created_at?: string
+          discount_code?: string | null
+          id?: string
+          is_active?: boolean
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broker_client_relationships_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "broker_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broker_paige_sessions: {
+        Row: {
+          broker_id: string
+          client_relationship_id: string
+          conversation: Json
+          created_at: string
+          id: string
+          key_insights: Json | null
+          session_type: string
+          summary: string | null
+          summary_shared_at: string | null
+          team_member_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          broker_id: string
+          client_relationship_id: string
+          conversation?: Json
+          created_at?: string
+          id?: string
+          key_insights?: Json | null
+          session_type?: string
+          summary?: string | null
+          summary_shared_at?: string | null
+          team_member_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          broker_id?: string
+          client_relationship_id?: string
+          conversation?: Json
+          created_at?: string
+          id?: string
+          key_insights?: Json | null
+          session_type?: string
+          summary?: string | null
+          summary_shared_at?: string | null
+          team_member_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broker_paige_sessions_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "broker_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broker_paige_sessions_client_relationship_id_fkey"
+            columns: ["client_relationship_id"]
+            isOneToOne: false
+            referencedRelation: "broker_client_relationships"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broker_paige_sessions_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "broker_team_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broker_profiles: {
+        Row: {
+          approved_at: string | null
+          bio: string | null
+          broker_client_discount_code: string | null
+          broker_referral_code: string | null
+          broker_type: string
+          business_name: string
+          client_count: number
+          client_count_quoted: number | null
+          created_at: string
+          current_client_count: number
+          id: string
+          license_number: string | null
+          monthly_fee: number
+          referral_code: string | null
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_status: string
+          updated_at: string
+          use_case: string | null
+          user_id: string
+          website: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          bio?: string | null
+          broker_client_discount_code?: string | null
+          broker_referral_code?: string | null
+          broker_type: string
+          business_name: string
+          client_count?: number
+          client_count_quoted?: number | null
+          created_at?: string
+          current_client_count?: number
+          id?: string
+          license_number?: string | null
+          monthly_fee?: number
+          referral_code?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string
+          updated_at?: string
+          use_case?: string | null
+          user_id: string
+          website?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          bio?: string | null
+          broker_client_discount_code?: string | null
+          broker_referral_code?: string | null
+          broker_type?: string
+          business_name?: string
+          client_count?: number
+          client_count_quoted?: number | null
+          created_at?: string
+          current_client_count?: number
+          id?: string
+          license_number?: string | null
+          monthly_fee?: number
+          referral_code?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string
+          updated_at?: string
+          use_case?: string | null
+          user_id?: string
+          website?: string | null
+        }
+        Relationships: []
+      }
+      broker_referral_commissions: {
+        Row: {
+          commission_rate: number
+          created_at: string
+          duration_months: number
+          expires_at: string | null
+          id: string
+          monthly_amount: number
+          referred_broker_id: string
+          referring_broker_id: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          commission_rate?: number
+          created_at?: string
+          duration_months?: number
+          expires_at?: string | null
+          id?: string
+          monthly_amount: number
+          referred_broker_id: string
+          referring_broker_id: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          commission_rate?: number
+          created_at?: string
+          duration_months?: number
+          expires_at?: string | null
+          id?: string
+          monthly_amount?: number
+          referred_broker_id?: string
+          referring_broker_id?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broker_referral_commissions_referred_broker_id_fkey"
+            columns: ["referred_broker_id"]
+            isOneToOne: false
+            referencedRelation: "broker_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "broker_referral_commissions_referring_broker_id_fkey"
+            columns: ["referring_broker_id"]
+            isOneToOne: false
+            referencedRelation: "broker_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broker_team_members: {
+        Row: {
+          accepted_at: string | null
+          broker_id: string
+          created_at: string
+          email: string
+          first_name: string | null
+          id: string
+          invited_at: string
+          last_name: string | null
+          role: string
+          status: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          broker_id: string
+          created_at?: string
+          email: string
+          first_name?: string | null
+          id?: string
+          invited_at?: string
+          last_name?: string | null
+          role?: string
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          broker_id?: string
+          created_at?: string
+          email?: string
+          first_name?: string | null
+          id?: string
+          invited_at?: string
+          last_name?: string | null
+          role?: string
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broker_team_members_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "broker_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       build_milestones: {
         Row: {
           created_at: string
@@ -4563,6 +4874,63 @@ export type Database = {
         }
         Relationships: []
       }
+      mcc_service_requests: {
+        Row: {
+          broker_id: string
+          client_relationship_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          priority: string
+          service_type: string
+          status: string
+          updated_at: string
+          webhook_dispatched_at: string | null
+          webhook_response: Json | null
+        }
+        Insert: {
+          broker_id: string
+          client_relationship_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          priority?: string
+          service_type: string
+          status?: string
+          updated_at?: string
+          webhook_dispatched_at?: string | null
+          webhook_response?: Json | null
+        }
+        Update: {
+          broker_id?: string
+          client_relationship_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          priority?: string
+          service_type?: string
+          status?: string
+          updated_at?: string
+          webhook_dispatched_at?: string | null
+          webhook_response?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcc_service_requests_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "broker_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mcc_service_requests_client_relationship_id_fkey"
+            columns: ["client_relationship_id"]
+            isOneToOne: false
+            referencedRelation: "broker_client_relationships"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       naics_codes: {
         Row: {
           created_at: string | null
@@ -6599,7 +6967,13 @@ export type Database = {
         | "personal_loan"
         | "student_loan"
         | "collections"
-      app_role: "admin" | "moderator" | "user" | "affiliate" | "coach"
+      app_role:
+        | "admin"
+        | "moderator"
+        | "user"
+        | "affiliate"
+        | "coach"
+        | "broker"
       business_hierarchy_type:
         | "holding"
         | "parent"
@@ -6826,7 +7200,7 @@ export const Constants = {
         "student_loan",
         "collections",
       ],
-      app_role: ["admin", "moderator", "user", "affiliate", "coach"],
+      app_role: ["admin", "moderator", "user", "affiliate", "coach", "broker"],
       business_hierarchy_type: [
         "holding",
         "parent",
