@@ -155,41 +155,41 @@ const BrokersAdmin = () => {
           ) : filtered.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">No brokers match that filter.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto -mx-3 sm:mx-0">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Business</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Code</TableHead>
-                    <TableHead className="text-right">Clients</TableHead>
-                    <TableHead className="text-right">Monthly</TableHead>
+                    <TableHead className="hidden md:table-cell">Type</TableHead>
+                    <TableHead className="hidden sm:table-cell">Code</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">Clients</TableHead>
+                    <TableHead className="text-right hidden md:table-cell">Monthly</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Joined</TableHead>
+                    <TableHead className="hidden lg:table-cell">Joined</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map((b) => (
                     <TableRow key={b.id}>
-                      <TableCell className="font-medium">{b.business_name}</TableCell>
-                      <TableCell className="text-sm capitalize text-muted-foreground">
+                      <TableCell className="font-medium max-w-[180px] truncate">{b.business_name}</TableCell>
+                      <TableCell className="hidden md:table-cell text-sm capitalize text-muted-foreground">
                         {b.broker_type.replace(/_/g, " ")}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                         {b.referral_code ? (
                           <code className="text-xs font-mono bg-muted px-2 py-1 rounded">{b.referral_code}</code>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right text-sm">
+                      <TableCell className="text-right text-sm hidden sm:table-cell">
                         {b.current_client_count}
                         {b.client_count_quoted ? (
                           <span className="text-muted-foreground"> /{b.client_count_quoted}</span>
                         ) : null}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
+                      <TableCell className="text-right font-mono text-sm hidden md:table-cell">
                         ${Number(b.monthly_fee || 0).toFixed(0)}
                       </TableCell>
                       <TableCell>
@@ -197,18 +197,18 @@ const BrokersAdmin = () => {
                           {b.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
                         {new Date(b.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 flex-wrap">
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={() => setExpandedBrokerId(expandedBrokerId === b.id ? null : b.id)}
                           >
                             <Users className="h-3.5 w-3.5 mr-1" />
-                            Team
+                            <span className="hidden sm:inline">Team</span>
                           </Button>
                           {b.status === "pending" && (
                             <Button size="sm" variant="default" onClick={() => setConfirmTarget({ broker: b, nextStatus: "approved" })}>
