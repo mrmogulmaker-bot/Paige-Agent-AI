@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Plug, Shield, PhoneCall, DollarSign, Upload, Landmark, Monitor, Webhook, Mail } from "lucide-react";
+import { LayoutDashboard, FileText, CreditCard, TrendingUp, BarChart3, BookOpen, MessageSquare, Building2, Settings, FolderOpen, CheckSquare, Receipt, Users, Shield, PhoneCall, DollarSign, Upload, Landmark, Monitor, Webhook, Mail } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,7 +42,8 @@ const generalMenuItems = [
   { title: "Funding Marketplace", icon: DollarSign, id: "funding-marketplace", requiresProfessional: true },
   { title: "Payments", icon: Receipt, id: "payments" },
   { title: "Affiliate", icon: Users, id: "affiliate" },
-  { title: "Integrations", icon: Plug, id: "integrations" },
+  // Integrations entry intentionally hidden — the Connections tab inside
+  // Business Profile is the canonical home for Plaid + accounting hookups.
   { title: "Learning Vault", icon: BookOpen, id: "learning-vault" },
   { title: "PaigeAgent.ai", icon: MessageSquare, id: "paige-ai" },
   { title: "Contact & Support", icon: PhoneCall, id: "contact" },

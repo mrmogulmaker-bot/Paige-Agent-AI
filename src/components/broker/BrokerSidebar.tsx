@@ -5,8 +5,6 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Users,
-  MessageSquareText,
-  Users2,
   DollarSign,
   Settings,
   Briefcase,
@@ -25,11 +23,12 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
+// NOTE: "Paige Sessions" and "Team" tabs are intentionally hidden until
+// Phase 3 ships. Routes still exist for direct-link compatibility but we
+// don't surface them in navigation to avoid showing prospects placeholders.
 const items = [
   { title: "Overview", url: "/broker/app", icon: LayoutDashboard, end: true },
   { title: "Clients", url: "/broker/app/clients", icon: Users, end: false },
-  { title: "Paige Sessions", url: "/broker/app/sessions", icon: MessageSquareText, end: false },
-  { title: "Team", url: "/broker/app/team", icon: Users2, end: false },
   { title: "Commissions", url: "/broker/app/commissions", icon: DollarSign, end: false },
   { title: "MCC Services", url: "/broker/app/mcc", icon: Briefcase, end: false },
   { title: "Settings", url: "/broker/app/settings", icon: Settings, end: false },
