@@ -50,6 +50,11 @@ const Admin = lazyWithReload(() => import("./pages/Admin"));
 const ResetPassword = lazyWithReload(() => import("./pages/ResetPassword"));
 const AffiliateApply = lazyWithReload(() => import("./pages/AffiliateApply"));
 const BrokerApply = lazyWithReload(() => import("./pages/BrokerApply"));
+const BrokerWorkspace = lazyWithReload(() => import("./pages/broker/BrokerWorkspace"));
+const BrokerOverview = lazyWithReload(() => import("./pages/broker/BrokerOverview"));
+const BrokerClients = lazyWithReload(() => import("./pages/broker/BrokerClients"));
+const BrokerSettings = lazyWithReload(() => import("./pages/broker/BrokerSettings"));
+const BrokerComingSoon = lazyWithReload(() => import("./pages/broker/BrokerComingSoon"));
 const Unsubscribe = lazyWithReload(() => import("./pages/Unsubscribe"));
 const Terms = lazyWithReload(() => import("./pages/Terms"));
 const Privacy = lazyWithReload(() => import("./pages/Privacy"));
@@ -127,6 +132,17 @@ const App = () => (
             <Route path="/become-an-affiliate" element={<Navigate to="/affiliates" replace />} />
             <Route path="/broker" element={<PageSuspense><BrokerApply /></PageSuspense>} />
             <Route path="/brokers" element={<Navigate to="/broker" replace />} />
+
+            {/* Broker workspace (signed-in brokers) */}
+            <Route path="/broker/app" element={<PageSuspense><BrokerWorkspace /></PageSuspense>}>
+              <Route index element={<PageSuspense><BrokerOverview /></PageSuspense>} />
+              <Route path="clients" element={<PageSuspense><BrokerClients /></PageSuspense>} />
+              <Route path="sessions" element={<PageSuspense><BrokerComingSoon title="Paige Sessions" description="Private peer-advisor strategy chats about each client. Ships in Phase 2b." /></PageSuspense>} />
+              <Route path="team" element={<PageSuspense><BrokerComingSoon title="Team" description="Invite team members under your broker account. Ships in Phase 2b." /></PageSuspense>} />
+              <Route path="commissions" element={<PageSuspense><BrokerComingSoon title="Commissions" description="20% recurring on every broker you refer. Ledger ships in Phase 2b." /></PageSuspense>} />
+              <Route path="mcc" element={<PageSuspense><BrokerComingSoon title="MCC Services" description="Done-for-you back-office services for your clients. Ships in Phase 2b." /></PageSuspense>} />
+              <Route path="settings" element={<PageSuspense><BrokerSettings /></PageSuspense>} />
+            </Route>
             <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
 
             {/* Backward-compat: bare /clients links route into the admin workspace */}
