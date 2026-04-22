@@ -363,6 +363,9 @@ const BrokersAdmin = () => {
                               <DropdownMenuItem onClick={() => setDetailBroker(b)}>
                                 View details
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setEditTarget(b)}>
+                                <Pencil className="h-3.5 w-3.5 mr-2" /> Edit profile
+                              </DropdownMenuItem>
                               {b.status === "approved" && (
                                 <DropdownMenuItem
                                   onClick={() => setStatusTarget({ broker: b, nextStatus: "suspended" })}
@@ -481,6 +484,19 @@ const BrokersAdmin = () => {
           onSuspend={() => setStatusTarget({ broker: detailBroker, nextStatus: "suspended" })}
           onReinstate={() => setStatusTarget({ broker: detailBroker, nextStatus: "approved" })}
           onDecline={() => setDeclineTarget(detailBroker)}
+          onEdit={() => setEditTarget(detailBroker)}
+        />
+      )}
+
+      {/* Edit profile modal */}
+      {editTarget && (
+        <EditBrokerProfileDialog
+          broker={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={async () => {
+            setEditTarget(null);
+            await load();
+          }}
         />
       )}
     </div>
