@@ -138,6 +138,7 @@ export default function AffiliatesAdmin() {
       <AffiliateDrawer
         affiliate={selected}
         onClose={() => setSelected(null)}
+        onPaid={loadAll}
       />
     </div>
   );

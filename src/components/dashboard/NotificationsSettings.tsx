@@ -22,6 +22,7 @@ interface CommPrefs {
   email_coaching_reminders: boolean;
   email_weekly_summary: boolean;
   email_onboarding: boolean;
+  email_affiliate_program: boolean;
   sms_credit_alerts: boolean;
   sms_funding_alerts: boolean;
   sms_score_milestones: boolean;
@@ -40,6 +41,7 @@ const DEFAULTS: CommPrefs = {
   email_coaching_reminders: true,
   email_weekly_summary: true,
   email_onboarding: true,
+  email_affiliate_program: true,
   sms_credit_alerts: true,
   sms_funding_alerts: true,
   sms_score_milestones: true,
@@ -233,6 +235,7 @@ export const NotificationsSettings = () => {
                 ["email_weekly_summary", "Weekly Summary", "Mondays — your week's progress and next action"],
                 ["email_coaching_reminders", "Coaching Reminders", "Reminders for upcoming strategy sessions"],
                 ["email_onboarding", "Onboarding", "Welcome and getting-started messages"],
+                ["email_affiliate_program", "Partner Program", "Application updates, commission earnings, payments, and monthly statements"],
               ].map(([key, label, desc]) => (
                 <div key={key} className="flex items-center justify-between">
                   <div>

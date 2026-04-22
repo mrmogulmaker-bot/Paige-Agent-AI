@@ -8,6 +8,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -17,19 +18,23 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DollarSign } from "lucide-react";
 import type { AffiliateStatRow, ConversionRow } from "@/lib/affiliates/types";
 import { fetchAffiliateConversions } from "@/lib/affiliates/queries";
 import { formatCents, formatDate, formatNumber, formatPercent } from "@/lib/affiliates/format";
+import MarkPaidDialog from "./MarkPaidDialog";
 
 interface Props {
   affiliate: AffiliateStatRow | null;
   onClose: () => void;
+  onPaid?: () => void;
 }
 
-export default function AffiliateDrawer({ affiliate, onClose }: Props) {
+export default function AffiliateDrawer({ affiliate, onClose, onPaid }: Props) {
   const [rows, setRows] = useState<ConversionRow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [markPaidOpen, setMarkPaidOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +101,28 @@ export default function AffiliateDrawer({ affiliate, onClose }: Props) {
                 highlight
               />
             </div>
+
+            {(affiliate.commission_owed_cents ?? 0) > 0 && (
+              <div className="mt-4">
+                <Button
+                  onClick={() => setMarkPaidOpen(true)}
+                  className="w-full bg-[#d4a574] text-[#1a2840] hover:bg-[#d4a574]/90"
+                >
+                  <DollarSign className="mr-2 h-4 w-4" />
+                  Mark Paid &amp; Notify Affiliate
+                </Button>
+              </div>
+            )}
+
+            <MarkPaidDialog
+              open={markPaidOpen}
+              onOpenChange={setMarkPaidOpen}
+              affiliate={affiliate}
+              onPaid={() => {
+                onPaid?.();
+                onClose();
+              }}
+            />
 
             <div className="mt-6">
               <h3 className="mb-2 text-sm font-semibold text-[#1a2840]">
