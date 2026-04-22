@@ -21,9 +21,12 @@ import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { BusinessCreditTab } from "@/components/credit/BusinessCreditTab";
 import { ThreeFundabilityScoresPanel } from "@/components/dashboard/ThreeFundabilityScoresPanel";
 import { BusinessSelector } from "@/components/dashboard/BusinessSelector";
+import { NegativeAccountsAgePanel } from "@/components/credit/NegativeAccountsAgePanel";
+import { useThreeFundabilityScores } from "@/hooks/useThreeFundabilityScores";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { User, Building2 } from "lucide-react";
 import { toast } from "sonner";
+import { differenceInHours, formatDistanceToNow } from "date-fns";
 
 export default function CreditIntelligence() {
   const { factors, isLoading, recalculate } = useCreditFactors();
