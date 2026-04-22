@@ -21,7 +21,7 @@ import { LearningVault } from "@/components/dashboard/LearningVault";
 import { DisputesManager } from "@/components/dashboard/DisputesManager";
 import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
 import { BuildProgramOutline } from "@/components/dashboard/BuildProgramOutline";
-import { BuildProgramBusinessWrapper } from "@/components/dashboard/BuildProgramBusinessWrapper";
+// BuildProgramBusinessWrapper unused — TODO handlers gated until real APIs are wired.
 import { BusinessInfrastructureAssessment } from "@/components/dashboard/business-profile/BusinessInfrastructureAssessment";
 import { PersonalBuildProgram } from "@/components/dashboard/PersonalBuildProgram";
 import { AccelProgramOutline } from "@/components/dashboard/AccelProgramOutline";
@@ -38,7 +38,7 @@ import { TaskManager } from "@/components/dashboard/TaskManager";
 import { PaymentHistory } from "@/components/dashboard/PaymentHistory";
 import { AffiliateTracking } from "@/components/dashboard/AffiliateTracking";
 import { ReportUploadTab } from "@/components/dashboard/ReportUploadTab";
-import { Integrations } from "@/components/dashboard/Integrations";
+// Integrations component intentionally not imported — see Connections tab in Business Profile.
 import { BankAccountsManager } from "@/components/dashboard/BankAccountsManager";
 import { FundingMarketplace } from "@/components/dashboard/FundingMarketplace";
 import { LenderResearch } from "@/components/dashboard/LenderResearch";
@@ -191,7 +191,7 @@ const Dashboard = () => {
                   {activeSection === "business-organization" && "Business Organization"}
                   {activeSection === "payments" && "Payment History"}
                   {activeSection === "affiliate" && "Affiliate Program"}
-                  {activeSection === "integrations" && "Integrations"}
+                  {/* "integrations" header intentionally removed — handled in Business Profile → Connections. */}
                   {activeSection === "settings" && "Settings"}
                   {activeSection === "contact" && "Contact & Support"}
                   {activeSection === "report-upload" && "Report Upload & AI Analysis"}
@@ -286,7 +286,7 @@ const Dashboard = () => {
                 {activeSection === "payments" && <PaymentHistory />}
                 {activeSection === "report-upload" && <ReportUploadTab />}
                 {activeSection === "affiliate" && <AffiliateTracking />}
-                {activeSection === "integrations" && <Integrations />}
+                {/* Dashboard Integrations widget removed — Connections tab in Business Profile is the canonical home. */}
                 {activeSection === "lender-research" && <LenderResearch />}
                 {activeSection === "funding-secured" && <FundingSecuredTracker />}
                 {activeSection === "webhooks" && <WebhooksIntegrations />}

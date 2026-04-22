@@ -60,6 +60,8 @@ const BrokerMCC = lazyWithReload(() => import("./pages/broker/BrokerMCC"));
 const Unsubscribe = lazyWithReload(() => import("./pages/Unsubscribe"));
 const Terms = lazyWithReload(() => import("./pages/Terms"));
 const Privacy = lazyWithReload(() => import("./pages/Privacy"));
+const About = lazyWithReload(() => import("./pages/About"));
+const Blog = lazyWithReload(() => import("./pages/Blog"));
 
 // Lazy-load existing dashboard sections for /app/* routes
 const RepositioningNotice = lazyWithReload(() => import("./components/dashboard/RepositioningNotice").then(m => ({ default: m.RepositioningNotice })));
@@ -130,6 +132,8 @@ const App = () => (
             <Route path="/unsubscribe" element={<PageSuspense><Unsubscribe /></PageSuspense>} />
             <Route path="/terms" element={<PageSuspense><Terms /></PageSuspense>} />
             <Route path="/privacy" element={<PageSuspense><Privacy /></PageSuspense>} />
+            <Route path="/about" element={<PageSuspense><About /></PageSuspense>} />
+            <Route path="/blog" element={<PageSuspense><Blog /></PageSuspense>} />
             <Route path="/affiliates" element={<PageSuspense><AffiliateApply /></PageSuspense>} />
             <Route path="/become-an-affiliate" element={<Navigate to="/affiliates" replace />} />
             <Route path="/broker" element={<PageSuspense><BrokerApply /></PageSuspense>} />

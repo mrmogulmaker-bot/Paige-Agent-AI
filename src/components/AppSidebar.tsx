@@ -42,7 +42,8 @@ const generalMenuItems = [
   { title: "Funding Marketplace", icon: DollarSign, id: "funding-marketplace", requiresProfessional: true },
   { title: "Payments", icon: Receipt, id: "payments" },
   { title: "Affiliate", icon: Users, id: "affiliate" },
-  { title: "Integrations", icon: Plug, id: "integrations" },
+  // Integrations entry intentionally hidden — the Connections tab inside
+  // Business Profile is the canonical home for Plaid + accounting hookups.
   { title: "Learning Vault", icon: BookOpen, id: "learning-vault" },
   { title: "PaigeAgent.ai", icon: MessageSquare, id: "paige-ai" },
   { title: "Contact & Support", icon: PhoneCall, id: "contact" },

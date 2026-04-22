@@ -193,11 +193,11 @@ export function ReportsView() {
         ))}
       </div>
 
+      {/* Only the Negative Items tab has real data today. "All Accounts" and
+          "Inquiries" tabs are hidden until those views are implemented. */}
       <Tabs defaultValue="negative" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-1">
           <TabsTrigger value="negative">Negative Items</TabsTrigger>
-          <TabsTrigger value="accounts">All Accounts</TabsTrigger>
-          <TabsTrigger value="inquiries">Inquiries</TabsTrigger>
         </TabsList>
 
         <TabsContent value="negative" className="space-y-4">
@@ -246,22 +246,6 @@ export function ReportsView() {
               </Card>
             );
           })}
-        </TabsContent>
-
-        <TabsContent value="accounts">
-          <Card className="shadow-card">
-            <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">All accounts view coming soon</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="inquiries">
-          <Card className="shadow-card">
-            <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">Inquiries view coming soon</p>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
 
