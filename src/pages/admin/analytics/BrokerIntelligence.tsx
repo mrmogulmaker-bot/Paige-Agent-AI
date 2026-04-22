@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Brain, Clock, Share2, Trophy } from "lucide-react";
+import { Brain, Clock, Share2, Trophy, Users } from "lucide-react";
 
 interface Props {
   start: string;
@@ -16,6 +16,7 @@ export function BrokerIntelligence({ start, end }: Props) {
   const [avgSeconds, setAvgSeconds] = useState(0);
   const [shared, setShared] = useState(0);
   const [topBroker, setTopBroker] = useState<string>("—");
+  const [teamMembers, setTeamMembers] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,7 +26,7 @@ export function BrokerIntelligence({ start, end }: Props) {
       const startIso = new Date(start).toISOString();
       const endIso = new Date(end + "T23:59:59").toISOString();
 
-      const [startsRes, endsRes, sharesRes, brokerSessionsRes] = await Promise.all([
+      const [startsRes, endsRes, sharesRes, brokerSessionsRes, teamRes] = await Promise.all([
         supabase
           .from("analytics_events")
           .select("id", { count: "exact", head: true })
@@ -51,12 +52,17 @@ export function BrokerIntelligence({ start, end }: Props) {
           .gte("created_at", startIso)
           .lte("created_at", endIso)
           .limit(5000),
+        supabase
+          .from("broker_team_members")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "active"),
       ]);
 
       if (cancel) return;
 
       setSessions(startsRes.count || 0);
       setShared(sharesRes.count || 0);
+      setTeamMembers(teamRes.count || 0);
 
       const durations = (endsRes.data || [])
         .map((r: any) => Number(r.properties?.duration_seconds || 0))
@@ -107,7 +113,7 @@ export function BrokerIntelligence({ start, end }: Props) {
   };
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-xs font-medium text-muted-foreground">
@@ -148,6 +154,18 @@ export function BrokerIntelligence({ start, end }: Props) {
         </CardHeader>
         <CardContent>
           <div className="text-base font-semibold truncate">{loading ? "…" : topBroker}</div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <CardTitle className="text-xs font-medium text-muted-foreground">
+            Team Members
+          </CardTitle>
+          <Users className="h-4 w-4 text-[#CFAE70]" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{loading ? "…" : teamMembers.toLocaleString()}</div>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Active across all broker accounts</p>
         </CardContent>
       </Card>
     </div>
