@@ -19,6 +19,12 @@ import { template as weeklySummary } from './weekly-summary.tsx'
 import { template as onboardingWelcome } from './onboarding-welcome.tsx'
 import { template as coachingReminder } from './coaching-reminder.tsx'
 import { template as smsVerification } from './sms-verification.tsx'
+import { template as affiliateApplicationReceived } from './affiliate-application-received.tsx'
+import { template as affiliateApprovedWelcome } from './affiliate-approved-welcome.tsx'
+import { template as affiliateConversionEarned } from './affiliate-conversion-earned.tsx'
+import { template as affiliateCommissionPaid } from './affiliate-commission-paid.tsx'
+import { template as eliteWaitlistConfirmed } from './elite-waitlist-confirmed.tsx'
+import { template as affiliateMonthlyStatement } from './affiliate-monthly-statement.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'role-invitation': roleInvitation,
@@ -31,4 +37,10 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'onboarding-welcome': onboardingWelcome,
   'coaching-reminder': coachingReminder,
   'sms-verification': smsVerification,
+  'affiliate-application-received': affiliateApplicationReceived,
+  'affiliate-approved-welcome': affiliateApprovedWelcome,
+  'affiliate-conversion-earned': affiliateConversionEarned,
+  'affiliate-commission-paid': affiliateCommissionPaid,
+  'elite-waitlist-confirmed': eliteWaitlistConfirmed,
+  'affiliate-monthly-statement': affiliateMonthlyStatement,
 }
