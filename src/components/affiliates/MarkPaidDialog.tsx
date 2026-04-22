@@ -92,6 +92,10 @@ export default function MarkPaidDialog({
 
       // Send commission-paid email
       if (affiliate.email) {
+        const periodLabel =
+          periodStart && periodEnd
+            ? `${periodStart} → ${periodEnd}`
+            : periodStart || periodEnd || "—";
         await supabase.functions.invoke("send-transactional-email", {
           body: {
             templateName: "affiliate-commission-paid",
@@ -99,11 +103,9 @@ export default function MarkPaidDialog({
             recipientUserId: affiliate.user_id,
             idempotencyKey: `aff-paid-${affiliate.affiliate_id}-${Date.now()}`,
             templateData: {
-              firstName: (affiliate.full_name ?? "").split(" ")[0],
-              amountPaid: formatCents(cents),
+              amount: formatCents(cents),
               paymentMethod: method.toUpperCase(),
-              periodStart,
-              periodEnd,
+              periodLabel,
               ytdTotal: formatCents(ytdCents),
             },
           },
