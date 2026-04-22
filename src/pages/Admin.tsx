@@ -47,6 +47,7 @@ const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
 const MyReferralsPanel = lazy(() => import("@/components/dashboard/MyReferralsPanel"));
 const KnowledgeBaseAdmin = lazy(() => import("@/pages/admin/KnowledgeBaseAdmin"));
 const AILearningOverview = lazy(() => import("@/components/admin/AILearningOverview").then(m => ({ default: m.AILearningOverview })));
+const CommunicationsAdmin = lazy(() => import("@/pages/admin/CommunicationsAdmin"));
 
 const SuspenseFallback = () => (
   <div className="flex items-center justify-center py-12">
@@ -203,6 +204,11 @@ const Admin = () => {
         <Route path="knowledge-base" element={
           <Suspense fallback={<SuspenseFallback />}>
             <KnowledgeBaseAdmin />
+          </Suspense>
+        } />
+        <Route path="communications" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <CommunicationsAdmin />
           </Suspense>
         } />
         <Route path="settings" element={

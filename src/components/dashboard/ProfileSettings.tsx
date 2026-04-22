@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle, Link2, Unlink, LogOut, ShieldAlert } from "lucide-react";
+import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle, Link2, Unlink, LogOut, ShieldAlert, Bell } from "lucide-react";
+import { NotificationsSettings } from "@/components/dashboard/NotificationsSettings";
 import { lovable } from "@/integrations/lovable/index";
 import { z } from "zod";
 import { Switch } from "@/components/ui/switch";
