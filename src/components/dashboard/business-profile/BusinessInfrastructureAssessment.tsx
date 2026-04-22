@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -17,6 +19,7 @@ import { FinancialIntelligenceSection } from "./FinancialIntelligenceSection";
 import { ConnectionsSection } from "./ConnectionsSection";
 import { BusinessWalkthrough } from "@/components/business/BusinessWalkthrough";
 import { BusinessSelector } from "@/components/dashboard/BusinessSelector";
+import { AddBusinessFlow } from "@/components/dashboard/AddBusinessFlow";
 
 interface Props {
   clientId?: string; // For internal client mode
