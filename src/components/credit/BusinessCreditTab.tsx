@@ -191,11 +191,12 @@ export function BusinessCreditTab() {
     mutationFn: async ({ bureau, file }: { bureau: Bureau; file: File }) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
+      if (!activeBusinessId) throw new Error("No active business selected");
 
       const form = new FormData();
       form.append("bureau", bureau);
       form.append("file", file);
-      if (business?.id) form.append("business_id", business.id);
+      form.append("business_id", activeBusinessId);
 
       const res = await fetch(
         `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/extract-business-credit-report`,
@@ -211,8 +212,9 @@ export function BusinessCreditTab() {
     },
     onSuccess: () => {
       toast.success("Report uploaded — scores extracted");
-      qc.invalidateQueries({ queryKey: ["business-credit-reports"] });
-      qc.invalidateQueries({ queryKey: ["primary-business-for-credit"] });
+      qc.invalidateQueries({ queryKey: ["business-credit-reports", activeBusinessId] });
+      qc.invalidateQueries({ queryKey: ["business-for-credit", activeBusinessId] });
+      qc.invalidateQueries({ queryKey: ["business-credit-portfolio-summary"] });
       qc.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
       setUploading(null);
     },
@@ -226,6 +228,10 @@ export function BusinessCreditTab() {
   const handleFile = (bureau: Bureau, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!activeBusinessId) {
+      toast.error("Select a business first");
+      return;
+    }
     setUploading(bureau);
     uploadMutation.mutate({ bureau, file });
     e.target.value = ""; // reset
@@ -233,6 +239,17 @@ export function BusinessCreditTab() {
 
   return (
     <div className="space-y-6">
+      {activeBusiness && (
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-xl font-semibold text-foreground">
+            Business Credit — {activeBusiness.legal_name}
+          </h2>
+          {activeBusiness.entity_role && (
+            <Badge variant="outline">{entityRoleLabel(activeBusiness.entity_role)}</Badge>
+          )}
+        </div>
+      )}
+
       <Card className="border-accent/30 bg-accent/5">
         <CardContent className="p-4 flex items-start gap-3">
           <Info className="w-5 h-5 text-accent mt-0.5 shrink-0" />
@@ -245,6 +262,73 @@ export function BusinessCreditTab() {
           </div>
         </CardContent>
       </Card>
+
+      {hasMultipleBusinesses && portfolioSummary.length > 0 && (
+        <Card className="border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Portfolio credit summary</CardTitle>
+            <CardDescription className="text-xs">
+              Quick cross-entity view of your business credit scores.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                    <th className="py-2 pr-4 font-medium">Business</th>
+                    <th className="py-2 pr-4 font-medium">Paydex</th>
+                    <th className="py-2 pr-4 font-medium">Intelliscore</th>
+                    <th className="py-2 pr-4 font-medium">Equifax PI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {portfolioSummary.map((row) => {
+                    const isActive = row.id === activeBusinessId;
+                    return (
+                      <tr
+                        key={row.id}
+                        className={`border-b border-border/50 last:border-0 ${
+                          isActive ? "bg-primary/5" : ""
+                        }`}
+                      >
+                        <td className="py-2 pr-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-foreground">{row.legal_name}</span>
+                            {row.entity_role && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {entityRoleLabel(row.entity_role)}
+                              </Badge>
+                            )}
+                            {isActive && (
+                              <Badge variant="default" className="text-[10px]">
+                                Active
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2 pr-4 font-semibold">
+                          {row.dnb_paydex && row.dnb_paydex > 0 ? row.dnb_paydex : "—"}
+                        </td>
+                        <td className="py-2 pr-4 font-semibold">
+                          {row.experian_intelliscore && row.experian_intelliscore > 0
+                            ? row.experian_intelliscore
+                            : "—"}
+                        </td>
+                        <td className="py-2 pr-4 font-semibold">
+                          {row.equifax_payment_index && row.equifax_payment_index > 0
+                            ? row.equifax_payment_index
+                            : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {BUREAUS.map((meta) => {
         const latest = reports.find((r) => r.bureau === meta.key);
