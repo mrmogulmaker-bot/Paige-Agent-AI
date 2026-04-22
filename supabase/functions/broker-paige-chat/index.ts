@@ -460,20 +460,30 @@ serve(async (req: Request) => {
 
     // Build context
     const { data: brokerAuth } = await admin.auth.admin.getUserById(broker.user_id);
-    const brokerFullName =
+    const brokerOwnerFullName =
       (brokerAuth?.user?.user_metadata as any)?.full_name ||
       brokerAuth?.user?.email?.split("@")[0] ||
       broker.business_name;
 
+    // When a team member is running the session, address them by their own name
+    // and inject a TEAM SESSION block so Paige knows who is talking.
+    const activeOperatorFullName = isTeamMember && teamMember
+      ? `${teamMember.first_name || ""} ${teamMember.last_name || ""}`.trim() || brokerOwnerFullName
+      : brokerOwnerFullName;
+
     const clientCredit = await loadClientCreditContext(admin, rel.client_user_id);
-    const teamContext = await loadTeamContext(admin, broker_id, brokerFullName, broker.business_name);
+    const baseTeamContext = await loadTeamContext(admin, broker_id, brokerOwnerFullName, broker.business_name);
+    const teamSessionContext = isTeamMember && teamMember
+      ? `TEAM SESSION: This session is being conducted by ${teamMember.first_name || ""} ${teamMember.last_name || ""} (${teamMember.role}) on behalf of ${broker.business_name}. ${teamMember.first_name || "They"} is an authorized team member of this workspace.`
+      : null;
+    const combinedTeamContext = [teamSessionContext, baseTeamContext].filter(Boolean).join("\n\n") || null;
 
     const systemPrompt = buildSystemPrompt({
       broker: broker as BrokerProfileRow,
-      brokerFullName,
+      brokerFullName: activeOperatorFullName,
       rel: rel as RelationshipRow,
       clientCreditContext: clientCredit,
-      teamContext,
+      teamContext: combinedTeamContext,
     });
 
     const messages: ChatMsg[] = [
