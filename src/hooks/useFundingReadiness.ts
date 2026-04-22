@@ -4,6 +4,7 @@ import { useCreditFactors } from "./useCreditFactors";
 import { useBuildScore } from "./useBuildScore";
 import { useFinancialKPIs } from "./useFinancialKPIs";
 import { useFundingMatches } from "./useFundingMatches";
+import { useThreeFundabilityScores } from "./useThreeFundabilityScores";
 import type { BankingDataSource } from "@/components/dashboard/bank-accounts/BankingSourceBadge";
 
 export interface FundingReadinessBreakdown {
@@ -163,6 +164,9 @@ export function useFundingReadiness() {
   const { data: buildData } = useBuildScore();
   const { data: kpis } = useFinancialKPIs();
   const { matches, eligible } = useFundingMatches();
+  // Pull the recency-weighted Personal Fundability so this hook stops
+  // depending on the legacy single `overall_fundability_score`.
+  const { personal: personalFundability } = useThreeFundabilityScores();
 
   const { data: supplemental } = useQuery({
     queryKey: ["funding-readiness-supplemental"],
@@ -190,7 +194,10 @@ export function useFundingReadiness() {
   const result: FundingReadinessResult | null = (() => {
     if (!supplemental) return null;
 
-    const personal = calcPersonalCreditScore(factors);
+    const personal = calcPersonalCreditScore(
+      factors,
+      personalFundability && !personalFundability.locked ? personalFundability.score : null,
+    );
     const business = calcBusinessCreditScore(buildData);
     const entity = calcEntityStructureScore(supplemental.docCount, supplemental.businessCount);
     const banking = calcBankingScore(kpis, supplemental.manualEntry, supplemental.hasAnalysis, supplemental.latestRevenue);
