@@ -113,6 +113,7 @@ function progressValue(meta: BureauMeta, value: number | null): number {
 
 export function BusinessCreditTab() {
   const qc = useQueryClient();
+  const { invalidate: invalidateBuildScore } = useBuildScoreRefresh();
   const { activeBusiness, businesses } = useBusinessContext();
   const activeBusinessId = activeBusiness?.id ?? null;
   const [uploading, setUploading] = useState<Bureau | null>(null);
