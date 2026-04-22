@@ -204,13 +204,14 @@ const BrokerClients = () => {
             Invite clients onto PaigeAgent at your $17/mo broker rate.
           </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add client
-            </Button>
-          </DialogTrigger>
+        {permissions.can_add_clients && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Add client
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <form onSubmit={handleAdd}>
               <DialogHeader>
