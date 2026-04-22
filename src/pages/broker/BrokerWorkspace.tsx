@@ -2,7 +2,7 @@
 // Loads the broker_profiles row, redirects users without broker access to
 // /broker (apply page) or /auth (signed out). Renders sidebar + outlet.
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, Outlet, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -10,21 +10,31 @@ import { BrokerSidebar } from "@/components/broker/BrokerSidebar";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { LogOut } from "lucide-react";
+import { ArrowLeft, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const BrokerWorkspace = () => {
   const { profile, isBroker, loading } = useBrokerProfile();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [isStaff, setIsStaff] = useState(false);
 
-  // Bounce signed-out users to /auth.
+  // Bounce signed-out users to /auth and detect admin/coach role for "Back to Admin" button.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_evt, sess) => {
       if (!sess) navigate("/auth", { replace: true });
     });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) navigate("/auth", { replace: true });
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) {
+        navigate("/auth", { replace: true });
+        return;
+      }
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", session.user.id);
+      const roleList = (roles || []).map((r: any) => r.role);
+      setIsStaff(roleList.includes("admin") || roleList.includes("coach"));
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
@@ -68,10 +78,18 @@ const BrokerWorkspace = () => {
                 </span>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Sign out
-            </Button>
+            <div className="flex items-center gap-2">
+              {isStaff && (
+                <Button variant="outline" size="sm" onClick={() => navigate("/admin")}>
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Admin Dashboard
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={handleSignOut}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign out
+              </Button>
+            </div>
           </header>
           <main className="flex-1 p-6 overflow-auto">
             <Outlet />

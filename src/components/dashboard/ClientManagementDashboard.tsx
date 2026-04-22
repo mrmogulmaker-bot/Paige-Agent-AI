@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye, LogOut, Sparkles } from "lucide-react";
+import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye, LogOut, Sparkles, Briefcase } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
 import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
@@ -52,6 +52,7 @@ interface AuthClient {
   primary_goal_category?: string | null;
   intake_completed?: boolean | null;
   is_complimentary?: boolean | null;
+  has_broker_access?: boolean | null;
 }
 
 interface ClientManagementDashboardProps {
@@ -116,7 +117,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
         const [profilesRes, allRolesRes, bizRes] = await Promise.all([
           supabase
             .from("profiles")
-            .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed, primary_goal_category, intake_completed, is_complimentary")
+            .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed, primary_goal_category, intake_completed, is_complimentary, has_broker_access")
             .order("created_at", { ascending: false }),
           supabase
             .from("user_roles")
@@ -194,6 +195,53 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
     } catch (err: any) {
       console.error("Error updating role:", err);
       toast.error("Failed to update role");
+    }
+  };
+
+  // Grant or revoke broker workspace access for any user. When granting,
+  // also auto-create an approved broker_profiles row if one doesn't exist
+  // so admins/coaches can immediately use /broker/app.
+  const toggleBrokerAccess = async (client: AuthClient) => {
+    const willGrant = !client.has_broker_access;
+    try {
+      const { error: profErr } = await supabase
+        .from("profiles")
+        .update({ has_broker_access: willGrant } as any)
+        .eq("user_id", client.user_id);
+      if (profErr) throw profErr;
+
+      if (willGrant) {
+        // Ensure a broker_profiles row exists (idempotent).
+        const { data: existing } = await supabase
+          .from("broker_profiles")
+          .select("id")
+          .eq("user_id", client.user_id)
+          .maybeSingle();
+
+        if (!existing) {
+          const fallbackName = (client.full_name || "Broker") + " — Broker Workspace";
+          const { error: brokerErr } = await supabase
+            .from("broker_profiles")
+            .insert([{
+              user_id: client.user_id,
+              business_name: fallbackName,
+              broker_type: "internal",
+              status: "approved",
+              approved_at: new Date().toISOString(),
+            } as any]);
+          if (brokerErr) throw brokerErr;
+        }
+      }
+
+      toast.success(
+        willGrant
+          ? `Granted broker workspace access to ${client.full_name || "user"}`
+          : `Revoked broker workspace access for ${client.full_name || "user"}`
+      );
+      fetchAllClients();
+    } catch (err: any) {
+      console.error("Error toggling broker access:", err);
+      toast.error(err.message || "Failed to update broker access");
     }
   };
 
@@ -435,6 +483,10 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                               <ArrowRightLeft className="w-4 h-4 mr-2" /> Move to Internal
                             </DropdownMenuItem>
                           )}
+                          <DropdownMenuItem onClick={() => toggleBrokerAccess(c)}>
+                            <Briefcase className="w-4 h-4 mr-2" />
+                            {c.has_broker_access ? "Revoke Broker Access" : "Grant Broker Access"}
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => setForceSignOutTarget({ id: c.user_id, name: c.full_name || "this user" })}
                           >

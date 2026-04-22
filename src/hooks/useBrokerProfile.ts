@@ -24,6 +24,7 @@ export interface BrokerProfile {
 export function useBrokerProfile() {
   const [profile, setProfile] = useState<BrokerProfile | null>(null);
   const [isBroker, setIsBroker] = useState(false);
+  const [hasBrokerAccess, setHasBrokerAccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,9 +36,10 @@ export function useBrokerProfile() {
       if (!user) {
         setProfile(null);
         setIsBroker(false);
+        setHasBrokerAccess(false);
         return;
       }
-      const [{ data: broker }, { data: roles }] = await Promise.all([
+      const [{ data: broker }, { data: roles }, { data: profileRow }] = await Promise.all([
         supabase
           .from("broker_profiles")
           .select("*")
@@ -47,9 +49,23 @@ export function useBrokerProfile() {
           .from("user_roles")
           .select("role")
           .eq("user_id", user.id),
+        supabase
+          .from("profiles")
+          .select("has_broker_access")
+          .eq("user_id", user.id)
+          .maybeSingle(),
       ]);
       const roleList = (roles || []).map((r: any) => r.role);
-      setIsBroker(roleList.includes("broker") || !!broker?.id);
+      const grantedAccess = !!(profileRow as any)?.has_broker_access;
+      setHasBrokerAccess(grantedAccess);
+      // A user can use the broker workspace if they're a broker by role,
+      // already have a broker profile row, OR have been granted broker access
+      // (admin/coach with a broker_profiles row).
+      setIsBroker(
+        roleList.includes("broker") ||
+        !!broker?.id ||
+        (grantedAccess && !!broker?.id)
+      );
       setProfile((broker as BrokerProfile) ?? null);
     } catch (err: any) {
       setError(err?.message || "Failed to load broker profile");
@@ -62,5 +78,5 @@ export function useBrokerProfile() {
     reload();
   }, []);
 
-  return { profile, isBroker, loading, error, reload };
+  return { profile, isBroker, hasBrokerAccess, loading, error, reload };
 }

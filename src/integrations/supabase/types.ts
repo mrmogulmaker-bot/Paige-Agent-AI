@@ -5386,6 +5386,7 @@ export type Database = {
           ghl_contact_id: string | null
           goal_amount: number | null
           goal_timeline: string | null
+          has_broker_access: boolean
           has_discrepancies: boolean | null
           id: string
           intake_completed: boolean
@@ -5437,6 +5438,7 @@ export type Database = {
           ghl_contact_id?: string | null
           goal_amount?: number | null
           goal_timeline?: string | null
+          has_broker_access?: boolean
           has_discrepancies?: boolean | null
           id?: string
           intake_completed?: boolean
@@ -5488,6 +5490,7 @@ export type Database = {
           ghl_contact_id?: string | null
           goal_amount?: number | null
           goal_timeline?: string | null
+          has_broker_access?: boolean
           has_discrepancies?: boolean | null
           id?: string
           intake_completed?: boolean
@@ -6824,6 +6827,7 @@ export type Database = {
           ghl_contact_id: string | null
           goal_amount: number | null
           goal_timeline: string | null
+          has_broker_access: boolean
           has_discrepancies: boolean | null
           id: string
           intake_completed: boolean
