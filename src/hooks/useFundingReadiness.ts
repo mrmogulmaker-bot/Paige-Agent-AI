@@ -21,7 +21,20 @@ export interface FundingReadinessResult {
   bankingDataSource: BankingDataSource;
 }
 
-function calcPersonalCreditScore(factors: any): { score: number; explanation: string } {
+function calcPersonalCreditScore(
+  factors: any,
+  personalFundability: number | null,
+): { score: number; explanation: string } {
+  // Prefer the new three-score model's Personal Fundability number when
+  // available — it's recency-weighted, gated, and always fresh. Fall
+  // back to the legacy `overall_fundability_score` only if the new score
+  // is locked (missing inputs).
+  if (personalFundability != null) {
+    const score = Math.min(100, personalFundability);
+    if (score >= 80) return { score, explanation: "Strong personal credit profile supporting funding eligibility." };
+    if (score >= 50) return { score, explanation: "Moderate personal credit. Reducing utilization and resolving negatives would help." };
+    return { score, explanation: "Personal credit needs improvement. Focus on payment history and reducing balances." };
+  }
   if (!factors) return { score: 0, explanation: "No personal credit data available. Upload a credit report to get started." };
   const fundability = factors.overall_fundability_score ?? 0;
   const score = Math.min(100, fundability);
