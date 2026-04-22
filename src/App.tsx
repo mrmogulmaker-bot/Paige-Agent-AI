@@ -168,6 +168,7 @@ const App = () => (
           <FloatingChatbot />
         </BrowserRouter>
         </DashboardModeProvider>
+        </BusinessProvider>
       </SubscriptionProvider>
     </TooltipProvider>
   </QueryClientProvider>
