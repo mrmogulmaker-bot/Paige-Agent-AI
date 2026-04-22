@@ -61,10 +61,13 @@ export function ConnectionsSection({ businessId, userId }: Props) {
   const [plaidCount, setPlaidCount] = useState(0);
   const [consentOpen, setConsentOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [dnbPaydex, setDnbPaydex] = useState<number | null>(null);
+  const [experianIntelliscore, setExperianIntelliscore] = useState<number | null>(null);
+  const [equifaxSbfe, setEquifaxSbfe] = useState<number | null>(null);
 
   const fetchStatuses = async () => {
     setLoading(true);
-    const [qbRes, plaidRes] = await Promise.all([
+    const [qbRes, plaidRes, bizRes] = await Promise.all([
       supabase
         .from("quickbooks_connections")
         .select("qb_company_name, last_synced_at, is_active")
@@ -76,6 +79,13 @@ export function ConnectionsSection({ businessId, userId }: Props) {
         .select("id", { count: "exact", head: true })
         .eq("user_id", userId)
         .eq("is_active", true),
+      supabase
+        .from("businesses")
+        .select("dnb_paydex_score, experian_intelliscore, equifax_sbfe_score")
+        .eq("owner_user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     if (qbRes.data) {
@@ -88,6 +98,9 @@ export function ConnectionsSection({ businessId, userId }: Props) {
       setQbLastSync(null);
     }
     setPlaidCount(plaidRes.count || 0);
+    setDnbPaydex(bizRes.data?.dnb_paydex_score ?? null);
+    setExperianIntelliscore(bizRes.data?.experian_intelliscore ?? null);
+    setEquifaxSbfe(bizRes.data?.equifax_sbfe_score ?? null);
     setLoading(false);
   };
 
