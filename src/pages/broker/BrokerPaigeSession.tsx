@@ -544,15 +544,17 @@ const BrokerPaigeSession = () => {
 
           {/* Action bar */}
           <div className="border-t bg-card px-4 py-2 flex flex-wrap items-center gap-2 text-xs flex-shrink-0">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={generateSummary}
-              disabled={generatingSummary || !sessionId}
-            >
-              {generatingSummary ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FileText className="h-3.5 w-3.5 mr-1" />}
-              Generate client summary
-            </Button>
+            {permissions.can_share_summaries && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={generateSummary}
+                disabled={generatingSummary || !sessionId}
+              >
+                {generatingSummary ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <FileText className="h-3.5 w-3.5 mr-1" />}
+                Generate client summary
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={endSession}>
               <StopCircle className="h-3.5 w-3.5 mr-1" />
               End session
@@ -562,26 +564,32 @@ const BrokerPaigeSession = () => {
             </span>
           </div>
 
-          {/* Input */}
-          <div className="border-t bg-background p-3 flex gap-2 flex-shrink-0">
-            <Textarea
-              rows={1}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={`Ask Paige about ${rel.client_first_name}'s credit strategy, funding options, or next steps…`}
-              className="resize-none min-h-[44px] max-h-32"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-              disabled={streaming}
-            />
-            <Button onClick={sendMessage} disabled={streaming || !input.trim()}>
-              {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
-          </div>
+          {/* Input — hidden for assistants (read-only) */}
+          {teamMemberRole === "assistant" ? (
+            <div className="border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground text-center flex-shrink-0">
+              Assistants can view session history but cannot run new sessions.
+            </div>
+          ) : (
+            <div className="border-t bg-background p-3 flex gap-2 flex-shrink-0">
+              <Textarea
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={`Ask Paige about ${rel.client_first_name}'s credit strategy, funding options, or next steps…`}
+                className="resize-none min-h-[44px] max-h-32"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                disabled={streaming}
+              />
+              <Button onClick={sendMessage} disabled={streaming || !input.trim()}>
+                {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Desktop side panel */}
