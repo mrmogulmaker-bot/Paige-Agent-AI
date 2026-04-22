@@ -43,6 +43,7 @@ const BrokersAdmin = () => {
   const [filter, setFilter] = useState("");
   const [confirmTarget, setConfirmTarget] = useState<{ broker: BrokerRow; nextStatus: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [expandedBrokerId, setExpandedBrokerId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
