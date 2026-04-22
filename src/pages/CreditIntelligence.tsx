@@ -348,26 +348,3 @@ function StatusIcon({ score }: { score: number }) {
   if (score >= 40) return <AlertTriangle className="w-5 h-5 text-fundability-fair" />;
   return <XCircle className="w-5 h-5 text-fundability-poor" />;
 }
-
-function getScoreTextColor(score: number): string {
-  if (score >= 80) return "text-fundability-excellent";
-  if (score >= 60) return "text-fundability-good";
-  if (score >= 40) return "text-fundability-fair";
-  return "text-fundability-poor";
-}
-
-function getScoreHSL(score: number): string {
-  if (score >= 80) return "hsl(142, 76%, 36%)";
-  if (score >= 60) return "hsl(174, 62%, 47%)";
-  if (score >= 40) return "hsl(38, 92%, 50%)";
-  return "hsl(0, 72%, 51%)";
-}
-
-function getFundabilityLabel(score: number): string {
-  if (score >= 90) return "Ready for funding.";
-  if (score >= 80) return "Nearly fundable.";
-  if (score >= 66) return "Getting closer.";
-  if (score >= 51) return "Making progress.";
-  if (score >= 31) return "Building foundation.";
-  return "Needs significant work.";
-}
