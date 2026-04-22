@@ -192,6 +192,9 @@ export default function SupportAdmin() {
     return <div className="p-6 text-muted-foreground">Loading...</div>;
   }
 
+  const initials = (name: string) =>
+    name.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase() || "?";
+
   const TicketTable = ({ rows }: { rows: AdminTicket[] }) => (
     <Table>
       <TableHeader>
