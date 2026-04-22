@@ -1,5 +1,13 @@
+// TODO: add Plausible or Fathom analytics script here for anonymous visitor
+// tracking before signup. These privacy-friendly tools capture referral sources
+// and page views for non-authenticated visitors that Supabase cannot track.
+// Plausible is $9/mo and takes ~5 minutes to add — drop their <script> tag in
+// index.html (or here in a <Helmet>). Should be done before running paid
+// marketing so we can attribute traffic from each campaign.
+import { useEffect } from "react";
 import { Header } from "@/components/landing/Header";
 import { HeroSection } from "@/components/landing/HeroSection";
+import { trackEvent } from "@/hooks/useAnalytics";
 import { ValuePropsSection } from "@/components/landing/ValuePropsSection";
 import { HowPaigeWorksSection } from "@/components/landing/HowPaigeWorksSection";
 import { WhatPaigeKnowsSection } from "@/components/landing/WhatPaigeKnowsSection";

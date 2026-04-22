@@ -34,6 +34,7 @@ import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { DashboardModeProvider } from "./contexts/DashboardModeContext";
 import { useReferralTracking } from "./hooks/useReferralTracking";
 import { GlobalAuthSessionManager } from "./lib/auth/GlobalAuthSessionManager";
+import { usePageView } from "./hooks/useAnalytics";
 
 // Eagerly load only the public landing + auth pages (likely first-paint)
 import Index from "./pages/Index";
@@ -92,6 +93,7 @@ const PageSuspense = ({ children }: { children: React.ReactNode }) => (
 
 const AppInner = () => {
   useReferralTracking();
+  usePageView();
   return <GlobalAuthSessionManager />;
 };
 
