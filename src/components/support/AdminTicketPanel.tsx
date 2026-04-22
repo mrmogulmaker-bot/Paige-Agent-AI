@@ -174,6 +174,8 @@ export function AdminTicketPanel({ ticketId, adminUserId, open, onOpenChange, on
       setBusy(false);
     }
   };
+
+  const sendInternalNote = async () => {
     if (!ticketId || !internalNote.trim()) return;
     setBusy(true);
     try {
