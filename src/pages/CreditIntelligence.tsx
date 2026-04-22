@@ -401,6 +401,11 @@ export default function CreditIntelligence() {
       {/* Paige's Predictions — full panel */}
       <PredictionsPanel userId={currentUserId} variant="full" onNavigate={(s) => navigate(`/app?section=${s}`)} />
 
+      {/* Negative Accounts — age-weighted timeline + per-account grading */}
+      <NegativeAccountsAgePanel
+        totalWeightedNegativeScore={fundability.personal.totalWeightedNegativeScore}
+      />
+
       {/* Credit File Health Assessment */}
       <div id="credit-health-assessment">
         <CreditFileHealthAssessment />
