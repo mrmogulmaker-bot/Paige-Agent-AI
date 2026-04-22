@@ -305,6 +305,8 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
       queryClient.invalidateQueries({ queryKey: ["account-manager"] });
       queryClient.invalidateQueries({ queryKey: ["credit-accounts-health"] });
       queryClient.invalidateQueries({ queryKey: ["credit-negatives-health"] });
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
       toast({ title: "Account deleted", description: "Record removed and audit logged." });
     },
   });
