@@ -245,25 +245,36 @@ export default function CreditIntelligence() {
         </div>
       </div>
 
-      {/* Page Walkthrough */}
-      <CreditIntelWalkthrough />
+      <Tabs defaultValue="personal" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="personal" className="gap-2">
+            <User className="w-4 h-4" /> Personal Credit
+          </TabsTrigger>
+          <TabsTrigger value="business" className="gap-2">
+            <Building2 className="w-4 h-4" /> Business Credit
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Credit Alert Banner */}
-      <CreditAlertBanner />
+        <TabsContent value="personal" className="mt-6 space-y-6">
+          {/* Page Walkthrough */}
+          <CreditIntelWalkthrough />
 
-      {/* iSoftpull Soft Pull Authorization */}
-      <SoftPullAuthorizationCard />
+          {/* Credit Alert Banner */}
+          <CreditAlertBanner />
 
-      {/* Credit Report Uploader */}
-      <CreditReportUploader
-        lastAnalyzed={lastReport?.timestamp || null}
-        lastBureau={lastReport?.bureau || null}
-        onRefresh={() => reExtract.mutate()}
-        isRefreshing={reExtract.isPending}
-      />
+          {/* iSoftpull Soft Pull Authorization */}
+          <SoftPullAuthorizationCard />
 
-      {/* Bureau Score Panel */}
-      <BureauScorePanel />
+          {/* Credit Report Uploader */}
+          <CreditReportUploader
+            lastAnalyzed={lastReport?.timestamp || null}
+            lastBureau={lastReport?.bureau || null}
+            onRefresh={() => reExtract.mutate()}
+            isRefreshing={reExtract.isPending}
+          />
+
+          {/* Bureau Score Panel */}
+          <BureauScorePanel />
 
       {/* Data Freshness + Bureau Tab Selector */}
       {(hasData || hasAccounts) && (
