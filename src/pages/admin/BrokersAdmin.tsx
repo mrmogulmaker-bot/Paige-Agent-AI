@@ -50,7 +50,22 @@ interface BrokerRow {
   website: string | null;
   specializations: string[] | null;
   decline_reason?: string | null;
+  firm_description?: string | null;
+  paige_context_notes?: string | null;
 }
+
+const SPECIALIZATION_OPTIONS = [
+  "credit_repair",
+  "business_credit",
+  "personal_credit",
+  "funding",
+  "mortgage_prep",
+  "real_estate_investing",
+  "small_business_loans",
+  "trust_planning",
+  "tax_strategy",
+  "wealth_building",
+];
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   approved: "default",
@@ -84,13 +99,14 @@ const BrokersAdmin = () => {
 
   const [grantOpen, setGrantOpen] = useState(false);
   const [detailBroker, setDetailBroker] = useState<BrokerRow | null>(null);
+  const [editTarget, setEditTarget] = useState<BrokerRow | null>(null);
 
   const load = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("broker_profiles")
       .select(
-        "id, user_id, business_name, broker_type, status, referral_code, broker_client_discount_code, monthly_fee, current_client_count, client_count_quoted, approved_at, created_at, subscription_status, stripe_subscription_id, bio, website, specializations, decline_reason",
+        "id, user_id, business_name, broker_type, status, referral_code, broker_client_discount_code, monthly_fee, current_client_count, client_count_quoted, approved_at, created_at, subscription_status, stripe_subscription_id, bio, website, specializations, decline_reason, firm_description, paige_context_notes",
       )
       .order("created_at", { ascending: false });
     if (error) toast.error(`Failed to load brokers: ${error.message}`);
