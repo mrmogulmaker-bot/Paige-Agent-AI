@@ -202,10 +202,157 @@ serve(async (req) => {
     );
 
     // Handle different event types
+    const ADDITIONAL_BUSINESS_PRICE_ID = Deno.env.get(
+      "STRIPE_ADDITIONAL_BUSINESS_PRICE_ID",
+    ) ?? "";
+
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         logStep("Processing checkout.session.completed", { sessionId: session.id });
+
+        // === Additional business slot purchase ===
+        // Detect by metadata.purpose OR by matching the configured price ID.
+        let isSlotPurchase =
+          session.metadata?.purpose === "additional_business_slot";
+        if (!isSlotPurchase && session.mode === "subscription" && session.subscription) {
+          try {
+            const sub = await stripe.subscriptions.retrieve(
+              session.subscription as string,
+            );
+            const priceId = sub.items.data[0]?.price?.id;
+            if (
+              ADDITIONAL_BUSINESS_PRICE_ID &&
+              priceId === ADDITIONAL_BUSINESS_PRICE_ID
+            ) {
+              isSlotPurchase = true;
+            }
+          } catch (e) {
+            logStep("Slot detect: subscription retrieve failed", {
+              error: String(e),
+            });
+          }
+        }
+
+        if (isSlotPurchase) {
+          try {
+            const customerId = session.customer as string;
+            const customer = await stripe.customers.retrieve(customerId);
+            const email = (customer as Stripe.Customer).email;
+            const metaUserId = session.metadata?.paige_user_id ?? null;
+
+            // Resolve user via metadata first, then email lookup
+            let slotUser: { id: string; email?: string | null } | null = null;
+            if (metaUserId) {
+              const { data: u } = await supabaseAdmin.auth.admin.getUserById(
+                metaUserId,
+              );
+              if (u?.user) slotUser = { id: u.user.id, email: u.user.email };
+            }
+            if (!slotUser && email) {
+              const { data: userData } = await supabaseAdmin.auth.admin.listUsers();
+              const u = userData.users.find((x) => x.email === email);
+              if (u) slotUser = { id: u.id, email: u.email };
+            }
+
+            if (!slotUser) {
+              logStep("Slot purchase: user not found", { email, metaUserId });
+              break;
+            }
+
+            // Increment additional_businesses_count by 1 (idempotent on
+            // checkout.session.completed because Stripe only fires once per
+            // checkout). Bootstrap row if missing using the plan's default.
+            const { data: existing } = await supabaseAdmin
+              .from("user_business_limits")
+              .select("max_businesses, additional_businesses_count")
+              .eq("user_id", slotUser.id)
+              .maybeSingle();
+
+            let nextMax = existing?.max_businesses ?? null;
+            let nextAdd = (existing?.additional_businesses_count ?? 0) + 1;
+
+            if (!existing) {
+              const { data: subRow } = await supabaseAdmin
+                .from("user_subscriptions")
+                .select("plan_slug")
+                .eq("user_id", slotUser.id)
+                .maybeSingle();
+              const { data: defaultMax } = await supabaseAdmin.rpc(
+                "default_max_businesses_for_plan",
+                { _plan_slug: subRow?.plan_slug ?? null },
+              );
+              nextMax = (defaultMax as number) ?? 1;
+            }
+
+            const { error: limitErr } = await supabaseAdmin
+              .from("user_business_limits")
+              .upsert(
+                {
+                  user_id: slotUser.id,
+                  max_businesses: nextMax,
+                  additional_businesses_count: nextAdd,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "user_id" },
+              );
+            if (limitErr) {
+              logStep("Slot purchase: limit upsert failed", {
+                error: limitErr.message,
+              });
+            } else {
+              logStep("Slot purchase: limit incremented", {
+                user_id: slotUser.id,
+                additional_businesses_count: nextAdd,
+                effective_limit: (nextMax ?? 1) + nextAdd,
+              });
+            }
+
+            // Audit log
+            try {
+              await supabaseAdmin.from("audit_logs").insert({
+                user_id: slotUser.id,
+                entity: "user_business_limits",
+                action: "stripe_slot_purchased",
+                entity_id: slotUser.id,
+                data: {
+                  stripe_session_id: session.id,
+                  stripe_subscription_id: session.subscription,
+                  additional_businesses_count: nextAdd,
+                  effective_limit: (nextMax ?? 1) + nextAdd,
+                },
+              });
+            } catch (e) {
+              logStep("Slot purchase: audit log failed", { error: String(e) });
+            }
+
+            // Confirmation email
+            if (slotUser.email) {
+              try {
+                await supabaseAdmin.functions.invoke(
+                  "send-transactional-email",
+                  {
+                    body: {
+                      templateName: "business-slot-added",
+                      recipientEmail: slotUser.email,
+                      recipientUserId: slotUser.id,
+                      idempotencyKey: `slot-added-${session.id}`,
+                      templateData: {
+                        effectiveLimit: (nextMax ?? 1) + nextAdd,
+                      },
+                    },
+                  },
+                );
+              } catch (e) {
+                logStep("Slot purchase: email send failed", { error: String(e) });
+              }
+            }
+          } catch (slotErr) {
+            logStep("Slot purchase handler error", { error: String(slotErr) });
+          }
+          // IMPORTANT — do NOT fall through to plan upsert.
+          break;
+        }
 
         if (session.mode === "subscription") {
           const customerId = session.customer as string;
