@@ -339,7 +339,7 @@ serve(async (req: Request) => {
       });
     }
 
-    // Verify broker ownership
+    // Verify broker ownership OR active team-member access to that broker.
     const { data: broker } = await admin
       .from("broker_profiles")
       .select(
@@ -347,7 +347,24 @@ serve(async (req: Request) => {
       )
       .eq("id", broker_id)
       .maybeSingle();
-    if (!broker || broker.user_id !== user.id) {
+    if (!broker) {
+      return new Response(JSON.stringify({ error: "Broker not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Detect team-member session (auth_user_id matches an active row for this broker).
+    const { data: teamMember } = await admin
+      .from("broker_team_members")
+      .select("id, first_name, last_name, role")
+      .eq("auth_user_id", user.id)
+      .eq("broker_id", broker_id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    const isTeamMember = !!teamMember;
+    if (broker.user_id !== user.id && !isTeamMember) {
       return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -372,14 +389,18 @@ serve(async (req: Request) => {
     // Get/create session
     let activeSessionId = session_id;
     if (!activeSessionId) {
+      const sessionInsert: Record<string, unknown> = {
+        broker_id,
+        client_relationship_id,
+        conversation: [],
+        session_type: "strategy",
+      };
+      if (isTeamMember && teamMember) {
+        sessionInsert.team_member_id = teamMember.id;
+      }
       const { data: created, error: sessErr } = await admin
         .from("broker_paige_sessions")
-        .insert({
-          broker_id,
-          client_relationship_id,
-          conversation: [],
-          session_type: "strategy",
-        })
+        .insert(sessionInsert)
         .select("id")
         .single();
       if (sessErr || !created) {
@@ -394,6 +415,15 @@ serve(async (req: Request) => {
         client_relationship_id,
         session_id: activeSessionId,
       });
+      if (isTeamMember && teamMember) {
+        await logEvent(admin, user.id, "broker_team_session_start", {
+          broker_id,
+          team_member_id: teamMember.id,
+          team_member_role: teamMember.role,
+          client_relationship_id,
+          session_id: activeSessionId,
+        });
+      }
     }
 
     // ---- Summarize action ----
