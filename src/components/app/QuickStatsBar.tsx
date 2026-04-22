@@ -23,10 +23,13 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
   const utilization = hasStatsData ? factors?.aggregate_utilization ?? null : null;
 
   return (
-    <div className="flex items-center justify-between px-4 py-2 bg-card border-t border-border text-xs">
+    <div
+      className="flex items-center gap-3 sm:gap-0 sm:justify-between px-3 sm:px-4 py-2 bg-card border-t border-border text-xs overflow-x-auto no-scrollbar pb-[calc(env(safe-area-inset-bottom)+0.5rem)] sm:pb-2"
+      style={{ minHeight: 44 }}
+    >
       <button
         onClick={() => navigate("/app/credit")}
-        className="flex items-center gap-2 hover:text-accent transition-colors"
+        className="flex items-center gap-1.5 hover:text-accent transition-colors whitespace-nowrap flex-shrink-0"
       >
         <span className="text-muted-foreground">Fundability:</span>
         <span className={`font-bold ${getScoreColor(score)}`}>
@@ -36,9 +39,9 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
 
       <button
         onClick={() => navigate("/app/credit")}
-        className="flex items-center gap-2 hover:text-accent transition-colors"
+        className="flex items-center gap-1.5 hover:text-accent transition-colors whitespace-nowrap flex-shrink-0"
       >
-        <span className="text-muted-foreground">Utilization:</span>
+        <span className="text-muted-foreground">Util:</span>
         <span className={`font-bold ${utilization != null && utilization > 30 ? "text-fundability-fair" : "text-fundability-excellent"}`}>
           {utilization != null ? `${Math.round(utilization)}%` : "—"}
         </span>
@@ -46,7 +49,7 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
 
       <button
         onClick={() => navigate("/app/credit")}
-        className="flex items-center gap-2 hover:text-accent transition-colors"
+        className="flex items-center gap-1.5 hover:text-accent transition-colors whitespace-nowrap flex-shrink-0"
       >
         <span className="text-muted-foreground">Negatives:</span>
         <span className={`font-bold ${negatives != null && negatives > 0 ? "text-fundability-poor" : "text-fundability-excellent"}`}>
@@ -56,7 +59,7 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
 
       <button
         onClick={() => navigate("/app/credit")}
-        className="flex items-center gap-2 hover:text-accent transition-colors"
+        className="flex items-center gap-1.5 hover:text-accent transition-colors whitespace-nowrap flex-shrink-0"
       >
         <span className="text-muted-foreground">Next:</span>
         <span className="font-medium text-accent">

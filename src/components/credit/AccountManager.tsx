@@ -323,7 +323,7 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[calc(100dvh-2rem)] sm:max-h-[85vh] overflow-y-auto p-3 sm:p-6">
         <DialogHeader>
           <DialogTitle>Account Manager</DialogTitle>
           <DialogDescription>View, edit, merge, and flag account records extracted from credit reports.</DialogDescription>

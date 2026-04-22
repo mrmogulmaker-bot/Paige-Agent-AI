@@ -111,21 +111,10 @@ export function AppNav({ user }: AppNavProps) {
           </SheetContent>
         </Sheet>
 
-        <span className="font-bold text-lg">PaigeAgent</span>
+        <span className="font-bold text-base sm:text-lg truncate">PaigeAgent</span>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <NotificationBell />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSignOut}
-            disabled={isSigningOut}
-            className="bg-transparent border-primary-foreground/40 text-primary-foreground hover:bg-red-500/20 hover:border-red-400 hover:text-red-200 gap-1.5 h-8 px-2.5 text-xs font-medium disabled:opacity-60"
-            aria-label="Sign out"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>{isSigningOut ? "..." : "Sign Out"}</span>
-          </Button>
         </div>
       </div>
     );

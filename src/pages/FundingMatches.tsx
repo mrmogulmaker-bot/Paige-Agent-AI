@@ -234,18 +234,18 @@ export default function FundingMatches() {
 
       {/* Stats */}
       {allMatches.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
-          <Card className="p-5 bg-card border-border text-center">
-            <div className="text-3xl font-bold text-fundability-excellent">{eligible.length}</div>
-            <div className="text-sm text-muted-foreground mt-1">Eligible Products</div>
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          <Card className="p-3 sm:p-5 bg-card border-border text-center">
+            <div className="text-xl sm:text-3xl font-bold text-fundability-excellent">{eligible.length}</div>
+            <div className="text-[11px] sm:text-sm text-muted-foreground mt-1 leading-tight">Eligible</div>
           </Card>
-          <Card className="p-5 bg-card border-border text-center">
-            <div className="text-3xl font-bold text-fundability-fair">{nearEligible.length}</div>
-            <div className="text-sm text-muted-foreground mt-1">Near Eligible</div>
+          <Card className="p-3 sm:p-5 bg-card border-border text-center">
+            <div className="text-xl sm:text-3xl font-bold text-fundability-fair">{nearEligible.length}</div>
+            <div className="text-[11px] sm:text-sm text-muted-foreground mt-1 leading-tight">Near Eligible</div>
           </Card>
-          <Card className="p-5 bg-card border-border text-center">
-            <div className="text-3xl font-bold text-accent">${totalEstimated.toLocaleString()}</div>
-            <div className="text-sm text-muted-foreground mt-1">Est. Total Funding</div>
+          <Card className="p-3 sm:p-5 bg-card border-border text-center">
+            <div className="text-xl sm:text-3xl font-bold text-accent break-all">${totalEstimated.toLocaleString()}</div>
+            <div className="text-[11px] sm:text-sm text-muted-foreground mt-1 leading-tight">Est. Total</div>
           </Card>
         </div>
       )}
