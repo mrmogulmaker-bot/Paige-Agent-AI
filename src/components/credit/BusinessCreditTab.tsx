@@ -112,6 +112,8 @@ function progressValue(meta: BureauMeta, value: number | null): number {
 
 export function BusinessCreditTab() {
   const qc = useQueryClient();
+  const { activeBusiness, businesses } = useBusinessContext();
+  const activeBusinessId = activeBusiness?.id ?? null;
   const [uploading, setUploading] = useState<Bureau | null>(null);
   const fileInputRefs = useRef<Record<Bureau, HTMLInputElement | null>>({
     dnb: null,
@@ -129,39 +131,61 @@ export function BusinessCreditTab() {
     }
   }, []);
 
+  // Active business detail (bureau scores live on the businesses row)
   const { data: business } = useQuery({
-    queryKey: ["primary-business-for-credit"],
+    queryKey: ["business-for-credit", activeBusinessId],
+    enabled: !!activeBusinessId,
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
       const { data } = await supabase
         .from("businesses")
         .select(
           "id, legal_name, dnb_paydex_score, dnb_paydex, dnb_report_date, dnb_duns_number, experian_intelliscore_score, experian_intelliscore, experian_report_date, equifax_sbfe_score, equifax_payment_index_score, equifax_report_date, business_credit_last_updated"
         )
-        .eq("owner_user_id", user.id)
-        .order("display_order", { ascending: true, nullsFirst: false })
-        .limit(1)
+        .eq("id", activeBusinessId!)
         .maybeSingle();
       return data as any;
     },
   });
 
   const { data: reports = [] } = useQuery({
-    queryKey: ["business-credit-reports"],
+    queryKey: ["business-credit-reports", activeBusinessId],
+    enabled: !!activeBusinessId,
     queryFn: async (): Promise<BusinessCreditReportRow[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
       const { data } = await supabase
         .from("business_credit_reports")
         .select(
           "id, bureau, report_date, paydex_score, intelliscore, sbfe_score, trade_line_count, derogatory_count, days_beyond_terms, payment_trend, extraction_status, created_at"
         )
-        .eq("user_id", user.id)
+        .eq("business_id", activeBusinessId!)
         .order("created_at", { ascending: false });
       return (data as BusinessCreditReportRow[]) || [];
     },
   });
+
+  // Cross-entity portfolio summary (only when 2+ businesses exist)
+  const { data: portfolioSummary = [] } = useQuery({
+    queryKey: ["business-credit-portfolio-summary", businesses.map((b) => b.id).join(",")],
+    enabled: businesses.length > 1,
+    queryFn: async () => {
+      const ids = businesses.map((b) => b.id);
+      const { data } = await supabase
+        .from("businesses")
+        .select(
+          "id, legal_name, entity_role, dnb_paydex, experian_intelliscore, equifax_payment_index"
+        )
+        .in("id", ids);
+      return (data ?? []) as Array<{
+        id: string;
+        legal_name: string;
+        entity_role: string | null;
+        dnb_paydex: number | null;
+        experian_intelliscore: number | null;
+        equifax_payment_index: number | null;
+      }>;
+    },
+  });
+
+  const hasMultipleBusinesses = businesses.length > 1;
 
   const uploadMutation = useMutation({
     mutationFn: async ({ bureau, file }: { bureau: Bureau; file: File }) => {
