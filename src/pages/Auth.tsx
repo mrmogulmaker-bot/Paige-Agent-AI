@@ -47,6 +47,8 @@ const Auth = () => {
       const roleList = (roles || []).map((r: any) => r.role);
       if (roleList.includes("admin") || roleList.includes("coach")) {
         navigate("/admin");
+      } else if (roleList.includes("broker")) {
+        navigate("/broker/app");
       } else {
         navigate("/app");
       }

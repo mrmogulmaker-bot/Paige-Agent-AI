@@ -27,6 +27,7 @@ import { template as eliteWaitlistConfirmed } from './elite-waitlist-confirmed.t
 import { template as affiliateMonthlyStatement } from './affiliate-monthly-statement.tsx'
 import { template as brokerApplicationReceived } from './broker-application-received.tsx'
 import { template as brokerApprovedWelcome } from './broker-approved-welcome.tsx'
+import { template as brokerClientInvite } from './broker-client-invite.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'role-invitation': roleInvitation,
@@ -47,4 +48,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'affiliate-monthly-statement': affiliateMonthlyStatement,
   'broker-application-received': brokerApplicationReceived,
   'broker-approved-welcome': brokerApprovedWelcome,
+  'broker-client-invite': brokerClientInvite,
 }
