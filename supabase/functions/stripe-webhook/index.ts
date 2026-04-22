@@ -18,6 +18,80 @@ const logStep = (step: string, details?: any) => {
   console.log(`[STRIPE-WEBHOOK] ${step}${detailsStr}`);
 };
 
+// Sends affiliate-conversion-earned email after a successful attribution.
+// Looks up: affiliate user email, commission rate label, and MTD earnings.
+async function sendAffiliateConversionEmail(
+  supabaseAdmin: any,
+  conversionId: string,
+  productIdOrPlanName?: string,
+) {
+  // Load conversion + affiliate
+  const { data: conv } = await supabaseAdmin
+    .from("referral_conversions")
+    .select("affiliate_id, commission_cents, converted_at")
+    .eq("id", conversionId)
+    .maybeSingle();
+  if (!conv?.affiliate_id) return;
+
+  const { data: aff } = await supabaseAdmin
+    .from("affiliate_profiles")
+    .select("user_id, commission_tier_id")
+    .eq("id", conv.affiliate_id)
+    .maybeSingle();
+  if (!aff?.user_id) return;
+
+  const { data: tier } = await supabaseAdmin
+    .from("affiliate_commission_tiers")
+    .select("commission_rate, display_name")
+    .eq("id", aff.commission_tier_id)
+    .maybeSingle();
+
+  // Lookup affiliate email via auth admin
+  const { data: userRes } = await supabaseAdmin.auth.admin.getUserById(aff.user_id);
+  const recipientEmail = userRes?.user?.email;
+  if (!recipientEmail) return;
+
+  // Calculate month-to-date earnings (attributed only)
+  const start = new Date();
+  start.setUTCDate(1);
+  start.setUTCHours(0, 0, 0, 0);
+  const { data: mtdRows } = await supabaseAdmin
+    .from("referral_conversions")
+    .select("commission_cents")
+    .eq("affiliate_id", conv.affiliate_id)
+    .eq("status", "attributed")
+    .gte("converted_at", start.toISOString());
+  const mtdCents = (mtdRows ?? []).reduce(
+    (s: number, r: any) => s + (r.commission_cents ?? 0),
+    0,
+  );
+
+  const fmt = (cents: number) =>
+    `$${((cents ?? 0) / 100).toFixed(2)}`;
+  const ratePct = tier?.commission_rate
+    ? `${Math.round(Number(tier.commission_rate) * 100)}%`
+    : undefined;
+
+  // Friendly plan label
+  let planName = productIdOrPlanName ?? "PaigeAgent";
+  if (planName?.startsWith("prod_")) planName = "PaigeAgent";
+
+  await supabaseAdmin.functions.invoke("send-transactional-email", {
+    body: {
+      templateName: "affiliate-conversion-earned",
+      recipientEmail,
+      recipientUserId: aff.user_id,
+      idempotencyKey: `aff-conv-${conversionId}`,
+      templateData: {
+        planName,
+        commissionEarned: fmt(conv.commission_cents ?? 0),
+        commissionRate: ratePct,
+        monthToDate: fmt(mtdCents),
+      },
+    },
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
