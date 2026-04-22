@@ -127,6 +127,15 @@ export default function SupportAdmin() {
     () => tickets.filter((t) => t.status !== "resolved" && t.status !== "closed"),
     [tickets],
   );
+
+  const filteredOpenTickets = useMemo(() => {
+    if (assigneeFilter === "all") return openTickets;
+    if (assigneeFilter === "unassigned") return openTickets.filter((t) => !t.assigned_to);
+    if (assigneeFilter === "mine" && adminName) {
+      return openTickets.filter((t) => t.assigned_to === adminName);
+    }
+    return openTickets;
+  }, [openTickets, assigneeFilter, adminName]);
   const openCount = useMemo(() => tickets.filter((t) => t.status === "open").length, [tickets]);
   const inProgressCount = useMemo(() => tickets.filter((t) => t.status === "in_progress").length, [tickets]);
   const urgentCount = useMemo(
