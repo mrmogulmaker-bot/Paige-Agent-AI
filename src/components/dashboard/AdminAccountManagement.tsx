@@ -263,6 +263,10 @@ export function AdminAccountManagement({ clientUserId, clientId, userRole }: Adm
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-account-mgmt"] });
       queryClient.invalidateQueries({ queryKey: ["admin-audit-log"] });
+      // Admin-side edits to a client's accounts must also refresh that
+      // client's fundability inputs.
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
       setEditingId(null);
       setEditValues({});
       toast.success("Account updated and audit logged.");
@@ -290,6 +294,8 @@ export function AdminAccountManagement({ clientUserId, clientId, userRole }: Adm
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-account-mgmt"] });
       queryClient.invalidateQueries({ queryKey: ["admin-audit-log"] });
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
       setNotMineDialogId(null);
       toast.success("Flagged as Not Mine — excluded from scoring.");
     },
@@ -317,6 +323,8 @@ export function AdminAccountManagement({ clientUserId, clientId, userRole }: Adm
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-account-mgmt"] });
       queryClient.invalidateQueries({ queryKey: ["admin-audit-log"] });
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
       setMarkDupDialogId(null);
       setSelectedDupTarget("");
       toast.success("Duplicate merged.");
@@ -344,6 +352,8 @@ export function AdminAccountManagement({ clientUserId, clientId, userRole }: Adm
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-account-mgmt"] });
       queryClient.invalidateQueries({ queryKey: ["admin-audit-log"] });
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
       toast.success("Account deleted and audit logged.");
     },
   });

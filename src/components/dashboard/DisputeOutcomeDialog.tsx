@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ interface DisputeOutcomeDialogProps {
 }
 
 export function DisputeOutcomeDialog({ dispute, open, onOpenChange, onSaved }: DisputeOutcomeDialogProps) {
+  const queryClient = useQueryClient();
   const [outcomeType, setOutcomeType] = useState("");
   const [responseDate, setResponseDate] = useState(new Date().toISOString().split("T")[0]);
   const [scoreImpact, setScoreImpact] = useState("");
@@ -80,6 +82,13 @@ export function DisputeOutcomeDialog({ dispute, open, onOpenChange, onSaved }: D
         resolution_note: `${OUTCOME_OPTIONS.find(o => o.value === outcomeType)?.label || outcomeType}`,
         updated_at: new Date().toISOString(),
       } as any).eq("id", dispute.id);
+
+      // A "deleted" or "updated_to_paid" outcome means the underlying
+      // negative item is no longer counted in the recency-weighted
+      // penalty — refresh the score immediately.
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
+      queryClient.invalidateQueries({ queryKey: ["credit-factors"] });
 
       toast.success("Dispute outcome recorded");
       onSaved();

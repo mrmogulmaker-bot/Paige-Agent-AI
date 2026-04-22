@@ -30,6 +30,9 @@ export function useThreeFundabilityScores(
 
   const { data, isLoading } = useQuery({
     queryKey: ["three-fundability-inputs", businessId ?? "primary"],
+    // Always refetch when invalidated; this query feeds money decisions.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
     queryFn: async (): Promise<{
       profile: any | null;
       personalReportCount: number;

@@ -4,6 +4,7 @@ import { useCreditFactors } from "./useCreditFactors";
 import { useBuildScore } from "./useBuildScore";
 import { useFinancialKPIs } from "./useFinancialKPIs";
 import { useFundingMatches } from "./useFundingMatches";
+import { useThreeFundabilityScores } from "./useThreeFundabilityScores";
 import type { BankingDataSource } from "@/components/dashboard/bank-accounts/BankingSourceBadge";
 
 export interface FundingReadinessBreakdown {
@@ -21,7 +22,20 @@ export interface FundingReadinessResult {
   bankingDataSource: BankingDataSource;
 }
 
-function calcPersonalCreditScore(factors: any): { score: number; explanation: string } {
+function calcPersonalCreditScore(
+  factors: any,
+  personalFundability: number | null,
+): { score: number; explanation: string } {
+  // Prefer the new three-score model's Personal Fundability number when
+  // available — it's recency-weighted, gated, and always fresh. Fall
+  // back to the legacy `overall_fundability_score` only if the new score
+  // is locked (missing inputs).
+  if (personalFundability != null) {
+    const score = Math.min(100, personalFundability);
+    if (score >= 80) return { score, explanation: "Strong personal credit profile supporting funding eligibility." };
+    if (score >= 50) return { score, explanation: "Moderate personal credit. Reducing utilization and resolving negatives would help." };
+    return { score, explanation: "Personal credit needs improvement. Focus on payment history and reducing balances." };
+  }
   if (!factors) return { score: 0, explanation: "No personal credit data available. Upload a credit report to get started." };
   const fundability = factors.overall_fundability_score ?? 0;
   const score = Math.min(100, fundability);
@@ -150,6 +164,9 @@ export function useFundingReadiness() {
   const { data: buildData } = useBuildScore();
   const { data: kpis } = useFinancialKPIs();
   const { matches, eligible } = useFundingMatches();
+  // Pull the recency-weighted Personal Fundability so this hook stops
+  // depending on the legacy single `overall_fundability_score`.
+  const { personal: personalFundability } = useThreeFundabilityScores();
 
   const { data: supplemental } = useQuery({
     queryKey: ["funding-readiness-supplemental"],
@@ -177,7 +194,10 @@ export function useFundingReadiness() {
   const result: FundingReadinessResult | null = (() => {
     if (!supplemental) return null;
 
-    const personal = calcPersonalCreditScore(factors);
+    const personal = calcPersonalCreditScore(
+      factors,
+      personalFundability && !personalFundability.locked ? personalFundability.score : null,
+    );
     const business = calcBusinessCreditScore(buildData);
     const entity = calcEntityStructureScore(supplemental.docCount, supplemental.businessCount);
     const banking = calcBankingScore(kpis, supplemental.manualEntry, supplemental.hasAnalysis, supplemental.latestRevenue);

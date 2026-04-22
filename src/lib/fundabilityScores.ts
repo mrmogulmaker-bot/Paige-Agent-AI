@@ -390,12 +390,18 @@ export function validateFundabilityInputs(
 function scorePersonal(p: FundabilityProfileInputs): { score: number; totalWeighted: number } {
   const fico = avgFico(p)!; // gate guarantees non-null
   const ficoPct = ficoToPct(fico);
-  // Optional soft adjustments from credit-factor sub-scores.
-  const adj =
-    (p.utilizationScore ?? 70) * 0.10 +
-    (p.paymentHistoryScore ?? 70) * 0.10 +
-    (p.inquiryScore ?? 70) * 0.05 +
-    (p.creditMixScore ?? 70) * 0.05;
+
+  // Soft adjustments from credit-factor sub-scores. We DERIVE missing
+  // sub-scores from the FICO band rather than using a flat 70 default,
+  // so two users with different FICOs never get the same adjustment when
+  // their factor scores haven't been calculated yet.
+  const ficoDerivedFloor = ficoPct; // 0–100 scale matches sub-score scale
+  const util = p.utilizationScore ?? ficoDerivedFloor;
+  const pay = p.paymentHistoryScore ?? ficoDerivedFloor;
+  const inq = p.inquiryScore ?? ficoDerivedFloor;
+  const mix = p.creditMixScore ?? ficoDerivedFloor;
+  const adj = util * 0.10 + pay * 0.10 + inq * 0.05 + mix * 0.05;
+
   // Recency-weighted negatives: 3 points per weighted unit, capped at 15.
   const { penalty, totalWeighted } = negativePenaltyFor(p, 15, 3);
   const composite = Math.round(ficoPct * 0.7 + adj * 0.3 - penalty);
@@ -549,12 +555,21 @@ const META: Record<FundabilityScoreType, {
 
 function improvementsFor(type: FundabilityScoreType, p: FundabilityProfileInputs, _score: number): string[] {
   const out: string[] = [];
+  // Count negatives from the array first (source of truth) then fall back
+  // to the legacy raw count. Previously `?? 0` short-circuited when
+  // `activeNegatives === 0` and ignored a non-empty `negativeAccounts` list.
+  const activeNegCount = Array.isArray(p.negativeAccounts)
+    ? p.negativeAccounts.filter((n) => n.isActive !== false).length
+    : (p.activeNegatives ?? 0);
+
   if (type === "personal") {
-    if ((p.utilizationScore ?? 100) < 70) out.push("Pay revolving balances down below 30% utilization");
-    if ((p.activeNegatives ?? p.negativeAccounts?.length ?? 0) > 0)
-      out.push("Resolve outstanding negative items with creditors");
-    if ((p.paymentHistoryScore ?? 100) < 80) out.push("Maintain 6+ consecutive months of on-time payments");
-    if ((p.inquiryScore ?? 100) < 70) out.push("Pause new credit applications for the next 90 days");
+    // Use neutral defaults (70) only if both the sub-score AND a derivable
+    // signal are missing. We treat undefined as "unknown, don't suggest"
+    // rather than "perfect, no suggestion needed" (was `?? 100`).
+    if (p.utilizationScore != null && p.utilizationScore < 70) out.push("Pay revolving balances down below 30% utilization");
+    if (activeNegCount > 0) out.push("Resolve outstanding negative items with creditors");
+    if (p.paymentHistoryScore != null && p.paymentHistoryScore < 80) out.push("Maintain 6+ consecutive months of on-time payments");
+    if (p.inquiryScore != null && p.inquiryScore < 70) out.push("Pause new credit applications for the next 90 days");
     if (out.length === 0) out.push("Maintain current habits and let account age accumulate");
   } else if (type === "small_business") {
     const tib = monthsBetweenIso(p.formationDate) ?? 0;

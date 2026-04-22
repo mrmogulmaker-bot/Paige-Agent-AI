@@ -155,6 +155,22 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
       queryClient.invalidateQueries({ queryKey: ["last-analyzed-at"] });
       queryClient.invalidateQueries({ queryKey: ["credit-health-assessment"] });
       queryClient.invalidateQueries({ queryKey: ["bureau-scores"] });
+      // Fundability scores depend on freshly-extracted negatives & FICOs.
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
+      // Trigger a factor recalc so credit_factor_scores reflects the new
+      // report before the user opens the dashboard.
+      try {
+        const { data: { session: s2 } } = await supabase.auth.getSession();
+        if (s2) {
+          supabase.functions.invoke("calculate-credit-factors", {
+            headers: { Authorization: `Bearer ${s2.access_token}` },
+          }).then(() => {
+            queryClient.invalidateQueries({ queryKey: ["credit-factors"] });
+            queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+          });
+        }
+      } catch { /* non-blocking */ }
 
       toast.success(`Analysis complete! Found ${totalAccounts} accounts${result?.bureau_detected ? ` from ${result.bureau_detected}` : ""}.`);
     } catch (error: any) {

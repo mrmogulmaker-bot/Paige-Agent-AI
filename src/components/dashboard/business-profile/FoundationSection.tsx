@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +73,7 @@ const isFreeEmail = (e?: string | null) => {
 };
 
 export function FoundationSection({ businessId, userId, onCompletionChange }: FoundationSectionProps) {
+  const queryClient = useQueryClient();
   const [data, setData] = useState<BusinessData | null>(null);
   const [expandedItem, setExpandedItem] = useState<ItemKey | null>(null);
   const [saving, setSaving] = useState(false);
@@ -150,7 +152,15 @@ export function FoundationSection({ businessId, userId, onCompletionChange }: Fo
     setSaving(true);
     const { error } = await supabase.from("businesses").update(fields as any).eq("id", businessId);
     if (error) { toast.error("Failed to save changes"); }
-    else { toast.success("Changes saved"); await fetchData(); }
+    else {
+      toast.success("Changes saved");
+      await fetchData();
+      // Small Business / Commercial fundability scores depend on entity
+      // type, formation date, EIN, and bank info — invalidate so the
+      // dashboard reflects the change immediately.
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
+    }
     setSaving(false);
   };
 
