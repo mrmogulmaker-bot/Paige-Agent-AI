@@ -393,19 +393,20 @@ export function computeFundabilityScore(
   const meta = META[type];
   const validation = validateFundabilityInputs(type, p);
 
-  if (validation.ok === false) {
+  if (validation.ok !== true) {
+    const v = validation as { ok: false; reason: string; cta: { label: string; route: string } };
     return {
       type,
       title: meta.title,
       score: null,
       band: null,
       bandLabel: null,
-      meaning: validation.reason,
+      meaning: v.reason,
       unlocks: [],
       improvements: [],
       locked: true,
-      lockedReason: validation.reason,
-      lockedCta: validation.cta,
+      lockedReason: v.reason,
+      lockedCta: v.cta,
       inputsRequired: meta.inputsRequired,
     };
   }
