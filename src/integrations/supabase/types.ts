@@ -1089,6 +1089,83 @@ export type Database = {
           },
         ]
       }
+      business_credit_reports: {
+        Row: {
+          bureau: string
+          business_id: string | null
+          created_at: string
+          days_beyond_terms: number | null
+          derogatory_count: number | null
+          extraction_error: string | null
+          extraction_status: string
+          file_path: string | null
+          file_url: string | null
+          highest_credit_extended: number | null
+          id: string
+          intelliscore: number | null
+          paydex_score: number | null
+          payment_trend: string | null
+          raw_text: string | null
+          report_date: string | null
+          sbfe_score: number | null
+          trade_line_count: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bureau: string
+          business_id?: string | null
+          created_at?: string
+          days_beyond_terms?: number | null
+          derogatory_count?: number | null
+          extraction_error?: string | null
+          extraction_status?: string
+          file_path?: string | null
+          file_url?: string | null
+          highest_credit_extended?: number | null
+          id?: string
+          intelliscore?: number | null
+          paydex_score?: number | null
+          payment_trend?: string | null
+          raw_text?: string | null
+          report_date?: string | null
+          sbfe_score?: number | null
+          trade_line_count?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bureau?: string
+          business_id?: string | null
+          created_at?: string
+          days_beyond_terms?: number | null
+          derogatory_count?: number | null
+          extraction_error?: string | null
+          extraction_status?: string
+          file_path?: string | null
+          file_url?: string | null
+          highest_credit_extended?: number | null
+          id?: string
+          intelliscore?: number | null
+          paydex_score?: number | null
+          payment_trend?: string | null
+          raw_text?: string | null
+          report_date?: string | null
+          sbfe_score?: number | null
+          trade_line_count?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_credit_reports_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       business_financial_docs: {
         Row: {
           business_id: string
@@ -1381,6 +1458,7 @@ export type Database = {
           build_score: number | null
           business_address_type: string | null
           business_city: string | null
+          business_credit_last_updated: string | null
           business_email: string | null
           business_phone: string | null
           business_state: string | null
@@ -1393,10 +1471,15 @@ export type Database = {
           dba: string | null
           display_order: number | null
           dnb_delinquency_predictor: number | null
+          dnb_delinquency_score: number | null
           dnb_duns: string | null
+          dnb_duns_number: string | null
           dnb_failure_score: number | null
+          dnb_financial_stress_score: number | null
           dnb_last_verified: string | null
           dnb_paydex: number | null
+          dnb_paydex_score: number | null
+          dnb_report_date: string | null
           ein: string | null
           employee_count: number | null
           entity_type: Database["public"]["Enums"]["entity_type"] | null
@@ -1404,9 +1487,16 @@ export type Database = {
           equifax_failure_score: number | null
           equifax_last_verified: string | null
           equifax_payment_index: number | null
+          equifax_payment_index_score: number | null
+          equifax_report_date: string | null
+          equifax_sbfe_score: number | null
           estimated_annual_revenue: number | null
+          experian_days_beyond_terms: number | null
+          experian_financial_stability_risk: number | null
           experian_intelliscore: number | null
+          experian_intelliscore_score: number | null
           experian_last_verified: string | null
+          experian_report_date: string | null
           fico_sbss: number | null
           fico_sbss_last_verified: string | null
           formation_date: string | null
@@ -1444,6 +1534,7 @@ export type Database = {
           build_score?: number | null
           business_address_type?: string | null
           business_city?: string | null
+          business_credit_last_updated?: string | null
           business_email?: string | null
           business_phone?: string | null
           business_state?: string | null
@@ -1456,10 +1547,15 @@ export type Database = {
           dba?: string | null
           display_order?: number | null
           dnb_delinquency_predictor?: number | null
+          dnb_delinquency_score?: number | null
           dnb_duns?: string | null
+          dnb_duns_number?: string | null
           dnb_failure_score?: number | null
+          dnb_financial_stress_score?: number | null
           dnb_last_verified?: string | null
           dnb_paydex?: number | null
+          dnb_paydex_score?: number | null
+          dnb_report_date?: string | null
           ein?: string | null
           employee_count?: number | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
@@ -1467,9 +1563,16 @@ export type Database = {
           equifax_failure_score?: number | null
           equifax_last_verified?: string | null
           equifax_payment_index?: number | null
+          equifax_payment_index_score?: number | null
+          equifax_report_date?: string | null
+          equifax_sbfe_score?: number | null
           estimated_annual_revenue?: number | null
+          experian_days_beyond_terms?: number | null
+          experian_financial_stability_risk?: number | null
           experian_intelliscore?: number | null
+          experian_intelliscore_score?: number | null
           experian_last_verified?: string | null
+          experian_report_date?: string | null
           fico_sbss?: number | null
           fico_sbss_last_verified?: string | null
           formation_date?: string | null
@@ -1507,6 +1610,7 @@ export type Database = {
           build_score?: number | null
           business_address_type?: string | null
           business_city?: string | null
+          business_credit_last_updated?: string | null
           business_email?: string | null
           business_phone?: string | null
           business_state?: string | null
@@ -1519,10 +1623,15 @@ export type Database = {
           dba?: string | null
           display_order?: number | null
           dnb_delinquency_predictor?: number | null
+          dnb_delinquency_score?: number | null
           dnb_duns?: string | null
+          dnb_duns_number?: string | null
           dnb_failure_score?: number | null
+          dnb_financial_stress_score?: number | null
           dnb_last_verified?: string | null
           dnb_paydex?: number | null
+          dnb_paydex_score?: number | null
+          dnb_report_date?: string | null
           ein?: string | null
           employee_count?: number | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
@@ -1530,9 +1639,16 @@ export type Database = {
           equifax_failure_score?: number | null
           equifax_last_verified?: string | null
           equifax_payment_index?: number | null
+          equifax_payment_index_score?: number | null
+          equifax_report_date?: string | null
+          equifax_sbfe_score?: number | null
           estimated_annual_revenue?: number | null
+          experian_days_beyond_terms?: number | null
+          experian_financial_stability_risk?: number | null
           experian_intelliscore?: number | null
+          experian_intelliscore_score?: number | null
           experian_last_verified?: string | null
+          experian_report_date?: string | null
           fico_sbss?: number | null
           fico_sbss_last_verified?: string | null
           formation_date?: string | null
