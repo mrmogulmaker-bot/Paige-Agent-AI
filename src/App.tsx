@@ -32,6 +32,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { FloatingChatbot } from "./components/FloatingChatbot";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { DashboardModeProvider } from "./contexts/DashboardModeContext";
+import { BusinessProvider } from "./contexts/BusinessContext";
 import { useReferralTracking } from "./hooks/useReferralTracking";
 import { GlobalAuthSessionManager } from "./lib/auth/GlobalAuthSessionManager";
 import { usePageView } from "./hooks/useAnalytics";
@@ -103,6 +104,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <SubscriptionProvider>
+        <BusinessProvider>
         <DashboardModeProvider>
         <Toaster />
         <Sonner />
@@ -166,6 +168,7 @@ const App = () => (
           <FloatingChatbot />
         </BrowserRouter>
         </DashboardModeProvider>
+        </BusinessProvider>
       </SubscriptionProvider>
     </TooltipProvider>
   </QueryClientProvider>
