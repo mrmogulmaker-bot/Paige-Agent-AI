@@ -308,48 +308,16 @@ export default function CreditIntelligence() {
         </div>
       )}
 
-      {/* Fundability Score Ring */}
-      {hasData && (
-        <Card className="p-8 bg-card border-border text-center">
-          <div className="inline-flex flex-col items-center">
-            <div className="relative w-36 h-36">
-              <svg className="w-36 h-36 transform -rotate-90" viewBox="0 0 120 120">
-                <circle cx="60" cy="60" r="50" fill="none" stroke="hsl(var(--border))" strokeWidth="10" />
-                <circle
-                  cx="60" cy="60" r="50" fill="none"
-                  stroke={getScoreHSL(factors.overall_fundability_score ?? 0)}
-                  strokeWidth="10"
-                  strokeLinecap="round"
-                  strokeDasharray={`${((factors.overall_fundability_score ?? 0) / 100) * 314} 314`}
-                  className="transition-all duration-1000"
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className={`text-3xl font-bold ${getScoreTextColor(factors.overall_fundability_score ?? 0)}`}>
-                  {factors.overall_fundability_score ?? 0}
-                </span>
-                <span className="text-xs text-muted-foreground">/100</span>
-              </div>
-            </div>
-            <h2 className="text-xl font-bold mt-4">Fundability Score</h2>
-            <p className="text-sm text-muted-foreground">
-              {getFundabilityLabel(factors.overall_fundability_score ?? 0)}
-            </p>
-          </div>
-        </Card>
-      )}
+      {/* Legacy single Fundability Score replaced by ThreeFundabilityScoresPanel at top */}
 
       {/* Credit Factors Panel — between Bureau Strategy and Health Assessment */}
       <CreditFactorsPanel selectedBureau={selectedBureau} />
 
-      {/* Legacy Factor Cards */}
-      {isLoading ? (
+      {isLoading && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-accent" />
         </div>
-      ) : !hasData && !lastReport ? (
-        null
-      ) : null}
+      )}
 
       {/* Paige's Predictions — full panel */}
       <PredictionsPanel userId={currentUserId} variant="full" onNavigate={(s) => navigate(`/app?section=${s}`)} />
@@ -379,27 +347,4 @@ function StatusIcon({ score }: { score: number }) {
   if (score >= 60) return <TrendingUp className="w-5 h-5 text-fundability-good" />;
   if (score >= 40) return <AlertTriangle className="w-5 h-5 text-fundability-fair" />;
   return <XCircle className="w-5 h-5 text-fundability-poor" />;
-}
-
-function getScoreTextColor(score: number): string {
-  if (score >= 80) return "text-fundability-excellent";
-  if (score >= 60) return "text-fundability-good";
-  if (score >= 40) return "text-fundability-fair";
-  return "text-fundability-poor";
-}
-
-function getScoreHSL(score: number): string {
-  if (score >= 80) return "hsl(142, 76%, 36%)";
-  if (score >= 60) return "hsl(174, 62%, 47%)";
-  if (score >= 40) return "hsl(38, 92%, 50%)";
-  return "hsl(0, 72%, 51%)";
-}
-
-function getFundabilityLabel(score: number): string {
-  if (score >= 90) return "Ready for funding.";
-  if (score >= 80) return "Nearly fundable.";
-  if (score >= 66) return "Getting closer.";
-  if (score >= 51) return "Making progress.";
-  if (score >= 31) return "Building foundation.";
-  return "Needs significant work.";
 }
