@@ -724,13 +724,18 @@ export type Database = {
       broker_team_members: {
         Row: {
           accepted_at: string | null
+          auth_user_id: string | null
           broker_id: string
           created_at: string
           email: string
           first_name: string | null
           id: string
+          invitation_expires_at: string | null
+          invitation_token: string | null
           invited_at: string
           last_name: string | null
+          last_sign_in_at: string | null
+          permissions: Json
           role: string
           status: string
           updated_at: string
@@ -738,13 +743,18 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          auth_user_id?: string | null
           broker_id: string
           created_at?: string
           email: string
           first_name?: string | null
           id?: string
+          invitation_expires_at?: string | null
+          invitation_token?: string | null
           invited_at?: string
           last_name?: string | null
+          last_sign_in_at?: string | null
+          permissions?: Json
           role?: string
           status?: string
           updated_at?: string
@@ -752,13 +762,18 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          auth_user_id?: string | null
           broker_id?: string
           created_at?: string
           email?: string
           first_name?: string | null
           id?: string
+          invitation_expires_at?: string | null
+          invitation_token?: string | null
           invited_at?: string
           last_name?: string | null
+          last_sign_in_at?: string | null
+          permissions?: Json
           role?: string
           status?: string
           updated_at?: string
@@ -7308,6 +7323,21 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_broker_team_member: {
+        Args: { _auth_user_id: string }
+        Returns: {
+          broker_id: string
+          business_name: string
+          email: string
+          firm_description: string
+          first_name: string
+          id: string
+          last_name: string
+          permissions: Json
+          role: string
+          status: string
+        }[]
+      }
       get_business_hierarchy: {
         Args: { _user_id: string }
         Returns: {
@@ -7392,6 +7422,10 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { p_user_id: string }; Returns: boolean }
+      is_broker_team_member_of: {
+        Args: { _broker_id: string }
+        Returns: boolean
+      }
       is_platform_owner: { Args: never; Returns: boolean }
       match_paige_memory: {
         Args: {
@@ -7500,6 +7534,7 @@ export type Database = {
         | "affiliate"
         | "coach"
         | "broker"
+        | "broker_team_member"
       business_hierarchy_type:
         | "holding"
         | "parent"
@@ -7726,7 +7761,15 @@ export const Constants = {
         "student_loan",
         "collections",
       ],
-      app_role: ["admin", "moderator", "user", "affiliate", "coach", "broker"],
+      app_role: [
+        "admin",
+        "moderator",
+        "user",
+        "affiliate",
+        "coach",
+        "broker",
+        "broker_team_member",
+      ],
       business_hierarchy_type: [
         "holding",
         "parent",
