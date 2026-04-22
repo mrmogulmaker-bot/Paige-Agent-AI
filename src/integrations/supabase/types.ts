@@ -88,6 +88,27 @@ export type Database = {
           },
         ]
       }
+      admin_app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
       affiliate_applications: {
         Row: {
           audience_description: string | null
@@ -557,6 +578,8 @@ export type Database = {
           client_count_quoted: number | null
           created_at: string
           current_client_count: number
+          decline_reason: string | null
+          declined_at: string | null
           firm_description: string | null
           id: string
           license_number: string | null
@@ -586,6 +609,8 @@ export type Database = {
           client_count_quoted?: number | null
           created_at?: string
           current_client_count?: number
+          decline_reason?: string | null
+          declined_at?: string | null
           firm_description?: string | null
           id?: string
           license_number?: string | null
@@ -615,6 +640,8 @@ export type Database = {
           client_count_quoted?: number | null
           created_at?: string
           current_client_count?: number
+          decline_reason?: string | null
+          declined_at?: string | null
           firm_description?: string | null
           id?: string
           license_number?: string | null
