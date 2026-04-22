@@ -26,7 +26,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Mail, Loader2 } from "lucide-react";
+import { Plus, Mail, Loader2, Brain } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +47,7 @@ interface ClientRow {
 const BrokerClients = () => {
   const { profile } = useBrokerProfile();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [rows, setRows] = useState<ClientRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -315,6 +317,17 @@ const BrokerClients = () => {
                       {new Date(row.added_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right space-x-2">
+                      {row.is_active && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-[#CFAE70] text-[#CFAE70] hover:bg-[#CFAE70]/10 hover:text-[#CFAE70]"
+                          onClick={() => navigate(`/broker/app/sessions/${row.id}`)}
+                        >
+                          <Brain className="h-3.5 w-3.5 mr-1" />
+                          Start Paige Session
+                        </Button>
+                      )}
                       {row.client_subscription_status !== "active" && row.is_active && (
                         <Button variant="ghost" size="sm" onClick={() => handleResendInvite(row)}>
                           Resend

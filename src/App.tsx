@@ -58,6 +58,8 @@ const BrokerSettings = lazyWithReload(() => import("./pages/broker/BrokerSetting
 const BrokerComingSoon = lazyWithReload(() => import("./pages/broker/BrokerComingSoon"));
 const BrokerCommissions = lazyWithReload(() => import("./pages/broker/BrokerCommissions"));
 const BrokerMCC = lazyWithReload(() => import("./pages/broker/BrokerMCC"));
+const BrokerSessions = lazyWithReload(() => import("./pages/broker/BrokerSessions"));
+const BrokerPaigeSession = lazyWithReload(() => import("./pages/broker/BrokerPaigeSession"));
 const Unsubscribe = lazyWithReload(() => import("./pages/Unsubscribe"));
 const Terms = lazyWithReload(() => import("./pages/Terms"));
 const Privacy = lazyWithReload(() => import("./pages/Privacy"));
@@ -145,7 +147,8 @@ const App = () => (
             <Route path="/broker/app" element={<PageSuspense><BrokerWorkspace /></PageSuspense>}>
               <Route index element={<PageSuspense><BrokerOverview /></PageSuspense>} />
               <Route path="clients" element={<PageSuspense><BrokerClients /></PageSuspense>} />
-              <Route path="sessions" element={<PageSuspense><BrokerComingSoon title="Paige Sessions" description="Private peer-advisor strategy chats about each client. Ships in Phase 2b." /></PageSuspense>} />
+              <Route path="sessions" element={<PageSuspense><BrokerSessions /></PageSuspense>} />
+              <Route path="sessions/:relationshipId" element={<PageSuspense><BrokerPaigeSession /></PageSuspense>} />
               <Route path="team" element={<PageSuspense><BrokerComingSoon title="Team" description="Invite team members under your broker account. Ships in Phase 2b." /></PageSuspense>} />
               <Route path="commissions" element={<PageSuspense><BrokerCommissions /></PageSuspense>} />
               <Route path="mcc" element={<PageSuspense><BrokerMCC /></PageSuspense>} />

@@ -39,6 +39,7 @@ import { MrrWaterfall } from "./analytics/MrrWaterfall";
 import { RagPerformance } from "./analytics/RagPerformance";
 import { CreditOutcomes } from "./analytics/CreditOutcomes";
 import { LenderIntelligence } from "./analytics/LenderIntelligence";
+import { BrokerIntelligence } from "./analytics/BrokerIntelligence";
 
 type RangeKey = "7d" | "30d" | "90d" | "ytd";
 
@@ -538,6 +539,12 @@ export default function AnalyticsDashboard() {
       <div className="space-y-2">
         <h2 className="text-xl font-bold text-foreground">Lender Intelligence</h2>
         <LenderIntelligence start={start} end={end} />
+      </div>
+
+      {/* SECTION — Broker intelligence */}
+      <div className="space-y-2">
+        <h2 className="text-xl font-bold text-foreground">Broker Intelligence</h2>
+        <BrokerIntelligence start={start} end={end} />
       </div>
     </div>
   );
