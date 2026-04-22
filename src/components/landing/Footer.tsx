@@ -8,9 +8,7 @@ const footerLinks = {
     { name: "Dashboard", href: "/app" },
   ],
   company: [
-    { name: "About", href: "#" },
-    { name: "Blog", href: "#" },
-    { name: "Contact", href: "#" },
+    { name: "Contact", href: "mailto:support@paigeagent.ai" },
     { name: "Affiliates", href: "/affiliates" },
     { name: "Broker Program", href: "/broker" },
   ],
@@ -43,25 +41,23 @@ export function Footer() {
                 {category}
               </h4>
               <ul className="space-y-2">
-                {links.map((link) => (
-                  <li key={link.name}>
-                    {link.href.startsWith("/") ? (
-                      <Link
-                        to={link.href}
-                        className="text-sm opacity-80 hover:opacity-100 hover:text-gold transition-colors"
-                      >
-                        {link.name}
-                      </Link>
-                    ) : (
-                      <a
-                        href={link.href}
-                        className="text-sm opacity-80 hover:opacity-100 hover:text-gold transition-colors"
-                      >
-                        {link.name}
-                      </a>
-                    )}
-                  </li>
-                ))}
+                {links.map((link) => {
+                  const isInternal = link.href.startsWith("/") && !link.href.startsWith("//");
+                  const className = "text-sm opacity-80 hover:opacity-100 hover:text-gold transition-colors";
+                  return (
+                    <li key={link.name}>
+                      {isInternal ? (
+                        <Link to={link.href} className={className}>
+                          {link.name}
+                        </Link>
+                      ) : (
+                        <a href={link.href} className={className}>
+                          {link.name}
+                        </a>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ))}

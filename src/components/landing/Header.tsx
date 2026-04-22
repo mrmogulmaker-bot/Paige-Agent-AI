@@ -21,8 +21,8 @@ export function Header() {
   }, []);
 
   const navLinks = [
-    { label: "Features", href: "#features" },
-    { label: "How It Works", href: "#how-it-works" },
+    { label: "How It Works", href: "#how-paige-works" },
+    { label: "What Paige Knows", href: "#what-paige-knows" },
     { label: "Pricing", href: "#pricing" },
     { label: "Brokers", href: "/broker" },
     { label: "Partners", href: "/affiliates" },
