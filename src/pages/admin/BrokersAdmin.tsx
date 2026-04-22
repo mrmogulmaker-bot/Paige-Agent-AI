@@ -303,4 +303,142 @@ const StatCard = ({
   </Card>
 );
 
+interface TeamMemberRow {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  role: string;
+  status: string;
+  last_sign_in_at: string | null;
+}
+
+const ROLE_VARIANT: Record<string, string> = {
+  lead_broker: "bg-amber-100 text-amber-800",
+  advisor: "bg-blue-100 text-blue-800",
+  assistant: "bg-gray-100 text-gray-800",
+};
+const STATUS_TEAM_VARIANT: Record<string, string> = {
+  active: "bg-green-100 text-green-800",
+  invited: "bg-amber-100 text-amber-800",
+  suspended: "bg-red-100 text-red-800",
+};
+
+const BrokerTeamMembersPanel = ({
+  brokerId,
+  businessName,
+  onClose,
+}: {
+  brokerId: string;
+  businessName: string;
+  onClose: () => void;
+}) => {
+  const [members, setMembers] = useState<TeamMemberRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("broker_team_members")
+      .select("id, first_name, last_name, email, role, status, last_sign_in_at")
+      .eq("broker_id", brokerId)
+      .order("created_at", { ascending: false });
+    if (error) toast.error(`Failed: ${error.message}`);
+    else setMembers((data as any) ?? []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brokerId]);
+
+  const setStatus = async (id: string, status: "active" | "suspended") => {
+    const { error } = await supabase
+      .from("broker_team_members")
+      .update({ status })
+      .eq("id", id);
+    if (error) toast.error(`Update failed: ${error.message}`);
+    else {
+      toast.success(`Member ${status}`);
+      await load();
+    }
+  };
+
+  const activeCount = members.filter((m) => m.status === "active").length;
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-3">
+        <div>
+          <CardTitle className="text-base flex items-center gap-2">
+            Team Members
+            <Badge variant="secondary">{activeCount} active</Badge>
+          </CardTitle>
+          <CardDescription>{businessName}</CardDescription>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-20 w-full" />
+        ) : members.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">No team members yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Last Active</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {members.map((m) => (
+                  <TableRow key={m.id}>
+                    <TableCell>
+                      <div className="font-medium">
+                        {(m.first_name || "") + " " + (m.last_name || "")}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{m.email}</div>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-0.5 rounded text-xs capitalize ${ROLE_VARIANT[m.role] || "bg-gray-100 text-gray-800"}`}>
+                        {m.role.replace("_", " ")}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-0.5 rounded text-xs capitalize ${STATUS_TEAM_VARIANT[m.status] || "bg-gray-100 text-gray-800"}`}>
+                        {m.status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {m.last_sign_in_at ? new Date(m.last_sign_in_at).toLocaleDateString() : "Never"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {m.status === "active" && (
+                        <Button size="sm" variant="outline" onClick={() => setStatus(m.id, "suspended")}>
+                          Suspend
+                        </Button>
+                      )}
+                      {m.status === "suspended" && (
+                        <Button size="sm" variant="default" onClick={() => setStatus(m.id, "active")}>
+                          Reinstate
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 export default BrokersAdmin;
