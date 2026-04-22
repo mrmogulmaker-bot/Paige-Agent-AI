@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Sparkles, CheckCircle } from "lucide-react";
+import { trackEvent } from "@/hooks/useAnalytics";
 
 interface EliteWaitlistDialogProps {
   open: boolean;
@@ -63,6 +64,7 @@ export function EliteWaitlistDialog({
       return;
     }
 
+    void trackEvent("elite_waitlist_submit", "acquisition", { source: "pricing_page" });
     setSuccess(true);
   };
 

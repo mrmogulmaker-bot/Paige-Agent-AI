@@ -13,6 +13,7 @@ import { lovable } from "@/integrations/lovable/index";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
+import { trackEvent } from "@/hooks/useAnalytics";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -125,6 +126,8 @@ const Auth = () => {
           return;
         }
 
+        void trackEvent("signup_complete", "activation", { method: "email" });
+
         // Send welcome email
         supabase.functions.invoke("send-transactional-email", {
           body: {
@@ -154,6 +157,7 @@ const Auth = () => {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
+      void trackEvent("signup_cta_click", "acquisition", { method: "google" });
       const result = await lovable.auth.signInWithOAuth("google", {
         redirect_uri: `${window.location.origin}/app`,
       });

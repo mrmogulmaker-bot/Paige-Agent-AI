@@ -11,6 +11,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
+import { trackEvent } from "@/hooks/useAnalytics";
+import { supabase as sbForCount } from "@/integrations/supabase/client";
 
 interface CreditReportUploaderProps {
   lastAnalyzed: string | null;
@@ -54,6 +56,12 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
         .upload(filePath, file);
       if (storageError) throw storageError;
 
+      // Detect first upload BEFORE inserting the new row.
+      const { count: priorCount } = await sbForCount
+        .from("credit_report_uploads")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId);
+
       const { data: uploadRecord, error: insertError } = await supabase
         .from("credit_report_uploads")
         .insert({
@@ -67,6 +75,11 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
         .select()
         .single();
       if (insertError) throw insertError;
+
+      if ((priorCount || 0) === 0) {
+        void trackEvent("first_credit_upload", "activation", { file_size: file.size });
+      }
+      void trackEvent("credit_report_uploaded", "credit", { file_size: file.size });
 
       toast.info("Analyzing your report — this takes about 30 seconds.", { duration: 8000 });
 
