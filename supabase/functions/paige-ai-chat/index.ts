@@ -3045,6 +3045,29 @@ Never enable notifications on their behalf â€” always direct them to Settings â†
                 break;
               }
             }
+
+            // Extract lender names that Paige recommended in this turn so we can
+            // surface "most-searched lenders" intelligence on the analytics dashboard.
+            // Pulls names that appear after "lender:", "lender name:", or that are
+            // capitalized brands followed by Bank/Capital/Credit Union/Financial.
+            try {
+              const lenderMatches = new Set<string>();
+              const explicit = fullAssistantResponse.matchAll(
+                /(?:lender(?:\s+name)?|recommend(?:ed)?|try|consider|apply (?:to|with))[:\s]+([A-Z][A-Za-z0-9 &\-.']{2,40}?(?:\s+(?:Bank|Capital|Credit Union|Financial|Bancorp|Funding|Lending|Loans?|Financing|Express))?)\b/g,
+              );
+              for (const m of explicit) {
+                const name = m[1].trim().replace(/[.,;:!?]+$/, "");
+                if (name.length >= 3 && name.length <= 50) lenderMatches.add(name);
+              }
+              for (const lenderName of Array.from(lenderMatches).slice(0, 10)) {
+                void logAnalyticsEvent(supabase, user.id, "lender_searched", "engagement", {
+                  lender_name: lenderName,
+                  source: "paige_recommendation",
+                });
+              }
+            } catch (e) {
+              console.warn("[paige] lender extraction failed:", (e as Error)?.message);
+            }
           } catch (e) {
             console.warn("[paige] analytics post-stream detection failed:", (e as Error)?.message);
           }
