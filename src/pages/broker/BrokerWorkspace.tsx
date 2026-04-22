@@ -1,20 +1,31 @@
 // Broker workspace shell — gates access to /broker/app/*.
-// Loads the broker_profiles row, redirects users without broker access to
-// /broker (apply page) or /auth (signed out). Renders sidebar + outlet.
+// Loads either the broker_profiles row OR a broker_team_members row via
+// BrokerContextProvider. Redirects users without broker access to /broker
+// (apply page) or /auth (signed out). Renders sidebar + outlet.
 
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { BrokerSidebar } from "@/components/broker/BrokerSidebar";
-import { useBrokerProfile } from "@/hooks/useBrokerProfile";
+import {
+  BrokerContextProvider,
+  useBrokerContext,
+} from "@/hooks/useBrokerContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const BrokerWorkspace = () => {
-  const { profile, isBroker, loading } = useBrokerProfile();
+const BrokerWorkspaceInner = () => {
+  const {
+    loading,
+    activeBrokerId,
+    isTeamMember,
+    teamMemberName,
+    parentBrokerProfile,
+  } = useBrokerContext();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isStaff, setIsStaff] = useState(false);
@@ -54,8 +65,8 @@ const BrokerWorkspace = () => {
     );
   }
 
-  // Signed in but no broker profile → bounce to apply page.
-  if (!isBroker || !profile) {
+  // Signed in but no broker profile or team membership → bounce to apply page.
+  if (!activeBrokerId || !parentBrokerProfile) {
     toast({
       title: "Broker account required",
       description: "Apply for the Broker Workspace to access this area.",
@@ -72,13 +83,28 @@ const BrokerWorkspace = () => {
             <div className="flex items-center gap-3">
               <SidebarTrigger />
               <div className="flex flex-col leading-tight">
-                <span className="text-sm font-semibold">{profile.business_name}</span>
+                <span className="text-sm font-semibold">
+                  {parentBrokerProfile.business_name}
+                  {isTeamMember && (
+                    <span className="text-muted-foreground font-normal"> workspace</span>
+                  )}
+                </span>
                 <span className="text-xs text-muted-foreground">
-                  {profile.referral_code ? `Code: ${profile.referral_code}` : "Pending setup"}
+                  {parentBrokerProfile.referral_code
+                    ? `Code: ${parentBrokerProfile.referral_code}`
+                    : "Pending setup"}
                 </span>
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {isTeamMember && teamMemberName && (
+                <div className="flex items-center gap-2 mr-2">
+                  <span className="text-sm font-medium">{teamMemberName}</span>
+                  <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/15">
+                    Team
+                  </Badge>
+                </div>
+              )}
               {isStaff && (
                 <Button variant="outline" size="sm" onClick={() => navigate("/admin")}>
                   <ArrowLeft className="h-4 w-4 mr-2" />
@@ -99,5 +125,11 @@ const BrokerWorkspace = () => {
     </SidebarProvider>
   );
 };
+
+const BrokerWorkspace = () => (
+  <BrokerContextProvider>
+    <BrokerWorkspaceInner />
+  </BrokerContextProvider>
+);
 
 export default BrokerWorkspace;

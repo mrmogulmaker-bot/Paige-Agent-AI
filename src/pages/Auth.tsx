@@ -48,6 +48,18 @@ const Auth = () => {
       const roleList = (roles || []).map((r: any) => r.role);
       if (roleList.includes("admin") || roleList.includes("coach")) {
         navigate("/admin");
+      } else if (roleList.includes("broker_team_member")) {
+        // Team members route into their parent broker's workspace.
+        try {
+          const { data: tm } = await supabase.rpc("get_broker_team_member", {
+            _auth_user_id: userId,
+          });
+          const parentId = (tm as any)?.[0]?.broker_id;
+          if (parentId) localStorage.setItem("active_broker_id", parentId);
+        } catch {
+          /* non-blocking */
+        }
+        navigate("/broker/app");
       } else if (roleList.includes("broker")) {
         navigate("/broker/app");
       } else {
