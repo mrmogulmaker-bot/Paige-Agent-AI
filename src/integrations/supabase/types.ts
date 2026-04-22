@@ -402,6 +402,7 @@ export type Database = {
         Row: {
           added_at: string
           broker_id: string
+          broker_notes: string | null
           client_email: string
           client_first_name: string
           client_goal: string | null
@@ -414,12 +415,18 @@ export type Database = {
           discount_code: string | null
           id: string
           is_active: boolean
+          last_session_at: string | null
+          last_session_summary: string | null
           notes: string | null
+          relationship_stage: string | null
+          session_count: number
+          shared_goal: string | null
           updated_at: string
         }
         Insert: {
           added_at?: string
           broker_id: string
+          broker_notes?: string | null
           client_email: string
           client_first_name: string
           client_goal?: string | null
@@ -432,12 +439,18 @@ export type Database = {
           discount_code?: string | null
           id?: string
           is_active?: boolean
+          last_session_at?: string | null
+          last_session_summary?: string | null
           notes?: string | null
+          relationship_stage?: string | null
+          session_count?: number
+          shared_goal?: string | null
           updated_at?: string
         }
         Update: {
           added_at?: string
           broker_id?: string
+          broker_notes?: string | null
           client_email?: string
           client_first_name?: string
           client_goal?: string | null
@@ -450,7 +463,12 @@ export type Database = {
           discount_code?: string | null
           id?: string
           is_active?: boolean
+          last_session_at?: string | null
+          last_session_summary?: string | null
           notes?: string | null
+          relationship_stage?: string | null
+          session_count?: number
+          shared_goal?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -539,14 +557,19 @@ export type Database = {
           client_count_quoted: number | null
           created_at: string
           current_client_count: number
+          firm_description: string | null
           id: string
           license_number: string | null
           monthly_fee: number
+          paige_context_notes: string | null
+          preferred_greeting: string | null
           referral_code: string | null
+          specializations: string[] | null
           status: string
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           subscription_status: string
+          typical_client_profile: string | null
           updated_at: string
           use_case: string | null
           user_id: string
@@ -563,14 +586,19 @@ export type Database = {
           client_count_quoted?: number | null
           created_at?: string
           current_client_count?: number
+          firm_description?: string | null
           id?: string
           license_number?: string | null
           monthly_fee?: number
+          paige_context_notes?: string | null
+          preferred_greeting?: string | null
           referral_code?: string | null
+          specializations?: string[] | null
           status?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string
+          typical_client_profile?: string | null
           updated_at?: string
           use_case?: string | null
           user_id: string
@@ -587,14 +615,19 @@ export type Database = {
           client_count_quoted?: number | null
           created_at?: string
           current_client_count?: number
+          firm_description?: string | null
           id?: string
           license_number?: string | null
           monthly_fee?: number
+          paige_context_notes?: string | null
+          preferred_greeting?: string | null
           referral_code?: string | null
+          specializations?: string[] | null
           status?: string
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string
+          typical_client_profile?: string | null
           updated_at?: string
           use_case?: string | null
           user_id?: string
@@ -652,6 +685,38 @@ export type Database = {
             columns: ["referring_broker_id"]
             isOneToOne: false
             referencedRelation: "broker_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broker_session_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          role: string
+          session_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          role: string
+          session_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          role?: string
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broker_session_messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "broker_paige_sessions"
             referencedColumns: ["id"]
           },
         ]
