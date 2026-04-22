@@ -119,7 +119,7 @@ export default function AffiliateDrawer({ affiliate, onClose, onPaid }: Props) {
               onOpenChange={setMarkPaidOpen}
               affiliate={affiliate}
               onPaid={() => {
-                // Trigger a refresh by closing the drawer; parent will reload on next open
+                onPaid?.();
                 onClose();
               }}
             />
