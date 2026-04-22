@@ -6,6 +6,11 @@
 // inputs are present — otherwise we return a `locked` result so the
 // UI can render a clear "what's missing" CTA instead of a misleading
 // number (the Nicholas scenario).
+//
+// 2026 update: Negative accounts are now WEIGHTED BY RECENCY. Banks
+// look back primarily 24 months — a 4-year-old charge-off should not
+// penalize fundability the same as one from 3 months ago. See the
+// `getNegativeAccountWeight` function below.
 // ============================================================
 
 export type FundabilityScoreType = "personal" | "small_business" | "commercial";
@@ -44,11 +49,22 @@ export interface FundabilityScoreResult {
   lockedCta?: { label: string; route: string };
   /** Inputs required to compute this score (used in tooltip). */
   inputsRequired: string[];
+  /** Sum of weighted negative penalties applied to this score. */
+  totalWeightedNegativeScore?: number;
 }
 
 // ------------------------------------------------------------
 // Profile inputs — minimal shape we need across all three scores
 // ------------------------------------------------------------
+
+export interface NegativeAccountInput {
+  /** Date of first delinquency, original delinquency, or account opening. */
+  date?: string | Date | null;
+  /** Optional account type for context. */
+  itemType?: string | null;
+  /** True if status is active (not removed/resolved). */
+  isActive?: boolean;
+}
 
 export interface FundabilityProfileInputs {
   // Personal credit
@@ -60,7 +76,10 @@ export interface FundabilityProfileInputs {
   utilizationScore?: number | null;
   inquiryScore?: number | null;
   creditMixScore?: number | null;
+  /** Raw count — kept for backward compatibility. New scoring uses `negativeAccounts`. */
   activeNegatives?: number | null;
+  /** When provided, scoring uses age-weighted penalties instead of a flat count. */
+  negativeAccounts?: NegativeAccountInput[] | null;
   oldestAccountAgeMonths?: number | null;
   /** True when at least one credit_report_personal_info row exists. */
   hasPersonalCreditFile: boolean;
@@ -81,11 +100,172 @@ export interface FundabilityProfileInputs {
   hasBusinessCreditDataPoint: boolean;
 }
 
+// ============================================================
+// Negative Account Age Scoring Model (NEW)
+// ============================================================
+// Banks underwrite primarily on the last 24 months. We weight each
+// negative account by how recent it is so a 4-year-old collection
+// doesn't drag a profile down the same as a 3-month-old one. This
+// also matches FCRA's 7-year removal window (84 months).
+// ============================================================
+
+export type AccountAgeBand =
+  | "critical"
+  | "severe"
+  | "moderate"
+  | "mild"
+  | "aging"
+  | "historical"
+  | "approaching_removal";
+
+export interface AccountAgeImpact {
+  weight: number;
+  band: AccountAgeBand;
+  bandLabel: string;
+  /** Tailwind color token bucket — semantic, not raw color classes. */
+  bandColor: "red" | "amber" | "yellow" | "gray";
+  monthsOnReport: number;
+  /** Months until 84-month FCRA removal. Negative if past removal. */
+  monthsUntilRemoval: number;
+  lenderImpact: string;
+  urgency: "high" | "medium" | "low" | "monitor";
+}
+
+const FCRA_REMOVAL_MONTHS = 84; // 7 years
+
+function monthsBetween(d: Date | string | null | undefined, now = new Date()): number {
+  if (!d) return 0;
+  const dt = d instanceof Date ? d : new Date(d);
+  if (isNaN(dt.getTime())) return 0;
+  return (now.getFullYear() - dt.getFullYear()) * 12 + (now.getMonth() - dt.getMonth());
+}
+
+/**
+ * Returns a 0–1 multiplier for how heavily lenders weigh a negative
+ * account based on its age. Newer = more painful.
+ */
+export function getNegativeAccountWeight(accountDate: Date | string | null | undefined): number {
+  const months = monthsBetween(accountDate);
+  if (months <= 6) return 1.0;          // Critical
+  if (months <= 12) return 0.75;        // Severe
+  if (months <= 18) return 0.50;        // Moderate
+  if (months <= 24) return 0.25;        // Mild
+  if (months <= 48) return 0.10;        // Aging
+  if (months <= 84) return 0.05;        // Historical
+  return 0.01;                          // Approaching Removal (within 12mo of FCRA drop)
+}
+
+export function getAccountAgeBand(accountDate: Date | string | null | undefined): AccountAgeBand {
+  const months = monthsBetween(accountDate);
+  if (months <= 6) return "critical";
+  if (months <= 12) return "severe";
+  if (months <= 18) return "moderate";
+  if (months <= 24) return "mild";
+  if (months <= 48) return "aging";
+  if (months <= 84) return "historical";
+  return "approaching_removal";
+}
+
+/**
+ * Months remaining until the 84-month FCRA removal window closes.
+ * Returns 0 if the account is already past removal.
+ */
+export function getMonthsUntilRemoval(accountDate: Date | string | null | undefined): number {
+  const months = monthsBetween(accountDate);
+  return Math.max(0, FCRA_REMOVAL_MONTHS - months);
+}
+
+const BAND_LABELS: Record<AccountAgeBand, string> = {
+  critical: "Critical",
+  severe: "Severe",
+  moderate: "Moderate",
+  mild: "Mild",
+  aging: "Aging",
+  historical: "Historical",
+  approaching_removal: "Approaching Removal",
+};
+
+const BAND_COLORS: Record<AccountAgeBand, "red" | "amber" | "yellow" | "gray"> = {
+  critical: "red",
+  severe: "red",
+  moderate: "amber",
+  mild: "amber",
+  aging: "yellow",
+  historical: "gray",
+  approaching_removal: "gray",
+};
+
+const BAND_URGENCY: Record<AccountAgeBand, "high" | "medium" | "low" | "monitor"> = {
+  critical: "high",
+  severe: "high",
+  moderate: "medium",
+  mild: "medium",
+  aging: "low",
+  historical: "monitor",
+  approaching_removal: "monitor",
+};
+
+function lenderImpactFor(band: AccountAgeBand, monthsUntilRemoval: number): string {
+  switch (band) {
+    case "critical":
+      return "Most lenders treat this as current behavior. Conventional banks, credit unions, and most business lenders will auto-decline or require manual review. This is your highest priority to address.";
+    case "severe":
+      return "Within the 12-month lookback window used by FHA, VA, and most business credit card issuers. Manual underwriters at most banks will flag this. High impact on approvals.";
+    case "moderate":
+      return "Within the 18-month window DSCR lenders and business lenders typically review. Getting better but still causes friction with most conventional products.";
+    case "mild":
+      return "Approaching the edge of the standard 24-month bank lookback window. Most automated systems still flag this but manual underwriters show more flexibility. Continued improvement visible.";
+    case "aging":
+      return "Outside the primary 24-month lookback for most conventional products. SBA and prime lenders may still review this window. Minimal impact on most funding decisions.";
+    case "historical":
+      return "Low underwriting impact for most products. This account is aging toward the 7-year FCRA removal window. Monitor only — focus energy on building positive history.";
+    case "approaching_removal":
+      return `This negative account will be removed from your credit report within ${monthsUntilRemoval} month${monthsUntilRemoval === 1 ? "" : "s"} under FCRA's 7-year rule. This is good news — removal will improve your scores automatically.`;
+  }
+}
+
+/**
+ * Returns the full age-impact metadata for a negative account so the
+ * UI can render a graded badge, lender-impact copy, and timeline marker.
+ */
+export function getAccountAgeImpact(
+  _account: NegativeAccountInput | unknown,
+  accountDate: Date | string | null | undefined,
+): AccountAgeImpact {
+  const monthsOnReport = monthsBetween(accountDate);
+  const monthsUntilRemoval = getMonthsUntilRemoval(accountDate);
+  const band = getAccountAgeBand(accountDate);
+  return {
+    weight: getNegativeAccountWeight(accountDate),
+    band,
+    bandLabel: BAND_LABELS[band],
+    bandColor: BAND_COLORS[band],
+    monthsOnReport,
+    monthsUntilRemoval,
+    lenderImpact: lenderImpactFor(band, monthsUntilRemoval),
+    urgency: BAND_URGENCY[band],
+  };
+}
+
+/**
+ * Sum of recency-weighted negative penalties for an array of accounts.
+ * Used inside the fundability calculations and exposed on the result so
+ * the UI can show "weighted impact score" alongside the raw count.
+ */
+export function getTotalWeightedNegativeScore(
+  negatives: NegativeAccountInput[] | null | undefined,
+): number {
+  if (!negatives || negatives.length === 0) return 0;
+  return negatives
+    .filter((n) => n.isActive !== false)
+    .reduce((sum, n) => sum + getNegativeAccountWeight(n.date), 0);
+}
+
 // ------------------------------------------------------------
 // Helpers
 // ------------------------------------------------------------
 
-function monthsBetween(iso: string | null | undefined, now = new Date()): number | null {
+function monthsBetweenIso(iso: string | null | undefined, now = new Date()): number | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (isNaN(d.getTime())) return null;
@@ -128,6 +308,31 @@ function bandFor(score: number, scale: "standard" | "commercial"): { band: Funda
   return { band: "poor", label: "Poor" };
 }
 
+/**
+ * Returns the negative penalty value used inside the score calculations.
+ * Prefers the weighted model when a `negativeAccounts` array is supplied.
+ * Falls back to the legacy 3-points-per-active-negative behaviour when
+ * only the raw count is available.
+ */
+function negativePenaltyFor(p: FundabilityProfileInputs, maxPenalty: number, multiplier: number): {
+  penalty: number;
+  totalWeighted: number;
+} {
+  if (Array.isArray(p.negativeAccounts) && p.negativeAccounts.length > 0) {
+    const totalWeighted = getTotalWeightedNegativeScore(p.negativeAccounts);
+    return {
+      penalty: Math.min(maxPenalty, totalWeighted * multiplier),
+      totalWeighted: Math.round(totalWeighted * 100) / 100,
+    };
+  }
+  const count = p.activeNegatives ?? 0;
+  // Legacy fallback: treat each as 1.0 weight for backward compatibility.
+  return {
+    penalty: Math.min(maxPenalty, count * multiplier),
+    totalWeighted: count,
+  };
+}
+
 // ------------------------------------------------------------
 // Validation gates — these RUN BEFORE any score is calculated.
 // ------------------------------------------------------------
@@ -166,7 +371,7 @@ export function validateFundabilityInputs(
   }
 
   // commercial
-  const tibMonths = monthsBetween(p.formationDate);
+  const tibMonths = monthsBetweenIso(p.formationDate);
   if (!p.hasBusiness || !p.formationDate || tibMonths == null || tibMonths < 12 || !p.hasBusinessCreditDataPoint) {
     return {
       ok: false,
@@ -182,7 +387,7 @@ export function validateFundabilityInputs(
 // SCORE 1 — Personal Fundability
 // ------------------------------------------------------------
 
-function scorePersonal(p: FundabilityProfileInputs): number {
+function scorePersonal(p: FundabilityProfileInputs): { score: number; totalWeighted: number } {
   const fico = avgFico(p)!; // gate guarantees non-null
   const ficoPct = ficoToPct(fico);
   // Optional soft adjustments from credit-factor sub-scores.
@@ -191,22 +396,23 @@ function scorePersonal(p: FundabilityProfileInputs): number {
     (p.paymentHistoryScore ?? 70) * 0.10 +
     (p.inquiryScore ?? 70) * 0.05 +
     (p.creditMixScore ?? 70) * 0.05;
-  // Penalize active negatives modestly.
-  const negPenalty = Math.min(15, (p.activeNegatives ?? 0) * 3);
-  const composite = Math.round(ficoPct * 0.7 + adj * 0.3 - negPenalty);
-  return Math.max(0, Math.min(100, composite));
+  // Recency-weighted negatives: 3 points per weighted unit, capped at 15.
+  const { penalty, totalWeighted } = negativePenaltyFor(p, 15, 3);
+  const composite = Math.round(ficoPct * 0.7 + adj * 0.3 - penalty);
+  return { score: Math.max(0, Math.min(100, composite)), totalWeighted };
 }
 
 // ------------------------------------------------------------
 // SCORE 2 — Small Business Fundability (PG required)
 // Weights: FICO 50, TIB 15, Entity 10, Bank 10, Biz Credit 15
+// Now also applies a recency-weighted negative penalty on top.
 // ------------------------------------------------------------
 
-function scoreSmallBusiness(p: FundabilityProfileInputs): number {
+function scoreSmallBusiness(p: FundabilityProfileInputs): { score: number; totalWeighted: number } {
   const fico = avgFico(p)!;
   const ficoPct = ficoToPct(fico);
 
-  const tibMonths = monthsBetween(p.formationDate) ?? 0;
+  const tibMonths = monthsBetweenIso(p.formationDate) ?? 0;
   const tibPct = tibMonths < 12 ? 0 : tibMonths < 24 ? 50 : 100;
 
   const entity = (p.entityType || "").toLowerCase();
@@ -226,19 +432,25 @@ function scoreSmallBusiness(p: FundabilityProfileInputs): number {
     else bizCreditPct = 40;
   }
 
+  // Recency-weighted negative penalty — 4 points per weighted unit, cap 20.
+  // PG-required products are sensitive to recent personal derogatory activity.
+  const { penalty, totalWeighted } = negativePenaltyFor(p, 20, 4);
+
   const composite =
     ficoPct * 0.5 +
     tibPct * 0.15 +
     entityPct * 0.10 +
     bankPct * 0.10 +
-    bizCreditPct * 0.15;
+    bizCreditPct * 0.15 -
+    penalty;
 
-  return Math.max(0, Math.min(100, Math.round(composite)));
+  return { score: Math.max(0, Math.min(100, Math.round(composite))), totalWeighted };
 }
 
 // ------------------------------------------------------------
 // SCORE 3 — Commercial / EIN-Only Fundability
 // Weights: Paydex 35, Intelliscore 25, TIB 20, Revenue 15, Bank 5
+// Personal negatives don't apply here — pure business profile.
 // ------------------------------------------------------------
 
 function scoreCommercial(p: FundabilityProfileInputs): number {
@@ -251,7 +463,7 @@ function scoreCommercial(p: FundabilityProfileInputs): number {
   // Experian Business Intelliscore is 1–100 → use directly, clamp.
   const intelPct = Math.max(0, Math.min(100, p.intelliscore ?? 0));
 
-  const tibMonths = monthsBetween(p.formationDate) ?? 0;
+  const tibMonths = monthsBetweenIso(p.formationDate) ?? 0;
   let tibPct = 0;
   if (tibMonths >= 36) tibPct = 100;
   else if (tibMonths >= 24) tibPct = 70;
@@ -263,7 +475,7 @@ function scoreCommercial(p: FundabilityProfileInputs): number {
   else if (rev >= 100_000) revPct = 60;
   else if (rev > 0) revPct = 20;
 
-  const bankMonths = monthsBetween(p.bankAccountOpenedDate) ?? 0;
+  const bankMonths = monthsBetweenIso(p.bankAccountOpenedDate) ?? 0;
   let bankPct = 0;
   if (bankMonths >= 12) bankPct = 100;
   else if (bankMonths >= 6) bankPct = 50;
@@ -335,16 +547,17 @@ const META: Record<FundabilityScoreType, {
   },
 };
 
-function improvementsFor(type: FundabilityScoreType, p: FundabilityProfileInputs, score: number): string[] {
+function improvementsFor(type: FundabilityScoreType, p: FundabilityProfileInputs, _score: number): string[] {
   const out: string[] = [];
   if (type === "personal") {
     if ((p.utilizationScore ?? 100) < 70) out.push("Pay revolving balances down below 30% utilization");
-    if ((p.activeNegatives ?? 0) > 0) out.push("Resolve outstanding negative items with creditors");
+    if ((p.activeNegatives ?? p.negativeAccounts?.length ?? 0) > 0)
+      out.push("Resolve outstanding negative items with creditors");
     if ((p.paymentHistoryScore ?? 100) < 80) out.push("Maintain 6+ consecutive months of on-time payments");
     if ((p.inquiryScore ?? 100) < 70) out.push("Pause new credit applications for the next 90 days");
     if (out.length === 0) out.push("Maintain current habits and let account age accumulate");
   } else if (type === "small_business") {
-    const tib = monthsBetween(p.formationDate) ?? 0;
+    const tib = monthsBetweenIso(p.formationDate) ?? 0;
     if (tib < 24) out.push("Reach 2+ years time in business to unlock SBA tier");
     if ((p.entityType || "").toLowerCase().includes("sole")) out.push("Convert sole prop to LLC or Corporation");
     if (!p.hasBusinessBankAccount) out.push("Open a dedicated business bank account");
@@ -352,19 +565,19 @@ function improvementsFor(type: FundabilityScoreType, p: FundabilityProfileInputs
     if (avgFico(p)! < 700) out.push("Raise personal FICO above 700 — primary PG driver");
     if (out.length === 0) out.push("Maintain current habits — your PG profile is strong");
   } else {
-    const tib = monthsBetween(p.formationDate) ?? 0;
+    const tib = monthsBetweenIso(p.formationDate) ?? 0;
     if (tib < 24) out.push("Continue operating — TIB is a calendar gate for EIN-only products");
     if ((p.paydex ?? 0) < 80) out.push("Pay D&B-reporting vendors early to push Paydex to 80+");
     if ((p.intelliscore ?? 0) < 76) out.push("Add reporting trades to lift Experian Intelliscore");
     if ((p.estimatedAnnualRevenue ?? 0) < 500_000) out.push("Grow annual revenue toward $500K to unlock larger commercial lines");
-    const bm = monthsBetween(p.bankAccountOpenedDate) ?? 0;
+    const bm = monthsBetweenIso(p.bankAccountOpenedDate) ?? 0;
     if (bm < 12) out.push("Maintain business bank account 12+ months with healthy balances");
     if (out.length === 0) out.push("Maintain reporting cadence — your EIN profile is strong");
   }
   return out.slice(0, 4);
 }
 
-function meaningFor(type: FundabilityScoreType, score: number, band: FundabilityBand): string {
+function meaningFor(type: FundabilityScoreType, _score: number, band: FundabilityBand): string {
   if (type === "personal") {
     if (band === "poor") return "Significant barriers to personal credit approval right now.";
     if (band === "fair") return "Limited options — credit building should come before stacking.";
@@ -411,10 +624,20 @@ export function computeFundabilityScore(
     };
   }
 
-  const score =
-    type === "personal" ? scorePersonal(p)
-    : type === "small_business" ? scoreSmallBusiness(p)
-    : scoreCommercial(p);
+  let score: number;
+  let totalWeightedNegativeScore: number | undefined;
+
+  if (type === "personal") {
+    const r = scorePersonal(p);
+    score = r.score;
+    totalWeightedNegativeScore = r.totalWeighted;
+  } else if (type === "small_business") {
+    const r = scoreSmallBusiness(p);
+    score = r.score;
+    totalWeightedNegativeScore = r.totalWeighted;
+  } else {
+    score = scoreCommercial(p);
+  }
 
   const { band, label } = bandFor(score, type === "commercial" ? "commercial" : "standard");
 
@@ -429,6 +652,7 @@ export function computeFundabilityScore(
     improvements: improvementsFor(type, p, score),
     locked: false,
     inputsRequired: meta.inputsRequired,
+    totalWeightedNegativeScore,
   };
 }
 

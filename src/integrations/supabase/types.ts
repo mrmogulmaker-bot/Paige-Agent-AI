@@ -5724,6 +5724,8 @@ export type Database = {
           is_service_disabled_veteran: boolean | null
           is_us_citizen: boolean | null
           is_veteran: boolean | null
+          last_fundability_calculated: string | null
+          last_fundability_snapshot: Json | null
           last_report_analyzed_at: string | null
           last_report_source: string | null
           onboarding_completed: boolean | null
@@ -5776,6 +5778,8 @@ export type Database = {
           is_service_disabled_veteran?: boolean | null
           is_us_citizen?: boolean | null
           is_veteran?: boolean | null
+          last_fundability_calculated?: string | null
+          last_fundability_snapshot?: Json | null
           last_report_analyzed_at?: string | null
           last_report_source?: string | null
           onboarding_completed?: boolean | null
@@ -5828,6 +5832,8 @@ export type Database = {
           is_service_disabled_veteran?: boolean | null
           is_us_citizen?: boolean | null
           is_veteran?: boolean | null
+          last_fundability_calculated?: string | null
+          last_fundability_snapshot?: Json | null
           last_report_analyzed_at?: string | null
           last_report_source?: string | null
           onboarding_completed?: boolean | null
@@ -7388,6 +7394,8 @@ export type Database = {
           is_service_disabled_veteran: boolean | null
           is_us_citizen: boolean | null
           is_veteran: boolean | null
+          last_fundability_calculated: string | null
+          last_fundability_snapshot: Json | null
           last_report_analyzed_at: string | null
           last_report_source: string | null
           onboarding_completed: boolean | null

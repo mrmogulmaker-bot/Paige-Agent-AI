@@ -35,10 +35,11 @@ export function useThreeFundabilityScores(
       personalReportCount: number;
       business: any | null;
       hasBusinessCreditDataPoint: boolean;
+      negatives: Array<{ date: string | null; itemType: string | null; isActive: boolean }>;
     }> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        return { profile: null, personalReportCount: 0, business: null, hasBusinessCreditDataPoint: false };
+        return { profile: null, personalReportCount: 0, business: null, hasBusinessCreditDataPoint: false, negatives: [] };
       }
 
       const bizQuery = businessId
@@ -59,7 +60,7 @@ export function useThreeFundabilityScores(
             .limit(1)
             .maybeSingle();
 
-      const [profileRes, reportRes, bizRes] = await Promise.all([
+      const [profileRes, reportRes, bizRes, negRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("estimated_fico_eq, estimated_fico_ex, estimated_fico_tu")
@@ -70,6 +71,10 @@ export function useThreeFundabilityScores(
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id),
         bizQuery,
+        supabase
+          .from("credit_negative_items")
+          .select("date_of_occurrence, date_reported, item_type, status")
+          .eq("user_id", user.id),
       ]);
 
       const biz = bizRes.data;
@@ -81,11 +86,18 @@ export function useThreeFundabilityScores(
         )
       );
 
+      const negatives = ((negRes.data ?? []) as any[]).map((n) => ({
+        date: n.date_of_occurrence ?? n.date_reported ?? null,
+        itemType: n.item_type ?? null,
+        isActive: (n.status ?? "active") !== "removed",
+      }));
+
       return {
         profile: profileRes.data,
         personalReportCount: reportRes.count ?? 0,
         business: biz,
         hasBusinessCreditDataPoint,
+        negatives,
       };
     },
   });
@@ -99,6 +111,7 @@ export function useThreeFundabilityScores(
     inquiryScore: factors?.inquiry_score ?? null,
     creditMixScore: factors?.credit_mix_score ?? null,
     activeNegatives: factors?.active_negatives ?? null,
+    negativeAccounts: data?.negatives ?? null,
     oldestAccountAgeMonths: factors?.oldest_account_age_months ?? null,
     hasPersonalCreditFile: (data?.personalReportCount ?? 0) > 0,
 
