@@ -249,28 +249,33 @@ Deno.serve(async (req) => {
       )
     }
 
-    // ── Grant broker role ──────────────────────────────────────
-    try {
-      await supabase
-        .from('user_roles')
-        .upsert(
-          { user_id: matchedUserId, role: 'broker' as any },
-          { onConflict: 'user_id,role', ignoreDuplicates: true },
-        )
-    } catch (err) {
-      log('Role grant failed', { error: String(err) })
+    // ── Grant broker role (only when auto-approved) ────────────
+    if (autoApprove) {
+      try {
+        await supabase
+          .from('user_roles')
+          .upsert(
+            { user_id: matchedUserId, role: 'broker' as any },
+            { onConflict: 'user_id,role', ignoreDuplicates: true },
+          )
+      } catch (err) {
+        log('Role grant failed', { error: String(err) })
+      }
     }
 
-    const code = broker.referral_code!
-    const signupClientLink = `https://paigeagent.ai/auth?broker=${code}`
+    const code = broker.referral_code || ''
+    const signupClientLink = code ? `https://paigeagent.ai/auth?broker=${code}` : ''
     const clientSignupLink = signupClientLink
-    const brokerReferralLink = `https://paigeagent.ai/broker?ref=${code}`
+    const brokerReferralLink = code ? `https://paigeagent.ai/broker?ref=${code}` : ''
     const dashboardUrl = 'https://paigeagent.ai/app'
 
-    // ── Fire welcome emails (best-effort, non-blocking) ────────
+    // ── Fire emails (best-effort, non-blocking) ────────────────
+    // Always send the application-received receipt. Only send the approved
+    // welcome when actually auto-approved — manual approvals fire it from
+    // broker-admin-action instead.
     let emailSent = false
     try {
-      await Promise.all([
+      const sends: Promise<unknown>[] = [
         supabase.functions.invoke('send-transactional-email', {
           body: {
             templateName: 'broker-application-received',
@@ -280,26 +285,32 @@ Deno.serve(async (req) => {
             templateData: {
               firstName: body.firstName,
               businessName: body.businessName,
+              autoApproved: autoApprove,
             },
           },
         }),
-        supabase.functions.invoke('send-transactional-email', {
-          body: {
-            templateName: 'broker-approved-welcome',
-            recipientEmail: email,
-            idempotencyKey: `broker-approved-${broker.id}`,
-            recipientUserId: matchedUserId,
-            templateData: {
-              firstName: body.firstName,
-              businessName: body.businessName,
-              referralCode: code,
-              brokerReferralLink,
-              clientSignupLink,
-              dashboardUrl,
+      ]
+      if (autoApprove && code) {
+        sends.push(
+          supabase.functions.invoke('send-transactional-email', {
+            body: {
+              templateName: 'broker-approved-welcome',
+              recipientEmail: email,
+              idempotencyKey: `broker-approved-${broker.id}`,
+              recipientUserId: matchedUserId,
+              templateData: {
+                firstName: body.firstName,
+                businessName: body.businessName,
+                referralCode: code,
+                brokerReferralLink,
+                clientSignupLink,
+                dashboardUrl,
+              },
             },
-          },
-        }),
-      ])
+          }),
+        )
+      }
+      await Promise.all(sends)
       emailSent = true
     } catch (err) {
       log('Email send failed', { error: String(err) })
@@ -308,9 +319,11 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         brokerId: broker.id,
-        referralCode: code,
+        referralCode: code || null,
         brokerClientDiscountCode: broker.broker_client_discount_code,
-        signupClientLink,
+        signupClientLink: signupClientLink || null,
+        status: broker.status,
+        autoApproved: autoApprove,
         emailSent,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
