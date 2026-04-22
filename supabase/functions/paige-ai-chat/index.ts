@@ -3026,6 +3026,29 @@ Never enable notifications on their behalf â€” always direct them to Settings â†
             controller.enqueue(new TextEncoder().encode(proposalEvent));
           }
 
+          // Detect Paige's outputs for analytics: entity diagrams + legal flags.
+          try {
+            if (/"type"\s*:\s*"entity_diagram"/.test(fullAssistantResponse)) {
+              void logAnalyticsEvent(supabase, user.id, "entity_diagram_generated", "paige", {});
+            }
+            const legalTriggers = [
+              { type: "attorney_referral", re: /\b(consult|talk to|speak with|work with)\s+(a|an)\s+(attorney|lawyer|tax professional|cpa|accountant)/i },
+              { type: "not_legal_advice", re: /\bnot\s+(legal|tax|investment)\s+advice\b/i },
+              { type: "asset_protection_warning", re: /\b(asset protection|liability exposure|piercing the (corporate )?veil)\b/i },
+              { type: "contractor_misclassification", re: /\b(misclassif(?:y|ication)|1099 vs w[\s-]?2)\b/i },
+            ];
+            for (const t of legalTriggers) {
+              if (t.re.test(fullAssistantResponse)) {
+                void logAnalyticsEvent(supabase, user.id, "legal_flag_shown", "paige", {
+                  trigger_type: t.type,
+                });
+                break;
+              }
+            }
+          } catch (e) {
+            console.warn("[paige] analytics post-stream detection failed:", (e as Error)?.message);
+          }
+
           controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
           controller.close();
           return;
