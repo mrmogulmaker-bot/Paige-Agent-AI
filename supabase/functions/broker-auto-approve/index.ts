@@ -243,6 +243,7 @@ Deno.serve(async (req) => {
 
     const code = broker.referral_code!
     const signupClientLink = `https://paigeagent.ai/auth?broker=${code}`
+    const clientSignupLink = signupClientLink
     const brokerReferralLink = `https://paigeagent.ai/broker?ref=${code}`
     const dashboardUrl = 'https://paigeagent.ai/app'
 
