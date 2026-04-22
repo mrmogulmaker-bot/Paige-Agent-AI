@@ -259,6 +259,7 @@ export default function SupportAdmin() {
         )}
       </TableBody>
     </Table>
+    </div>
   );
 
   return (
