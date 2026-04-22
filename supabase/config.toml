@@ -55,6 +55,22 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = true
   [functions.stripe-webhook]
     verify_jwt = false
+  [functions.send-sms]
+    verify_jwt = true
+  [functions.send-sms-verification]
+    verify_jwt = true
+  [functions.verify-sms-code]
+    verify_jwt = true
+  [functions.send-notification]
+    verify_jwt = true
+  [functions.handle-unsubscribe]
+    verify_jwt = false
+  [functions.twilio-inbound-webhook]
+    verify_jwt = false
+  [functions.weekly-summary-cron]
+    verify_jwt = true
+  [functions.coaching-reminder-cron]
+    verify_jwt = true
   [functions.track-lesson-progress]
     verify_jwt = true
   [functions.vapi-create-session]
