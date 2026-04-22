@@ -6862,6 +6862,41 @@ export type Database = {
         Args: { _user_id: string }
         Returns: undefined
       }
+      get_analytics_daily_summary: {
+        Args: { _end?: string; _start?: string }
+        Returns: {
+          active_users: number | null
+          churned_mrr: number | null
+          credit_uploads: number | null
+          date: string | null
+          funding_applications: number | null
+          new_mrr: number | null
+          new_signups: number | null
+          paige_sessions: number | null
+          voice_sessions: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "analytics_daily_summary"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      get_analytics_feature_usage: {
+        Args: { _end?: string; _start?: string }
+        Returns: {
+          date: string | null
+          feature_name: string | null
+          unique_users: number | null
+          usage_count: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "analytics_feature_usage"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_business_hierarchy: {
         Args: { _user_id: string }
         Returns: {
