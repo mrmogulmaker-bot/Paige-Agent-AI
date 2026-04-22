@@ -51,7 +51,7 @@ function bandBg(band: FundabilityBand | null): string {
   }
 }
 
-function ScoreCard({ result }: { result: FundabilityScoreResult }) {
+function ScoreCard({ result, compact = false }: { result: FundabilityScoreResult; compact?: boolean }) {
   const navigate = useNavigate();
   const typeLabel =
     result.type === "personal"
@@ -59,6 +59,7 @@ function ScoreCard({ result }: { result: FundabilityScoreResult }) {
       : result.type === "small_business"
       ? "PG-required products"
       : "EIN-only products";
+  const displayTitle = compact ? SHORT_TITLES[result.type] ?? result.title : result.title;
 
   if (result.locked) {
     return (
