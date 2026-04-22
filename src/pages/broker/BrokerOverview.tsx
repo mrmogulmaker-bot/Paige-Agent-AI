@@ -1,32 +1,33 @@
 // Broker workspace home — shows headline stats + quickstart guidance.
+// Uses BrokerContext so team members see their parent broker's data.
 
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, DollarSign, MessageSquareText, Copy, Check } from "lucide-react";
-import { useBrokerProfile } from "@/hooks/useBrokerProfile";
+import { useBrokerContext } from "@/hooks/useBrokerContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 const BrokerOverview = () => {
-  const { profile } = useBrokerProfile();
+  const { activeBrokerId, parentBrokerProfile, isTeamMember, permissions } = useBrokerContext();
   const { toast } = useToast();
   const [stats, setStats] = useState({ activeClients: 0, pendingClients: 0, sessions: 0 });
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (!profile?.id) return;
+    if (!activeBrokerId) return;
     (async () => {
       const [{ data: rels }, { count: sessionCount }] = await Promise.all([
         supabase
           .from("broker_client_relationships")
           .select("id, client_subscription_status, is_active")
-          .eq("broker_id", profile.id),
+          .eq("broker_id", activeBrokerId),
         supabase
           .from("broker_paige_sessions")
           .select("id", { count: "exact", head: true })
-          .eq("broker_id", profile.id),
+          .eq("broker_id", activeBrokerId),
       ]);
       const list = rels || [];
       setStats({
@@ -39,10 +40,10 @@ const BrokerOverview = () => {
         sessions: sessionCount || 0,
       });
     })();
-  }, [profile?.id]);
+  }, [activeBrokerId]);
 
-  const signupLink = profile?.referral_code
-    ? `https://paigeagent.ai/auth?ref=${profile.referral_code}&mode=signup`
+  const signupLink = parentBrokerProfile?.referral_code
+    ? `https://paigeagent.ai/auth?ref=${parentBrokerProfile.referral_code}&mode=signup`
     : "";
 
   const handleCopy = async () => {
@@ -56,9 +57,13 @@ const BrokerOverview = () => {
   return (
     <div className="space-y-6 max-w-5xl">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {isTeamMember ? `Welcome to ${parentBrokerProfile?.business_name}` : "Welcome back"}
+        </h1>
         <p className="text-muted-foreground">
-          Manage your clients and grow your book of business with Paige.
+          {isTeamMember
+            ? "You're collaborating in your team workspace."
+            : "Manage your clients and grow your book of business with Paige."}
         </p>
       </div>
 
@@ -120,23 +125,25 @@ const BrokerOverview = () => {
         </CardContent>
       </Card>
 
-      {/* Earnings teaser */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-primary" />
-            Commissions
-          </CardTitle>
-          <CardDescription>
-            Earn 20% recurring on any broker you refer to PaigeAgent.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/broker/app/commissions">View commissions</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Earnings teaser — hide for team members without commission visibility */}
+      {(!isTeamMember || permissions.can_view_commissions) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-primary" />
+              Commissions
+            </CardTitle>
+            <CardDescription>
+              Earn 20% recurring on any broker you refer to PaigeAgent.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/broker/app/commissions">View commissions</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

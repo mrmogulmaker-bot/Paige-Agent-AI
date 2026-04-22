@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useBrokerProfile } from "@/hooks/useBrokerProfile";
+import { useBrokerContext } from "@/hooks/useBrokerContext";
 import { Copy, DollarSign, Users2, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -35,13 +35,14 @@ const monthsRemaining = (expires: string | null) => {
 };
 
 const BrokerCommissions = () => {
-  const { profile } = useBrokerProfile();
+  const { activeBrokerId, parentBrokerProfile } = useBrokerContext();
+  const profile = parentBrokerProfile;
   const { toast } = useToast();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!profile?.id) return;
+    if (!activeBrokerId) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -50,7 +51,7 @@ const BrokerCommissions = () => {
         .select(
           "id, monthly_amount, commission_rate, duration_months, started_at, expires_at, status, referred_broker:broker_profiles!broker_referral_commissions_referred_broker_id_fkey(business_name)",
         )
-        .eq("referring_broker_id", profile.id)
+        .eq("referring_broker_id", activeBrokerId)
         .order("started_at", { ascending: false });
       if (cancelled) return;
       if (error) {
@@ -63,7 +64,7 @@ const BrokerCommissions = () => {
     return () => {
       cancelled = true;
     };
-  }, [profile?.id, toast]);
+  }, [activeBrokerId, toast]);
 
   const activeRows = rows.filter((r) => r.status === "active");
   const monthlyTotal = activeRows.reduce((s, r) => s + Number(r.monthly_amount || 0), 0);

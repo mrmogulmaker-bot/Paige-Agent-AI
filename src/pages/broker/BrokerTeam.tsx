@@ -34,8 +34,8 @@ const roleLabel = (r: string) =>
   r === "lead_broker" ? "Lead Broker" : r === "advisor" ? "Advisor" : r === "assistant" ? "Assistant" : r;
 
 const statusBadge = (s: string) => {
-  if (s === "active") return <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-200">Active</Badge>;
-  if (s === "invited") return <Badge className="bg-amber-500/15 text-amber-700 border-amber-200">Invited</Badge>;
+  if (s === "active") return <Badge className="bg-green-100 text-green-800 border-green-200 hover:bg-green-100">Active</Badge>;
+  if (s === "invited") return <Badge className="bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100">Invited</Badge>;
   if (s === "suspended") return <Badge variant="destructive">Suspended</Badge>;
   return <Badge variant="outline">{s}</Badge>;
 };
