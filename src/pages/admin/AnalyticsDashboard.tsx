@@ -34,6 +34,11 @@ import {
   exportMetricsToPdf,
   type InvestorMetrics,
 } from "@/lib/analytics/investorExport";
+import { CohortRetentionTable } from "./analytics/CohortRetentionTable";
+import { MrrWaterfall } from "./analytics/MrrWaterfall";
+import { RagPerformance } from "./analytics/RagPerformance";
+import { CreditOutcomes } from "./analytics/CreditOutcomes";
+import { LenderIntelligence } from "./analytics/LenderIntelligence";
 
 type RangeKey = "7d" | "30d" | "90d" | "ytd";
 
@@ -511,12 +516,29 @@ export default function AnalyticsDashboard() {
         <div className="text-center text-sm text-muted-foreground py-4">Loading analytics…</div>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        Note: detailed Paige Intelligence, Revenue Waterfall, Credit Outcomes, and Cohort Retention
-        sections are scaffolded behind the same data model — the underlying `analytics_events` table
-        + materialized views power them as soon as the corresponding events are wired across the
-        product.
-      </p>
+      {/* SECTION — Cohort retention */}
+      <CohortRetentionTable />
+
+      {/* SECTION — MRR waterfall */}
+      <MrrWaterfall start={start} end={end} />
+
+      {/* SECTION — RAG performance */}
+      <div className="space-y-2">
+        <h2 className="text-xl font-bold text-foreground">Paige Intelligence — RAG Performance</h2>
+        <RagPerformance start={start} end={end} />
+      </div>
+
+      {/* SECTION — Credit outcomes */}
+      <div className="space-y-2">
+        <h2 className="text-xl font-bold text-foreground">Credit Outcomes</h2>
+        <CreditOutcomes start={start} end={end} />
+      </div>
+
+      {/* SECTION — Lender intelligence */}
+      <div className="space-y-2">
+        <h2 className="text-xl font-bold text-foreground">Lender Intelligence</h2>
+        <LenderIntelligence start={start} end={end} />
+      </div>
     </div>
   );
 }
