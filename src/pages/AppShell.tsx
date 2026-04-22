@@ -165,7 +165,7 @@ const AppShell = () => {
       <AdminViewBanner />
       <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
       <PushNotificationPrompt />
-      <div className="h-screen flex flex-col bg-background">
+      <div className="h-dvh flex flex-col bg-background overflow-x-hidden">
         <AppNav user={activeUser} />
         <ResizablePanelGroup direction="horizontal" className="flex-1">
           <ResizablePanel defaultSize={40} minSize={30} maxSize={60}>
