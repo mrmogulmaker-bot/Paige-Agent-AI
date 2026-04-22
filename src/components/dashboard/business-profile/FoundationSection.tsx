@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +73,7 @@ const isFreeEmail = (e?: string | null) => {
 };
 
 export function FoundationSection({ businessId, userId, onCompletionChange }: FoundationSectionProps) {
+  const queryClient = useQueryClient();
   const [data, setData] = useState<BusinessData | null>(null);
   const [expandedItem, setExpandedItem] = useState<ItemKey | null>(null);
   const [saving, setSaving] = useState(false);
