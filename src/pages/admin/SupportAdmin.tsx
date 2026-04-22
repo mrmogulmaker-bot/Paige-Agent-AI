@@ -23,6 +23,7 @@ interface AdminTicket {
   category: string;
   status: TicketStatus;
   priority: TicketPriority;
+  assigned_to: string | null;
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
@@ -52,11 +53,22 @@ export default function SupportAdmin() {
   const [activeFeatureId, setActiveFeatureId] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [adminName, setAdminName] = useState<string | null>(null);
+  const [assigneeFilter, setAssigneeFilter] = useState<"all" | "mine" | "unassigned">("all");
 
   useEffect(() => {
     void (async () => {
       const { data } = await supabase.auth.getUser();
-      setAdminUserId(data.user?.id ?? null);
+      const uid = data.user?.id ?? null;
+      setAdminUserId(uid);
+      if (uid) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("full_name,email")
+          .eq("user_id", uid)
+          .maybeSingle();
+        setAdminName((prof as any)?.full_name || (prof as any)?.email || null);
+      }
       await loadAll();
     })();
   }, []);
@@ -67,7 +79,7 @@ export default function SupportAdmin() {
       const [{ data: t }, { data: f }] = await Promise.all([
         supabase
           .from("support_tickets")
-          .select("id,ticket_number,user_id,subject,category,status,priority,created_at,updated_at,resolved_at")
+          .select("id,ticket_number,user_id,subject,category,status,priority,assigned_to,created_at,updated_at,resolved_at")
           .order("created_at", { ascending: false })
           .limit(500),
         supabase
