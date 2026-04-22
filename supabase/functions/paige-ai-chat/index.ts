@@ -8,6 +8,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Fire-and-forget analytics writer for Paige internals (RAG, Firecrawl, legal flags).
+// Uses the service-role client and never blocks the chat response.
+async function logAnalyticsEvent(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  userId: string | null,
+  event_name: string,
+  event_category: "paige" | "engagement" | "system",
+  properties: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await supabaseAdmin.from("analytics_events").insert({
+      user_id: userId,
+      event_name,
+      event_category,
+      properties,
+      page_path: "edge:paige-ai-chat",
+    });
+  } catch (e) {
+    console.warn("[paige] analytics insert failed:", (e as Error)?.message);
+  }
+}
+
 const messageSchema = z.object({
   messages: z.array(
     z.object({
@@ -879,6 +901,14 @@ JSON:`;
               return `${r.title} (relevance: ${pct}%)\n${r.summary || (r.content || "").slice(0, 240)}\n---`;
             }).join("\n");
             ragContext = `\n\n=== RELEVANT KNOWLEDGE BASE ===\nUse these real outcomes and insights to inform your response. Reference naturally as "clients in similar situations" or "outcomes we have tracked" — never quote verbatim:\n\n${blocks}\n=== END KNOWLEDGE BASE ===\n`;
+
+            const sims = ragRows.map((r: any) => Number(r.similarity) || 0);
+            const avgSim = sims.reduce((s, n) => s + n, 0) / sims.length;
+            void logAnalyticsEvent(supabase, user.id, "rag_retrieval_triggered", "paige", {
+              document_count: ragRows.length,
+              avg_similarity: Number(avgSim.toFixed(3)),
+              top_titles: ragRows.slice(0, 3).map((r: any) => String(r.title || "").slice(0, 80)),
+            });
           }
         }
       }
@@ -2877,6 +2907,9 @@ Never enable notifications on their behalf — always direct them to Settings �
         } else if (tc.function.name === "web_search") {
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
+            void logAnalyticsEvent(supabase, user.id, "web_search_triggered", "paige", {
+              query: typeof args.query === "string" ? args.query.slice(0, 200) : null,
+            });
             const wsResp = await fetch(`${supabaseUrl}/functions/v1/paige-web-search`, {
               method: "POST",
               headers: { Authorization: `Bearer ${supabaseServiceKey}`, "Content-Type": "application/json" },
