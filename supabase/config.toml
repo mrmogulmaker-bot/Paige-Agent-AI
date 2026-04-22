@@ -79,3 +79,7 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = true
   [functions.webhook-inbound]
     verify_jwt = false
+  [functions.recalculate-fundability-scores]
+    verify_jwt = true
+  [functions.refresh-fundability-scores-biannual]
+    verify_jwt = false
