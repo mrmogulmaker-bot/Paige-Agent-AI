@@ -243,7 +243,7 @@ export function AdminBusinessPortfolioCard({
                       >
                         <div className="mt-0.5 shrink-0">
                           {isHoldCo ? (
-                            <Crown className="h-4 w-4 text-amber-500" />
+                            <Crown className="h-4 w-4 text-accent" />
                           ) : indent > 0 ? (
                             <CornerDownRight className="h-4 w-4 text-muted-foreground" />
                           ) : (

@@ -20,6 +20,7 @@ import { ClientDemographicsCard } from "./ClientDemographicsCard";
 import { ClientGoalsCard } from "./ClientGoalsCard";
 import { ClientFundingJourneyTab } from "@/components/funding-journey/ClientFundingJourneyTab";
 import { QuickBooksAdminSummary } from "./admin/QuickBooksAdminSummary";
+import { AdminBusinessPortfolioCard } from "@/components/admin/AdminBusinessPortfolioCard";
 
 interface ClientFileViewProps {
   clientUserId: string;
@@ -357,6 +358,11 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           {/* QuickBooks Financial Summary — gives coaches financial context before strategy sessions */}
           <div className="mt-6">
             <QuickBooksAdminSummary clientUserId={clientUserId} />
+          </div>
+
+          {/* Business Portfolio — collapsible view of all client entities, scores, and credit reports */}
+          <div className="mt-6">
+            <AdminBusinessPortfolioCard clientUserId={clientUserId} />
           </div>
         </TabsContent>
 
