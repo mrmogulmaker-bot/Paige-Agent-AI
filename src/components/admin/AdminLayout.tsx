@@ -21,6 +21,7 @@ const adminNavItems = [
   { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
   { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
+  { label: "Brokers", href: "/admin/brokers", icon: Briefcase },
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];

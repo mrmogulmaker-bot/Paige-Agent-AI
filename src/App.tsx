@@ -55,6 +55,8 @@ const BrokerOverview = lazyWithReload(() => import("./pages/broker/BrokerOvervie
 const BrokerClients = lazyWithReload(() => import("./pages/broker/BrokerClients"));
 const BrokerSettings = lazyWithReload(() => import("./pages/broker/BrokerSettings"));
 const BrokerComingSoon = lazyWithReload(() => import("./pages/broker/BrokerComingSoon"));
+const BrokerCommissions = lazyWithReload(() => import("./pages/broker/BrokerCommissions"));
+const BrokerMCC = lazyWithReload(() => import("./pages/broker/BrokerMCC"));
 const Unsubscribe = lazyWithReload(() => import("./pages/Unsubscribe"));
 const Terms = lazyWithReload(() => import("./pages/Terms"));
 const Privacy = lazyWithReload(() => import("./pages/Privacy"));
@@ -139,8 +141,8 @@ const App = () => (
               <Route path="clients" element={<PageSuspense><BrokerClients /></PageSuspense>} />
               <Route path="sessions" element={<PageSuspense><BrokerComingSoon title="Paige Sessions" description="Private peer-advisor strategy chats about each client. Ships in Phase 2b." /></PageSuspense>} />
               <Route path="team" element={<PageSuspense><BrokerComingSoon title="Team" description="Invite team members under your broker account. Ships in Phase 2b." /></PageSuspense>} />
-              <Route path="commissions" element={<PageSuspense><BrokerComingSoon title="Commissions" description="20% recurring on every broker you refer. Ledger ships in Phase 2b." /></PageSuspense>} />
-              <Route path="mcc" element={<PageSuspense><BrokerComingSoon title="MCC Services" description="Done-for-you back-office services for your clients. Ships in Phase 2b." /></PageSuspense>} />
+              <Route path="commissions" element={<PageSuspense><BrokerCommissions /></PageSuspense>} />
+              <Route path="mcc" element={<PageSuspense><BrokerMCC /></PageSuspense>} />
               <Route path="settings" element={<PageSuspense><BrokerSettings /></PageSuspense>} />
             </Route>
             <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
