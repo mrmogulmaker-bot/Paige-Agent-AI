@@ -630,7 +630,7 @@ interface BrokerStats {
 }
 
 const BrokerDetailDialog = ({
-  broker, onClose, onApprove, onSuspend, onReinstate, onDecline,
+  broker, onClose, onApprove, onSuspend, onReinstate, onDecline, onEdit,
 }: {
   broker: BrokerRow;
   onClose: () => void;
@@ -638,6 +638,7 @@ const BrokerDetailDialog = ({
   onSuspend: () => void;
   onReinstate: () => void;
   onDecline: () => void;
+  onEdit: () => void;
 }) => {
   const [stats, setStats] = useState<BrokerStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -807,6 +808,9 @@ const BrokerDetailDialog = ({
 
         <DialogFooter className="flex-wrap gap-2">
           <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button variant="outline" onClick={onEdit}>
+            <Pencil className="h-3.5 w-3.5 mr-1" /> Edit profile
+          </Button>
           {broker.status === "pending" && (
             <>
               <Button variant="outline" onClick={onDecline}>Decline</Button>
