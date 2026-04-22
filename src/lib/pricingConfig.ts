@@ -37,6 +37,14 @@ export const PRICING_CONFIG = {
     amount: 49700, // $497.00
     name: "Broker",
   },
+  // Broker Workspace — financial professionals managing client rosters.
+  // Different from the funding-intelligence "broker" tier above. See /broker.
+  broker_workspace: {
+    priceId: "price_1TOsOmKPsmWO0z4Oy8yiuhvJ",
+    productId: "prod_UNdgXGpuhBRm55",
+    amount: 19700, // $197.00
+    name: "Broker Workspace",
+  },
   enterprise: {
     // Enterprise = custom pricing — fall back to legacy $497/mo price as default
     // Sales overrides on a per-customer basis via Stripe Quotes.
