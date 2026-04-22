@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
-  Gavel, TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain,
+  Gavel, TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2,
 } from "lucide-react";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
+import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
@@ -35,6 +36,8 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { setMode } = useDashboardMode();
+  const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
+  const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -91,6 +94,15 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           <Eye className="w-4 h-4 flex-shrink-0" />
           {(sidebarOpen || mobile) && <span>Switch to Client View</span>}
         </button>
+        {canAccessBrokerWorkspace && (
+          <button
+            onClick={() => { setMobileSidebarOpen(false); navigate("/broker/app"); }}
+            className="flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm text-accent hover:bg-sidebar-accent/50 transition-colors"
+          >
+            <Building2 className="w-4 h-4 flex-shrink-0" />
+            {(sidebarOpen || mobile) && <span>Broker Workspace</span>}
+          </button>
+        )}
         <button
           onClick={handleSignOut}
           disabled={isSigningOut}
