@@ -393,7 +393,7 @@ export function computeFundabilityScore(
   const meta = META[type];
   const validation = validateFundabilityInputs(type, p);
 
-  if (!validation.ok) {
+  if (validation.ok === false) {
     return {
       type,
       title: meta.title,
