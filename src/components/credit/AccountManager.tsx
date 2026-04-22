@@ -204,6 +204,9 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
       queryClient.invalidateQueries({ queryKey: ["account-manager"] });
       queryClient.invalidateQueries({ queryKey: ["credit-accounts-health"] });
       queryClient.invalidateQueries({ queryKey: ["credit-negatives-health"] });
+      // Negative item changes shift the recency-weighted penalty.
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
       setEditingId(null);
       setEditValues({});
       toast({ title: "Account updated", description: "Changes saved and audit logged." });
@@ -233,6 +236,8 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
       queryClient.invalidateQueries({ queryKey: ["account-manager"] });
       queryClient.invalidateQueries({ queryKey: ["credit-accounts-health"] });
       queryClient.invalidateQueries({ queryKey: ["credit-negatives-health"] });
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
       setNotMineDialogId(null);
       toast({ title: "Flagged as Not Mine", description: "Account excluded from scoring and assessments." });
     },
@@ -270,6 +275,8 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
       queryClient.invalidateQueries({ queryKey: ["account-manager"] });
       queryClient.invalidateQueries({ queryKey: ["credit-accounts-health"] });
       queryClient.invalidateQueries({ queryKey: ["credit-negatives-health"] });
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
       setMergeConfirmOpen(false);
       exitMergeMode();
       toast({ title: "Accounts merged", description: `${selectedAccounts.length} accounts merged into one record.` });
