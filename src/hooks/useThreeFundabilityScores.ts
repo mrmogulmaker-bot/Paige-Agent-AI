@@ -19,12 +19,17 @@ export interface ThreeFundabilityScoresResult {
  * validation gates inside `computeAllFundabilityScores`, and returns
  * three score results. A score is `locked` when its required inputs
  * aren't present — never a fabricated number.
+ *
+ * If `businessId` is provided, scores are computed against that specific
+ * entity. Otherwise the user's first business is used (legacy behavior).
  */
-export function useThreeFundabilityScores(): ThreeFundabilityScoresResult {
+export function useThreeFundabilityScores(
+  businessId?: string | null
+): ThreeFundabilityScoresResult {
   const { factors } = useCreditFactors();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["three-fundability-inputs"],
+    queryKey: ["three-fundability-inputs", businessId ?? "primary"],
     queryFn: async (): Promise<{
       profile: any | null;
       personalReportCount: number;
@@ -36,6 +41,24 @@ export function useThreeFundabilityScores(): ThreeFundabilityScoresResult {
         return { profile: null, personalReportCount: 0, business: null, hasBusinessCreditDataPoint: false };
       }
 
+      const bizQuery = businessId
+        ? supabase
+            .from("businesses")
+            .select(
+              "id, entity_type, formation_date, ein, has_bank_account, bank_account_opened_date, estimated_annual_revenue, dnb_paydex, experian_intelliscore, equifax_payment_index"
+            )
+            .eq("id", businessId)
+            .maybeSingle()
+        : supabase
+            .from("businesses")
+            .select(
+              "id, entity_type, formation_date, ein, has_bank_account, bank_account_opened_date, estimated_annual_revenue, dnb_paydex, experian_intelliscore, equifax_payment_index"
+            )
+            .eq("owner_user_id", user.id)
+            .order("display_order", { ascending: true, nullsFirst: false })
+            .limit(1)
+            .maybeSingle();
+
       const [profileRes, reportRes, bizRes] = await Promise.all([
         supabase
           .from("profiles")
@@ -46,15 +69,7 @@ export function useThreeFundabilityScores(): ThreeFundabilityScoresResult {
           .from("credit_report_personal_info")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id),
-        supabase
-          .from("businesses")
-          .select(
-            "id, entity_type, formation_date, ein, has_bank_account, bank_account_opened_date, estimated_annual_revenue, dnb_paydex, experian_intelliscore, equifax_payment_index"
-          )
-          .eq("owner_user_id", user.id)
-          .order("display_order", { ascending: true, nullsFirst: false })
-          .limit(1)
-          .maybeSingle(),
+        bizQuery,
       ]);
 
       const biz = bizRes.data;
