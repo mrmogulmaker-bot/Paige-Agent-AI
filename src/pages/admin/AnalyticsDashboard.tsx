@@ -145,8 +145,8 @@ export default function AnalyticsDashboard() {
       if (planSlugs.length) {
         const { data: plans } = await supabase
           .from("subscription_plans")
-          .select("slug, price_monthly");
-        const priceMap = new Map((plans || []).map((p: { slug: string; price_monthly: number }) => [p.slug, Number(p.price_monthly) || 0]));
+          .select("slug, price");
+        const priceMap = new Map((plans || []).map((p: { slug: string; price: number }) => [p.slug, Number(p.price) || 0]));
         for (const slug of planSlugs) mrrSum += priceMap.get(slug) || 0;
       }
       setMrr(mrrSum);
