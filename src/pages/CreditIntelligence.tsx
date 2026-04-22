@@ -281,10 +281,10 @@ export default function CreditIntelligence() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Credit Intelligence</h1>
-          <p className="text-muted-foreground mt-1">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Credit Intelligence</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Your 5-factor FICO breakdown — stop guessing, see the data.
           </p>
           {hasData && lastCalculated && (
@@ -293,8 +293,8 @@ export default function CreditIntelligence() {
             </p>
           )}
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <div className="flex gap-2">
+        <div className="flex flex-col items-start sm:items-end gap-1 flex-shrink-0">
+          <div className="flex gap-2 flex-wrap">
             <Button
               variant="outline"
               size="sm"
