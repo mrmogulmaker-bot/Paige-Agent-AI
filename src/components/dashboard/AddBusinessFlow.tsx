@@ -200,20 +200,59 @@ export function AddBusinessFlow({ open, onOpenChange }: AddBusinessFlowProps) {
     }
   };
 
+  const [slotLoading, setSlotLoading] = useState(false);
+
+  const startSlotCheckout = async () => {
+    try {
+      setSlotLoading(true);
+      const { data, error } = await supabase.functions.invoke(
+        "add-business-slot-checkout",
+        { body: {} },
+      );
+      if (error) throw error;
+      const url = (data as { url?: string })?.url;
+      if (!url) throw new Error("No checkout URL returned");
+      window.location.href = url;
+    } catch (err) {
+      console.error("Slot checkout failed:", err);
+      toast({
+        title: "Could not start checkout",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSlotLoading(false);
+    }
+  };
+
   const renderGate = () => {
-    const maxLabel =
-      limit?.max_businesses === 999 ? "unlimited" : String(limit?.max_businesses ?? 1);
+    // Detect plan tier by current max_businesses (1 = Starter, 3 = Pro, 999 = Elite)
+    const max = limit?.max_businesses ?? 1;
+    const isStarter = max <= 1;
+    const isPro = max === 3;
+
+    const title = isStarter ? "Unlock Multiple Businesses" : "Add More Entities";
+    const body = isStarter
+      ? "Your Starter plan includes 1 business. To build the full capital multiplication strategy across multiple entities you need to upgrade. Pro gives you 3 businesses at $67/month — your founding Beta rate locked for life."
+      : isPro
+      ? "You have used all 3 business slots on your Pro plan. Add individual slots at $10/month each, or upgrade to Elite for unlimited businesses and full PME consultant access."
+      : `Your current plan includes ${max} business${max === 1 ? "" : "es"}. Add a slot for $10/month to expand your portfolio.`;
+
+    const primaryCta = isStarter
+      ? { label: "Upgrade to Pro — $67/mo", action: () => { onOpenChange(false); navigate("/pricing"); } }
+      : { label: "Add a Slot — $10/mo", action: startSlotCheckout, loading: slotLoading };
+
+    const secondaryCta = isStarter
+      ? { label: "Add 1 Slot — $10/mo", action: startSlotCheckout, loading: slotLoading }
+      : { label: "Upgrade to Elite — $297/mo", action: () => { onOpenChange(false); navigate("/elite-waitlist"); } };
+
     return (
       <div className="space-y-5">
         <div className="flex items-start gap-3 rounded-lg border border-accent/30 bg-accent/10 p-4">
           <Lock className="h-5 w-5 text-accent-foreground shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <h4 className="font-semibold">You've reached your plan limit</h4>
-            <p className="text-sm text-muted-foreground">
-              Your current plan includes <strong>{maxLabel}</strong> business
-              {limit?.max_businesses === 1 ? "" : "es"}. Upgrade to add more, or add an
-              individual slot for $10/month.
-            </p>
+            <h4 className="font-semibold">{title}</h4>
+            <p className="text-sm text-muted-foreground">{body}</p>
           </div>
         </div>
 
@@ -221,34 +260,21 @@ export function AddBusinessFlow({ open, onOpenChange }: AddBusinessFlowProps) {
           <Button
             variant="default"
             className="h-auto flex-col items-start gap-1 py-4 text-left whitespace-normal"
-            onClick={() => {
-              onOpenChange(false);
-              navigate("/pricing");
-            }}
+            onClick={primaryCta.action}
+            disabled={primaryCta.loading}
           >
             <span className="flex items-center gap-2 font-semibold">
-              <Sparkles className="h-4 w-4" /> Upgrade plan
-            </span>
-            <span className="text-xs opacity-80">
-              Pro = up to 3 businesses · Elite = unlimited
+              <Sparkles className="h-4 w-4" /> {primaryCta.loading ? "Opening checkout…" : primaryCta.label}
             </span>
           </Button>
           <Button
             variant="outline"
             className="h-auto flex-col items-start gap-1 py-4 text-left whitespace-normal"
-            onClick={() => {
-              toast({
-                title: "Coming soon",
-                description:
-                  "Additional business slots ($10/month) — finish setup in your plan settings.",
-              });
-            }}
+            onClick={secondaryCta.action}
+            disabled={secondaryCta.loading}
           >
             <span className="flex items-center gap-2 font-semibold">
-              <Building2 className="h-4 w-4" /> Add a slot
-            </span>
-            <span className="text-xs text-muted-foreground">
-              $10/month per additional business
+              <Building2 className="h-4 w-4" /> {secondaryCta.loading ? "Opening checkout…" : secondaryCta.label}
             </span>
           </Button>
         </div>
