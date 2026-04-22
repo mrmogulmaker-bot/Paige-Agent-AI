@@ -128,41 +128,31 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   // 1b. Affiliate-program preference gate.
-  // For any affiliate-* template, look up the recipient's communication_preferences
-  // (joined via auth.users by lowercase email) and skip the send if they have
-  // disabled affiliate program emails.
+  // Only enforced when caller passed recipientUserId (e.g., approved/conversion/paid/monthly).
+  // Public submissions like elite-waitlist or application-received from anon visitors
+  // skip this check because there is no authenticated user yet.
   const isAffiliateTemplate = templateName.startsWith('affiliate-') || templateName === 'elite-waitlist-confirmed'
-  if (isAffiliateTemplate) {
+  if (isAffiliateTemplate && recipientUserId) {
     try {
-      const { data: userRow } = await supabase
-        .schema('auth' as any)
-        .from('users' as any)
-        .select('id')
-        .ilike('email', effectiveRecipient)
+      const { data: prefs } = await supabase
+        .from('communication_preferences')
+        .select('email_enabled, email_affiliate_program, unsubscribed_all')
+        .eq('user_id', recipientUserId)
         .maybeSingle()
-      const userId = (userRow as any)?.id as string | undefined
-      if (userId) {
-        const { data: prefs } = await supabase
-          .from('communication_preferences')
-          .select('email_enabled, email_affiliate_program, unsubscribed_all')
-          .eq('user_id', userId)
-          .maybeSingle()
-        if (prefs && (prefs.unsubscribed_all || !prefs.email_enabled || prefs.email_affiliate_program === false)) {
-          await supabase.from('email_send_log').insert({
-            message_id: messageId,
-            template_name: templateName,
-            recipient_email: effectiveRecipient,
-            status: 'suppressed',
-            error_message: 'Affiliate program emails disabled by user preference',
-          })
-          return new Response(
-            JSON.stringify({ success: false, reason: 'affiliate_emails_disabled' }),
-            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-          )
-        }
+      if (prefs && (prefs.unsubscribed_all || !prefs.email_enabled || prefs.email_affiliate_program === false)) {
+        await supabase.from('email_send_log').insert({
+          message_id: messageId,
+          template_name: templateName,
+          recipient_email: effectiveRecipient,
+          status: 'suppressed',
+          error_message: 'Affiliate program emails disabled by user preference',
+        })
+        return new Response(
+          JSON.stringify({ success: false, reason: 'affiliate_emails_disabled' }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
       }
     } catch (e) {
-      // Fail-open for prefs lookup (do not block transactional sends if auth lookup fails)
       console.warn('Affiliate prefs lookup failed (proceeding to send)', { error: String(e) })
     }
   }
