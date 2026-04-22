@@ -469,6 +469,14 @@ export function BusinessCreditTab() {
           </Card>
         );
       })}
+
+      {hasMultipleBusinesses && activeBusiness && (
+        <p className="text-xs text-muted-foreground text-center pt-2">
+          Showing credit data for{" "}
+          <span className="font-medium text-foreground">{activeBusiness.legal_name}</span>. Switch
+          businesses above to view credit data for your other entities.
+        </p>
+      )}
     </div>
   );
 }
