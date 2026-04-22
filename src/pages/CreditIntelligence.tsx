@@ -293,18 +293,34 @@ export default function CreditIntelligence() {
             </p>
           )}
         </div>
-        <div className="flex gap-2">
-          {(hasData || hasAccounts) && (
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setAccountManagerOpen(true)}
+              onClick={() => refreshScores.mutate()}
+              disabled={refreshDisabled}
               className="gap-1.5"
             >
-              <Settings2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Edit Accounts</span>
+              <RefreshCw className={`w-4 h-4 ${refreshScores.isPending ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{refreshButtonLabel}</span>
             </Button>
-          )}
+            {(hasData || hasAccounts) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAccountManagerOpen(true)}
+                className="gap-1.5"
+              >
+                <Settings2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Edit Accounts</span>
+              </Button>
+            )}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Last calculated:{" "}
+            {lastCalc ? formatDistanceToNow(new Date(lastCalc), { addSuffix: true }) : "Never"}
+          </p>
         </div>
       </div>
 
