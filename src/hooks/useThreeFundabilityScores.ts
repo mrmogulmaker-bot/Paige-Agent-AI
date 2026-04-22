@@ -35,10 +35,11 @@ export function useThreeFundabilityScores(
       personalReportCount: number;
       business: any | null;
       hasBusinessCreditDataPoint: boolean;
+      negatives: Array<{ date: string | null; itemType: string | null; isActive: boolean }>;
     }> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        return { profile: null, personalReportCount: 0, business: null, hasBusinessCreditDataPoint: false };
+        return { profile: null, personalReportCount: 0, business: null, hasBusinessCreditDataPoint: false, negatives: [] };
       }
 
       const bizQuery = businessId
