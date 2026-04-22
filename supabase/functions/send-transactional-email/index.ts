@@ -57,6 +57,7 @@ Deno.serve(async (req) => {
   // Parse request body
   let templateName: string
   let recipientEmail: string
+  let recipientUserId: string | null = null
   let idempotencyKey: string
   let messageId: string
   let templateData: Record<string, any> = {}
@@ -64,6 +65,7 @@ Deno.serve(async (req) => {
     const body = await req.json()
     templateName = body.templateName || body.template_name
     recipientEmail = body.recipientEmail || body.recipient_email
+    recipientUserId = body.recipientUserId || body.recipient_user_id || null
     messageId = crypto.randomUUID()
     idempotencyKey = body.idempotencyKey || body.idempotency_key || messageId
     if (body.templateData && typeof body.templateData === 'object') {
@@ -124,6 +126,36 @@ Deno.serve(async (req) => {
 
   // Create Supabase client with service role (bypasses RLS)
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+  // 1b. Affiliate-program preference gate.
+  // Only enforced when caller passed recipientUserId (e.g., approved/conversion/paid/monthly).
+  // Public submissions like elite-waitlist or application-received from anon visitors
+  // skip this check because there is no authenticated user yet.
+  const isAffiliateTemplate = templateName.startsWith('affiliate-') || templateName === 'elite-waitlist-confirmed'
+  if (isAffiliateTemplate && recipientUserId) {
+    try {
+      const { data: prefs } = await supabase
+        .from('communication_preferences')
+        .select('email_enabled, email_affiliate_program, unsubscribed_all')
+        .eq('user_id', recipientUserId)
+        .maybeSingle()
+      if (prefs && (prefs.unsubscribed_all || !prefs.email_enabled || prefs.email_affiliate_program === false)) {
+        await supabase.from('email_send_log').insert({
+          message_id: messageId,
+          template_name: templateName,
+          recipient_email: effectiveRecipient,
+          status: 'suppressed',
+          error_message: 'Affiliate program emails disabled by user preference',
+        })
+        return new Response(
+          JSON.stringify({ success: false, reason: 'affiliate_emails_disabled' }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+    } catch (e) {
+      console.warn('Affiliate prefs lookup failed (proceeding to send)', { error: String(e) })
+    }
+  }
 
   // 2. Check suppression list (fail-closed: if we can't verify, don't send)
   const { data: suppressed, error: suppressionError } = await supabase
