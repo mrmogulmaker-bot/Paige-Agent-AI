@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { performSignOut } from "@/lib/auth/signOut";
+import { useUnreadSupportCount } from "@/hooks/useUnreadSupportCount";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
 const navItems = [
@@ -38,6 +39,7 @@ export function AppNav({ user }: AppNavProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const { isCoachOrAdmin, isAdmin, mode, setMode } = useDashboardMode();
+  const { count: unreadSupport } = useUnreadSupportCount(user.id);
 
   const userRoleLabel = isAdmin ? "Admin" : isCoachOrAdmin ? "Coach" : "Client";
   const isViewingAsClient = isCoachOrAdmin && mode === "client";
@@ -82,7 +84,12 @@ export function AppNav({ user }: AppNavProps) {
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-sidebar-foreground hover:bg-sidebar-accent/50"
               >
                 <LifeBuoy className="w-4 h-4" />
-                Support
+                <span className="flex-1 text-left">Support</span>
+                {unreadSupport > 0 && (
+                  <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                    {unreadSupport > 9 ? "9+" : unreadSupport}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => { navigate("/app/settings"); setMobileMenuOpen(false); }}
@@ -208,7 +215,12 @@ export function AppNav({ user }: AppNavProps) {
             )}
             <DropdownMenuItem onClick={() => navigate("/app/support")}>
               <LifeBuoy className="w-4 h-4 mr-2" />
-              Support
+              <span className="flex-1">Support</span>
+              {unreadSupport > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                  {unreadSupport > 9 ? "9+" : unreadSupport}
+                </span>
+              )}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate("/app/settings")}>
               <Settings className="w-4 h-4 mr-2" />
