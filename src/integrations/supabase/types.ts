@@ -1482,6 +1482,7 @@ export type Database = {
           dnb_report_date: string | null
           ein: string | null
           employee_count: number | null
+          entity_role: string | null
           entity_type: Database["public"]["Enums"]["entity_type"] | null
           equifax_credit_risk: number | null
           equifax_failure_score: number | null
@@ -1506,8 +1507,10 @@ export type Database = {
           has_vetcert_certification: boolean | null
           has_wosb_certification: boolean | null
           id: string
+          is_active: boolean
           is_hubzone_located: boolean | null
           is_minority_owned: boolean | null
+          is_primary: boolean
           is_service_disabled_veteran_owned: boolean | null
           is_veteran_owned: boolean | null
           is_women_owned: boolean | null
@@ -1558,6 +1561,7 @@ export type Database = {
           dnb_report_date?: string | null
           ein?: string | null
           employee_count?: number | null
+          entity_role?: string | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
           equifax_credit_risk?: number | null
           equifax_failure_score?: number | null
@@ -1582,8 +1586,10 @@ export type Database = {
           has_vetcert_certification?: boolean | null
           has_wosb_certification?: boolean | null
           id?: string
+          is_active?: boolean
           is_hubzone_located?: boolean | null
           is_minority_owned?: boolean | null
+          is_primary?: boolean
           is_service_disabled_veteran_owned?: boolean | null
           is_veteran_owned?: boolean | null
           is_women_owned?: boolean | null
@@ -1634,6 +1640,7 @@ export type Database = {
           dnb_report_date?: string | null
           ein?: string | null
           employee_count?: number | null
+          entity_role?: string | null
           entity_type?: Database["public"]["Enums"]["entity_type"] | null
           equifax_credit_risk?: number | null
           equifax_failure_score?: number | null
@@ -1658,8 +1665,10 @@ export type Database = {
           has_vetcert_certification?: boolean | null
           has_wosb_certification?: boolean | null
           id?: string
+          is_active?: boolean
           is_hubzone_located?: boolean | null
           is_minority_owned?: boolean | null
+          is_primary?: boolean
           is_service_disabled_veteran_owned?: boolean | null
           is_veteran_owned?: boolean | null
           is_women_owned?: boolean | null
@@ -6620,6 +6629,36 @@ export type Database = {
           },
         ]
       }
+      user_business_limits: {
+        Row: {
+          additional_business_monthly_fee: number
+          additional_businesses_count: number
+          created_at: string
+          id: string
+          max_businesses: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          additional_business_monthly_fee?: number
+          additional_businesses_count?: number
+          created_at?: string
+          id?: string
+          max_businesses?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          additional_business_monthly_fee?: number
+          additional_businesses_count?: number
+          created_at?: string
+          id?: string
+          max_businesses?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_funding_matches: {
         Row: {
           applied_at: string | null
@@ -7026,6 +7065,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      default_max_businesses_for_plan: {
+        Args: { _plan_slug: string }
+        Returns: number
+      }
       delete_credit_report_upload: {
         Args: { _calling_user_id: string; _upload_id: string }
         Returns: Json
@@ -7153,6 +7196,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_user_business_limit: { Args: { _user_id: string }; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
