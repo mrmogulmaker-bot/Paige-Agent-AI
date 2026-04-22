@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Building2, Upload, ExternalLink, Loader2, FileText, History, Info } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useBusinessContext, entityRoleLabel } from "@/contexts/BusinessContext";
 
 type Bureau = "dnb" | "experian_business" | "equifax_sbfe";
 
@@ -111,6 +112,8 @@ function progressValue(meta: BureauMeta, value: number | null): number {
 
 export function BusinessCreditTab() {
   const qc = useQueryClient();
+  const { activeBusiness, businesses } = useBusinessContext();
+  const activeBusinessId = activeBusiness?.id ?? null;
   const [uploading, setUploading] = useState<Bureau | null>(null);
   const fileInputRefs = useRef<Record<Bureau, HTMLInputElement | null>>({
     dnb: null,
@@ -128,49 +131,72 @@ export function BusinessCreditTab() {
     }
   }, []);
 
+  // Active business detail (bureau scores live on the businesses row)
   const { data: business } = useQuery({
-    queryKey: ["primary-business-for-credit"],
+    queryKey: ["business-for-credit", activeBusinessId],
+    enabled: !!activeBusinessId,
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
       const { data } = await supabase
         .from("businesses")
         .select(
           "id, legal_name, dnb_paydex_score, dnb_paydex, dnb_report_date, dnb_duns_number, experian_intelliscore_score, experian_intelliscore, experian_report_date, equifax_sbfe_score, equifax_payment_index_score, equifax_report_date, business_credit_last_updated"
         )
-        .eq("owner_user_id", user.id)
-        .order("display_order", { ascending: true, nullsFirst: false })
-        .limit(1)
+        .eq("id", activeBusinessId!)
         .maybeSingle();
       return data as any;
     },
   });
 
   const { data: reports = [] } = useQuery({
-    queryKey: ["business-credit-reports"],
+    queryKey: ["business-credit-reports", activeBusinessId],
+    enabled: !!activeBusinessId,
     queryFn: async (): Promise<BusinessCreditReportRow[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
       const { data } = await supabase
         .from("business_credit_reports")
         .select(
           "id, bureau, report_date, paydex_score, intelliscore, sbfe_score, trade_line_count, derogatory_count, days_beyond_terms, payment_trend, extraction_status, created_at"
         )
-        .eq("user_id", user.id)
+        .eq("business_id", activeBusinessId!)
         .order("created_at", { ascending: false });
       return (data as BusinessCreditReportRow[]) || [];
     },
   });
 
+  // Cross-entity portfolio summary (only when 2+ businesses exist)
+  const { data: portfolioSummary = [] } = useQuery({
+    queryKey: ["business-credit-portfolio-summary", businesses.map((b) => b.id).join(",")],
+    enabled: businesses.length > 1,
+    queryFn: async () => {
+      const ids = businesses.map((b) => b.id);
+      const { data } = await supabase
+        .from("businesses")
+        .select(
+          "id, legal_name, entity_role, dnb_paydex, experian_intelliscore, equifax_payment_index"
+        )
+        .in("id", ids);
+      return (data ?? []) as Array<{
+        id: string;
+        legal_name: string;
+        entity_role: string | null;
+        dnb_paydex: number | null;
+        experian_intelliscore: number | null;
+        equifax_payment_index: number | null;
+      }>;
+    },
+  });
+
+  const hasMultipleBusinesses = businesses.length > 1;
+
   const uploadMutation = useMutation({
     mutationFn: async ({ bureau, file }: { bureau: Bureau; file: File }) => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
+      if (!activeBusinessId) throw new Error("No active business selected");
 
       const form = new FormData();
       form.append("bureau", bureau);
       form.append("file", file);
-      if (business?.id) form.append("business_id", business.id);
+      form.append("business_id", activeBusinessId);
 
       const res = await fetch(
         `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/extract-business-credit-report`,
@@ -186,8 +212,9 @@ export function BusinessCreditTab() {
     },
     onSuccess: () => {
       toast.success("Report uploaded — scores extracted");
-      qc.invalidateQueries({ queryKey: ["business-credit-reports"] });
-      qc.invalidateQueries({ queryKey: ["primary-business-for-credit"] });
+      qc.invalidateQueries({ queryKey: ["business-credit-reports", activeBusinessId] });
+      qc.invalidateQueries({ queryKey: ["business-for-credit", activeBusinessId] });
+      qc.invalidateQueries({ queryKey: ["business-credit-portfolio-summary"] });
       qc.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
       setUploading(null);
     },
@@ -201,6 +228,10 @@ export function BusinessCreditTab() {
   const handleFile = (bureau: Bureau, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!activeBusinessId) {
+      toast.error("Select a business first");
+      return;
+    }
     setUploading(bureau);
     uploadMutation.mutate({ bureau, file });
     e.target.value = ""; // reset
@@ -208,6 +239,17 @@ export function BusinessCreditTab() {
 
   return (
     <div className="space-y-6">
+      {activeBusiness && (
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-xl font-semibold text-foreground">
+            Business Credit — {activeBusiness.legal_name}
+          </h2>
+          {activeBusiness.entity_role && (
+            <Badge variant="outline">{entityRoleLabel(activeBusiness.entity_role)}</Badge>
+          )}
+        </div>
+      )}
+
       <Card className="border-accent/30 bg-accent/5">
         <CardContent className="p-4 flex items-start gap-3">
           <Info className="w-5 h-5 text-accent mt-0.5 shrink-0" />
@@ -220,6 +262,73 @@ export function BusinessCreditTab() {
           </div>
         </CardContent>
       </Card>
+
+      {hasMultipleBusinesses && portfolioSummary.length > 0 && (
+        <Card className="border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Portfolio credit summary</CardTitle>
+            <CardDescription className="text-xs">
+              Quick cross-entity view of your business credit scores.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                    <th className="py-2 pr-4 font-medium">Business</th>
+                    <th className="py-2 pr-4 font-medium">Paydex</th>
+                    <th className="py-2 pr-4 font-medium">Intelliscore</th>
+                    <th className="py-2 pr-4 font-medium">Equifax PI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {portfolioSummary.map((row) => {
+                    const isActive = row.id === activeBusinessId;
+                    return (
+                      <tr
+                        key={row.id}
+                        className={`border-b border-border/50 last:border-0 ${
+                          isActive ? "bg-primary/5" : ""
+                        }`}
+                      >
+                        <td className="py-2 pr-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-foreground">{row.legal_name}</span>
+                            {row.entity_role && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {entityRoleLabel(row.entity_role)}
+                              </Badge>
+                            )}
+                            {isActive && (
+                              <Badge variant="default" className="text-[10px]">
+                                Active
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2 pr-4 font-semibold">
+                          {row.dnb_paydex && row.dnb_paydex > 0 ? row.dnb_paydex : "—"}
+                        </td>
+                        <td className="py-2 pr-4 font-semibold">
+                          {row.experian_intelliscore && row.experian_intelliscore > 0
+                            ? row.experian_intelliscore
+                            : "—"}
+                        </td>
+                        <td className="py-2 pr-4 font-semibold">
+                          {row.equifax_payment_index && row.equifax_payment_index > 0
+                            ? row.equifax_payment_index
+                            : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {BUREAUS.map((meta) => {
         const latest = reports.find((r) => r.bureau === meta.key);
@@ -360,6 +469,14 @@ export function BusinessCreditTab() {
           </Card>
         );
       })}
+
+      {hasMultipleBusinesses && activeBusiness && (
+        <p className="text-xs text-muted-foreground text-center pt-2">
+          Showing credit data for{" "}
+          <span className="font-medium text-foreground">{activeBusiness.legal_name}</span>. Switch
+          businesses above to view credit data for your other entities.
+        </p>
+      )}
     </div>
   );
 }

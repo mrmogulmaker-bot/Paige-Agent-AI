@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Lock, HelpCircle, Loader2, ArrowRight } from "lucide-react";
+import { Lock, HelpCircle, Loader2, ArrowRight, Building2, LayoutGrid } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useThreeFundabilityScores } from "@/hooks/useThreeFundabilityScores";
+import { useBusinessContext, entityRoleLabel } from "@/contexts/BusinessContext";
+import { BusinessPortfolio } from "./BusinessPortfolio";
 import type { FundabilityScoreResult, FundabilityBand } from "@/lib/fundabilityScores";
 
 const SHORT_TITLES: Record<string, string> = {
@@ -227,9 +230,15 @@ function ScoreCard({ result, compact = false }: { result: FundabilityScoreResult
 export function ThreeFundabilityScoresPanel({
   compactOnMobile = false,
 }: { compactOnMobile?: boolean } = {}) {
-  const { personal, small_business, commercial, isLoading } = useThreeFundabilityScores();
+  const { activeBusiness, businesses } = useBusinessContext();
+  const { personal, small_business, commercial, isLoading } = useThreeFundabilityScores(
+    activeBusiness?.id ?? null
+  );
   const isMobile = useIsMobile();
   const useCompact = compactOnMobile && isMobile;
+  const [portfolioOpen, setPortfolioOpen] = useState(false);
+
+  const hasMultipleBusinesses = businesses.length > 1;
 
   if (isLoading) {
     return (
@@ -241,17 +250,46 @@ export function ThreeFundabilityScoresPanel({
 
   return (
     <div>
-      <div className="mb-3">
-        <h2 className="text-lg font-semibold text-foreground">Fundability Scores</h2>
-        <p className="text-xs text-muted-foreground">
-          Three distinct scores — each one tells you what you can fund right now and what's blocking the next tier.
-        </p>
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Fundability Scores</h2>
+          <p className="text-xs text-muted-foreground">
+            Three distinct scores — each one tells you what you can fund right now and what's blocking the next tier.
+          </p>
+        </div>
+        {hasMultipleBusinesses && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPortfolioOpen(true)}
+            className="gap-1.5"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            View All Businesses
+          </Button>
+        )}
       </div>
+
+      {hasMultipleBusinesses && activeBusiness && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-card/50 px-3 py-2 text-sm">
+          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-muted-foreground">Showing scores for:</span>
+          <span className="font-medium text-foreground">{activeBusiness.legal_name}</span>
+          {activeBusiness.entity_role && (
+            <Badge variant="outline" className="text-[10px]">
+              {entityRoleLabel(activeBusiness.entity_role)}
+            </Badge>
+          )}
+        </div>
+      )}
+
       <div className={useCompact ? "flex flex-col gap-3" : "grid grid-cols-1 md:grid-cols-3 gap-4"}>
         <ScoreCard result={personal} compact={useCompact} />
         <ScoreCard result={small_business} compact={useCompact} />
         <ScoreCard result={commercial} compact={useCompact} />
       </div>
+
+      <BusinessPortfolio open={portfolioOpen} onOpenChange={setPortfolioOpen} />
     </div>
   );
 }
