@@ -238,10 +238,10 @@ const Admin = () => {
 function AdminOverview({ stats }: { stats: { totalUsers: number; activeSubscriptions: number; pendingApplications: number; totalRevenue: number } }) {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Overview of your platform activity</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground truncate">Admin Dashboard</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Overview of your platform activity</p>
         </div>
         <ExportClientsButton />
       </div>
