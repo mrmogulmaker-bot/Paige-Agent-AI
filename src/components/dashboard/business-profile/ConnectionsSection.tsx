@@ -433,3 +433,72 @@ export function ConnectionsSection({ businessId, userId }: Props) {
     </div>
   );
 }
+
+interface BusinessCreditUploadCardProps {
+  name: string;
+  icon: React.ElementType;
+  description: string;
+  scoreLabel: string;
+  scoreValue: number | null;
+  scorePrefix: string;
+  buttonLabel: string;
+  anchor: string;
+}
+
+function BusinessCreditUploadCard({
+  name,
+  icon: Icon,
+  description,
+  scoreValue,
+  scorePrefix,
+  buttonLabel,
+  anchor,
+}: BusinessCreditUploadCardProps) {
+  const hasScore = scoreValue !== null && scoreValue !== undefined;
+  return (
+    <Card className="relative flex flex-col border-border/50">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <Icon className="w-4 h-4" />
+            </div>
+            <CardTitle className="text-sm">{name}</CardTitle>
+          </div>
+          {hasScore && (
+            <Badge
+              variant="outline"
+              className="bg-primary/10 text-primary border-primary/40 text-[10px] gap-1 shrink-0"
+            >
+              <CheckCircle2 className="w-3 h-3" /> Imported
+            </Badge>
+          )}
+        </div>
+        <CardDescription className="text-xs leading-snug pt-1">{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0 pb-3 mt-auto space-y-2">
+        <div className="text-xs text-muted-foreground">
+          {hasScore ? (
+            <span className="font-medium text-foreground">
+              {scorePrefix}: {scoreValue}
+            </span>
+          ) : (
+            <span>No report uploaded</span>
+          )}
+        </div>
+        <Button
+          size="sm"
+          onClick={() => {
+            window.location.href = `/app/credit#${anchor}`;
+          }}
+          className="w-full h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+        >
+          {buttonLabel}
+        </Button>
+        <p className="text-[10px] text-muted-foreground italic text-center">
+          Direct API sync coming soon
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
