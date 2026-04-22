@@ -62,6 +62,28 @@ function ScoreCard({ result, compact = false }: { result: FundabilityScoreResult
   const displayTitle = compact ? SHORT_TITLES[result.type] ?? result.title : result.title;
 
   if (result.locked) {
+    if (compact) {
+      return (
+        <Card className="p-4 bg-card border-border flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+            <Lock className="w-5 h-5 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-foreground truncate">{displayTitle}</h3>
+            <p className="text-xs text-muted-foreground line-clamp-1">{result.lockedReason}</p>
+          </div>
+          {result.lockedCta && (
+            <Button
+              size="sm"
+              className="bg-gold text-primary hover:bg-gold/90 shrink-0"
+              onClick={() => navigate(result.lockedCta!.route)}
+            >
+              {result.lockedCta.label}
+            </Button>
+          )}
+        </Card>
+      );
+    }
     return (
       <Card className="p-5 bg-card border-border flex flex-col h-full">
         <div className="flex items-start justify-between mb-3">
@@ -96,7 +118,7 @@ function ScoreCard({ result, compact = false }: { result: FundabilityScoreResult
           {result.lockedCta && (
             <Button
               size="sm"
-              className="bg-accent text-accent-foreground hover:bg-accent/90"
+              className="bg-gold text-primary hover:bg-gold/90"
               onClick={() => navigate(result.lockedCta!.route)}
             >
               {result.lockedCta.label}
