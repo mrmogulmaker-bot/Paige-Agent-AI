@@ -201,21 +201,31 @@ const BrokersAdmin = () => {
                         {new Date(b.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="text-right">
-                        {b.status === "pending" && (
-                          <Button size="sm" variant="default" onClick={() => setConfirmTarget({ broker: b, nextStatus: "approved" })}>
-                            Approve
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setExpandedBrokerId(expandedBrokerId === b.id ? null : b.id)}
+                          >
+                            <Users className="h-3.5 w-3.5 mr-1" />
+                            Team
                           </Button>
-                        )}
-                        {b.status === "approved" && (
-                          <Button size="sm" variant="outline" onClick={() => setConfirmTarget({ broker: b, nextStatus: "suspended" })}>
-                            Suspend
-                          </Button>
-                        )}
-                        {b.status === "suspended" && (
-                          <Button size="sm" variant="default" onClick={() => setConfirmTarget({ broker: b, nextStatus: "approved" })}>
-                            Reinstate
-                          </Button>
-                        )}
+                          {b.status === "pending" && (
+                            <Button size="sm" variant="default" onClick={() => setConfirmTarget({ broker: b, nextStatus: "approved" })}>
+                              Approve
+                            </Button>
+                          )}
+                          {b.status === "approved" && (
+                            <Button size="sm" variant="outline" onClick={() => setConfirmTarget({ broker: b, nextStatus: "suspended" })}>
+                              Suspend
+                            </Button>
+                          )}
+                          {b.status === "suspended" && (
+                            <Button size="sm" variant="default" onClick={() => setConfirmTarget({ broker: b, nextStatus: "approved" })}>
+                              Reinstate
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -225,6 +235,14 @@ const BrokersAdmin = () => {
           )}
         </CardContent>
       </Card>
+
+      {expandedBrokerId && (
+        <BrokerTeamMembersPanel
+          brokerId={expandedBrokerId}
+          businessName={rows.find((r) => r.id === expandedBrokerId)?.business_name || ""}
+          onClose={() => setExpandedBrokerId(null)}
+        />
+      )}
 
       <Dialog open={!!confirmTarget} onOpenChange={(o) => !o && setConfirmTarget(null)}>
         <DialogContent>
