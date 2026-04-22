@@ -6572,6 +6572,32 @@ export type Database = {
         }
         Relationships: []
       }
+      support_ticket_last_seen: {
+        Row: {
+          last_seen_at: string
+          ticket_id: string
+          user_id: string
+        }
+        Insert: {
+          last_seen_at?: string
+          ticket_id: string
+          user_id: string
+        }
+        Update: {
+          last_seen_at?: string
+          ticket_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_ticket_last_seen_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       support_ticket_messages: {
         Row: {
           created_at: string

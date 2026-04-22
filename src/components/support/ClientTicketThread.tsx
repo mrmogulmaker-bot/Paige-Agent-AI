@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle2, MessageSquare, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { markTicketSeen } from "@/hooks/useUnreadSupportCount";
 import { TICKET_STATUS_LABEL, TICKET_STATUS_STYLES, PRIORITY_STYLES, ticketCategoryLabel, timeAgo, type TicketStatus, type TicketPriority } from "./supportTypes";
 
 interface Ticket {
@@ -66,6 +67,10 @@ export function ClientTicketThread({ ticketId, userId, open, onOpenChange, onTic
       ]);
       setTicket(t as Ticket | null);
       setMessages((msgs ?? []) as Message[]);
+      // Mark this ticket as seen for the current user (clears unread badge)
+      if (userId) {
+        void markTicketSeen(ticketId, userId);
+      }
     } finally {
       setLoading(false);
     }
