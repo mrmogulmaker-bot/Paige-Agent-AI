@@ -143,7 +143,37 @@ export function AdminTicketPanel({ ticketId, adminUserId, open, onOpenChange, on
     }
   };
 
-  const sendInternalNote = async () => {
+  const assignTicket = async (assigneeName: string | null) => {
+    if (!ticketId) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("support_tickets")
+        .update({ assigned_to: assigneeName })
+        .eq("id", ticketId);
+      if (error) throw error;
+
+      // System message inside the thread
+      const sysMessage = assigneeName
+        ? `Ticket assigned to ${assigneeName}`
+        : "Ticket unassigned";
+      await supabase.from("support_ticket_messages").insert({
+        ticket_id: ticketId,
+        user_id: adminUserId,
+        sender_type: "system",
+        message: sysMessage,
+        is_internal: true,
+      });
+
+      toast.success(assigneeName ? `Assigned to ${assigneeName}` : "Unassigned");
+      await load();
+      onTicketUpdated();
+    } catch (err: any) {
+      toast.error(err?.message || "Could not assign ticket");
+    } finally {
+      setBusy(false);
+    }
+  };
     if (!ticketId || !internalNote.trim()) return;
     setBusy(true);
     try {
