@@ -45,6 +45,14 @@ export const PRICING_CONFIG = {
     amount: 19700, // $197.00
     name: "Broker Workspace",
   },
+  // Beta Starter — reduced-rate Starter reserved for broker-referred clients.
+  // Combined with the per-broker $10 forever coupon, clients pay $17/month flat.
+  broker_beta_starter: {
+    priceId: "price_1TOsb1KPsmWO0z4OOdi3sGBe",
+    productId: "prod_UNdsMBFC6gjhmr",
+    amount: 2700, // $27.00 base; net $17 after broker coupon
+    name: "Beta Starter (Broker Client)",
+  },
   enterprise: {
     // Enterprise = custom pricing — fall back to legacy $497/mo price as default
     // Sales overrides on a per-customer basis via Stripe Quotes.
