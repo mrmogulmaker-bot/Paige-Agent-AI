@@ -279,6 +279,7 @@ const BrokerClients = () => {
             </form>
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       <Card>
@@ -319,7 +320,7 @@ const BrokerClients = () => {
                       {new Date(row.added_at).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right space-x-2">
-                      {row.is_active && (
+                      {row.is_active && permissions.can_run_sessions && (
                         <Button
                           variant="outline"
                           size="sm"
@@ -330,14 +331,16 @@ const BrokerClients = () => {
                           Start Paige Session
                         </Button>
                       )}
-                      {row.client_subscription_status !== "active" && row.is_active && (
+                      {row.client_subscription_status !== "active" && row.is_active && permissions.can_add_clients && (
                         <Button variant="ghost" size="sm" onClick={() => handleResendInvite(row)}>
                           Resend
                         </Button>
                       )}
-                      <Button variant="ghost" size="sm" onClick={() => handleArchive(row)}>
-                        {row.is_active ? "Archive" : "Restore"}
-                      </Button>
+                      {permissions.can_remove_clients && (
+                        <Button variant="ghost" size="sm" onClick={() => handleArchive(row)}>
+                          {row.is_active ? "Archive" : "Restore"}
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
