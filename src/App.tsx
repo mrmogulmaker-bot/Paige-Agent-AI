@@ -49,6 +49,7 @@ const FundingJourney = lazyWithReload(() => import("./pages/FundingJourney"));
 const Admin = lazyWithReload(() => import("./pages/Admin"));
 const ResetPassword = lazyWithReload(() => import("./pages/ResetPassword"));
 const AffiliateApply = lazyWithReload(() => import("./pages/AffiliateApply"));
+const BrokerApply = lazyWithReload(() => import("./pages/BrokerApply"));
 const Unsubscribe = lazyWithReload(() => import("./pages/Unsubscribe"));
 const Terms = lazyWithReload(() => import("./pages/Terms"));
 const Privacy = lazyWithReload(() => import("./pages/Privacy"));
@@ -124,6 +125,8 @@ const App = () => (
             <Route path="/privacy" element={<PageSuspense><Privacy /></PageSuspense>} />
             <Route path="/affiliates" element={<PageSuspense><AffiliateApply /></PageSuspense>} />
             <Route path="/become-an-affiliate" element={<Navigate to="/affiliates" replace />} />
+            <Route path="/broker" element={<PageSuspense><BrokerApply /></PageSuspense>} />
+            <Route path="/brokers" element={<Navigate to="/broker" replace />} />
             <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
 
             {/* Backward-compat: bare /clients links route into the admin workspace */}
