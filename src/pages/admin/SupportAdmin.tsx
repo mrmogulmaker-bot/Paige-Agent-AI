@@ -202,6 +202,7 @@ export default function SupportAdmin() {
           <TableHead>Subject</TableHead>
           <TableHead>Priority</TableHead>
           <TableHead>Status</TableHead>
+          <TableHead>Assignee</TableHead>
           <TableHead className="hidden lg:table-cell">Created</TableHead>
           <TableHead className="hidden lg:table-cell">Updated</TableHead>
         </TableRow>
@@ -229,13 +230,25 @@ export default function SupportAdmin() {
                 {TICKET_STATUS_LABEL[t.status]}
               </Badge>
             </TableCell>
+            <TableCell>
+              {t.assigned_to ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/20 text-accent text-[10px] font-bold">
+                    {initials(t.assigned_to)}
+                  </span>
+                  <span className="text-xs">{t.assigned_to}</span>
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground italic">Unassigned</span>
+              )}
+            </TableCell>
             <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{timeAgo(t.created_at)}</TableCell>
             <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{timeAgo(t.updated_at)}</TableCell>
           </TableRow>
         ))}
         {rows.length === 0 && (
           <TableRow>
-            <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">
+            <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-8">
               No tickets to show.
             </TableCell>
           </TableRow>
@@ -266,11 +279,39 @@ export default function SupportAdmin() {
             <KpiCard label="Urgent" value={urgentCount} icon={<AlertTriangle className="w-4 h-4" />} tone="red" />
             <KpiCard label="Avg Resolution" value={`${avgResolutionHours.toFixed(1)}h`} icon={<Clock className="w-4 h-4" />} tone="emerald" />
           </div>
+
+          {/* Assignee filter chips */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Filter:</span>
+            <Button
+              variant={assigneeFilter === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setAssigneeFilter("all")}
+            >
+              All ({openTickets.length})
+            </Button>
+            <Button
+              variant={assigneeFilter === "mine" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setAssigneeFilter("mine")}
+              disabled={!adminName}
+            >
+              My Tickets ({adminName ? openTickets.filter((t) => t.assigned_to === adminName).length : 0})
+            </Button>
+            <Button
+              variant={assigneeFilter === "unassigned" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setAssigneeFilter("unassigned")}
+            >
+              Unassigned ({openTickets.filter((t) => !t.assigned_to).length})
+            </Button>
+          </div>
+
           <Card className="border-border">
             {loading ? (
               <div className="p-6 text-sm text-muted-foreground">Loading...</div>
             ) : (
-              <TicketTable rows={openTickets} />
+              <TicketTable rows={filteredOpenTickets} />
             )}
           </Card>
         </TabsContent>
