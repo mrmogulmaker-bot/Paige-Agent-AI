@@ -18,6 +18,24 @@ import { Footer } from "@/components/landing/Footer";
 import { SiteBackground } from "@/components/landing/SiteBackground";
 
 const Index = () => {
+  useEffect(() => {
+    trackEvent("landing_page_view", "acquisition");
+    let firedPricing = false;
+    const onScroll = () => {
+      if (firedPricing) return;
+      const el = document.getElementById("pricing");
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.top < window.innerHeight && r.bottom > 0) {
+        firedPricing = true;
+        trackEvent("pricing_section_view", "acquisition");
+        window.removeEventListener("scroll", onScroll);
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <SiteBackground />
