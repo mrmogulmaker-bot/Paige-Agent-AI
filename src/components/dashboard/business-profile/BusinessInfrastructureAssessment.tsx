@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -17,6 +19,7 @@ import { FinancialIntelligenceSection } from "./FinancialIntelligenceSection";
 import { ConnectionsSection } from "./ConnectionsSection";
 import { BusinessWalkthrough } from "@/components/business/BusinessWalkthrough";
 import { BusinessSelector } from "@/components/dashboard/BusinessSelector";
+import { AddBusinessFlow } from "@/components/dashboard/AddBusinessFlow";
 
 interface Props {
   clientId?: string; // For internal client mode
@@ -27,6 +30,24 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
   const [selectedBusinessId, setSelectedBusinessId] = useState<string>("");
   const [userId, setUserId] = useState<string>("");
   const [activeTab, setActiveTab] = useState("connections");
+  const [addBusinessOpen, setAddBusinessOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Post-purchase UX — when Stripe redirects back with ?slot_added=true,
+  // confirm the new slot, clear the param, and auto-open the add-business
+  // flow so the user can immediately register their next entity.
+  useEffect(() => {
+    if (searchParams.get("slot_added") !== "true") return;
+    toast.success(
+      "Business slot added — you can now add another entity to your portfolio",
+    );
+    const next = new URLSearchParams(searchParams);
+    next.delete("slot_added");
+    setSearchParams(next, { replace: true });
+    const t = setTimeout(() => setAddBusinessOpen(true), 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Completion percentages
   const [foundationPct, setFoundationPct] = useState(0);
@@ -274,6 +295,9 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Post-purchase auto-open from ?slot_added=true */}
+      <AddBusinessFlow open={addBusinessOpen} onOpenChange={setAddBusinessOpen} />
     </div>
   );
 }
