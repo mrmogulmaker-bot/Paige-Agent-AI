@@ -29,7 +29,7 @@ import {
 import { Plus, Mail, Loader2, Brain } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useBrokerProfile } from "@/hooks/useBrokerProfile";
+import { useBrokerContext } from "@/hooks/useBrokerContext";
 import { useToast } from "@/hooks/use-toast";
 
 interface ClientRow {
@@ -45,7 +45,8 @@ interface ClientRow {
 }
 
 const BrokerClients = () => {
-  const { profile } = useBrokerProfile();
+  const { activeBrokerId, parentBrokerProfile, permissions } = useBrokerContext();
+  const profile = parentBrokerProfile; // alias for legacy field reads below
   const { toast } = useToast();
   const navigate = useNavigate();
   const [rows, setRows] = useState<ClientRow[]>([]);
@@ -61,14 +62,14 @@ const BrokerClients = () => {
   });
 
   const load = async () => {
-    if (!profile?.id) return;
+    if (!activeBrokerId) return;
     setLoading(true);
     const { data, error } = await supabase
       .from("broker_client_relationships")
       .select(
         "id, client_first_name, client_last_name, client_email, client_phone, client_goal, client_subscription_status, is_active, added_at",
       )
-      .eq("broker_id", profile.id)
+      .eq("broker_id", activeBrokerId)
       .order("added_at", { ascending: false });
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -81,11 +82,11 @@ const BrokerClients = () => {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id]);
+  }, [activeBrokerId]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile?.id || !profile.referral_code) return;
+    if (!activeBrokerId || !profile?.referral_code) return;
     setSubmitting(true);
 
     const email = form.email.trim().toLowerCase();
@@ -99,7 +100,7 @@ const BrokerClients = () => {
     const { data: inserted, error: insertErr } = await supabase
       .from("broker_client_relationships")
       .insert({
-        broker_id: profile.id,
+        broker_id: activeBrokerId,
         client_email: email,
         client_first_name: form.firstName.trim(),
         client_last_name: form.lastName.trim(),
