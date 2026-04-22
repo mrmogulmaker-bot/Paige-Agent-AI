@@ -142,12 +142,15 @@ export function PMEFundingReadiness() {
 
   if (!result) {
     return (
-      <Card>
-        <CardContent className="py-8 text-center">
-          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Calculating your funding readiness score...</p>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <ThreeFundabilityScoresPanel />
+        <Card>
+          <CardContent className="py-8 text-center">
+            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Calculating your funding readiness score...</p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
