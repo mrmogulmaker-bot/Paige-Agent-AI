@@ -799,14 +799,22 @@ JSON:`;
       }
 
       // ===== Business Credit (D&B, Experian Business, Equifax SBFE) =====
+      // Fetches the FULL portfolio so multi-entity clients get a portfolio
+      // brief. Single-business clients get the legacy single-entity block.
       try {
-        const { data: bizForCredit } = await supabase
+        const { data: portfolioBusinesses } = await supabase
           .from("businesses")
-          .select("id, legal_name, dnb_paydex_score, dnb_report_date, experian_intelliscore, experian_report_date, experian_days_beyond_terms, equifax_sbfe_score, equifax_report_date, business_credit_last_updated")
+          .select(
+            "id, legal_name, entity_type, entity_role, ein, formation_date, is_primary, is_active, dnb_paydex_score, dnb_report_date, experian_intelliscore, experian_report_date, experian_days_beyond_terms, equifax_sbfe_score, equifax_report_date, business_credit_last_updated, estimated_annual_revenue",
+          )
           .eq("owner_user_id", contextUserId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .eq("is_active", true)
+          .order("is_primary", { ascending: false })
+          .order("organizational_level", { ascending: true })
+          .order("display_order", { ascending: true });
+
+        const businesses = portfolioBusinesses ?? [];
+        const bizForCredit = businesses[0] ?? null;
 
         const { data: latestBcReport } = await supabase
           .from("business_credit_reports")
@@ -816,27 +824,46 @@ JSON:`;
           .limit(1)
           .maybeSingle();
 
+        const interpretPaydex = (s: number | null) => {
+          if (s == null) return "no data";
+          if (s < 70) return "high risk — late payer signal to lenders";
+          if (s < 80) return "moderate — paying near terms but not on time";
+          if (s === 80) return "good standing — pays exactly on time";
+          return "excellent — early payer, gold standard for lenders";
+        };
+        const interpretIntelliscore = (s: number | null) => {
+          if (s == null) return "no data";
+          if (s < 50) return "high risk";
+          if (s < 75) return "moderate risk";
+          return "low risk — strong";
+        };
+        const fmtDate = (d: string | null | undefined) => (d ? new Date(d).toLocaleDateString() : "no date on file");
+
+        const monthsBetween = (iso: string | null | undefined): number | null => {
+          if (!iso) return null;
+          const start = new Date(iso);
+          if (isNaN(start.getTime())) return null;
+          const now = new Date();
+          return Math.max(
+            0,
+            (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth()),
+          );
+        };
+        const tibLabel = (iso: string | null | undefined): string => {
+          const m = monthsBetween(iso);
+          if (m == null) return "TIB unknown";
+          if (m < 12) return `${m} months in business`;
+          const years = Math.floor(m / 12);
+          const rem = m % 12;
+          return rem === 0 ? `${years} year${years === 1 ? "" : "s"} in business` : `${years}y ${rem}m in business`;
+        };
+
         const hasAnyBizCredit =
           (bizForCredit?.dnb_paydex_score ?? null) !== null ||
           (bizForCredit?.experian_intelliscore ?? null) !== null ||
           (bizForCredit?.equifax_sbfe_score ?? null) !== null;
 
         if (hasAnyBizCredit && bizForCredit) {
-          const interpretPaydex = (s: number | null) => {
-            if (s == null) return "no data";
-            if (s < 70) return "high risk — late payer signal to lenders";
-            if (s < 80) return "moderate — paying near terms but not on time";
-            if (s === 80) return "good standing — pays exactly on time";
-            return "excellent — early payer, gold standard for lenders";
-          };
-          const interpretIntelliscore = (s: number | null) => {
-            if (s == null) return "no data";
-            if (s < 50) return "high risk";
-            if (s < 75) return "moderate risk";
-            return "low risk — strong";
-          };
-          const fmtDate = (d: string | null | undefined) => (d ? new Date(d).toLocaleDateString() : "no date on file");
-
           const lines: string[] = [];
           lines.push(`\n=== BUSINESS CREDIT PROFILE (from uploaded bureau reports) ===`);
           lines.push(`Business: ${bizForCredit.legal_name}`);
@@ -865,6 +892,65 @@ JSON:`;
           contextParts.push(
             `\nBusiness Credit Profile: No business credit reports uploaded yet. Client has not yet imported their D&B, Experian Business, or Equifax SBFE scores.`
           );
+        }
+
+        // ===== MULTI-ENTITY PORTFOLIO BRIEF =====
+        // Only when the client has 2+ active businesses.
+        if (businesses.length >= 2) {
+          const ROLE_LABELS: Record<string, string> = {
+            holdco: "HoldCo",
+            opco: "OpCo",
+            asset_co: "Asset Co",
+            management_co: "Management Co",
+            real_estate_co: "Real Estate Co",
+            media_co: "Media Co",
+            other: "Other",
+          };
+          const roleLabel = (r: string | null) => (r ? (ROLE_LABELS[r] ?? r) : "Entity");
+
+          const portfolioLines: string[] = [];
+          portfolioLines.push(
+            `\n=== MULTI-ENTITY PORTFOLIO — ${businesses.length} entities on file ===`,
+          );
+
+          for (const b of businesses) {
+            const primaryTag = b.is_primary ? " — PRIMARY" : "";
+            portfolioLines.push(
+              `\n${b.legal_name} (${roleLabel(b.entity_role)})${primaryTag}:`,
+            );
+            portfolioLines.push(`- Entity type: ${b.entity_type ?? "not specified"}`);
+            portfolioLines.push(
+              `- Formation date: ${b.formation_date ?? "unknown"} (${tibLabel(b.formation_date)})`,
+            );
+            portfolioLines.push(`- EIN on file: ${b.ein ? "yes" : "no"}`);
+            portfolioLines.push(
+              `- Personal Fundability: tracked at the user level (see USER CONTEXT for FICO)`,
+            );
+            const sbReady = !!(b.entity_type && b.formation_date && b.ein);
+            portfolioLines.push(
+              `- Small Business Fundability (PG): ${sbReady ? "Profile complete — score available in app" : "Locked — needs business profile (entity type, formation date, EIN)"}`,
+            );
+            const months = monthsBetween(b.formation_date);
+            const tibOk = (months ?? 0) >= 12;
+            const bcOk = b.dnb_paydex_score != null || b.experian_intelliscore != null || b.equifax_sbfe_score != null;
+            const commercialStatus = tibOk && bcOk
+              ? "Profile complete — score available in app"
+              : `Locked — needs ${[!tibOk ? "12+ months TIB" : null, !bcOk ? "business credit" : null].filter(Boolean).join(" + ")}`;
+            portfolioLines.push(`- Commercial EIN-Only: ${commercialStatus}`);
+            portfolioLines.push(
+              `- D&B Paydex: ${b.dnb_paydex_score ?? "Not uploaded"}${b.dnb_paydex_score != null ? ` as of ${fmtDate(b.dnb_report_date)}` : ""}`,
+            );
+            portfolioLines.push(
+              `- Experian Intelliscore: ${b.experian_intelliscore ?? "Not uploaded"}${b.experian_intelliscore != null ? ` as of ${fmtDate(b.experian_report_date)}` : ""}`,
+            );
+          }
+
+          const active = businesses.find((b) => b.is_primary) ?? businesses[0];
+          portfolioLines.push(
+            `\nCurrently active entity for this session: ${active.legal_name}`,
+          );
+
+          contextParts.push(portfolioLines.join("\n"));
         }
       } catch (bcErr) {
         console.warn("[paige] business credit context fetch failed:", bcErr);
