@@ -29,6 +29,7 @@ import { template as brokerApplicationReceived } from './broker-application-rece
 import { template as brokerApprovedWelcome } from './broker-approved-welcome.tsx'
 import { template as brokerClientInvite } from './broker-client-invite.tsx'
 import { template as mccNewServiceRequest } from './mcc-new-service-request.tsx'
+import { template as businessSlotAdded } from './business-slot-added.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'role-invitation': roleInvitation,
@@ -51,4 +52,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'broker-approved-welcome': brokerApprovedWelcome,
   'broker-client-invite': brokerClientInvite,
   'mcc-new-service-request': mccNewServiceRequest,
+  'business-slot-added': businessSlotAdded,
 }
