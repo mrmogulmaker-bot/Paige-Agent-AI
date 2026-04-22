@@ -617,10 +617,12 @@ const BrokerPaigeSession = () => {
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setSummaryOpen(false)}>Cancel</Button>
-            <Button onClick={shareSummary} disabled={sharing || !summary}>
-              {sharing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Share2 className="h-4 w-4 mr-2" />}
-              Share with client
-            </Button>
+            {permissions.can_share_summaries && (
+              <Button onClick={shareSummary} disabled={sharing || !summary}>
+                {sharing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Share2 className="h-4 w-4 mr-2" />}
+                Share with client
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
