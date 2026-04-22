@@ -703,6 +703,10 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
           queryClient.invalidateQueries({ queryKey: ["funding-matches"] });
           queryClient.invalidateQueries({ queryKey: ["funding-matches-profile-scores"] });
           queryClient.invalidateQueries({ queryKey: ["funding-projections"] });
+          // Score inputs changed — refresh fundability so the dashboard
+          // doesn't keep displaying the pre-upload number.
+          queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+          queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
         }
       }
 

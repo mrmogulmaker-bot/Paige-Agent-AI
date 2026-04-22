@@ -434,10 +434,12 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
             ...prev,
             { role: "assistant", content: "", syncStatus },
           ]);
-          queryClient.invalidateQueries({ queryKey: ["credit-factors"] });
-          queryClient.invalidateQueries({ queryKey: ["credit-factors-history"] });
-          queryClient.invalidateQueries({ queryKey: ["funding-matches"] });
-          queryClient.invalidateQueries({ queryKey: ["funding-matches-profile-scores"] });
+            queryClient.invalidateQueries({ queryKey: ["credit-factors"] });
+            queryClient.invalidateQueries({ queryKey: ["credit-factors-history"] });
+            queryClient.invalidateQueries({ queryKey: ["funding-matches"] });
+            queryClient.invalidateQueries({ queryKey: ["funding-matches-profile-scores"] });
+            queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+            queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
         }
       }
     } catch (error) {

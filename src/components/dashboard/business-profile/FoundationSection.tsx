@@ -150,7 +150,15 @@ export function FoundationSection({ businessId, userId, onCompletionChange }: Fo
     setSaving(true);
     const { error } = await supabase.from("businesses").update(fields as any).eq("id", businessId);
     if (error) { toast.error("Failed to save changes"); }
-    else { toast.success("Changes saved"); await fetchData(); }
+    else {
+      toast.success("Changes saved");
+      await fetchData();
+      // Small Business / Commercial fundability scores depend on entity
+      // type, formation date, EIN, and bank info — invalidate so the
+      // dashboard reflects the change immediately.
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
+    }
     setSaving(false);
   };
 
