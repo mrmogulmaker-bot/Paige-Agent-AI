@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { supabase } from "@/integrations/supabase/client";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
+import { useBrokerContext } from "@/hooks/useBrokerContext";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Sparkles } from "lucide-react";
 
@@ -43,6 +44,7 @@ function buildGreeting(setting: string, fullName: string): string {
 
 const BrokerSettings = () => {
   const { profile, reload } = useBrokerProfile();
+  const { isTeamMember } = useBrokerContext();
   const { toast } = useToast();
   const [form, setForm] = useState({
     business_name: "",
