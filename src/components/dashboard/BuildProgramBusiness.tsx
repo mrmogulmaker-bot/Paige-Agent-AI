@@ -24,12 +24,15 @@ interface Props {
   plaid: PlaidState;
   build: BuildState;
   vendors: Vendor[];
-  onRunAssessment: () => void;
-  onSyncBureaus: () => void;
-  onParseReport: (file: File) => void;
-  onOpenStageTasks: (stageKey: "B"|"U"|"I"|"L"|"D") => void;
-  onAddVendors: () => void;
-  onOpenFundingPlan: () => void;
+  // Handlers are optional. When omitted (no real backend wired yet) the
+  // corresponding buttons are hidden so paying subscribers never see a button
+  // that only toasts "Coming Soon".
+  onRunAssessment?: () => void;
+  onSyncBureaus?: () => void;
+  onParseReport?: (file: File) => void;
+  onOpenStageTasks?: (stageKey: "B"|"U"|"I"|"L"|"D") => void;
+  onAddVendors?: () => void;
+  onOpenFundingPlan?: () => void;
   insights: string[];
   uploading?: boolean;
   syncing?: boolean;
@@ -56,12 +59,16 @@ export default function BuildProgramBusiness({
           <p className="text-sm text-muted-foreground mt-1">Build fundable business credit with strategic account placement.</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={onRunAssessment} className="rounded-xl bg-primary px-5 py-2.5 text-primary-foreground shadow-md hover:shadow-lg hover:bg-primary-light transition-all text-sm md:text-base font-semibold">
-            Run BUILD Assessment
-          </button>
-          <button onClick={onSyncBureaus} className="rounded-xl border-2 border-border px-5 py-2.5 text-foreground hover:border-gold hover:bg-gold/5 transition-all text-sm md:text-base font-semibold">
-            Sync Bureaus
-          </button>
+          {onRunAssessment && (
+            <button onClick={onRunAssessment} className="rounded-xl bg-primary px-5 py-2.5 text-primary-foreground shadow-md hover:shadow-lg hover:bg-primary-light transition-all text-sm md:text-base font-semibold">
+              Run BUILD Assessment
+            </button>
+          )}
+          {onSyncBureaus && (
+            <button onClick={onSyncBureaus} className="rounded-xl border-2 border-border px-5 py-2.5 text-foreground hover:border-gold hover:bg-gold/5 transition-all text-sm md:text-base font-semibold">
+              Sync Bureaus
+            </button>
+          )}
         </div>
       </div>
 
@@ -73,48 +80,54 @@ export default function BuildProgramBusiness({
         <KpiCard label="Fundability %" value={percent(build.fundability_pct)} target="70%+" accent="bg-gold" />
       </div>
 
-      {/* Upload / Sync */}
-      <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="rounded-2xl border-2 border-gold/40 bg-card p-6 shadow-card hover:shadow-glow transition-all">
-          <div className="flex items-start gap-3 mb-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-gold flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
+      {/* Upload / Sync — only render the cards whose handlers are wired. */}
+      {(onParseReport || onSyncBureaus) && (
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {onParseReport && (
+            <div className="rounded-2xl border-2 border-gold/40 bg-card p-6 shadow-card hover:shadow-glow transition-all">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-gold flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-base md:text-lg font-bold text-foreground">Upload Business Credit Report</h3>
+                  <p className="text-xs text-muted-foreground mt-1">Dun &amp; Bradstreet, Experian, Equifax, or Nav.</p>
+                </div>
+              </div>
+              <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border-2 border-gold bg-gradient-gold px-5 py-2.5 hover:shadow-glow transition-all text-sm font-semibold text-primary">
+                <input
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && onParseReport(e.target.files[0])}
+                />
+                {uploading ? "Parsing PDF..." : "Choose PDF File"}
+              </label>
             </div>
-            <div className="flex-1">
-              <h3 className="text-base md:text-lg font-bold text-foreground">Upload Business Credit Report</h3>
-              <p className="text-xs text-muted-foreground mt-1">Dun &amp; Bradstreet, Experian, Equifax, or Nav.</p>
-            </div>
-          </div>
-          <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border-2 border-gold bg-gradient-gold px-5 py-2.5 hover:shadow-glow transition-all text-sm font-semibold text-primary">
-            <input
-              type="file"
-              accept=".pdf"
-              className="hidden"
-              onChange={(e) => e.target.files?.[0] && onParseReport(e.target.files[0])}
-            />
-            {uploading ? "Parsing PDF..." : "Choose PDF File"}
-          </label>
-        </div>
+          )}
 
-        <div className="rounded-2xl border-2 border-accent/40 bg-card p-6 shadow-card hover:shadow-glow-teal transition-all">
-          <div className="flex items-start gap-3 mb-3">
-            <div className="w-10 h-10 rounded-lg bg-gradient-accent flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+          {onSyncBureaus && (
+            <div className="rounded-2xl border-2 border-accent/40 bg-card p-6 shadow-card hover:shadow-glow-teal transition-all">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-accent flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-base md:text-lg font-bold text-foreground">Sync from Bureaus</h3>
+                  <p className="text-xs text-muted-foreground mt-1">Connect for automatic updates.</p>
+                </div>
+              </div>
+              <button onClick={onSyncBureaus} className="rounded-xl bg-accent px-5 py-2.5 text-accent-foreground hover:bg-accent-glow transition-all text-sm font-semibold shadow-md hover:shadow-glow-teal">
+                {syncing ? "Syncing..." : "Sync Now"}
+              </button>
             </div>
-            <div className="flex-1">
-              <h3 className="text-base md:text-lg font-bold text-foreground">Sync from Bureaus</h3>
-              <p className="text-xs text-muted-foreground mt-1">Connect for automatic updates.</p>
-            </div>
-          </div>
-          <button onClick={onSyncBureaus} className="rounded-xl bg-accent px-5 py-2.5 text-accent-foreground hover:bg-accent-glow transition-all text-sm font-semibold shadow-md hover:shadow-glow-teal">
-            {syncing ? "Syncing..." : "Sync Now"}
-          </button>
+          )}
         </div>
-      </div>
+      )}
 
       {/* BUILD Ladder */}
       <div className="mb-6 rounded-2xl bg-gradient-surface p-6 shadow-lg ring-1 ring-border">
@@ -128,7 +141,7 @@ export default function BuildProgramBusiness({
               key={key}
               label={labelFor(key)}
               percent={build.stages?.[key]?.percent ?? 0}
-              onClick={() => onOpenStageTasks(key)}
+              onClick={onOpenStageTasks ? () => onOpenStageTasks(key) : undefined}
             />
           ))}
         </div>
@@ -160,11 +173,13 @@ export default function BuildProgramBusiness({
         <ul className="list-disc space-y-1 pl-5 text-muted-foreground text-sm">
           {insights?.length ? insights.map((t, i) => <li key={i}>{t}</li>) : <li>No insights yet.</li>}
         </ul>
-        <div className="mt-4">
-          <button onClick={onRunAssessment} className="rounded-xl border border-border px-4 py-2 text-foreground hover:bg-accent text-sm">
-            Apply Recommendations
-          </button>
-        </div>
+        {onRunAssessment && (
+          <div className="mt-4">
+            <button onClick={onRunAssessment} className="rounded-xl border border-border px-4 py-2 text-foreground hover:bg-accent text-sm">
+              Apply Recommendations
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -185,12 +200,17 @@ function KpiCard({ label, value, target, accent }: { label: string; value: numbe
   );
 }
 
-function StageBar({ label, percent, onClick }: { label: string; percent: number; onClick: () => void }) {
+function StageBar({ label, percent, onClick }: { label: string; percent: number; onClick?: () => void }) {
   const isComplete = percent >= 100;
+  const interactive = !!onClick;
   return (
-    <button onClick={onClick} className={`group rounded-xl border-2 p-3 text-left transition-all ${isComplete ? 'border-gold bg-gold/5 shadow-glow' : 'border-border hover:border-gold/50 hover:bg-accent/5'}`}>
+    <button
+      onClick={onClick}
+      disabled={!interactive}
+      className={`group rounded-xl border-2 p-3 text-left transition-all ${isComplete ? 'border-gold bg-gold/5 shadow-glow' : 'border-border'} ${interactive ? 'hover:border-gold/50 hover:bg-accent/5 cursor-pointer' : 'cursor-default'}`}
+    >
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs md:text-sm font-bold text-foreground group-hover:text-gold transition-colors">{label}</span>
+        <span className={`text-xs md:text-sm font-bold text-foreground transition-colors ${interactive ? 'group-hover:text-gold' : ''}`}>{label}</span>
         <span className={`text-xs font-semibold ${isComplete ? 'text-gold' : 'text-muted-foreground'}`}>{Math.round(percent)}%</span>
       </div>
       <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
@@ -221,12 +241,14 @@ function GaugeCard({ score }: { score: number }) {
   );
 }
 
-function VendorTable({ vendors, onAddVendors }: { vendors: Vendor[]; onAddVendors: () => void }) {
+function VendorTable({ vendors, onAddVendors }: { vendors: Vendor[]; onAddVendors?: () => void }) {
   return (
     <div className="rounded-2xl bg-card p-5 shadow-card ring-1 ring-border">
       <div className="mb-2 flex items-center justify-between">
         <div className="text-sm text-muted-foreground">Vendor Activity</div>
-        <button onClick={onAddVendors} className="text-xs text-accent hover:underline">Add Starter Vendors</button>
+        {onAddVendors && (
+          <button onClick={onAddVendors} className="text-xs text-accent hover:underline">Add Starter Vendors</button>
+        )}
       </div>
       <div className="divide-y divide-border">
         {vendors?.length ? vendors.map((v, i) => (
@@ -246,7 +268,7 @@ function VendorTable({ vendors, onAddVendors }: { vendors: Vendor[]; onAddVendor
 
 function FundingReadiness({
   dscr, avgBalance, paydex, intelliscore, onOpenFundingPlan
-}: { dscr?: number; avgBalance?: number; paydex?: number; intelliscore?: number; onOpenFundingPlan: () => void }) {
+}: { dscr?: number; avgBalance?: number; paydex?: number; intelliscore?: number; onOpenFundingPlan?: () => void }) {
   const Item = ({ label, value, target }: { label: string; value: string; target: string }) => (
     <div className="flex items-center justify-between py-1 text-sm">
       <span className="text-muted-foreground">{label}</span>
@@ -260,7 +282,9 @@ function FundingReadiness({
       <Item label="Avg Balance (90d)" value={currency(avgBalance)} target="≥ $5,000" />
       <Item label="Paydex" value={`${paydex ?? "—"}`} target="≥ 80" />
       <Item label="Intelliscore" value={`${intelliscore ?? "—"}`} target="≥ 75" />
-      <button onClick={onOpenFundingPlan} className="mt-3 w-full rounded-xl bg-foreground px-4 py-2 text-background hover:opacity-90 text-sm">View Funding Plan</button>
+      {onOpenFundingPlan && (
+        <button onClick={onOpenFundingPlan} className="mt-3 w-full rounded-xl bg-foreground px-4 py-2 text-background hover:opacity-90 text-sm">View Funding Plan</button>
+      )}
     </div>
   );
 }
