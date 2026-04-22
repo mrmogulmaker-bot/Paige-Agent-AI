@@ -224,8 +224,12 @@ function ScoreCard({ result, compact = false }: { result: FundabilityScoreResult
   );
 }
 
-export function ThreeFundabilityScoresPanel() {
+export function ThreeFundabilityScoresPanel({
+  compactOnMobile = false,
+}: { compactOnMobile?: boolean } = {}) {
   const { personal, small_business, commercial, isLoading } = useThreeFundabilityScores();
+  const isMobile = useIsMobile();
+  const useCompact = compactOnMobile && isMobile;
 
   if (isLoading) {
     return (
@@ -243,10 +247,10 @@ export function ThreeFundabilityScoresPanel() {
           Three distinct scores — each one tells you what you can fund right now and what's blocking the next tier.
         </p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <ScoreCard result={personal} />
-        <ScoreCard result={small_business} />
-        <ScoreCard result={commercial} />
+      <div className={useCompact ? "flex flex-col gap-3" : "grid grid-cols-1 md:grid-cols-3 gap-4"}>
+        <ScoreCard result={personal} compact={useCompact} />
+        <ScoreCard result={small_business} compact={useCompact} />
+        <ScoreCard result={commercial} compact={useCompact} />
       </div>
     </div>
   );
