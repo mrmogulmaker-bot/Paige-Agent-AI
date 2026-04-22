@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useBuildScoreRefresh } from "@/hooks/useBuildScoreRefresh";
 
 interface Props {
   businessId: string;
@@ -80,6 +81,7 @@ const BUREAUS: BureauConfig[] = [
 type ScoreData = Record<string, string>;
 
 export function BusinessCreditSection({ businessId, userId, onCompletionChange }: Props) {
+  const { invalidate: invalidateBuildScore } = useBuildScoreRefresh();
   const [scores, setScores] = useState<ScoreData>({});
   const [dates, setDates] = useState<Record<string, Date | undefined>>({});
   const [history, setHistory] = useState<any[]>([]);
@@ -204,6 +206,9 @@ export function BusinessCreditSection({ businessId, userId, onCompletionChange }
       }
 
       await fetchData();
+      // Bureau scores feed both the BUILD bureau-health sub-score and the
+      // tier ladder (Paydex >= 80 unlocks Tier L, etc.) — refresh now.
+      invalidateBuildScore();
       toast.success(`${bureau.name} scores saved`);
     } catch (err: any) {
       toast.error("Save failed", { description: err.message });

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useBuildScoreRefresh } from "@/hooks/useBuildScoreRefresh";
 
 interface FoundationSectionProps {
   businessId: string;
@@ -74,6 +75,7 @@ const isFreeEmail = (e?: string | null) => {
 
 export function FoundationSection({ businessId, userId, onCompletionChange }: FoundationSectionProps) {
   const queryClient = useQueryClient();
+  const { invalidate: invalidateBuildScore } = useBuildScoreRefresh();
   const [data, setData] = useState<BusinessData | null>(null);
   const [expandedItem, setExpandedItem] = useState<ItemKey | null>(null);
   const [saving, setSaving] = useState(false);
@@ -157,9 +159,11 @@ export function FoundationSection({ businessId, userId, onCompletionChange }: Fo
       await fetchData();
       // Small Business / Commercial fundability scores depend on entity
       // type, formation date, EIN, and bank info — invalidate so the
-      // dashboard reflects the change immediately.
+      // dashboard reflects the change immediately. The same fields feed the
+      // BUILD compliance sub-score, so refresh that ladder too.
       queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
       queryClient.invalidateQueries({ queryKey: ["funding-readiness-supplemental"] });
+      invalidateBuildScore();
     }
     setSaving(false);
   };

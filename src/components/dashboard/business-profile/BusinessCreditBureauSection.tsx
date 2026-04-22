@@ -8,6 +8,7 @@ import { Upload, RefreshCcw, Info } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useBuildScore } from "@/hooks/useBuildScore";
+import { useBuildScoreRefresh } from "@/hooks/useBuildScoreRefresh";
 
 interface BusinessCreditBureauSectionProps {
   businessId: string;
@@ -26,6 +27,7 @@ interface BureauInfo {
 
 export function BusinessCreditBureauSection({ businessId, userId, onCompletionChange }: BusinessCreditBureauSectionProps) {
   const { data: buildScore } = useBuildScore();
+  const { invalidate: invalidateBuildScore } = useBuildScoreRefresh();
   const [uploading, setUploading] = useState<string | null>(null);
 
   const bureaus: BureauInfo[] = [
@@ -114,6 +116,11 @@ export function BusinessCreditBureauSection({ businessId, userId, onCompletionCh
         }
 
         toast.success(`${bureauName} report uploaded — analysis starting`);
+        // Once the report extraction completes the underlying `businesses`
+        // bureau columns will change. Invalidate the BUILD ladder so the
+        // dashboard reflects new Paydex / Intelliscore values without a
+        // full page reload.
+        invalidateBuildScore();
       } catch (err: any) {
         toast.error("Upload failed", { description: err.message });
       } finally {

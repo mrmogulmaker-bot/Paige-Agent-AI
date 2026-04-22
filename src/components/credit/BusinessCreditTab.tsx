@@ -9,6 +9,7 @@ import { Building2, Upload, ExternalLink, Loader2, FileText, History, Info } fro
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useBusinessContext, entityRoleLabel } from "@/contexts/BusinessContext";
+import { useBuildScoreRefresh } from "@/hooks/useBuildScoreRefresh";
 
 type Bureau = "dnb" | "experian_business" | "equifax_sbfe";
 
@@ -112,6 +113,7 @@ function progressValue(meta: BureauMeta, value: number | null): number {
 
 export function BusinessCreditTab() {
   const qc = useQueryClient();
+  const { invalidate: invalidateBuildScore } = useBuildScoreRefresh();
   const { activeBusiness, businesses } = useBusinessContext();
   const activeBusinessId = activeBusiness?.id ?? null;
   const [uploading, setUploading] = useState<Bureau | null>(null);
@@ -216,6 +218,9 @@ export function BusinessCreditTab() {
       qc.invalidateQueries({ queryKey: ["business-for-credit", activeBusinessId] });
       qc.invalidateQueries({ queryKey: ["business-credit-portfolio-summary"] });
       qc.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      // BUILD bureau-health sub-score reads the same `businesses` columns
+      // the extractor just rewrote — refresh the ladder too.
+      invalidateBuildScore();
       setUploading(null);
     },
     onError: (err: Error) => {

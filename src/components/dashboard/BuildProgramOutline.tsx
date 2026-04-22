@@ -7,6 +7,7 @@ import { ChevronDown, CheckCircle2, FileText, Building2, TrendingUp, BarChart3, 
 import { supabase } from "@/integrations/supabase/client";
 import { DocumentUpload } from "./DocumentUpload";
 import { useToast } from "@/hooks/use-toast";
+import { useBuildScoreRefresh } from "@/hooks/useBuildScoreRefresh";
 
 const buildModules = [
   {
@@ -168,6 +169,7 @@ const categorizeAccount = (creditor: string, type: string): AccountCategory | nu
 
 
 export const BuildProgramOutline = () => {
+  const { invalidate: invalidateBuildScore } = useBuildScoreRefresh();
   const [expandedModule, setExpandedModule] = useState<number | null>(1);
   const [businessAccounts, setBusinessAccounts] = useState<BusinessAccount[]>([]);
   const [loading, setLoading] = useState(true);
@@ -261,8 +263,10 @@ export const BuildProgramOutline = () => {
         description: `Found ${data.accountsAdded} business accounts in your credit report.`,
       });
 
-      // Refresh the accounts
+      // Refresh the accounts and the BUILD ladder (parser writes new
+      // bureau scores + vendor tradelines into source tables).
       await fetchBusinessAccounts();
+      invalidateBuildScore();
     } catch (error: any) {
       console.error("Error parsing report:", error);
       toast({
@@ -293,8 +297,10 @@ export const BuildProgramOutline = () => {
         description: `Synced data from ${data.bureausSynced.join(", ")}`,
       });
 
-      // Refresh the accounts
+      // Refresh the accounts and BUILD ladder (bureau sync rewrites
+      // dnb_paydex / experian_intelliscore on the businesses row).
       await fetchBusinessAccounts();
+      invalidateBuildScore();
     } catch (error: any) {
       console.error("Error syncing bureaus:", error);
       toast({
