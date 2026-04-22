@@ -257,6 +257,17 @@ export default function CreditIntelligence() {
         </TabsList>
 
         <TabsContent value="personal" className="mt-6 space-y-6">
+          {/* Three Fundability Scores — primary placement at top of credit intelligence */}
+          <section>
+            <div className="mb-3">
+              <h2 className="text-2xl font-bold text-primary">Your Fundability Intelligence</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Three scores that reflect how lenders actually evaluate you — updated as your profile grows.
+              </p>
+            </div>
+            <ThreeFundabilityScoresPanel compactOnMobile />
+          </section>
+
           {/* Page Walkthrough */}
           <CreditIntelWalkthrough />
 
