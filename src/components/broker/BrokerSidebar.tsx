@@ -5,8 +5,6 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Users,
-  MessageSquareText,
-  Users2,
   DollarSign,
   Settings,
   Briefcase,
