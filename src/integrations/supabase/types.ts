@@ -1503,6 +1503,7 @@ export type Database = {
       communication_preferences: {
         Row: {
           created_at: string
+          email_affiliate_program: boolean
           email_coaching_reminders: boolean
           email_credit_alerts: boolean
           email_enabled: boolean
@@ -1525,6 +1526,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          email_affiliate_program?: boolean
           email_coaching_reminders?: boolean
           email_credit_alerts?: boolean
           email_enabled?: boolean
@@ -1547,6 +1549,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          email_affiliate_program?: boolean
           email_coaching_reminders?: boolean
           email_credit_alerts?: boolean
           email_enabled?: boolean
