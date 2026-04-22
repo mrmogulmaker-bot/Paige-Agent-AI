@@ -152,8 +152,11 @@ export function PMEFundingReadiness() {
   }
 
   return (
-    <Card className="border-2">
-      <CardHeader className="pb-2">
+    <div className="space-y-6">
+      <ThreeFundabilityScoresPanel />
+
+      <Card className="border-2">
+        <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Gauge className="w-5 h-5 text-primary" />
