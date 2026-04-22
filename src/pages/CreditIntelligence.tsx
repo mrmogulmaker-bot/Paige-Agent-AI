@@ -39,6 +39,64 @@ export default function CreditIntelligence() {
     supabase.auth.getSession().then(({ data: { session } }) => setCurrentUserId(session?.user?.id ?? null));
   }, []);
 
+  // Personal fundability — used to surface totalWeightedNegativeScore on the timeline
+  const fundability = useThreeFundabilityScores();
+
+  // Profile snapshot for "Last calculated" timestamp + 24h cooldown
+  const { data: lastCalc, refetch: refetchLastCalc } = useQuery({
+    queryKey: ["last-fundability-calculated"],
+    queryFn: async (): Promise<string | null> => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("last_fundability_calculated")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+      return (data as any)?.last_fundability_calculated ?? null;
+    },
+  });
+
+  const refreshScores = useMutation({
+    mutationFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      const { data, error } = await supabase.functions.invoke(
+        "recalculate-fundability-scores",
+        {
+          body: { user_id: session.user.id },
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        },
+      );
+      if (error) throw error;
+      return data as { scores: { personal: number | null; small_business: number | null; commercial: number | null } };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["three-fundability-inputs"] });
+      queryClient.invalidateQueries({ queryKey: ["last-fundability-calculated"] });
+      refetchLastCalc();
+      const s = data?.scores;
+      const parts = [
+        s?.personal != null ? `Personal: ${s.personal}` : null,
+        s?.small_business != null ? `Small Biz: ${s.small_business}` : null,
+        s?.commercial != null ? `Commercial: ${s.commercial}` : null,
+      ].filter(Boolean);
+      toast.success("Scores updated", { description: parts.join(" · ") || undefined });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Could not refresh scores");
+    },
+  });
+
+  const refreshDisabled =
+    refreshScores.isPending ||
+    (!!lastCalc && differenceInHours(new Date(), new Date(lastCalc)) < 24);
+  const refreshButtonLabel = (() => {
+    if (refreshScores.isPending) return "Refreshing…";
+    if (lastCalc && differenceInHours(new Date(), new Date(lastCalc)) < 24) return "Refreshed today";
+    return "Refresh Scores";
+  })();
+
   // Check if client has any accounts
   const { data: hasAccounts } = useQuery({
     queryKey: ["has-credit-accounts"],
