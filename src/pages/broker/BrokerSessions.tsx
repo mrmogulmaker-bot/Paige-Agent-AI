@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { MessageSquare, Plus, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useBrokerProfile } from "@/hooks/useBrokerProfile";
+import { useBrokerContext } from "@/hooks/useBrokerContext";
 
 interface SessionRow {
   id: string;
@@ -38,7 +38,7 @@ interface ClientOpt {
 }
 
 const BrokerSessions = () => {
-  const { profile } = useBrokerProfile();
+  const { activeBrokerId, permissions } = useBrokerContext();
   const navigate = useNavigate();
   const [rows, setRows] = useState<SessionRow[]>([]);
   const [clients, setClients] = useState<ClientOpt[]>([]);
@@ -48,19 +48,19 @@ const BrokerSessions = () => {
 
   useEffect(() => {
     (async () => {
-      if (!profile?.id) return;
+      if (!activeBrokerId) return;
       setLoading(true);
       const [{ data: sessions }, { data: clientList }] = await Promise.all([
         supabase
           .from("broker_paige_sessions")
           .select("id, client_relationship_id, created_at, updated_at, summary, summary_shared_at")
-          .eq("broker_id", profile.id)
+          .eq("broker_id", activeBrokerId)
           .order("updated_at", { ascending: false })
           .limit(100),
         supabase
           .from("broker_client_relationships")
           .select("id, client_first_name, client_last_name, client_email")
-          .eq("broker_id", profile.id)
+          .eq("broker_id", activeBrokerId)
           .eq("is_active", true)
           .order("client_first_name"),
       ]);
@@ -76,7 +76,7 @@ const BrokerSessions = () => {
       setClients((clientList as ClientOpt[]) || []);
       setLoading(false);
     })();
-  }, [profile?.id]);
+  }, [activeBrokerId]);
 
   const filtered = rows.filter((r) => {
     const term = search.toLowerCase();
@@ -94,36 +94,38 @@ const BrokerSessions = () => {
             Private peer-advisor strategy chats — one per client conversation.
           </p>
         </div>
-        <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
-          <DialogTrigger asChild>
-            <Button><Plus className="h-4 w-4 mr-2" />New session</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Start a Paige session</DialogTitle>
-              <DialogDescription>Pick a client to talk through.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {clients.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Add a client first.</p>
-              ) : (
-                clients.map((c) => (
-                  <button
-                    key={c.id}
-                    className="w-full text-left p-3 rounded-md border hover:bg-accent transition-colors"
-                    onClick={() => {
-                      setPickerOpen(false);
-                      navigate(`/broker/app/sessions/${c.id}`);
-                    }}
-                  >
-                    <div className="font-medium">{c.client_first_name} {c.client_last_name}</div>
-                    <div className="text-xs text-muted-foreground">{c.client_email}</div>
-                  </button>
-                ))
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+        {permissions.can_run_sessions && (
+          <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
+            <DialogTrigger asChild>
+              <Button><Plus className="h-4 w-4 mr-2" />New session</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Start a Paige session</DialogTitle>
+                <DialogDescription>Pick a client to talk through.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {clients.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Add a client first.</p>
+                ) : (
+                  clients.map((c) => (
+                    <button
+                      key={c.id}
+                      className="w-full text-left p-3 rounded-md border hover:bg-accent transition-colors"
+                      onClick={() => {
+                        setPickerOpen(false);
+                        navigate(`/broker/app/sessions/${c.id}`);
+                      }}
+                    >
+                      <div className="font-medium">{c.client_first_name} {c.client_last_name}</div>
+                      <div className="text-xs text-muted-foreground">{c.client_email}</div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card>
