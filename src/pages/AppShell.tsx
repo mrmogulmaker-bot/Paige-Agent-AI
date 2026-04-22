@@ -12,7 +12,6 @@ import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { SessionTimeoutWarning } from "@/components/auth/SessionTimeoutWarning";
 import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
-import { ThreeFundabilityScoresPanel } from "@/components/dashboard/ThreeFundabilityScoresPanel";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
 import { PushNotificationPrompt } from "@/components/notifications/PushNotificationPrompt";
 import {
@@ -142,13 +141,13 @@ const AppShell = () => {
         <AdminViewBanner />
         <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
         <PushNotificationPrompt />
-        <div className="h-screen flex flex-col bg-background">
+        <div className="h-dvh flex flex-col bg-background overflow-x-hidden">
           <AppNav user={activeUser} />
           <div className="flex-1 overflow-hidden">
             {location.pathname === "/app" ? (
               <PaigeChat user={activeUser} session={session} />
             ) : (
-              <div className="h-full overflow-y-auto p-4">
+              <div className="h-full overflow-y-auto scroll-touch p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
                 <Outlet context={{ user: activeUser, session }} />
               </div>
             )}
@@ -166,7 +165,7 @@ const AppShell = () => {
       <AdminViewBanner />
       <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
       <PushNotificationPrompt />
-      <div className="h-screen flex flex-col bg-background">
+      <div className="h-dvh flex flex-col bg-background overflow-x-hidden">
         <AppNav user={activeUser} />
         <ResizablePanelGroup direction="horizontal" className="flex-1">
           <ResizablePanel defaultSize={40} minSize={30} maxSize={60}>
@@ -193,16 +192,6 @@ const AppShell = () => {
 function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }) {
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <section>
-        <div className="mb-3">
-          <h2 className="text-2xl font-bold text-primary">Your Fundability Intelligence</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Three scores that reflect how lenders actually evaluate you — updated as your profile grows.
-          </p>
-        </div>
-        <ThreeFundabilityScoresPanel />
-      </section>
-
       {userId && <OnboardingChecklist userId={userId} />}
       <div>
         <h1 className="text-3xl font-bold text-foreground">Welcome Back</h1>

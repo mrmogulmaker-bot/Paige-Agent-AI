@@ -4,8 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Lock, HelpCircle, Loader2, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useThreeFundabilityScores } from "@/hooks/useThreeFundabilityScores";
 import type { FundabilityScoreResult, FundabilityBand } from "@/lib/fundabilityScores";
+
+const SHORT_TITLES: Record<string, string> = {
+  personal: "Personal",
+  small_business: "Small Biz (PG)",
+  commercial: "Commercial",
+};
 
 function bandColor(band: FundabilityBand | null): string {
   switch (band) {
@@ -44,7 +51,7 @@ function bandBg(band: FundabilityBand | null): string {
   }
 }
 
-function ScoreCard({ result }: { result: FundabilityScoreResult }) {
+function ScoreCard({ result, compact = false }: { result: FundabilityScoreResult; compact?: boolean }) {
   const navigate = useNavigate();
   const typeLabel =
     result.type === "personal"
@@ -52,8 +59,31 @@ function ScoreCard({ result }: { result: FundabilityScoreResult }) {
       : result.type === "small_business"
       ? "PG-required products"
       : "EIN-only products";
+  const displayTitle = compact ? SHORT_TITLES[result.type] ?? result.title : result.title;
 
   if (result.locked) {
+    if (compact) {
+      return (
+        <Card className="p-4 bg-card border-border flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+            <Lock className="w-5 h-5 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-foreground truncate">{displayTitle}</h3>
+            <p className="text-xs text-muted-foreground line-clamp-1">{result.lockedReason}</p>
+          </div>
+          {result.lockedCta && (
+            <Button
+              size="sm"
+              className="bg-gold text-primary hover:bg-gold/90 shrink-0"
+              onClick={() => navigate(result.lockedCta!.route)}
+            >
+              {result.lockedCta.label}
+            </Button>
+          )}
+        </Card>
+      );
+    }
     return (
       <Card className="p-5 bg-card border-border flex flex-col h-full">
         <div className="flex items-start justify-between mb-3">
@@ -88,7 +118,7 @@ function ScoreCard({ result }: { result: FundabilityScoreResult }) {
           {result.lockedCta && (
             <Button
               size="sm"
-              className="bg-accent text-accent-foreground hover:bg-accent/90"
+              className="bg-gold text-primary hover:bg-gold/90"
               onClick={() => navigate(result.lockedCta!.route)}
             >
               {result.lockedCta.label}
@@ -103,6 +133,27 @@ function ScoreCard({ result }: { result: FundabilityScoreResult }) {
   const score = result.score ?? 0;
   const color = bandColor(result.band);
   const bg = bandBg(result.band);
+
+  if (compact) {
+    return (
+      <Card className="p-4 bg-card border-border flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-foreground truncate">{displayTitle}</h3>
+          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden mt-2">
+            <div className={`h-full ${bg} transition-all duration-700`} style={{ width: `${score}%` }} />
+          </div>
+        </div>
+        <div className="flex flex-col items-end shrink-0">
+          <span className={`text-2xl font-bold leading-none ${color}`}>{score}</span>
+          {result.bandLabel && (
+            <span className={`text-[10px] font-semibold uppercase tracking-wide mt-1 ${color}`}>
+              {result.bandLabel}
+            </span>
+          )}
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-5 bg-card border-border flex flex-col h-full">
@@ -173,8 +224,12 @@ function ScoreCard({ result }: { result: FundabilityScoreResult }) {
   );
 }
 
-export function ThreeFundabilityScoresPanel() {
+export function ThreeFundabilityScoresPanel({
+  compactOnMobile = false,
+}: { compactOnMobile?: boolean } = {}) {
   const { personal, small_business, commercial, isLoading } = useThreeFundabilityScores();
+  const isMobile = useIsMobile();
+  const useCompact = compactOnMobile && isMobile;
 
   if (isLoading) {
     return (
@@ -192,10 +247,10 @@ export function ThreeFundabilityScoresPanel() {
           Three distinct scores — each one tells you what you can fund right now and what's blocking the next tier.
         </p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <ScoreCard result={personal} />
-        <ScoreCard result={small_business} />
-        <ScoreCard result={commercial} />
+      <div className={useCompact ? "flex flex-col gap-3" : "grid grid-cols-1 md:grid-cols-3 gap-4"}>
+        <ScoreCard result={personal} compact={useCompact} />
+        <ScoreCard result={small_business} compact={useCompact} />
+        <ScoreCard result={commercial} compact={useCompact} />
       </div>
     </div>
   );
