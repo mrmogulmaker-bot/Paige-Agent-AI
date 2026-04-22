@@ -179,7 +179,7 @@ const AcceptBrokerInvite = () => {
       } catch (_) {}
 
       // Analytics
-      void trackEvent("broker_team_member_accepted", "broker_team", {
+      void trackEvent("broker_team_member_accepted", "engagement", {
         broker_id: invite.broker_id,
         team_member_id: invite.id,
         role: invite.role,
