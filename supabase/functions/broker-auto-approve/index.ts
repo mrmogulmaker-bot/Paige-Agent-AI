@@ -174,29 +174,49 @@ Deno.serve(async (req) => {
       referralCode = generateBrokerCode(matchedUserId + '-' + i)
     }
 
-    // ── Create per-broker Stripe coupon ($10 off forever) ──────
-    let brokerCouponId: string | null = null
+    // ── Check admin auto-approve flag ──────────────────────────
+    let autoApprove = true
     try {
-      const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
-      if (stripeKey) {
-        const stripe = new Stripe(stripeKey, { apiVersion: '2025-08-27.basil' as any })
-        const coupon = await stripe.coupons.create({
-          name: `Broker client discount — ${referralCode}`,
-          amount_off: 1000,
-          currency: 'usd',
-          duration: 'forever',
-          metadata: {
-            broker_referral_code: referralCode,
-            broker_user_id: matchedUserId,
-          },
-        })
-        brokerCouponId = coupon.id
-        log('Created Stripe coupon', { id: brokerCouponId })
-      } else {
-        log('STRIPE_SECRET_KEY not set — skipping coupon creation')
+      const { data: setting } = await supabase
+        .from('admin_app_settings')
+        .select('value')
+        .eq('key', 'broker_auto_approve')
+        .maybeSingle()
+      const v = (setting as any)?.value
+      if (v && typeof v === 'object' && 'enabled' in v) {
+        autoApprove = !!v.enabled
       }
     } catch (err) {
-      log('Stripe coupon creation failed', { error: String(err) })
+      log('Failed to read auto-approve flag — defaulting to true', { error: String(err) })
+    }
+    log('Auto-approve mode', { autoApprove })
+
+    // ── Create per-broker Stripe coupon ($10 off forever) ──────
+    // Only when auto-approving — pending applications get their coupon at approve time.
+    let brokerCouponId: string | null = null
+    if (autoApprove) {
+      try {
+        const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
+        if (stripeKey) {
+          const stripe = new Stripe(stripeKey, { apiVersion: '2025-08-27.basil' as any })
+          const coupon = await stripe.coupons.create({
+            name: `Broker client discount — ${referralCode}`,
+            amount_off: 1000,
+            currency: 'usd',
+            duration: 'forever',
+            metadata: {
+              broker_referral_code: referralCode,
+              broker_user_id: matchedUserId,
+            },
+          })
+          brokerCouponId = coupon.id
+          log('Created Stripe coupon', { id: brokerCouponId })
+        } else {
+          log('STRIPE_SECRET_KEY not set — skipping coupon creation')
+        }
+      } catch (err) {
+        log('Stripe coupon creation failed', { error: String(err) })
+      }
     }
 
     // ── Insert broker profile ──────────────────────────────────
@@ -208,15 +228,15 @@ Deno.serve(async (req) => {
         broker_type: body.brokerType,
         license_number: body.licenseNumber || null,
         website: body.website || null,
-        referral_code: referralCode,
+        referral_code: autoApprove ? referralCode : null,
         broker_referral_code: body.brokerReferralCode || null,
         broker_client_discount_code: brokerCouponId,
-        status: 'approved',
-        approved_at: new Date().toISOString(),
+        status: autoApprove ? 'approved' : 'pending',
+        approved_at: autoApprove ? new Date().toISOString() : null,
         client_count_quoted: clientCountQuoted,
         use_case: body.useCase.trim(),
       } as any)
-      .select('id, referral_code, broker_client_discount_code')
+      .select('id, referral_code, broker_client_discount_code, status')
       .single()
 
     if (insertError || !broker) {
