@@ -281,8 +281,8 @@ export function AdminTicketPanel({ ticketId, adminUserId, open, onOpenChange, on
 
         {!loading && ticket && (
           <>
-            {/* Status & priority controls */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 py-3 border-b border-border">
+            {/* Status, priority, and assignment controls */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 py-3 border-b border-border">
               <div className="space-y-1">
                 <Label className="text-xs">Status</Label>
                 <Select
@@ -311,6 +311,27 @@ export function AdminTicketPanel({ ticketId, adminUserId, open, onOpenChange, on
                     <SelectItem value="normal">Normal</SelectItem>
                     <SelectItem value="high">High</SelectItem>
                     <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Assigned To</Label>
+                <Select
+                  value={ticket.assigned_to ?? "__unassigned"}
+                  onValueChange={(v) => assignTicket(v === "__unassigned" ? null : v)}
+                  disabled={busy}
+                >
+                  <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__unassigned">Unassigned</SelectItem>
+                    {assignableUsers.map((u) => {
+                      const name = u.full_name || u.email || "Team member";
+                      return (
+                        <SelectItem key={u.user_id} value={name}>
+                          {name} <span className="text-[10px] text-muted-foreground ml-1">({u.role})</span>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
