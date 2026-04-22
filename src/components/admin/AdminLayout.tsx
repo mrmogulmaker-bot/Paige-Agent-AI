@@ -116,8 +116,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     </div>
   );
 
+  // Determine the current section label for the mobile header
+  const currentSection =
+    adminNavItems.find((i) => isActive(i.href))?.label ?? "Admin";
+
   return (
-    <div className="h-screen flex bg-background">
+    <div className="h-dvh flex bg-background overflow-x-hidden">
       <div className="hidden md:block">
         <Sidebar />
       </div>
@@ -132,30 +136,44 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b border-border bg-card">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-2 px-3 md:px-6 py-3 border-b border-border bg-card">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
               onClick={() => {
                 if (window.innerWidth < 768) setMobileSidebarOpen(true);
                 else setSidebarOpen(!sidebarOpen);
               }}
-              className="p-1.5 rounded-md hover:bg-muted transition-colors"
+              className="p-1.5 rounded-md hover:bg-muted transition-colors flex-shrink-0"
+              aria-label="Toggle navigation"
             >
               <Menu className="w-5 h-5 text-muted-foreground" />
             </button>
-            <Badge variant="outline" className="text-xs font-medium capitalize border-accent/30 text-accent">
+            <span className="font-semibold text-sm text-foreground truncate md:hidden">
+              {currentSection}
+            </span>
+            <Badge
+              variant="outline"
+              className="hidden md:inline-flex text-xs font-medium capitalize border-accent/30 text-accent"
+            >
               {userRole}
             </Badge>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <NotificationBell />
-            <Button variant="ghost" size="icon" onClick={handleSignOut} disabled={isSigningOut} aria-label="Sign out">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleSignOut}
+              disabled={isSigningOut}
+              aria-label="Sign out"
+              className="hidden sm:inline-flex"
+            >
               <LogOut className="w-4 h-4" />
             </Button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
           {children}
         </div>
       </div>

@@ -196,16 +196,17 @@ export default function SupportAdmin() {
     name.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase() || "?";
 
   const TicketTable = ({ rows }: { rows: AdminTicket[] }) => (
+    <div className="overflow-x-auto -mx-3 sm:mx-0">
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>Ticket</TableHead>
-          <TableHead>Client</TableHead>
+          <TableHead className="hidden sm:table-cell">Client</TableHead>
           <TableHead className="hidden md:table-cell">Category</TableHead>
           <TableHead>Subject</TableHead>
-          <TableHead>Priority</TableHead>
+          <TableHead className="hidden sm:table-cell">Priority</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead>Assignee</TableHead>
+          <TableHead className="hidden md:table-cell">Assignee</TableHead>
           <TableHead className="hidden lg:table-cell">Created</TableHead>
           <TableHead className="hidden lg:table-cell">Updated</TableHead>
         </TableRow>
@@ -268,11 +269,13 @@ export default function SupportAdmin() {
       </div>
 
       <Tabs defaultValue="open">
-        <TabsList>
-          <TabsTrigger value="open" className="gap-2"><Inbox className="w-4 h-4" /> Open Tickets</TabsTrigger>
-          <TabsTrigger value="all" className="gap-2"><Activity className="w-4 h-4" /> All Tickets</TabsTrigger>
-          <TabsTrigger value="features" className="gap-2"><Lightbulb className="w-4 h-4" /> Feature Requests</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+          <TabsList className="w-max">
+            <TabsTrigger value="open" className="gap-2"><Inbox className="w-4 h-4" /> Open Tickets</TabsTrigger>
+            <TabsTrigger value="all" className="gap-2"><Activity className="w-4 h-4" /> All Tickets</TabsTrigger>
+            <TabsTrigger value="features" className="gap-2"><Lightbulb className="w-4 h-4" /> Feature Requests</TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* OPEN TICKETS */}
         <TabsContent value="open" className="space-y-4 pt-4">
