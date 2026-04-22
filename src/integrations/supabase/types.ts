@@ -240,6 +240,57 @@ export type Database = {
           },
         ]
       }
+      analytics_events: {
+        Row: {
+          created_at: string
+          device_type: string | null
+          event_category: string
+          event_name: string
+          id: string
+          page_path: string | null
+          properties: Json
+          referral_code: string | null
+          referrer: string | null
+          session_id: string | null
+          user_id: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          created_at?: string
+          device_type?: string | null
+          event_category: string
+          event_name: string
+          id?: string
+          page_path?: string | null
+          properties?: Json
+          referral_code?: string | null
+          referrer?: string | null
+          session_id?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          created_at?: string
+          device_type?: string | null
+          event_category?: string
+          event_name?: string
+          id?: string
+          page_path?: string | null
+          properties?: Json
+          referral_code?: string | null
+          referrer?: string | null
+          session_id?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: []
+      }
       api_rate_limits: {
         Row: {
           created_at: string
@@ -6710,6 +6761,29 @@ export type Database = {
       }
     }
     Views: {
+      analytics_daily_summary: {
+        Row: {
+          active_users: number | null
+          churned_mrr: number | null
+          credit_uploads: number | null
+          date: string | null
+          funding_applications: number | null
+          new_mrr: number | null
+          new_signups: number | null
+          paige_sessions: number | null
+          voice_sessions: number | null
+        }
+        Relationships: []
+      }
+      analytics_feature_usage: {
+        Row: {
+          date: string | null
+          feature_name: string | null
+          unique_users: number | null
+          usage_count: number | null
+        }
+        Relationships: []
+      }
       v_affiliate_stats: {
         Row: {
           active: boolean | null
@@ -6787,6 +6861,41 @@ export type Database = {
       factory_reset_delete_dispute_related: {
         Args: { _user_id: string }
         Returns: undefined
+      }
+      get_analytics_daily_summary: {
+        Args: { _end?: string; _start?: string }
+        Returns: {
+          active_users: number | null
+          churned_mrr: number | null
+          credit_uploads: number | null
+          date: string | null
+          funding_applications: number | null
+          new_mrr: number | null
+          new_signups: number | null
+          paige_sessions: number | null
+          voice_sessions: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "analytics_daily_summary"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      get_analytics_feature_usage: {
+        Args: { _end?: string; _start?: string }
+        Returns: {
+          date: string | null
+          feature_name: string | null
+          unique_users: number | null
+          usage_count: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "analytics_feature_usage"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       get_business_hierarchy: {
         Args: { _user_id: string }
@@ -6936,6 +7045,7 @@ export type Database = {
           read_ct: number
         }[]
       }
+      refresh_analytics_views: { Args: never; Returns: undefined }
       reject_affiliate_application: {
         Args: { _application_id: string; _notes?: string }
         Returns: Json
