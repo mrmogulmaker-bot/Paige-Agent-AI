@@ -7038,6 +7038,10 @@ export type Database = {
         Args: { _token: string; _user_id: string }
         Returns: Json
       }
+      admin_set_user_business_limit: {
+        Args: { _max_businesses: number; _target_user_id: string }
+        Returns: Json
+      }
       approve_affiliate_application: {
         Args: { _application_id: string; _notes?: string; _tier_key?: string }
         Returns: Json
