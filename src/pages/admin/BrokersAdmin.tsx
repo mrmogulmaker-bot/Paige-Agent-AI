@@ -837,4 +837,180 @@ const MiniStat = ({ label, value, sub }: { label: string; value: string; sub?: s
   </div>
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Edit Broker Profile Dialog — admin-only override of broker business details
+// ─────────────────────────────────────────────────────────────────────────────
+const EditBrokerProfileDialog = ({
+  broker, onClose, onSaved,
+}: {
+  broker: BrokerRow;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) => {
+  const [businessName, setBusinessName] = useState(broker.business_name || "");
+  const [brokerType, setBrokerType] = useState(broker.broker_type || "");
+  const [specializations, setSpecializations] = useState<string[]>(
+    Array.isArray(broker.specializations) ? broker.specializations : [],
+  );
+  const [website, setWebsite] = useState(broker.website || "");
+  const [bio, setBio] = useState(broker.bio || "");
+  const [firmDescription, setFirmDescription] = useState(broker.firm_description || "");
+  const [paigeNotes, setPaigeNotes] = useState(broker.paige_context_notes || "");
+  const [busy, setBusy] = useState(false);
+
+  const toggleSpec = (key: string, checked: boolean) => {
+    setSpecializations((prev) =>
+      checked ? [...new Set([...prev, key])] : prev.filter((s) => s !== key),
+    );
+  };
+
+  const onSave = async () => {
+    if (!businessName.trim()) {
+      toast.error("Business name is required.");
+      return;
+    }
+    if (!brokerType) {
+      toast.error("Broker type is required.");
+      return;
+    }
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke("broker-admin-action", {
+      body: {
+        action: "update_profile",
+        brokerId: broker.id,
+        updates: {
+          business_name: businessName.trim(),
+          broker_type: brokerType,
+          specializations,
+          website: website.trim() || null,
+          bio: bio.trim() || null,
+          firm_description: firmDescription.trim() || null,
+          paige_context_notes: paigeNotes.trim() || null,
+        },
+      },
+    });
+    setBusy(false);
+    if (error || data?.error) {
+      toast.error(error?.message || data?.error || "Update failed");
+      return;
+    }
+    toast.success("Broker profile updated.");
+    await onSaved();
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit broker profile</DialogTitle>
+          <DialogDescription>
+            Override broker business details. Changes apply immediately and are visible to the broker.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="edit-biz">Business name *</Label>
+              <Input
+                id="edit-biz"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-type">Broker type *</Label>
+              <Select value={brokerType} onValueChange={setBrokerType}>
+                <SelectTrigger id="edit-type"><SelectValue placeholder="Select type" /></SelectTrigger>
+                <SelectContent>
+                  {BROKER_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div>
+            <Label className="mb-2 block">Specializations</Label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 rounded-md border p-3">
+              {SPECIALIZATION_OPTIONS.map((key) => {
+                const checked = specializations.includes(key);
+                return (
+                  <label
+                    key={key}
+                    htmlFor={`spec-${key}`}
+                    className="flex items-center gap-2 text-sm cursor-pointer capitalize"
+                  >
+                    <Checkbox
+                      id={`spec-${key}`}
+                      checked={checked}
+                      onCheckedChange={(v) => toggleSpec(key, v === true)}
+                    />
+                    {key.replace(/_/g, " ")}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="edit-web">Website</Label>
+            <Input
+              id="edit-web"
+              type="url"
+              placeholder="https://example.com"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="edit-bio">Bio</Label>
+            <Textarea
+              id="edit-bio"
+              rows={3}
+              placeholder="Short bio shown to clients."
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="edit-firm">Firm description</Label>
+            <Textarea
+              id="edit-firm"
+              rows={3}
+              placeholder="Description of the broker's firm and services."
+              value={firmDescription}
+              onChange={(e) => setFirmDescription(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="edit-paige">Paige context notes</Label>
+            <Textarea
+              id="edit-paige"
+              rows={3}
+              placeholder="Internal context Paige uses when coaching this broker's clients."
+              value={paigeNotes}
+              onChange={(e) => setPaigeNotes(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Private to Paige's coaching context. Not shown to clients.
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={onSave} disabled={busy}>
+            {busy ? "Saving..." : "Save changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 export default BrokersAdmin;
