@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye, LogOut, Sparkles, Briefcase } from "lucide-react";
+import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye, LogOut, Sparkles, Briefcase, Layers } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
 import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
@@ -87,6 +87,56 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<string>("user");
   const [inviteSending, setInviteSending] = useState(false);
+
+  // Business-limit override dialog state
+  const [limitTarget, setLimitTarget] = useState<{ id: string; name: string } | null>(null);
+  const [limitValue, setLimitValue] = useState<string>("999");
+  const [limitCurrent, setLimitCurrent] = useState<number | null>(null);
+  const [limitSaving, setLimitSaving] = useState(false);
+
+  const openLimitDialog = async (client: AuthClient) => {
+    setLimitTarget({ id: client.user_id, name: client.full_name || "this user" });
+    setLimitValue("999");
+    setLimitCurrent(null);
+    try {
+      const { data } = await supabase
+        .from("user_business_limits" as any)
+        .select("max_businesses")
+        .eq("user_id", client.user_id)
+        .maybeSingle();
+      const current = (data as any)?.max_businesses ?? null;
+      setLimitCurrent(current);
+      if (current != null) setLimitValue(String(current));
+    } catch {
+      // ignore — fall back to default 999
+    }
+  };
+
+  const saveBusinessLimit = async () => {
+    if (!limitTarget) return;
+    const parsed = parseInt(limitValue, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      toast.error("Enter a number 1 or higher");
+      return;
+    }
+    setLimitSaving(true);
+    try {
+      const { data, error } = await supabase.rpc("admin_set_user_business_limit" as any, {
+        _target_user_id: limitTarget.id,
+        _max_businesses: parsed,
+      });
+      if (error) throw error;
+      const result = data as any;
+      if (result?.success === false) throw new Error(result?.message || "Failed to update limit");
+      toast.success(`Set ${limitTarget.name} to ${parsed} business${parsed === 1 ? "" : "es"}`);
+      setLimitTarget(null);
+    } catch (err: any) {
+      console.error("Error setting business limit:", err);
+      toast.error(err?.message || "Failed to update limit");
+    } finally {
+      setLimitSaving(false);
+    }
+  };
 
   useEffect(() => {
     fetchAllClients();
