@@ -141,13 +141,13 @@ const AppShell = () => {
         <AdminViewBanner />
         <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
         <PushNotificationPrompt />
-        <div className="h-screen flex flex-col bg-background">
+        <div className="h-dvh flex flex-col bg-background overflow-x-hidden">
           <AppNav user={activeUser} />
           <div className="flex-1 overflow-hidden">
             {location.pathname === "/app" ? (
               <PaigeChat user={activeUser} session={session} />
             ) : (
-              <div className="h-full overflow-y-auto p-4">
+              <div className="h-full overflow-y-auto scroll-touch p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
                 <Outlet context={{ user: activeUser, session }} />
               </div>
             )}
