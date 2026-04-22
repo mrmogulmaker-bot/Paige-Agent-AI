@@ -537,6 +537,10 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                             <Briefcase className="w-4 h-4 mr-2" />
                             {c.has_broker_access ? "Revoke Broker Access" : "Grant Broker Access"}
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openLimitDialog(c)}>
+                            <Layers className="w-4 h-4 mr-2" />
+                            Set Business Limit
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => setForceSignOutTarget({ id: c.user_id, name: c.full_name || "this user" })}
                           >
@@ -837,6 +841,53 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       <AddInternalClientDialog open={addInternalOpen} onOpenChange={setAddInternalOpen} onClientAdded={fetchAllClients} />
       <AddClientDialog open={addLegacyOpen} onOpenChange={setAddLegacyOpen} onClientAdded={fetchAllClients} />
       <QuickUploadReportModal open={quickUploadOpen} onOpenChange={setQuickUploadOpen} />
+
+      {/* Set Business Limit Dialog */}
+      <Dialog open={!!limitTarget} onOpenChange={(open) => !open && !limitSaving && setLimitTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Set Business Limit</DialogTitle>
+            <DialogDescription>
+              Override the maximum number of businesses <strong>{limitTarget?.name}</strong> can add. Use 999 for unlimited (admins, team, comp accounts).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="limit-value">Max businesses</Label>
+              <Input
+                id="limit-value"
+                type="number"
+                min={1}
+                value={limitValue}
+                onChange={(e) => setLimitValue(e.target.value)}
+              />
+              {limitCurrent != null && (
+                <p className="text-xs text-muted-foreground">Current limit: {limitCurrent}</p>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[1, 3, 10, 999].map((preset) => (
+                <Button
+                  key={preset}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setLimitValue(String(preset))}
+                >
+                  {preset === 999 ? "Unlimited (999)" : preset}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLimitTarget(null)} disabled={limitSaving}>Cancel</Button>
+            <Button onClick={saveBusinessLimit} disabled={limitSaving}>
+              {limitSaving ? "Saving..." : "Save Limit"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Send Invite Dialog */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
