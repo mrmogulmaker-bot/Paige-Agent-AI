@@ -95,6 +95,19 @@ serve(async (req) => {
       data: { realm_id: realmId, company_name: companyName, environment },
     });
 
+    // Analytics: quickbooks_connected (activation milestone)
+    try {
+      await supabase.from("analytics_events").insert({
+        user_id: userId,
+        event_name: "quickbooks_connected",
+        event_category: "activation",
+        properties: { environment, has_company_name: !!companyName },
+        page_path: "edge:quickbooks-oauth-callback",
+      });
+    } catch (e) {
+      console.warn("[qb-callback] analytics insert failed:", (e as Error)?.message);
+    }
+
     // Trigger initial sync (fire-and-forget)
     try {
       await supabase.functions.invoke("quickbooks-sync-financials", {

@@ -26,6 +26,7 @@ import {
   type BrokerType,
   type BrokerApprovalResult,
 } from "@/lib/brokers/applications";
+import { trackEvent } from "@/hooks/useAnalytics";
 
 const BROKER_TYPES: { value: BrokerType; label: string }[] = [
   { value: "credit_coach", label: "Credit Coach" },
@@ -86,6 +87,11 @@ export default function BrokerApply() {
         brokerType: form.brokerType as BrokerType,
       });
       setResult(res);
+      void trackEvent("broker_application_submit", "acquisition", {
+        broker_type: form.brokerType,
+        client_count: form.currentClientCount,
+        had_referral_code: !!form.brokerReferralCode,
+      });
       toast.success("You're approved! Check your email for next steps.");
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {

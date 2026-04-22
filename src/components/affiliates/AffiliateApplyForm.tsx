@@ -19,6 +19,7 @@ import {
   type RequestedTierKey,
 } from "@/lib/affiliates/applications";
 import { CheckCircle2, Loader2 } from "lucide-react";
+import { trackEvent } from "@/hooks/useAnalytics";
 
 interface Props {
   /** If the applicant is signed in, pass their auth user id so admin can match later. */
@@ -123,6 +124,10 @@ export default function AffiliateApplyForm({
       const instant = showTierAndPersona && tierKey === "external";
       setAutoApproved(instant);
       setDone(true);
+      void trackEvent("affiliate_application_submit", "acquisition", {
+        tier: tierKey,
+        instant_approved: instant,
+      });
       toast({
         title: instant ? "You're approved!" : "Application submitted",
         description: instant

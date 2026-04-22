@@ -9,6 +9,7 @@ import { Target, Clock, DollarSign, Settings2, CheckCircle2 } from "lucide-react
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { trackEvent } from "@/hooks/useAnalytics";
 
 export interface FundingGoals {
   objective: string;
@@ -72,6 +73,12 @@ export function FundingGoalIntake({ open, onOpenChange, existingGoals, onSaved }
         .eq("user_id", user.id);
 
       if (error) throw error;
+
+      void trackEvent("goal_set", "activation", {
+        goal_type: objective,
+        target_amount: targetAmount,
+        timeline,
+      });
 
       queryClient.invalidateQueries({ queryKey: ["funding-profile-complete"] });
       toast.success("Funding goals saved");

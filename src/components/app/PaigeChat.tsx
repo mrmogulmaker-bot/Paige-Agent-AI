@@ -28,6 +28,7 @@ import { extractFromMessage } from "@/lib/conversationalExtractor";
 import { fieldToWriteBackUpdate } from "@/lib/extractionProposal";
 import { useProfileSnapshot } from "@/hooks/useProfileSnapshot";
 import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
+import { trackEvent } from "@/hooks/useAnalytics";
 
 type Message = {
   role: "user" | "assistant";
@@ -422,6 +423,8 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         authToken: freshSession?.access_token,
         logLabel: "[PaigeChat]",
       });
+      (window as unknown as { __paigeVoiceStart?: number }).__paigeVoiceStart = Date.now();
+      void trackEvent("voice_session_start", "engagement", { page: currentPageRef.current });
       console.log("[PaigeChat] startSession resolved", voiceSession);
     } catch (err: any) {
       console.error("[PaigeChat] Voice start failed:", err);
@@ -436,8 +439,11 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   };
 
   const stopVoiceChat = async () => {
+    const startedAt = (window as unknown as { __paigeVoiceStart?: number }).__paigeVoiceStart;
+    const durationSeconds = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0;
     try { await conversation.endSession(); } catch (e) { console.warn("Error ending session", e); }
     setVoiceModalOpen(false);
+    void trackEvent("voice_session_end", "engagement", { duration_seconds: durationSeconds });
   };
 
   const toggleVoiceMute = useCallback(async () => {
@@ -562,9 +568,19 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       content: messageText.trim() || (attachedDoc ? `Analyze this document: ${attachedDoc.name}` : ""),
       documentFileName: attachedDoc?.name,
     };
+    const isFirstUserMessage = messages.every((m) => m.role !== "user");
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput("");
+
+    if (isFirstUserMessage) {
+      void trackEvent("paige_session_start", "engagement", { page: currentPageRef.current });
+      void trackEvent("first_paige_message", "activation", { page: currentPageRef.current });
+    }
+    void trackEvent("paige_message_sent", "engagement", {
+      has_attachment: !!attachedDoc,
+      page: currentPageRef.current,
+    });
 
     // Blur input on mobile to dismiss keyboard after sending
     if (isMobile && inputRef.current) {

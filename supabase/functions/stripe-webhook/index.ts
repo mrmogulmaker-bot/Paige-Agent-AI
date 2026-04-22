@@ -252,6 +252,24 @@ serve(async (req) => {
             logStep("Subscription created/updated successfully");
           }
 
+          // Analytics: subscription_started
+          try {
+            await supabaseAdmin.from("analytics_events").insert({
+              user_id: user.id,
+              event_name: "subscription_started",
+              event_category: "revenue",
+              properties: {
+                tier: productId,
+                amount_cents: session.amount_total || 0,
+                currency: session.currency || "usd",
+                stripe_subscription_id: subscriptionId,
+              },
+              page_path: "edge:stripe-webhook",
+            });
+          } catch (e) {
+            logStep("analytics subscription_started insert failed", { error: String(e) });
+          }
+
           // Attribute referral conversion (initial subscription payment)
           try {
             const amountCents = session.amount_total || 0;
@@ -303,6 +321,7 @@ serve(async (req) => {
             logStep("Payment confirmation email sent");
           } catch (emailError) {
             logStep("Error sending payment confirmation email", { error: emailError });
+          }
           // Broker→broker referral: if the new subscriber is a broker who signed up
           // via another broker's BROK code, write a 20%/12-month commission row.
           try {
@@ -322,6 +341,34 @@ serve(async (req) => {
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
         logStep("Processing customer.subscription.updated", { subscriptionId: subscription.id });
+
+        // Detect tier change for `subscription_upgraded` event.
+        let fromTier: string | null = null;
+        try {
+          const { data: existing } = await supabaseAdmin
+            .from("user_subscriptions")
+            .select("plan_slug, user_id")
+            .eq("stripe_subscription_id", subscription.id)
+            .maybeSingle();
+          fromTier = existing?.plan_slug ?? null;
+          const toTier = (subscription.items.data[0]?.price.product as string) ?? null;
+
+          if (fromTier && toTier && fromTier !== toTier && existing?.user_id) {
+            await supabaseAdmin.from("analytics_events").insert({
+              user_id: existing.user_id,
+              event_name: "subscription_upgraded",
+              event_category: "revenue",
+              properties: {
+                from_tier: fromTier,
+                to_tier: toTier,
+                stripe_subscription_id: subscription.id,
+              },
+              page_path: "edge:stripe-webhook",
+            });
+          }
+        } catch (e) {
+          logStep("analytics subscription_upgraded insert failed", { error: String(e) });
+        }
 
         const { error } = await supabaseAdmin
           .from("user_subscriptions")
@@ -344,6 +391,30 @@ serve(async (req) => {
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
         logStep("Processing customer.subscription.deleted", { subscriptionId: subscription.id });
+
+        // Lookup user + tier before mutating, so we can fire analytics with context.
+        try {
+          const { data: existing } = await supabaseAdmin
+            .from("user_subscriptions")
+            .select("plan_slug, user_id")
+            .eq("stripe_subscription_id", subscription.id)
+            .maybeSingle();
+          if (existing?.user_id) {
+            await supabaseAdmin.from("analytics_events").insert({
+              user_id: existing.user_id,
+              event_name: "subscription_cancelled",
+              event_category: "revenue",
+              properties: {
+                tier: existing.plan_slug,
+                stripe_subscription_id: subscription.id,
+                cancellation_reason: (subscription as unknown as { cancellation_details?: { reason?: string } }).cancellation_details?.reason ?? null,
+              },
+              page_path: "edge:stripe-webhook",
+            });
+          }
+        } catch (e) {
+          logStep("analytics subscription_cancelled insert failed", { error: String(e) });
+        }
 
         const { error } = await supabaseAdmin
           .from("user_subscriptions")

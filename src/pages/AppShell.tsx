@@ -19,6 +19,32 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from "@/components/ui/resizable";
+import { trackEvent } from "@/hooks/useAnalytics";
+
+// Map /app sub-routes to canonical feature names emitted as `feature_visit`.
+function routeToFeatureName(pathname: string): string | null {
+  if (!pathname.startsWith("/app")) return null;
+  const seg = pathname.replace(/^\/app\/?/, "").split("/")[0] || "dashboard";
+  const map: Record<string, string> = {
+    "": "dashboard",
+    dashboard: "dashboard",
+    credit: "credit",
+    "credit-intelligence": "credit",
+    funding: "funding",
+    "funding-matches": "funding",
+    "funding-journey": "funding_journey",
+    business: "business",
+    "business-profile": "business",
+    learn: "learn",
+    courses: "learn",
+    disputes: "disputes",
+    broker: "broker",
+    "broker-workspace": "broker",
+    voice: "voice",
+    settings: "settings",
+  };
+  return map[seg] ?? seg;
+}
 
 const DEV_MODE = false; // Require authentication
 
@@ -58,6 +84,14 @@ const AppShell = () => {
         }
       });
   }, [user?.id]);
+
+  // Fire feature_visit on every /app/* route change.
+  useEffect(() => {
+    const feature = routeToFeatureName(location.pathname);
+    if (feature) {
+      void trackEvent("feature_visit", "engagement", { feature, path: location.pathname });
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     if (DEV_MODE) return;
