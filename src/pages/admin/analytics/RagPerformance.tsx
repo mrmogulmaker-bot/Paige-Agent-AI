@@ -205,7 +205,7 @@ export function RagPerformance({ start, end }: Props) {
             <CardTitle className="flex items-center gap-2">
               Flagged for review
               {flagged.length > 0 && (
-                <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30">
+                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
                   {flagged.length}
                 </Badge>
               )}
