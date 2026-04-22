@@ -4,8 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Lock, HelpCircle, Loader2, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useThreeFundabilityScores } from "@/hooks/useThreeFundabilityScores";
 import type { FundabilityScoreResult, FundabilityBand } from "@/lib/fundabilityScores";
+
+const SHORT_TITLES: Record<string, string> = {
+  personal: "Personal",
+  small_business: "Small Biz (PG)",
+  commercial: "Commercial",
+};
 
 function bandColor(band: FundabilityBand | null): string {
   switch (band) {
