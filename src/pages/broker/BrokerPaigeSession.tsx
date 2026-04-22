@@ -87,7 +87,16 @@ const FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/broker-paige-c
 const BrokerPaigeSession = () => {
   const { relationshipId } = useParams<{ relationshipId: string }>();
   const navigate = useNavigate();
-  const { profile } = useBrokerProfile();
+  const { activeBrokerId, isTeamMember, teamMemberRole, permissions, parentBrokerProfile } =
+    useBrokerContext();
+  // Synthesize a `profile` object compatible with prior code shape (id + business_name + referral_code).
+  const profile = activeBrokerId
+    ? {
+        id: activeBrokerId,
+        business_name: parentBrokerProfile?.business_name || "",
+        referral_code: parentBrokerProfile?.referral_code || "",
+      }
+    : null;
   const { toast } = useToast();
 
   const [rel, setRel] = useState<RelationshipRow | null>(null);
