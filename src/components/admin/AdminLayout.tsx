@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
-  Gavel, TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2,
+  Gavel, TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
 } from "lucide-react";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
@@ -23,6 +23,7 @@ const adminNavItems = [
   { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
   { label: "Brokers", href: "/admin/brokers", icon: Briefcase },
+  { label: "Support", href: "/admin/support", icon: LifeBuoy },
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];

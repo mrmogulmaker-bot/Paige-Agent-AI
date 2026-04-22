@@ -50,6 +50,7 @@ const AILearningOverview = lazy(() => import("@/components/admin/AILearningOverv
 const CommunicationsAdmin = lazy(() => import("@/pages/admin/CommunicationsAdmin"));
 const BrokersAdmin = lazy(() => import("@/pages/admin/BrokersAdmin"));
 const AnalyticsDashboard = lazy(() => import("@/pages/admin/AnalyticsDashboard"));
+const SupportAdmin = lazy(() => import("@/pages/admin/SupportAdmin"));
 
 const SuspenseFallback = () => (
   <div className="flex items-center justify-center py-12">
@@ -217,6 +218,11 @@ const Admin = () => {
         <Route path="brokers" element={
           <Suspense fallback={<SuspenseFallback />}>
             {userRole === "admin" ? <BrokersAdmin /> : <div className="p-6 text-muted-foreground">Admin only.</div>}
+          </Suspense>
+        } />
+        <Route path="support" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <SupportAdmin />
           </Suspense>
         } />
         <Route path="settings" element={
