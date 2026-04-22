@@ -1,6 +1,7 @@
 import * as React from 'npm:react@18.3.1'
 import {
   Body,
+  Button,
   Container,
   Head,
   Heading,
@@ -12,55 +13,119 @@ import {
 import type { TemplateEntry } from './registry.ts'
 
 const SITE_NAME = 'PaigeAgent.ai'
+const SUPPORT_EMAIL = 'support@paigeagent.ai'
 
 interface BrokerApplicationReceivedProps {
   firstName?: string
   businessName?: string
+  /** When true, renders the decline-notification variant. */
+  declineNotice?: boolean
+  /** Optional decline reason — only surfaced if provided. */
+  declineReason?: string
 }
 
 const BrokerApplicationReceivedEmail = ({
   firstName,
   businessName,
-}: BrokerApplicationReceivedProps) => (
-  <Html lang="en" dir="ltr">
-    <Head />
-    <Preview>Your {SITE_NAME} Broker application is in</Preview>
-    <Body style={main}>
-      <Container style={container}>
-        <Heading style={brand}>{SITE_NAME}</Heading>
-        <Heading style={h1}>
-          {firstName ? `Welcome, ${firstName}.` : 'Your Broker application is in.'}
-        </Heading>
-        <Text style={text}>
-          Thanks for applying to the PaigeAgent Broker Program
-          {businessName ? ` on behalf of ${businessName}` : ''}. Your application
-          is being processed automatically — most brokers are approved instantly
-          and will receive a follow-up welcome email with their referral code,
-          client discount link, and dashboard access within the next minute.
-        </Text>
+  declineNotice,
+  declineReason,
+}: BrokerApplicationReceivedProps) => {
+  if (declineNotice) {
+    return (
+      <Html lang="en" dir="ltr">
+        <Head />
+        <Preview>Update on your {SITE_NAME} Broker application</Preview>
+        <Body style={main}>
+          <Container style={container}>
+            <Heading style={brand}>{SITE_NAME}</Heading>
+            <Heading style={h1}>
+              {firstName ? `Hi ${firstName},` : 'Update on your application'}
+            </Heading>
+            <Text style={text}>
+              Thank you for applying to the PaigeAgent Broker Program
+              {businessName ? ` on behalf of ${businessName}` : ''}. After
+              reviewing your application, we are not able to approve your
+              broker workspace at this time.
+            </Text>
 
-        <Section style={card}>
-          <Text style={cardLabel}>What happens next</Text>
-          <Text style={cardItem}>1. You'll receive an approval email with your unique broker code.</Text>
-          <Text style={cardItem}>2. Activate your $197/mo Broker Workspace from the dashboard.</Text>
-          <Text style={cardItem}>3. Start inviting clients — they sign up at your $17/mo broker rate.</Text>
-        </Section>
+            {declineReason ? (
+              <Section style={card}>
+                <Text style={cardLabel}>Reviewer note</Text>
+                <Text style={cardItem}>{declineReason}</Text>
+              </Section>
+            ) : null}
 
-        <Text style={text}>
-          Questions? Reply to this email or contact{' '}
-          <a href="mailto:partners@paigeagent.ai" style={link}>partners@paigeagent.ai</a>.
-        </Text>
+            <Text style={text}>
+              This is not the end of the road. You're welcome to reapply in
+              <strong> 90 days</strong>, especially after building more
+              client volume, completing additional credentials, or expanding
+              your services. If you believe this was a mistake or want to
+              discuss your application, please reach out to our team.
+            </Text>
 
-        <Text style={footer}>— The {SITE_NAME} Partnerships Team</Text>
-      </Container>
-    </Body>
-  </Html>
-)
+            <Section style={ctaWrap}>
+              <Button href={`mailto:${SUPPORT_EMAIL}`} style={ctaButton}>
+                Contact Support
+              </Button>
+            </Section>
+
+            <Text style={text}>
+              You can still use PaigeAgent as a standard client to build
+              your own credit, funding, and business profile. Your account
+              remains active.
+            </Text>
+
+            <Text style={footer}>— The {SITE_NAME} Partnerships Team</Text>
+          </Container>
+        </Body>
+      </Html>
+    )
+  }
+
+  return (
+    <Html lang="en" dir="ltr">
+      <Head />
+      <Preview>Your {SITE_NAME} Broker application is in</Preview>
+      <Body style={main}>
+        <Container style={container}>
+          <Heading style={brand}>{SITE_NAME}</Heading>
+          <Heading style={h1}>
+            {firstName ? `Welcome, ${firstName}.` : 'Your Broker application is in.'}
+          </Heading>
+          <Text style={text}>
+            Thanks for applying to the PaigeAgent Broker Program
+            {businessName ? ` on behalf of ${businessName}` : ''}. Your application
+            is being processed automatically — most brokers are approved instantly
+            and will receive a follow-up welcome email with their referral code,
+            client discount link, and dashboard access within the next minute.
+          </Text>
+
+          <Section style={card}>
+            <Text style={cardLabel}>What happens next</Text>
+            <Text style={cardItem}>1. You'll receive an approval email with your unique broker code.</Text>
+            <Text style={cardItem}>2. Activate your $197/mo Broker Workspace from the dashboard.</Text>
+            <Text style={cardItem}>3. Start inviting clients — they sign up at your $17/mo broker rate.</Text>
+          </Section>
+
+          <Text style={text}>
+            Questions? Reply to this email or contact{' '}
+            <a href={`mailto:${SUPPORT_EMAIL}`} style={link}>{SUPPORT_EMAIL}</a>.
+          </Text>
+
+          <Text style={footer}>— The {SITE_NAME} Partnerships Team</Text>
+        </Container>
+      </Body>
+    </Html>
+  )
+}
 
 export const template = {
   component: BrokerApplicationReceivedEmail,
-  subject: 'Your PaigeAgent Broker Application is Received',
-  displayName: 'Broker — Application received',
+  subject: (data: Record<string, any> = {}) =>
+    data.declineNotice
+      ? 'Update on Your PaigeAgent Broker Application'
+      : 'Your PaigeAgent Broker Application is Received',
+  displayName: 'Broker — Application received / declined',
   previewData: { firstName: 'Jordan', businessName: 'Apex Credit Advisors' },
 } satisfies TemplateEntry
 
@@ -113,6 +178,21 @@ const cardItem: React.CSSProperties = {
   margin: '4px 0',
 }
 const link: React.CSSProperties = { color: '#0B1B2B', textDecoration: 'underline' }
+const ctaWrap: React.CSSProperties = {
+  textAlign: 'center',
+  margin: '8px 0 22px',
+}
+const ctaButton: React.CSSProperties = {
+  background: '#CFAE70',
+  color: '#0B1B2B',
+  fontSize: '14px',
+  fontWeight: 700,
+  letterSpacing: '0.04em',
+  textDecoration: 'none',
+  padding: '12px 22px',
+  borderRadius: '6px',
+  display: 'inline-block',
+}
 const footer: React.CSSProperties = {
   fontSize: '12px',
   color: '#888888',

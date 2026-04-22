@@ -61,7 +61,8 @@ interface BaseBody {
     | "decline"
     | "grant_access"
     | "suspend"
-    | "reinstate";
+    | "reinstate"
+    | "update_profile";
   brokerId?: string;
   // Decline options
   reason?: string;
@@ -72,6 +73,16 @@ interface BaseBody {
   brokerType?: string;
   firstName?: string;
   lastName?: string;
+  // Update profile options
+  updates?: {
+    business_name?: string;
+    broker_type?: string;
+    specializations?: string[];
+    website?: string | null;
+    bio?: string | null;
+    firm_description?: string | null;
+    paige_context_notes?: string | null;
+  };
 }
 
 function json(body: unknown, status = 200) {
@@ -430,6 +441,69 @@ Deno.serve(async (req) => {
         emailSent,
         userName: matchedUserName,
       });
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // UPDATE PROFILE — admin edits broker business details
+    // ─────────────────────────────────────────────────────────────
+    if (body.action === "update_profile") {
+      if (!body.brokerId) return json({ error: "brokerId required" }, 400);
+      if (!body.updates || typeof body.updates !== "object") {
+        return json({ error: "updates object required" }, 400);
+      }
+
+      const allowed: Record<string, any> = {};
+      const u = body.updates;
+
+      if (typeof u.business_name === "string") {
+        const v = u.business_name.trim();
+        if (!v) return json({ error: "business_name cannot be empty" }, 400);
+        allowed.business_name = v;
+      }
+      if (typeof u.broker_type === "string") {
+        if (!VALID_TYPES.has(u.broker_type)) {
+          return json({ error: "Invalid broker_type" }, 400);
+        }
+        allowed.broker_type = u.broker_type;
+      }
+      if (Array.isArray(u.specializations)) {
+        allowed.specializations = u.specializations
+          .filter((s) => typeof s === "string")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      if (u.website !== undefined) {
+        allowed.website = typeof u.website === "string" && u.website.trim()
+          ? u.website.trim()
+          : null;
+      }
+      if (u.bio !== undefined) {
+        allowed.bio = typeof u.bio === "string" && u.bio.trim() ? u.bio.trim() : null;
+      }
+      if (u.firm_description !== undefined) {
+        allowed.firm_description = typeof u.firm_description === "string" && u.firm_description.trim()
+          ? u.firm_description.trim()
+          : null;
+      }
+      if (u.paige_context_notes !== undefined) {
+        allowed.paige_context_notes = typeof u.paige_context_notes === "string" && u.paige_context_notes.trim()
+          ? u.paige_context_notes.trim()
+          : null;
+      }
+
+      if (Object.keys(allowed).length === 0) {
+        return json({ error: "No valid fields to update" }, 400);
+      }
+
+      allowed.updated_at = new Date().toISOString();
+
+      const { error: updErr } = await admin
+        .from("broker_profiles")
+        .update(allowed)
+        .eq("id", body.brokerId);
+      if (updErr) return json({ error: updErr.message }, 500);
+
+      return json({ success: true, updated: Object.keys(allowed).filter((k) => k !== "updated_at") });
     }
 
     // ─────────────────────────────────────────────────────────────
