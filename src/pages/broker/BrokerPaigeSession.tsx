@@ -18,7 +18,7 @@ import {
   Info,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useBrokerProfile } from "@/hooks/useBrokerProfile";
+import { useBrokerContext } from "@/hooks/useBrokerContext";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
