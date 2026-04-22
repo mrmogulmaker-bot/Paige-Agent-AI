@@ -89,6 +89,7 @@ async function sendAffiliateConversionEmail(
         monthToDate: fmt(mtdCents),
       },
     },
+  });
 }
 
 // When a broker signs up via another broker's BROK referral code we write a

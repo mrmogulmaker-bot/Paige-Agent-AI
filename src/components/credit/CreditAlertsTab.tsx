@@ -6,6 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCreditAlerts, CreditAlert } from "@/hooks/useCreditAlerts";
 import { formatDistanceToNow, format } from "date-fns";
 import { Check, X, Bell, AlertTriangle, Info, Shield, CheckCircle } from "lucide-react";
+import { trackEvent } from "@/hooks/useAnalytics";
 
 interface CreditAlertsTabProps {
   clientId?: string | null;
@@ -77,7 +78,17 @@ export function CreditAlertsTab({ clientId }: CreditAlertsTabProps) {
             const Icon = config.icon;
 
             return (
-              <Card key={alert.id} className={`transition-colors ${!alert.is_read ? "border-accent/30 bg-accent/5" : ""}`}>
+              <Card
+                key={alert.id}
+                className={`transition-colors cursor-pointer ${!alert.is_read ? "border-accent/30 bg-accent/5" : ""}`}
+                onClick={() =>
+                  void trackEvent("credit_alert_viewed", "engagement", {
+                    alert_type: alert.alert_type,
+                    severity: alert.alert_severity,
+                    bureau: alert.bureau ?? null,
+                  })
+                }
+              >
                 <CardContent className="p-4">
                   <div className="flex gap-3">
                     <div className={`w-2 rounded-full flex-shrink-0 ${config.dot}`} />

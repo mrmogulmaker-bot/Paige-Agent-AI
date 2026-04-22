@@ -6,6 +6,8 @@ import { ExternalLink, AlertTriangle, XCircle, Info, CheckCircle2, MinusCircle, 
 import type { ProductMatch } from "@/lib/fundingMatchScoring";
 import { getCategoryMeta, getSpeedClass } from "@/lib/lenderCategories";
 import { LenderFlagBadges } from "./LenderFlagBadges";
+import { trackEvent } from "@/hooks/useAnalytics";
+import { useRef } from "react";
 
 const CATEGORY_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   eligible: { bg: "bg-fundability-excellent/10", text: "text-fundability-excellent", label: "Eligible" },
@@ -55,8 +57,24 @@ export function ProductMatchCard({ match, onAskPaige }: { match: ProductMatch; o
     ? `This lender has programs specifically for ${demographicBoosts.map((b) => b.label).join(" / ")} businesses.`
     : "";
 
+  const viewedRef = useRef(false);
+  const handleView = () => {
+    if (viewedRef.current) return;
+    viewedRef.current = true;
+    void trackEvent("funding_match_viewed", "engagement", {
+      lender_name: product.lender_name,
+      product_type: product.product_type ?? product.product_category ?? null,
+      score,
+      category,
+    });
+  };
+
   return (
-    <Card className="p-4 bg-card border-border hover:shadow-md transition-all">
+    <Card
+      className="p-4 bg-card border-border hover:shadow-md transition-all"
+      onClick={handleView}
+      onMouseEnter={handleView}
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
