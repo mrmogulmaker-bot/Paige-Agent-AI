@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useBrokerProfile } from "@/hooks/useBrokerProfile";
+import { useBrokerContext } from "@/hooks/useBrokerContext";
 import { useToast } from "@/hooks/use-toast";
 import { Briefcase, Plus } from "lucide-react";
 
@@ -63,7 +63,7 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
 };
 
 const BrokerMCC = () => {
-  const { profile } = useBrokerProfile();
+  const { activeBrokerId } = useBrokerContext();
   const { toast } = useToast();
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
@@ -78,13 +78,13 @@ const BrokerMCC = () => {
   const [notes, setNotes] = useState("");
 
   const refresh = async () => {
-    if (!profile?.id) return;
+    if (!activeBrokerId) return;
     setLoading(true);
     const [clientsRes, reqRes] = await Promise.all([
       supabase
         .from("broker_client_relationships")
         .select("id, client_first_name, client_last_name, client_email")
-        .eq("broker_id", profile.id)
+        .eq("broker_id", activeBrokerId)
         .eq("is_active", true)
         .order("added_at", { ascending: false }),
       supabase
@@ -92,7 +92,7 @@ const BrokerMCC = () => {
         .select(
           "id, service_type, priority, status, notes, created_at, webhook_dispatched_at, client:broker_client_relationships(id, client_first_name, client_last_name, client_email)",
         )
-        .eq("broker_id", profile.id)
+        .eq("broker_id", activeBrokerId)
         .order("created_at", { ascending: false }),
     ]);
     if (clientsRes.error) {
@@ -111,7 +111,7 @@ const BrokerMCC = () => {
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id]);
+  }, [activeBrokerId]);
 
   const reset = () => {
     setClientId("");

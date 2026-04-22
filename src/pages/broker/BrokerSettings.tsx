@@ -353,26 +353,28 @@ const BrokerSettings = () => {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Subscription</CardTitle>
-          <CardDescription>Your Broker Workspace plan.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Plan</span>
-            <span className="font-medium">Broker Workspace — $197/mo</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Status</span>
-            <span className="font-medium capitalize">{profile?.status || "—"}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Referral code</span>
-            <span className="font-mono">{profile?.referral_code || "—"}</span>
-          </div>
-        </CardContent>
-      </Card>
+      {!isTeamMember && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Subscription</CardTitle>
+            <CardDescription>Your Broker Workspace plan.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Plan</span>
+              <span className="font-medium">Broker Workspace — $197/mo</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Status</span>
+              <span className="font-medium capitalize">{profile?.status || "—"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Referral code</span>
+              <span className="font-mono">{profile?.referral_code || "—"}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

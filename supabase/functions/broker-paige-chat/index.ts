@@ -339,7 +339,7 @@ serve(async (req: Request) => {
       });
     }
 
-    // Verify broker ownership
+    // Verify broker ownership OR active team-member access to that broker.
     const { data: broker } = await admin
       .from("broker_profiles")
       .select(
@@ -347,7 +347,24 @@ serve(async (req: Request) => {
       )
       .eq("id", broker_id)
       .maybeSingle();
-    if (!broker || broker.user_id !== user.id) {
+    if (!broker) {
+      return new Response(JSON.stringify({ error: "Broker not found" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Detect team-member session (auth_user_id matches an active row for this broker).
+    const { data: teamMember } = await admin
+      .from("broker_team_members")
+      .select("id, first_name, last_name, role")
+      .eq("auth_user_id", user.id)
+      .eq("broker_id", broker_id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    const isTeamMember = !!teamMember;
+    if (broker.user_id !== user.id && !isTeamMember) {
       return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -372,14 +389,18 @@ serve(async (req: Request) => {
     // Get/create session
     let activeSessionId = session_id;
     if (!activeSessionId) {
+      const sessionInsert: Record<string, unknown> = {
+        broker_id,
+        client_relationship_id,
+        conversation: [],
+        session_type: "strategy",
+      };
+      if (isTeamMember && teamMember) {
+        sessionInsert.team_member_id = teamMember.id;
+      }
       const { data: created, error: sessErr } = await admin
         .from("broker_paige_sessions")
-        .insert({
-          broker_id,
-          client_relationship_id,
-          conversation: [],
-          session_type: "strategy",
-        })
+        .insert(sessionInsert)
         .select("id")
         .single();
       if (sessErr || !created) {
@@ -394,6 +415,15 @@ serve(async (req: Request) => {
         client_relationship_id,
         session_id: activeSessionId,
       });
+      if (isTeamMember && teamMember) {
+        await logEvent(admin, user.id, "broker_team_session_start", {
+          broker_id,
+          team_member_id: teamMember.id,
+          team_member_role: teamMember.role,
+          client_relationship_id,
+          session_id: activeSessionId,
+        });
+      }
     }
 
     // ---- Summarize action ----
@@ -430,20 +460,30 @@ serve(async (req: Request) => {
 
     // Build context
     const { data: brokerAuth } = await admin.auth.admin.getUserById(broker.user_id);
-    const brokerFullName =
+    const brokerOwnerFullName =
       (brokerAuth?.user?.user_metadata as any)?.full_name ||
       brokerAuth?.user?.email?.split("@")[0] ||
       broker.business_name;
 
+    // When a team member is running the session, address them by their own name
+    // and inject a TEAM SESSION block so Paige knows who is talking.
+    const activeOperatorFullName = isTeamMember && teamMember
+      ? `${teamMember.first_name || ""} ${teamMember.last_name || ""}`.trim() || brokerOwnerFullName
+      : brokerOwnerFullName;
+
     const clientCredit = await loadClientCreditContext(admin, rel.client_user_id);
-    const teamContext = await loadTeamContext(admin, broker_id, brokerFullName, broker.business_name);
+    const baseTeamContext = await loadTeamContext(admin, broker_id, brokerOwnerFullName, broker.business_name);
+    const teamSessionContext = isTeamMember && teamMember
+      ? `TEAM SESSION: This session is being conducted by ${teamMember.first_name || ""} ${teamMember.last_name || ""} (${teamMember.role}) on behalf of ${broker.business_name}. ${teamMember.first_name || "They"} is an authorized team member of this workspace.`
+      : null;
+    const combinedTeamContext = [teamSessionContext, baseTeamContext].filter(Boolean).join("\n\n") || null;
 
     const systemPrompt = buildSystemPrompt({
       broker: broker as BrokerProfileRow,
-      brokerFullName,
+      brokerFullName: activeOperatorFullName,
       rel: rel as RelationshipRow,
       clientCreditContext: clientCredit,
-      teamContext,
+      teamContext: combinedTeamContext,
     });
 
     const messages: ChatMsg[] = [
