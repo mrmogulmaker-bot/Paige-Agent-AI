@@ -11,9 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Briefcase, Search, Users, DollarSign, AlertCircle, ChevronDown, UserPlus } from "lucide-react";
+import { Briefcase, Search, Users, DollarSign, AlertCircle } from "lucide-react";
 
 interface BrokerRow {
   id: string;
