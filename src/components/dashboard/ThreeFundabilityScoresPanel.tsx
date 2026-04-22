@@ -134,6 +134,27 @@ function ScoreCard({ result, compact = false }: { result: FundabilityScoreResult
   const color = bandColor(result.band);
   const bg = bandBg(result.band);
 
+  if (compact) {
+    return (
+      <Card className="p-4 bg-card border-border flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-foreground truncate">{displayTitle}</h3>
+          <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden mt-2">
+            <div className={`h-full ${bg} transition-all duration-700`} style={{ width: `${score}%` }} />
+          </div>
+        </div>
+        <div className="flex flex-col items-end shrink-0">
+          <span className={`text-2xl font-bold leading-none ${color}`}>{score}</span>
+          {result.bandLabel && (
+            <span className={`text-[10px] font-semibold uppercase tracking-wide mt-1 ${color}`}>
+              {result.bandLabel}
+            </span>
+          )}
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className="p-5 bg-card border-border flex flex-col h-full">
       <div className="flex items-start justify-between mb-3">
