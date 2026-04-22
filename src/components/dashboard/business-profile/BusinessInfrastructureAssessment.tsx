@@ -295,6 +295,9 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Post-purchase auto-open from ?slot_added=true */}
+      <AddBusinessFlow open={addBusinessOpen} onOpenChange={setAddBusinessOpen} />
     </div>
   );
 }
