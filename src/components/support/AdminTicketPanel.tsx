@@ -28,6 +28,13 @@ interface Ticket {
   updated_at: string;
 }
 
+interface AssignableUser {
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+  role: string;
+}
+
 interface Message {
   id: string;
   user_id: string | null;
@@ -55,12 +62,42 @@ export function AdminTicketPanel({ ticketId, adminUserId, open, onOpenChange, on
   const [resolutionNotes, setResolutionNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
 
   useEffect(() => {
     if (!open || !ticketId) return;
     void load();
+    void loadAssignableUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ticketId]);
+
+  const loadAssignableUsers = async () => {
+    // Pull all admin + coach role rows, then their profiles
+    const { data: roles } = await supabase
+      .from("user_roles")
+      .select("user_id,role")
+      .in("role", ["admin", "coach"]);
+    const userIds = Array.from(new Set((roles ?? []).map((r: any) => r.user_id as string)));
+    if (userIds.length === 0) {
+      setAssignableUsers([]);
+      return;
+    }
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("user_id,full_name,email")
+      .in("user_id", userIds);
+    const profMap = new Map<string, { full_name: string | null; email: string | null }>();
+    (profs ?? []).forEach((p: any) => profMap.set(p.user_id, { full_name: p.full_name, email: p.email }));
+    const merged: AssignableUser[] = userIds.map((uid) => ({
+      user_id: uid,
+      full_name: profMap.get(uid)?.full_name ?? null,
+      email: profMap.get(uid)?.email ?? null,
+      role: ((roles ?? []).find((r: any) => r.user_id === uid) as any)?.role ?? "admin",
+    }));
+    // Sort by display name
+    merged.sort((a, b) => (a.full_name || a.email || "").localeCompare(b.full_name || b.email || ""));
+    setAssignableUsers(merged);
+  };
 
   const load = async () => {
     if (!ticketId) return;
