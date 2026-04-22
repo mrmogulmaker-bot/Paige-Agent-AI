@@ -89,7 +89,81 @@ async function sendAffiliateConversionEmail(
         monthToDate: fmt(mtdCents),
       },
     },
-  });
+}
+
+// When a broker signs up via another broker's BROK referral code we write a
+// 20% / 12-month recurring commission row to broker_referral_commissions.
+// Idempotent: keyed on (referring_broker_id, referred_broker_id) — only the
+// first matching subscription event creates the row.
+async function maybeRecordBrokerReferralCommission(
+  supabaseAdmin: any,
+  newSubscriberUserId: string,
+  stripeSubscriptionId: string,
+  amountCents: number,
+) {
+  // Is the new subscriber a broker?
+  const { data: referredBroker } = await supabaseAdmin
+    .from("broker_profiles")
+    .select("id, broker_referral_code, business_name")
+    .eq("user_id", newSubscriberUserId)
+    .maybeSingle();
+  if (!referredBroker?.id || !referredBroker.broker_referral_code) {
+    return;
+  }
+  if (!String(referredBroker.broker_referral_code).toUpperCase().startsWith("BROK-")) {
+    return;
+  }
+
+  // Find the referring broker by their issued referral_code
+  const { data: referringBroker } = await supabaseAdmin
+    .from("broker_profiles")
+    .select("id, business_name")
+    .eq("referral_code", referredBroker.broker_referral_code)
+    .maybeSingle();
+  if (!referringBroker?.id || referringBroker.id === referredBroker.id) {
+    return;
+  }
+
+  // Already recorded?
+  const { data: existing } = await supabaseAdmin
+    .from("broker_referral_commissions")
+    .select("id")
+    .eq("referring_broker_id", referringBroker.id)
+    .eq("referred_broker_id", referredBroker.id)
+    .maybeSingle();
+  if (existing?.id) {
+    logStep("Broker referral commission already exists", { id: existing.id });
+    return;
+  }
+
+  // 20% of monthly amount, 12 months. amountCents from initial checkout total.
+  const monthlyAmount = (amountCents / 100) * 0.2;
+  const startedAt = new Date();
+  const expiresAt = new Date(startedAt);
+  expiresAt.setMonth(expiresAt.getMonth() + 12);
+
+  const { error } = await supabaseAdmin
+    .from("broker_referral_commissions")
+    .insert({
+      referring_broker_id: referringBroker.id,
+      referred_broker_id: referredBroker.id,
+      commission_rate: 0.20,
+      duration_months: 12,
+      monthly_amount: monthlyAmount,
+      status: "active",
+      started_at: startedAt.toISOString(),
+      expires_at: expiresAt.toISOString(),
+    });
+  if (error) {
+    logStep("Failed to insert broker referral commission", { error: error.message });
+  } else {
+    logStep("Broker referral commission recorded", {
+      referring: referringBroker.business_name,
+      referred: referredBroker.business_name,
+      monthlyAmount,
+      stripeSubscriptionId,
+    });
+  }
 }
 
 serve(async (req) => {
@@ -229,6 +303,17 @@ serve(async (req) => {
             logStep("Payment confirmation email sent");
           } catch (emailError) {
             logStep("Error sending payment confirmation email", { error: emailError });
+          // Broker→broker referral: if the new subscriber is a broker who signed up
+          // via another broker's BROK code, write a 20%/12-month commission row.
+          try {
+            await maybeRecordBrokerReferralCommission(
+              supabaseAdmin,
+              user.id,
+              subscriptionId,
+              session.amount_total || 0,
+            );
+          } catch (brokerErr) {
+            logStep("Broker→broker commission error", { error: String(brokerErr) });
           }
         }
         break;
