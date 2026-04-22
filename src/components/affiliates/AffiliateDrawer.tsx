@@ -27,9 +27,10 @@ import MarkPaidDialog from "./MarkPaidDialog";
 interface Props {
   affiliate: AffiliateStatRow | null;
   onClose: () => void;
+  onPaid?: () => void;
 }
 
-export default function AffiliateDrawer({ affiliate, onClose }: Props) {
+export default function AffiliateDrawer({ affiliate, onClose, onPaid }: Props) {
   const [rows, setRows] = useState<ConversionRow[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
