@@ -122,6 +122,12 @@ serve(async (req) => {
                 logStep("Referral attribution error", { error: attrError.message });
               } else if (convId) {
                 logStep("Referral conversion attributed", { convId });
+                // Fire affiliate-conversion-earned email to the affiliate
+                try {
+                  await sendAffiliateConversionEmail(supabaseAdmin, convId as string, productId);
+                } catch (e) {
+                  logStep("Affiliate conversion email error", { error: String(e) });
+                }
               }
             }
           } catch (attrErr) {
@@ -243,6 +249,17 @@ serve(async (req) => {
                     logStep("Recurring attribution error", { error: attrError.message });
                   } else if (convId) {
                     logStep("Recurring referral conversion attributed", { convId });
+                    try {
+                      // Best-effort plan name from subscription
+                      let planName: string | undefined = undefined;
+                      try {
+                        const sub = await stripe.subscriptions.retrieve(invoice.subscription as string);
+                        planName = sub.items.data[0]?.price?.product as string | undefined;
+                      } catch (_) { /* ignore */ }
+                      await sendAffiliateConversionEmail(supabaseAdmin, convId as string, planName);
+                    } catch (e) {
+                      logStep("Affiliate conversion email error (recurring)", { error: String(e) });
+                    }
                   }
                 }
               }
