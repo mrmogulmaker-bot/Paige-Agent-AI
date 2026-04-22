@@ -303,31 +303,36 @@ export default function AnalyticsDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Analytics</h1>
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground truncate">Analytics</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Investor-grade product, growth, and revenue intelligence.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Tabs value={range} onValueChange={(v) => setRange(v as RangeKey)}>
-            <TabsList>
-              <TabsTrigger value="7d">7d</TabsTrigger>
-              <TabsTrigger value="30d">30d</TabsTrigger>
-              <TabsTrigger value="90d">90d</TabsTrigger>
-              <TabsTrigger value="ytd">YTD</TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="overflow-x-auto -mx-1 px-1">
+            <Tabs value={range} onValueChange={(v) => setRange(v as RangeKey)}>
+              <TabsList>
+                <TabsTrigger value="7d">7d</TabsTrigger>
+                <TabsTrigger value="30d">30d</TabsTrigger>
+                <TabsTrigger value="90d">90d</TabsTrigger>
+                <TabsTrigger value="ytd">YTD</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
           <Button variant="outline" size="sm" onClick={handleRefreshViews} disabled={refreshing}>
             <RefreshCw className={`w-4 h-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh views
+            <span className="hidden sm:inline">Refresh views</span>
+            <span className="sm:hidden">Refresh</span>
           </Button>
           <Button variant="outline" size="sm" onClick={() => exportMetricsToCsv(investorMetrics)}>
             <FileDown className="w-4 h-4 mr-1" /> CSV
           </Button>
           <Button size="sm" onClick={() => exportMetricsToPdf(investorMetrics)}>
-            <FileText className="w-4 h-4 mr-1" /> Investor PDF
+            <FileText className="w-4 h-4 mr-1" />
+            <span className="hidden sm:inline">Investor PDF</span>
+            <span className="sm:hidden">PDF</span>
           </Button>
         </div>
       </div>
