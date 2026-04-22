@@ -28,6 +28,7 @@ import { template as affiliateMonthlyStatement } from './affiliate-monthly-state
 import { template as brokerApplicationReceived } from './broker-application-received.tsx'
 import { template as brokerApprovedWelcome } from './broker-approved-welcome.tsx'
 import { template as brokerClientInvite } from './broker-client-invite.tsx'
+import { template as mccNewServiceRequest } from './mcc-new-service-request.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'role-invitation': roleInvitation,
@@ -49,4 +50,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'broker-application-received': brokerApplicationReceived,
   'broker-approved-welcome': brokerApprovedWelcome,
   'broker-client-invite': brokerClientInvite,
+  'mcc-new-service-request': mccNewServiceRequest,
 }
