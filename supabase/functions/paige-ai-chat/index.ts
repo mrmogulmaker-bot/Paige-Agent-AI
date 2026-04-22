@@ -798,6 +798,78 @@ JSON:`;
         console.warn("[paige] QB context fetch failed:", qbErr);
       }
 
+      // ===== Business Credit (D&B, Experian Business, Equifax SBFE) =====
+      try {
+        const { data: bizForCredit } = await supabase
+          .from("businesses")
+          .select("id, legal_name, dnb_paydex_score, dnb_report_date, experian_intelliscore, experian_report_date, experian_days_beyond_terms, equifax_sbfe_score, equifax_report_date, business_credit_last_updated")
+          .eq("owner_user_id", contextUserId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const { data: latestBcReport } = await supabase
+          .from("business_credit_reports")
+          .select("trade_line_count, derogatory_count, days_beyond_terms, payment_trend, bureau, report_date")
+          .eq("user_id", contextUserId)
+          .order("report_date", { ascending: false, nullsFirst: false })
+          .limit(1)
+          .maybeSingle();
+
+        const hasAnyBizCredit =
+          (bizForCredit?.dnb_paydex_score ?? null) !== null ||
+          (bizForCredit?.experian_intelliscore ?? null) !== null ||
+          (bizForCredit?.equifax_sbfe_score ?? null) !== null;
+
+        if (hasAnyBizCredit && bizForCredit) {
+          const interpretPaydex = (s: number | null) => {
+            if (s == null) return "no data";
+            if (s < 70) return "high risk — late payer signal to lenders";
+            if (s < 80) return "moderate — paying near terms but not on time";
+            if (s === 80) return "good standing — pays exactly on time";
+            return "excellent — early payer, gold standard for lenders";
+          };
+          const interpretIntelliscore = (s: number | null) => {
+            if (s == null) return "no data";
+            if (s < 50) return "high risk";
+            if (s < 75) return "moderate risk";
+            return "low risk — strong";
+          };
+          const fmtDate = (d: string | null | undefined) => (d ? new Date(d).toLocaleDateString() : "no date on file");
+
+          const lines: string[] = [];
+          lines.push(`\n=== BUSINESS CREDIT PROFILE (from uploaded bureau reports) ===`);
+          lines.push(`Business: ${bizForCredit.legal_name}`);
+          lines.push(
+            `D&B Paydex: ${bizForCredit.dnb_paydex_score ?? "Not yet uploaded"}` +
+              (bizForCredit.dnb_paydex_score != null
+                ? ` as of ${fmtDate(bizForCredit.dnb_report_date)} — ${interpretPaydex(bizForCredit.dnb_paydex_score)}`
+                : "")
+          );
+          lines.push(
+            `Experian Intelliscore Plus: ${bizForCredit.experian_intelliscore ?? "Not yet uploaded"}` +
+              (bizForCredit.experian_intelliscore != null
+                ? ` as of ${fmtDate(bizForCredit.experian_report_date)} — ${interpretIntelliscore(bizForCredit.experian_intelliscore)}`
+                : "")
+          );
+          lines.push(
+            `Equifax SBFE Score: ${bizForCredit.equifax_sbfe_score ?? "Not yet uploaded"}` +
+              (bizForCredit.equifax_sbfe_score != null ? ` as of ${fmtDate(bizForCredit.equifax_report_date)}` : "")
+          );
+          lines.push(`Trade Lines: ${latestBcReport?.trade_line_count ?? "n/a"}`);
+          lines.push(`Days Beyond Terms Average: ${bizForCredit.experian_days_beyond_terms ?? latestBcReport?.days_beyond_terms ?? "n/a"}`);
+          lines.push(`Derogatory Items: ${latestBcReport?.derogatory_count ?? "n/a"}`);
+          lines.push(`Business Credit Last Updated: ${fmtDate(bizForCredit.business_credit_last_updated)}`);
+          contextParts.push(lines.join("\n"));
+        } else {
+          contextParts.push(
+            `\nBusiness Credit Profile: No business credit reports uploaded yet. Client has not yet imported their D&B, Experian Business, or Equifax SBFE scores.`
+          );
+        }
+      } catch (bcErr) {
+        console.warn("[paige] business credit context fetch failed:", bcErr);
+      }
+
       userContext = contextParts.length > 0 ? "\n\n=== USER CONTEXT ===\n" + contextParts.join("\n") + "\n==================\nIMPORTANT: If a credit report IS on file, NEVER ask the client to upload one again. Reference the data above when answering questions about their scores, accounts, or negative items.\n" : "";
     } catch (error) {
       console.error("Error fetching user context:", error);
@@ -965,6 +1037,16 @@ QUICKBOOKS FINANCIAL COACHING RULES (when QB data is in USER CONTEXT)
 7. DISCONNECT GRACEFULLY: When QuickBooks is NOT connected (USER CONTEXT shows the warning), or when a client asks how/where to connect QuickBooks (or any other app integration), respond with this EXACT navigation guidance: "You can connect your QuickBooks account in your Business Profile — click on Business Profile in the left navigation, then open the Connections tab (it is the first tab and shows all available app integrations). From there you will see the option to connect QuickBooks and give me access to your real financial data for accurate coaching. It takes about 60 seconds and you can disconnect anytime." NEVER tell the client to look in Bank Accounts, Banking, Financial Intel, or any other section for connecting apps — ALL app integrations (QuickBooks, Stripe, Plaid bank accounts, Google Business, HubSpot, Slack, etc.) live in Business Profile → Connections tab.
 
 Benchmarks reference: Gross margin healthy 50%+ services / 30%+ product. Net margin healthy 10%+. Cash runway green 6+ months / amber 3-6 / red <3. Payroll healthy 15-30% of revenue. Marketing healthy 5-15% of revenue.
+
+=============================================================
+BUSINESS CREDIT COACHING RULES (D&B, Experian Business, Equifax SBFE)
+=============================================================
+
+A. BUSINESS CREDIT COACHING RULE: When the BUSINESS CREDIT PROFILE block in USER CONTEXT shows real scores AND the client asks about business funding, lead with: "Your D&B Paydex of [score] is [interpretation]. For EIN-only funding products like Ramp and Brex you need a Paydex of 75+. For SBA loans your business credit is a secondary factor to your personal score but still matters. Here is what drives your Paydex and the fastest ways to improve it." Connect the scores directly to the Commercial EIN-Only fundability score whenever it's relevant.
+
+B. BUSINESS CREDIT MISSING RULE: When the USER CONTEXT shows "No business credit reports uploaded yet" AND the client asks about business funding, prompt them: "To give you an accurate assessment of your business fundability I need to see your business credit scores. You can upload your D&B, Experian Business, or Equifax SBFE report in the Credit Intelligence tab under Business Credit. Getting your D&B report is free at dnb.com — search for your business using your EIN."
+
+C. PAYDEX EXPLANATION RULE: When the client mentions D&B, Paydex, DUNS, or asks how to build business credit, explain it clearly: "Your Paydex score is based entirely on how quickly you pay your vendors and suppliers. It ranges from 0 to 100. An 80 means you pay exactly on time. Above 80 means you pay early — that is the gold standard lenders look for. The fastest way to build Paydex is to open net-30 vendor accounts with companies that report to D&B. The Tier 1 vendors that report and are easiest to get approved for with a new business are: Uline, Quill, Grainger, Summa Office Supplies, and Reliable Office Supplies. Open accounts with all five, make small purchases, and pay immediately. Within 3 to 6 months you will have a Paydex score established."
 
 =============================================================
 CRITICAL RULES — NEVER VIOLATE

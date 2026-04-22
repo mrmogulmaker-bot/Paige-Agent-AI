@@ -61,10 +61,13 @@ export function ConnectionsSection({ businessId, userId }: Props) {
   const [plaidCount, setPlaidCount] = useState(0);
   const [consentOpen, setConsentOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [dnbPaydex, setDnbPaydex] = useState<number | null>(null);
+  const [experianIntelliscore, setExperianIntelliscore] = useState<number | null>(null);
+  const [equifaxSbfe, setEquifaxSbfe] = useState<number | null>(null);
 
   const fetchStatuses = async () => {
     setLoading(true);
-    const [qbRes, plaidRes] = await Promise.all([
+    const [qbRes, plaidRes, bizRes] = await Promise.all([
       supabase
         .from("quickbooks_connections")
         .select("qb_company_name, last_synced_at, is_active")
@@ -76,6 +79,13 @@ export function ConnectionsSection({ businessId, userId }: Props) {
         .select("id", { count: "exact", head: true })
         .eq("user_id", userId)
         .eq("is_active", true),
+      supabase
+        .from("businesses")
+        .select("dnb_paydex_score, experian_intelliscore, equifax_sbfe_score")
+        .eq("owner_user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     if (qbRes.data) {
@@ -88,6 +98,9 @@ export function ConnectionsSection({ businessId, userId }: Props) {
       setQbLastSync(null);
     }
     setPlaidCount(plaidRes.count || 0);
+    setDnbPaydex(bizRes.data?.dnb_paydex_score ?? null);
+    setExperianIntelliscore(bizRes.data?.experian_intelliscore ?? null);
+    setEquifaxSbfe(bizRes.data?.equifax_sbfe_score ?? null);
     setLoading(false);
   };
 
@@ -297,52 +310,76 @@ export function ConnectionsSection({ businessId, userId }: Props) {
         <div>
           <h3 className="text-base font-semibold text-foreground">Business Credit Data</h3>
           <p className="text-xs text-muted-foreground">
-            Direct API connections to the major business credit bureaus. We're finalizing API agreements — request early access from Paige.
+            Upload your latest bureau report to import your scores. Direct API sync coming soon.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {[
-            { key: "nav", name: "Nav.com", description: "Aggregated business credit profile across D&B, Experian, and Equifax in one feed", icon: BarChart3 },
-            { key: "dnb", name: "D&B Direct+", description: "DUNS-based PAYDEX, Delinquency Predictor, and Failure Score from Dun & Bradstreet", icon: ShieldCheck },
-            { key: "experian_biz", name: "Experian Business", description: "Intelliscore Plus, FSR, and full Business Credit Advantage report", icon: LineChart },
-            { key: "equifax_biz", name: "Equifax Business", description: "Business Credit Risk Score, Payment Index, and Business Failure Score", icon: Database },
-          ].map((card) => {
-            const Icon = card.icon;
-            return (
-              <Card key={card.key} className="relative flex flex-col border-border/50 opacity-75">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-9 h-9 rounded-md bg-muted text-muted-foreground flex items-center justify-center shrink-0">
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <CardTitle className="text-sm">{card.name}</CardTitle>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className="bg-primary/10 text-primary border-primary/40 text-[10px] gap-1 shrink-0"
-                    >
-                      <Sparkles className="w-3 h-3" /> Coming Soon
-                    </Badge>
+          {/* Nav.com — still aggregator coming soon */}
+          <Card className="relative flex flex-col border-border/50 opacity-75">
+            <CardHeader className="pb-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-md bg-muted text-muted-foreground flex items-center justify-center shrink-0">
+                    <BarChart3 className="w-4 h-4" />
                   </div>
-                  <CardDescription className="text-xs leading-snug pt-1">
-                    {card.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="pt-0 pb-3 mt-auto">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => toast.info(`We'll notify you the moment ${card.name} goes live.`)}
-                    className="w-full h-8 text-xs"
-                  >
-                    Request Early Access
-                  </Button>
-                </CardContent>
-              </Card>
-            );
-          })}
+                  <CardTitle className="text-sm">Nav.com</CardTitle>
+                </div>
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/40 text-[10px] gap-1 shrink-0">
+                  <Sparkles className="w-3 h-3" /> Coming Soon
+                </Badge>
+              </div>
+              <CardDescription className="text-xs leading-snug pt-1">
+                Aggregated business credit profile across D&B, Experian, and Equifax in one feed.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0 pb-3 mt-auto">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => toast.info("We'll notify you the moment Nav.com goes live.")}
+                className="w-full h-8 text-xs"
+              >
+                Request Early Access
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* D&B card with upload */}
+          <BusinessCreditUploadCard
+            name="D&B Direct+"
+            icon={ShieldCheck}
+            description="DUNS-based PAYDEX, Delinquency Predictor, and Failure Score from Dun & Bradstreet."
+            scoreLabel="Score"
+            scoreValue={dnbPaydex}
+            scorePrefix="Paydex"
+            buttonLabel="Upload D&B Report"
+            anchor="bureau-dnb"
+          />
+
+          {/* Experian Business card with upload */}
+          <BusinessCreditUploadCard
+            name="Experian Business"
+            icon={LineChart}
+            description="Intelliscore Plus, FSR, and full Business Credit Advantage report."
+            scoreLabel="Intelliscore"
+            scoreValue={experianIntelliscore}
+            scorePrefix="Intelliscore"
+            buttonLabel="Upload Experian Report"
+            anchor="bureau-experian"
+          />
+
+          {/* Equifax SBFE card with upload */}
+          <BusinessCreditUploadCard
+            name="Equifax SBFE"
+            icon={Database}
+            description="Small Business Financial Exchange score used by SBA lenders and major banks."
+            scoreLabel="SBFE Score"
+            scoreValue={equifaxSbfe}
+            scorePrefix="SBFE Score"
+            buttonLabel="Upload SBFE Report"
+            anchor="bureau-equifax"
+          />
         </div>
       </div>
 
@@ -394,5 +431,74 @@ export function ConnectionsSection({ businessId, userId }: Props) {
 
       <QuickBooksConsentDialog open={consentOpen} onOpenChange={setConsentOpen} businessId={businessId} />
     </div>
+  );
+}
+
+interface BusinessCreditUploadCardProps {
+  name: string;
+  icon: React.ElementType;
+  description: string;
+  scoreLabel: string;
+  scoreValue: number | null;
+  scorePrefix: string;
+  buttonLabel: string;
+  anchor: string;
+}
+
+function BusinessCreditUploadCard({
+  name,
+  icon: Icon,
+  description,
+  scoreValue,
+  scorePrefix,
+  buttonLabel,
+  anchor,
+}: BusinessCreditUploadCardProps) {
+  const hasScore = scoreValue !== null && scoreValue !== undefined;
+  return (
+    <Card className="relative flex flex-col border-border/50">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-9 h-9 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
+              <Icon className="w-4 h-4" />
+            </div>
+            <CardTitle className="text-sm">{name}</CardTitle>
+          </div>
+          {hasScore && (
+            <Badge
+              variant="outline"
+              className="bg-primary/10 text-primary border-primary/40 text-[10px] gap-1 shrink-0"
+            >
+              <CheckCircle2 className="w-3 h-3" /> Imported
+            </Badge>
+          )}
+        </div>
+        <CardDescription className="text-xs leading-snug pt-1">{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0 pb-3 mt-auto space-y-2">
+        <div className="text-xs text-muted-foreground">
+          {hasScore ? (
+            <span className="font-medium text-foreground">
+              {scorePrefix}: {scoreValue}
+            </span>
+          ) : (
+            <span>No report uploaded</span>
+          )}
+        </div>
+        <Button
+          size="sm"
+          onClick={() => {
+            window.location.href = `/app/credit#${anchor}`;
+          }}
+          className="w-full h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+        >
+          {buttonLabel}
+        </Button>
+        <p className="text-[10px] text-muted-foreground italic text-center">
+          Direct API sync coming soon
+        </p>
+      </CardContent>
+    </Card>
   );
 }
