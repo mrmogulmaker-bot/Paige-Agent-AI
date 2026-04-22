@@ -108,8 +108,44 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html,
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    /* Smooth iOS momentum scrolling on the page */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Eliminate the iOS 300ms tap delay on interactive elements */
+  button,
+  a,
+  [role="button"],
+  input[type="button"],
+  input[type="submit"] {
+    touch-action: manipulation;
+  }
+
+  /* Lock body scroll when a modal/dialog is open (mobile fix) */
+  body:has([data-state="open"][role="dialog"]),
+  body.modal-open {
+    overflow: hidden;
+  }
+}
+
+@layer utilities {
+  /* Smooth iOS momentum scrolling for any explicit scroll container */
+  .scroll-touch {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Honor the iOS home-indicator safe area */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
