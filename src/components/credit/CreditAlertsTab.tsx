@@ -6,6 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCreditAlerts, CreditAlert } from "@/hooks/useCreditAlerts";
 import { formatDistanceToNow, format } from "date-fns";
 import { Check, X, Bell, AlertTriangle, Info, Shield, CheckCircle } from "lucide-react";
+import { trackEvent } from "@/hooks/useAnalytics";
 
 interface CreditAlertsTabProps {
   clientId?: string | null;

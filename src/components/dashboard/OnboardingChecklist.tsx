@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { CheckCircle2, Circle, Upload, Search, FileText, Building2, X, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { trackEvent } from "@/hooks/useAnalytics";
 
 interface ChecklistItem {
   id: string;
@@ -80,6 +81,8 @@ export const OnboardingChecklist = ({ userId }: { userId: string }) => {
     },
   ];
 
+  const firedStepsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     const dismissKey = `onboarding_dismissed_${userId}`;
     if (localStorage.getItem(dismissKey) === "true") {
@@ -99,6 +102,24 @@ export const OnboardingChecklist = ({ userId }: { userId: string }) => {
           }
         })
       );
+
+      // Fire onboarding_step_complete once per newly-completed step (per browser/user).
+      const firedKey = `onboarding_steps_fired_${userId}`;
+      const alreadyFired: string[] = JSON.parse(localStorage.getItem(firedKey) || "[]");
+      const firedSet = new Set(alreadyFired);
+      items.forEach((item, idx) => {
+        if (results[item.id] && !firedSet.has(item.id)) {
+          firedSet.add(item.id);
+          firedStepsRef.current.add(item.id);
+          void trackEvent("onboarding_step_complete", "activation", {
+            step: item.id,
+            step_label: item.label,
+            step_number: idx + 1,
+          });
+        }
+      });
+      localStorage.setItem(firedKey, JSON.stringify(Array.from(firedSet)));
+
       setCompleted(results);
       setLoading(false);
 
