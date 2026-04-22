@@ -229,6 +229,17 @@ serve(async (req) => {
             logStep("Payment confirmation email sent");
           } catch (emailError) {
             logStep("Error sending payment confirmation email", { error: emailError });
+          // Broker→broker referral: if the new subscriber is a broker who signed up
+          // via another broker's BROK code, write a 20%/12-month commission row.
+          try {
+            await maybeRecordBrokerReferralCommission(
+              supabaseAdmin,
+              user.id,
+              subscriptionId,
+              session.amount_total || 0,
+            );
+          } catch (brokerErr) {
+            logStep("Broker→broker commission error", { error: String(brokerErr) });
           }
         }
         break;
