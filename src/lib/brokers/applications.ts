@@ -28,9 +28,11 @@ export interface NewBrokerApplication {
 
 export interface BrokerApprovalResult {
   brokerId: string;
-  referralCode: string;
-  brokerClientDiscountCode: string;
-  signupClientLink: string;
+  referralCode: string | null;
+  brokerClientDiscountCode: string | null;
+  signupClientLink: string | null;
+  status?: string;
+  autoApproved?: boolean;
   alreadyExisted?: boolean;
   emailSent: boolean;
 }

@@ -174,29 +174,49 @@ Deno.serve(async (req) => {
       referralCode = generateBrokerCode(matchedUserId + '-' + i)
     }
 
-    // ── Create per-broker Stripe coupon ($10 off forever) ──────
-    let brokerCouponId: string | null = null
+    // ── Check admin auto-approve flag ──────────────────────────
+    let autoApprove = true
     try {
-      const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
-      if (stripeKey) {
-        const stripe = new Stripe(stripeKey, { apiVersion: '2025-08-27.basil' as any })
-        const coupon = await stripe.coupons.create({
-          name: `Broker client discount — ${referralCode}`,
-          amount_off: 1000,
-          currency: 'usd',
-          duration: 'forever',
-          metadata: {
-            broker_referral_code: referralCode,
-            broker_user_id: matchedUserId,
-          },
-        })
-        brokerCouponId = coupon.id
-        log('Created Stripe coupon', { id: brokerCouponId })
-      } else {
-        log('STRIPE_SECRET_KEY not set — skipping coupon creation')
+      const { data: setting } = await supabase
+        .from('admin_app_settings')
+        .select('value')
+        .eq('key', 'broker_auto_approve')
+        .maybeSingle()
+      const v = (setting as any)?.value
+      if (v && typeof v === 'object' && 'enabled' in v) {
+        autoApprove = !!v.enabled
       }
     } catch (err) {
-      log('Stripe coupon creation failed', { error: String(err) })
+      log('Failed to read auto-approve flag — defaulting to true', { error: String(err) })
+    }
+    log('Auto-approve mode', { autoApprove })
+
+    // ── Create per-broker Stripe coupon ($10 off forever) ──────
+    // Only when auto-approving — pending applications get their coupon at approve time.
+    let brokerCouponId: string | null = null
+    if (autoApprove) {
+      try {
+        const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
+        if (stripeKey) {
+          const stripe = new Stripe(stripeKey, { apiVersion: '2025-08-27.basil' as any })
+          const coupon = await stripe.coupons.create({
+            name: `Broker client discount — ${referralCode}`,
+            amount_off: 1000,
+            currency: 'usd',
+            duration: 'forever',
+            metadata: {
+              broker_referral_code: referralCode,
+              broker_user_id: matchedUserId,
+            },
+          })
+          brokerCouponId = coupon.id
+          log('Created Stripe coupon', { id: brokerCouponId })
+        } else {
+          log('STRIPE_SECRET_KEY not set — skipping coupon creation')
+        }
+      } catch (err) {
+        log('Stripe coupon creation failed', { error: String(err) })
+      }
     }
 
     // ── Insert broker profile ──────────────────────────────────
@@ -208,15 +228,15 @@ Deno.serve(async (req) => {
         broker_type: body.brokerType,
         license_number: body.licenseNumber || null,
         website: body.website || null,
-        referral_code: referralCode,
+        referral_code: autoApprove ? referralCode : null,
         broker_referral_code: body.brokerReferralCode || null,
         broker_client_discount_code: brokerCouponId,
-        status: 'approved',
-        approved_at: new Date().toISOString(),
+        status: autoApprove ? 'approved' : 'pending',
+        approved_at: autoApprove ? new Date().toISOString() : null,
         client_count_quoted: clientCountQuoted,
         use_case: body.useCase.trim(),
       } as any)
-      .select('id, referral_code, broker_client_discount_code')
+      .select('id, referral_code, broker_client_discount_code, status')
       .single()
 
     if (insertError || !broker) {
@@ -229,27 +249,33 @@ Deno.serve(async (req) => {
       )
     }
 
-    // ── Grant broker role ──────────────────────────────────────
-    try {
-      await supabase
-        .from('user_roles')
-        .upsert(
-          { user_id: matchedUserId, role: 'broker' as any },
-          { onConflict: 'user_id,role', ignoreDuplicates: true },
-        )
-    } catch (err) {
-      log('Role grant failed', { error: String(err) })
+    // ── Grant broker role (only when auto-approved) ────────────
+    if (autoApprove) {
+      try {
+        await supabase
+          .from('user_roles')
+          .upsert(
+            { user_id: matchedUserId, role: 'broker' as any },
+            { onConflict: 'user_id,role', ignoreDuplicates: true },
+          )
+      } catch (err) {
+        log('Role grant failed', { error: String(err) })
+      }
     }
 
-    const code = broker.referral_code!
-    const signupClientLink = `https://paigeagent.ai/auth?broker=${code}`
-    const brokerReferralLink = `https://paigeagent.ai/broker?ref=${code}`
+    const code = broker.referral_code || ''
+    const signupClientLink = code ? `https://paigeagent.ai/auth?broker=${code}` : ''
+    const clientSignupLink = signupClientLink
+    const brokerReferralLink = code ? `https://paigeagent.ai/broker?ref=${code}` : ''
     const dashboardUrl = 'https://paigeagent.ai/app'
 
-    // ── Fire welcome emails (best-effort, non-blocking) ────────
+    // ── Fire emails (best-effort, non-blocking) ────────────────
+    // Always send the application-received receipt. Only send the approved
+    // welcome when actually auto-approved — manual approvals fire it from
+    // broker-admin-action instead.
     let emailSent = false
     try {
-      await Promise.all([
+      const sends: Promise<unknown>[] = [
         supabase.functions.invoke('send-transactional-email', {
           body: {
             templateName: 'broker-application-received',
@@ -259,26 +285,32 @@ Deno.serve(async (req) => {
             templateData: {
               firstName: body.firstName,
               businessName: body.businessName,
+              autoApproved: autoApprove,
             },
           },
         }),
-        supabase.functions.invoke('send-transactional-email', {
-          body: {
-            templateName: 'broker-approved-welcome',
-            recipientEmail: email,
-            idempotencyKey: `broker-approved-${broker.id}`,
-            recipientUserId: matchedUserId,
-            templateData: {
-              firstName: body.firstName,
-              businessName: body.businessName,
-              referralCode: code,
-              brokerReferralLink,
-              clientSignupLink,
-              dashboardUrl,
+      ]
+      if (autoApprove && code) {
+        sends.push(
+          supabase.functions.invoke('send-transactional-email', {
+            body: {
+              templateName: 'broker-approved-welcome',
+              recipientEmail: email,
+              idempotencyKey: `broker-approved-${broker.id}`,
+              recipientUserId: matchedUserId,
+              templateData: {
+                firstName: body.firstName,
+                businessName: body.businessName,
+                referralCode: code,
+                brokerReferralLink,
+                clientSignupLink,
+                dashboardUrl,
+              },
             },
-          },
-        }),
-      ])
+          }),
+        )
+      }
+      await Promise.all(sends)
       emailSent = true
     } catch (err) {
       log('Email send failed', { error: String(err) })
@@ -287,9 +319,11 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         brokerId: broker.id,
-        referralCode: code,
+        referralCode: code || null,
         brokerClientDiscountCode: broker.broker_client_discount_code,
-        signupClientLink,
+        signupClientLink: signupClientLink || null,
+        status: broker.status,
+        autoApproved: autoApprove,
         emailSent,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

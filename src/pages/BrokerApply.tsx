@@ -92,7 +92,12 @@ export default function BrokerApply() {
         client_count: form.currentClientCount,
         had_referral_code: !!form.brokerReferralCode,
       });
-      toast.success("You're approved! Check your email for next steps.");
+      const pending = res.status === "pending" || res.autoApproved === false;
+      toast.success(
+        pending
+          ? "Application received — we'll review it shortly."
+          : "You're approved! Check your email for next steps.",
+      );
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
       console.error("broker application error", err);
@@ -103,6 +108,7 @@ export default function BrokerApply() {
   };
 
   if (result) {
+    const isPending = result.status === "pending" || result.autoApproved === false;
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
@@ -112,79 +118,105 @@ export default function BrokerApply() {
               <div className="mx-auto w-14 h-14 rounded-full bg-gold/15 flex items-center justify-center">
                 <CheckCircle2 className="w-8 h-8 text-gold" />
               </div>
-              <CardTitle className="text-3xl">You're In</CardTitle>
+              <CardTitle className="text-3xl">
+                {isPending ? "Application Received" : "You're In"}
+              </CardTitle>
               <p className="text-muted-foreground">
-                Welcome to the PaigeAgent Broker Program. Your workspace is ready to activate.
+                {isPending
+                  ? "Thanks for applying to the PaigeAgent Broker Program. Our team is reviewing your application and will follow up by email shortly."
+                  : "Welcome to the PaigeAgent Broker Program. Your workspace is ready to activate."}
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="rounded-lg border bg-muted/30 p-5 space-y-4">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Your broker referral code
-                  </p>
-                  <div className="flex items-center justify-between mt-1">
-                    <code className="font-mono text-xl font-bold text-primary">{result.referralCode}</code>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(result.referralCode);
-                        toast.success("Code copied");
-                      }}
-                    >
-                      <Copy className="w-4 h-4 mr-1" /> Copy
-                    </Button>
+              {!isPending && result.referralCode && result.signupClientLink && (
+                <div className="rounded-lg border bg-muted/30 p-5 space-y-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Your broker referral code
+                    </p>
+                    <div className="flex items-center justify-between mt-1">
+                      <code className="font-mono text-xl font-bold text-primary">
+                        {result.referralCode}
+                      </code>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          navigator.clipboard.writeText(result.referralCode || "");
+                          toast.success("Code copied");
+                        }}
+                      >
+                        <Copy className="w-4 h-4 mr-1" /> Copy
+                      </Button>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Your client signup link ($17/mo broker rate)
+                    </p>
+                    <div className="flex items-center justify-between mt-1 gap-2">
+                      <code className="font-mono text-xs text-foreground/80 truncate">
+                        {result.signupClientLink}
+                      </code>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          navigator.clipboard.writeText(result.signupClientLink || "");
+                          toast.success("Link copied");
+                        }}
+                      >
+                        <Copy className="w-4 h-4 mr-1" /> Copy
+                      </Button>
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Your client signup link ($17/mo broker rate)
-                  </p>
-                  <div className="flex items-center justify-between mt-1 gap-2">
-                    <code className="font-mono text-xs text-foreground/80 truncate">
-                      {result.signupClientLink}
-                    </code>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(result.signupClientLink);
-                        toast.success("Link copied");
-                      }}
-                    >
-                      <Copy className="w-4 h-4 mr-1" /> Copy
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              )}
 
               <div className="space-y-3 text-sm text-muted-foreground">
-                <p className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-gold mt-0.5 shrink-0" />
-                  Check your inbox — we sent your welcome packet with the dashboard link.
-                </p>
-                <p className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-gold mt-0.5 shrink-0" />
-                  Activate your $197/mo Broker Workspace subscription from your dashboard.
-                </p>
-                <p className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-gold mt-0.5 shrink-0" />
-                  Start adding clients — they get $17/mo, you earn 20% on every subscription.
-                </p>
+                {isPending ? (
+                  <>
+                    <p className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-gold mt-0.5 shrink-0" />
+                      We sent a confirmation to your email. No action needed yet.
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-gold mt-0.5 shrink-0" />
+                      Once approved, you'll receive your referral code and dashboard access.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-gold mt-0.5 shrink-0" />
+                      Check your inbox — we sent your welcome packet with the dashboard link.
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-gold mt-0.5 shrink-0" />
+                      Activate your $197/mo Broker Workspace subscription from your dashboard.
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-gold mt-0.5 shrink-0" />
+                      Start adding clients — they get $17/mo, you earn 20% on every subscription.
+                    </p>
+                  </>
+                )}
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <Button asChild size="lg" className="flex-1 bg-gold text-primary hover:bg-gold/90">
-                  <Link to="/auth">
-                    Go To Dashboard <ArrowRight className="w-4 h-4 ml-1" />
+                  <Link to={isPending ? "/" : "/auth"}>
+                    {isPending ? "Back to Site" : "Go To Dashboard"}{" "}
+                    <ArrowRight className="w-4 h-4 ml-1" />
                   </Link>
                 </Button>
-                <Button asChild size="lg" variant="outline" className="flex-1">
-                  <Link to="/">Back to Site</Link>
-                </Button>
+                {!isPending && (
+                  <Button asChild size="lg" variant="outline" className="flex-1">
+                    <Link to="/">Back to Site</Link>
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
