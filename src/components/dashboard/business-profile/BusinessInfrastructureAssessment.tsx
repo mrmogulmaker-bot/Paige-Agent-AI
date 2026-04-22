@@ -16,6 +16,7 @@ import { FundingProfileSection } from "./FundingProfileSection";
 import { FinancialIntelligenceSection } from "./FinancialIntelligenceSection";
 import { ConnectionsSection } from "./ConnectionsSection";
 import { BusinessWalkthrough } from "@/components/business/BusinessWalkthrough";
+import { BusinessSelector } from "@/components/dashboard/BusinessSelector";
 
 interface Props {
   clientId?: string; // For internal client mode
@@ -140,6 +141,9 @@ export function BusinessInfrastructureAssessment({ clientId }: Props) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Multi-business selector */}
+      <BusinessSelector />
 
       {/* Personal/Business Separation Audit — always visible above the tabs */}
       {userId && selectedBusinessId && (

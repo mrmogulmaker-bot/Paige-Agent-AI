@@ -24,6 +24,7 @@ import { CATEGORIES, type ProductCategoryKey } from "@/lib/lenderCategories";
 import { SeparationAuditCard } from "@/components/dashboard/business-profile/SeparationAuditCard";
 import { FundingWalkthrough } from "@/components/funding/FundingWalkthrough";
 import { RateEnvironmentBanner } from "@/components/funding/RateEnvironmentBanner";
+import { BusinessSelector } from "@/components/dashboard/BusinessSelector";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -226,6 +227,8 @@ export default function FundingMatches() {
       )}
 
       <SeparationAuditFundingBanner onFix={() => navigate("/app/business")} />
+
+      <BusinessSelector />
 
       <ProfileCompletenessPanel profile={profile} />
 

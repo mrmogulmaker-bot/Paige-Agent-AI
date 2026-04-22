@@ -20,6 +20,7 @@ import { CreditIntelWalkthrough } from "@/components/credit/CreditIntelWalkthrou
 import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { BusinessCreditTab } from "@/components/credit/BusinessCreditTab";
 import { ThreeFundabilityScoresPanel } from "@/components/dashboard/ThreeFundabilityScoresPanel";
+import { BusinessSelector } from "@/components/dashboard/BusinessSelector";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { User, Building2 } from "lucide-react";
 import { toast } from "sonner";
@@ -258,13 +259,14 @@ export default function CreditIntelligence() {
 
         <TabsContent value="personal" className="mt-6 space-y-6">
           {/* Three Fundability Scores — primary placement at top of credit intelligence */}
-          <section>
-            <div className="mb-3">
+          <section className="space-y-3">
+            <div>
               <h2 className="text-2xl font-bold text-primary">Your Fundability Intelligence</h2>
               <p className="text-sm text-muted-foreground mt-1">
                 Three scores that reflect how lenders actually evaluate you — updated as your profile grows.
               </p>
             </div>
+            <BusinessSelector />
             <ThreeFundabilityScoresPanel compactOnMobile />
           </section>
 
