@@ -86,7 +86,7 @@ export function AppNav({ user }: AppNavProps) {
                 <LifeBuoy className="w-4 h-4" />
                 <span className="flex-1 text-left">Support</span>
                 {unreadSupport > 0 && (
-                  <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                  <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
                     {unreadSupport > 9 ? "9+" : unreadSupport}
                   </span>
                 )}
@@ -217,7 +217,7 @@ export function AppNav({ user }: AppNavProps) {
               <LifeBuoy className="w-4 h-4 mr-2" />
               <span className="flex-1">Support</span>
               {unreadSupport > 0 && (
-                <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
                   {unreadSupport > 9 ? "9+" : unreadSupport}
                 </span>
               )}
