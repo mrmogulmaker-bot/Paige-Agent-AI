@@ -27,8 +27,9 @@ import {
 import { toast } from "sonner";
 import {
   Briefcase, Search, Users, DollarSign, AlertCircle, MoreVertical,
-  UserPlus, Copy, ExternalLink, CheckCircle2, XCircle,
+  UserPlus, Copy, ExternalLink, CheckCircle2, XCircle, Pencil,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface BrokerRow {
   id: string;
