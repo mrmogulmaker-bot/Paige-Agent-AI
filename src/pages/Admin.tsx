@@ -206,6 +206,11 @@ const Admin = () => {
             <KnowledgeBaseAdmin />
           </Suspense>
         } />
+        <Route path="communications" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <CommunicationsAdmin />
+          </Suspense>
+        } />
         <Route path="settings" element={
           <Suspense fallback={<SuspenseFallback />}>
             <UserManagement />
