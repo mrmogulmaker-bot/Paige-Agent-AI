@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Building2, Upload, ExternalLink, Loader2, FileText, History, Info, Lock } from "lucide-react";
+import { Building2, Upload, ExternalLink, Loader2, FileText, History, Info } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useBusinessContext, entityRoleLabel } from "@/contexts/BusinessContext";
