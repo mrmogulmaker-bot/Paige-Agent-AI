@@ -12,7 +12,6 @@ import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { SessionTimeoutWarning } from "@/components/auth/SessionTimeoutWarning";
 import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
-import { ThreeFundabilityScoresPanel } from "@/components/dashboard/ThreeFundabilityScoresPanel";
 import { OnboardingFlow } from "@/components/dashboard/OnboardingFlow";
 import { PushNotificationPrompt } from "@/components/notifications/PushNotificationPrompt";
 import {
