@@ -57,7 +57,23 @@ export async function submitAffiliateApplication(
     .select()
     .single();
   if (error) throw error;
-  return data as AffiliateApplication;
+  const app = data as AffiliateApplication;
+
+  // Fire confirmation email (non-blocking)
+  void supabase.functions.invoke("send-transactional-email", {
+    body: {
+      templateName: "affiliate-application-received",
+      recipientEmail: app.email,
+      idempotencyKey: `aff-app-received-${app.id}`,
+      recipientUserId: app.user_id ?? undefined,
+      templateData: {
+        name: app.full_name?.split(" ")[0] ?? null,
+        tierKey: app.requested_tier_key,
+      },
+    },
+  }).catch((e) => console.warn("application received email failed", e));
+
+  return app;
 }
 
 export async function fetchAffiliateApplications(
@@ -84,7 +100,43 @@ export async function approveAffiliateApplication(
     _notes: notes ?? null,
   });
   if (error) throw error;
-  return data as { affiliate_id: string; matched_user_id: string | null };
+  const result = data as { affiliate_id: string; matched_user_id: string | null };
+
+  // Send approved-welcome email (non-blocking)
+  try {
+    const { data: app } = await supabase
+      .from("affiliate_applications")
+      .select("email, full_name, requested_tier_key")
+      .eq("id", applicationId)
+      .single();
+    const { data: aff } = await supabase
+      .from("affiliate_profiles")
+      .select("referral_code")
+      .eq("id", result.affiliate_id)
+      .single();
+
+    if (app && aff?.referral_code) {
+      const code = aff.referral_code;
+      void supabase.functions.invoke("send-transactional-email", {
+        body: {
+          templateName: "affiliate-approved-welcome",
+          recipientEmail: app.email,
+          idempotencyKey: `aff-approved-${result.affiliate_id}`,
+          recipientUserId: result.matched_user_id ?? undefined,
+          templateData: {
+            firstName: app.full_name?.split(" ")[0] ?? null,
+            referralCode: code,
+            referralLink: `https://paigeagent.ai?ref=${code}`,
+            tierKey: tierKey ?? app.requested_tier_key,
+          },
+        },
+      }).catch((e) => console.warn("approved welcome email failed", e));
+    }
+  } catch (e) {
+    console.warn("approved-welcome email lookup failed", e);
+  }
+
+  return result;
 }
 
 export async function rejectAffiliateApplication(
