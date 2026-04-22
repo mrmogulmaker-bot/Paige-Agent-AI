@@ -149,7 +149,7 @@ export function AddBusinessFlow({ open, onOpenChange }: AddBusinessFlowProps) {
 
       const parentId = values.is_subsidiary ? values.parent_business_id || null : null;
 
-      const insertPayload: Record<string, unknown> = {
+      const insertPayload = {
         owner_user_id: user.id,
         legal_name: values.legal_name.trim(),
         entity_type: values.entity_type,
@@ -169,8 +169,10 @@ export function AddBusinessFlow({ open, onOpenChange }: AddBusinessFlowProps) {
       };
 
       const { data, error } = await supabase
+        // Cast: dynamic shape combines several optional bureau columns
+        // we don't need to spell out here.
         .from("businesses")
-        .insert(insertPayload)
+        .insert(insertPayload as never)
         .select("id, legal_name")
         .single();
 
@@ -203,8 +205,8 @@ export function AddBusinessFlow({ open, onOpenChange }: AddBusinessFlowProps) {
       limit?.max_businesses === 999 ? "unlimited" : String(limit?.max_businesses ?? 1);
     return (
       <div className="space-y-5">
-        <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4">
-          <Lock className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 rounded-lg border border-accent/30 bg-accent/10 p-4">
+          <Lock className="h-5 w-5 text-accent-foreground shrink-0 mt-0.5" />
           <div className="space-y-1">
             <h4 className="font-semibold">You've reached your plan limit</h4>
             <p className="text-sm text-muted-foreground">
@@ -472,8 +474,8 @@ export function AddBusinessFlow({ open, onOpenChange }: AddBusinessFlowProps) {
 
   const renderConfirm = () => (
     <div className="space-y-5 text-center">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10">
-        <Building2 className="h-6 w-6 text-emerald-600" />
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+        <Building2 className="h-6 w-6 text-primary" />
       </div>
       <div className="space-y-1">
         <h3 className="text-lg font-semibold">{createdBusiness?.name} is on board</h3>

@@ -161,7 +161,7 @@ export function BusinessSelector({ className, compact = false }: BusinessSelecto
                 </Badge>
               )}
               {b.is_primary && (
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-label="Primary" />
+                <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-label="Primary" />
               )}
             </button>
           );
