@@ -75,6 +75,30 @@ export interface NegativeAccountInput {
   isActive?: boolean;
 }
 
+/**
+ * A credit tradeline used for COMPARABLE CREDIT analysis. Sourced from
+ * `credit_accounts`. Lender perspective — "do you have proven history with
+ * the same product type you're applying for?"
+ */
+export interface CreditAccountInput {
+  /** Lender / creditor display name. */
+  creditor?: string | null;
+  /** Account type token (e.g. "auto_loan", "mortgage", "credit_card"). */
+  type?: string | null;
+  /** ISO date string when the tradeline opened. */
+  openedOn?: string | Date | null;
+  /** ISO date string when the account closed (null if open). */
+  closedOn?: string | Date | null;
+  /** "open" | "closed" | "charged_off" | "collection" | "current" | etc. */
+  status?: string | null;
+  /** True if account currently shows a derogatory marker. */
+  isNegative?: boolean | null;
+  /** Date of the most recent derogatory event (late, charge-off, collection). */
+  derogatoryDate?: string | Date | null;
+  /** True when this tradeline is on an authorized-user basis (lower lender weight). */
+  isAuthorizedUser?: boolean | null;
+}
+
 /** Single banking relationship — one row from `banking_relationships`. */
 export interface BankingRelationshipInput {
   institutionName?: string | null;
