@@ -459,32 +459,70 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       return <p className="text-center text-muted-foreground py-8">No users found.</p>;
     }
 
+    const renderRowActions = (c: AuthClient, sizeClass: string) => (
+      <div className="flex items-center justify-end gap-1">
+        <Button size="sm" variant="outline" className={sizeClass} onClick={() => onViewClient(c.user_id)}>
+          View
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="ghost" className={`${sizeClass.replace("text-xs", "")} w-8 p-0`}>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => {
+              setMode("client");
+              navigate("/app");
+            }}>
+              <Eye className="w-4 h-4 mr-2" /> View as Client
+            </DropdownMenuItem>
+            {showPromoteToInternal && (
+              <DropdownMenuItem onClick={() => moveToInternal(c)}>
+                <ArrowRightLeft className="w-4 h-4 mr-2" /> Move to Internal
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => toggleBrokerAccess(c)}>
+              <Briefcase className="w-4 h-4 mr-2" />
+              {c.has_broker_access ? "Revoke Broker Access" : "Grant Broker Access"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openLimitDialog(c)}>
+              <Layers className="w-4 h-4 mr-2" />
+              Set Business Limit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setForceSignOutTarget({ id: c.user_id, name: c.full_name || "this user" })}
+            >
+              <LogOut className="w-4 h-4 mr-2" /> Force Sign Out (All Devices)
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => setDeleteTarget({ type: "auth", id: c.user_id, name: c.full_name || "this user" })}
+            >
+              <Trash2 className="w-4 h-4 mr-2" /> Delete User
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
+
     return (
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Location</TableHead>
-              <TableHead>Goal</TableHead>
-              <TableHead>FICO</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((c) => {
-              const bestFICO = Math.max(c.estimated_fico_eq || 0, c.estimated_fico_ex || 0, c.estimated_fico_tu || 0);
-              const primaryRole = c.roles?.[0] || "user";
-              const goalLabel = c.primary_goal_category
-                ? c.primary_goal_category.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
-                : null;
-              return (
-                <TableRow key={c.user_id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      <span>{c.full_name || "—"}</span>
+      <>
+        {/* Mobile card list */}
+        <div className="space-y-3 md:hidden">
+          {filtered.map((c) => {
+            const bestFICO = Math.max(c.estimated_fico_eq || 0, c.estimated_fico_ex || 0, c.estimated_fico_tu || 0);
+            const primaryRole = c.roles?.[0] || "user";
+            const goalLabel = c.primary_goal_category
+              ? c.primary_goal_category.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
+              : null;
+            return (
+              <div key={c.user_id} className="rounded-lg border bg-card p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium truncate">{c.full_name || "—"}</span>
                       {c.is_complimentary && (
                         <Badge className="bg-gradient-gold text-foreground border-0 text-[10px] flex items-center gap-1 px-1.5 py-0">
                           <Sparkles className="w-3 h-3" />
@@ -492,97 +530,127 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                         </Badge>
                       )}
                     </div>
-                  </TableCell>
-                  <TableCell>{c.city && c.state ? `${c.city}, ${c.state}` : "—"}</TableCell>
-                  <TableCell>
-                    {goalLabel ? (
-                      <Badge variant="secondary" className="bg-gradient-gold text-foreground border-0 text-[10px]">
-                        {goalLabel}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No intake</span>
+                    {(c.city || c.state) && (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {c.city && c.state ? `${c.city}, ${c.state}` : c.city || c.state}
+                      </p>
                     )}
-                  </TableCell>
-                  <TableCell>
-                    {bestFICO > 0 ? (
-                      <Badge variant={bestFICO >= 700 ? "default" : bestFICO >= 600 ? "secondary" : "destructive"}>
-                        {bestFICO}
-                      </Badge>
-                    ) : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      defaultValue={primaryRole}
-                      onValueChange={(value) => updateUserRole(c.user_id, value)}
-                    >
-                      <SelectTrigger className="w-[120px] h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="coach">Coach</SelectItem>
-                        <SelectItem value="moderator">Moderator</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="affiliate">Affiliate</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="default">Active</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onViewClient(c.user_id)}>
-                        View
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => {
-                            setMode("client");
-                            navigate("/app");
-                          }}>
-                            <Eye className="w-4 h-4 mr-2" /> View as Client
-                          </DropdownMenuItem>
-                          {showPromoteToInternal && (
-                            <DropdownMenuItem onClick={() => moveToInternal(c)}>
-                              <ArrowRightLeft className="w-4 h-4 mr-2" /> Move to Internal
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem onClick={() => toggleBrokerAccess(c)}>
-                            <Briefcase className="w-4 h-4 mr-2" />
-                            {c.has_broker_access ? "Revoke Broker Access" : "Grant Broker Access"}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openLimitDialog(c)}>
-                            <Layers className="w-4 h-4 mr-2" />
-                            Set Business Limit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => setForceSignOutTarget({ id: c.user_id, name: c.full_name || "this user" })}
-                          >
-                            <LogOut className="w-4 h-4 mr-2" /> Force Sign Out (All Devices)
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setDeleteTarget({ type: "auth", id: c.user_id, name: c.full_name || "this user" })}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" /> Delete User
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+                  </div>
+                  {bestFICO > 0 && (
+                    <Badge variant={bestFICO >= 700 ? "default" : bestFICO >= 600 ? "secondary" : "destructive"} className="shrink-0">
+                      {bestFICO}
+                    </Badge>
+                  )}
+                </div>
+                {goalLabel && (
+                  <div>
+                    <Badge variant="secondary" className="bg-gradient-gold text-foreground border-0 text-[10px]">
+                      {goalLabel}
+                    </Badge>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <Select
+                    defaultValue={primaryRole}
+                    onValueChange={(value) => updateUserRole(c.user_id, value)}
+                  >
+                    <SelectTrigger className="w-[120px] h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="coach">Coach</SelectItem>
+                      <SelectItem value="moderator">Moderator</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="affiliate">Affiliate</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {renderRowActions(c, "h-8 text-xs")}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Location</TableHead>
+                <TableHead>Goal</TableHead>
+                <TableHead>FICO</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((c) => {
+                const bestFICO = Math.max(c.estimated_fico_eq || 0, c.estimated_fico_ex || 0, c.estimated_fico_tu || 0);
+                const primaryRole = c.roles?.[0] || "user";
+                const goalLabel = c.primary_goal_category
+                  ? c.primary_goal_category.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
+                  : null;
+                return (
+                  <TableRow key={c.user_id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <span>{c.full_name || "—"}</span>
+                        {c.is_complimentary && (
+                          <Badge className="bg-gradient-gold text-foreground border-0 text-[10px] flex items-center gap-1 px-1.5 py-0">
+                            <Sparkles className="w-3 h-3" />
+                            Complimentary
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>{c.city && c.state ? `${c.city}, ${c.state}` : "—"}</TableCell>
+                    <TableCell>
+                      {goalLabel ? (
+                        <Badge variant="secondary" className="bg-gradient-gold text-foreground border-0 text-[10px]">
+                          {goalLabel}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No intake</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {bestFICO > 0 ? (
+                        <Badge variant={bestFICO >= 700 ? "default" : bestFICO >= 600 ? "secondary" : "destructive"}>
+                          {bestFICO}
+                        </Badge>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        defaultValue={primaryRole}
+                        onValueChange={(value) => updateUserRole(c.user_id, value)}
+                      >
+                        <SelectTrigger className="w-[120px] h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="user">User</SelectItem>
+                          <SelectItem value="coach">Coach</SelectItem>
+                          <SelectItem value="moderator">Moderator</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="affiliate">Affiliate</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="default">Active</Badge>
+                    </TableCell>
+                    <TableCell>{renderRowActions(c, "h-7 text-xs")}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </>
     );
   };
 
@@ -641,13 +709,13 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
 
       {/* Client List */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
+        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
             <CardTitle>Client Management</CardTitle>
             <CardDescription>Manage clients, team members, and internal records</CardDescription>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="relative w-64">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:gap-3">
+            <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search..."
@@ -656,15 +724,17 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                 className="pl-9"
               />
             </div>
-            <Button size="sm" variant="outline" onClick={() => setQuickUploadOpen(true)}>
-              <Upload className="w-4 h-4 mr-1" /> Upload Report
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
-              <Mail className="w-4 h-4 mr-1" /> Send Invite
-            </Button>
-            <Button size="sm" onClick={() => setAddInternalOpen(true)}>
-              <UserPlus className="w-4 h-4 mr-1" /> New Client
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setQuickUploadOpen(true)}>
+                <Upload className="w-4 h-4 mr-1" /> Upload Report
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
+                <Mail className="w-4 h-4 mr-1" /> Send Invite
+              </Button>
+              <Button size="sm" onClick={() => setAddInternalOpen(true)}>
+                <UserPlus className="w-4 h-4 mr-1" /> New Client
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -720,87 +790,162 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                   )}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Entity</TableHead>
-                        <TableHead>Funding Goal</TableHead>
-                        <TableHead>Revenue</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Portal</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredInternal.map((c) => (
-                        <TableRow key={c.id}>
-                          <TableCell className="font-medium">{c.first_name} {c.last_name}</TableCell>
-                          <TableCell className="text-sm">{c.email || "—"}</TableCell>
-                          <TableCell className="text-sm">{c.entity_name || "—"}</TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {c.funding_goal ? `$${Number(c.funding_goal).toLocaleString()}` : "—"}
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {c.monthly_revenue ? `$${Number(c.monthly_revenue).toLocaleString()}/mo` : "—"}
-                          </TableCell>
-                          <TableCell>
-                            <Select
-                              value={c.status}
-                              onValueChange={(value) => updateInternalStatus(c.id, value)}
-                            >
-                              <SelectTrigger className="w-[110px] h-7 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="active">Active</SelectItem>
-                                <SelectItem value="inactive">Inactive</SelectItem>
-                                <SelectItem value="archived">Archived</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={c.linked_user_id ? "default" : "outline"} className="text-xs">
-                              {c.linked_user_id ? "Linked" : "—"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-end gap-1">
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onViewInternalClient?.(c.id)}>
-                                View
-                              </Button>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => {
-                                    setMode("client");
-                                    navigate("/app");
-                                  }}>
-                                    <Eye className="w-4 h-4 mr-2" /> View as Client
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    className="text-destructive focus:text-destructive"
-                                    onClick={() => setDeleteTarget({ type: "internal", id: c.id, name: `${c.first_name} ${c.last_name}` })}
-                                  >
-                                    <Trash2 className="w-4 h-4 mr-2" /> Delete Client
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </TableCell>
+                <>
+                  {/* Mobile card list */}
+                  <div className="space-y-3 md:hidden">
+                    {filteredInternal.map((c) => (
+                      <div key={c.id} className="rounded-lg border bg-card p-3 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{c.first_name} {c.last_name}</p>
+                            {c.email && (
+                              <p className="text-xs text-muted-foreground truncate">{c.email}</p>
+                            )}
+                          </div>
+                          <Badge variant={c.linked_user_id ? "default" : "outline"} className="text-[10px] shrink-0">
+                            {c.linked_user_id ? "Linked" : "—"}
+                          </Badge>
+                        </div>
+                        {(c.entity_name || c.funding_goal || c.monthly_revenue) && (
+                          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                            {c.entity_name && (
+                              <div className="col-span-2 truncate"><span className="font-medium text-foreground">Entity:</span> {c.entity_name}</div>
+                            )}
+                            {c.funding_goal && (
+                              <div><span className="font-medium text-foreground">Goal:</span> ${Number(c.funding_goal).toLocaleString()}</div>
+                            )}
+                            {c.monthly_revenue && (
+                              <div><span className="font-medium text-foreground">Revenue:</span> ${Number(c.monthly_revenue).toLocaleString()}/mo</div>
+                            )}
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between gap-2 pt-1">
+                          <Select
+                            value={c.status}
+                            onValueChange={(value) => updateInternalStatus(c.id, value)}
+                          >
+                            <SelectTrigger className="w-[130px] h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="active">Active</SelectItem>
+                              <SelectItem value="inactive">Inactive</SelectItem>
+                              <SelectItem value="archived">Archived</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div className="flex items-center gap-1">
+                            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => onViewInternalClient?.(c.id)}>
+                              View
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => { setMode("client"); navigate("/app"); }}>
+                                  <Eye className="w-4 h-4 mr-2" /> View as Client
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => setDeleteTarget({ type: "internal", id: c.id, name: `${c.first_name} ${c.last_name}` })}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" /> Delete Client
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Entity</TableHead>
+                          <TableHead>Funding Goal</TableHead>
+                          <TableHead>Revenue</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Portal</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredInternal.map((c) => (
+                          <TableRow key={c.id}>
+                            <TableCell className="font-medium">{c.first_name} {c.last_name}</TableCell>
+                            <TableCell className="text-sm">{c.email || "—"}</TableCell>
+                            <TableCell className="text-sm">{c.entity_name || "—"}</TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {c.funding_goal ? `$${Number(c.funding_goal).toLocaleString()}` : "—"}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {c.monthly_revenue ? `$${Number(c.monthly_revenue).toLocaleString()}/mo` : "—"}
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={c.status}
+                                onValueChange={(value) => updateInternalStatus(c.id, value)}
+                              >
+                                <SelectTrigger className="w-[110px] h-7 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="active">Active</SelectItem>
+                                  <SelectItem value="inactive">Inactive</SelectItem>
+                                  <SelectItem value="archived">Archived</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={c.linked_user_id ? "default" : "outline"} className="text-xs">
+                                {c.linked_user_id ? "Linked" : "—"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onViewInternalClient?.(c.id)}>
+                                  View
+                                </Button>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => {
+                                      setMode("client");
+                                      navigate("/app");
+                                    }}>
+                                      <Eye className="w-4 h-4 mr-2" /> View as Client
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:text-destructive"
+                                      onClick={() => setDeleteTarget({ type: "internal", id: c.id, name: `${c.first_name} ${c.last_name}` })}
+                                    >
+                                      <Trash2 className="w-4 h-4 mr-2" /> Delete Client
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
             </TabsContent>
 
