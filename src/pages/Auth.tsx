@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, Shield, TrendingUp, Zap, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
@@ -32,6 +33,9 @@ const Auth = () => {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [consentPrivacy, setConsentPrivacy] = useState(false);
+  const [consentDataUsage, setConsentDataUsage] = useState(false);
+  const [consentMarketing, setConsentMarketing] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -117,11 +121,28 @@ const Auth = () => {
         }
         toast({ title: "Welcome back!", description: "You've successfully logged in." });
       } else {
-        const { error } = await signUpWithReferral({
+        if (!consentPrivacy || !consentDataUsage) {
+          toast({
+            title: "Consent required",
+            description: "Please confirm both required consent checkboxes to create your account.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const consentTimestamp = new Date().toISOString();
+
+        const { data: signUpData, error } = await signUpWithReferral({
           email,
           password,
           fullName,
           redirectTo: `${window.location.origin}/app`,
+          extraData: {
+            consent_privacy_policy: true,
+            consent_data_usage: true,
+            consent_marketing: consentMarketing,
+            consent_timestamp: consentTimestamp,
+          },
         });
 
         if (error) {
@@ -139,6 +160,22 @@ const Auth = () => {
         }
 
         void trackEvent("signup_complete", "activation", { method: "email" });
+
+        // Persist consent on the profile (non-blocking)
+        if (signUpData?.user?.id) {
+          supabase
+            .from("profiles")
+            .update({
+              consent_privacy_policy: true,
+              consent_data_usage: true,
+              consent_marketing: consentMarketing,
+              consent_timestamp: consentTimestamp,
+            })
+            .eq("user_id", signUpData.user.id)
+            .then(({ error: pErr }) => {
+              if (pErr) console.warn("Consent persist failed:", pErr);
+            });
+        }
 
         // Send welcome email
         supabase.functions.invoke("send-transactional-email", {
@@ -408,6 +445,59 @@ const Auth = () => {
                 {!isLogin && <PasswordStrengthIndicator password={password} />}
               </div>
 
+              {!isLogin && (
+                <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <Checkbox
+                      checked={consentPrivacy}
+                      onCheckedChange={(v) => setConsentPrivacy(!!v)}
+                      className="mt-0.5"
+                      aria-required
+                    />
+                    <span className="text-xs text-foreground/85 leading-relaxed">
+                      I have read and agree to the PaigeAgent{" "}
+                      <Link to="/privacy" target="_blank" className="underline text-accent hover:opacity-80">
+                        Privacy Policy
+                      </Link>{" "}
+                      and{" "}
+                      <Link to="/terms" target="_blank" className="underline text-accent hover:opacity-80">
+                        Terms of Service
+                      </Link>
+                      . I understand that PaigeAgent will collect my financial data including credit
+                      information to provide fundability scoring and financial coaching services.{" "}
+                      <span className="text-destructive">*</span>
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <Checkbox
+                      checked={consentDataUsage}
+                      onCheckedChange={(v) => setConsentDataUsage(!!v)}
+                      className="mt-0.5"
+                      aria-required
+                    />
+                    <span className="text-xs text-foreground/85 leading-relaxed">
+                      I understand that my financial data is used exclusively to provide my
+                      PaigeAgent services and is{" "}
+                      <strong>never sold to third parties, lenders, or advertisers</strong>.{" "}
+                      <span className="text-destructive">*</span>
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <Checkbox
+                      checked={consentMarketing}
+                      onCheckedChange={(v) => setConsentMarketing(!!v)}
+                      className="mt-0.5"
+                    />
+                    <span className="text-xs text-foreground/70 leading-relaxed">
+                      I agree to receive marketing communications about PaigeAgent products and
+                      updates. <em>(Optional — uncheck to receive only service notifications)</em>
+                    </span>
+                  </label>
+                </div>
+              )}
+
               <Button
                 type="submit"
                 className={`w-full font-semibold text-sm h-12 rounded-xl transition-all duration-300 ${
@@ -415,7 +505,7 @@ const Auth = () => {
                     ? "bg-primary hover:bg-primary-light text-primary-foreground shadow-md hover:shadow-lg"
                     : "bg-gradient-gold text-primary shadow-glow hover:shadow-glow-lg hover:scale-[1.01]"
                 }`}
-                disabled={isLoading}
+                disabled={isLoading || (!isLogin && (!consentPrivacy || !consentDataUsage))}
               >
                 {isLoading ? (
                   <>

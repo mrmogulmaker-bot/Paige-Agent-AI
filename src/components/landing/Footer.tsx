@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { SecurityBadge } from "@/components/security/SecurityBadge";
 
 const footerLinks = {
   product: [
@@ -66,6 +67,12 @@ export function Footer() {
         </div>
 
         <div className="pt-8 border-t border-primary-foreground/10 space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <SecurityBadge />
+            <span className="text-[11px] text-primary-foreground/60">
+              AES-256 encryption · SOC 2 infrastructure · TLS 1.3 transport
+            </span>
+          </div>
           <p className="text-[11px] text-primary-foreground/60 leading-relaxed max-w-4xl">
             PaigeAgent AI provides financial education and credit intelligence
             tools. It is not a licensed financial advisor, credit repair
