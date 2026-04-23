@@ -237,7 +237,7 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) processUpload(file);
+    if (file) requestUpload(file);
     e.target.value = "";
   };
 
@@ -245,8 +245,8 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
     e.preventDefault();
     setIsDragOver(false);
     const file = e.dataTransfer.files[0];
-    if (file) processUpload(file);
-  }, [processUpload]);
+    if (file) requestUpload(file);
+  }, [requestUpload]);
 
   const handleReset = async () => {
     if (resetConfirmText !== "RESET") return;
