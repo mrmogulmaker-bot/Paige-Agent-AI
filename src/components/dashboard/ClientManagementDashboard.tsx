@@ -722,87 +722,162 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                   )}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Entity</TableHead>
-                        <TableHead>Funding Goal</TableHead>
-                        <TableHead>Revenue</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Portal</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredInternal.map((c) => (
-                        <TableRow key={c.id}>
-                          <TableCell className="font-medium">{c.first_name} {c.last_name}</TableCell>
-                          <TableCell className="text-sm">{c.email || "—"}</TableCell>
-                          <TableCell className="text-sm">{c.entity_name || "—"}</TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {c.funding_goal ? `$${Number(c.funding_goal).toLocaleString()}` : "—"}
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {c.monthly_revenue ? `$${Number(c.monthly_revenue).toLocaleString()}/mo` : "—"}
-                          </TableCell>
-                          <TableCell>
-                            <Select
-                              value={c.status}
-                              onValueChange={(value) => updateInternalStatus(c.id, value)}
-                            >
-                              <SelectTrigger className="w-[110px] h-7 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="active">Active</SelectItem>
-                                <SelectItem value="inactive">Inactive</SelectItem>
-                                <SelectItem value="archived">Archived</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={c.linked_user_id ? "default" : "outline"} className="text-xs">
-                              {c.linked_user_id ? "Linked" : "—"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center justify-end gap-1">
-                              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onViewInternalClient?.(c.id)}>
-                                View
-                              </Button>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => {
-                                    setMode("client");
-                                    navigate("/app");
-                                  }}>
-                                    <Eye className="w-4 h-4 mr-2" /> View as Client
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    className="text-destructive focus:text-destructive"
-                                    onClick={() => setDeleteTarget({ type: "internal", id: c.id, name: `${c.first_name} ${c.last_name}` })}
-                                  >
-                                    <Trash2 className="w-4 h-4 mr-2" /> Delete Client
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </TableCell>
+                <>
+                  {/* Mobile card list */}
+                  <div className="space-y-3 md:hidden">
+                    {filteredInternal.map((c) => (
+                      <div key={c.id} className="rounded-lg border bg-card p-3 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{c.first_name} {c.last_name}</p>
+                            {c.email && (
+                              <p className="text-xs text-muted-foreground truncate">{c.email}</p>
+                            )}
+                          </div>
+                          <Badge variant={c.linked_user_id ? "default" : "outline"} className="text-[10px] shrink-0">
+                            {c.linked_user_id ? "Linked" : "—"}
+                          </Badge>
+                        </div>
+                        {(c.entity_name || c.funding_goal || c.monthly_revenue) && (
+                          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                            {c.entity_name && (
+                              <div className="col-span-2 truncate"><span className="font-medium text-foreground">Entity:</span> {c.entity_name}</div>
+                            )}
+                            {c.funding_goal && (
+                              <div><span className="font-medium text-foreground">Goal:</span> ${Number(c.funding_goal).toLocaleString()}</div>
+                            )}
+                            {c.monthly_revenue && (
+                              <div><span className="font-medium text-foreground">Revenue:</span> ${Number(c.monthly_revenue).toLocaleString()}/mo</div>
+                            )}
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between gap-2 pt-1">
+                          <Select
+                            value={c.status}
+                            onValueChange={(value) => updateInternalStatus(c.id, value)}
+                          >
+                            <SelectTrigger className="w-[130px] h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="active">Active</SelectItem>
+                              <SelectItem value="inactive">Inactive</SelectItem>
+                              <SelectItem value="archived">Archived</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div className="flex items-center gap-1">
+                            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => onViewInternalClient?.(c.id)}>
+                              View
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => { setMode("client"); navigate("/app"); }}>
+                                  <Eye className="w-4 h-4 mr-2" /> View as Client
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => setDeleteTarget({ type: "internal", id: c.id, name: `${c.first_name} ${c.last_name}` })}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" /> Delete Client
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Entity</TableHead>
+                          <TableHead>Funding Goal</TableHead>
+                          <TableHead>Revenue</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Portal</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredInternal.map((c) => (
+                          <TableRow key={c.id}>
+                            <TableCell className="font-medium">{c.first_name} {c.last_name}</TableCell>
+                            <TableCell className="text-sm">{c.email || "—"}</TableCell>
+                            <TableCell className="text-sm">{c.entity_name || "—"}</TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {c.funding_goal ? `$${Number(c.funding_goal).toLocaleString()}` : "—"}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {c.monthly_revenue ? `$${Number(c.monthly_revenue).toLocaleString()}/mo` : "—"}
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={c.status}
+                                onValueChange={(value) => updateInternalStatus(c.id, value)}
+                              >
+                                <SelectTrigger className="w-[110px] h-7 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="active">Active</SelectItem>
+                                  <SelectItem value="inactive">Inactive</SelectItem>
+                                  <SelectItem value="archived">Archived</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={c.linked_user_id ? "default" : "outline"} className="text-xs">
+                                {c.linked_user_id ? "Linked" : "—"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center justify-end gap-1">
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onViewInternalClient?.(c.id)}>
+                                  View
+                                </Button>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => {
+                                      setMode("client");
+                                      navigate("/app");
+                                    }}>
+                                      <Eye className="w-4 h-4 mr-2" /> View as Client
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:text-destructive"
+                                      onClick={() => setDeleteTarget({ type: "internal", id: c.id, name: `${c.first_name} ${c.last_name}` })}
+                                    >
+                                      <Trash2 className="w-4 h-4 mr-2" /> Delete Client
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
               )}
             </TabsContent>
 
