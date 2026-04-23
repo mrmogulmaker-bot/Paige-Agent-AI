@@ -193,7 +193,17 @@ function ScoreCard({
     return (
       <Card className="p-4 bg-card border-border flex items-center gap-3">
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-foreground truncate">{displayTitle}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground truncate">{displayTitle}</h3>
+            {accuracy && (
+              <AccuracyChip
+                level={accuracy.level}
+                label={accuracy.label}
+                description={accuracy.description}
+                size="xs"
+              />
+            )}
+          </div>
           <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden mt-2">
             <div className={`h-full ${bg} transition-all duration-700`} style={{ width: `${score}%` }} />
           </div>
@@ -212,10 +222,19 @@ function ScoreCard({
 
   return (
     <Card className="p-5 bg-card border-border flex flex-col h-full">
-      <div className="flex items-start justify-between mb-3">
-        <div>
+      <div className="flex items-start justify-between mb-3 gap-2">
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold text-foreground">{result.title}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">{typeLabel}</p>
+          {accuracy && (
+            <div className="mt-2">
+              <AccuracyChip
+                level={accuracy.level}
+                label={accuracy.label}
+                description={accuracy.description}
+              />
+            </div>
+          )}
         </div>
         <TooltipProvider>
           <Tooltip>
@@ -289,6 +308,20 @@ export function ThreeFundabilityScoresPanel({
   const isMobile = useIsMobile();
   const useCompact = compactOnMobile && isMobile;
   const [portfolioOpen, setPortfolioOpen] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getUser().then(({ data }) => {
+      if (mounted) setUserId(data.user?.id ?? null);
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  const { data: accuracyData } = useFinancialDataAccuracy(userId);
+  const accuracy = accuracyData
+    ? { level: accuracyData.level, label: accuracyData.label, description: accuracyData.description }
+    : undefined;
 
   const hasMultipleBusinesses = businesses.length > 1;
 
@@ -336,9 +369,9 @@ export function ThreeFundabilityScoresPanel({
       )}
 
       <div className={useCompact ? "flex flex-col gap-3" : "grid grid-cols-1 md:grid-cols-3 gap-4"}>
-        <ScoreCard result={personal} compact={useCompact} />
-        <ScoreCard result={small_business} compact={useCompact} />
-        <ScoreCard result={commercial} compact={useCompact} />
+        <ScoreCard result={personal} compact={useCompact} accuracy={accuracy} />
+        <ScoreCard result={small_business} compact={useCompact} accuracy={accuracy} />
+        <ScoreCard result={commercial} compact={useCompact} accuracy={accuracy} />
       </div>
 
       <BusinessPortfolio open={portfolioOpen} onOpenChange={setPortfolioOpen} />
