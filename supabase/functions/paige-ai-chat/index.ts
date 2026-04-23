@@ -640,7 +640,7 @@ JSON:`;
     let userContext = "";
     try {
       const contextUserId = payloadClientId || user.id;
-      const { data: profile } = await supabase.from("profiles").select("full_name, city, state, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu").eq("user_id", contextUserId).maybeSingle();
+      const { data: profile } = await supabase.from("profiles").select("full_name, city, state, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, primary_bank_name, primary_bank_months, primary_bank_average_balance, has_investment_accounts, investment_account_value_range, total_liquid_assets_range, has_real_estate_equity, real_estate_equity_range, has_equipment_assets, has_invoice_receivables, monthly_revenue_range").eq("user_id", contextUserId).maybeSingle();
       const { data: subscription } = await supabase.from("user_subscriptions").select("plan_slug, status").eq("user_id", contextUserId).maybeSingle();
       const { data: tasks } = await supabase.from("tasks").select("title, status, track, due_date").eq("user_id", contextUserId).order("created_at", { ascending: false }).limit(10);
       const { data: disputes } = await supabase.from("disputes").select("bureau, creditor_name, status").eq("user_id", contextUserId).order("created_at", { ascending: false }).limit(5);
