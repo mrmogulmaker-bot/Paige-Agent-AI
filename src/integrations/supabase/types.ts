@@ -5799,8 +5799,14 @@ export type Database = {
           avatar_url: string | null
           biggest_obstacle: string | null
           city: string | null
+          consent_data_usage: boolean
+          consent_marketing: boolean
+          consent_privacy_policy: boolean
+          consent_timestamp: string | null
           created_at: string | null
           credit_goals: Json | null
+          credit_report_consent: boolean
+          credit_report_consent_timestamp: string | null
           cross_bureau_discrepancies: Json | null
           dashboard_mode: string
           date_of_birth: string | null
@@ -5864,8 +5870,14 @@ export type Database = {
           avatar_url?: string | null
           biggest_obstacle?: string | null
           city?: string | null
+          consent_data_usage?: boolean
+          consent_marketing?: boolean
+          consent_privacy_policy?: boolean
+          consent_timestamp?: string | null
           created_at?: string | null
           credit_goals?: Json | null
+          credit_report_consent?: boolean
+          credit_report_consent_timestamp?: string | null
           cross_bureau_discrepancies?: Json | null
           dashboard_mode?: string
           date_of_birth?: string | null
@@ -5929,8 +5941,14 @@ export type Database = {
           avatar_url?: string | null
           biggest_obstacle?: string | null
           city?: string | null
+          consent_data_usage?: boolean
+          consent_marketing?: boolean
+          consent_privacy_policy?: boolean
+          consent_timestamp?: string | null
           created_at?: string | null
           credit_goals?: Json | null
+          credit_report_consent?: boolean
+          credit_report_consent_timestamp?: string | null
           cross_bureau_discrepancies?: Json | null
           dashboard_mode?: string
           date_of_birth?: string | null
@@ -7502,8 +7520,14 @@ export type Database = {
           avatar_url: string | null
           biggest_obstacle: string | null
           city: string | null
+          consent_data_usage: boolean
+          consent_marketing: boolean
+          consent_privacy_policy: boolean
+          consent_timestamp: string | null
           created_at: string | null
           credit_goals: Json | null
+          credit_report_consent: boolean
+          credit_report_consent_timestamp: string | null
           cross_bureau_discrepancies: Json | null
           dashboard_mode: string
           date_of_birth: string | null
