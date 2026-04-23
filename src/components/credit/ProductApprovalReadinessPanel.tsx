@@ -274,6 +274,21 @@ export function ProductApprovalReadinessPanel() {
   const [open, setOpen] = useState(false);
 
   const { factors } = useCreditFactors();
+  const { personal: personalScore } = useThreeFundabilityScores();
+
+  // Derive strongest + weakest bureau from the personal fundability bureau breakdown.
+  const { strongestBureau, weakestBureau } = useMemo(() => {
+    const bureaus = personalScore?.bureauScores;
+    if (!bureaus) return { strongestBureau: null as null | "experian" | "transunion" | "equifax", weakestBureau: null as null | "experian" | "transunion" | "equifax" };
+    const entries = (Object.entries(bureaus) as Array<["experian" | "transunion" | "equifax", { score: number | null; locked: boolean }]>)
+      .filter(([, v]) => !v.locked && typeof v.score === "number");
+    if (entries.length === 0) return { strongestBureau: null, weakestBureau: null };
+    const sorted = [...entries].sort((a, b) => (b[1].score ?? 0) - (a[1].score ?? 0));
+    return {
+      strongestBureau: sorted[0][0],
+      weakestBureau: sorted.length > 1 ? sorted[sorted.length - 1][0] : null,
+    };
+  }, [personalScore]);
 
   const { data: profileData } = useQuery({
     queryKey: ["product-readiness-inputs"],
@@ -381,8 +396,10 @@ export function ProductApprovalReadinessPanel() {
         status: a.status ?? null,
         isAuthorizedUser: a.is_authorized_user ?? false,
       })),
+      strongestBureau,
+      weakestBureau,
     });
-  }, [profileData, factors]);
+  }, [profileData, factors, strongestBureau, weakestBureau]);
 
   // Build column-organized list
   const columns = useMemo(() => {
@@ -580,6 +597,44 @@ function ProductCard({ product }: { product: ProductEligibility }) {
                   ? `${cc.modifierScore}% from comparable credit concern`
                   : "No comparable history — neutral effect"}
               </p>
+            </div>
+          )}
+          {product.bureauStrategy && product.bureauStrategy.hasAnyKnownPull && (
+            <div className="rounded border border-border bg-background p-2 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-medium">Bureau Strategy</p>
+                <Badge variant="outline" className="text-[10px] border-gold/40 text-gold">
+                  Verified {product.bureauStrategy.verifiedOn}
+                </Badge>
+              </div>
+              {product.bureauStrategy.matchingBureauLenders.length > 0 && (
+                <p className="text-[11px]">
+                  <span className="font-medium text-emerald-600">Best lenders for your bureau profile: </span>
+                  <span className="text-muted-foreground">{product.bureauStrategy.matchingBureauLenders.slice(0, 4).join(" · ")}</span>
+                </p>
+              )}
+              {product.bureauStrategy.weakBureauLenders.length > 0 && (
+                <p className="text-[11px]">
+                  <span className="font-medium text-destructive">Avoid leading with: </span>
+                  <span className="text-muted-foreground">{product.bureauStrategy.weakBureauLenders.slice(0, 4).join(" · ")}</span>
+                  <span className="text-muted-foreground"> — apply these after your stronger bureau applications.</span>
+                </p>
+              )}
+              {product.bureauStrategy.neutralLenders.length > 0 && (
+                <p className="text-[11px]">
+                  <span className="font-medium">No personal pull: </span>
+                  <span className="text-muted-foreground">{product.bureauStrategy.neutralLenders.slice(0, 4).join(" · ")}</span>
+                </p>
+              )}
+              <p className="text-[11px] text-muted-foreground italic">{product.bureauStrategy.bureauAdvice}</p>
+              <p className="text-[10px] text-muted-foreground/80">
+                Bureau pull data verified {product.bureauStrategy.verifiedOn} — always confirm with lender before applying.
+              </p>
+            </div>
+          )}
+          {product.bureauStrategy && !product.bureauStrategy.hasAnyKnownPull && product.recommendedLenders.length > 0 && (
+            <div className="rounded border border-border bg-background p-2 text-[11px] text-muted-foreground italic">
+              Bureau pull: Verify before applying — use the RAG search in Paige to check which bureau each lender pulls for your state.
             </div>
           )}
           {product.paigeInsight && (

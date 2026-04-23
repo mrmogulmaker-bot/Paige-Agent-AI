@@ -22,6 +22,8 @@
 //   Financial Profile — by design. This pushes data collection.
 // ============================================================
 
+import { buildBureauStrategy, type BureauStrategy } from "./bureauPullData";
+
 export type FundabilityScoreType = "personal" | "small_business" | "commercial";
 
 export type FundabilityBand =
@@ -196,6 +198,12 @@ export interface FundabilityProfileInputs {
   // ---- Comparable credit (2026) ----
   /** All credit tradelines from credit_accounts — used for product matching. */
   creditAccounts?: CreditAccountInput[] | null;
+
+  // ---- Bureau strategy hints (2026) ----
+  /** Client's strongest bureau (from bureau-specific fundability). Used to tag recommended lenders. */
+  strongestBureau?: CreditBureau | null;
+  /** Client's weakest bureau (from bureau-specific fundability). Used to tag recommended lenders. */
+  weakestBureau?: CreditBureau | null;
 }
 
 // ============================================================
@@ -1104,6 +1112,8 @@ export interface ProductEligibility {
   unlocks: string;
   paigeInsight: string;
   reportsTo?: string;
+  /** Per-product bureau-pull strategy derived from recommendedLenders. */
+  bureauStrategy?: BureauStrategy;
 }
 
 export interface CompleteProductEligibility {
@@ -1906,7 +1916,13 @@ export function getCompleteProductEligibility(p: FundabilityProfileInputs): Comp
 
   // Apply comparable credit modifier to every product
   const accounts = p.creditAccounts ?? [];
-  const enriched = flatList.map((e) => applyComparableCredit(e, accounts));
+  const strongest = p.strongestBureau ?? null;
+  const weakest = p.weakestBureau ?? null;
+  const enriched = flatList.map((e) => {
+    const withCC = applyComparableCredit(e, accounts);
+    const bureauStrategy = buildBureauStrategy(withCC.recommendedLenders, strongest, weakest);
+    return { ...withCC, bureauStrategy };
+  });
 
   // Group by tier
   const byTier: Record<ProductTier, ProductEligibility[]> = {
