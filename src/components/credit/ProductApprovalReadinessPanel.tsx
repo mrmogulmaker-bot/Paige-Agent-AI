@@ -454,9 +454,9 @@ export function ProductApprovalReadinessPanel() {
                 <p className="text-xs text-muted-foreground mt-0.5">
                   <span className="text-emerald-600 font-medium">Ready for {summary.ready}</span>
                   <span className="mx-1.5">·</span>
-                  <span className="text-amber-600 font-medium">{summary.almost} almost ready</span>
+                  <span className="text-emerald-600">{summary.boosted} boosted by comparable credit</span>
                   <span className="mx-1.5">·</span>
-                  <span className="text-muted-foreground">{summary.notReady} need work</span>
+                  <span className="text-destructive">{summary.flagged} flagged for comparable credit risk</span>
                 </p>
               </div>
             </div>
@@ -504,6 +504,20 @@ function ProductCard({ product }: { product: ProductEligibility }) {
   const meta = STATUS_META[product.status];
   const Icon = meta.icon;
   const topBlocker = product.blockers[0] ?? "Ready to apply";
+  const cc = product.comparableCredit;
+  const adj = product.adjustedApprovalLikelihood ?? product.qualificationScore;
+
+  const ccBadge = cc
+    ? (cc.overallQuality === "excellent"
+        ? { label: "Excellent Comparable Credit", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30" }
+        : cc.overallQuality === "good"
+        ? { label: "Good Comparable Credit", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20" }
+        : cc.overallQuality === "mixed"
+        ? { label: "Mixed Comparable Credit", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" }
+        : cc.overallQuality === "negative"
+        ? { label: "Negative Comparable Credit", cls: "bg-destructive/15 text-destructive border-destructive/30" }
+        : { label: "Thin File for This Product", cls: "bg-muted text-muted-foreground border-border" })
+    : null;
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -521,7 +535,7 @@ function ProductCard({ product }: { product: ProductEligibility }) {
         </div>
         <div className="flex items-center justify-between gap-2 mb-1">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{product.category}</span>
-          <span className="text-[11px] font-mono text-muted-foreground">{product.qualificationScore}%</span>
+          <span className="text-[11px] font-mono text-muted-foreground">{adj}%</span>
         </div>
         <p className="text-xs text-muted-foreground line-clamp-2">{topBlocker}</p>
       </button>
@@ -546,6 +560,27 @@ function ProductCard({ product }: { product: ProductEligibility }) {
           )}
           {product.unlocks && (
             <p><span className="font-medium">Unlocks:</span> <span className="text-muted-foreground">{product.unlocks}</span></p>
+          )}
+          {cc && ccBadge && (
+            <div className="rounded border border-border bg-background p-2 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-medium">Your Credit Story for This Product</p>
+                <Badge variant="outline" className={`text-[10px] ${ccBadge.cls}`}>{ccBadge.label}</Badge>
+              </div>
+              <p className="text-muted-foreground">{cc.narrative}</p>
+              <p className="text-[11px] text-muted-foreground/80 italic">{cc.lenderPerspective}</p>
+              <p className={`text-[11px] font-medium ${
+                cc.modifierScore > 0 ? "text-emerald-600"
+                : cc.modifierScore < 0 ? "text-destructive"
+                : "text-muted-foreground"
+              }`}>
+                {cc.modifierScore > 0
+                  ? `+${cc.modifierScore}% from comparable credit history`
+                  : cc.modifierScore < 0
+                  ? `${cc.modifierScore}% from comparable credit concern`
+                  : "No comparable history — neutral effect"}
+              </p>
+            </div>
           )}
           {product.paigeInsight && (
             <div className="rounded bg-primary/5 border border-primary/15 p-2 text-muted-foreground italic">
