@@ -38,7 +38,7 @@ export function useThreeFundabilityScores(
       personalReportCount: number;
       business: any | null;
       hasBusinessCreditDataPoint: boolean;
-      negatives: Array<{ date: string | null; itemType: string | null; isActive: boolean }>;
+      negatives: Array<{ date: string | null; itemType: string | null; isActive: boolean; bureau: string | null }>;
       bankingRelationships: any[];
     }> => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -77,7 +77,7 @@ export function useThreeFundabilityScores(
         bizQuery,
         supabase
           .from("credit_negative_items")
-          .select("date_of_occurrence, date_reported, item_type, status")
+          .select("date_of_occurrence, date_reported, item_type, status, bureau")
           .eq("user_id", user.id),
         supabase
           .from("banking_relationships" as any)
@@ -98,6 +98,7 @@ export function useThreeFundabilityScores(
         date: n.date_of_occurrence ?? n.date_reported ?? null,
         itemType: n.item_type ?? null,
         isActive: (n.status ?? "active") !== "removed",
+        bureau: n.bureau ?? null,
       }));
 
       return {

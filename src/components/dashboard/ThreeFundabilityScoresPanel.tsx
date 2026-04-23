@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Lock, HelpCircle, Loader2, ArrowRight, Building2, LayoutGrid, ShieldCheck, ShieldAlert, ShieldQuestion } from "lucide-react";
+import { Lock, HelpCircle, Loader2, ArrowRight, Building2, LayoutGrid, ShieldCheck, ShieldAlert, ShieldQuestion, Eye, ChevronDown, ChevronUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useThreeFundabilityScores } from "@/hooks/useThreeFundabilityScores";
@@ -11,7 +11,14 @@ import { useBusinessContext, entityRoleLabel } from "@/contexts/BusinessContext"
 import { useFinancialDataAccuracy, type AccuracyLevel } from "@/hooks/useFinancialDataAccuracy";
 import { supabase } from "@/integrations/supabase/client";
 import { BusinessPortfolio } from "./BusinessPortfolio";
-import type { FundabilityScoreResult, FundabilityBand } from "@/lib/fundabilityScores";
+import type { FundabilityScoreResult, FundabilityBand, CreditBureau, BureauScoreEntry } from "@/lib/fundabilityScores";
+
+const BUREAU_LABEL: Record<CreditBureau, string> = {
+  experian: "Experian",
+  transunion: "TransUnion",
+  equifax: "Equifax",
+};
+const BUREAU_ORDER: CreditBureau[] = ["experian", "transunion", "equifax"];
 
 const SHORT_TITLES: Record<string, string> = {
   personal: "Personal",
@@ -95,6 +102,151 @@ function AccuracyChip({
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function BureauLens({ result }: { result: FundabilityScoreResult }) {
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const bureauScores = result.bureauScores;
+  if (!bureauScores) return null;
+
+  const strongest = result.strongestBureau ?? null;
+  const strongestScore = result.strongestBureauScore ?? null;
+  const variance = result.bureauVariance ?? 0;
+
+  // Determine bar color per bureau: green=highest, amber=middle, red=lowest
+  const unlockedEntries = BUREAU_ORDER
+    .map((b) => [b, bureauScores[b]] as [CreditBureau, BureauScoreEntry])
+    .filter(([, e]) => !e.locked && typeof e.score === "number");
+  const sorted = [...unlockedEntries].sort((a, b) => (b[1].score ?? 0) - (a[1].score ?? 0));
+  const colorOf = (b: CreditBureau): string => {
+    const idx = sorted.findIndex(([bb]) => bb === b);
+    if (idx === -1) return "bg-muted";
+    if (sorted.length === 1) return "bg-fundability-good";
+    if (idx === 0) return "bg-fundability-excellent";
+    if (idx === sorted.length - 1) return "bg-fundability-poor";
+    return "bg-fundability-fair";
+  };
+  const textColorOf = (b: CreditBureau): string => {
+    const idx = sorted.findIndex(([bb]) => bb === b);
+    if (idx === -1) return "text-muted-foreground";
+    if (sorted.length === 1) return "text-fundability-good";
+    if (idx === 0) return "text-fundability-excellent";
+    if (idx === sorted.length - 1) return "text-fundability-poor";
+    return "text-fundability-fair";
+  };
+
+  const strongestEntry = strongest ? bureauScores[strongest] : null;
+  const weakestEntry = sorted.length > 0 ? sorted[sorted.length - 1] : null;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between text-left hover:opacity-80 transition-opacity"
+      >
+        <div className="flex items-center gap-1.5">
+          <Eye className="w-3 h-3 text-muted-foreground" />
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Bureau Lens
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {strongest && strongestScore != null ? (
+            <Badge
+              variant="outline"
+              className="text-[10px] gap-1 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+            >
+              Strongest: {BUREAU_LABEL[strongest]} ({strongestScore})
+            </Badge>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">No bureau scores yet</span>
+          )}
+          {open ? (
+            <ChevronUp className="w-3 h-3 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="w-3 h-3 text-muted-foreground" />
+          )}
+        </div>
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-2.5">
+          {BUREAU_ORDER.map((bureau) => {
+            const entry = bureauScores[bureau];
+            const score = entry.score ?? 0;
+            return (
+              <div key={bureau} className="space-y-1">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-medium text-foreground">{BUREAU_LABEL[bureau]}</span>
+                  {entry.locked ? (
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <Lock className="w-2.5 h-2.5" />
+                      Upload {BUREAU_LABEL[bureau]} report
+                    </span>
+                  ) : (
+                    <span className={`font-semibold ${textColorOf(bureau)}`}>
+                      {score}/100 {entry.bandLabel ? `· ${entry.bandLabel}` : ""}
+                    </span>
+                  )}
+                </div>
+                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                  {!entry.locked && (
+                    <div
+                      className={`h-full ${colorOf(bureau)} transition-all duration-700`}
+                      style={{ width: `${score}%` }}
+                    />
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Strategic insight */}
+          {strongest && strongestEntry?.score != null && weakestEntry && (
+            <p className="text-[11px] text-muted-foreground leading-relaxed pt-1">
+              Your <span className="font-medium text-foreground">{BUREAU_LABEL[strongest]}</span>{" "}
+              score is your strongest bureau
+              {sorted.length > 1 && weakestEntry[1].score != null && (
+                <> — {(strongestEntry.score ?? 0) - (weakestEntry[1].score ?? 0)} points above your weakest</>
+              )}
+              . When applying for products that pull {BUREAU_LABEL[strongest]} you are in a significantly
+              stronger position.
+            </p>
+          )}
+
+          {/* Variance alerts */}
+          {sorted.length === 3 && variance >= 30 && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-700 dark:text-amber-400">
+              ⚠ Your bureau scores vary significantly ({variance} points). This matters — apply to
+              lenders that pull your strongest bureau first. Check the bureau pull data in your
+              Paige session before submitting any application.
+            </div>
+          )}
+          {sorted.length === 3 && variance > 0 && variance < 10 && (
+            <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-2 text-[11px] text-emerald-700 dark:text-emerald-400">
+              Your scores are consistent across bureaus — you have flexibility in which lenders you
+              approach.
+            </div>
+          )}
+
+          {/* Locked-bureau CTA */}
+          {sorted.length < 3 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full mt-1 h-7 text-[11px]"
+              onClick={() => navigate("/app/credit")}
+            >
+              Upload missing bureau reports
+              <ArrowRight className="w-3 h-3 ml-1" />
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -293,6 +445,10 @@ function ScoreCard({
             ))}
           </ul>
         </div>
+      )}
+
+      {(result.type === "personal" || result.type === "small_business") && result.bureauScores && (
+        <BureauLens result={result} />
       )}
     </Card>
   );
