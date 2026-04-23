@@ -922,6 +922,12 @@ export interface ProductEligibility {
   category: string;
   status: EligibilityStatus;
   qualificationScore: number; // 0-100 fit score
+  /** Base approval likelihood BEFORE comparable credit modifier (== qualificationScore). */
+  baseApprovalLikelihood?: number;
+  /** Approval likelihood AFTER applying comparable credit modifier. 5-95. */
+  adjustedApprovalLikelihood?: number;
+  /** Comparable credit analysis for this specific product type. */
+  comparableCredit?: ComparableCreditResult;
   blockers: string[];
   rateRangeEstimate: string | null;
   recommendedLenders: string[];
