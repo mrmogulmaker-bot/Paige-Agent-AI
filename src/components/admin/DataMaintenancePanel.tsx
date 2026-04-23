@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -14,7 +16,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  Database, RefreshCw, Loader2, CheckCircle, AlertTriangle, XCircle, Play, Brain, Mail,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Database, RefreshCw, Loader2, CheckCircle, AlertTriangle, XCircle, Play, Brain, Mail, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -41,6 +47,12 @@ export function DataMaintenancePanel() {
     total_profiles: number; sent: number; skipped_already_sent: number;
     skipped_unsubscribed: number; failed: number;
   } | null>(null);
+
+  // Beta launch email preview state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewName, setPreviewName] = useState("Antonio");
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewSubject, setPreviewSubject] = useState<string | null>(null);
 
   // Count total users with email so the confirm dialog can show the impact
   const { data: betaEligibleCount } = useQuery({
@@ -79,6 +91,34 @@ export function DataMaintenancePanel() {
     },
     onError: (err: Error) => toast.error(err.message || "Beta launch send failed"),
   });
+
+  const previewBetaLaunch = useMutation({
+    mutationFn: async (name: string) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      const response = await supabase.functions.invoke("preview-beta-launch-email", {
+        body: { name: name.trim() || undefined },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (response.error) throw new Error(response.error.message);
+      return response.data as {
+        templateName: string; displayName: string; subject: string;
+        sampleName: string | null; html: string;
+      };
+    },
+    onSuccess: (data) => {
+      setPreviewHtml(data.html);
+      setPreviewSubject(data.subject);
+    },
+    onError: (err: Error) => toast.error(err.message || "Preview render failed"),
+  });
+
+  const openPreview = () => {
+    setPreviewOpen(true);
+    setPreviewHtml(null);
+    setPreviewSubject(null);
+    previewBetaLaunch.mutate(previewName);
+  };
 
   const memoryBackfill = useMutation({
     mutationFn: async () => {
@@ -494,38 +534,50 @@ export function DataMaintenancePanel() {
               </p>
             </div>
 
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  disabled={sendBetaLaunch.isPending}
-                  className="gap-2 shrink-0"
-                >
-                  {sendBetaLaunch.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Mail className="w-4 h-4" />
-                  )}
-                  {sendBetaLaunch.isPending ? "Sending..." : "Send Beta Launch Email to All Users"}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Send Beta Launch Email?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will send the Beta launch email to all{" "}
-                    <strong>{betaEligibleCount ?? "…"}</strong> users with an email
-                    address. Each user can only receive this email once — users who
-                    already received it will be skipped automatically. Continue?
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => sendBetaLaunch.mutate()}>
-                    Send to All Users
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={openPreview}
+                className="gap-2"
+              >
+                <Eye className="w-4 h-4" />
+                Preview email
+              </Button>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    disabled={sendBetaLaunch.isPending}
+                    className="gap-2"
+                  >
+                    {sendBetaLaunch.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Mail className="w-4 h-4" />
+                    )}
+                    {sendBetaLaunch.isPending ? "Sending..." : "Send Beta Launch Email to All Users"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Send Beta Launch Email?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will send the Beta launch email to all{" "}
+                      <strong>{betaEligibleCount ?? "…"}</strong> users with an email
+                      address. Each user can only receive this email once — users who
+                      already received it will be skipped automatically. Continue?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => sendBetaLaunch.mutate()}>
+                      Send to All Users
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
 
           {betaLaunchResult && !sendBetaLaunch.isPending && (
@@ -548,7 +600,82 @@ export function DataMaintenancePanel() {
         </CardContent>
       </Card>
 
-      {/* FRED API Key Notice */}
+      {/* Beta Launch Email — admin preview dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5 text-primary" />
+              Beta Launch Email Preview
+            </DialogTitle>
+            <DialogDescription>
+              Renders the live <code className="font-mono text-xs">beta-launch-welcome</code> template
+              with a sample recipient name. This matches exactly what users will receive
+              (minus the system-appended unsubscribe footer).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+            <div className="flex-1 space-y-1">
+              <Label htmlFor="preview-name">Sample recipient first name</Label>
+              <Input
+                id="preview-name"
+                value={previewName}
+                onChange={(e) => setPreviewName(e.target.value)}
+                placeholder="Antonio"
+                maxLength={80}
+              />
+            </div>
+            <Button
+              type="button"
+              onClick={() => previewBetaLaunch.mutate(previewName)}
+              disabled={previewBetaLaunch.isPending}
+              className="gap-2"
+            >
+              {previewBetaLaunch.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              Re-render
+            </Button>
+          </div>
+
+          {previewSubject && (
+            <div className="rounded border border-border bg-muted/40 px-3 py-2 text-sm">
+              <span className="font-medium text-foreground">Subject: </span>
+              <span className="text-muted-foreground">{previewSubject}</span>
+            </div>
+          )}
+
+          <div className="flex-1 min-h-[400px] rounded border border-border overflow-hidden bg-background">
+            {previewBetaLaunch.isPending && !previewHtml ? (
+              <div className="h-full flex items-center justify-center text-muted-foreground gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Rendering email…
+              </div>
+            ) : previewHtml ? (
+              <iframe
+                title="Beta launch email preview"
+                srcDoc={previewHtml}
+                sandbox=""
+                className="w-full h-[60vh] border-0 bg-white"
+              />
+            ) : (
+              <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                No preview yet.
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setPreviewOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Card className="border-accent/30 bg-accent/5">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">

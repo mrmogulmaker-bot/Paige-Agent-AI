@@ -85,3 +85,5 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = false
   [functions.send-beta-launch-email]
     verify_jwt = true
+  [functions.preview-beta-launch-email]
+    verify_jwt = true
