@@ -459,32 +459,70 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       return <p className="text-center text-muted-foreground py-8">No users found.</p>;
     }
 
+    const renderRowActions = (c: AuthClient, sizeClass: string) => (
+      <div className="flex items-center justify-end gap-1">
+        <Button size="sm" variant="outline" className={sizeClass} onClick={() => onViewClient(c.user_id)}>
+          View
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="ghost" className={`${sizeClass.replace("text-xs", "")} w-8 p-0`}>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => {
+              setMode("client");
+              navigate("/app");
+            }}>
+              <Eye className="w-4 h-4 mr-2" /> View as Client
+            </DropdownMenuItem>
+            {showPromoteToInternal && (
+              <DropdownMenuItem onClick={() => moveToInternal(c)}>
+                <ArrowRightLeft className="w-4 h-4 mr-2" /> Move to Internal
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => toggleBrokerAccess(c)}>
+              <Briefcase className="w-4 h-4 mr-2" />
+              {c.has_broker_access ? "Revoke Broker Access" : "Grant Broker Access"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openLimitDialog(c)}>
+              <Layers className="w-4 h-4 mr-2" />
+              Set Business Limit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => setForceSignOutTarget({ id: c.user_id, name: c.full_name || "this user" })}
+            >
+              <LogOut className="w-4 h-4 mr-2" /> Force Sign Out (All Devices)
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => setDeleteTarget({ type: "auth", id: c.user_id, name: c.full_name || "this user" })}
+            >
+              <Trash2 className="w-4 h-4 mr-2" /> Delete User
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    );
+
     return (
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Location</TableHead>
-              <TableHead>Goal</TableHead>
-              <TableHead>FICO</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((c) => {
-              const bestFICO = Math.max(c.estimated_fico_eq || 0, c.estimated_fico_ex || 0, c.estimated_fico_tu || 0);
-              const primaryRole = c.roles?.[0] || "user";
-              const goalLabel = c.primary_goal_category
-                ? c.primary_goal_category.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
-                : null;
-              return (
-                <TableRow key={c.user_id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      <span>{c.full_name || "—"}</span>
+      <>
+        {/* Mobile card list */}
+        <div className="space-y-3 md:hidden">
+          {filtered.map((c) => {
+            const bestFICO = Math.max(c.estimated_fico_eq || 0, c.estimated_fico_ex || 0, c.estimated_fico_tu || 0);
+            const primaryRole = c.roles?.[0] || "user";
+            const goalLabel = c.primary_goal_category
+              ? c.primary_goal_category.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
+              : null;
+            return (
+              <div key={c.user_id} className="rounded-lg border bg-card p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium truncate">{c.full_name || "—"}</span>
                       {c.is_complimentary && (
                         <Badge className="bg-gradient-gold text-foreground border-0 text-[10px] flex items-center gap-1 px-1.5 py-0">
                           <Sparkles className="w-3 h-3" />
@@ -492,97 +530,127 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                         </Badge>
                       )}
                     </div>
-                  </TableCell>
-                  <TableCell>{c.city && c.state ? `${c.city}, ${c.state}` : "—"}</TableCell>
-                  <TableCell>
-                    {goalLabel ? (
-                      <Badge variant="secondary" className="bg-gradient-gold text-foreground border-0 text-[10px]">
-                        {goalLabel}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No intake</span>
+                    {(c.city || c.state) && (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {c.city && c.state ? `${c.city}, ${c.state}` : c.city || c.state}
+                      </p>
                     )}
-                  </TableCell>
-                  <TableCell>
-                    {bestFICO > 0 ? (
-                      <Badge variant={bestFICO >= 700 ? "default" : bestFICO >= 600 ? "secondary" : "destructive"}>
-                        {bestFICO}
-                      </Badge>
-                    ) : "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      defaultValue={primaryRole}
-                      onValueChange={(value) => updateUserRole(c.user_id, value)}
-                    >
-                      <SelectTrigger className="w-[120px] h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="coach">Coach</SelectItem>
-                        <SelectItem value="moderator">Moderator</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="affiliate">Affiliate</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="default">Active</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onViewClient(c.user_id)}>
-                        View
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => {
-                            setMode("client");
-                            navigate("/app");
-                          }}>
-                            <Eye className="w-4 h-4 mr-2" /> View as Client
-                          </DropdownMenuItem>
-                          {showPromoteToInternal && (
-                            <DropdownMenuItem onClick={() => moveToInternal(c)}>
-                              <ArrowRightLeft className="w-4 h-4 mr-2" /> Move to Internal
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem onClick={() => toggleBrokerAccess(c)}>
-                            <Briefcase className="w-4 h-4 mr-2" />
-                            {c.has_broker_access ? "Revoke Broker Access" : "Grant Broker Access"}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openLimitDialog(c)}>
-                            <Layers className="w-4 h-4 mr-2" />
-                            Set Business Limit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => setForceSignOutTarget({ id: c.user_id, name: c.full_name || "this user" })}
-                          >
-                            <LogOut className="w-4 h-4 mr-2" /> Force Sign Out (All Devices)
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setDeleteTarget({ type: "auth", id: c.user_id, name: c.full_name || "this user" })}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" /> Delete User
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+                  </div>
+                  {bestFICO > 0 && (
+                    <Badge variant={bestFICO >= 700 ? "default" : bestFICO >= 600 ? "secondary" : "destructive"} className="shrink-0">
+                      {bestFICO}
+                    </Badge>
+                  )}
+                </div>
+                {goalLabel && (
+                  <div>
+                    <Badge variant="secondary" className="bg-gradient-gold text-foreground border-0 text-[10px]">
+                      {goalLabel}
+                    </Badge>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <Select
+                    defaultValue={primaryRole}
+                    onValueChange={(value) => updateUserRole(c.user_id, value)}
+                  >
+                    <SelectTrigger className="w-[120px] h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">User</SelectItem>
+                      <SelectItem value="coach">Coach</SelectItem>
+                      <SelectItem value="moderator">Moderator</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="affiliate">Affiliate</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {renderRowActions(c, "h-8 text-xs")}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Location</TableHead>
+                <TableHead>Goal</TableHead>
+                <TableHead>FICO</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((c) => {
+                const bestFICO = Math.max(c.estimated_fico_eq || 0, c.estimated_fico_ex || 0, c.estimated_fico_tu || 0);
+                const primaryRole = c.roles?.[0] || "user";
+                const goalLabel = c.primary_goal_category
+                  ? c.primary_goal_category.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
+                  : null;
+                return (
+                  <TableRow key={c.user_id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <span>{c.full_name || "—"}</span>
+                        {c.is_complimentary && (
+                          <Badge className="bg-gradient-gold text-foreground border-0 text-[10px] flex items-center gap-1 px-1.5 py-0">
+                            <Sparkles className="w-3 h-3" />
+                            Complimentary
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>{c.city && c.state ? `${c.city}, ${c.state}` : "—"}</TableCell>
+                    <TableCell>
+                      {goalLabel ? (
+                        <Badge variant="secondary" className="bg-gradient-gold text-foreground border-0 text-[10px]">
+                          {goalLabel}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No intake</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {bestFICO > 0 ? (
+                        <Badge variant={bestFICO >= 700 ? "default" : bestFICO >= 600 ? "secondary" : "destructive"}>
+                          {bestFICO}
+                        </Badge>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        defaultValue={primaryRole}
+                        onValueChange={(value) => updateUserRole(c.user_id, value)}
+                      >
+                        <SelectTrigger className="w-[120px] h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="user">User</SelectItem>
+                          <SelectItem value="coach">Coach</SelectItem>
+                          <SelectItem value="moderator">Moderator</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="affiliate">Affiliate</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="default">Active</Badge>
+                    </TableCell>
+                    <TableCell>{renderRowActions(c, "h-7 text-xs")}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </>
     );
   };
 
