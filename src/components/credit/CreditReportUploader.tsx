@@ -13,6 +13,8 @@ import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { supabase as sbForCount } from "@/integrations/supabase/client";
+import { CreditReportConsentDialog } from "@/components/credit/CreditReportConsentDialog";
+import { SecurityBadge } from "@/components/security/SecurityBadge";
 
 interface CreditReportUploaderProps {
   lastAnalyzed: string | null;
@@ -28,8 +30,60 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
   const [isResetting, setIsResetting] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+
+  // Gate the first upload behind explicit consent
+  const requestUpload = useCallback(async (file: File) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please sign in to upload your credit report");
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("credit_report_consent")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (profile?.credit_report_consent) {
+        void processUpload(file);
+      } else {
+        setPendingFile(file);
+        setConsentOpen(true);
+      }
+    } catch {
+      // Fall back to showing consent if we cannot verify
+      setPendingFile(file);
+      setConsentOpen(true);
+    }
+  }, []);
+
+  const handleConsentConfirm = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from("profiles")
+          .update({
+            credit_report_consent: true,
+            credit_report_consent_timestamp: new Date().toISOString(),
+          })
+          .eq("user_id", user.id);
+      }
+      setConsentOpen(false);
+      if (pendingFile) {
+        const f = pendingFile;
+        setPendingFile(null);
+        void processUpload(f);
+      }
+    } catch (e) {
+      toast.error("Could not record consent. Please try again.");
+    }
+  }, [pendingFile]);
 
   const processUpload = useCallback(async (file: File) => {
     if (file.type !== "application/pdf") {
