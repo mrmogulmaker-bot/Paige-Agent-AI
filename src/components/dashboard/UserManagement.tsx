@@ -46,6 +46,27 @@ export const UserManagement = () => {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "moderator" | "user">("user");
   const [sending, setSending] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const deleteUser = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-delete-user", {
+        body: { user_id: deleteTarget.id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(`Deleted ${deleteTarget.email || "user"}`);
+      setDeleteTarget(null);
+      fetchUsers();
+    } catch (err: any) {
+      toast.error("Failed to delete user", { description: err?.message });
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
