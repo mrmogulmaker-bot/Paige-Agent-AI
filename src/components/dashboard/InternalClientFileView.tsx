@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ArrowLeft, DollarSign, FileText, Mail, Brain, Upload,
   AlertTriangle, User, Building2, Phone, AtSign, Save, Archive, ArchiveRestore,
@@ -108,18 +109,37 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
     }
   };
 
-  const toggleArchive = async () => {
-    const newStatus = client?.status === "archived" ? "active" : "archived";
+  const updateStatus = async (newStatus: string) => {
+    if (!client || newStatus === client.status) return;
+    const previous = client;
+    // Optimistic update so the badge + dropdown reflect the new value instantly.
+    setClient({ ...client, status: newStatus });
     const { error } = await supabase
       .from("clients" as any)
       .update({ status: newStatus } as any)
       .eq("id", clientId);
     if (error) {
-      toast.error("Failed to update status");
+      setClient(previous);
+      const msg = (error.message || "").toLowerCase();
+      if (msg.includes("clients_status_check")) {
+        toast.error("Invalid status value");
+      } else {
+        toast.error("Failed to update status", { description: error.message });
+      }
     } else {
-      toast.success(newStatus === "archived" ? "Client archived" : "Client restored");
-      fetchClient();
+      toast.success(
+        newStatus === "archived"
+          ? "Client archived"
+          : newStatus === "active" && previous.status === "archived"
+            ? "Client restored"
+            : `Status updated to ${newStatus}`
+      );
     }
+  };
+
+  const toggleArchive = () => {
+    if (!client) return;
+    updateStatus(client.status === "archived" ? "active" : "archived");
   };
 
   if (!client) {
@@ -154,9 +174,17 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
                 <AtSign className="w-3 h-3" /> {client.email}
               </span>
             )}
-            <Badge variant={client.status === "active" ? "default" : "secondary"}>
-              {client.status}
-            </Badge>
+            <Select value={client.status} onValueChange={updateStatus}>
+              <SelectTrigger className="w-[130px] h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+              </SelectContent>
+            </Select>
             {client.linked_user_id && (
               <Badge variant="outline" className="text-xs">Portal Linked</Badge>
             )}

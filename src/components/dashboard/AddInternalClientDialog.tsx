@@ -76,7 +76,16 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
         monthly_revenue: "", current_notes: "",
       });
     } catch (error: any) {
-      toast.error("Failed to create client", { description: error.message });
+      const msg = (error?.message || "").toLowerCase();
+      if (msg.includes("clients_created_by_email_unique")) {
+        toast.error("A client with this email already exists in your list");
+      } else if (msg.includes("clients_linked_user_id_unique")) {
+        toast.error("This portal user is already linked to another client record");
+      } else if (msg.includes("clients_status_check")) {
+        toast.error("Invalid status value");
+      } else {
+        toast.error("Failed to create client", { description: error.message });
+      }
     } finally {
       setLoading(false);
     }

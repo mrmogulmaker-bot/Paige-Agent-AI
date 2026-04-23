@@ -296,6 +296,11 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
   };
 
   const updateInternalStatus = async (clientId: string, newStatus: string) => {
+    // Optimistic update so the dropdown reflects the new value immediately.
+    const previous = internalClients;
+    setInternalClients((rows) =>
+      rows.map((r) => (r.id === clientId ? { ...r, status: newStatus } : r))
+    );
     try {
       const { error } = await supabase
         .from("clients" as any)
@@ -303,10 +308,18 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
         .eq("id", clientId);
       if (error) throw error;
       toast.success(`Status updated to ${newStatus}`);
+      // Refresh in the background to stay in sync with any other edits.
       fetchAllClients();
     } catch (err: any) {
       console.error("Error updating status:", err);
-      toast.error("Failed to update status");
+      // Roll back on failure so the UI never lies about persisted state.
+      setInternalClients(previous);
+      const msg = (err?.message || "").toLowerCase();
+      if (msg.includes("clients_status_check")) {
+        toast.error("Invalid status value");
+      } else {
+        toast.error("Failed to update status");
+      }
     }
   };
 
@@ -366,7 +379,14 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       fetchAllClients();
     } catch (err: any) {
       console.error("Error moving to internal:", err);
-      toast.error(err.message || "Failed to move client");
+      const msg = (err?.message || "").toLowerCase();
+      if (msg.includes("clients_linked_user_id_unique")) {
+        toast.error("This user is already linked to an internal client record");
+      } else if (msg.includes("clients_created_by_email_unique")) {
+        toast.error("A client with this email already exists in your list");
+      } else {
+        toast.error(err.message || "Failed to move client");
+      }
     }
   };
 
@@ -728,7 +748,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                           </TableCell>
                           <TableCell>
                             <Select
-                              defaultValue={c.status}
+                              value={c.status}
                               onValueChange={(value) => updateInternalStatus(c.id, value)}
                             >
                               <SelectTrigger className="w-[110px] h-7 text-xs">
