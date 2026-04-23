@@ -39,6 +39,7 @@ const LenderBureauManager = lazy(() => import("@/components/dashboard/admin/Lend
 const FundingPortfolioView = lazy(() => import("@/components/dashboard/admin/FundingPortfolioView").then(m => ({ default: m.FundingPortfolioView })));
 const FundingPipelineView = lazy(() => import("@/components/dashboard/admin/FundingPipelineView").then(m => ({ default: m.FundingPipelineView })));
 const UserManagement = lazy(() => import("@/components/dashboard/UserManagement").then(m => ({ default: m.UserManagement })));
+const AdminSettingsHub = lazy(() => import("@/pages/admin/AdminSettingsHub"));
 const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformance").then(m => ({ default: m.UserPerformance })));
 const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
 const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
@@ -223,7 +224,7 @@ const Admin = () => {
         } />
         <Route path="settings" element={
           <Suspense fallback={<SuspenseFallback />}>
-            <UserManagement />
+            <AdminSettingsHub />
           </Suspense>
         } />
       </Routes>

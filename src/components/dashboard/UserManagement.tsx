@@ -44,6 +44,9 @@ export const UserManagement = () => {
   const fetchData = async () => {
     try {
       await Promise.all([fetchUsers(), fetchInvitations()]);
+    } catch (err: any) {
+      console.error("Failed to load users", err);
+      toast.error("Failed to load users", { description: err?.message });
     } finally {
       setLoading(false);
     }
@@ -56,9 +59,17 @@ export const UserManagement = () => {
 
     if (profilesError) throw profilesError;
 
-    const { data: usersData, error: usersError } = await supabase.auth.admin.listUsers();
-    
-    if (usersError) throw usersError;
+    // auth.admin.* cannot be called from the browser; use the secure
+    // admin-list-users edge function instead.
+    const { data: listData, error: listErr } = await supabase.functions.invoke(
+      "admin-list-users",
+    );
+    if (listErr) throw listErr;
+    const authUsers = (listData?.users ?? []) as Array<{
+      id: string;
+      email: string | null;
+      created_at: string;
+    }>;
 
     const { data: rolesData, error: rolesError } = await supabase
       .from("user_roles")
@@ -66,10 +77,10 @@ export const UserManagement = () => {
 
     if (rolesError) throw rolesError;
 
-    const usersWithRoles = usersData.users.map((user) => {
+    const usersWithRoles = authUsers.map((user) => {
       const profile = profilesData?.find((p) => p.user_id === user.id);
       const userRoles = rolesData?.filter((r) => r.user_id === user.id).map((r) => r.role) || [];
-      
+
       return {
         id: user.id,
         email: user.email || "",
