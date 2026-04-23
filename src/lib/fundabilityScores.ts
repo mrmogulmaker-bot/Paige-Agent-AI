@@ -66,6 +66,8 @@ export interface FundabilityScoreResult {
 // Profile inputs — minimal shape we need across all three scores
 // ------------------------------------------------------------
 
+export type CreditBureau = "experian" | "transunion" | "equifax";
+
 export interface NegativeAccountInput {
   /** Date of first delinquency, original delinquency, or account opening. */
   date?: string | Date | null;
@@ -73,6 +75,8 @@ export interface NegativeAccountInput {
   itemType?: string | null;
   /** True if status is active (not removed/resolved). */
   isActive?: boolean;
+  /** Bureau the negative was reported on (lowercase: experian | transunion | equifax). */
+  bureau?: string | null;
 }
 
 /**
