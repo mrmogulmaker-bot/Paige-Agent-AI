@@ -396,8 +396,10 @@ export function ProductApprovalReadinessPanel() {
         status: a.status ?? null,
         isAuthorizedUser: a.is_authorized_user ?? false,
       })),
+      strongestBureau,
+      weakestBureau,
     });
-  }, [profileData, factors]);
+  }, [profileData, factors, strongestBureau, weakestBureau]);
 
   // Build column-organized list
   const columns = useMemo(() => {
