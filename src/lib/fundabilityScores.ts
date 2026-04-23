@@ -1916,7 +1916,13 @@ export function getCompleteProductEligibility(p: FundabilityProfileInputs): Comp
 
   // Apply comparable credit modifier to every product
   const accounts = p.creditAccounts ?? [];
-  const enriched = flatList.map((e) => applyComparableCredit(e, accounts));
+  const strongest = p.strongestBureau ?? null;
+  const weakest = p.weakestBureau ?? null;
+  const enriched = flatList.map((e) => {
+    const withCC = applyComparableCredit(e, accounts);
+    const bureauStrategy = buildBureauStrategy(withCC.recommendedLenders, strongest, weakest);
+    return { ...withCC, bureauStrategy };
+  });
 
   // Group by tier
   const byTier: Record<ProductTier, ProductEligibility[]> = {
