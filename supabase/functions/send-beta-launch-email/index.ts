@@ -1,10 +1,14 @@
 // One-time admin-triggered fan-out: sends the Beta launch welcome email to
-// every user with an email on profiles. Per-recipient guards:
+// every confirmed auth user. Per-recipient guards:
 //   1. Skip if communication_preferences.unsubscribed_all = true
 //   2. Skip if a communication_log row already exists with
 //      message_type = 'beta_launch' for this user (prevents duplicate sends)
 // Each send goes through the standard send-transactional-email function so
 // suppression list, unsubscribe footer, and queue retries all apply.
+//
+// Supports two actions via request body:
+//   { action: "count" } -> returns { eligible: number } without sending
+//   { action: "send" }  -> performs the fan-out (default)
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
@@ -14,12 +18,6 @@ const corsHeaders = {
     'authorization, x-client-info, apikey, content-type',
 }
 
-interface ProfileRow {
-  user_id: string
-  email: string | null
-  full_name: string | null
-}
-
 interface CommPrefRow {
   user_id: string
   unsubscribed_all: boolean | null
@@ -27,6 +25,12 @@ interface CommPrefRow {
 
 interface CommLogRow {
   user_id: string
+}
+
+interface EligibleUser {
+  user_id: string
+  email: string
+  full_name: string | null
 }
 
 Deno.serve(async (req) => {
@@ -84,28 +88,61 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Pull all eligible profiles
-  const { data: profiles, error: profilesErr } = await adminClient
-    .from('profiles')
-    .select('user_id, email, full_name')
-    .not('email', 'is', null)
-  if (profilesErr) {
-    return new Response(JSON.stringify({ error: profilesErr.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+  // Parse action from body (defaults to "send" for backward compatibility)
+  let action: 'count' | 'send' = 'send'
+  try {
+    const body = await req.json()
+    if (body && body.action === 'count') action = 'count'
+  } catch {
+    // empty body -> default to send
   }
 
-  const profileRows = (profiles ?? []) as ProfileRow[]
-  const userIds = profileRows.map((p) => p.user_id)
+  // Page through auth.users via admin API
+  const allAuthUsers: Array<{ id: string; email: string | null; user_metadata: Record<string, unknown> | null }> = []
+  const perPage = 1000
+  let page = 1
+  // Hard cap to avoid runaway loops
+  while (page <= 50) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage })
+    if (error) {
+      return new Response(JSON.stringify({ error: `listUsers failed: ${error.message}` }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const users = data?.users ?? []
+    for (const u of users) {
+      allAuthUsers.push({
+        id: u.id,
+        email: u.email ?? null,
+        user_metadata: (u.user_metadata as Record<string, unknown> | null) ?? null,
+      })
+    }
+    if (users.length < perPage) break
+    page++
+  }
 
-  // Bulk pull communication_preferences for all candidates
+  // Filter to users with an email
+  const usersWithEmail = allAuthUsers.filter((u) => !!u.email) as Array<{
+    id: string
+    email: string
+    user_metadata: Record<string, unknown> | null
+  }>
+  const userIds = usersWithEmail.map((u) => u.id)
+
+  // Bulk pull communication_preferences (chunked to be safe with large IN())
   const prefsByUser = new Map<string, boolean>()
-  if (userIds.length > 0) {
+  const chunk = <T>(arr: T[], size: number): T[][] => {
+    const out: T[][] = []
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size))
+    return out
+  }
+  for (const ids of chunk(userIds, 500)) {
+    if (ids.length === 0) continue
     const { data: prefs } = await adminClient
       .from('communication_preferences')
       .select('user_id, unsubscribed_all')
-      .in('user_id', userIds)
+      .in('user_id', ids)
     for (const row of (prefs ?? []) as CommPrefRow[]) {
       prefsByUser.set(row.user_id, row.unsubscribed_all === true)
     }
@@ -113,38 +150,67 @@ Deno.serve(async (req) => {
 
   // Bulk pull existing beta_launch communication_log entries to dedupe
   const alreadySent = new Set<string>()
-  if (userIds.length > 0) {
+  for (const ids of chunk(userIds, 500)) {
+    if (ids.length === 0) continue
     const { data: sentRows } = await adminClient
       .from('communication_log')
       .select('user_id')
       .eq('message_type', 'beta_launch')
-      .in('user_id', userIds)
+      .in('user_id', ids)
     for (const row of (sentRows ?? []) as CommLogRow[]) {
       alreadySent.add(row.user_id)
     }
   }
 
+  // Pull profiles full_name in bulk for personalization (best effort)
+  const nameByUser = new Map<string, string | null>()
+  for (const ids of chunk(userIds, 500)) {
+    if (ids.length === 0) continue
+    const { data: profs } = await adminClient
+      .from('profiles')
+      .select('user_id, full_name')
+      .in('user_id', ids)
+    for (const row of (profs ?? []) as Array<{ user_id: string; full_name: string | null }>) {
+      nameByUser.set(row.user_id, row.full_name)
+    }
+  }
+
+  // Determine eligible users (with email, not unsubscribed, not previously sent)
+  const eligible: EligibleUser[] = []
+  for (const u of usersWithEmail) {
+    if (alreadySent.has(u.id)) continue
+    if (prefsByUser.get(u.id) === true) continue
+    const metaName = (u.user_metadata?.full_name as string | undefined) ?? null
+    eligible.push({
+      user_id: u.id,
+      email: u.email,
+      full_name: nameByUser.get(u.id) ?? metaName,
+    })
+  }
+
+  if (action === 'count') {
+    return new Response(
+      JSON.stringify({
+        eligible: eligible.length,
+        total_auth_users: allAuthUsers.length,
+        with_email: usersWithEmail.length,
+        already_sent: alreadySent.size,
+        unsubscribed: Array.from(prefsByUser.values()).filter(Boolean).length,
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    )
+  }
+
   let sent = 0
-  let skippedUnsubscribed = 0
-  let skippedAlreadySent = 0
   let failed = 0
+  const skippedAlreadySent = alreadySent.size
+  const skippedUnsubscribed = Array.from(prefsByUser.values()).filter(Boolean).length
   const errors: Array<{ user_id: string; error: string }> = []
 
-  for (const profile of profileRows) {
-    if (!profile.email) continue
-
-    if (alreadySent.has(profile.user_id)) {
-      skippedAlreadySent++
-      continue
-    }
-    if (prefsByUser.get(profile.user_id) === true) {
-      skippedUnsubscribed++
-      continue
-    }
-
+  for (const user of eligible) {
     const firstName =
-      profile.full_name && profile.full_name.trim().length > 0
-        ? profile.full_name.trim().split(/\s+/)[0]
+      user.full_name && user.full_name.trim().length > 0
+        ? user.full_name.trim().split(/\s+/)[0]
         : undefined
 
     try {
@@ -156,9 +222,9 @@ Deno.serve(async (req) => {
         },
         body: JSON.stringify({
           templateName: 'beta-launch-welcome',
-          recipientEmail: profile.email,
-          recipientUserId: profile.user_id,
-          idempotencyKey: `beta-launch-${profile.user_id}`,
+          recipientEmail: user.email,
+          recipientUserId: user.user_id,
+          idempotencyKey: `beta-launch-${user.user_id}`,
           templateData: { name: firstName },
         }),
       })
@@ -166,9 +232,9 @@ Deno.serve(async (req) => {
       if (!resp.ok) {
         const errText = await resp.text()
         failed++
-        errors.push({ user_id: profile.user_id, error: errText.slice(0, 200) })
+        errors.push({ user_id: user.user_id, error: errText.slice(0, 200) })
         await adminClient.from('communication_log').insert({
-          user_id: profile.user_id,
+          user_id: user.user_id,
           channel: 'email',
           message_type: 'beta_launch',
           status: 'failed',
@@ -180,7 +246,7 @@ Deno.serve(async (req) => {
 
       sent++
       await adminClient.from('communication_log').insert({
-        user_id: profile.user_id,
+        user_id: user.user_id,
         channel: 'email',
         message_type: 'beta_launch',
         status: 'queued',
@@ -190,14 +256,16 @@ Deno.serve(async (req) => {
     } catch (err) {
       failed++
       const msg = err instanceof Error ? err.message : String(err)
-      errors.push({ user_id: profile.user_id, error: msg.slice(0, 200) })
+      errors.push({ user_id: user.user_id, error: msg.slice(0, 200) })
     }
   }
 
   return new Response(
     JSON.stringify({
       success: true,
-      total_profiles: profileRows.length,
+      total_profiles: usersWithEmail.length,
+      total_auth_users: allAuthUsers.length,
+      eligible: eligible.length,
       sent,
       skipped_already_sent: skippedAlreadySent,
       skipped_unsubscribed: skippedUnsubscribed,
