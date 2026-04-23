@@ -13,6 +13,8 @@ import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { supabase as sbForCount } from "@/integrations/supabase/client";
+import { CreditReportConsentDialog } from "@/components/credit/CreditReportConsentDialog";
+import { SecurityBadge } from "@/components/security/SecurityBadge";
 
 interface CreditReportUploaderProps {
   lastAnalyzed: string | null;
@@ -28,8 +30,60 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
   const [isResetting, setIsResetting] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+
+  // Gate the first upload behind explicit consent
+  const requestUpload = useCallback(async (file: File) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Please sign in to upload your credit report");
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("credit_report_consent")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (profile?.credit_report_consent) {
+        void processUpload(file);
+      } else {
+        setPendingFile(file);
+        setConsentOpen(true);
+      }
+    } catch {
+      // Fall back to showing consent if we cannot verify
+      setPendingFile(file);
+      setConsentOpen(true);
+    }
+  }, []);
+
+  const handleConsentConfirm = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from("profiles")
+          .update({
+            credit_report_consent: true,
+            credit_report_consent_timestamp: new Date().toISOString(),
+          })
+          .eq("user_id", user.id);
+      }
+      setConsentOpen(false);
+      if (pendingFile) {
+        const f = pendingFile;
+        setPendingFile(null);
+        void processUpload(f);
+      }
+    } catch (e) {
+      toast.error("Could not record consent. Please try again.");
+    }
+  }, [pendingFile]);
 
   const processUpload = useCallback(async (file: File) => {
     if (file.type !== "application/pdf") {
@@ -183,7 +237,7 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) processUpload(file);
+    if (file) requestUpload(file);
     e.target.value = "";
   };
 
@@ -191,8 +245,8 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
     e.preventDefault();
     setIsDragOver(false);
     const file = e.dataTransfer.files[0];
-    if (file) processUpload(file);
-  }, [processUpload]);
+    if (file) requestUpload(file);
+  }, [requestUpload]);
 
   const handleReset = async () => {
     if (resetConfirmText !== "RESET") return;
@@ -377,6 +431,10 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
               <Badge variant="outline" className="text-xs">Equifax</Badge>
             </div>
 
+            <div className="flex items-center justify-center">
+              <SecurityBadge />
+            </div>
+
             <p className="text-xs text-muted-foreground max-w-md mx-auto">
               Upload one report per bureau for the most accurate analysis. Tri-merge reports that contain all three bureaus in one PDF are also accepted.
             </p>
@@ -393,6 +451,12 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
           </div>
         )}
       </div>
+
+      <CreditReportConsentDialog
+        open={consentOpen}
+        onOpenChange={(o) => { setConsentOpen(o); if (!o) setPendingFile(null); }}
+        onConfirm={handleConsentConfirm}
+      />
     </Card>
   );
 }

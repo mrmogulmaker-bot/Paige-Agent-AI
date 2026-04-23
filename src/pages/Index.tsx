@@ -13,6 +13,7 @@ import { HowPaigeWorksSection } from "@/components/landing/HowPaigeWorksSection"
 import { WhatPaigeKnowsSection } from "@/components/landing/WhatPaigeKnowsSection";
 import { PricingSection } from "@/components/landing/PricingSection";
 import { TestimonialsSection } from "@/components/landing/TestimonialsSection";
+import { TrustSecuritySection } from "@/components/landing/TrustSecuritySection";
 import { FAQSection } from "@/components/landing/FAQSection";
 import { Footer } from "@/components/landing/Footer";
 import { SiteBackground } from "@/components/landing/SiteBackground";
@@ -48,6 +49,7 @@ const Index = () => {
       </div>
       <PricingSection />
       <TestimonialsSection />
+      <TrustSecuritySection />
       <FAQSection />
       <Footer />
     </div>

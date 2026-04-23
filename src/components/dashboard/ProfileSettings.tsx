@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle, Link2, Unlink, LogOut, ShieldAlert, Bell } from "lucide-react";
+import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle, Link2, Unlink, LogOut, ShieldAlert, Bell, ShieldOff } from "lucide-react";
+import { DataPrivacyPanel } from "@/components/dashboard/DataPrivacyPanel";
 import { NotificationsSettings } from "@/components/dashboard/NotificationsSettings";
 import { lovable } from "@/integrations/lovable/index";
 import { z } from "zod";
@@ -340,7 +341,7 @@ export const ProfileSettings = () => {
       </div>
 
       <Tabs defaultValue="personal" className="w-full">
-        <TabsList className={`grid w-full ${isCoachOrAdmin ? "grid-cols-3" : "grid-cols-2"}`}>
+        <TabsList className={`grid w-full ${isCoachOrAdmin ? "grid-cols-4" : "grid-cols-3"}`}>
           <TabsTrigger value="personal" className="gap-2">
             <User className="w-4 h-4" />
             Personal Info
@@ -353,6 +354,10 @@ export const ProfileSettings = () => {
             <Link2 className="w-4 h-4" />
             Connected Accounts
           </TabsTrigger>
+          <TabsTrigger value="privacy" className="gap-2">
+            <ShieldOff className="w-4 h-4" />
+            Data &amp; Privacy
+          </TabsTrigger>
           {isCoachOrAdmin && (
             <TabsTrigger value="preferences" className="gap-2">
               <Monitor className="w-4 h-4" />
@@ -360,6 +365,11 @@ export const ProfileSettings = () => {
             </TabsTrigger>
           )}
         </TabsList>
+
+        <TabsContent value="privacy">
+          <DataPrivacyPanel />
+        </TabsContent>
+
 
         {isCoachOrAdmin && (
           <TabsContent value="preferences">
