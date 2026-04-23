@@ -51,7 +51,7 @@ export function AdminFactoryResetDialog({ clientUserId, clientName, open, onOpen
             <AlertTriangle className="w-5 h-5" /> Factory Reset — {clientName}
           </DialogTitle>
           <DialogDescription>
-            This will permanently delete all personal credit data (reports, accounts, negative items, disputes, inquiries) for this client. Business profiles and submitted applications will be preserved.
+            This will permanently delete all personal credit data (reports, accounts, negative items, inquiries) for this client. Business profiles and submitted applications will be preserved.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">

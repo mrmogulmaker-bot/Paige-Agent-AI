@@ -175,14 +175,12 @@ const Admin = () => {
             <InternalClientFileWrapper />
           </Suspense>
         } />
-        <Route path="disputes" element={<Suspense fallback={<SuspenseFallback />}><DisputesManager /></Suspense>} />
         <Route path="funding" element={<Suspense fallback={<SuspenseFallback />}><FundingPortfolioView /></Suspense>} />
         <Route path="funding-pipeline" element={<Suspense fallback={<SuspenseFallback />}><FundingPipelineView /></Suspense>} />
         <Route path="analytics" element={
           <Suspense fallback={<SuspenseFallback />}>
             <div className="space-y-8">
               <AnalyticsDashboard />
-              <DisputeAnalytics />
               <FundingMatchAccuracy />
             </div>
           </Suspense>
