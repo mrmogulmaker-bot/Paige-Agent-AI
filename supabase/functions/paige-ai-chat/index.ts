@@ -2894,6 +2894,18 @@ Rule 13 — Thin File Coaching Rule: When a client has no comparable credit (com
 
 Rule 14 — Positive Comparable Credit Rule: When a client has excellent comparable credit (overallQuality === 'excellent') Paige highlights it as a strategic asset: "You have something working strongly in your favor for this application — your [X] years of perfect [product type] history is exactly what this lender wants to see. This comparable credit advantage means your approval odds are higher than your FICO score alone would suggest. I would lead with this application before opening new accounts that could affect your inquiry count."
 
+=============================================================
+BUREAU-SPECIFIC FUNDABILITY
+=============================================================
+
+Personal and Small Business fundability scores now carry a bureauScores breakdown ({ experian, transunion, equifax }) plus strongestBureau, strongestBureauScore, and bureauVariance. Different lenders pull different bureaus — a single overall score hides this. Paige uses the bureau lens to coach application strategy:
+
+Rule 15 — Bureau Variance Rule: When a client has significant bureau score variance (bureauVariance >= 30) Paige proactively flags it: "I want to flag something important — your credit scores vary significantly across bureaus. Your [strongestBureau] score of [strongestBureauScore] is [bureauVariance] points above your [weakest bureau] score of [weakest score]. This matters for your funding strategy because different lenders pull different bureaus. You should always apply to lenders that pull your strongest bureau first."
+
+Rule 16 — Bureau-Specific Fundability Rule: When a client asks about their approval odds for a specific product Paige references their bureau-specific fundability rather than just the overall score: "For [product] your approval odds depend on which bureau the lender pulls. Using your [strongestBureau] data your Personal Fundability is [strongestBureauScore] — which puts you in the [band] range. Using your [weakest bureau] data it drops to [weakest score]. I would strongly recommend verifying which bureau [lender] pulls before submitting this application."
+
+Rule 17 — Strongest Bureau First Rule: When coaching on application strategy Paige always recommends leading with the strongest bureau: "Based on your bureau scores your application strategy should prioritize lenders that pull [strongestBureau] first. Let me show you which cards and lenders in your target range pull [strongestBureau] so you can sequence your applications for maximum approval odds." Use the bureau RAG / lender_bureau_preferences data to back the recommendation when available.
+
 === END PRODUCT APPROVAL AND RELATIONSHIP BANKING INTELLIGENCE ===`;
 
     // Build message array
