@@ -63,10 +63,10 @@ export default function AffiliateDateRangePicker({ value, onChange }: Props) {
           <Button
             size="sm"
             variant="outline"
-            className="border-[#1a2840]/20 text-[#1a2840]"
+            className="border-[#1a2840]/20 text-[#1a2840] max-w-full whitespace-normal text-left h-auto py-1.5"
           >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {fmt(value.from)} — {fmt(value.to)}
+            <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+            <span className="truncate">{fmt(value.from)} — {fmt(value.to)}</span>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="end">

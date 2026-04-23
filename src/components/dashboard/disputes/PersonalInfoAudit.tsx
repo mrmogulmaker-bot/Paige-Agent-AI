@@ -232,29 +232,31 @@ export function PersonalInfoAudit({ clientId }: PersonalInfoAuditProps) {
       </div>
       {items.map(item => (
         <div key={item.id} className="space-y-1">
-          <div className="flex gap-2 items-start">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
             <Input
               value={item.value}
               onChange={e => updateItem(setter, item.id, "value", e.target.value)}
               placeholder={placeholder}
-              className="flex-1"
+              className="flex-1 min-w-0"
               readOnly={!!item.dbId}
             />
-            <Select value={item.status} onValueChange={v => updateItem(setter, item.id, "status", v)}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(statusOptions).map(([key, cfg]) => (
-                  <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {!item.dbId && items.length > 1 && (
-              <Button variant="ghost" size="icon" onClick={() => removeItem(setter, item.id)} className="shrink-0">
-                <Trash2 className="w-4 h-4 text-muted-foreground" />
-              </Button>
-            )}
+            <div className="flex gap-2 items-start">
+              <Select value={item.status} onValueChange={v => updateItem(setter, item.id, "status", v)}>
+                <SelectTrigger className="w-full sm:w-[200px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(statusOptions).map(([key, cfg]) => (
+                    <SelectItem key={key} value={key}>{cfg.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!item.dbId && items.length > 1 && (
+                <Button variant="ghost" size="icon" onClick={() => removeItem(setter, item.id)} className="shrink-0">
+                  <Trash2 className="w-4 h-4 text-muted-foreground" />
+                </Button>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2 pl-1">
             {item.bureauSource && <BureauBadge source={item.bureauSource} />}
@@ -311,17 +313,17 @@ export function PersonalInfoAudit({ clientId }: PersonalInfoAuditProps) {
   return (
     <Card className="border-primary/20 bg-primary/5">
       <CardHeader className="cursor-pointer" onClick={() => setExpanded(!expanded)}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Shield className="w-6 h-6 text-primary" />
-            <div>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-3 min-w-0">
+            <Shield className="w-6 h-6 text-primary shrink-0 mt-0.5" />
+            <div className="min-w-0">
               <CardTitle className="text-lg">Step 1: Personal Information Audit</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 Correcting personal information errors before disputing accounts dramatically improves dispute success rates. Bureaus match disputes to consumer files using personal information — corrupted personal data creates investigation failures and mixed-file risks.
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 md:shrink-0">
             {hasExtractedData && (
               <Badge variant="outline" className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 border-0">
                 <Database className="w-3 h-3 mr-1" /> Auto-populated from report

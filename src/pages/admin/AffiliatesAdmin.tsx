@@ -70,14 +70,14 @@ export default function AffiliatesAdmin() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
+      <header className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-end md:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold text-[#1a2840]">Affiliates</h1>
           <p className="text-sm text-[#1a2840]/60">
             Internal referral program — leaderboard, conversions, and commission tiers.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <InviteAffiliateDialog onInvited={loadAll} />
           <AffiliateDateRangePicker value={range} onChange={setRange} />
         </div>
