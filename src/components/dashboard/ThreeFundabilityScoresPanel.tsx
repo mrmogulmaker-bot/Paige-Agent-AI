@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Lock, HelpCircle, Loader2, ArrowRight, Building2, LayoutGrid } from "lucide-react";
+import { Lock, HelpCircle, Loader2, ArrowRight, Building2, LayoutGrid, ShieldCheck, ShieldAlert, ShieldQuestion } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useThreeFundabilityScores } from "@/hooks/useThreeFundabilityScores";
 import { useBusinessContext, entityRoleLabel } from "@/contexts/BusinessContext";
+import { useFinancialDataAccuracy, type AccuracyLevel } from "@/hooks/useFinancialDataAccuracy";
+import { supabase } from "@/integrations/supabase/client";
 import { BusinessPortfolio } from "./BusinessPortfolio";
 import type { FundabilityScoreResult, FundabilityBand } from "@/lib/fundabilityScores";
 
