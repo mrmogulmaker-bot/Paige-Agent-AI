@@ -274,6 +274,21 @@ export function ProductApprovalReadinessPanel() {
   const [open, setOpen] = useState(false);
 
   const { factors } = useCreditFactors();
+  const { personal: personalScore } = useThreeFundabilityScores();
+
+  // Derive strongest + weakest bureau from the personal fundability bureau breakdown.
+  const { strongestBureau, weakestBureau } = useMemo(() => {
+    const bureaus = personalScore?.bureauScores;
+    if (!bureaus) return { strongestBureau: null as null | "experian" | "transunion" | "equifax", weakestBureau: null as null | "experian" | "transunion" | "equifax" };
+    const entries = (Object.entries(bureaus) as Array<["experian" | "transunion" | "equifax", { score: number | null; locked: boolean }]>)
+      .filter(([, v]) => !v.locked && typeof v.score === "number");
+    if (entries.length === 0) return { strongestBureau: null, weakestBureau: null };
+    const sorted = [...entries].sort((a, b) => (b[1].score ?? 0) - (a[1].score ?? 0));
+    return {
+      strongestBureau: sorted[0][0],
+      weakestBureau: sorted.length > 1 ? sorted[sorted.length - 1][0] : null,
+    };
+  }, [personalScore]);
 
   const { data: profileData } = useQuery({
     queryKey: ["product-readiness-inputs"],
