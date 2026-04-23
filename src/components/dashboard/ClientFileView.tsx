@@ -14,7 +14,6 @@ import { PMEFundingReadiness } from "./PMEFundingReadiness";
 import { ClientMemoryTab } from "./ClientMemoryTab";
 import { ClientOutcomesTab } from "./ClientOutcomesTab";
 import { AdminAccountManagement } from "./AdminAccountManagement";
-import { DisputesManager } from "./DisputesManager";
 import { AdminFactoryResetDialog, AdminChatHistory, AdminFundingOverride } from "./admin/AdminClientTools";
 import { ClientDemographicsCard } from "./ClientDemographicsCard";
 import { ClientGoalsCard } from "./ClientGoalsCard";
@@ -56,7 +55,6 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
   const [subscription, setSubscription] = useState<{ plan_slug: string; status: string } | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
   const [negativeCount, setNegativeCount] = useState(0);
-  const [disputeCount, setDisputeCount] = useState(0);
   const [showFactoryReset, setShowFactoryReset] = useState(false);
 
 
@@ -96,18 +94,11 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
   };
 
   const fetchClientData = async () => {
-    const [negRes, dispRes] = await Promise.all([
-      supabase
-        .from("credit_negative_items")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", clientUserId),
-      supabase
-        .from("disputes")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", clientUserId),
-    ]);
+    const negRes = await supabase
+      .from("credit_negative_items")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", clientUserId);
     setNegativeCount(negRes.count || 0);
-    setDisputeCount(dispRes.count || 0);
   };
 
   const bestFICO = Math.max(
@@ -216,9 +207,6 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           <TabsTrigger value="account-mgmt" className="text-xs">
             <Database className="w-3 h-3 mr-1" /> Account Mgmt
           </TabsTrigger>
-          <TabsTrigger value="disputes" className="text-xs">
-            <AlertTriangle className="w-3 h-3 mr-1" /> Disputes
-          </TabsTrigger>
           <TabsTrigger value="funding" className="text-xs">
             <DollarSign className="w-3 h-3 mr-1" /> Funding Readiness
           </TabsTrigger>
@@ -313,10 +301,6 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
                     <Badge variant={negativeCount > 0 ? "destructive" : "default"}>{negativeCount}</Badge>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Active Disputes</span>
-                    <Badge variant="secondary">{disputeCount}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Subscription</span>
                     <Badge variant="outline">{subscription?.plan_slug || "None"}</Badge>
                   </div>
@@ -372,10 +356,6 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
 
         <TabsContent value="account-mgmt" className="mt-4">
           <AdminAccountManagement clientUserId={clientUserId} userRole={userRole} />
-        </TabsContent>
-
-        <TabsContent value="disputes" className="mt-4">
-          <DisputesManager personalOnly clientId={clientUserId} />
         </TabsContent>
 
         <TabsContent value="funding" className="mt-4">
