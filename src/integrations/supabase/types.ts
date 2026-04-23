@@ -435,7 +435,10 @@ export type Database = {
           months_at_institution: number | null
           nsf_count_last_12_months: number
           overdraft_count_last_12_months: number
+          qb_account_id: string | null
+          qb_synced_at: string | null
           relationship_type: string
+          source: string
           updated_at: string
           user_id: string
         }
@@ -454,7 +457,10 @@ export type Database = {
           months_at_institution?: number | null
           nsf_count_last_12_months?: number
           overdraft_count_last_12_months?: number
+          qb_account_id?: string | null
+          qb_synced_at?: string | null
           relationship_type: string
+          source?: string
           updated_at?: string
           user_id: string
         }
@@ -473,7 +479,10 @@ export type Database = {
           months_at_institution?: number | null
           nsf_count_last_12_months?: number
           overdraft_count_last_12_months?: number
+          qb_account_id?: string | null
+          qb_synced_at?: string | null
           relationship_type?: string
+          source?: string
           updated_at?: string
           user_id?: string
         }
