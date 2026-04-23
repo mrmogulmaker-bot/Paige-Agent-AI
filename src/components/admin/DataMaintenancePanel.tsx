@@ -92,6 +92,34 @@ export function DataMaintenancePanel() {
     onError: (err: Error) => toast.error(err.message || "Beta launch send failed"),
   });
 
+  const previewBetaLaunch = useMutation({
+    mutationFn: async (name: string) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      const response = await supabase.functions.invoke("preview-beta-launch-email", {
+        body: { name: name.trim() || undefined },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (response.error) throw new Error(response.error.message);
+      return response.data as {
+        templateName: string; displayName: string; subject: string;
+        sampleName: string | null; html: string;
+      };
+    },
+    onSuccess: (data) => {
+      setPreviewHtml(data.html);
+      setPreviewSubject(data.subject);
+    },
+    onError: (err: Error) => toast.error(err.message || "Preview render failed"),
+  });
+
+  const openPreview = () => {
+    setPreviewOpen(true);
+    setPreviewHtml(null);
+    setPreviewSubject(null);
+    previewBetaLaunch.mutate(previewName);
+  };
+
   const memoryBackfill = useMutation({
     mutationFn: async () => {
       const { data: { session } } = await supabase.auth.getSession();
