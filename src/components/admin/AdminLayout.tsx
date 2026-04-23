@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
-  Gavel, TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
+  TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
 } from "lucide-react";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
@@ -15,7 +15,6 @@ import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 const adminNavItems = [
   { label: "Overview", href: "/admin", icon: BarChart3 },
   { label: "Client Management", href: "/admin/clients", icon: Users },
-  { label: "Dispute Center", href: "/admin/disputes", icon: Gavel },
   { label: "Funding Pipeline", href: "/admin/funding", icon: DollarSign },
   { label: "Funding Journey", href: "/admin/funding-pipeline", icon: Briefcase },
   { label: "Analytics", href: "/admin/analytics", icon: TrendingUp },

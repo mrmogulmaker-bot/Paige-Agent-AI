@@ -115,12 +115,10 @@ export function RepositioningNotice() {
           <Compass className="w-5 h-5 text-accent mt-1 flex-shrink-0" />
           <div>
             <h2 className="font-semibold text-foreground mb-1">
-              Need to dispute something on your credit report?
+              Looking for credit repositioning services?
             </h2>
             <p className="text-sm text-muted-foreground">
-              The CFPB (Consumer Financial Protection Bureau) provides free
-              self-help dispute templates and step-by-step instructions you can
-              use directly with the credit bureaus — no third party needed.
+              For credit repositioning services please visit Mogul Credit AI.
             </p>
             <Button
               variant="outline"
@@ -128,14 +126,25 @@ export function RepositioningNotice() {
               asChild
             >
               <a
-                href="https://www.consumerfinance.gov/consumer-tools/credit-reports-and-scores/"
+                href="https://mogulcredit.ai"
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Open CFPB Credit Tools
+                Visit Mogul Credit AI
                 <ExternalLink className="w-4 h-4" />
               </a>
             </Button>
+            <p className="text-xs text-muted-foreground mt-3">
+              You can also use the CFPB's free self-help dispute tools at{" "}
+              <a
+                href="https://www.consumerfinance.gov/consumer-tools/credit-reports-and-scores/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                consumerfinance.gov
+              </a>.
+            </p>
           </div>
         </div>
       </Card>
