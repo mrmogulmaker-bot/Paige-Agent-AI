@@ -37,6 +37,15 @@ export type FundabilityBand =
   | "established"
   | "elite";
 
+export interface BureauScoreEntry {
+  score: number | null;
+  band: FundabilityBand | null;
+  bandLabel: string | null;
+  locked: boolean;
+  /** When locked, why — typically "No FICO score from <bureau>". */
+  lockedReason?: string;
+}
+
 export interface FundabilityScoreResult {
   type: FundabilityScoreType;
   title: string;
@@ -60,6 +69,18 @@ export interface FundabilityScoreResult {
   inputsRequired: string[];
   /** Sum of weighted negative penalties applied to this score. */
   totalWeightedNegativeScore?: number;
+  /** Bureau-specific variants (Personal + Small Business only). */
+  bureauScores?: {
+    experian: BureauScoreEntry;
+    transunion: BureauScoreEntry;
+    equifax: BureauScoreEntry;
+  };
+  /** Bureau with the highest non-locked score. Null if all locked. */
+  strongestBureau?: CreditBureau | null;
+  /** Numeric score of strongestBureau. */
+  strongestBureauScore?: number | null;
+  /** Difference (highest non-locked - lowest non-locked). 0 when <2 bureaus. */
+  bureauVariance?: number;
 }
 
 // ------------------------------------------------------------
