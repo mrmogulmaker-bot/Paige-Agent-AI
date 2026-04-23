@@ -431,6 +431,10 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
               <Badge variant="outline" className="text-xs">Equifax</Badge>
             </div>
 
+            <div className="flex items-center justify-center">
+              <SecurityBadge />
+            </div>
+
             <p className="text-xs text-muted-foreground max-w-md mx-auto">
               Upload one report per bureau for the most accurate analysis. Tri-merge reports that contain all three bureaus in one PDF are also accepted.
             </p>
@@ -447,6 +451,12 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
           </div>
         )}
       </div>
+
+      <CreditReportConsentDialog
+        open={consentOpen}
+        onOpenChange={(o) => { setConsentOpen(o); if (!o) setPendingFile(null); }}
+        onConfirm={handleConsentConfirm}
+      />
     </Card>
   );
 }

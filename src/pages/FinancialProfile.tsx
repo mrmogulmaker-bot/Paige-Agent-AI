@@ -502,6 +502,22 @@ export default function FinancialProfile() {
           )}
         </div>
 
+        {/* Privacy/usage notice */}
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
+          <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium text-amber-700 dark:text-amber-400">
+              Why we ask for this
+            </p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              Banking relationship data, asset information, and income ranges help us calculate
+              more accurate fundability scores and find better funding matches for you. This
+              information is <strong>never shared</strong> with lenders, banks, or third parties.
+              It stays within your PaigeAgent account exclusively.
+            </p>
+          </div>
+        </div>
+
         {/* SECTION 1 — Personal Banking */}
         <Card>
           <CardHeader>
