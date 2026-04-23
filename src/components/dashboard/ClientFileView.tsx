@@ -381,6 +381,82 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
             <ClientDemographicsCard clientUserId={clientUserId} />
           </div>
 
+          {/* Financial Profile — banking & asset data captured during intake */}
+          {(profile?.primary_bank_name ||
+            profile?.monthly_revenue_range ||
+            profile?.has_investment_accounts ||
+            profile?.has_real_estate_equity ||
+            profile?.total_liquid_assets_range) && (
+            <div className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <DollarSign className="w-5 h-5" /> Financial Profile
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <ProfileField label="Primary Bank" value={profile?.primary_bank_name} />
+                    <ProfileField
+                      label="Months at Bank"
+                      value={profile?.primary_bank_months ? String(profile.primary_bank_months) : null}
+                    />
+                    <ProfileField
+                      label="Avg Monthly Balance"
+                      value={
+                        profile?.primary_bank_average_balance
+                          ? `$${Number(profile.primary_bank_average_balance).toLocaleString()}`
+                          : null
+                      }
+                    />
+                    <ProfileField label="Monthly Revenue" value={profile?.monthly_revenue_range} />
+                    <ProfileField label="Liquid Assets" value={profile?.total_liquid_assets_range} />
+                    <ProfileField
+                      label="Investment Accounts"
+                      value={
+                        profile?.has_investment_accounts
+                          ? profile?.investment_account_value_range || "Yes"
+                          : profile?.has_investment_accounts === false
+                          ? "No"
+                          : null
+                      }
+                    />
+                    <ProfileField
+                      label="Real Estate Equity"
+                      value={
+                        profile?.has_real_estate_equity
+                          ? profile?.real_estate_equity_range || "Yes"
+                          : profile?.has_real_estate_equity === false
+                          ? "No"
+                          : null
+                      }
+                    />
+                    <ProfileField
+                      label="Equipment Assets"
+                      value={
+                        profile?.has_equipment_assets === true
+                          ? "Yes"
+                          : profile?.has_equipment_assets === false
+                          ? "No"
+                          : null
+                      }
+                    />
+                    <ProfileField
+                      label="Invoice Receivables"
+                      value={
+                        profile?.has_invoice_receivables === true
+                          ? "Yes"
+                          : profile?.has_invoice_receivables === false
+                          ? "No"
+                          : null
+                      }
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* QuickBooks Financial Summary — gives coaches financial context before strategy sessions */}
           <div className="mt-6">
             <QuickBooksAdminSummary clientUserId={clientUserId} />
