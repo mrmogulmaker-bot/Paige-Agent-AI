@@ -57,13 +57,24 @@ export const UserPerformance = () => {
     try {
       setLoading(true);
 
-      // Get all profiles with auth users
-      const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-      if (authError) throw authError;
+      // auth.admin.* cannot be called from the browser; use the
+      // admin-list-users edge function which validates the caller's role
+      // server-side and returns the auth.users list.
+      const { data: listData, error: listErr } = await supabase.functions.invoke(
+        "admin-list-users",
+      );
+      if (listErr) throw listErr;
+      const authUsers = (listData?.users ?? []) as Array<{
+        id: string;
+        email: string | null;
+        created_at: string;
+        last_sign_in_at: string | null;
+      }>;
 
       const { data: profiles } = await supabase
         .from("profiles")
         .select("*");
+
 
       // Get subscriptions
       const { data: subscriptions } = await supabase
@@ -106,7 +117,7 @@ export const UserPerformance = () => {
         .select("owner_user_id");
 
       // Combine all data
-      const metricsData: UserMetrics[] = authData.users.map((user) => {
+      const metricsData: UserMetrics[] = authUsers.map((user) => {
         const profile = profiles?.find((p) => p.user_id === user.id);
         const subscription = subscriptions?.find((s) => s.user_id === user.id);
         const buildBusinessScore = buildScores?.find((b) => b.user_id === user.id);
@@ -166,7 +177,7 @@ export const UserPerformance = () => {
       setUsers(metricsData);
     } catch (error: any) {
       console.error("Error fetching user metrics:", error);
-      toast.error("Failed to load user metrics");
+      toast.error("Failed to load user metrics", { description: error?.message });
     } finally {
       setLoading(false);
     }
