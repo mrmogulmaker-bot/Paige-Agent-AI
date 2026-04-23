@@ -360,13 +360,13 @@ export function ProductApprovalReadinessPanel() {
       primaryBankMonths: p?.primary_bank_months ?? null,
       primaryBankAverageBalance: p?.primary_bank_average_balance ? Number(p.primary_bank_average_balance) : null,
       hasInvestmentAccounts: p?.has_investment_accounts ?? null,
-      investmentRange: p?.investment_account_value_range ?? null,
-      totalLiquidAssetsRange: p?.total_liquid_assets_range ?? null,
+      investmentRange: (p?.investment_account_value_range ?? null) as any,
+      totalLiquidAssetsRange: (p?.total_liquid_assets_range ?? null) as any,
       hasRealEstateEquity: p?.has_real_estate_equity ?? null,
-      realEstateEquityRange: p?.real_estate_equity_range ?? null,
+      realEstateEquityRange: (p?.real_estate_equity_range ?? null) as any,
       hasEquipmentAssets: p?.has_equipment_assets ?? null,
       hasInvoiceReceivables: p?.has_invoice_receivables ?? null,
-      monthlyRevenueRange: p?.monthly_revenue_range ?? null,
+      monthlyRevenueRange: (p?.monthly_revenue_range ?? null) as any,
       businessAverageMonthlyBalance: null,
     });
   }, [profileData, factors]);
