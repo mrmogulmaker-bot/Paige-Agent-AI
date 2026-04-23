@@ -280,7 +280,7 @@ export function ProductApprovalReadinessPanel() {
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
-      const [profileRes, bizRes, banksRes, negRes, reportRes] = await Promise.all([
+      const [profileRes, bizRes, banksRes, negRes, reportRes, accountsRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, has_real_estate_equity, real_estate_equity_range, has_equipment_assets, has_invoice_receivables, has_investment_accounts, investment_account_value_range, total_liquid_assets_range, monthly_revenue_range, primary_bank_months, primary_bank_average_balance")
@@ -305,6 +305,10 @@ export function ProductApprovalReadinessPanel() {
           .from("credit_report_personal_info")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id),
+        supabase
+          .from("credit_accounts")
+          .select("creditor, type, account_open_date, opened_on, account_close_date, status, is_authorized_user")
+          .eq("user_id", user.id),
       ]);
       return {
         profile: profileRes.data,
@@ -312,6 +316,7 @@ export function ProductApprovalReadinessPanel() {
         banks: (banksRes.data ?? []) as any[],
         negatives: (negRes.data ?? []) as any[],
         reportCount: reportRes.count ?? 0,
+        accounts: (accountsRes.data ?? []) as any[],
       };
     },
   });
@@ -368,6 +373,14 @@ export function ProductApprovalReadinessPanel() {
       hasInvoiceReceivables: p?.has_invoice_receivables ?? null,
       monthlyRevenueRange: (p?.monthly_revenue_range ?? null) as any,
       businessAverageMonthlyBalance: null,
+      creditAccounts: (profileData.accounts ?? []).map((a: any) => ({
+        creditor: a.creditor ?? null,
+        type: a.type ?? null,
+        openedOn: a.account_open_date ?? a.opened_on ?? null,
+        closedOn: a.account_close_date ?? null,
+        status: a.status ?? null,
+        isAuthorizedUser: a.is_authorized_user ?? false,
+      })),
     });
   }, [profileData, factors]);
 
@@ -414,7 +427,9 @@ export function ProductApprovalReadinessPanel() {
     const ready = all.filter(p => p.status === "ready" || p.status === "always_available" || p.status === "asset_path_available").length;
     const almost = all.filter(p => p.status === "almost_ready").length;
     const notReady = all.filter(p => p.status === "not_qualified_credit_path").length;
-    return { ready, almost, notReady, total: all.length };
+    const boosted = all.filter(p => (p.comparableCredit?.modifierScore ?? 0) > 0).length;
+    const flagged = all.filter(p => (p.comparableCredit?.modifierScore ?? 0) < 0).length;
+    return { ready, almost, notReady, boosted, flagged, total: all.length };
   }, [columns]);
 
   const handleAskPaige = () => {
@@ -439,9 +454,9 @@ export function ProductApprovalReadinessPanel() {
                 <p className="text-xs text-muted-foreground mt-0.5">
                   <span className="text-emerald-600 font-medium">Ready for {summary.ready}</span>
                   <span className="mx-1.5">·</span>
-                  <span className="text-amber-600 font-medium">{summary.almost} almost ready</span>
+                  <span className="text-emerald-600">{summary.boosted} boosted by comparable credit</span>
                   <span className="mx-1.5">·</span>
-                  <span className="text-muted-foreground">{summary.notReady} need work</span>
+                  <span className="text-destructive">{summary.flagged} flagged for comparable credit risk</span>
                 </p>
               </div>
             </div>
@@ -489,6 +504,20 @@ function ProductCard({ product }: { product: ProductEligibility }) {
   const meta = STATUS_META[product.status];
   const Icon = meta.icon;
   const topBlocker = product.blockers[0] ?? "Ready to apply";
+  const cc = product.comparableCredit;
+  const adj = product.adjustedApprovalLikelihood ?? product.qualificationScore;
+
+  const ccBadge = cc
+    ? (cc.overallQuality === "excellent"
+        ? { label: "Excellent Comparable Credit", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30" }
+        : cc.overallQuality === "good"
+        ? { label: "Good Comparable Credit", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20" }
+        : cc.overallQuality === "mixed"
+        ? { label: "Mixed Comparable Credit", cls: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30" }
+        : cc.overallQuality === "negative"
+        ? { label: "Negative Comparable Credit", cls: "bg-destructive/15 text-destructive border-destructive/30" }
+        : { label: "Thin File for This Product", cls: "bg-muted text-muted-foreground border-border" })
+    : null;
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -506,7 +535,7 @@ function ProductCard({ product }: { product: ProductEligibility }) {
         </div>
         <div className="flex items-center justify-between gap-2 mb-1">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{product.category}</span>
-          <span className="text-[11px] font-mono text-muted-foreground">{product.qualificationScore}%</span>
+          <span className="text-[11px] font-mono text-muted-foreground">{adj}%</span>
         </div>
         <p className="text-xs text-muted-foreground line-clamp-2">{topBlocker}</p>
       </button>
@@ -531,6 +560,27 @@ function ProductCard({ product }: { product: ProductEligibility }) {
           )}
           {product.unlocks && (
             <p><span className="font-medium">Unlocks:</span> <span className="text-muted-foreground">{product.unlocks}</span></p>
+          )}
+          {cc && ccBadge && (
+            <div className="rounded border border-border bg-background p-2 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-medium">Your Credit Story for This Product</p>
+                <Badge variant="outline" className={`text-[10px] ${ccBadge.cls}`}>{ccBadge.label}</Badge>
+              </div>
+              <p className="text-muted-foreground">{cc.narrative}</p>
+              <p className="text-[11px] text-muted-foreground/80 italic">{cc.lenderPerspective}</p>
+              <p className={`text-[11px] font-medium ${
+                cc.modifierScore > 0 ? "text-emerald-600"
+                : cc.modifierScore < 0 ? "text-destructive"
+                : "text-muted-foreground"
+              }`}>
+                {cc.modifierScore > 0
+                  ? `+${cc.modifierScore}% from comparable credit history`
+                  : cc.modifierScore < 0
+                  ? `${cc.modifierScore}% from comparable credit concern`
+                  : "No comparable history — neutral effect"}
+              </p>
+            </div>
           )}
           {product.paigeInsight && (
             <div className="rounded bg-primary/5 border border-primary/15 p-2 text-muted-foreground italic">
