@@ -1,6 +1,7 @@
 import { Header } from "@/components/landing/Header";
 import { Footer } from "@/components/landing/Footer";
 import { SiteBackground } from "@/components/landing/SiteBackground";
+import { SecurityBadge } from "@/components/security/SecurityBadge";
 
 const Privacy = () => {
   return (
@@ -8,177 +9,192 @@ const Privacy = () => {
       <SiteBackground />
       <Header />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <h1 className="text-4xl font-bold mb-2 text-foreground">Privacy Policy</h1>
-        <p className="text-sm text-muted-foreground mb-10">Last updated: April 18, 2026</p>
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-2">
+          <h1 className="text-4xl font-bold text-foreground">Privacy Policy</h1>
+          <SecurityBadge />
+        </div>
+        <p className="text-sm text-muted-foreground mb-10">
+          Last updated: April 2026 — written in plain English. You should be able to read this in 5 minutes.
+        </p>
 
-        <div className="prose prose-sm max-w-none space-y-8 text-foreground/90">
-          {/* === Repositioning Addendum (April 18, 2026) === */}
-          <section className="border-l-4 border-accent bg-accent/5 p-5 rounded-r-lg">
-            <h2 className="text-xl font-semibold text-foreground mt-0">
-              Important Update — April 18, 2026
-            </h2>
-            <p className="text-sm">
-              <strong>PaigeAgent.ai has been repositioned as a business funding intelligence platform.</strong>{" "}
-              We are <strong>not</strong> a Credit Repair Organization (CRO) as defined under the Credit Repair Organizations Act (CROA), 15 U.S.C. § 1679. We do not perform, offer, or sell credit repair services.
-            </p>
-            <p className="text-sm">
-              We help small business owners understand how their personal and business credit profiles affect funding eligibility, and we connect them with appropriate capital sources. We do not generate dispute letters, file disputes with credit bureaus, or attempt to remove or modify items on your credit report.
-            </p>
-            <p className="text-sm">
-              For free, self-help credit dispute resources, please use the Consumer Financial Protection Bureau's templates at{" "}
-              <a
-                href="https://www.consumerfinance.gov/consumer-tools/credit-reports-and-scores/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                consumerfinance.gov/consumer-tools/credit-reports-and-scores
-              </a>.
-            </p>
-            <p className="text-xs text-muted-foreground mt-3">
-              This addendum is being reviewed with our fintech counsel; the full policy below will be rewritten in a subsequent update. In any conflict between this addendum and the legacy text below, this addendum controls.
-            </p>
-          </section>
-
+        <div className="prose prose-sm max-w-none space-y-10 text-foreground/90">
+          {/* 1 */}
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">1. Introduction</h2>
+            <h2 className="text-2xl font-semibold text-foreground">1. Who we are and what this covers</h2>
             <p>
-              PaigeAgent.ai ("Company," "we," "us," or "our") is committed to protecting the privacy and security of your personal information. This Privacy Policy describes how we collect, use, disclose, and safeguard your information when you use the PaigeAgent.ai platform ("Service").
+              PaigeAgent AI is a financial intelligence platform operated by{" "}
+              <strong>PaigeAgent AI LLC</strong>, a Wyoming limited liability company. This Privacy
+              Policy explains how we collect, use, protect, and <strong>never sell</strong> your
+              financial information. It covers all data you share with us — including credit reports,
+              banking information, business financial data, and personal financial profile information.
             </p>
+          </section>
+
+          {/* 2 */}
+          <section>
+            <h2 className="text-2xl font-semibold text-foreground">2. What data we collect and why</h2>
+
+            <h3 className="text-lg font-medium text-foreground mt-4">Credit Report Data</h3>
             <p>
-              We comply with the Gramm-Leach-Bliley Act (GLBA), the Equal Credit Opportunity Act (ECOA), the California Consumer Privacy Act (CCPA/CPRA), and applicable state privacy laws.
+              When you upload your credit report we extract your credit scores, account history,
+              payment history, and negative items. We use this data <strong>exclusively</strong> to
+              calculate your fundability scores and provide personalized credit coaching through
+              Paige. We do not share your credit report data with any lender, advertiser, or third
+              party without your explicit written consent.
+            </p>
+
+            <h3 className="text-lg font-medium text-foreground mt-4">Banking Relationship Data</h3>
+            <p>
+              When you complete your Financial Profile or connect QuickBooks we collect your bank
+              account information, average monthly balances, and account types. We use this data to
+              improve the accuracy of your fundability scores and funding recommendations. This data
+              is never shared with lenders or third parties.
+            </p>
+
+            <h3 className="text-lg font-medium text-foreground mt-4">Business Financial Data</h3>
+            <p>
+              When you connect QuickBooks or enter business financial information we collect revenue
+              data, expense patterns, and account balances. This data is used exclusively to provide
+              more accurate business fundability scoring and funding recommendations.
+            </p>
+
+            <h3 className="text-lg font-medium text-foreground mt-4">Identity and Account Data</h3>
+            <p>
+              Your name, email address, and authentication credentials are used to manage your
+              account and send you platform notifications. We do not sell or share this information
+              with third parties for marketing purposes.
+            </p>
+
+            <h3 className="text-lg font-medium text-foreground mt-4">Usage Data</h3>
+            <p>
+              We collect anonymized data about how you use the platform — which features you visit,
+              how often you interact with Paige — to improve the platform experience. This data is
+              never linked to your personal financial information.
             </p>
           </section>
 
+          {/* 3 */}
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">2. Information We Collect</h2>
-            <h3 className="text-lg font-medium text-foreground mt-4">2.1 Information You Provide</h3>
+            <h2 className="text-2xl font-semibold text-foreground">3. How we protect your data</h2>
+            <p>Your financial data is protected with bank-grade security:</p>
             <ul className="list-disc pl-6 space-y-2">
-              <li><strong>Account Information:</strong> Name, email address, phone number, and login credentials.</li>
-              <li><strong>Identity Verification:</strong> Last four digits of Social Security Number, date of birth (used solely for credit report access).</li>
-              <li><strong>Business Information:</strong> Legal business name, EIN, state of formation, NAICS code, and entity type.</li>
-              <li><strong>Financial Information:</strong> Credit report data (obtained with your consent via soft pull), bank statement uploads, and payment information processed through Stripe.</li>
-              <li><strong>Documents:</strong> Uploaded files such as business formation documents, tax returns, and financial statements.</li>
-            </ul>
-
-            <h3 className="text-lg font-medium text-foreground mt-4">2.2 Information Collected Automatically</h3>
-            <ul className="list-disc pl-6 space-y-2">
-              <li><strong>Usage Data:</strong> Pages visited, features used, session duration, and interaction patterns.</li>
-              <li><strong>Device Information:</strong> IP address, browser type, operating system, and device identifiers.</li>
-              <li><strong>Consent Logs:</strong> Timestamps, IP addresses, and session IDs associated with consent actions.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-semibold text-foreground">3. How We Use Your Information</h2>
-            <p>We use your information to:</p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Provide and improve the Service, including AI-powered credit analysis and guidance.</li>
-              <li>Access your credit reports with your authorization (soft pulls only — no impact to your credit score).</li>
-              <li>Generate and file credit disputes on your behalf under the FCRA.</li>
-              <li>Match you with funding opportunities based on your creditworthiness and business profile.</li>
-              <li>Process payments and manage your subscription.</li>
-              <li>Communicate service updates, task reminders, and educational content.</li>
-              <li>Maintain compliance with FCRA, CROA, GLBA, and other regulatory requirements.</li>
-              <li>Prevent fraud and ensure platform security.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-semibold text-foreground">4. Information Sharing & Disclosure</h2>
-            <p>We do not sell your personal information. We may share your information with:</p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li><strong>Credit Bureaus:</strong> Equifax, Experian, and TransUnion — for credit report access and dispute filing, only with your explicit consent.</li>
-              <li><strong>Financial Partners:</strong> Third-party lenders displayed in our funding marketplace, only when you choose to apply.</li>
-              <li><strong>Service Providers:</strong> Stripe (payment processing) and infrastructure providers operating under strict data processing agreements.</li>
-              <li><strong>Legal Compliance:</strong> When required by law, regulation, legal process, or government request.</li>
-              <li><strong>Business Transfers:</strong> In the event of a merger, acquisition, or sale of assets.</li>
+              <li>AES-256 encryption for all sensitive data including credit report information and Social Security Numbers</li>
+              <li>Role-based access controls ensuring only you and authorized PaigeAgent personnel can access your data</li>
+              <li>Our infrastructure is built on Supabase, which is SOC 2 Type II certified</li>
+              <li>Our AI provider Anthropic is SOC 2 Type II certified</li>
+              <li>All data transmission uses TLS 1.3 encryption</li>
+              <li>We maintain comprehensive audit logs of all access to your sensitive data</li>
+              <li>We never store your full credit report — only the extracted data points needed for your fundability analysis</li>
             </ul>
           </section>
 
+          {/* 4 */}
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">5. Data Security</h2>
-            <p>We implement industry-standard security measures including:</p>
+            <h2 className="text-2xl font-semibold text-foreground">4. How we use your data (permissible purposes)</h2>
+            <p>We use your financial data exclusively for these purposes:</p>
             <ul className="list-disc pl-6 space-y-2">
-              <li>Encryption of data in transit (TLS 1.2+) and at rest (AES-256).</li>
-              <li>Tokenization of sensitive identifiers — we never store raw Social Security Numbers.</li>
-              <li>Role-based access control (RBAC) and multi-factor authentication.</li>
-              <li>Regular security audits and vulnerability assessments.</li>
-              <li>Full audit trails for all data access and modification events.</li>
-              <li>Quarterly rotation of API keys and secrets.</li>
+              <li>Calculating your Personal, Small Business, and Commercial fundability scores</li>
+              <li>Providing personalized credit and funding coaching through Paige AI</li>
+              <li>Matching you with relevant funding products and lenders</li>
+              <li>Sending you alerts about changes to your credit profile</li>
+              <li>Improving the accuracy of your financial intelligence over time</li>
+            </ul>
+            <p className="mt-3 font-medium">We do NOT use your data for:</p>
+            <ul className="list-disc pl-6 space-y-2">
+              <li>Selling to lenders, advertisers, or data brokers</li>
+              <li>Targeted advertising</li>
+              <li>Employment or insurance decisions</li>
+              <li>Any purpose other than your direct financial intelligence service</li>
             </ul>
           </section>
 
+          {/* 5 */}
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">6. Data Retention</h2>
+            <h2 className="text-2xl font-semibold text-foreground">5. Data sharing</h2>
             <p>
-              We retain your personal information for as long as your account is active or as needed to provide the Service. Our default retention period is 24 months from last account activity. After this period, data is anonymized or securely deleted.
-            </p>
-            <p>
-              Compliance-related records (consent logs, dispute records, audit trails) may be retained for up to 7 years as required by applicable regulations.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-semibold text-foreground">7. Your Rights</h2>
-            <p>You have the right to:</p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li><strong>Access:</strong> Request a copy of the personal information we hold about you.</li>
-              <li><strong>Correction:</strong> Request correction of inaccurate or incomplete information.</li>
-              <li><strong>Deletion:</strong> Request deletion of your personal data, subject to legal retention requirements.</li>
-              <li><strong>Revoke Consent:</strong> Withdraw consent for credit report access, data sharing, or communications at any time through your account settings.</li>
-              <li><strong>Data Portability:</strong> Request your data in a portable, machine-readable format.</li>
-              <li><strong>Opt-Out:</strong> Opt out of marketing communications at any time.</li>
-            </ul>
-            <p>
-              To exercise any of these rights, contact us at <strong>support@paigeagent.ai</strong> or use the Data Deletion Request feature in your account settings.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-semibold text-foreground">8. Cookies & Tracking</h2>
-            <p>
-              We use essential cookies to maintain your session and preferences. We may use analytics tools to understand usage patterns. We do not use third-party advertising trackers. You can manage cookie preferences through your browser settings.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-semibold text-foreground">9. Children's Privacy</h2>
-            <p>
-              The Service is not intended for individuals under 18 years of age. We do not knowingly collect personal information from minors. If we learn that we have collected information from a child under 18, we will promptly delete it.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-semibold text-foreground">10. GLBA Privacy Notice</h2>
-            <p>
-              In accordance with the Gramm-Leach-Bliley Act, we provide this notice regarding our information-sharing practices. We collect nonpublic personal information from the following sources:
+              We share your data with these service providers <strong>only as necessary to operate
+              the platform</strong>:
             </p>
             <ul className="list-disc pl-6 space-y-2">
-              <li>Information you provide on applications and forms.</li>
-              <li>Information from credit reporting agencies.</li>
-              <li>Information from your transactions with us or our partners.</li>
+              <li><strong>Anthropic</strong> (AI processing for Paige conversations) — subject to their SOC 2 certified data handling</li>
+              <li><strong>Supabase</strong> (database and storage) — SOC 2 Type II certified</li>
+              <li><strong>Stripe</strong> (payment processing) — PCI DSS Level 1 certified</li>
+              <li><strong>ElevenLabs</strong> (voice processing for Paige voice sessions) — your voice session content only</li>
+              <li><strong>Twilio</strong> (SMS notifications) — your phone number and notification content only</li>
             </ul>
             <p>
-              We do not disclose nonpublic personal information about our customers or former customers to anyone, except as permitted by law and as described in this policy.
+              We never share your financial data with nonaffiliated third parties for marketing,
+              lending decisions, or any purpose other than operating the platform services listed
+              above.
+            </p>
+            <p>
+              If you connect QuickBooks your data is imported through Intuit's official API and
+              governed by Intuit's privacy terms. PaigeAgent does not share your QuickBooks data
+              back to Intuit or any third party.
             </p>
           </section>
 
+          {/* 6 */}
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">11. Changes to This Policy</h2>
+            <h2 className="text-2xl font-semibold text-foreground">6. Your data rights</h2>
+            <p>You have these rights regarding your data:</p>
+            <ul className="list-disc pl-6 space-y-2">
+              <li><strong>Access:</strong> Request a complete export of all data PaigeAgent holds about you.</li>
+              <li><strong>Correction:</strong> Update or correct any data in your profile at any time through the app.</li>
+              <li><strong>Deletion:</strong> Delete your account and all associated data through Settings → Data &amp; Privacy → Delete Account. Deletion is permanent and processed within 30 days.</li>
+              <li><strong>Opt-out of data sharing:</strong> We do not share your data for marketing purposes. If this changes we will notify you and provide an opt-out before any sharing begins.</li>
+              <li><strong>California residents:</strong> If you are a California resident you have additional rights under the CCPA/CPRA. Contact us at <strong>privacy@paigeagent.ai</strong> to exercise these rights.</li>
+            </ul>
+          </section>
+
+          {/* 7 */}
+          <section>
+            <h2 className="text-2xl font-semibold text-foreground">7. Credit report data — specific disclosure (FCRA)</h2>
             <p>
-              We may update this Privacy Policy from time to time. We will notify you of material changes via email or in-app notification at least 30 days before changes take effect. Continued use of the Service constitutes acceptance of the updated policy.
+              When you upload your credit report to PaigeAgent you are providing it voluntarily for
+              the exclusive purpose of receiving credit intelligence and funding advisory services.
+              PaigeAgent uses your credit report data only for this permissible purpose. We do not:
+            </p>
+            <ul className="list-disc pl-6 space-y-2">
+              <li>Pull your credit report without your knowledge or consent</li>
+              <li>Share your credit report data with lenders without your explicit consent</li>
+              <li>Use your credit report data for employment, housing, or insurance decisions</li>
+              <li>Retain raw credit report files — only extracted data points are stored</li>
+            </ul>
+            <p>
+              Your credit report data is your property. You may request deletion of all credit data
+              at any time.
             </p>
           </section>
 
+          {/* 8 */}
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">12. Contact Us</h2>
+            <h2 className="text-2xl font-semibold text-foreground">8. GLBA notice</h2>
             <p>
-              If you have questions about this Privacy Policy or our data practices, contact us at:
+              PaigeAgent AI LLC provides financial intelligence services and may be subject to the
+              Gramm-Leach-Bliley Act (GLBA). In accordance with GLBA we provide this notice: We
+              collect nonpublic personal financial information to provide you with credit
+              intelligence, fundability scoring, and funding advisory services. We do not sell or
+              share this information with nonaffiliated third parties except as described in
+              Section 5 above and as permitted by law. You have the right to opt out of certain
+              information sharing by contacting us at <strong>privacy@paigeagent.ai</strong>.
             </p>
-            <p className="font-medium">
-              PaigeAgent.ai<br />
-              Email: privacy@paigeagent.ai
+          </section>
+
+          {/* 9 */}
+          <section>
+            <h2 className="text-2xl font-semibold text-foreground">9. Contact and updates</h2>
+            <p>
+              <strong>Privacy questions:</strong> privacy@paigeagent.ai
+              <br />
+              <strong>Data deletion requests:</strong> privacy@paigeagent.ai or Settings →
+              Data &amp; Privacy → Delete Account
+              <br />
+              <strong>Last updated:</strong> April 2026
+            </p>
+            <p>
+              We will notify you by email of any material changes to this Privacy Policy before
+              they take effect.
             </p>
           </section>
         </div>
