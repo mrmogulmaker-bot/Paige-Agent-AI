@@ -249,6 +249,16 @@ function BureauLens({ result }: { result: FundabilityScoreResult }) {
     </div>
   );
 }
+
+function ScoreCard({
+  result,
+  compact = false,
+  accuracy,
+}: {
+  result: FundabilityScoreResult;
+  compact?: boolean;
+  accuracy?: { level: AccuracyLevel; label: string; description: string };
+}) {
   const navigate = useNavigate();
   const typeLabel =
     result.type === "personal"
