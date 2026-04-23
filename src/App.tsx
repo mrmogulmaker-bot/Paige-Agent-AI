@@ -48,6 +48,7 @@ const AppShell = lazyWithReload(() => import("./pages/AppShell"));
 const CreditIntelligence = lazyWithReload(() => import("./pages/CreditIntelligence"));
 const FundingMatches = lazyWithReload(() => import("./pages/FundingMatches"));
 const FundingJourney = lazyWithReload(() => import("./pages/FundingJourney"));
+const FinancialProfile = lazyWithReload(() => import("./pages/FinancialProfile"));
 const Admin = lazyWithReload(() => import("./pages/Admin"));
 const ResetPassword = lazyWithReload(() => import("./pages/ResetPassword"));
 const AffiliateApply = lazyWithReload(() => import("./pages/AffiliateApply"));
@@ -130,6 +131,7 @@ const App = () => (
               <Route path="learn/:courseId" element={<PageSuspense><CourseViewer /></PageSuspense>} />
               <Route path="business" element={<PageSuspense><BusinessInfrastructureAssessment /></PageSuspense>} />
               <Route path="business-profile" element={<PageSuspense><BusinessInfrastructureAssessment /></PageSuspense>} />
+              <Route path="financial-profile" element={<PageSuspense><FinancialProfile /></PageSuspense>} />
               <Route path="support" element={<PageSuspense><Support /></PageSuspense>} />
               <Route path="settings" element={<PageSuspense><ProfileSettings /></PageSuspense>} />
               <Route path="affiliate" element={<PageSuspense><AffiliateTracking /></PageSuspense>} />
