@@ -379,7 +379,14 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       fetchAllClients();
     } catch (err: any) {
       console.error("Error moving to internal:", err);
-      toast.error(err.message || "Failed to move client");
+      const msg = (err?.message || "").toLowerCase();
+      if (msg.includes("clients_linked_user_id_unique")) {
+        toast.error("This user is already linked to an internal client record");
+      } else if (msg.includes("clients_created_by_email_unique")) {
+        toast.error("A client with this email already exists in your list");
+      } else {
+        toast.error(err.message || "Failed to move client");
+      }
     }
   };
 
