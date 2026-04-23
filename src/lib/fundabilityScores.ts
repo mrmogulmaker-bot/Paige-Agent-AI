@@ -847,6 +847,140 @@ function meaningFor(type: FundabilityScoreType, _score: number, band: Fundabilit
   return "Maximum business credit fundability — full institutional EIN-only market.";
 }
 
+// ------------------------------------------------------------
+// Bureau-specific scoring (Personal + Small Business only)
+// ------------------------------------------------------------
+// Each bureau variant uses ONLY that bureau's FICO score and
+// only the negatives reported on that bureau. All other inputs
+// (banking, assets, TIB, entity, revenue) remain constant — they
+// are not bureau-specific.
+// ------------------------------------------------------------
+
+const BUREAU_FICO_FIELD: Record<CreditBureau, keyof FundabilityProfileInputs> = {
+  experian: "ficoEx",
+  transunion: "ficoTu",
+  equifax: "ficoEq",
+};
+
+const BUREAU_LABEL: Record<CreditBureau, string> = {
+  experian: "Experian",
+  transunion: "TransUnion",
+  equifax: "Equifax",
+};
+
+function inputsForBureau(
+  p: FundabilityProfileInputs,
+  bureau: CreditBureau,
+): FundabilityProfileInputs {
+  const fico = p[BUREAU_FICO_FIELD[bureau]] as number | null | undefined;
+  const filteredNegatives = Array.isArray(p.negativeAccounts)
+    ? p.negativeAccounts.filter((n) => {
+        // If the negative has no bureau tag, count it for every bureau (legacy data).
+        if (!n.bureau) return true;
+        return n.bureau.toLowerCase() === bureau;
+      })
+    : null;
+
+  return {
+    ...p,
+    // Force the bureau-specific FICO to be the only one populated so avgFico() returns it cleanly.
+    ficoEq: bureau === "equifax" ? (fico ?? null) : null,
+    ficoEx: bureau === "experian" ? (fico ?? null) : null,
+    ficoTu: bureau === "transunion" ? (fico ?? null) : null,
+    negativeAccounts: filteredNegatives,
+  };
+}
+
+/**
+ * Computes Personal or Small Business fundability through the lens of a
+ * single bureau. Returns a `locked` entry when that bureau has no FICO
+ * score on file (UI shows a "Upload {bureau} report" prompt).
+ */
+export function computeBureauSpecificFundability(
+  type: "personal" | "small_business",
+  p: FundabilityProfileInputs,
+  bureau: CreditBureau,
+): BureauScoreEntry {
+  const fico = p[BUREAU_FICO_FIELD[bureau]] as number | null | undefined;
+
+  if (typeof fico !== "number" || fico <= 0) {
+    return {
+      score: null,
+      band: null,
+      bandLabel: null,
+      locked: true,
+      lockedReason: `No FICO score from ${BUREAU_LABEL[bureau]} on file`,
+    };
+  }
+
+  // Same gate as overall: must have a personal credit file.
+  if (!p.hasPersonalCreditFile) {
+    return {
+      score: null,
+      band: null,
+      bandLabel: null,
+      locked: true,
+      lockedReason: "Upload a credit report to see this bureau's score",
+    };
+  }
+
+  // For small_business we still require business profile basics — otherwise
+  // the bureau lens would lie. Mirror the overall gate.
+  if (type === "small_business") {
+    if (!p.hasBusiness || !p.entityType || !p.formationDate || !p.ein) {
+      return {
+        score: null,
+        band: null,
+        bandLabel: null,
+        locked: true,
+        lockedReason: "Complete your Business Profile to see this bureau's score",
+      };
+    }
+  }
+
+  const bureauInputs = inputsForBureau(p, bureau);
+  const r = type === "personal" ? scorePersonal(bureauInputs) : scoreSmallBusiness(bureauInputs);
+  const { band, label } = bandFor(r.score, "standard");
+  return { score: r.score, band, bandLabel: label, locked: false };
+}
+
+function buildBureauBreakdown(
+  type: "personal" | "small_business",
+  p: FundabilityProfileInputs,
+): {
+  bureauScores: NonNullable<FundabilityScoreResult["bureauScores"]>;
+  strongestBureau: CreditBureau | null;
+  strongestBureauScore: number | null;
+  bureauVariance: number;
+} {
+  const bureauScores = {
+    experian: computeBureauSpecificFundability(type, p, "experian"),
+    transunion: computeBureauSpecificFundability(type, p, "transunion"),
+    equifax: computeBureauSpecificFundability(type, p, "equifax"),
+  };
+
+  const unlocked = (Object.entries(bureauScores) as Array<[CreditBureau, BureauScoreEntry]>)
+    .filter(([, v]) => !v.locked && typeof v.score === "number");
+
+  if (unlocked.length === 0) {
+    return { bureauScores, strongestBureau: null, strongestBureauScore: null, bureauVariance: 0 };
+  }
+
+  const sorted = [...unlocked].sort((a, b) => (b[1].score ?? 0) - (a[1].score ?? 0));
+  const [topBureau, topEntry] = sorted[0];
+  const lowestEntry = sorted[sorted.length - 1][1];
+  const variance = unlocked.length > 1
+    ? Math.max(0, (topEntry.score ?? 0) - (lowestEntry.score ?? 0))
+    : 0;
+
+  return {
+    bureauScores,
+    strongestBureau: topBureau,
+    strongestBureauScore: topEntry.score ?? null,
+    bureauVariance: variance,
+  };
+}
+
 export function computeFundabilityScore(
   type: FundabilityScoreType,
   p: FundabilityProfileInputs,
@@ -889,6 +1023,11 @@ export function computeFundabilityScore(
 
   const { band, label } = bandFor(score, type === "commercial" ? "commercial" : "standard");
 
+  // Bureau breakdown only for personal + small_business (commercial uses business credit)
+  const breakdown = type === "commercial"
+    ? null
+    : buildBureauBreakdown(type, p);
+
   return {
     type,
     title: meta.title,
@@ -901,6 +1040,12 @@ export function computeFundabilityScore(
     locked: false,
     inputsRequired: meta.inputsRequired,
     totalWeightedNegativeScore,
+    ...(breakdown ? {
+      bureauScores: breakdown.bureauScores,
+      strongestBureau: breakdown.strongestBureau,
+      strongestBureauScore: breakdown.strongestBureauScore,
+      bureauVariance: breakdown.bureauVariance,
+    } : {}),
   };
 }
 
