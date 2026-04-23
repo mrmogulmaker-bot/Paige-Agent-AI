@@ -599,6 +599,44 @@ function ProductCard({ product }: { product: ProductEligibility }) {
               </p>
             </div>
           )}
+          {product.bureauStrategy && product.bureauStrategy.hasAnyKnownPull && (
+            <div className="rounded border border-border bg-background p-2 space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-medium">Bureau Strategy</p>
+                <Badge variant="outline" className="text-[10px] border-gold/40 text-gold">
+                  Verified {product.bureauStrategy.verifiedOn}
+                </Badge>
+              </div>
+              {product.bureauStrategy.matchingBureauLenders.length > 0 && (
+                <p className="text-[11px]">
+                  <span className="font-medium text-emerald-600">Best lenders for your bureau profile: </span>
+                  <span className="text-muted-foreground">{product.bureauStrategy.matchingBureauLenders.slice(0, 4).join(" · ")}</span>
+                </p>
+              )}
+              {product.bureauStrategy.weakBureauLenders.length > 0 && (
+                <p className="text-[11px]">
+                  <span className="font-medium text-destructive">Avoid leading with: </span>
+                  <span className="text-muted-foreground">{product.bureauStrategy.weakBureauLenders.slice(0, 4).join(" · ")}</span>
+                  <span className="text-muted-foreground"> — apply these after your stronger bureau applications.</span>
+                </p>
+              )}
+              {product.bureauStrategy.neutralLenders.length > 0 && (
+                <p className="text-[11px]">
+                  <span className="font-medium">No personal pull: </span>
+                  <span className="text-muted-foreground">{product.bureauStrategy.neutralLenders.slice(0, 4).join(" · ")}</span>
+                </p>
+              )}
+              <p className="text-[11px] text-muted-foreground italic">{product.bureauStrategy.bureauAdvice}</p>
+              <p className="text-[10px] text-muted-foreground/80">
+                Bureau pull data verified {product.bureauStrategy.verifiedOn} — always confirm with lender before applying.
+              </p>
+            </div>
+          )}
+          {product.bureauStrategy && !product.bureauStrategy.hasAnyKnownPull && product.recommendedLenders.length > 0 && (
+            <div className="rounded border border-border bg-background p-2 text-[11px] text-muted-foreground italic">
+              Bureau pull: Verify before applying — use the RAG search in Paige to check which bureau each lender pulls for your state.
+            </div>
+          )}
           {product.paigeInsight && (
             <div className="rounded bg-primary/5 border border-primary/15 p-2 text-muted-foreground italic">
               <span className="font-medium not-italic text-primary">Paige: </span>{product.paigeInsight}
