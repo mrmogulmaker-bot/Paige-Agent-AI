@@ -997,6 +997,366 @@ function revRange(range: MonthlyRevenueRange | null | undefined, min: MonthlyRev
   return order.indexOf(range) >= order.indexOf(min);
 }
 
+// ============================================================
+// COMPARABLE CREDIT ANALYSIS (2026)
+// ============================================================
+// Lenders weight tradelines that match the product being applied for
+// more heavily than unrelated history. A perfect 5-year auto loan
+// improves your odds of an auto loan beyond what FICO alone predicts;
+// a recent auto charge-off depresses them more than a same-age credit
+// card charge-off would.
+//
+// This module returns a MODIFIER (-25 to +15) applied on top of the
+// base product qualification score, plus a plain-English narrative
+// the UI and Paige can surface verbatim.
+// ============================================================
+
+export type ComparableCreditQuality =
+  | "excellent"
+  | "good"
+  | "mixed"
+  | "negative"
+  | "none";
+
+export interface ComparableCreditResult {
+  hasComparableCredit: boolean;
+  comparableAccounts: CreditAccountInput[];
+  bestComparableAccount: CreditAccountInput | null;
+  worstComparableAccount: CreditAccountInput | null;
+  overallQuality: ComparableCreditQuality;
+  /** Age band of the most relevant comparable account (months since opened). */
+  ageBand: string;
+  /** Modifier applied to base approval likelihood. -25..+15. */
+  modifierScore: number;
+  /** Plain-English explanation written for the client. */
+  narrative: string;
+  /** How lenders specifically read this for this product type. */
+  lenderPerspective: string;
+}
+
+const COMPARABLE_TYPE_MAP: Record<string, string[]> = {
+  // Auto
+  personal_auto_used: ["auto_loan", "auto_lease"],
+  personal_auto_new: ["auto_loan", "auto_lease"],
+  near_prime_auto: ["auto_loan", "auto_lease"],
+  subprime_auto_loan: ["auto_loan", "auto_lease"],
+  // Mortgage
+  fha_mortgage: ["mortgage", "heloc", "real_estate"],
+  va_mortgage: ["mortgage", "heloc", "real_estate"],
+  conventional_mortgage: ["mortgage", "heloc", "real_estate"],
+  jumbo_mortgage: ["mortgage", "heloc", "real_estate"],
+  asset_depletion_mortgage: ["mortgage", "heloc", "real_estate"],
+  // Personal cards & loans
+  secured_credit_card: ["credit_card", "charge_card"],
+  basic_unsecured_card: ["credit_card", "charge_card"],
+  rewards_credit_cards: ["credit_card", "charge_card"],
+  premium_credit_cards: ["credit_card", "charge_card"],
+  subprime_personal_loan: ["personal_loan", "installment_loan"],
+  personal_line_of_credit: ["line_of_credit", "personal_loan"],
+  // Business cards / lines / SBA
+  business_credit_card_pg: ["credit_card", "business_credit_card", "charge_card"],
+  bloc_fintech: ["line_of_credit", "business_line_of_credit", "personal_loan"],
+  bloc_bank: ["line_of_credit", "business_line_of_credit", "personal_loan"],
+  commercial_loc: ["line_of_credit", "business_line_of_credit"],
+  sba_express: ["business_loan", "sba_loan", "term_loan", "personal_loan"],
+  sba_7a: ["business_loan", "sba_loan", "term_loan", "personal_loan"],
+  // DSCR / equipment / specialized
+  dscr_loan: ["mortgage", "investment_property_mortgage", "heloc"],
+  equipment_financing: ["auto_loan", "equipment_loan", "installment_loan"],
+  cre_loan: ["mortgage", "investment_property_mortgage", "heloc"],
+};
+
+/** Returns the credit account types that count as "comparable" for a product key. */
+export function getComparableCreditTypes(productType: string): string[] {
+  return COMPARABLE_TYPE_MAP[productType] ?? [];
+}
+
+function normalizeAccountType(t: string | null | undefined): string {
+  return (t ?? "").toLowerCase().trim().replace(/\s+/g, "_");
+}
+
+function isAccountNegative(a: CreditAccountInput): boolean {
+  if (a.isNegative === true) return true;
+  const s = (a.status ?? "").toLowerCase();
+  return /charg|collect|delinq|late|derog|default|repo/.test(s);
+}
+
+function isChargedOff(a: CreditAccountInput): boolean {
+  const s = (a.status ?? "").toLowerCase();
+  return /charg|repo/.test(s);
+}
+
+function accountAgeMonths(a: CreditAccountInput): number {
+  return monthsBetween(a.openedOn);
+}
+
+function derogatoryAgeMonths(a: CreditAccountInput): number | null {
+  const d = a.derogatoryDate ?? null;
+  if (!d) return null;
+  return monthsBetween(d);
+}
+
+function ageBandLabel(months: number): string {
+  if (months < 12) return "less than 1 year";
+  if (months < 24) return "1–2 years";
+  if (months < 60) return `${Math.floor(months / 12)} years`;
+  if (months < 120) return `${Math.floor(months / 12)} years`;
+  return "10+ years";
+}
+
+function pickBest(accounts: CreditAccountInput[]): CreditAccountInput | null {
+  if (accounts.length === 0) return null;
+  // Best = positive + oldest
+  return [...accounts]
+    .filter((a) => !isAccountNegative(a))
+    .sort((a, b) => accountAgeMonths(b) - accountAgeMonths(a))[0] ?? null;
+}
+
+function pickWorst(accounts: CreditAccountInput[]): CreditAccountInput | null {
+  const negatives = accounts.filter(isAccountNegative);
+  if (negatives.length === 0) return null;
+  // Worst = most recent derogatory event
+  return [...negatives].sort((a, b) => {
+    const am = derogatoryAgeMonths(a) ?? accountAgeMonths(a);
+    const bm = derogatoryAgeMonths(b) ?? accountAgeMonths(b);
+    return am - bm;
+  })[0] ?? null;
+}
+
+function productLabel(productType: string): string {
+  return productType
+    .replace(/_/g, " ")
+    .replace(/\bpg\b/i, "PG")
+    .replace(/\bsba\b/i, "SBA")
+    .replace(/\bdscr\b/i, "DSCR")
+    .replace(/\bcre\b/i, "CRE")
+    .replace(/\bbloc\b/i, "Business Line of Credit");
+}
+
+function buildNarrative(
+  productType: string,
+  quality: ComparableCreditQuality,
+  best: CreditAccountInput | null,
+  worst: CreditAccountInput | null,
+): { narrative: string; lenderPerspective: string } {
+  const label = productLabel(productType);
+  const isAuto = /auto/.test(productType);
+  const isMortgage = /mortgage|dscr|cre_loan/.test(productType);
+  const isCard = /card/.test(productType);
+  const isBLOC = /bloc|line_of_credit/.test(productType);
+
+  if (quality === "none") {
+    if (isMortgage) {
+      return {
+        narrative: `You have no prior mortgage history in your credit file — lenders call this a thin file for this product type. This is not disqualifying, but you may be asked for a larger down payment, lower DTI, or stronger cash reserves to compensate for the absence of comparable credit evidence.`,
+        lenderPerspective: `Mortgage underwriters look for at least one prior installment tradeline of similar size. Without one, manual underwriting and compensating factors carry the file.`,
+      };
+    }
+    if (isAuto) {
+      return {
+        narrative: `You have no prior auto financing history. Auto lenders look specifically for a paid-as-agreed auto tradeline — without one you may be quoted slightly higher rates or asked for a larger down payment.`,
+        lenderPerspective: `FICO Auto Score 8 weights prior auto behavior heavily. A thin auto file pushes you toward credit-union or captive-financing programs that look at the broader profile.`,
+      };
+    }
+    return {
+      narrative: `You have no comparable credit history for ${label}. This is not disqualifying — lenders will fall back to your overall profile — but a directly comparable tradeline would noticeably strengthen this application.`,
+      lenderPerspective: `Without comparable history, the underwriter relies more heavily on FICO, DTI, and cash reserves. Building one matching tradeline first can shift the decision.`,
+    };
+  }
+
+  if (quality === "excellent" && best) {
+    const years = Math.max(1, Math.floor(accountAgeMonths(best) / 12));
+    if (isAuto) {
+      return {
+        narrative: `Your ${years}-year perfect auto payment history is your strongest asset for this application. Auto lenders specifically weight existing auto tradelines — this directly improves your approval odds beyond what your FICO score alone would predict.`,
+        lenderPerspective: `Auto underwriters using FICO Auto Score 8 read existing on-time auto behavior as the strongest single predictor of repayment. Lead with this.`,
+      };
+    }
+    if (isCard) {
+      return {
+        narrative: `Your existing credit card history is directly comparable to this application. ${years} year${years === 1 ? "" : "s"} of on-time payments is strong evidence of revolving credit management — exactly what card issuers want to see.`,
+        lenderPerspective: `Card issuers weight prior revolving behavior heavily. Long, clean revolving history typically beats a few extra FICO points.`,
+      };
+    }
+    if (isMortgage) {
+      return {
+        narrative: `Your ${years}-year clean mortgage / real-estate history directly matches what mortgage underwriters look for. This is the strongest possible comparable signal for this product.`,
+        lenderPerspective: `A perfect prior mortgage tradeline is the highest-weight comparable for any new mortgage decision — Fannie/Freddie automated underwriting flags this favorably.`,
+      };
+    }
+    return {
+      narrative: `Your ${years}-year clean ${label} history is directly comparable to this application and meaningfully improves your approval odds beyond FICO alone.`,
+      lenderPerspective: `Lenders treat clean comparable history as a leading indicator of repayment. This is a strategic asset for this application.`,
+    };
+  }
+
+  if (quality === "good") {
+    return {
+      narrative: `Your comparable ${label} history is mostly positive with one minor blemish. Lenders see this favorably — established history with isolated issues reads better than a thin or mixed file.`,
+      lenderPerspective: `Underwriters expect occasional minor lates over a long history. Continued on-time behavior keeps this in the "approve" lane.`,
+    };
+  }
+
+  if (quality === "mixed") {
+    return {
+      narrative: `Your comparable ${label} history is mixed — you have both positive and negative tradelines of this type. Lenders will weigh both, with more recent behavior carrying more weight.`,
+      lenderPerspective: `Mixed comparable history pushes the file to manual review. Recency of the most recent positive vs. the most recent negative usually decides the outcome.`,
+    };
+  }
+
+  // negative
+  if (worst) {
+    const months = derogatoryAgeMonths(worst) ?? accountAgeMonths(worst);
+    const recent = months <= 24;
+    const co = isChargedOff(worst);
+    const lender = worst.creditor ?? "a prior lender";
+
+    if (co && recent) {
+      if (isAuto) {
+        return {
+          narrative: `You have a recent charge-off on your ${lender} auto account. For auto lenders this specific negative carries more weight than other items on your file because it is directly comparable to what you are applying for. Your best path right now is specialized subprime auto lenders who work with recent auto negatives, buy-here-pay-here to rebuild the comparable history, or waiting until the negative ages past 24 months.`,
+          lenderPerspective: `Auto underwriters auto-decline most files with a comparable charge-off in the last 24 months. Subprime/specialty lenders are the realistic channel until this ages.`,
+        };
+      }
+      if (isBLOC) {
+        return {
+          narrative: `Your charged-off ${worst.type ?? "personal loan"} from roughly ${months} month${months === 1 ? "" : "s"} ago signals unsecured credit risk to business line lenders who use your personal credit as a PG. This is the same category of obligation, so it carries extra weight on this application.`,
+          lenderPerspective: `Business LOC underwriters read a recent unsecured charge-off as a direct signal about PG repayment behavior — this typically blocks bank LOCs and pushes the file toward fintech with collateral or revenue-share structures.`,
+        };
+      }
+      return {
+        narrative: `You have a charged-off ${label.toLowerCase()} account from roughly ${months} month${months === 1 ? "" : "s"} ago. Comparable charge-offs carry the heaviest weight in lender decisions for this same product type.`,
+        lenderPerspective: `Most lenders auto-decline comparable charge-offs inside 24 months. The realistic path is specialty / second-chance lenders or waiting for the account to age out of the primary lookback window.`,
+      };
+    }
+
+    if (recent) {
+      if (isAuto) {
+        return {
+          narrative: `Your recent late payment on your ${lender} auto loan is a significant concern for auto lenders. This type of negative comparable credit — the same product type you are applying for — carries more weight than other negatives on your file.`,
+          lenderPerspective: `Auto lenders read a recent comparable late as a direct signal about auto loan repayment behavior. Expect higher pricing or larger down payment until this ages.`,
+        };
+      }
+      return {
+        narrative: `Your recent negative on your ${lender} ${worst.type ?? label.toLowerCase()} account carries extra weight here because it is the same product type you are applying for. Lenders treat comparable negatives as a stronger signal than unrelated ones.`,
+        lenderPerspective: `Comparable recent negatives push files into stricter underwriting. Address this account or wait for it to age past 24 months for the strongest improvement.`,
+      };
+    }
+
+    return {
+      narrative: `You have a comparable negative on your ${lender} account from roughly ${Math.floor(months / 12)} year${months >= 24 ? "s" : ""} ago. The age helps — it is outside the most aggressive 24-month lookback window — but lenders will still note it on this specific product.`,
+      lenderPerspective: `Aged comparable negatives are tolerated by most lenders but may slightly increase pricing or documentation requirements.`,
+    };
+  }
+
+  return {
+    narrative: `Your comparable ${label} history shows negative items that affect this application.`,
+    lenderPerspective: `Comparable negatives carry extra weight for this product type.`,
+  };
+}
+
+/**
+ * Scores a client's credit accounts against the requested product type
+ * and returns a modifier (-25..+15) applied on top of base approval odds.
+ */
+export function getComparableCreditScore(
+  accounts: CreditAccountInput[] | null | undefined,
+  productType: string,
+): ComparableCreditResult {
+  const targetTypes = getComparableCreditTypes(productType);
+  const all = Array.isArray(accounts) ? accounts : [];
+  const comparable = all.filter((a) => {
+    const t = normalizeAccountType(a.type);
+    return targetTypes.some((tt) => t === tt || t.includes(tt) || tt.includes(t));
+  });
+
+  const best = pickBest(comparable);
+  const worst = pickWorst(comparable);
+  const ageMonths = best ? accountAgeMonths(best) : (worst ? accountAgeMonths(worst) : 0);
+
+  if (comparable.length === 0) {
+    const { narrative, lenderPerspective } = buildNarrative(productType, "none", null, null);
+    return {
+      hasComparableCredit: false,
+      comparableAccounts: [],
+      bestComparableAccount: null,
+      worstComparableAccount: null,
+      overallQuality: "none",
+      ageBand: "no comparable history",
+      modifierScore: 0,
+      narrative,
+      lenderPerspective,
+    };
+  }
+
+  const negatives = comparable.filter(isAccountNegative);
+  const positives = comparable.filter((a) => !isAccountNegative(a));
+  const seasoned = positives.filter((a) => accountAgeMonths(a) >= 12);
+
+  let quality: ComparableCreditQuality;
+  let modifier: number;
+
+  const recentChargeOff = negatives.find(
+    (a) => isChargedOff(a) && (derogatoryAgeMonths(a) ?? accountAgeMonths(a)) <= 24,
+  );
+  const recentNeg = negatives.find(
+    (a) => (derogatoryAgeMonths(a) ?? accountAgeMonths(a)) <= 24,
+  );
+  const olderNeg = negatives.find(
+    (a) => (derogatoryAgeMonths(a) ?? accountAgeMonths(a)) > 24,
+  );
+
+  if (recentChargeOff) {
+    quality = "negative";
+    modifier = -25;
+  } else if (recentNeg) {
+    quality = "negative";
+    modifier = -20;
+  } else if (olderNeg && positives.length === 0) {
+    quality = "negative";
+    modifier = -10;
+  } else if (negatives.length > 0 && positives.length > 0) {
+    quality = "mixed";
+    modifier = -5;
+  } else if (seasoned.length >= 1 && negatives.length === 0) {
+    // excellent vs good — excellent requires 12mo+ AND all clean
+    quality = "excellent";
+    modifier = 15;
+  } else if (positives.length > 0 && negatives.length === 0) {
+    quality = "good";
+    modifier = 8;
+  } else {
+    quality = "mixed";
+    modifier = 0;
+  }
+
+  const { narrative, lenderPerspective } = buildNarrative(productType, quality, best, worst);
+
+  return {
+    hasComparableCredit: true,
+    comparableAccounts: comparable,
+    bestComparableAccount: best,
+    worstComparableAccount: worst,
+    overallQuality: quality,
+    ageBand: ageBandLabel(ageMonths),
+    modifierScore: modifier,
+    narrative,
+    lenderPerspective,
+  };
+}
+
+function applyComparableCredit(p: ProductEligibility, accounts: CreditAccountInput[] | null | undefined): ProductEligibility {
+  const cc = getComparableCreditScore(accounts, p.productKey);
+  const base = p.qualificationScore;
+  const adjusted = Math.max(5, Math.min(95, base + cc.modifierScore));
+  return {
+    ...p,
+    baseApprovalLikelihood: base,
+    adjustedApprovalLikelihood: adjusted,
+    comparableCredit: cc,
+  };
+}
+
 /**
  * Builds the full product eligibility map. Designed to never return an
  * empty list — Tier 0 products are always included so every client has
