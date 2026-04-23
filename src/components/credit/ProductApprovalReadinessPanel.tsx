@@ -373,6 +373,14 @@ export function ProductApprovalReadinessPanel() {
       hasInvoiceReceivables: p?.has_invoice_receivables ?? null,
       monthlyRevenueRange: (p?.monthly_revenue_range ?? null) as any,
       businessAverageMonthlyBalance: null,
+      creditAccounts: (profileData.accounts ?? []).map((a: any) => ({
+        creditor: a.creditor ?? null,
+        type: a.type ?? null,
+        openedOn: a.account_open_date ?? a.opened_on ?? null,
+        closedOn: a.account_close_date ?? null,
+        status: a.status ?? null,
+        isAuthorizedUser: a.is_authorized_user ?? false,
+      })),
     });
   }, [profileData, factors]);
 
@@ -419,7 +427,9 @@ export function ProductApprovalReadinessPanel() {
     const ready = all.filter(p => p.status === "ready" || p.status === "always_available" || p.status === "asset_path_available").length;
     const almost = all.filter(p => p.status === "almost_ready").length;
     const notReady = all.filter(p => p.status === "not_qualified_credit_path").length;
-    return { ready, almost, notReady, total: all.length };
+    const boosted = all.filter(p => (p.comparableCredit?.modifierScore ?? 0) > 0).length;
+    const flagged = all.filter(p => (p.comparableCredit?.modifierScore ?? 0) < 0).length;
+    return { ready, almost, notReady, boosted, flagged, total: all.length };
   }, [columns]);
 
   const handleAskPaige = () => {
