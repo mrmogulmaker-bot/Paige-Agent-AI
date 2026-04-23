@@ -798,6 +798,125 @@ JSON:`;
         console.warn("[paige] QB context fetch failed:", qbErr);
       }
 
+      // ===== Financial Profile (banking relationships + asset snapshot) =====
+      // Feeds the new fundability scoring weights (Banking 15%, Liquid Assets 10%)
+      // so Paige can speak to relationship banking, BoA/Amex bonuses, and reserves.
+      try {
+        const { data: bankingRels } = await supabase
+          .from("banking_relationships")
+          .select(
+            "institution_name, institution_type, relationship_type, months_at_institution, average_monthly_balance, is_primary_institution, has_direct_deposit, overdraft_count_last_12_months, nsf_count_last_12_months, account_standing, business_id"
+          )
+          .eq("user_id", contextUserId);
+
+        const qbConnectedFlag = contextParts.some(p => p.includes("QUICKBOOKS FINANCIAL DATA"));
+        const qbConnectedNoData = contextParts.some(p => p.startsWith("\nQuickBooks connected"));
+        const qbConnected = qbConnectedFlag || qbConnectedNoData;
+
+        const rels = (bankingRels ?? []) as any[];
+        const personalRels = rels.filter((r: any) => !r.business_id);
+        const businessRels = rels.filter((r: any) => r.business_id);
+        const primary = personalRels.find((r: any) => r.is_primary_institution) ?? personalRels[0] ?? null;
+        const primaryBiz = businessRels.find((r: any) => r.is_primary_institution) ?? businessRels[0] ?? null;
+
+        // Approximate completeness across the 8 key Financial Profile signals.
+        const completenessSignals = [
+          !!(profile as any)?.primary_bank_name || !!primary,
+          ((profile as any)?.primary_bank_months ?? null) !== null || (primary?.months_at_institution ?? null) !== null,
+          ((profile as any)?.primary_bank_average_balance ?? null) !== null || (primary?.average_monthly_balance ?? null) !== null,
+          (profile as any)?.has_investment_accounts !== null && (profile as any)?.has_investment_accounts !== undefined,
+          !!(profile as any)?.total_liquid_assets_range,
+          (profile as any)?.has_real_estate_equity !== null && (profile as any)?.has_real_estate_equity !== undefined,
+          (profile as any)?.has_equipment_assets !== null && (profile as any)?.has_equipment_assets !== undefined,
+          !!(profile as any)?.monthly_revenue_range,
+        ];
+        const completenessPct = Math.round(
+          (completenessSignals.filter(Boolean).length / completenessSignals.length) * 100
+        );
+
+        const p: any = profile || {};
+        const hasAnyFinancialData =
+          rels.length > 0 ||
+          !!p.primary_bank_name ||
+          !!p.total_liquid_assets_range ||
+          !!p.monthly_revenue_range ||
+          p.has_investment_accounts === true ||
+          p.has_real_estate_equity === true;
+
+        if (!hasAnyFinancialData) {
+          contextParts.push(
+            `\n=== FINANCIAL PROFILE ===\n` +
+            `Not yet completed. Client has not added banking relationship data. ` +
+            `Prompt them to complete their Financial Profile at /app/financial-profile for more accurate fundability scoring ` +
+            `(Banking Relationship is 15% of personal fundability, Liquid Assets 10%).` +
+            (qbConnected ? `\nNote: QuickBooks IS connected — reference verified business cash flow from the QB block when discussing reserves and balances.` : "")
+          );
+        } else {
+          const lines: string[] = [`\n=== FINANCIAL PROFILE ===`];
+
+          const primaryName = primary?.institution_name || p.primary_bank_name || null;
+          const primaryMonths = primary?.months_at_institution ?? p.primary_bank_months ?? null;
+          if (primaryName) {
+            lines.push(`Primary bank: ${primaryName}${primaryMonths != null ? ` — ${primaryMonths} months relationship` : ""}`);
+          }
+
+          const avgBal = primary?.average_monthly_balance ?? p.primary_bank_average_balance ?? null;
+          if (avgBal != null) {
+            lines.push(`Average monthly balance: $${Math.round(Number(avgBal)).toLocaleString()}`);
+          }
+
+          const personalAcctTypes = [...new Set(personalRels.map((r: any) => r.relationship_type).filter(Boolean))];
+          if (personalAcctTypes.length > 0) {
+            lines.push(`Account types at primary institution: ${personalAcctTypes.join(", ")}`);
+          }
+
+          if (primary) {
+            lines.push(`Direct deposit present: ${primary.has_direct_deposit ? "yes" : "no"}`);
+            if ((primary.overdraft_count_last_12_months ?? 0) > 0 || (primary.nsf_count_last_12_months ?? 0) > 0) {
+              lines.push(`⚠️ Account standing: ${primary.account_standing} — ${primary.overdraft_count_last_12_months || 0} overdrafts, ${primary.nsf_count_last_12_months || 0} NSF in last 12 months`);
+            } else {
+              lines.push(`Account standing: ${primary.account_standing || "good"}`);
+            }
+          }
+
+          if (primaryBiz) {
+            const bizMonths = primaryBiz.months_at_institution != null ? ` — ${primaryBiz.months_at_institution} months` : "";
+            lines.push(`Business bank: ${primaryBiz.institution_name}${bizMonths}`);
+            if (primaryBiz.average_monthly_balance != null) {
+              lines.push(`Average monthly business balance: $${Math.round(Number(primaryBiz.average_monthly_balance)).toLocaleString()}`);
+            }
+          }
+
+          if (p.has_investment_accounts) {
+            lines.push(`Investment accounts: yes${p.investment_account_value_range ? ` — ${p.investment_account_value_range}` : ""}`);
+          } else if (p.has_investment_accounts === false) {
+            lines.push(`Investment accounts: no`);
+          }
+
+          if (p.total_liquid_assets_range) lines.push(`Liquid assets range: ${p.total_liquid_assets_range}`);
+          if (p.has_real_estate_equity) {
+            lines.push(`Real estate equity: yes${p.real_estate_equity_range ? ` — ${p.real_estate_equity_range}` : ""}`);
+          }
+          if (p.has_equipment_assets) lines.push(`Equipment assets: yes`);
+          if (p.has_invoice_receivables) lines.push(`Invoice receivables: yes`);
+          if (p.monthly_revenue_range) lines.push(`Monthly revenue range: ${p.monthly_revenue_range}`);
+
+          lines.push(`Financial profile completeness: ${completenessPct}%`);
+          lines.push(`QuickBooks connected: ${qbConnected ? "yes — banking/revenue figures above can be cross-checked against verified QB data" : "no"}`);
+
+          // Relationship-banking flags Paige's coaching rules key off of.
+          const allInstitutions = rels.map((r: any) => (r.institution_name || "").toLowerCase());
+          const hasBoA = allInstitutions.some((n: string) => n.includes("bank of america") || n.includes("boa"));
+          const hasAmex = allInstitutions.some((n: string) => n.includes("american express") || n.includes("amex"));
+          if (hasBoA) lines.push(`✅ Bank of America deposit relationship detected — apply 7-card-in-12-months rule when discussing BoA cards.`);
+          if (hasAmex) lines.push(`✅ American Express banking relationship detected — surface Amex relationship advantage when discussing Amex products.`);
+
+          contextParts.push(lines.join("\n"));
+        }
+      } catch (finErr) {
+        console.warn("[paige] Financial Profile context fetch failed:", finErr);
+      }
+
       // ===== Business Credit (D&B, Experian Business, Equifax SBFE) =====
       // Fetches the FULL portfolio so multi-entity clients get a portfolio
       // brief. Single-business clients get the legacy single-entity block.
