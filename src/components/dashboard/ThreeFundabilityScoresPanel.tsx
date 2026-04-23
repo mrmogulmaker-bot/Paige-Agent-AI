@@ -56,7 +56,57 @@ function bandBg(band: FundabilityBand | null): string {
   }
 }
 
-function ScoreCard({ result, compact = false }: { result: FundabilityScoreResult; compact?: boolean }) {
+function AccuracyChip({
+  level,
+  label,
+  description,
+  size = "sm",
+}: {
+  level: AccuracyLevel;
+  label: string;
+  description: string;
+  size?: "sm" | "xs";
+}) {
+  const Icon =
+    level === "high" ? ShieldCheck : level === "medium" ? ShieldQuestion : ShieldAlert;
+  const tone =
+    level === "high"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+      : level === "medium"
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+      : "border-muted-foreground/30 bg-muted text-muted-foreground";
+  const sizing =
+    size === "xs"
+      ? "text-[10px] px-1.5 py-0.5 gap-1"
+      : "text-[11px] px-2 py-0.5 gap-1.5";
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex items-center rounded-full border font-medium ${tone} ${sizing}`}
+          >
+            <Icon className={size === "xs" ? "w-2.5 h-2.5" : "w-3 h-3"} />
+            {label}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">
+          <p className="text-xs">{description}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ScoreCard({
+  result,
+  compact = false,
+  accuracy,
+}: {
+  result: FundabilityScoreResult;
+  compact?: boolean;
+  accuracy?: { level: AccuracyLevel; label: string; description: string };
+}) {
   const navigate = useNavigate();
   const typeLabel =
     result.type === "personal"
