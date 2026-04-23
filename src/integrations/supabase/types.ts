@@ -419,6 +419,74 @@ export type Database = {
           },
         ]
       }
+      banking_relationships: {
+        Row: {
+          account_open_date: string | null
+          account_standing: string
+          average_monthly_balance: number | null
+          business_id: string | null
+          created_at: string
+          current_balance: number | null
+          has_direct_deposit: boolean
+          id: string
+          institution_name: string
+          institution_type: string
+          is_primary_institution: boolean
+          months_at_institution: number | null
+          nsf_count_last_12_months: number
+          overdraft_count_last_12_months: number
+          relationship_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_open_date?: string | null
+          account_standing?: string
+          average_monthly_balance?: number | null
+          business_id?: string | null
+          created_at?: string
+          current_balance?: number | null
+          has_direct_deposit?: boolean
+          id?: string
+          institution_name: string
+          institution_type: string
+          is_primary_institution?: boolean
+          months_at_institution?: number | null
+          nsf_count_last_12_months?: number
+          overdraft_count_last_12_months?: number
+          relationship_type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_open_date?: string | null
+          account_standing?: string
+          average_monthly_balance?: number | null
+          business_id?: string | null
+          created_at?: string
+          current_balance?: number | null
+          has_direct_deposit?: boolean
+          id?: string
+          institution_name?: string
+          institution_type?: string
+          is_primary_institution?: boolean
+          months_at_institution?: number | null
+          nsf_count_last_12_months?: number
+          overdraft_count_last_12_months?: number
+          relationship_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "banking_relationships_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       broker_client_relationships: {
         Row: {
           added_at: string
@@ -5742,10 +5810,15 @@ export type Database = {
           goal_timeline: string | null
           has_broker_access: boolean
           has_discrepancies: boolean | null
+          has_equipment_assets: boolean
+          has_investment_accounts: boolean
+          has_invoice_receivables: boolean
+          has_real_estate_equity: boolean
           id: string
           intake_completed: boolean
           intake_completed_at: string | null
           intake_responses: Json | null
+          investment_account_value_range: string | null
           is_complimentary: boolean
           is_permanent_resident: boolean | null
           is_service_disabled_veteran: boolean | null
@@ -5755,19 +5828,25 @@ export type Database = {
           last_fundability_snapshot: Json | null
           last_report_analyzed_at: string | null
           last_report_source: string | null
+          monthly_revenue_range: string | null
           onboarding_completed: boolean | null
           onboarding_step: string | null
           phone: string | null
           pme_phase: string | null
           postal_code: string | null
+          primary_bank_average_balance: number | null
+          primary_bank_months: number | null
+          primary_bank_name: string | null
           primary_goal: string | null
           primary_goal_category: string | null
+          real_estate_equity_range: string | null
           referral_code: string | null
           score_model: string | null
           ssn_encrypted: string | null
           ssn_last_4: string | null
           state: string | null
           stripe_customer_id: string | null
+          total_liquid_assets_range: string | null
           updated_at: string | null
           user_id: string
         }
@@ -5796,10 +5875,15 @@ export type Database = {
           goal_timeline?: string | null
           has_broker_access?: boolean
           has_discrepancies?: boolean | null
+          has_equipment_assets?: boolean
+          has_investment_accounts?: boolean
+          has_invoice_receivables?: boolean
+          has_real_estate_equity?: boolean
           id?: string
           intake_completed?: boolean
           intake_completed_at?: string | null
           intake_responses?: Json | null
+          investment_account_value_range?: string | null
           is_complimentary?: boolean
           is_permanent_resident?: boolean | null
           is_service_disabled_veteran?: boolean | null
@@ -5809,19 +5893,25 @@ export type Database = {
           last_fundability_snapshot?: Json | null
           last_report_analyzed_at?: string | null
           last_report_source?: string | null
+          monthly_revenue_range?: string | null
           onboarding_completed?: boolean | null
           onboarding_step?: string | null
           phone?: string | null
           pme_phase?: string | null
           postal_code?: string | null
+          primary_bank_average_balance?: number | null
+          primary_bank_months?: number | null
+          primary_bank_name?: string | null
           primary_goal?: string | null
           primary_goal_category?: string | null
+          real_estate_equity_range?: string | null
           referral_code?: string | null
           score_model?: string | null
           ssn_encrypted?: string | null
           ssn_last_4?: string | null
           state?: string | null
           stripe_customer_id?: string | null
+          total_liquid_assets_range?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -5850,10 +5940,15 @@ export type Database = {
           goal_timeline?: string | null
           has_broker_access?: boolean
           has_discrepancies?: boolean | null
+          has_equipment_assets?: boolean
+          has_investment_accounts?: boolean
+          has_invoice_receivables?: boolean
+          has_real_estate_equity?: boolean
           id?: string
           intake_completed?: boolean
           intake_completed_at?: string | null
           intake_responses?: Json | null
+          investment_account_value_range?: string | null
           is_complimentary?: boolean
           is_permanent_resident?: boolean | null
           is_service_disabled_veteran?: boolean | null
@@ -5863,19 +5958,25 @@ export type Database = {
           last_fundability_snapshot?: Json | null
           last_report_analyzed_at?: string | null
           last_report_source?: string | null
+          monthly_revenue_range?: string | null
           onboarding_completed?: boolean | null
           onboarding_step?: string | null
           phone?: string | null
           pme_phase?: string | null
           postal_code?: string | null
+          primary_bank_average_balance?: number | null
+          primary_bank_months?: number | null
+          primary_bank_name?: string | null
           primary_goal?: string | null
           primary_goal_category?: string | null
+          real_estate_equity_range?: string | null
           referral_code?: string | null
           score_model?: string | null
           ssn_encrypted?: string | null
           ssn_last_4?: string | null
           state?: string | null
           stripe_customer_id?: string | null
+          total_liquid_assets_range?: string | null
           updated_at?: string | null
           user_id?: string
         }
@@ -7412,10 +7513,15 @@ export type Database = {
           goal_timeline: string | null
           has_broker_access: boolean
           has_discrepancies: boolean | null
+          has_equipment_assets: boolean
+          has_investment_accounts: boolean
+          has_invoice_receivables: boolean
+          has_real_estate_equity: boolean
           id: string
           intake_completed: boolean
           intake_completed_at: string | null
           intake_responses: Json | null
+          investment_account_value_range: string | null
           is_complimentary: boolean
           is_permanent_resident: boolean | null
           is_service_disabled_veteran: boolean | null
@@ -7425,19 +7531,25 @@ export type Database = {
           last_fundability_snapshot: Json | null
           last_report_analyzed_at: string | null
           last_report_source: string | null
+          monthly_revenue_range: string | null
           onboarding_completed: boolean | null
           onboarding_step: string | null
           phone: string | null
           pme_phase: string | null
           postal_code: string | null
+          primary_bank_average_balance: number | null
+          primary_bank_months: number | null
+          primary_bank_name: string | null
           primary_goal: string | null
           primary_goal_category: string | null
+          real_estate_equity_range: string | null
           referral_code: string | null
           score_model: string | null
           ssn_encrypted: string | null
           ssn_last_4: string | null
           state: string | null
           stripe_customer_id: string | null
+          total_liquid_assets_range: string | null
           updated_at: string | null
           user_id: string
         }[]
