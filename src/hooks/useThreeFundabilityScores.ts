@@ -38,7 +38,7 @@ export function useThreeFundabilityScores(
       personalReportCount: number;
       business: any | null;
       hasBusinessCreditDataPoint: boolean;
-      negatives: Array<{ date: string | null; itemType: string | null; isActive: boolean }>;
+      negatives: Array<{ date: string | null; itemType: string | null; isActive: boolean; bureau: string | null }>;
       bankingRelationships: any[];
     }> => {
       const { data: { user } } = await supabase.auth.getUser();
