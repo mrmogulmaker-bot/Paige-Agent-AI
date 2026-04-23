@@ -1,5 +1,5 @@
 // ============================================================
-// Three-Score Fundability Model
+// Three-Score Fundability Model + Complete Product Spectrum
 // ============================================================
 // Replaces the legacy single "overall fundability" number with three
 // distinct, gated scores. A score is ONLY returned when the required
@@ -7,10 +7,19 @@
 // UI can render a clear "what's missing" CTA instead of a misleading
 // number (the Nicholas scenario).
 //
-// 2026 update: Negative accounts are now WEIGHTED BY RECENCY. Banks
-// look back primarily 24 months — a 4-year-old charge-off should not
-// penalize fundability the same as one from 3 months ago. See the
-// `getNegativeAccountWeight` function below.
+// 2026 update — recency-weighted negatives:
+//   Banks look back primarily 24 months — a 4-year-old charge-off should
+//   not penalize fundability the same as one from 3 months ago. See the
+//   `getNegativeAccountWeight` function below.
+//
+// 2026 update — banking + asset weights (HARD CUTOVER):
+//   Personal:        FICO 35 / Pay 20 / Util 10 / Mix 10 / Banking 15 / Liquid 10
+//   Small Business:  FICO 40 / TIB 15 / Entity 10 / Bus Banking 15 / Revenue 10 / BizCredit 10
+//   Commercial:      Paydex 30 / Intelliscore 20 / TIB 15 / Revenue 15 / BizBanking 10 / BizBalance 10
+//
+//   When the new banking / asset inputs are NULL, those components score 0.
+//   Existing clients will see scores drop until they complete their
+//   Financial Profile — by design. This pushes data collection.
 // ============================================================
 
 export type FundabilityScoreType = "personal" | "small_business" | "commercial";
@@ -66,6 +75,25 @@ export interface NegativeAccountInput {
   isActive?: boolean;
 }
 
+/** Single banking relationship — one row from `banking_relationships`. */
+export interface BankingRelationshipInput {
+  institutionName?: string | null;
+  institutionType?: string | null;
+  relationshipType?: string | null;
+  monthsAtInstitution?: number | null;
+  averageMonthlyBalance?: number | null;
+  isPrimaryInstitution?: boolean | null;
+  hasDirectDeposit?: boolean | null;
+  overdraftCount12mo?: number | null;
+  nsfCount12mo?: number | null;
+  accountStanding?: string | null; // good | restricted | closed | negative
+}
+
+export type LiquidAssetsRange = "under_5k" | "5k_25k" | "25k_100k" | "100k_plus";
+export type RealEstateEquityRange = "under_25k" | "25k_100k" | "100k_250k" | "250k_plus";
+export type InvestmentRange = "under_10k" | "10k_50k" | "50k_250k" | "250k_plus";
+export type MonthlyRevenueRange = "under_5k" | "5k_10k" | "10k_25k" | "25k_50k" | "50k_100k" | "100k_plus";
+
 export interface FundabilityProfileInputs {
   // Personal credit
   ficoEq?: number | null;
@@ -98,10 +126,27 @@ export interface FundabilityProfileInputs {
   intelliscore?: number | null;
   /** Any business credit data point present (Paydex, Intelliscore, Equifax biz, etc.) */
   hasBusinessCreditDataPoint: boolean;
+
+  // ---- NEW: Banking + assets (2026 enhanced model) ----
+  /** All banking relationships (personal + business) — feeds banking score. */
+  bankingRelationships?: BankingRelationshipInput[] | null;
+  /** Snapshot fields from profiles when no relationship rows exist yet. */
+  primaryBankMonths?: number | null;
+  primaryBankAverageBalance?: number | null;
+  hasInvestmentAccounts?: boolean | null;
+  investmentRange?: InvestmentRange | null;
+  totalLiquidAssetsRange?: LiquidAssetsRange | null;
+  hasRealEstateEquity?: boolean | null;
+  realEstateEquityRange?: RealEstateEquityRange | null;
+  hasEquipmentAssets?: boolean | null;
+  hasInvoiceReceivables?: boolean | null;
+  monthlyRevenueRange?: MonthlyRevenueRange | null;
+  /** Average monthly business banking balance (separate from personal). */
+  businessAverageMonthlyBalance?: number | null;
 }
 
 // ============================================================
-// Negative Account Age Scoring Model (NEW)
+// Negative Account Age Scoring Model
 // ============================================================
 // Banks underwrite primarily on the last 24 months. We weight each
 // negative account by how recent it is so a 4-year-old collection
@@ -122,16 +167,14 @@ export interface AccountAgeImpact {
   weight: number;
   band: AccountAgeBand;
   bandLabel: string;
-  /** Tailwind color token bucket — semantic, not raw color classes. */
   bandColor: "red" | "amber" | "yellow" | "gray";
   monthsOnReport: number;
-  /** Months until 84-month FCRA removal. Negative if past removal. */
   monthsUntilRemoval: number;
   lenderImpact: string;
   urgency: "high" | "medium" | "low" | "monitor";
 }
 
-const FCRA_REMOVAL_MONTHS = 84; // 7 years
+const FCRA_REMOVAL_MONTHS = 84;
 
 function monthsBetween(d: Date | string | null | undefined, now = new Date()): number {
   if (!d) return 0;
@@ -140,19 +183,15 @@ function monthsBetween(d: Date | string | null | undefined, now = new Date()): n
   return (now.getFullYear() - dt.getFullYear()) * 12 + (now.getMonth() - dt.getMonth());
 }
 
-/**
- * Returns a 0–1 multiplier for how heavily lenders weigh a negative
- * account based on its age. Newer = more painful.
- */
 export function getNegativeAccountWeight(accountDate: Date | string | null | undefined): number {
   const months = monthsBetween(accountDate);
-  if (months <= 6) return 1.0;          // Critical
-  if (months <= 12) return 0.75;        // Severe
-  if (months <= 18) return 0.50;        // Moderate
-  if (months <= 24) return 0.25;        // Mild
-  if (months <= 48) return 0.10;        // Aging
-  if (months <= 84) return 0.05;        // Historical
-  return 0.01;                          // Approaching Removal (within 12mo of FCRA drop)
+  if (months <= 6) return 1.0;
+  if (months <= 12) return 0.75;
+  if (months <= 18) return 0.50;
+  if (months <= 24) return 0.25;
+  if (months <= 48) return 0.10;
+  if (months <= 84) return 0.05;
+  return 0.01;
 }
 
 export function getAccountAgeBand(accountDate: Date | string | null | undefined): AccountAgeBand {
@@ -166,10 +205,6 @@ export function getAccountAgeBand(accountDate: Date | string | null | undefined)
   return "approaching_removal";
 }
 
-/**
- * Months remaining until the 84-month FCRA removal window closes.
- * Returns 0 if the account is already past removal.
- */
 export function getMonthsUntilRemoval(accountDate: Date | string | null | undefined): number {
   const months = monthsBetween(accountDate);
   return Math.max(0, FCRA_REMOVAL_MONTHS - months);
@@ -224,10 +259,6 @@ function lenderImpactFor(band: AccountAgeBand, monthsUntilRemoval: number): stri
   }
 }
 
-/**
- * Returns the full age-impact metadata for a negative account so the
- * UI can render a graded badge, lender-impact copy, and timeline marker.
- */
 export function getAccountAgeImpact(
   _account: NegativeAccountInput | unknown,
   accountDate: Date | string | null | undefined,
@@ -247,11 +278,6 @@ export function getAccountAgeImpact(
   };
 }
 
-/**
- * Sum of recency-weighted negative penalties for an array of accounts.
- * Used inside the fundability calculations and exposed on the result so
- * the UI can show "weighted impact score" alongside the raw count.
- */
 export function getTotalWeightedNegativeScore(
   negatives: NegativeAccountInput[] | null | undefined,
 ): number {
@@ -278,7 +304,6 @@ function avgFico(p: FundabilityProfileInputs): number | null {
   return Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
 }
 
-/** Map a 300–850 FICO to a 0–100 sub-score. */
 function ficoToPct(fico: number): number {
   if (fico >= 800) return 100;
   if (fico >= 760) return 92;
@@ -308,12 +333,6 @@ function bandFor(score: number, scale: "standard" | "commercial"): { band: Funda
   return { band: "poor", label: "Poor" };
 }
 
-/**
- * Returns the negative penalty value used inside the score calculations.
- * Prefers the weighted model when a `negativeAccounts` array is supplied.
- * Falls back to the legacy 3-points-per-active-negative behaviour when
- * only the raw count is available.
- */
 function negativePenaltyFor(p: FundabilityProfileInputs, maxPenalty: number, multiplier: number): {
   penalty: number;
   totalWeighted: number;
@@ -326,11 +345,174 @@ function negativePenaltyFor(p: FundabilityProfileInputs, maxPenalty: number, mul
     };
   }
   const count = p.activeNegatives ?? 0;
-  // Legacy fallback: treat each as 1.0 weight for backward compatibility.
   return {
     penalty: Math.min(maxPenalty, count * multiplier),
     totalWeighted: count,
   };
+}
+
+// ============================================================
+// NEW — Banking & Liquid Asset sub-scores (0-100)
+// ============================================================
+// Each component gracefully handles missing inputs by contributing 0
+// to the final composite. By the hard-cutover decision: scores drop
+// until clients fill in their Financial Profile.
+// ============================================================
+
+function tenureScore(months: number | null | undefined): number {
+  if (months == null) return 0;
+  if (months >= 120) return 100;
+  if (months >= 60) return 90;
+  if (months >= 24) return 70;
+  if (months >= 12) return 50;
+  if (months >= 6) return 30;
+  return 10;
+}
+
+function balanceScore(amount: number | null | undefined): number {
+  if (amount == null || amount < 0) return 0;
+  if (amount >= 100_000) return 100;
+  if (amount >= 50_000) return 95;
+  if (amount >= 25_000) return 90;
+  if (amount >= 10_000) return 70;
+  if (amount >= 5_000) return 50;
+  if (amount >= 1_000) return 30;
+  return 10;
+}
+
+function productDepthScore(count: number): number {
+  if (count >= 5) return 100;
+  if (count === 4) return 80;
+  if (count === 3) return 60;
+  if (count === 2) return 40;
+  if (count === 1) return 20;
+  return 0;
+}
+
+function standingScore(nsfCount: number): number {
+  if (nsfCount === 0) return 100;
+  if (nsfCount <= 2) return 50;
+  return 10;
+}
+
+const LIQUID_RANGE_SCORE: Record<LiquidAssetsRange, number> = {
+  under_5k: 10,
+  "5k_25k": 40,
+  "25k_100k": 70,
+  "100k_plus": 100,
+};
+
+const BALANCE_RANGE_TO_AMOUNT: Record<string, number> = {
+  // For mapping `primaryBankAverageBalance` if only a range is known.
+};
+
+/**
+ * Banking relationship score (0-100). Components:
+ *   - Primary tenure (20%)
+ *   - Avg monthly balance at primary (20%)
+ *   - Product depth at primary institution (20%)
+ *   - Direct deposit present (10%)
+ *   - Account standing (clean NSF history) (10%)
+ *   - Investment accounts present (20%)
+ *
+ * Falls back to profiles snapshot fields when no relationship rows exist.
+ * Returns 0 when no banking signal at all — by design (hard cutover).
+ */
+export function computeBankingRelationshipScore(p: FundabilityProfileInputs): number {
+  const rels = p.bankingRelationships ?? [];
+  let primary = rels.find((r) => r.isPrimaryInstitution);
+  // If no primary flagged, take the longest-tenured row.
+  if (!primary && rels.length > 0) {
+    primary = [...rels].sort(
+      (a, b) => (b.monthsAtInstitution ?? 0) - (a.monthsAtInstitution ?? 0),
+    )[0];
+  }
+
+  const tenureMonths =
+    primary?.monthsAtInstitution ?? p.primaryBankMonths ?? null;
+  const avgBalance =
+    primary?.averageMonthlyBalance ?? p.primaryBankAverageBalance ?? null;
+  const directDeposit = primary?.hasDirectDeposit ?? false;
+  const nsfCount = (primary?.nsfCount12mo ?? 0) + (primary?.overdraftCount12mo ?? 0);
+
+  // Product depth — count distinct relationship types at the primary institution.
+  let productCount = 0;
+  if (primary) {
+    const sameInst = rels.filter(
+      (r) => r.institutionName === primary?.institutionName,
+    );
+    productCount = new Set(sameInst.map((r) => r.relationshipType).filter(Boolean)).size;
+  }
+
+  const tScore = tenureScore(tenureMonths);
+  const bScore = balanceScore(avgBalance);
+  const dScore = productDepthScore(productCount);
+  const ddScore = directDeposit ? 100 : (tenureMonths ? 40 : 0);
+  const stScore = primary ? standingScore(nsfCount) : 0;
+  const invScore = p.hasInvestmentAccounts ? 80 : 0;
+
+  // No primary at all → 0 (hard cutover signal).
+  if (!primary && tenureMonths == null && avgBalance == null && !p.hasInvestmentAccounts) {
+    return 0;
+  }
+
+  const composite =
+    tScore * 0.20 +
+    bScore * 0.20 +
+    dScore * 0.20 +
+    ddScore * 0.10 +
+    stScore * 0.10 +
+    invScore * 0.20;
+
+  return Math.max(0, Math.min(100, Math.round(composite)));
+}
+
+/**
+ * Liquid assets score (0-100). Uses the `total_liquid_assets_range` bucket
+ * if present, otherwise infers from primary bank average balance.
+ */
+export function computeLiquidAssetsScore(p: FundabilityProfileInputs): number {
+  if (p.totalLiquidAssetsRange) return LIQUID_RANGE_SCORE[p.totalLiquidAssetsRange];
+  // Infer from balance if present.
+  const bal = p.primaryBankAverageBalance ?? null;
+  if (bal == null) return 0;
+  if (bal >= 100_000) return 100;
+  if (bal >= 25_000) return 70;
+  if (bal >= 5_000) return 40;
+  return 10;
+}
+
+/** Business banking score: months at business bank + business avg balance. */
+function computeBusinessBankingScore(p: FundabilityProfileInputs): number {
+  const months = monthsBetweenIso(p.bankAccountOpenedDate);
+  const tScore = tenureScore(months);
+  const bScore = balanceScore(p.businessAverageMonthlyBalance);
+  if (!p.hasBusinessBankAccount && months == null && p.businessAverageMonthlyBalance == null) {
+    return 0;
+  }
+  return Math.round(tScore * 0.6 + bScore * 0.4);
+}
+
+const REVENUE_RANGE_SCORE: Record<MonthlyRevenueRange, number> = {
+  under_5k: 10,
+  "5k_10k": 25,
+  "10k_25k": 50,
+  "25k_50k": 70,
+  "50k_100k": 85,
+  "100k_plus": 100,
+};
+
+function computeRevenueRangeScore(p: FundabilityProfileInputs): number {
+  if (p.monthlyRevenueRange) return REVENUE_RANGE_SCORE[p.monthlyRevenueRange];
+  // Fall back to annual revenue.
+  const annual = p.estimatedAnnualRevenue ?? 0;
+  if (annual >= 1_200_000) return 100;
+  if (annual >= 600_000) return 85;
+  if (annual >= 300_000) return 70;
+  if (annual >= 120_000) return 50;
+  if (annual >= 60_000) return 25;
+  if (annual > 0) return 10;
+  return 0;
 }
 
 // ------------------------------------------------------------
@@ -384,34 +566,40 @@ export function validateFundabilityInputs(
 }
 
 // ------------------------------------------------------------
-// SCORE 1 — Personal Fundability
+// SCORE 1 — Personal Fundability (REVISED 2026 weights)
+// FICO 35 / Pay 20 / Util 10 / Mix 10 / Banking 15 / Liquid 10
 // ------------------------------------------------------------
 
 function scorePersonal(p: FundabilityProfileInputs): { score: number; totalWeighted: number } {
-  const fico = avgFico(p)!; // gate guarantees non-null
+  const fico = avgFico(p)!;
   const ficoPct = ficoToPct(fico);
 
-  // Soft adjustments from credit-factor sub-scores. We DERIVE missing
-  // sub-scores from the FICO band rather than using a flat 70 default,
-  // so two users with different FICOs never get the same adjustment when
-  // their factor scores haven't been calculated yet.
-  const ficoDerivedFloor = ficoPct; // 0–100 scale matches sub-score scale
+  const ficoDerivedFloor = ficoPct;
   const util = p.utilizationScore ?? ficoDerivedFloor;
   const pay = p.paymentHistoryScore ?? ficoDerivedFloor;
-  const inq = p.inquiryScore ?? ficoDerivedFloor;
   const mix = p.creditMixScore ?? ficoDerivedFloor;
-  const adj = util * 0.10 + pay * 0.10 + inq * 0.05 + mix * 0.05;
+
+  const banking = computeBankingRelationshipScore(p);
+  const liquid = computeLiquidAssetsScore(p);
 
   // Recency-weighted negatives: 3 points per weighted unit, capped at 15.
   const { penalty, totalWeighted } = negativePenaltyFor(p, 15, 3);
-  const composite = Math.round(ficoPct * 0.7 + adj * 0.3 - penalty);
-  return { score: Math.max(0, Math.min(100, composite)), totalWeighted };
+
+  const composite =
+    ficoPct * 0.35 +
+    pay * 0.20 +
+    util * 0.10 +
+    mix * 0.10 +
+    banking * 0.15 +
+    liquid * 0.10 -
+    penalty;
+
+  return { score: Math.max(0, Math.min(100, Math.round(composite))), totalWeighted };
 }
 
 // ------------------------------------------------------------
-// SCORE 2 — Small Business Fundability (PG required)
-// Weights: FICO 50, TIB 15, Entity 10, Bank 10, Biz Credit 15
-// Now also applies a recency-weighted negative penalty on top.
+// SCORE 2 — Small Business Fundability (REVISED 2026 weights)
+// FICO 40 / TIB 15 / Entity 10 / Bus Banking 15 / Revenue 10 / BizCredit 10
 // ------------------------------------------------------------
 
 function scoreSmallBusiness(p: FundabilityProfileInputs): { score: number; totalWeighted: number } {
@@ -427,7 +615,8 @@ function scoreSmallBusiness(p: FundabilityProfileInputs): { score: number; total
   else if (entity.includes("corp") || entity.includes("s_corp") || entity.includes("c_corp")) entityPct = 100;
   else if (entity.includes("sole")) entityPct = 20;
 
-  const bankPct = p.hasBusinessBankAccount ? 100 : 0;
+  const busBanking = computeBusinessBankingScore(p);
+  const revenue = computeRevenueRangeScore(p);
 
   let bizCreditPct = 0;
   if (p.hasBusinessCreditDataPoint) {
@@ -438,25 +627,23 @@ function scoreSmallBusiness(p: FundabilityProfileInputs): { score: number; total
     else bizCreditPct = 40;
   }
 
-  // Recency-weighted negative penalty — 4 points per weighted unit, cap 20.
-  // PG-required products are sensitive to recent personal derogatory activity.
   const { penalty, totalWeighted } = negativePenaltyFor(p, 20, 4);
 
   const composite =
-    ficoPct * 0.5 +
+    ficoPct * 0.40 +
     tibPct * 0.15 +
     entityPct * 0.10 +
-    bankPct * 0.10 +
-    bizCreditPct * 0.15 -
+    busBanking * 0.15 +
+    revenue * 0.10 +
+    bizCreditPct * 0.10 -
     penalty;
 
   return { score: Math.max(0, Math.min(100, Math.round(composite))), totalWeighted };
 }
 
 // ------------------------------------------------------------
-// SCORE 3 — Commercial / EIN-Only Fundability
-// Weights: Paydex 35, Intelliscore 25, TIB 20, Revenue 15, Bank 5
-// Personal negatives don't apply here — pure business profile.
+// SCORE 3 — Commercial / EIN-Only Fundability (REVISED 2026 weights)
+// Paydex 30 / Intelliscore 20 / TIB 15 / Revenue 15 / BusBanking 10 / BusBalance 10
 // ------------------------------------------------------------
 
 function scoreCommercial(p: FundabilityProfileInputs): number {
@@ -466,7 +653,6 @@ function scoreCommercial(p: FundabilityProfileInputs): number {
   else if (paydex >= 70) paydexPct = 50;
   else paydexPct = 0;
 
-  // Experian Business Intelliscore is 1–100 → use directly, clamp.
   const intelPct = Math.max(0, Math.min(100, p.intelliscore ?? 0));
 
   const tibMonths = monthsBetweenIso(p.formationDate) ?? 0;
@@ -475,23 +661,22 @@ function scoreCommercial(p: FundabilityProfileInputs): number {
   else if (tibMonths >= 24) tibPct = 70;
   else if (tibMonths >= 12) tibPct = 30;
 
-  const rev = p.estimatedAnnualRevenue ?? 0;
-  let revPct = 20;
-  if (rev >= 500_000) revPct = 100;
-  else if (rev >= 100_000) revPct = 60;
-  else if (rev > 0) revPct = 20;
+  const revPct = computeRevenueRangeScore(p);
 
   const bankMonths = monthsBetweenIso(p.bankAccountOpenedDate) ?? 0;
-  let bankPct = 0;
-  if (bankMonths >= 12) bankPct = 100;
-  else if (bankMonths >= 6) bankPct = 50;
+  let bankTenurePct = 0;
+  if (bankMonths >= 12) bankTenurePct = 100;
+  else if (bankMonths >= 6) bankTenurePct = 50;
+
+  const balanceComponent = balanceScore(p.businessAverageMonthlyBalance);
 
   const composite =
-    paydexPct * 0.35 +
-    intelPct * 0.25 +
-    tibPct * 0.20 +
+    paydexPct * 0.30 +
+    intelPct * 0.20 +
+    tibPct * 0.15 +
     revPct * 0.15 +
-    bankPct * 0.05;
+    bankTenurePct * 0.10 +
+    balanceComponent * 0.10;
 
   return Math.max(0, Math.min(100, Math.round(composite)));
 }
@@ -510,29 +695,29 @@ const META: Record<FundabilityScoreType, {
     inputsRequired: [
       "Personal credit report (≥1 bureau)",
       "Payment history & utilization",
-      "Derogatory marks, credit age, mix",
+      "Banking relationship + liquid assets (Financial Profile)",
     ],
     unlocksByBand: {
-      poor: ["Secured cards", "Credit-builder loans"],
-      fair: ["Subprime personal cards", "Small personal loans"],
-      good: ["Most personal cards", "Personal lines of credit", "Personal loans for business stacking"],
+      poor: ["Secured cards", "Credit-builder loans", "Authorized user strategy"],
+      fair: ["Subprime personal cards", "Small personal loans", "FHA mortgage path"],
+      good: ["Most personal cards", "Conventional mortgage", "Personal lines of credit"],
       very_good: ["Premium personal cards", "Higher personal loan limits", "0% APR offers"],
-      excellent: ["Prime personal credit", "Top-tier rewards cards", "Maximum personal loan access"],
+      excellent: ["Prime personal credit", "Top-tier rewards cards", "Jumbo mortgages"],
     },
   },
   small_business: {
     title: "Small Business Fundability",
     inputsRequired: [
       "Personal credit report (≥1 bureau)",
-      "Business profile (entity type, EIN, formation date)",
-      "Business bank account status",
+      "Business profile (entity, EIN, formation date)",
+      "Business banking relationship + revenue",
       "Business credit file (D&B / Experian Business)",
     ],
     unlocksByBand: {
-      poor: ["Microloans only", "CDFI-only options"],
-      fair: ["Some BLOC, CDFIs, alternative lenders"],
-      good: ["SBA microloans, business credit cards, most BLOCs"],
-      very_good: ["SBA 7(a), prime BLOCs, DSCR loans, hard money"],
+      poor: ["Microloans, CDFI, equipment financing"],
+      fair: ["Some BLOC, CDFIs, alternative lenders, MCA (last resort)"],
+      good: ["SBA microloans", "business credit cards", "most BLOCs"],
+      very_good: ["SBA 7(a)", "prime BLOCs", "DSCR loans", "hard money"],
       excellent: ["Full PG-required market access incl. SBA, prime business cards, large BLOCs"],
     },
   },
@@ -541,41 +726,37 @@ const META: Record<FundabilityScoreType, {
     inputsRequired: [
       "≥12 months in business",
       "Established business credit (Paydex, Intelliscore)",
-      "Annual revenue & business bank history",
+      "Annual revenue + business banking history & balance",
     ],
     unlocksByBand: {
       not_ready: ["Continue building business credit & bank history"],
-      building: ["Net-30 vendor accounts, store cards reporting to business bureaus"],
-      emerging: ["Entry-level corporate cards (Ramp/Brex starter), small commercial lines"],
-      established: ["Full Ramp/Brex limits, mid-size commercial LOCs, equipment financing"],
-      elite: ["Large institutional commercial credit, high-limit corporate cards"],
+      building: ["Net-30 vendor accounts", "store cards reporting to business bureaus"],
+      emerging: ["Entry-level corporate cards (Ramp/Brex starter)", "small commercial lines"],
+      established: ["Full Ramp/Brex limits", "mid-size commercial LOCs", "equipment financing"],
+      elite: ["Large institutional commercial credit", "high-limit corporate cards"],
     },
   },
 };
 
 function improvementsFor(type: FundabilityScoreType, p: FundabilityProfileInputs, _score: number): string[] {
   const out: string[] = [];
-  // Count negatives from the array first (source of truth) then fall back
-  // to the legacy raw count. Previously `?? 0` short-circuited when
-  // `activeNegatives === 0` and ignored a non-empty `negativeAccounts` list.
   const activeNegCount = Array.isArray(p.negativeAccounts)
     ? p.negativeAccounts.filter((n) => n.isActive !== false).length
     : (p.activeNegatives ?? 0);
 
   if (type === "personal") {
-    // Use neutral defaults (70) only if both the sub-score AND a derivable
-    // signal are missing. We treat undefined as "unknown, don't suggest"
-    // rather than "perfect, no suggestion needed" (was `?? 100`).
     if (p.utilizationScore != null && p.utilizationScore < 70) out.push("Pay revolving balances down below 30% utilization");
     if (activeNegCount > 0) out.push("Resolve outstanding negative items with creditors");
     if (p.paymentHistoryScore != null && p.paymentHistoryScore < 80) out.push("Maintain 6+ consecutive months of on-time payments");
-    if (p.inquiryScore != null && p.inquiryScore < 70) out.push("Pause new credit applications for the next 90 days");
+    if (computeBankingRelationshipScore(p) < 50) out.push("Complete your Financial Profile — banking tenure & balances now factor in");
+    if (computeLiquidAssetsScore(p) < 40) out.push("Build $5K+ in liquid reserves and document them in Financial Profile");
     if (out.length === 0) out.push("Maintain current habits and let account age accumulate");
   } else if (type === "small_business") {
     const tib = monthsBetweenIso(p.formationDate) ?? 0;
     if (tib < 24) out.push("Reach 2+ years time in business to unlock SBA tier");
     if ((p.entityType || "").toLowerCase().includes("sole")) out.push("Convert sole prop to LLC or Corporation");
-    if (!p.hasBusinessBankAccount) out.push("Open a dedicated business bank account");
+    if (computeBusinessBankingScore(p) < 50) out.push("Build business banking tenure (12+ months) & monthly balance");
+    if (!p.monthlyRevenueRange && !p.estimatedAnnualRevenue) out.push("Document monthly revenue in Financial Profile");
     if (!p.hasBusinessCreditDataPoint) out.push("Establish a D-U-N-S file and add 3 reporting net-30 vendors");
     if (avgFico(p)! < 700) out.push("Raise personal FICO above 700 — primary PG driver");
     if (out.length === 0) out.push("Maintain current habits — your PG profile is strong");
@@ -584,9 +765,8 @@ function improvementsFor(type: FundabilityScoreType, p: FundabilityProfileInputs
     if (tib < 24) out.push("Continue operating — TIB is a calendar gate for EIN-only products");
     if ((p.paydex ?? 0) < 80) out.push("Pay D&B-reporting vendors early to push Paydex to 80+");
     if ((p.intelliscore ?? 0) < 76) out.push("Add reporting trades to lift Experian Intelliscore");
-    if ((p.estimatedAnnualRevenue ?? 0) < 500_000) out.push("Grow annual revenue toward $500K to unlock larger commercial lines");
-    const bm = monthsBetweenIso(p.bankAccountOpenedDate) ?? 0;
-    if (bm < 12) out.push("Maintain business bank account 12+ months with healthy balances");
+    if (computeRevenueRangeScore(p) < 70) out.push("Grow monthly revenue toward $50K+ to unlock larger commercial lines");
+    if (balanceScore(p.businessAverageMonthlyBalance) < 70) out.push("Build & maintain $25K+ average business banking balance");
     if (out.length === 0) out.push("Maintain reporting cadence — your EIN profile is strong");
   }
   return out.slice(0, 4);
@@ -594,15 +774,15 @@ function improvementsFor(type: FundabilityScoreType, p: FundabilityProfileInputs
 
 function meaningFor(type: FundabilityScoreType, _score: number, band: FundabilityBand): string {
   if (type === "personal") {
-    if (band === "poor") return "Significant barriers to personal credit approval right now.";
-    if (band === "fair") return "Limited options — credit building should come before stacking.";
-    if (band === "good") return "Qualifies for most personal credit products at standard terms.";
-    if (band === "very_good") return "Strong approval odds across most lenders and prime cards.";
-    return "Prime personal credit — maximum access to personal credit products.";
+    if (band === "poor") return "Significant barriers to personal credit approval right now — but credit-building products and asset-backed paths are still available.";
+    if (band === "fair") return "Limited options — credit building should come before stacking. FHA mortgage path opens at 580+.";
+    if (band === "good") return "Qualifies for most personal credit products at standard terms including conventional mortgages.";
+    if (band === "very_good") return "Strong approval odds across most lenders, prime cards, and conventional mortgages.";
+    return "Prime personal credit — maximum access including jumbo mortgages, premium rewards cards, and large unsecured lines.";
   }
   if (type === "small_business") {
-    if (band === "poor") return "PG-required products will be very limited; build credit first.";
-    if (band === "fair") return "Some PG products accessible — focus on credit + entity strengthening.";
+    if (band === "poor") return "PG-required products will be very limited; consider asset-backed and CDFI options first.";
+    if (band === "fair") return "Some PG products accessible — focus on credit + entity strengthening + business banking depth.";
     if (band === "good") return "Qualifies for most PG-required products including SBA microloans.";
     if (band === "very_good") return "Strong approval odds for SBA 7(a), DSCR loans, and prime BLOCs.";
     return "Maximum access to PG-required funding including top-tier SBA and bank products.";
@@ -680,5 +860,512 @@ export function computeAllFundabilityScores(p: FundabilityProfileInputs): {
     personal: computeFundabilityScore("personal", p),
     small_business: computeFundabilityScore("small_business", p),
     commercial: computeFundabilityScore("commercial", p),
+  };
+}
+
+// ============================================================
+// COMPLETE PRODUCT SPECTRUM ELIGIBILITY
+// ============================================================
+// Returns a tier-organized eligibility map covering every product
+// from Tier 0 credit-building through Tier 4 super-prime + the
+// asset-backed parallel path. Designed so Paige and the dashboard
+// can render a "no dead ends" view at any starting position.
+// ============================================================
+
+export type ProductTier =
+  | "tier_0_credit_building"
+  | "tier_1_subprime"
+  | "tier_2_near_prime"
+  | "tier_3_prime"
+  | "tier_4_super_prime"
+  | "asset_backed";
+
+export type EligibilityStatus =
+  | "ready"
+  | "almost_ready"
+  | "not_qualified_credit_path"
+  | "asset_path_available"
+  | "always_available";
+
+export interface ProductEligibility {
+  productKey: string;
+  productName: string;
+  tier: ProductTier;
+  category: string;
+  status: EligibilityStatus;
+  qualificationScore: number; // 0-100 fit score
+  blockers: string[];
+  rateRangeEstimate: string | null;
+  recommendedLenders: string[];
+  unlocks: string;
+  paigeInsight: string;
+  reportsTo?: string;
+}
+
+export interface CompleteProductEligibility {
+  profileSummary: {
+    avgFico: number | null;
+    bandTier: ProductTier;
+    hasRealEstateEquity: boolean;
+    hasEquipment: boolean;
+    hasReceivables: boolean;
+    hasInvestments: boolean;
+    monthlyRevenueRange: MonthlyRevenueRange | null;
+    bankingScore: number;
+    liquidScore: number;
+    boaRelationshipBonus: boolean;
+    amexRelationshipFlag: boolean;
+  };
+  byTier: Record<ProductTier, ProductEligibility[]>;
+  flatList: ProductEligibility[];
+}
+
+function ficoTier(fico: number | null): ProductTier {
+  if (fico == null) return "tier_0_credit_building";
+  if (fico >= 700) return "tier_4_super_prime";
+  if (fico >= 660) return "tier_3_prime";
+  if (fico >= 620) return "tier_2_near_prime";
+  if (fico >= 500) return "tier_1_subprime";
+  return "tier_0_credit_building";
+}
+
+function detectBoARelationship(p: FundabilityProfileInputs): boolean {
+  const rels = p.bankingRelationships ?? [];
+  return rels.some(
+    (r) => /bank of america|boa\b/i.test(r.institutionName ?? "") &&
+      (r.relationshipType === "checking" || r.relationshipType === "savings" ||
+        r.relationshipType === "business_checking"),
+  );
+}
+
+function detectAmexRelationship(p: FundabilityProfileInputs): boolean {
+  const rels = p.bankingRelationships ?? [];
+  return rels.some(
+    (r) => /american express|amex/i.test(r.institutionName ?? ""),
+  );
+}
+
+function eqRange(range: LiquidAssetsRange | null | undefined, min: LiquidAssetsRange): boolean {
+  if (!range) return false;
+  const order: LiquidAssetsRange[] = ["under_5k", "5k_25k", "25k_100k", "100k_plus"];
+  return order.indexOf(range) >= order.indexOf(min);
+}
+
+function reRange(range: RealEstateEquityRange | null | undefined, min: RealEstateEquityRange): boolean {
+  if (!range) return false;
+  const order: RealEstateEquityRange[] = ["under_25k", "25k_100k", "100k_250k", "250k_plus"];
+  return order.indexOf(range) >= order.indexOf(min);
+}
+
+function revRange(range: MonthlyRevenueRange | null | undefined, min: MonthlyRevenueRange): boolean {
+  if (!range) return false;
+  const order: MonthlyRevenueRange[] = ["under_5k", "5k_10k", "10k_25k", "25k_50k", "50k_100k", "100k_plus"];
+  return order.indexOf(range) >= order.indexOf(min);
+}
+
+/**
+ * Builds the full product eligibility map. Designed to never return an
+ * empty list — Tier 0 products are always included so every client has
+ * a starting point.
+ */
+export function getCompleteProductEligibility(p: FundabilityProfileInputs): CompleteProductEligibility {
+  const fico = avgFico(p);
+  const tier = ficoTier(fico);
+  const boa = detectBoARelationship(p);
+  const amex = detectAmexRelationship(p);
+  const banking = computeBankingRelationshipScore(p);
+  const liquid = computeLiquidAssetsScore(p);
+  const tibMonths = monthsBetweenIso(p.formationDate) ?? 0;
+
+  const flatList: ProductEligibility[] = [];
+  const push = (e: ProductEligibility) => flatList.push(e);
+
+  // ============== TIER 0 — CREDIT BUILDING (always available) ==============
+  push({
+    productKey: "secured_credit_card",
+    productName: "Secured Credit Card",
+    tier: "tier_0_credit_building",
+    category: "Credit Building",
+    status: "always_available",
+    qualificationScore: 100,
+    blockers: [],
+    rateRangeEstimate: "23–28% APR (purchases) — pay statement balance to avoid interest",
+    recommendedLenders: ["Discover it Secured", "Capital One Platinum Secured", "Chime Credit Builder", "OpenSky (no credit check)"],
+    unlocks: "First step toward unsecured credit. Discover it Secured graduates to unsecured at 7 months with good behavior.",
+    paigeInsight: "Discover it Secured is the gold standard starter card — automatic graduation review at 7 months and your deposit comes back. OpenSky requires NO credit check, making it accessible from any starting point.",
+    reportsTo: "All three bureaus",
+  });
+  push({
+    productKey: "credit_builder_loan",
+    productName: "Credit Builder Loan",
+    tier: "tier_0_credit_building",
+    category: "Credit Building",
+    status: "always_available",
+    qualificationScore: 100,
+    blockers: [],
+    rateRangeEstimate: "$15–48/mo payment depending on amount/term",
+    recommendedLenders: ["Self Inc.", "Credit Strong", "Local credit unions"],
+    unlocks: "Adds installment loan to credit mix — FICO weights revolving and installment separately.",
+    paigeInsight: "Combining a secured card with a credit builder loan builds revolving AND installment history simultaneously. This is the fastest two-tradeline foundation.",
+    reportsTo: "All three bureaus",
+  });
+  push({
+    productKey: "authorized_user_strategy",
+    productName: "Authorized User Strategy",
+    tier: "tier_0_credit_building",
+    category: "Credit Building",
+    status: "always_available",
+    qualificationScore: 100,
+    blockers: ["Requires a trusted person with seasoned, low-utilization credit"],
+    rateRangeEstimate: null,
+    recommendedLenders: ["Family member or trusted friend with 5+ year card, 0% utilization, perfect history"],
+    unlocks: "Inherits the primary cardholder's full history on that account — instant aged tradeline.",
+    paigeInsight: "Being added to a 5+ year card with zero late payments and low utilization adds significant positive history fast. The physical card doesn't need to be used — history appears regardless. Avoid paid tradeline services (legal/ethical risk).",
+  });
+
+  // ============== TIER 1 — SUBPRIME (500-619) ==============
+  const inSubprime = fico != null && fico < 620;
+  push({
+    productKey: "subprime_auto_loan",
+    productName: "Subprime Auto Loan",
+    tier: "tier_1_subprime",
+    category: "Auto Financing",
+    status: inSubprime ? "ready" : (fico != null && fico >= 500 ? "ready" : "not_qualified_credit_path"),
+    qualificationScore: fico != null && fico >= 500 ? 80 : 0,
+    blockers: fico != null && fico >= 500 ? ["High APR — 15-29% will significantly increase total cost"] : ["FICO below 500 — focus on Tier 0 products first"],
+    rateRangeEstimate: "15–29% APR",
+    recommendedLenders: ["DriveTime", "CarMax Auto Finance", "Credit Acceptance Corp", "Local buy-here-pay-here"],
+    unlocks: "Vehicle access at any credit level — but at significant interest cost.",
+    paigeInsight: "Subprime auto loans can make a $15K car cost $25K. If possible, build credit 12-18 months first to move to near-prime tier. If you must buy now, put as much down as possible to reduce total interest cost. FICO Auto Score 8 used — varies 40-60 points from standard FICO 8.",
+  });
+  push({
+    productKey: "subprime_personal_loan",
+    productName: "Subprime Personal Loan",
+    tier: "tier_1_subprime",
+    category: "Personal Loans",
+    status: fico != null && fico >= 500 ? "ready" : "not_qualified_credit_path",
+    qualificationScore: fico != null && fico >= 500 ? 70 : 0,
+    blockers: fico != null && fico < 500 ? ["FICO below 500 minimum"] : ["18-36% APR — not a funding strategy tool"],
+    rateRangeEstimate: "18–36% APR",
+    recommendedLenders: ["OneMain Financial", "Oportun", "Avant", "LendingPoint"],
+    unlocks: "Emergency liquidity or debt consolidation only.",
+    paigeInsight: "Useful for consolidating higher-rate debt or emergencies. NOT a funding strategy. Pay off aggressively.",
+  });
+  push({
+    productKey: "cdfi_microloan",
+    productName: "CDFI / SBA Microloan",
+    tier: "tier_1_subprime",
+    category: "Business Funding",
+    status: p.hasBusiness ? "ready" : "almost_ready",
+    qualificationScore: p.hasBusiness ? 80 : 50,
+    blockers: p.hasBusiness ? [] : ["Need business entity established"],
+    rateRangeEstimate: "6.5–13% APR (SBA Microloan)",
+    recommendedLenders: ["Accion Opportunity Fund", "LiftFund", "Grameen America", "Local CDFIs"],
+    unlocks: "Up to $50K business capital with flexible credit requirements.",
+    paigeInsight: "CDFIs serve entrepreneurs traditional banks turn away. If you've been denied for business financing but have a viable business, a CDFI may be your bridge to conventional financing.",
+  });
+  push({
+    productKey: "payday_alternative_loan",
+    productName: "Payday Alternative Loan (PAL)",
+    tier: "tier_1_subprime",
+    category: "Emergency Liquidity",
+    status: "almost_ready",
+    qualificationScore: 60,
+    blockers: ["Must be a credit union member"],
+    rateRangeEstimate: "Capped at 28% APR (federal limit)",
+    recommendedLenders: ["Local credit unions"],
+    unlocks: "Up to $2,000 emergency cash without payday-loan trap.",
+    paigeInsight: "If you're a credit union member and need emergency cash, PALs are far better than payday loans. Federal cap at 28%. Many credit unions offer credit builder products alongside.",
+  });
+
+  // ============== TIER 2 — NEAR-PRIME (620-659) ==============
+  const inNearPrime = fico != null && fico >= 620;
+  push({
+    productKey: "fha_mortgage",
+    productName: "FHA Mortgage",
+    tier: "tier_2_near_prime",
+    category: "Mortgage",
+    status: fico != null && fico >= 580 ? "ready" : (fico != null && fico >= 500 ? "almost_ready" : "not_qualified_credit_path"),
+    qualificationScore: fico != null && fico >= 580 ? 90 : (fico != null && fico >= 500 ? 50 : 0),
+    blockers: fico != null && fico < 500 ? ["FICO below 500 minimum"] : (fico != null && fico < 580 ? ["10% down required at 500-579 FICO"] : []),
+    rateRangeEstimate: "Market rate + 0.25-0.5% over conventional + MIP",
+    recommendedLenders: ["Most banks and credit unions", "Rocket Mortgage", "Chase", "Wells Fargo"],
+    unlocks: "Most accessible path to homeownership. 3.5% down at 580+.",
+    paigeInsight: "FHA is the most accessible mortgage for clients rebuilding credit. 3.5% down is the lowest of any conventional program. Tradeoff is MIP — refinance to conventional at 20% equity to remove it.",
+  });
+  push({
+    productKey: "va_mortgage",
+    productName: "VA Mortgage",
+    tier: "tier_2_near_prime",
+    category: "Mortgage",
+    status: fico != null && fico >= 580 ? "ready" : "not_qualified_credit_path",
+    qualificationScore: fico != null && fico >= 580 ? 95 : 0,
+    blockers: ["VA eligibility required (military service)"],
+    rateRangeEstimate: "Often best rates available — no PMI",
+    recommendedLenders: ["Veterans United", "Navy Federal", "USAA", "Most VA-approved lenders"],
+    unlocks: "Zero down, no PMI, residual income calculation instead of strict DTI.",
+    paigeInsight: "Most powerful mortgage product available to eligible veterans — no down payment, no PMI, competitive rates. If you have military service, this is always the first mortgage option to explore.",
+  });
+  push({
+    productKey: "near_prime_auto",
+    productName: "Near-Prime Auto Loan",
+    tier: "tier_2_near_prime",
+    category: "Auto Financing",
+    status: inNearPrime ? "ready" : "almost_ready",
+    qualificationScore: inNearPrime ? 85 : 30,
+    blockers: inNearPrime ? [] : [`Need FICO 620+ (currently ${fico ?? "N/A"})`],
+    rateRangeEstimate: "8–15% APR",
+    recommendedLenders: ["Capital One Auto Navigator", "Local credit unions", "PenFed", "LightStream (660+)"],
+    unlocks: "Roughly half the rate of subprime tier.",
+    paigeInsight: "Crossing 620 cuts your auto rate roughly in half vs subprime. If you're at 610-619, it may be worth waiting 30-60 days to optimize utilization and cross that threshold.",
+  });
+
+  // ============== TIER 3 — PRIME (660-699) ==============
+  const inPrime = fico != null && fico >= 660;
+  push({
+    productKey: "conventional_mortgage",
+    productName: "Conventional Mortgage",
+    tier: "tier_3_prime",
+    category: "Mortgage",
+    status: fico != null && fico >= 660 ? "ready" : (fico != null && fico >= 620 ? "almost_ready" : "not_qualified_credit_path"),
+    qualificationScore: fico != null && fico >= 720 ? 100 : (inPrime ? 75 : 30),
+    blockers: fico != null && fico < 620 ? ["FICO below 620 floor"] : (fico != null && fico < 660 ? ["Most lenders practical minimum is 640-660"] : []),
+    rateRangeEstimate: "Market rate (best at 720+)",
+    recommendedLenders: ["Chase", "Wells Fargo", "Rocket Mortgage", "Local banks & credit unions"],
+    unlocks: "Standard mortgage market with no MIP at 20% down. 2026: VantageScore 4.0 now accepted alongside FICO.",
+    paigeInsight: "2026 update: Fannie Mae and Freddie Mac now accept VantageScore 4.0 alongside FICO — rent and utility payment history can now factor into mortgage approval for thin-file borrowers.",
+  });
+  push({
+    productKey: "rewards_credit_cards",
+    productName: "Rewards Credit Cards",
+    tier: "tier_3_prime",
+    category: "Credit Cards",
+    status: inPrime ? "ready" : "almost_ready",
+    qualificationScore: inPrime ? 90 : 40,
+    blockers: inPrime ? [] : [`Need FICO 660+ (currently ${fico ?? "N/A"})`],
+    rateRangeEstimate: "18–26% APR (pay in full)",
+    recommendedLenders: ["Chase Freedom Flex", "Bank of America Cash Rewards", "Citi Double Cash", "Discover it Cash Back"],
+    unlocks: "Real cash back/points with no annual fee. The first tier where credit-building generates tangible returns.",
+    paigeInsight: boa
+      ? "Your Bank of America deposit relationship is a strategic asset — BoA allows up to 7 new card applications in 12 months for deposit customers vs only 3 without. This unlocks aggressive card stacking."
+      : "Crossing 660 opens the mainstream rewards card tier. These are no-annual-fee cards that earn meaningful cash back.",
+  });
+  push({
+    productKey: "personal_line_of_credit",
+    productName: "Personal Line of Credit",
+    tier: "tier_3_prime",
+    category: "Personal Credit",
+    status: inPrime && banking >= 50 ? "ready" : (inPrime ? "almost_ready" : "not_qualified_credit_path"),
+    qualificationScore: inPrime ? 75 : 30,
+    blockers: inPrime ? (banking < 50 ? ["Strengthen banking relationship"] : []) : [`Need FICO 660+ (currently ${fico ?? "N/A"})`],
+    rateRangeEstimate: "10–18% APR variable",
+    recommendedLenders: ["Wells Fargo", "Citibank", "US Bank", "SoFi"],
+    unlocks: "$3,000-$100,000 unsecured depending on income and credit.",
+    paigeInsight: "Personal LOCs reward banking relationships. Your existing bank is usually the easiest approval path.",
+  });
+  push({
+    productKey: "heloc",
+    productName: "HELOC",
+    tier: "tier_3_prime",
+    category: "Real Estate",
+    status: p.hasRealEstateEquity && fico != null && fico >= 620 ? "ready" : "not_qualified_credit_path",
+    qualificationScore: p.hasRealEstateEquity && fico != null && fico >= 680 ? 90 : (p.hasRealEstateEquity && fico != null && fico >= 620 ? 60 : 0),
+    blockers: !p.hasRealEstateEquity ? ["No home equity reported"] : (fico != null && fico < 620 ? ["FICO below 620 minimum"] : []),
+    rateRangeEstimate: "Prime + 1-3% variable",
+    recommendedLenders: ["PNC", "Chase", "TD Bank", "Local credit unions"],
+    unlocks: "Tax-advantaged borrowing against home equity for major projects or business capital.",
+    paigeInsight: "Combined LTV (mortgage + HELOC) typically can't exceed 85%. HELOC interest may be tax-deductible if used for home improvements.",
+  });
+
+  // ============== TIER 4 — SUPER-PRIME (700+) ==============
+  const inSuperPrime = fico != null && fico >= 700;
+  push({
+    productKey: "jumbo_mortgage",
+    productName: "Jumbo Mortgage",
+    tier: "tier_4_super_prime",
+    category: "Mortgage",
+    status: fico != null && fico >= 720 ? "ready" : (inSuperPrime ? "almost_ready" : "not_qualified_credit_path"),
+    qualificationScore: fico != null && fico >= 740 ? 100 : (inSuperPrime ? 70 : 0),
+    blockers: !inSuperPrime ? [`Need FICO 700+ (currently ${fico ?? "N/A"})`] : (liquid < 70 ? ["Need 12 months of payment reserves"] : []),
+    rateRangeEstimate: "Market rate (best at 740+)",
+    recommendedLenders: ["Chase Private Client", "Wells Fargo Private Bank", "Bank of America Preferred Rewards"],
+    unlocks: "Loans above conforming limits ($806,500 in 2026 for most areas).",
+    paigeInsight: "Jumbo requires 12 months of payment reserves and 36-month lookback. Banking relationship strength matters significantly.",
+  });
+  push({
+    productKey: "premium_credit_cards",
+    productName: "Premium Credit Cards",
+    tier: "tier_4_super_prime",
+    category: "Credit Cards",
+    status: fico != null && fico >= 720 ? "ready" : (inSuperPrime ? "almost_ready" : "not_qualified_credit_path"),
+    qualificationScore: fico != null && fico >= 720 ? 95 : (inSuperPrime ? 60 : 0),
+    blockers: !inSuperPrime ? [`Need FICO 720+ (currently ${fico ?? "N/A"})`] : [],
+    rateRangeEstimate: "$95–$695 annual fee — value comes from rewards/perks",
+    recommendedLenders: ["Chase Sapphire Reserve", "Amex Platinum", "Capital One Venture X", "Citi Prestige"],
+    unlocks: "Premium travel benefits, lounge access, statement credits offsetting annual fees.",
+    paigeInsight: amex
+      ? "Your existing Amex relationship strengthens approval odds for premium Amex products. Adding an Amex savings account through American Express National Bank further deepens that relationship profile."
+      : "Premium cards reward existing relationships. If targeting Amex Platinum, opening any Amex card first builds relationship history.",
+  });
+  push({
+    productKey: "large_personal_lines",
+    productName: "Large Personal Lines of Credit",
+    tier: "tier_4_super_prime",
+    category: "Personal Credit",
+    status: fico != null && fico >= 720 && liquid >= 70 ? "ready" : (inSuperPrime ? "almost_ready" : "not_qualified_credit_path"),
+    qualificationScore: fico != null && fico >= 720 && liquid >= 70 ? 95 : (inSuperPrime ? 60 : 0),
+    blockers: !inSuperPrime ? [`Need FICO 720+ (currently ${fico ?? "N/A"})`] : (liquid < 70 ? ["Need documented strong income/assets"] : []),
+    rateRangeEstimate: "8–14% APR",
+    recommendedLenders: ["LightStream (Truist)", "SoFi", "Marcus by Goldman Sachs"],
+    unlocks: "$50K-$250K unsecured at 720+ with strong income.",
+    paigeInsight: "LightStream offers some of the lowest rates in the unsecured market for super-prime borrowers with strong income.",
+  });
+
+  // ============== ASSET-BACKED — Collateral replaces credit ==============
+  push({
+    productKey: "hard_money",
+    productName: "Hard Money Loan",
+    tier: "asset_backed",
+    category: "Real Estate",
+    status: p.hasRealEstateEquity ? "asset_path_available" : "not_qualified_credit_path",
+    qualificationScore: p.hasRealEstateEquity ? 85 : 10,
+    blockers: !p.hasRealEstateEquity ? ["Real estate equity required"] : [],
+    rateRangeEstimate: "8–15% short-term (6-24 months)",
+    recommendedLenders: ["Kiavi", "Groundfloor", "Lima One Capital", "Local private lenders"],
+    unlocks: "Fix-and-flip, bridge financing, distressed property — credit score barely matters.",
+    paigeInsight: "Hard money is asset math, not credit math. If the property has enough equity and the deal makes sense, credit score is secondary. This is why real estate is a powerful wealth-building tool regardless of credit history.",
+  });
+  push({
+    productKey: "fix_and_flip",
+    productName: "Fix & Flip Loan",
+    tier: "asset_backed",
+    category: "Real Estate",
+    status: p.hasRealEstateEquity || (fico != null && fico >= 600) ? "asset_path_available" : "not_qualified_credit_path",
+    qualificationScore: fico != null && fico >= 600 ? 80 : 40,
+    blockers: fico != null && fico < 600 ? ["Most fix & flip lenders want 600+ FICO"] : [],
+    rateRangeEstimate: "8–13% + points",
+    recommendedLenders: ["Kiavi", "Lima One Capital", "RCN Capital"],
+    unlocks: "Up to 90% LTC covering purchase + rehab. ARV-based underwriting.",
+    paigeInsight: "Fix-and-flip lenders look at completed property value (ARV), not just your credit. A 580 FICO borrower with a great deal in a strong market can often get funded while a 750 FICO borrower with a weak deal gets declined.",
+  });
+  push({
+    productKey: "dscr_loan",
+    productName: "DSCR Loan",
+    tier: "asset_backed",
+    category: "Real Estate",
+    status: fico != null && fico >= 620 ? "asset_path_available" : "not_qualified_credit_path",
+    qualificationScore: fico != null && fico >= 680 ? 95 : (fico != null && fico >= 620 ? 70 : 0),
+    blockers: fico != null && fico < 620 ? ["Need FICO 620+ minimum"] : [],
+    rateRangeEstimate: "Market + 0.5-1.5%",
+    recommendedLenders: ["Kiavi", "Visio Lending", "Angel Oak", "New American Funding"],
+    unlocks: "Investment property financing based on rent coverage — NO personal income verification.",
+    paigeInsight: "DSCR is the most powerful real estate financing tool for entrepreneurs because it qualifies based on the property's income, not yours. No tax returns, no W-2s, no employment verification. If rent covers the mortgage, the deal can get done.",
+  });
+  push({
+    productKey: "equipment_financing",
+    productName: "Equipment Financing",
+    tier: "asset_backed",
+    category: "Business Funding",
+    status: p.hasEquipmentAssets || p.hasBusiness ? "asset_path_available" : "not_qualified_credit_path",
+    qualificationScore: fico != null && fico >= 620 ? 90 : (fico != null && fico >= 580 ? 70 : 40),
+    blockers: fico != null && fico < 580 ? ["Most equipment lenders want 580+ FICO"] : [],
+    rateRangeEstimate: "7–18% APR (2-7 year terms)",
+    recommendedLenders: ["Crest Capital", "Balboa Capital", "Currency Capital", "Direct manufacturer financing"],
+    unlocks: "80-100% of equipment cost. Equipment itself is collateral. Section 179 tax deduction available.",
+    paigeInsight: "Equipment financing is one of the most accessible business funding products because the equipment itself is collateral. A 600 FICO entrepreneur can finance $100K in equipment that would be impossible to get unsecured.",
+  });
+  push({
+    productKey: "invoice_factoring",
+    productName: "Invoice Factoring / AR Financing",
+    tier: "asset_backed",
+    category: "Business Funding",
+    status: p.hasInvoiceReceivables ? "asset_path_available" : "not_qualified_credit_path",
+    qualificationScore: p.hasInvoiceReceivables ? 95 : 0,
+    blockers: !p.hasInvoiceReceivables ? ["No outstanding receivables reported"] : [],
+    rateRangeEstimate: "1-5% per invoice (no APR — fee-based)",
+    recommendedLenders: ["BlueVine", "Fundbox", "altLINE", "Triumph Business Capital"],
+    unlocks: "70-90% of invoice value advanced immediately. YOUR clients' creditworthiness matters, not yours.",
+    paigeInsight: "If your business has outstanding invoices from creditworthy companies, you can turn those invoices into cash regardless of YOUR credit score. The factor is really lending against your clients' creditworthiness.",
+  });
+  push({
+    productKey: "po_financing",
+    productName: "Purchase Order Financing",
+    tier: "asset_backed",
+    category: "Business Funding",
+    status: p.hasBusiness && revRange(p.monthlyRevenueRange, "10k_25k") ? "asset_path_available" : "not_qualified_credit_path",
+    qualificationScore: p.hasBusiness ? 70 : 30,
+    blockers: !p.hasBusiness ? ["Need business entity"] : [],
+    rateRangeEstimate: "1.5-6% per month of fulfillment",
+    recommendedLenders: ["King Trade Capital", "Liquid Capital", "Capital Plus Financial"],
+    unlocks: "Finances cost of fulfilling large purchase orders. Supplier and customer creditworthiness primary.",
+    paigeInsight: "If you have a large purchase order you can't afford to fulfill, PO financing bridges that gap. You get the order, the PO financer pays your supplier, you deliver, your buyer pays the financer, you keep the spread.",
+  });
+  push({
+    productKey: "revenue_based_financing",
+    productName: "Revenue-Based Financing",
+    tier: "asset_backed",
+    category: "Business Funding",
+    status: revRange(p.monthlyRevenueRange, "10k_25k") ? "asset_path_available" : "not_qualified_credit_path",
+    qualificationScore: revRange(p.monthlyRevenueRange, "25k_50k") ? 85 : (revRange(p.monthlyRevenueRange, "10k_25k") ? 60 : 0),
+    blockers: !revRange(p.monthlyRevenueRange, "10k_25k") ? ["Typically need $10K+/mo revenue"] : [],
+    rateRangeEstimate: "Effective 20-50% (revenue-based, not fixed)",
+    recommendedLenders: ["Clearco", "Pipe", "Capchase (SaaS)", "Lighter Capital"],
+    unlocks: "Revenue-share repayment — slow months mean smaller payments.",
+    paigeInsight: "More entrepreneur-friendly than MCA because repayment scales with revenue. Still expensive but more predictable than fixed daily MCA withdrawals.",
+  });
+  push({
+    productKey: "merchant_cash_advance",
+    productName: "Merchant Cash Advance (MCA)",
+    tier: "asset_backed",
+    category: "Business Funding (Last Resort)",
+    status: revRange(p.monthlyRevenueRange, "10k_25k") ? "asset_path_available" : "not_qualified_credit_path",
+    qualificationScore: 40,
+    blockers: ["⚠️ HIGHEST cost financing — exhaust all other options first"],
+    rateRangeEstimate: "Factor rate 1.1-1.5 (effective 40-150% APR)",
+    recommendedLenders: ["Last resort only — Lendio marketplace, OnDeck, Kabbage"],
+    unlocks: "Fastest funding speed (often 24-48 hours) — use only for genuine emergency cash flow gaps.",
+    paigeInsight: "⚠️ MCA carries the highest effective cost of any business financing. Factor rates of 1.2-1.5 = 40-150% APR or higher. Last resort tool for immediate cash flow gaps, NOT a growth strategy. Always exhaust other options first. Pay off as quickly as possible and refinance into conventional products as soon as credit allows.",
+  });
+  push({
+    productKey: "asset_depletion_mortgage",
+    productName: "Asset Depletion Mortgage",
+    tier: "asset_backed",
+    category: "Mortgage",
+    status: eqRange(p.totalLiquidAssetsRange, "100k_plus") || p.hasInvestmentAccounts ? "asset_path_available" : "not_qualified_credit_path",
+    qualificationScore: fico != null && fico >= 680 && eqRange(p.totalLiquidAssetsRange, "100k_plus") ? 90 : 40,
+    blockers: fico != null && fico < 680 ? ["Most lenders want 680+ FICO"] : (!eqRange(p.totalLiquidAssetsRange, "100k_plus") ? ["Need significant liquid assets"] : []),
+    rateRangeEstimate: "Conventional + 0.25-0.75%",
+    recommendedLenders: ["Angel Oak", "Carrington Mortgage", "Acra Lending", "Local portfolio lenders"],
+    unlocks: "Converts wealth into qualifying income — for retired/HNW clients with low documented W-2 income.",
+    paigeInsight: "Lender divides total assets by loan term to create imputed income. Example: $1M ÷ 360 months = $2,778/mo qualifying income. Opens conventional financing for entrepreneurs who can't show traditional W-2 income.",
+  });
+
+  // Group by tier
+  const byTier: Record<ProductTier, ProductEligibility[]> = {
+    tier_0_credit_building: [],
+    tier_1_subprime: [],
+    tier_2_near_prime: [],
+    tier_3_prime: [],
+    tier_4_super_prime: [],
+    asset_backed: [],
+  };
+  for (const e of flatList) byTier[e.tier].push(e);
+
+  return {
+    profileSummary: {
+      avgFico: fico,
+      bandTier: tier,
+      hasRealEstateEquity: !!p.hasRealEstateEquity,
+      hasEquipment: !!p.hasEquipmentAssets,
+      hasReceivables: !!p.hasInvoiceReceivables,
+      hasInvestments: !!p.hasInvestmentAccounts,
+      monthlyRevenueRange: p.monthlyRevenueRange ?? null,
+      bankingScore: banking,
+      liquidScore: liquid,
+      boaRelationshipBonus: boa,
+      amexRelationshipFlag: amex,
+    },
+    byTier,
+    flatList,
   };
 }
