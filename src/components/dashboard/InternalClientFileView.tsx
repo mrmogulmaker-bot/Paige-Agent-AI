@@ -16,7 +16,6 @@ import { ReportUploadTab } from "./ReportUploadTab";
 import { OutreachCenter } from "./OutreachCenter";
 import { PMEFundingReadiness } from "./PMEFundingReadiness";
 import { ClientMemoryTab } from "./ClientMemoryTab";
-import { DisputesManager } from "./DisputesManager";
 import { FundingApplicationLog } from "./FundingApplicationLog";
 import { ClientOutcomesTab } from "./ClientOutcomesTab";
 import { AdminAccountManagement } from "./AdminAccountManagement";
@@ -55,7 +54,6 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
   // Credit scores from profiles (if linked) or credit_factor_scores
   const [scores, setScores] = useState<{ eq: number; ex: number; tu: number }>({ eq: 0, ex: 0, tu: 0 });
   const [negativeCount, setNegativeCount] = useState(0);
-  const [disputeCount, setDisputeCount] = useState(0);
 
   useEffect(() => {
     fetchClient();
@@ -75,17 +73,11 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
   };
 
   const fetchClientData = async () => {
-    // Fetch counts using separate queries to avoid deep type instantiation
     const negRes = await supabase
       .from("credit_negative_items")
       .select("id", { count: "exact", head: true })
       .eq("client_id", clientId as any);
-    const dispRes = await supabase
-      .from("disputes")
-      .select("id", { count: "exact", head: true })
-      .eq("client_id", clientId as any);
     setNegativeCount(negRes.count || 0);
-    setDisputeCount(dispRes.count || 0);
   };
 
   const handleSave = async () => {
@@ -212,10 +204,6 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           <TabsTrigger value="account-mgmt" className="text-xs">
             <Database className="w-3 h-3 mr-1" /> Account Mgmt
           </TabsTrigger>
-          <TabsTrigger value="disputes" className="text-xs">
-            <AlertTriangle className="w-3 h-3 mr-1" /> Disputes
-            {disputeCount > 0 && <span className="ml-1 text-[10px] bg-primary/20 rounded-full px-1.5">{disputeCount}</span>}
-          </TabsTrigger>
           <TabsTrigger value="funding" className="text-xs">
             <DollarSign className="w-3 h-3 mr-1" /> Funding
           </TabsTrigger>
@@ -337,10 +325,6 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
                     <Badge variant={negativeCount > 0 ? "destructive" : "default"}>{negativeCount}</Badge>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Active Disputes</span>
-                    <Badge variant="secondary">{disputeCount}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Portal Access</span>
                     <Badge variant={client.linked_user_id ? "default" : "outline"}>
                       {client.linked_user_id ? "Linked" : "Not Invited"}
@@ -364,10 +348,6 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
         {/* Account Management */}
         <TabsContent value="account-mgmt" className="mt-4">
           <AdminAccountManagement clientUserId={effectiveUserId} clientId={clientId} userRole="admin" />
-        </TabsContent>
-
-        <TabsContent value="disputes" className="mt-4">
-          <DisputesManager clientId={clientId} />
         </TabsContent>
 
         {/* Funding */}
