@@ -46,6 +46,37 @@ interface ClientProfile {
   created_at: string | null;
   updated_at: string | null;
   is_complimentary: boolean | null;
+  // Intake / discovery
+  primary_goal: string | null;
+  primary_goal_category: string | null;
+  goal_timeline: string | null;
+  goal_amount: number | null;
+  experience_level: string | null;
+  financing_preference: string | null;
+  biggest_obstacle: string | null;
+  intake_completed: boolean | null;
+  // Demographics
+  gender_identity: string | null;
+  ethnicity: string[] | null;
+  is_veteran: boolean | null;
+  is_service_disabled_veteran: boolean | null;
+  is_us_citizen: boolean | null;
+  is_permanent_resident: boolean | null;
+  // Banking & assets
+  primary_bank_name: string | null;
+  primary_bank_months: number | null;
+  primary_bank_average_balance: number | null;
+  monthly_revenue_range: string | null;
+  has_investment_accounts: boolean | null;
+  investment_account_value_range: string | null;
+  total_liquid_assets_range: string | null;
+  has_real_estate_equity: boolean | null;
+  real_estate_equity_range: string | null;
+  has_equipment_assets: boolean | null;
+  has_invoice_receivables: boolean | null;
+  // Misc
+  pme_phase: string | null;
+  has_broker_access: boolean | null;
 }
 
 export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: ClientFileViewProps) {
@@ -67,7 +98,9 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
     const [profileRes, subRes, rolesRes] = await Promise.all([
       supabase
         .from("profiles")
-        .select("full_name, phone, city, state, street_address, zip_code, date_of_birth, ssn_last_4, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed, has_discrepancies, cross_bureau_discrepancies, last_report_analyzed_at, created_at, updated_at, is_complimentary")
+        .select(
+          "full_name, phone, city, state, street_address, zip_code, date_of_birth, ssn_last_4, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed, has_discrepancies, cross_bureau_discrepancies, last_report_analyzed_at, created_at, updated_at, is_complimentary, primary_goal, primary_goal_category, goal_timeline, goal_amount, experience_level, financing_preference, biggest_obstacle, intake_completed, gender_identity, ethnicity, is_veteran, is_service_disabled_veteran, is_us_citizen, is_permanent_resident, primary_bank_name, primary_bank_months, primary_bank_average_balance, monthly_revenue_range, has_investment_accounts, investment_account_value_range, total_liquid_assets_range, has_real_estate_equity, real_estate_equity_range, has_equipment_assets, has_invoice_receivables, pme_phase, has_broker_access",
+        )
         .eq("user_id", clientUserId)
         .maybeSingle(),
       supabase
@@ -85,11 +118,20 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
     if (subRes.data) setSubscription(subRes.data as any);
     if (rolesRes.data) setRoles((rolesRes.data as any[]).map(r => r.role));
 
-    // Try to get email from auth admin (edge case: we can only get our own email client-side)
-    // Instead check if there's a coach_clients record or use profiles
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user?.id === clientUserId) {
-      setEmail(user.email || null);
+    // Fetch the client's email via the admin edge function (browser cannot read auth.users directly)
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.id === clientUserId) {
+        setEmail(user.email || null);
+      } else {
+        const { data: listData } = await supabase.functions.invoke("admin-list-users");
+        const authUsers = (listData?.users ?? []) as Array<{ id: string; email: string | null }>;
+        const match = authUsers.find((u) => u.id === clientUserId);
+        if (match?.email) setEmail(match.email);
+      }
+    } catch (err) {
+      // Non-fatal — email will simply show as "—"
+      console.warn("Could not resolve client email", err);
     }
   };
 
