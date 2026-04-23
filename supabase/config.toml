@@ -1,6 +1,8 @@
 project_id = "bfmyebsjyuoecmjskqhs"
 
 [functions]
+  [functions.admin-list-users]
+    verify_jwt = true
   [functions.auth-email-hook]
     verify_jwt = false
   [functions.backfill-memory-embeddings]
