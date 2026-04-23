@@ -641,13 +641,13 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
 
       {/* Client List */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
+        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
             <CardTitle>Client Management</CardTitle>
             <CardDescription>Manage clients, team members, and internal records</CardDescription>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="relative w-64">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:gap-3">
+            <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search..."
@@ -656,15 +656,17 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                 className="pl-9"
               />
             </div>
-            <Button size="sm" variant="outline" onClick={() => setQuickUploadOpen(true)}>
-              <Upload className="w-4 h-4 mr-1" /> Upload Report
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
-              <Mail className="w-4 h-4 mr-1" /> Send Invite
-            </Button>
-            <Button size="sm" onClick={() => setAddInternalOpen(true)}>
-              <UserPlus className="w-4 h-4 mr-1" /> New Client
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setQuickUploadOpen(true)}>
+                <Upload className="w-4 h-4 mr-1" /> Upload Report
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)}>
+                <Mail className="w-4 h-4 mr-1" /> Send Invite
+              </Button>
+              <Button size="sm" onClick={() => setAddInternalOpen(true)}>
+                <UserPlus className="w-4 h-4 mr-1" /> New Client
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>

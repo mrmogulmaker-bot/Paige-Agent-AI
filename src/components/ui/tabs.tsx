@@ -9,14 +9,18 @@ const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
 >(({ className, ...props }, ref) => (
-  <TabsPrimitive.List
-    ref={ref}
-    className={cn(
-      "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
-      className,
-    )}
-    {...props}
-  />
+  // Wrapper enables horizontal scroll on narrow screens so tab triggers never
+  // clip off the right edge. The inner List keeps its inline-flex layout.
+  <div className="w-full max-w-full overflow-x-auto scrollbar-none -mx-1 px-1">
+    <TabsPrimitive.List
+      ref={ref}
+      className={cn(
+        "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  </div>
 ));
 TabsList.displayName = TabsPrimitive.List.displayName;
 
