@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+
+  // Auto-close the mobile drawer whenever the route changes so taps outside
+  // the listed nav items (e.g. logo, in-page links) still dismiss it.
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [location.pathname]);
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
