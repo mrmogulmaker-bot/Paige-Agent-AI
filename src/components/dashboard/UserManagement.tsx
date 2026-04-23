@@ -296,19 +296,30 @@ export const UserManagement = () => {
                   </TableCell>
                   <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>
-                    <Select
-                      defaultValue={user.roles[0] || "user"}
-                      onValueChange={(value: "admin" | "moderator" | "user" | "coach" | "affiliate") => updateUserRole(user.id, value)}
-                    >
-                      <SelectTrigger className="w-[130px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="moderator">Moderator</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        defaultValue={user.roles[0] || "user"}
+                        onValueChange={(value: "admin" | "moderator" | "user" | "coach" | "affiliate") => updateUserRole(user.id, value)}
+                      >
+                        <SelectTrigger className="w-[130px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="user">User</SelectItem>
+                          <SelectItem value="moderator">Moderator</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => setDeleteTarget(user)}
+                        title="Delete user"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
