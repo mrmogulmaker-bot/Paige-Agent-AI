@@ -280,7 +280,7 @@ export function ProductApprovalReadinessPanel() {
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
-      const [profileRes, bizRes, banksRes, negRes, reportRes] = await Promise.all([
+      const [profileRes, bizRes, banksRes, negRes, reportRes, accountsRes] = await Promise.all([
         supabase
           .from("profiles")
           .select("estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, has_real_estate_equity, real_estate_equity_range, has_equipment_assets, has_invoice_receivables, has_investment_accounts, investment_account_value_range, total_liquid_assets_range, monthly_revenue_range, primary_bank_months, primary_bank_average_balance")
@@ -305,6 +305,10 @@ export function ProductApprovalReadinessPanel() {
           .from("credit_report_personal_info")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id),
+        supabase
+          .from("credit_accounts")
+          .select("creditor, type, account_open_date, opened_on, account_close_date, status, is_authorized_user")
+          .eq("user_id", user.id),
       ]);
       return {
         profile: profileRes.data,
@@ -312,6 +316,7 @@ export function ProductApprovalReadinessPanel() {
         banks: (banksRes.data ?? []) as any[],
         negatives: (negRes.data ?? []) as any[],
         reportCount: reportRes.count ?? 0,
+        accounts: (accountsRes.data ?? []) as any[],
       };
     },
   });
