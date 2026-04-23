@@ -446,6 +446,10 @@ function ScoreCard({
           </ul>
         </div>
       )}
+
+      {(result.type === "personal" || result.type === "small_business") && result.bureauScores && (
+        <BureauLens result={result} />
+      )}
     </Card>
   );
 }
