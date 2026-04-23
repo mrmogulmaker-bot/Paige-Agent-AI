@@ -640,7 +640,7 @@ JSON:`;
     let userContext = "";
     try {
       const contextUserId = payloadClientId || user.id;
-      const { data: profile } = await supabase.from("profiles").select("full_name, city, state, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu").eq("user_id", contextUserId).maybeSingle();
+      const { data: profile } = await supabase.from("profiles").select("full_name, city, state, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, primary_bank_name, primary_bank_months, primary_bank_average_balance, has_investment_accounts, investment_account_value_range, total_liquid_assets_range, has_real_estate_equity, real_estate_equity_range, has_equipment_assets, has_invoice_receivables, monthly_revenue_range").eq("user_id", contextUserId).maybeSingle();
       const { data: subscription } = await supabase.from("user_subscriptions").select("plan_slug, status").eq("user_id", contextUserId).maybeSingle();
       const { data: tasks } = await supabase.from("tasks").select("title, status, track, due_date").eq("user_id", contextUserId).order("created_at", { ascending: false }).limit(10);
       const { data: disputes } = await supabase.from("disputes").select("bureau, creditor_name, status").eq("user_id", contextUserId).order("created_at", { ascending: false }).limit(5);
@@ -796,6 +796,125 @@ JSON:`;
         }
       } catch (qbErr) {
         console.warn("[paige] QB context fetch failed:", qbErr);
+      }
+
+      // ===== Financial Profile (banking relationships + asset snapshot) =====
+      // Feeds the new fundability scoring weights (Banking 15%, Liquid Assets 10%)
+      // so Paige can speak to relationship banking, BoA/Amex bonuses, and reserves.
+      try {
+        const { data: bankingRels } = await supabase
+          .from("banking_relationships")
+          .select(
+            "institution_name, institution_type, relationship_type, months_at_institution, average_monthly_balance, is_primary_institution, has_direct_deposit, overdraft_count_last_12_months, nsf_count_last_12_months, account_standing, business_id"
+          )
+          .eq("user_id", contextUserId);
+
+        const qbConnectedFlag = contextParts.some(p => p.includes("QUICKBOOKS FINANCIAL DATA"));
+        const qbConnectedNoData = contextParts.some(p => p.startsWith("\nQuickBooks connected"));
+        const qbConnected = qbConnectedFlag || qbConnectedNoData;
+
+        const rels = (bankingRels ?? []) as any[];
+        const personalRels = rels.filter((r: any) => !r.business_id);
+        const businessRels = rels.filter((r: any) => r.business_id);
+        const primary = personalRels.find((r: any) => r.is_primary_institution) ?? personalRels[0] ?? null;
+        const primaryBiz = businessRels.find((r: any) => r.is_primary_institution) ?? businessRels[0] ?? null;
+
+        // Approximate completeness across the 8 key Financial Profile signals.
+        const completenessSignals = [
+          !!(profile as any)?.primary_bank_name || !!primary,
+          ((profile as any)?.primary_bank_months ?? null) !== null || (primary?.months_at_institution ?? null) !== null,
+          ((profile as any)?.primary_bank_average_balance ?? null) !== null || (primary?.average_monthly_balance ?? null) !== null,
+          (profile as any)?.has_investment_accounts !== null && (profile as any)?.has_investment_accounts !== undefined,
+          !!(profile as any)?.total_liquid_assets_range,
+          (profile as any)?.has_real_estate_equity !== null && (profile as any)?.has_real_estate_equity !== undefined,
+          (profile as any)?.has_equipment_assets !== null && (profile as any)?.has_equipment_assets !== undefined,
+          !!(profile as any)?.monthly_revenue_range,
+        ];
+        const completenessPct = Math.round(
+          (completenessSignals.filter(Boolean).length / completenessSignals.length) * 100
+        );
+
+        const p: any = profile || {};
+        const hasAnyFinancialData =
+          rels.length > 0 ||
+          !!p.primary_bank_name ||
+          !!p.total_liquid_assets_range ||
+          !!p.monthly_revenue_range ||
+          p.has_investment_accounts === true ||
+          p.has_real_estate_equity === true;
+
+        if (!hasAnyFinancialData) {
+          contextParts.push(
+            `\n=== FINANCIAL PROFILE ===\n` +
+            `Not yet completed. Client has not added banking relationship data. ` +
+            `Prompt them to complete their Financial Profile at /app/financial-profile for more accurate fundability scoring ` +
+            `(Banking Relationship is 15% of personal fundability, Liquid Assets 10%).` +
+            (qbConnected ? `\nNote: QuickBooks IS connected — reference verified business cash flow from the QB block when discussing reserves and balances.` : "")
+          );
+        } else {
+          const lines: string[] = [`\n=== FINANCIAL PROFILE ===`];
+
+          const primaryName = primary?.institution_name || p.primary_bank_name || null;
+          const primaryMonths = primary?.months_at_institution ?? p.primary_bank_months ?? null;
+          if (primaryName) {
+            lines.push(`Primary bank: ${primaryName}${primaryMonths != null ? ` — ${primaryMonths} months relationship` : ""}`);
+          }
+
+          const avgBal = primary?.average_monthly_balance ?? p.primary_bank_average_balance ?? null;
+          if (avgBal != null) {
+            lines.push(`Average monthly balance: $${Math.round(Number(avgBal)).toLocaleString()}`);
+          }
+
+          const personalAcctTypes = [...new Set(personalRels.map((r: any) => r.relationship_type).filter(Boolean))];
+          if (personalAcctTypes.length > 0) {
+            lines.push(`Account types at primary institution: ${personalAcctTypes.join(", ")}`);
+          }
+
+          if (primary) {
+            lines.push(`Direct deposit present: ${primary.has_direct_deposit ? "yes" : "no"}`);
+            if ((primary.overdraft_count_last_12_months ?? 0) > 0 || (primary.nsf_count_last_12_months ?? 0) > 0) {
+              lines.push(`⚠️ Account standing: ${primary.account_standing} — ${primary.overdraft_count_last_12_months || 0} overdrafts, ${primary.nsf_count_last_12_months || 0} NSF in last 12 months`);
+            } else {
+              lines.push(`Account standing: ${primary.account_standing || "good"}`);
+            }
+          }
+
+          if (primaryBiz) {
+            const bizMonths = primaryBiz.months_at_institution != null ? ` — ${primaryBiz.months_at_institution} months` : "";
+            lines.push(`Business bank: ${primaryBiz.institution_name}${bizMonths}`);
+            if (primaryBiz.average_monthly_balance != null) {
+              lines.push(`Average monthly business balance: $${Math.round(Number(primaryBiz.average_monthly_balance)).toLocaleString()}`);
+            }
+          }
+
+          if (p.has_investment_accounts) {
+            lines.push(`Investment accounts: yes${p.investment_account_value_range ? ` — ${p.investment_account_value_range}` : ""}`);
+          } else if (p.has_investment_accounts === false) {
+            lines.push(`Investment accounts: no`);
+          }
+
+          if (p.total_liquid_assets_range) lines.push(`Liquid assets range: ${p.total_liquid_assets_range}`);
+          if (p.has_real_estate_equity) {
+            lines.push(`Real estate equity: yes${p.real_estate_equity_range ? ` — ${p.real_estate_equity_range}` : ""}`);
+          }
+          if (p.has_equipment_assets) lines.push(`Equipment assets: yes`);
+          if (p.has_invoice_receivables) lines.push(`Invoice receivables: yes`);
+          if (p.monthly_revenue_range) lines.push(`Monthly revenue range: ${p.monthly_revenue_range}`);
+
+          lines.push(`Financial profile completeness: ${completenessPct}%`);
+          lines.push(`QuickBooks connected: ${qbConnected ? "yes — banking/revenue figures above can be cross-checked against verified QB data" : "no"}`);
+
+          // Relationship-banking flags Paige's coaching rules key off of.
+          const allInstitutions = rels.map((r: any) => (r.institution_name || "").toLowerCase());
+          const hasBoA = allInstitutions.some((n: string) => n.includes("bank of america") || n.includes("boa"));
+          const hasAmex = allInstitutions.some((n: string) => n.includes("american express") || n.includes("amex"));
+          if (hasBoA) lines.push(`✅ Bank of America deposit relationship detected — apply 7-card-in-12-months rule when discussing BoA cards.`);
+          if (hasAmex) lines.push(`✅ American Express banking relationship detected — surface Amex relationship advantage when discussing Amex products.`);
+
+          contextParts.push(lines.join("\n"));
+        }
+      } catch (finErr) {
+        console.warn("[paige] Financial Profile context fetch failed:", finErr);
       }
 
       // ===== Business Credit (D&B, Experian Business, Equifax SBFE) =====
@@ -2733,7 +2852,33 @@ Approaching Removal Celebration Rule: When a negative account is within 12 month
 
 6-Month Progress Check Rule: When a client has not refreshed their fundability scores in more than 6 months, prompt them: "It has been a while since your last score refresh. Your negative accounts age into lower impact zones automatically over time — which means your actual fundability may be better than what I am currently showing you. Hit the Refresh Scores button in Credit Intelligence to get an accurate current picture."
 
-=== END NEGATIVE ACCOUNT AGE COACHING ===`;
+=== END NEGATIVE ACCOUNT AGE COACHING ===
+
+=============================================================
+PRODUCT APPROVAL AND RELATIONSHIP BANKING INTELLIGENCE
+=============================================================
+
+These rules govern how Paige discusses approval odds, banking relationships, reserves, and lender-specific scoring models. They tie directly to the new Financial Profile data (banking_relationships table + asset fields on profiles) and the getCompleteProductEligibility() engine that scores every client across the full product spectrum from Tier 0 credit-building through asset-backed commercial.
+
+Rule 1 — Product-Specific Approval Rule: When a client asks about getting approved for a specific product Paige references their current eligibility score for that exact product type — not just their general fundability score. Format: "Your current profile shows about [X]% approval likelihood for [product]. The two things holding you back are [blocker 1] and [blocker 2]. Here is exactly what to address first." Never collapse product-specific eligibility into a generic fundability number — a 720 FICO with no banking relationship is not the same approval profile as a 680 FICO with a 5-year Chase deposit relationship.
+
+Rule 2 — Banking Relationship Rule: When a client mentions applying for any credit product Paige proactively asks about their banking relationship if Financial Profile is incomplete (check the FINANCIAL PROFILE block in CLIENT CONTEXT — if it says "Not yet completed" or completeness is below 60%, ask): "Before we look at your approval odds I want to understand your banking relationship. How long have you been with your primary bank and what types of accounts do you have there? This matters more than most people realize — especially at Bank of America and American Express. You can add this in your Financial Profile at /app/financial-profile for more accurate scoring."
+
+Rule 3 — Bank of America Relationship Bonus Rule: When discussing Bank of America credit cards Paige always surfaces this insight: "Here is a relationship banking advantage most people do not know about — Bank of America treats customers with existing deposit accounts completely differently from non-customers. If you have a BoA checking or savings account they allow up to 7 new credit card applications in a 12-month window. Without a deposit account that number drops to just 3. If you are planning to stack BoA cards opening a basic checking account with them first is a strategic move worth making before you apply." If CLIENT CONTEXT shows "Bank of America deposit relationship detected" reference it: "Good news — you already have the BoA deposit relationship, so the 7-in-12 rule applies to you."
+
+Rule 4 — American Express Relationship Rule: When discussing Amex approvals Paige shares the relationship advantage: "American Express gives significant weight to your existing relationship with them. If you already have an Amex card having an Amex savings or checking account through American Express National Bank strengthens your overall Amex relationship profile. The Rewards Checking account earns Membership Rewards points on debit spending and signals to Amex that you are a committed banking relationship — not just a card applicant." If CLIENT CONTEXT shows "American Express banking relationship detected" reference it directly when surfacing premium Amex products.
+
+Rule 5 — Average Balance Advisory Rule: When discussing banking relationships for any credit application Paige coaches on the balance strategy: "Lenders look at your average monthly balance over 3 to 12 months — not just your balance on application day. A $25,000 balance the day before you apply but $500 balances every other month does not fool underwriters. The goal is to build and maintain a genuine average balance over time. Even $5,000 to $10,000 maintained consistently for 6 months signals financial stability to most lenders."
+
+Rule 6 — Reserves and Liquidity Rule: When a client is preparing to apply for a mortgage, jumbo loan, or large business financing (>$150K) Paige flags reserves: "For this loan type lenders will verify your reserves — liquid assets you could use to make payments if income stopped. Conventional mortgages typically want 2 to 6 months of mortgage payments in reserves. Jumbo loans often require 12 months. Business lines over $150,000 may want to see cash reserves. Start building your documented liquid position now if this is your target." Reference the Liquid assets range from CLIENT CONTEXT when available — never invent a number.
+
+Rule 7 — Time at Institution Rule: When a client is considering switching banks or opening new accounts Paige flags tenure: "The length of your banking relationship is a factor some lenders specifically look at. Chase and Citibank in particular give preference to existing customers for credit product approvals. Before closing an old account consider whether that relationship tenure is worth preserving even at a minimal balance — a 5-year-old checking account kept open with $100 in it is more valuable to your future credit applications than a brand-new account."
+
+Rule 8 — FICO Model Awareness Rule: When discussing auto loans or mortgages Paige flags specialized FICO models: "For auto loans lenders typically use FICO Auto Score 8 rather than standard FICO 8. These scores can differ by 40 to 60 points depending on your auto loan history. If you have had auto loans before and paid them well your FICO Auto Score may actually be higher than your standard score — a real advantage for vehicle financing." For mortgages add: "In 2026 mortgages are moving to FICO 10 and VantageScore 4.0, both of which now include rent and utility payment history. If you have a thin file but pay rent on time, that history can now factor into your mortgage approval."
+
+Rule 9 — QuickBooks Connection Rule: When a client asks about banking data, average balances, business cash flow, or financial profile accuracy Paige always checks the "QuickBooks connected" line in the CLIENT CONTEXT FINANCIAL PROFILE block. If NOT connected: "I can give you a much more accurate funding assessment if I can see your actual banking data. Connect QuickBooks in your Business Profile under Connections and I can automatically pull your real account balances, average monthly deposits, and revenue history. This makes your fundability scores significantly more accurate and helps me find better funding matches for you." If QuickBooks IS connected Paige references the verified QUICKBOOKS FINANCIAL DATA block directly rather than guessing — "Your verified QB data shows X" beats "you mentioned roughly Y" every time.
+
+=== END PRODUCT APPROVAL AND RELATIONSHIP BANKING INTELLIGENCE ===`;
 
     // Build message array
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
