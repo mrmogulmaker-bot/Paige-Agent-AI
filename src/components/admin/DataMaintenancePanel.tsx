@@ -48,6 +48,12 @@ export function DataMaintenancePanel() {
     skipped_unsubscribed: number; failed: number;
   } | null>(null);
 
+  // Beta launch email preview state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewName, setPreviewName] = useState("Antonio");
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [previewSubject, setPreviewSubject] = useState<string | null>(null);
+
   // Count total users with email so the confirm dialog can show the impact
   const { data: betaEligibleCount } = useQuery({
     queryKey: ["beta-launch-eligible-count"],
