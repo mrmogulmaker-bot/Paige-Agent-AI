@@ -20,6 +20,7 @@ import { CreditIntelWalkthrough } from "@/components/credit/CreditIntelWalkthrou
 import { PredictionsPanel } from "@/components/dashboard/PredictionsPanel";
 import { BusinessCreditTab } from "@/components/credit/BusinessCreditTab";
 import { ThreeFundabilityScoresPanel } from "@/components/dashboard/ThreeFundabilityScoresPanel";
+import { ProductApprovalReadinessPanel } from "@/components/credit/ProductApprovalReadinessPanel";
 import { BusinessSelector } from "@/components/dashboard/BusinessSelector";
 import { NegativeAccountsAgePanel } from "@/components/credit/NegativeAccountsAgePanel";
 import { useThreeFundabilityScores } from "@/hooks/useThreeFundabilityScores";
@@ -346,6 +347,9 @@ export default function CreditIntelligence() {
             <BusinessSelector />
             <ThreeFundabilityScoresPanel compactOnMobile />
           </section>
+
+          {/* Product Approval Readiness — 5-tier spectrum dashboard */}
+          <ProductApprovalReadinessPanel />
 
           {/* Page Walkthrough */}
           <CreditIntelWalkthrough />
