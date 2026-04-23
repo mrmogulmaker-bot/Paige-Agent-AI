@@ -1734,6 +1734,10 @@ export function getCompleteProductEligibility(p: FundabilityProfileInputs): Comp
     paigeInsight: "Lender divides total assets by loan term to create imputed income. Example: $1M ÷ 360 months = $2,778/mo qualifying income. Opens conventional financing for entrepreneurs who can't show traditional W-2 income.",
   });
 
+  // Apply comparable credit modifier to every product
+  const accounts = p.creditAccounts ?? [];
+  const enriched = flatList.map((e) => applyComparableCredit(e, accounts));
+
   // Group by tier
   const byTier: Record<ProductTier, ProductEligibility[]> = {
     tier_0_credit_building: [],
@@ -1743,7 +1747,7 @@ export function getCompleteProductEligibility(p: FundabilityProfileInputs): Comp
     tier_4_super_prime: [],
     asset_backed: [],
   };
-  for (const e of flatList) byTier[e.tier].push(e);
+  for (const e of enriched) byTier[e.tier].push(e);
 
   return {
     profileSummary: {
@@ -1760,6 +1764,6 @@ export function getCompleteProductEligibility(p: FundabilityProfileInputs): Comp
       amexRelationshipFlag: amex,
     },
     byTier,
-    flatList,
+    flatList: enriched,
   };
 }
