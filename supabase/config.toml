@@ -83,3 +83,5 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = true
   [functions.refresh-fundability-scores-biannual]
     verify_jwt = false
+  [functions.send-beta-launch-email]
+    verify_jwt = true

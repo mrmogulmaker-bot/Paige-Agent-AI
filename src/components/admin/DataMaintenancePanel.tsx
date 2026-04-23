@@ -9,7 +9,12 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Database, RefreshCw, Loader2, CheckCircle, AlertTriangle, XCircle, Play, Brain,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Database, RefreshCw, Loader2, CheckCircle, AlertTriangle, XCircle, Play, Brain, Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -32,6 +37,48 @@ export function DataMaintenancePanel() {
   const [memoryBackfillResult, setMemoryBackfillResult] = useState<{
     total_processed: number; total_updated: number; error_count: number;
   } | null>(null);
+  const [betaLaunchResult, setBetaLaunchResult] = useState<{
+    total_profiles: number; sent: number; skipped_already_sent: number;
+    skipped_unsubscribed: number; failed: number;
+  } | null>(null);
+
+  // Count total users with email so the confirm dialog can show the impact
+  const { data: betaEligibleCount } = useQuery({
+    queryKey: ["beta-launch-eligible-count"],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("profiles")
+        .select("user_id", { count: "exact", head: true })
+        .not("email", "is", null);
+      return count ?? 0;
+    },
+  });
+
+  const sendBetaLaunch = useMutation({
+    mutationFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+      const response = await supabase.functions.invoke("send-beta-launch-email", {
+        body: {},
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (response.error) throw new Error(response.error.message);
+      return response.data as {
+        total_profiles: number; sent: number; skipped_already_sent: number;
+        skipped_unsubscribed: number; failed: number;
+      };
+    },
+    onSuccess: (data) => {
+      setBetaLaunchResult(data);
+      toast.success(
+        `Beta launch email sent to ${data.sent} user${data.sent === 1 ? "" : "s"}` +
+          (data.skipped_already_sent ? ` · ${data.skipped_already_sent} already received` : "") +
+          (data.skipped_unsubscribed ? ` · ${data.skipped_unsubscribed} unsubscribed` : "") +
+          (data.failed ? ` · ${data.failed} failed` : "")
+      );
+    },
+    onError: (err: Error) => toast.error(err.message || "Beta launch send failed"),
+  });
 
   const memoryBackfill = useMutation({
     mutationFn: async () => {
@@ -420,6 +467,80 @@ export function DataMaintenancePanel() {
                 <strong className="text-foreground">{memoryBackfillResult.total_updated}</strong> embedded
                 {memoryBackfillResult.error_count > 0 && (
                   <> · <span className="text-destructive font-medium">{memoryBackfillResult.error_count} errors</span></>
+                )}
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Beta Launch Email — one-time send */}
+      <Card className="border-primary/40">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Mail className="w-5 h-5 text-primary" />
+            Beta Launch Announcement
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Send Beta Launch Email to All Users</p>
+              <p className="text-xs text-muted-foreground max-w-xl">
+                One-time celebratory announcement covering the latest platform updates
+                (3 fundability scores, Product Approval Readiness, bureau-specific strategy).
+                Skips users who unsubscribed and any who already received it — safe to click
+                even if some users were sent earlier.
+              </p>
+            </div>
+
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  disabled={sendBetaLaunch.isPending}
+                  className="gap-2 shrink-0"
+                >
+                  {sendBetaLaunch.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Mail className="w-4 h-4" />
+                  )}
+                  {sendBetaLaunch.isPending ? "Sending..." : "Send Beta Launch Email to All Users"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Send Beta Launch Email?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will send the Beta launch email to all{" "}
+                    <strong>{betaEligibleCount ?? "…"}</strong> users with an email
+                    address. Each user can only receive this email once — users who
+                    already received it will be skipped automatically. Continue?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => sendBetaLaunch.mutate()}>
+                    Send to All Users
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+
+          {betaLaunchResult && !sendBetaLaunch.isPending && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <CheckCircle className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium">Last run complete</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Of <strong className="text-foreground">{betaLaunchResult.total_profiles}</strong> profiles ·{" "}
+                <strong className="text-foreground">{betaLaunchResult.sent}</strong> sent ·{" "}
+                {betaLaunchResult.skipped_already_sent} already received ·{" "}
+                {betaLaunchResult.skipped_unsubscribed} unsubscribed
+                {betaLaunchResult.failed > 0 && (
+                  <> · <span className="text-destructive font-medium">{betaLaunchResult.failed} failed</span></>
                 )}
               </p>
             </div>
