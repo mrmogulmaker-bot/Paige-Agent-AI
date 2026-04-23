@@ -534,38 +534,50 @@ export function DataMaintenancePanel() {
               </p>
             </div>
 
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  disabled={sendBetaLaunch.isPending}
-                  className="gap-2 shrink-0"
-                >
-                  {sendBetaLaunch.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Mail className="w-4 h-4" />
-                  )}
-                  {sendBetaLaunch.isPending ? "Sending..." : "Send Beta Launch Email to All Users"}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Send Beta Launch Email?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will send the Beta launch email to all{" "}
-                    <strong>{betaEligibleCount ?? "…"}</strong> users with an email
-                    address. Each user can only receive this email once — users who
-                    already received it will be skipped automatically. Continue?
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => sendBetaLaunch.mutate()}>
-                    Send to All Users
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={openPreview}
+                className="gap-2"
+              >
+                <Eye className="w-4 h-4" />
+                Preview email
+              </Button>
+
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    disabled={sendBetaLaunch.isPending}
+                    className="gap-2"
+                  >
+                    {sendBetaLaunch.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Mail className="w-4 h-4" />
+                    )}
+                    {sendBetaLaunch.isPending ? "Sending..." : "Send Beta Launch Email to All Users"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Send Beta Launch Email?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will send the Beta launch email to all{" "}
+                      <strong>{betaEligibleCount ?? "…"}</strong> users with an email
+                      address. Each user can only receive this email once — users who
+                      already received it will be skipped automatically. Continue?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => sendBetaLaunch.mutate()}>
+                      Send to All Users
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
 
           {betaLaunchResult && !sendBetaLaunch.isPending && (
