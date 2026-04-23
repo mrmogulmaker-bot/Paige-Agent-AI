@@ -54,15 +54,19 @@ export function DataMaintenancePanel() {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewSubject, setPreviewSubject] = useState<string | null>(null);
 
-  // Count total users with email so the confirm dialog can show the impact
+  // Count eligible auth users via the edge function (counts auth.users, not profiles)
   const { data: betaEligibleCount } = useQuery({
     queryKey: ["beta-launch-eligible-count"],
     queryFn: async () => {
-      const { count } = await supabase
-        .from("profiles")
-        .select("user_id", { count: "exact", head: true })
-        .not("email", "is", null);
-      return count ?? 0;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return 0;
+      const response = await supabase.functions.invoke("send-beta-launch-email", {
+        body: { action: "count" },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (response.error) return 0;
+      const data = response.data as { eligible?: number } | null;
+      return data?.eligible ?? 0;
     },
   });
 
@@ -71,7 +75,7 @@ export function DataMaintenancePanel() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
       const response = await supabase.functions.invoke("send-beta-launch-email", {
-        body: {},
+        body: { action: "send" },
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       if (response.error) throw new Error(response.error.message);
