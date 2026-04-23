@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Lock, HelpCircle, Loader2, ArrowRight, Building2, LayoutGrid } from "lucide-react";
+import { Lock, HelpCircle, Loader2, ArrowRight, Building2, LayoutGrid, ShieldCheck, ShieldAlert, ShieldQuestion } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useThreeFundabilityScores } from "@/hooks/useThreeFundabilityScores";
 import { useBusinessContext, entityRoleLabel } from "@/contexts/BusinessContext";
+import { useFinancialDataAccuracy, type AccuracyLevel } from "@/hooks/useFinancialDataAccuracy";
+import { supabase } from "@/integrations/supabase/client";
 import { BusinessPortfolio } from "./BusinessPortfolio";
 import type { FundabilityScoreResult, FundabilityBand } from "@/lib/fundabilityScores";
 
@@ -54,7 +56,57 @@ function bandBg(band: FundabilityBand | null): string {
   }
 }
 
-function ScoreCard({ result, compact = false }: { result: FundabilityScoreResult; compact?: boolean }) {
+function AccuracyChip({
+  level,
+  label,
+  description,
+  size = "sm",
+}: {
+  level: AccuracyLevel;
+  label: string;
+  description: string;
+  size?: "sm" | "xs";
+}) {
+  const Icon =
+    level === "high" ? ShieldCheck : level === "medium" ? ShieldQuestion : ShieldAlert;
+  const tone =
+    level === "high"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+      : level === "medium"
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+      : "border-muted-foreground/30 bg-muted text-muted-foreground";
+  const sizing =
+    size === "xs"
+      ? "text-[10px] px-1.5 py-0.5 gap-1"
+      : "text-[11px] px-2 py-0.5 gap-1.5";
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`inline-flex items-center rounded-full border font-medium ${tone} ${sizing}`}
+          >
+            <Icon className={size === "xs" ? "w-2.5 h-2.5" : "w-3 h-3"} />
+            {label}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs">
+          <p className="text-xs">{description}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ScoreCard({
+  result,
+  compact = false,
+  accuracy,
+}: {
+  result: FundabilityScoreResult;
+  compact?: boolean;
+  accuracy?: { level: AccuracyLevel; label: string; description: string };
+}) {
   const navigate = useNavigate();
   const typeLabel =
     result.type === "personal"
@@ -141,7 +193,17 @@ function ScoreCard({ result, compact = false }: { result: FundabilityScoreResult
     return (
       <Card className="p-4 bg-card border-border flex items-center gap-3">
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-foreground truncate">{displayTitle}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground truncate">{displayTitle}</h3>
+            {accuracy && (
+              <AccuracyChip
+                level={accuracy.level}
+                label={accuracy.label}
+                description={accuracy.description}
+                size="xs"
+              />
+            )}
+          </div>
           <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden mt-2">
             <div className={`h-full ${bg} transition-all duration-700`} style={{ width: `${score}%` }} />
           </div>
@@ -160,10 +222,19 @@ function ScoreCard({ result, compact = false }: { result: FundabilityScoreResult
 
   return (
     <Card className="p-5 bg-card border-border flex flex-col h-full">
-      <div className="flex items-start justify-between mb-3">
-        <div>
+      <div className="flex items-start justify-between mb-3 gap-2">
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold text-foreground">{result.title}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">{typeLabel}</p>
+          {accuracy && (
+            <div className="mt-2">
+              <AccuracyChip
+                level={accuracy.level}
+                label={accuracy.label}
+                description={accuracy.description}
+              />
+            </div>
+          )}
         </div>
         <TooltipProvider>
           <Tooltip>
@@ -237,6 +308,20 @@ export function ThreeFundabilityScoresPanel({
   const isMobile = useIsMobile();
   const useCompact = compactOnMobile && isMobile;
   const [portfolioOpen, setPortfolioOpen] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getUser().then(({ data }) => {
+      if (mounted) setUserId(data.user?.id ?? null);
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  const { data: accuracyData } = useFinancialDataAccuracy(userId);
+  const accuracy = accuracyData
+    ? { level: accuracyData.level, label: accuracyData.label, description: accuracyData.description }
+    : undefined;
 
   const hasMultipleBusinesses = businesses.length > 1;
 
@@ -284,9 +369,9 @@ export function ThreeFundabilityScoresPanel({
       )}
 
       <div className={useCompact ? "flex flex-col gap-3" : "grid grid-cols-1 md:grid-cols-3 gap-4"}>
-        <ScoreCard result={personal} compact={useCompact} />
-        <ScoreCard result={small_business} compact={useCompact} />
-        <ScoreCard result={commercial} compact={useCompact} />
+        <ScoreCard result={personal} compact={useCompact} accuracy={accuracy} />
+        <ScoreCard result={small_business} compact={useCompact} accuracy={accuracy} />
+        <ScoreCard result={commercial} compact={useCompact} accuracy={accuracy} />
       </div>
 
       <BusinessPortfolio open={portfolioOpen} onOpenChange={setPortfolioOpen} />

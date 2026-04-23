@@ -38,6 +38,149 @@ function fmtDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+// ----------------------------------------------------------------
+// Map a QuickBooks Account.AccountSubType to our banking_relationships
+// relationship_type CHECK constraint.
+// ----------------------------------------------------------------
+function mapQbSubTypeToRelationship(subType: string | undefined, accountType: string | undefined): string | null {
+  const s = (subType || "").toLowerCase();
+  const t = (accountType || "").toLowerCase();
+  if (s.includes("checking")) return "business_checking";
+  if (s.includes("savings")) return "business_savings";
+  if (s.includes("moneymarket") || s.includes("money_market")) return "business_money_market";
+  if (s.includes("cashondhand") || s.includes("cashonhand")) return "business_checking";
+  if (s.includes("creditcard") || t.includes("credit card")) return "business_line_of_credit";
+  if (s.includes("lineofcredit")) return "business_line_of_credit";
+  if (t === "bank") return "business_checking";
+  return null;
+}
+
+// ----------------------------------------------------------------
+// Estimate the average monthly inflow for a single QB account by
+// summing positive deposit lines over the last ~6 months.
+// We query JournalEntry / Deposit transactions filtered by AccountRef.
+// ----------------------------------------------------------------
+async function fetchAccountAvgMonthlyInflow(
+  realmId: string,
+  accessToken: string,
+  environment: string,
+  accountId: string,
+  monthsBack: number,
+): Promise<number | null> {
+  const since = new Date();
+  since.setMonth(since.getMonth() - monthsBack);
+  const sinceStr = since.toISOString().slice(0, 10);
+  try {
+    const q = encodeURIComponent(
+      `SELECT TotalAmt FROM Deposit WHERE TxnDate >= '${sinceStr}' AND DepositToAccountRef = '${accountId}' MAXRESULTS 500`,
+    );
+    const res = await qbApiGet(realmId, accessToken, environment, `/query?query=${q}`);
+    const deposits: any[] = res?.QueryResponse?.Deposit ?? [];
+    if (deposits.length === 0) return null;
+    const total = deposits.reduce((s, d) => s + (parseFloat(d?.TotalAmt ?? "0") || 0), 0);
+    return Math.round((total / monthsBack) * 100) / 100;
+  } catch {
+    return null;
+  }
+}
+
+// ----------------------------------------------------------------
+// Pull the QB Account list (Bank + CreditCard types) and upsert one
+// banking_relationships row per account with source='quickbooks'.
+// ----------------------------------------------------------------
+async function syncBankingRelationshipsFromQb(
+  supabase: any,
+  realmId: string,
+  accessToken: string,
+  environment: string,
+  conn: any,
+): Promise<number> {
+  let upsertCount = 0;
+  try {
+    const q = encodeURIComponent(
+      "SELECT Id, Name, AccountType, AccountSubType, CurrentBalance, OpenDate, FullyQualifiedName " +
+        "FROM Account WHERE Active = true AND AccountType IN ('Bank','Credit Card') MAXRESULTS 200",
+    );
+    const res = await qbApiGet(realmId, accessToken, environment, `/query?query=${q}`);
+    const accounts: any[] = res?.QueryResponse?.Account ?? [];
+    if (accounts.length === 0) return 0;
+
+    const now = new Date().toISOString();
+
+    for (const acct of accounts) {
+      const relType = mapQbSubTypeToRelationship(acct?.AccountSubType, acct?.AccountType);
+      if (!relType) continue;
+
+      // QB account "Name" is usually "Chase Business Checking" / "BoA Visa" etc.
+      // We use the full account name as the institution_name — the manual UI can
+      // group/rename later, but having the verified QB label is more accurate
+      // than guessing.
+      const institutionName: string = acct?.Name || acct?.FullyQualifiedName || "QuickBooks Account";
+
+      const currentBalance = acct?.CurrentBalance != null ? Number(acct.CurrentBalance) : null;
+
+      // Estimate average monthly inflow from Deposits (best-effort)
+      const avgMonthly = await fetchAccountAvgMonthlyInflow(
+        realmId,
+        accessToken,
+        environment,
+        acct?.Id,
+        6,
+      );
+
+      let monthsAtInstitution: number | null = null;
+      if (acct?.OpenDate) {
+        const openMs = new Date(acct.OpenDate).getTime();
+        if (!isNaN(openMs)) {
+          monthsAtInstitution = Math.max(
+            0,
+            Math.round((Date.now() - openMs) / (1000 * 60 * 60 * 24 * 30.4375)),
+          );
+        }
+      }
+
+      const isCreditCard = (acct?.AccountType || "").toLowerCase().includes("credit");
+
+      const row = {
+        user_id: conn.user_id,
+        business_id: conn.business_id ?? null,
+        institution_name: institutionName,
+        institution_type: "bank" as const,
+        relationship_type: relType,
+        current_balance: currentBalance,
+        // For credit cards `CurrentBalance` is the amount owed, not deposits;
+        // we leave avg_monthly_balance null in that case.
+        average_monthly_balance: isCreditCard ? null : (avgMonthly ?? currentBalance),
+        months_at_institution: monthsAtInstitution,
+        is_primary_institution: false,
+        has_direct_deposit: false,
+        nsf_count_last_12_months: 0,
+        overdraft_count_last_12_months: 0,
+        account_standing: "good" as const,
+        source: "quickbooks" as const,
+        qb_account_id: String(acct.Id),
+        qb_synced_at: now,
+      };
+
+      const { error } = await supabase
+        .from("banking_relationships")
+        .upsert(row, { onConflict: "user_id,qb_account_id" });
+
+      if (error) {
+        console.warn("[qb-sync] banking_relationships upsert err:", error.message);
+      } else {
+        upsertCount++;
+      }
+    }
+  } catch (e) {
+    console.warn(
+      "[qb-sync] syncBankingRelationshipsFromQb failed:",
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+  return upsertCount;
+}
+
 async function syncOneConnection(supabase: any, connectionId: string) {
   const { accessToken, realmId, environment, conn } = await ensureFreshToken(supabase, connectionId);
 
@@ -116,11 +259,26 @@ async function syncOneConnection(supabase: any, connectionId: string) {
     }, { onConflict: "qb_connection_id,qb_transaction_id,transaction_type" });
   }
 
+  // Auto-populate banking_relationships from QB Account list.
+  // Best-effort: failures here never block the financials snapshot.
+  const bankingRowCount = await syncBankingRelationshipsFromQb(
+    supabase,
+    realmId,
+    accessToken,
+    environment,
+    conn,
+  );
+
   await supabase.from("quickbooks_connections")
     .update({ last_synced_at: new Date().toISOString() })
     .eq("id", conn.id);
 
-  return { connection_id: conn.id, total_revenue: pnl.total_revenue, gross_margin: grossMarginPct };
+  return {
+    connection_id: conn.id,
+    total_revenue: pnl.total_revenue,
+    gross_margin: grossMarginPct,
+    banking_rows_imported: bankingRowCount,
+  };
 }
 
 serve(async (req) => {

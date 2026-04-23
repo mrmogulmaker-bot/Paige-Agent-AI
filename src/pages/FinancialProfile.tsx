@@ -331,11 +331,14 @@ export default function FinancialProfile() {
         .eq("user_id", user.id);
       if (pErr) throw pErr;
 
-      // 2) Wipe existing banking_relationships rows for this user (we re-write)
+      // 2) Wipe only MANUAL banking_relationships rows for this user.
+      //    QuickBooks-imported rows (source='quickbooks') are preserved so
+      //    the next QB sync stays consistent and we don't destroy verified data.
       await supabase
         .from("banking_relationships" as any)
         .delete()
-        .eq("user_id", user.id);
+        .eq("user_id", user.id)
+        .eq("source", "manual");
 
       // 3) Insert personal bank rows — one row per (institution × account_type)
       const rows: any[] = [];
