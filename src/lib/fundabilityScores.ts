@@ -167,6 +167,10 @@ export interface FundabilityProfileInputs {
   monthlyRevenueRange?: MonthlyRevenueRange | null;
   /** Average monthly business banking balance (separate from personal). */
   businessAverageMonthlyBalance?: number | null;
+
+  // ---- Comparable credit (2026) ----
+  /** All credit tradelines from credit_accounts — used for product matching. */
+  creditAccounts?: CreditAccountInput[] | null;
 }
 
 // ============================================================
