@@ -4,18 +4,18 @@ import { BarChart3, Building2, TrendingUp } from "lucide-react";
 const props = [
   {
     icon: BarChart3,
-    title: "Three-Bureau Credit Intelligence",
-    body: "Paige reads your Experian, TransUnion, and Equifax files simultaneously — identifying which bureau is your strongest, which lenders pull it, and exactly what actions move your score. Daily predictions flag opportunities and risks before they affect your funding.",
+    title: "Intelligence That Moves With You",
+    body: "An always-on intelligence layer reading your credit, capital position, and business signals across every bureau and data source — surfacing the next strategic move before you have to ask. Less guessing. More clarity.",
   },
   {
     icon: Building2,
-    title: "Real Funding Strategy — Not Generic Advice",
-    body: "From hard money loans to SBA programs to DSCR financing — Paige knows which product fits your goal, which bureau the lender pulls, what rate you qualify for today based on the live prime rate, and how far you are from the next approval threshold.",
+    title: "Strategic Execution, Not Generic Advice",
+    body: "From entity architecture to capital deployment to lender psychology — Paige operates like a seasoned strategist who already knows the playbook. Every recommendation is tied to a real outcome, a real lender, and a real next step.",
   },
   {
     icon: TrendingUp,
-    title: "CFO-Level Business Coaching",
-    body: "Entity structure, expense optimization, payroll strategy, working capital coaching, CAC and LTV analysis, and BRRRR real estate financing — Paige thinks like a seasoned business advisor, not a generic chatbot.",
+    title: "Founder-Grade Operating Leverage",
+    body: "Entity structure, expense optimization, working capital, unit economics, real estate strategy — the operational thinking high-performing founders pay advisors $5K/month for, embedded into one ecosystem you actually use.",
   },
 ];
 
