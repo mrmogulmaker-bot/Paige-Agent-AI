@@ -11,37 +11,38 @@ import {
 const features = [
   {
     icon: Brain,
-    title: "Real-Time Readiness Score",
+    title: "Real-Time Readiness Intelligence",
+    body: undefined,
     description:
-      "One number tells you exactly where every client stands for capital — built from FICO, business bureaus, utilization, revenue, time in business, and doc completeness. Updates the moment data changes.",
+      "One signal that tells you exactly where you stand to deploy capital — synthesized from credit, business bureaus, utilization, revenue, runway, and document health. Updates the moment your reality shifts.",
     accent: true,
   },
   {
     icon: DollarSign,
     title: "500+ Lender Match Engine",
     description:
-      "Live matching across SBA, banks, credit unions, CDFIs, MCAs, and equipment lenders — with bureau-aware filtering so you never waste a pull on a lender that won't say yes.",
+      "A live, bureau-aware capital marketplace — SBA, banks, credit unions, CDFIs, MCAs, equipment, DSCR. Paige surfaces only the lenders actually positioned to say yes to who you are right now.",
     accent: false,
   },
   {
     icon: FileText,
-    title: "Credit → Capital Translator",
+    title: "The Capital Translator",
     description:
-      "\"Your 68% utilization is costing $75K of SBA capacity.\" Paige speaks dollars, not scores — every factor mapped to the exact funding it unlocks or blocks.",
+      "\"Your 68% utilization is costing $75K of SBA capacity.\" Paige speaks in dollars and decisions, not scores — every variable mapped to the exact capital it unlocks or blocks.",
     accent: false,
   },
   {
     icon: GraduationCap,
-    title: "Lender-Ready Doc Packets",
+    title: "Lender-Ready Capital Packages",
     description:
-      "Tax returns, P&L, balance sheet, bank statements, entity docs — compiled, validated, and packaged in the format each lender actually wants. Zero last-minute scrambles.",
+      "Returns, P&L, balance sheet, statements, entity docs — assembled, validated, and packaged in the exact format each lender actually wants. No more last-minute scrambles before a deal.",
     accent: false,
   },
   {
     icon: Mic,
-    title: "Paige in Full Agent Mode",
+    title: "Paige in Full Operator Mode",
     description:
-      "Voice or text. She maps your credit file, queues lender outreach, schedules paydowns, and pre-fills applications — your coach approves, Paige executes. Repair work routes to Mogul Credit AI.",
+      "Voice or text. She maps your file, queues lender outreach, schedules paydowns, and pre-fills applications — you approve, Paige executes. An operator who works while you sleep.",
     accent: false,
   },
 ];
@@ -52,14 +53,16 @@ export function FeaturesSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <Badge className="mb-4 bg-accent/10 text-accent border-accent/20">
-            The Stack
+            The Infrastructure
           </Badge>
           <h2 className="text-4xl lg:text-5xl font-bold mb-4">
-            Built to Move Money,{" "}
-            <span className="text-accent font-extrabold">Not Just Scores</span>
+            More Than AI.{" "}
+            <span className="text-accent font-extrabold">An Intelligent Ecosystem.</span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Other platforms show you a credit number. Paige tells you the lender, the product, and the move that gets you funded this quarter.
+            Other platforms hand you a number. Paige hands you the lender, the
+            structure, the move, and the leverage that gets you funded and
+            scaling — this quarter, not someday.
           </p>
         </div>
 

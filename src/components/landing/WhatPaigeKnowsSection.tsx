@@ -44,16 +44,16 @@ export function WhatPaigeKnowsSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12 max-w-3xl mx-auto">
           <Badge className="mb-4 bg-gold/10 text-gold-dark border-gold/20">
-            What Paige Knows
+            The Knowledge Stack
           </Badge>
           <h2 className="text-4xl lg:text-5xl font-bold mb-4">
-            One Advisor.{" "}
-            <span className="text-accent font-extrabold">Every Answer.</span>
+            One Ecosystem.{" "}
+            <span className="text-accent font-extrabold">Every Lever.</span>
           </h2>
           <p className="text-lg text-muted-foreground">
-            Paige is trained on the full spectrum of credit, funding, real
-            estate, and business strategy so you never have to go looking for
-            answers elsewhere.
+            Trained across the full spectrum of credit, capital, real estate,
+            entity strategy, and operator psychology — so the answer you need
+            is always inside the system, not somewhere on the internet.
           </p>
         </div>
 

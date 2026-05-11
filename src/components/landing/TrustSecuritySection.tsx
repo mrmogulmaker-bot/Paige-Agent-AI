@@ -35,10 +35,12 @@ export function TrustSecuritySection() {
             </span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">
-            Your Data, Your Privacy
+            Built on Trust. Engineered for Operators.
           </h2>
           <p className="text-base text-muted-foreground mt-3 max-w-2xl mx-auto">
-            PaigeAgent was built for security from the ground up.
+            Serious entrepreneurs deserve infrastructure that protects what
+            they're building. PaigeAgent was architected for security from
+            the foundation up.
           </p>
         </div>
 

@@ -42,7 +42,7 @@ export function FAQSection() {
             FAQ
           </Badge>
           <h2 className="text-4xl lg:text-5xl font-bold mb-4">
-            Questions About <span className="text-accent">Paige</span>
+            What Operators <span className="text-accent">Ask First</span>
           </h2>
         </div>
 

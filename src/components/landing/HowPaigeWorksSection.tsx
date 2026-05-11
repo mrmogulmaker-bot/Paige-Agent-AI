@@ -6,26 +6,26 @@ const steps = [
   {
     icon: MessageCircle,
     n: "01",
-    title: "Discover Your Goal",
-    body: "Paige starts by asking what you are working toward — buying investment property, getting business funding, building credit, or something else entirely. Your goal shapes everything she does next.",
+    title: "Define the Mission",
+    body: "Every founder moves with intent. Paige starts by mapping your real objective — the business you're scaling, the capital you need, the asset you're acquiring — and aligns the entire ecosystem to it.",
   },
   {
     icon: Search,
     n: "02",
-    title: "Analyze Your Profile",
-    body: "Upload your credit report and Paige reads all three bureaus simultaneously. She identifies your strongest bureau, maps your negative items to their funding impact, and builds your starting point.",
+    title: "Read the Landscape",
+    body: "Credit profile, capital position, business signals, lender psychology — Paige analyzes the full operating picture across every data layer to surface what actually moves the needle.",
   },
   {
     icon: Map,
     n: "03",
-    title: "Build Your Roadmap",
-    body: "Paige connects your credit profile to your goal and builds a step-by-step roadmap — which scores to hit, which lenders to target, which entity structure to use, and in what order to execute.",
+    title: "Engineer the Path",
+    body: "Not generic advice. A precision roadmap — which scores to hit, which lenders to target, which structure to use, which actions in what order — built around how you actually operate.",
   },
   {
     icon: ArrowRight,
     n: "04",
-    title: "Move With You",
-    body: "As your profile improves Paige updates your strategy, alerts you to new opportunities, and searches for lenders in real time. She remembers every conversation and builds on it.",
+    title: "Execute With Momentum",
+    body: "Paige stays in motion with you — adapting strategy as your profile evolves, surfacing new capital opportunities, and keeping you accountable to the next move that compounds.",
   },
 ];
 
@@ -38,13 +38,13 @@ export function HowPaigeWorksSection() {
             How It Works
           </Badge>
           <h2 className="text-4xl lg:text-5xl font-bold mb-4">
-            Your Advisor. Your Roadmap.{" "}
-            <span className="text-accent font-extrabold">Your Results.</span>
+            Strategy. Execution.{" "}
+            <span className="text-accent font-extrabold">Scale.</span>
           </h2>
           <p className="text-lg text-muted-foreground">
-            Paige does not give generic credit tips. She builds a personalized
-            strategy based on your actual credit file, your business profile,
-            and your specific financial goal.
+            Paige isn't a chatbot answering questions. It's an intelligent
+            operating system engineered around how serious entrepreneurs
+            actually build, fund, and scale.
           </p>
         </div>
 
