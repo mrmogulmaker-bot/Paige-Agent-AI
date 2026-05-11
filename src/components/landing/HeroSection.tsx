@@ -58,23 +58,23 @@ export function HeroSection() {
           <div className="space-y-7 animate-fade-in">
             <Badge className="bg-gold/10 text-gold-dark border-gold/20">
               <Sparkles className="w-3 h-3 mr-1.5" />
-              Founding Beta — Limited Spots
+              The Entrepreneurial Operating System
             </Badge>
 
             <h1 className="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]">
-              Your Personal{" "}
-              <span className="text-accent">AI Funding Advisor</span>
+              Built for Entrepreneurs Who{" "}
+              <span className="text-accent">Move Differently.</span>
             </h1>
 
             <p className="text-2xl text-foreground/90 font-medium leading-snug">
-              Built for Entrepreneurs Who Are Serious About Building Wealth.
+              Your AI-powered business growth infrastructure.
             </p>
 
             <p className="text-lg text-muted-foreground leading-relaxed max-w-lg">
-              Paige analyzes your credit across all three bureaus, builds your
-              personalized funding roadmap, coaches your business strategy, and
-              searches thousands of lenders — all in one conversation. Stop
-              guessing. Start building.
+              More than an assistant. Paige is an intelligent ecosystem — a 24/7
+              advisor, strategist, and operator that turns your credit,
+              capital, and execution into one connected growth engine. Guidance.
+              Strategy. Execution. Scale.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">
@@ -83,7 +83,7 @@ export function HeroSection() {
                 className="bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold"
                 onClick={() => navigate("/auth?mode=signup")}
               >
-                Start Your Free Assessment
+                Enter the Ecosystem
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <Button
@@ -96,12 +96,12 @@ export function HeroSection() {
                     ?.scrollIntoView({ behavior: "smooth" });
                 }}
               >
-                See How Paige Works
+                See How It Works
               </Button>
             </div>
 
             <p className="text-xs text-muted-foreground">
-              7-day free trial · No credit card required · FCRA &amp; CROA compliant
+              7-day trial · No card required · Built for serious operators
             </p>
           </div>
 
