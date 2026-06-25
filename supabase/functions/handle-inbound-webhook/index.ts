@@ -148,6 +148,42 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "log_communication": {
+        const {
+          client_id,
+          channel,
+          message_type,
+          subject,
+          preview,
+          status,
+          provider_message_id,
+          error_message,
+        } = actionData || {};
+        if (!client_id || !channel || !message_type) {
+          return res(400, { success: false, message: "client_id, channel, and message_type are required" });
+        }
+        if (!["email", "sms", "voice", "push", "ghl", "other"].includes(channel)) {
+          return res(400, { success: false, message: "channel must be one of: email, sms, voice, push, ghl, other" });
+        }
+
+        const { error } = await supabase.from("communication_log").insert({
+          user_id: client_id,
+          channel,
+          message_type,
+          subject: subject || null,
+          preview: preview || null,
+          status: status || "sent",
+          provider_message_id: provider_message_id || null,
+          error_message: error_message || null,
+        });
+
+        if (error) return res(400, { success: false, message: error.message });
+
+        result = { success: true, message: "Communication logged" };
+        break;
+      }
+
+
       case "log_funding": {
         const { client_id, amount, lender_name, product_type, date_secured } = actionData || {};
         if (!client_id || !amount || !lender_name || !product_type || !date_secured) {
