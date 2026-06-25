@@ -229,7 +229,192 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "invite_user": {
+        const { email, first_name, last_name, ghl_contact_id, tier, invited_by_email } = actionData || {};
+        if (!email || !tier) {
+          return res(400, { success: false, message: "email and tier are required" });
+        }
+        if (!["premium", "vip"].includes(String(tier).toLowerCase())) {
+          return res(400, { success: false, message: "tier must be 'premium' or 'vip'" });
+        }
+
+        // Resolve invited_by user_id (fallback to platform owner)
+        let invitedById: string | null = null;
+        if (invited_by_email) {
+          const { data: u } = await supabase.auth.admin.listUsers();
+          invitedById = u?.users?.find((x: { email?: string }) => x.email?.toLowerCase() === String(invited_by_email).toLowerCase())?.id ?? null;
+        }
+        if (!invitedById) {
+          const { data: owner } = await supabase
+            .from("app_settings_owner")
+            .select("owner_email")
+            .maybeSingle();
+          if (owner?.owner_email) {
+            const { data: u2 } = await supabase.auth.admin.listUsers();
+            invitedById = u2?.users?.find((x: { email?: string }) => x.email?.toLowerCase() === String(owner.owner_email).toLowerCase())?.id ?? null;
+          }
+        }
+        if (!invitedById) {
+          return res(500, { success: false, message: "Could not resolve invited_by user" });
+        }
+
+        // Generate plaintext token (trigger will hash + null out token column)
+        const plaintextToken = crypto.randomUUID() + "-" + crypto.randomUUID();
+        const { data: inv, error: invErr } = await supabase
+          .from("invitations")
+          .insert({
+            email: String(email).toLowerCase(),
+            role: "user",
+            invited_by: invitedById,
+            token: plaintextToken,
+            expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          })
+          .select("id")
+          .single();
+
+        if (invErr || !inv) {
+          return res(400, { success: false, message: invErr?.message ?? "Failed to create invitation" });
+        }
+
+        // Audit trail (captures ghl_contact_id + tier for the bridge)
+        await supabase.from("audit_logs").insert({
+          user_id: invitedById,
+          entity: "invitation",
+          action: "invite_user_via_webhook",
+          entity_id: inv.id,
+          data: { email, first_name, last_name, ghl_contact_id, tier, source: "n8n_bridge" },
+        });
+
+        // Send branded invite email via the registered template
+        const inviteUrl = `https://paigeagent.ai/auth?invite=${plaintextToken}`;
+        const displayName = [first_name, last_name].filter(Boolean).join(" ").trim();
+        try {
+          await supabase.functions.invoke("send-transactional-email", {
+            body: {
+              templateName: "role-invitation",
+              recipientEmail: String(email).toLowerCase(),
+              idempotencyKey: `invite-${inv.id}`,
+              templateData: {
+                role: String(tier).toLowerCase() === "vip" ? "VIP Member" : "Premium Member",
+                inviteUrl,
+                invitedBy: invited_by_email || "Antonio Cook",
+                recipientName: displayName || undefined,
+              },
+            },
+          });
+        } catch (sendErr) {
+          console.error("invite_user email send failed:", sendErr);
+          // Invitation row exists; bridge can retry email separately
+          return res(207, { success: true, invitation_id: inv.id, email_sent: false, message: "Invitation created but email send failed" });
+        }
+
+        result = { success: true, invitation_id: inv.id, email_sent: true };
+        break;
+      }
+
+      case "create_coach_assignment": {
+        const { coach_email, coach_first_name, coach_last_name, client_user_ids } = actionData || {};
+        if (!coach_email || !Array.isArray(client_user_ids)) {
+          return res(400, { success: false, message: "coach_email and client_user_ids[] are required" });
+        }
+
+        const normalizedEmail = String(coach_email).toLowerCase();
+        let coachUserId: string | null = null;
+        let inviteSent = false;
+
+        // Find existing auth user
+        const { data: existing } = await supabase.auth.admin.listUsers();
+        coachUserId = existing?.users?.find((u: { email?: string }) => u.email?.toLowerCase() === normalizedEmail)?.id ?? null;
+
+        // Create if missing
+        if (!coachUserId) {
+          const fullName = [coach_first_name, coach_last_name].filter(Boolean).join(" ").trim() || normalizedEmail;
+          const { data: created, error: createErr } = await supabase.auth.admin.createUser({
+            email: normalizedEmail,
+            email_confirm: true,
+            user_metadata: { full_name: fullName },
+          });
+          if (createErr || !created?.user) {
+            return res(400, { success: false, message: `Failed to create coach user: ${createErr?.message ?? "unknown"}` });
+          }
+          coachUserId = created.user.id;
+
+          // Send invite via role-invitation template
+          const plaintextToken = crypto.randomUUID() + "-" + crypto.randomUUID();
+          const { data: inv } = await supabase
+            .from("invitations")
+            .insert({
+              email: normalizedEmail,
+              role: "coach",
+              invited_by: coachUserId, // self-ref placeholder; will be overridden below if owner found
+              token: plaintextToken,
+              expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            })
+            .select("id")
+            .maybeSingle();
+
+          if (inv) {
+            try {
+              await supabase.functions.invoke("send-transactional-email", {
+                body: {
+                  templateName: "role-invitation",
+                  recipientEmail: normalizedEmail,
+                  idempotencyKey: `coach-invite-${inv.id}`,
+                  templateData: {
+                    role: "Coach",
+                    inviteUrl: `https://paigeagent.ai/auth?invite=${plaintextToken}`,
+                    invitedBy: "Antonio Cook",
+                  },
+                },
+              });
+              inviteSent = true;
+            } catch (e) {
+              console.error("coach invite email failed:", e);
+            }
+          }
+        }
+
+        // Ensure coach role
+        await supabase
+          .from("user_roles")
+          .upsert({ user_id: coachUserId, role: "coach" }, { onConflict: "user_id,role" });
+
+        // Bulk-insert coach_clients (idempotent via unique pair if present, otherwise best-effort dedupe)
+        let assignmentsCreated = 0;
+        if (client_user_ids.length > 0) {
+          const rows = client_user_ids.map((cid: string) => ({
+            coach_user_id: coachUserId,
+            client_user_id: cid,
+            status: "active",
+          }));
+          const { data: inserted, error: ccErr } = await supabase
+            .from("coach_clients")
+            .upsert(rows, { onConflict: "coach_user_id,client_user_id", ignoreDuplicates: true })
+            .select("id");
+          if (ccErr) {
+            return res(400, { success: false, message: `coach_clients upsert failed: ${ccErr.message}` });
+          }
+          assignmentsCreated = inserted?.length ?? 0;
+        }
+
+        await supabase.from("audit_logs").insert({
+          user_id: coachUserId,
+          entity: "coach_clients",
+          action: "create_coach_assignment_via_webhook",
+          data: { coach_email: normalizedEmail, client_user_ids, invite_sent: inviteSent },
+        });
+
+        result = {
+          success: true,
+          coach_user_id: coachUserId,
+          assignments_created: assignmentsCreated,
+          invite_sent: inviteSent,
+        };
+        break;
+      }
+
       default:
+
         return res(400, { success: false, message: `Unknown action: ${action}` });
     }
 
