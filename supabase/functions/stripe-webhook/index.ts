@@ -2,11 +2,19 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
+// Legacy Stripe account (original PaigeAgent account)
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
   apiVersion: "2025-08-27.basil",
 });
-
 const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET") || "";
+
+// V2 Stripe account (new account being set up by MMA Ops). Both stay live so
+// we can dual-route during the cutover. Either secret can verify a signature.
+const stripeV2 = new Stripe(
+  Deno.env.get("STRIPE_SECRET_KEY_V2") || Deno.env.get("STRIPE_SECRET_KEY") || "",
+  { apiVersion: "2025-08-27.basil" },
+);
+const webhookSecretV2 = Deno.env.get("STRIPE_WEBHOOK_SECRET_V2") || "";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,6 +25,166 @@ const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[STRIPE-WEBHOOK] ${step}${detailsStr}`);
 };
+
+// === Step 2 helpers: tier resolution, tier_state writes, MMA OS short-hop ===
+
+// Map a Stripe price ID → canonical tier label. Price IDs live in env so the
+// Stripe-side IDs can rotate without a code deploy (Standard $8 / Premium $44
+// / VIP $97 per project knowledge §2).
+function priceIdToTier(priceId: string | null | undefined): string | null {
+  if (!priceId) return null;
+  const map: Record<string, string> = {};
+  const std = Deno.env.get("STRIPE_PRICE_STANDARD"); if (std) map[std] = "standard";
+  const prm = Deno.env.get("STRIPE_PRICE_PREMIUM");  if (prm) map[prm] = "premium";
+  const vip = Deno.env.get("STRIPE_PRICE_VIP");      if (vip) map[vip] = "vip";
+  // V2 account overrides (optional — for the new Stripe account's price IDs)
+  const stdV2 = Deno.env.get("STRIPE_PRICE_STANDARD_V2"); if (stdV2) map[stdV2] = "standard";
+  const prmV2 = Deno.env.get("STRIPE_PRICE_PREMIUM_V2");  if (prmV2) map[prmV2] = "premium";
+  const vipV2 = Deno.env.get("STRIPE_PRICE_VIP_V2");      if (vipV2) map[vipV2] = "vip";
+  return map[priceId] ?? null;
+}
+
+// Upsert tier_state by contact_email + write an audit_log row + fire a
+// best-effort short-hop to MMA OS. Never throws — failures are logged.
+async function upsertTierState(
+  supabaseAdmin: any,
+  args: {
+    email: string;
+    tier: string;
+    paymentStatus?: string;
+    source: string;
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+    stripePriceId?: string | null;
+    stripeAccountId?: string | null;
+    currentPeriodEnd?: string | null;
+    lastPaymentAt?: string | null;
+    eventId: string;
+    eventType: string;
+  },
+) {
+  if (!args.email) {
+    logStep("upsertTierState skipped: missing email", { eventId: args.eventId });
+    return;
+  }
+  try {
+    // Try to resolve user_id + client_id for nicer joins downstream.
+    let userId: string | null = null;
+    let clientId: string | null = null;
+    try {
+      const { data: userData } = await supabaseAdmin.auth.admin.listUsers();
+      const u = userData?.users?.find((x: any) => x.email?.toLowerCase() === args.email.toLowerCase());
+      if (u) userId = u.id;
+    } catch (_) { /* ignore */ }
+    try {
+      const { data: c } = await supabaseAdmin
+        .from("clients")
+        .select("id")
+        .ilike("email", args.email)
+        .maybeSingle();
+      if (c?.id) clientId = c.id;
+    } catch (_) { /* ignore */ }
+
+    const { error } = await supabaseAdmin
+      .from("tier_state")
+      .upsert(
+        {
+          contact_email: args.email.toLowerCase(),
+          user_id: userId,
+          client_id: clientId,
+          tier: args.tier,
+          payment_status: args.paymentStatus ?? "active",
+          source: args.source,
+          stripe_customer_id: args.stripeCustomerId ?? null,
+          stripe_subscription_id: args.stripeSubscriptionId ?? null,
+          stripe_price_id: args.stripePriceId ?? null,
+          stripe_account_id: args.stripeAccountId ?? null,
+          current_period_end: args.currentPeriodEnd ?? null,
+          last_payment_at: args.lastPaymentAt ?? null,
+        },
+        { onConflict: "contact_email" },
+      );
+    if (error) {
+      logStep("tier_state upsert failed", { error: error.message, email: args.email });
+      return;
+    }
+
+    // Audit log — GLBA §5 requires audit trail on every billing event.
+    try {
+      await supabaseAdmin.from("audit_logs").insert({
+        event_type: `stripe.${args.eventType}`,
+        actor_id: userId,
+        metadata: {
+          email: args.email,
+          tier: args.tier,
+          payment_status: args.paymentStatus,
+          stripe_event_id: args.eventId,
+          stripe_account_id: args.stripeAccountId,
+          stripe_subscription_id: args.stripeSubscriptionId,
+          source: args.source,
+        },
+      });
+    } catch (e) {
+      logStep("audit_logs insert failed (non-fatal)", { error: String(e) });
+    }
+
+    // Short-hop to MMA OS so its brain sees the tier change instantly.
+    // Best-effort: failure never blocks the 200 back to Stripe.
+    await fireMmaOsTierSync({
+      email: args.email,
+      tier: args.tier,
+      paymentStatus: args.paymentStatus ?? "active",
+      stripeAccountId: args.stripeAccountId ?? null,
+      eventId: args.eventId,
+    });
+  } catch (e) {
+    logStep("upsertTierState exception", { error: String(e) });
+  }
+}
+
+async function fireMmaOsTierSync(payload: {
+  email: string;
+  tier: string;
+  paymentStatus: string;
+  stripeAccountId: string | null;
+  eventId: string;
+}) {
+  const url = Deno.env.get("MMA_OS_EDGE_URL") || Deno.env.get("MMA_OS_BRIDGE_URL");
+  const key = Deno.env.get("MMA_OS_BRIDGE_API_KEY");
+  if (!url || !key) {
+    logStep("MMA OS short-hop skipped: missing MMA_OS_EDGE_URL or MMA_OS_BRIDGE_API_KEY");
+    return;
+  }
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        verb: "sync_tier",
+        payload: {
+          contact_email: payload.email,
+          tier: payload.tier,
+          payment_status: payload.paymentStatus,
+          source: "paige.stripe",
+          stripe_account_id: payload.stripeAccountId,
+          stripe_event_id: payload.eventId,
+          occurred_at: new Date().toISOString(),
+        },
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      logStep("MMA OS short-hop non-2xx (non-fatal)", { status: res.status, body: text.slice(0, 200) });
+    } else {
+      logStep("MMA OS short-hop succeeded", { eventId: payload.eventId });
+    }
+  } catch (e) {
+    logStep("MMA OS short-hop exception (non-fatal)", { error: String(e) });
+  }
+}
 
 // Sends affiliate-conversion-earned email after a successful attribution.
 // Looks up: affiliate user email, commission rate label, and MTD earnings.
@@ -181,30 +349,71 @@ serve(async (req) => {
     }
 
     const body = await req.text();
-    
-    // Verify webhook signature
+
+    // Verify webhook signature — try V2 secret first, fall back to legacy.
+    // Either Stripe account can fire this endpoint; whichever signing secret
+    // verifies the payload tells us which account it came from.
     let event: Stripe.Event;
-    try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-      logStep("Webhook signature verified", { type: event.type });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      logStep("Webhook signature verification failed", { error: errorMessage });
-      return new Response(JSON.stringify({ error: "Invalid signature" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    let verifiedAccount: "v2" | "legacy" | null = null;
+    if (webhookSecretV2) {
+      try {
+        event = stripeV2.webhooks.constructEvent(body, signature, webhookSecretV2);
+        verifiedAccount = "v2";
+      } catch (_) { /* fall through to legacy */ }
     }
+    if (!verifiedAccount) {
+      try {
+        event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+        verifiedAccount = "legacy";
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        logStep("Webhook signature verification failed (both accounts)", { error: errorMessage });
+        return new Response(JSON.stringify({ error: "Invalid signature" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+    logStep("Webhook signature verified", { type: event!.type, account: verifiedAccount });
+    const stripeAccountId = (event! as any).account ?? null;
 
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // Idempotency gate — Stripe retries the same event on transient failures.
+    // INSERT first; if it conflicts, we already processed this event and can
+    // ACK immediately. Guarantees handlers run at-most-once per event.
+    {
+      const { error: idempErr } = await supabaseAdmin
+        .from("stripe_event_log")
+        .insert({
+          event_id: event!.id,
+          account_id: stripeAccountId,
+          type: event!.type,
+          livemode: (event! as any).livemode ?? null,
+          metadata: { verified_account: verifiedAccount },
+        });
+      if (idempErr) {
+        // Postgres unique_violation = 23505 → already processed
+        if ((idempErr as any).code === "23505") {
+          logStep("Duplicate event — already processed, acking", { eventId: event!.id });
+          return new Response(JSON.stringify({ received: true, duplicate: true }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        // Any other error: log but proceed (better to risk dup than lose the event)
+        logStep("stripe_event_log insert error (continuing)", { error: idempErr.message });
+      }
+    }
+
     // Handle different event types
     const ADDITIONAL_BUSINESS_PRICE_ID = Deno.env.get(
       "STRIPE_ADDITIONAL_BUSINESS_PRICE_ID",
     ) ?? "";
+
 
     switch (event.type) {
       case "checkout.session.completed": {
@@ -672,9 +881,125 @@ serve(async (req) => {
         break;
       }
 
+      case "customer.subscription.created": {
+        const subscription = event.data.object as Stripe.Subscription;
+        logStep("Processing customer.subscription.created", { subscriptionId: subscription.id });
+        try {
+          const activeStripe = verifiedAccount === "v2" ? stripeV2 : stripe;
+          const customer = await activeStripe.customers.retrieve(subscription.customer as string);
+          const email = (customer as Stripe.Customer).email;
+          const priceId = subscription.items.data[0]?.price?.id ?? null;
+          const tier = priceIdToTier(priceId) ?? "standard";
+          if (email) {
+            await upsertTierState(supabaseAdmin, {
+              email,
+              tier,
+              paymentStatus: subscription.status === "active" ? "active" : subscription.status,
+              source: "paige.stripe",
+              stripeCustomerId: subscription.customer as string,
+              stripeSubscriptionId: subscription.id,
+              stripePriceId: priceId,
+              stripeAccountId,
+              currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+              eventId: event.id,
+              eventType: event.type,
+            });
+          }
+        } catch (e) {
+          logStep("subscription.created tier sync error", { error: String(e) });
+        }
+        break;
+      }
+
+      case "invoice.paid": {
+        const invoice = event.data.object as Stripe.Invoice;
+        logStep("Processing invoice.paid", { invoiceId: invoice.id });
+        try {
+          const activeStripe = verifiedAccount === "v2" ? stripeV2 : stripe;
+          const customerId = invoice.customer as string;
+          const customer = await activeStripe.customers.retrieve(customerId);
+          const email = (customer as Stripe.Customer).email;
+          let priceId: string | null = null;
+          let currentPeriodEnd: string | null = null;
+          if (invoice.subscription) {
+            const sub = await activeStripe.subscriptions.retrieve(invoice.subscription as string);
+            priceId = sub.items.data[0]?.price?.id ?? null;
+            currentPeriodEnd = new Date(sub.current_period_end * 1000).toISOString();
+          }
+          const tier = priceIdToTier(priceId) ?? "standard";
+          if (email) {
+            await upsertTierState(supabaseAdmin, {
+              email,
+              tier,
+              paymentStatus: "active",
+              source: "paige.stripe",
+              stripeCustomerId: customerId,
+              stripeSubscriptionId: (invoice.subscription as string) ?? null,
+              stripePriceId: priceId,
+              stripeAccountId,
+              currentPeriodEnd,
+              lastPaymentAt: new Date().toISOString(),
+              eventId: event.id,
+              eventType: event.type,
+            });
+          }
+        } catch (e) {
+          logStep("invoice.paid tier sync error", { error: String(e) });
+        }
+        break;
+      }
+
+      case "charge.refunded": {
+        const charge = event.data.object as Stripe.Charge;
+        logStep("Processing charge.refunded", { chargeId: charge.id, amount: charge.amount_refunded });
+        try {
+          const activeStripe = verifiedAccount === "v2" ? stripeV2 : stripe;
+          const customer = await activeStripe.customers.retrieve(charge.customer as string);
+          const email = (customer as Stripe.Customer).email;
+          // Full refund → downgrade to standard. Partial refund → log only.
+          const isFullRefund = charge.amount_refunded >= charge.amount;
+          if (email && isFullRefund) {
+            await upsertTierState(supabaseAdmin, {
+              email,
+              tier: "standard",
+              paymentStatus: "canceled",
+              source: "paige.stripe",
+              stripeCustomerId: charge.customer as string,
+              stripeAccountId,
+              eventId: event.id,
+              eventType: event.type,
+            });
+          } else if (email) {
+            // Partial refund: still write an audit log for compliance.
+            await supabaseAdmin.from("audit_logs").insert({
+              event_type: "stripe.charge.refunded.partial",
+              metadata: {
+                email,
+                amount: charge.amount,
+                amount_refunded: charge.amount_refunded,
+                stripe_charge_id: charge.id,
+                stripe_event_id: event.id,
+              },
+            });
+          }
+        } catch (e) {
+          logStep("charge.refunded tier sync error", { error: String(e) });
+        }
+        break;
+      }
+
       default:
         logStep("Unhandled event type", { type: event.type });
     }
+
+    // Mark event as processed (idempotency log close-out)
+    try {
+      await supabaseAdmin
+        .from("stripe_event_log")
+        .update({ processed_at: new Date().toISOString() })
+        .eq("event_id", event.id);
+    } catch (_) { /* non-fatal */ }
+
 
     return new Response(JSON.stringify({ received: true }), {
       status: 200,
