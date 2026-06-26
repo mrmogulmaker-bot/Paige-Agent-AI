@@ -3104,6 +3104,73 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
               },
             },
           },
+          {
+            type: "function",
+            function: {
+              name: "crm_update_pipeline_stage",
+              description: "Admin/coach only. Move a client to a new pipeline stage. Use when the operator says things like 'move Jane to In Progress', 'mark this lead as closed', 'pause this client'.",
+              parameters: {
+                type: "object",
+                properties: {
+                  client_id: { type: "string", description: "clients.id UUID of the client to update." },
+                  status: { type: "string", enum: ["pending", "active", "inactive", "archived"], description: "Target pipeline stage. pending=Lead, active=In Progress, inactive=Paused, archived=Closed." },
+                  reason: { type: "string", description: "Short reason for the change, stored in audit log." }
+                },
+                required: ["client_id", "status"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_assign_coach",
+              description: "Admin/coach only. Assign a coach (by email) to one or more clients. Use when the operator says 'assign Antonio to these 5 BTF clients' or 'put this lead on my roster'.",
+              parameters: {
+                type: "object",
+                properties: {
+                  coach_email: { type: "string", description: "Email of the coach user. Must be an existing auth user with coach or admin role." },
+                  client_ids: { type: "array", items: { type: "string" }, description: "Array of clients.id UUIDs." }
+                },
+                required: ["coach_email", "client_ids"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_create_task",
+              description: "Admin/coach only. Create a task on the operator queue (or for an assigned user). Use for follow-ups, document collection, outreach reminders.",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  description: { type: "string" },
+                  due_date: { type: "string", description: "ISO date YYYY-MM-DD." },
+                  track: { type: "string", description: "Optional category, e.g. accel, build, fund, outreach." },
+                  assignee_user_id: { type: "string", description: "Optional auth user UUID. Defaults to current user." }
+                },
+                required: ["title"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_log_activity",
+              description: "Admin/coach only. Log a communication or activity (call, email, note, meeting) on a client's timeline.",
+              parameters: {
+                type: "object",
+                properties: {
+                  client_user_id: { type: "string", description: "auth.users.id of the client the activity is about." },
+                  channel: { type: "string", enum: ["call", "email", "sms", "note", "meeting"], description: "Activity channel." },
+                  direction: { type: "string", enum: ["inbound", "outbound", "internal"] },
+                  subject: { type: "string" },
+                  body: { type: "string" }
+                },
+                required: ["client_user_id", "channel", "body"]
+              }
+            }
+          },
         ],
         tool_choice: "auto",
         stream: true,
@@ -3412,6 +3479,105 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
             };
           }
           toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(payload) });
+        } else if (
+          tc.function.name === "crm_update_pipeline_stage" ||
+          tc.function.name === "crm_assign_coach" ||
+          tc.function.name === "crm_create_task" ||
+          tc.function.name === "crm_log_activity"
+        ) {
+          // Role gate: admin or coach only
+          const { data: roleRows } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", user.id);
+          const roles = (roleRows || []).map((r: any) => r.role);
+          const allowed = roles.includes("admin") || roles.includes("coach");
+          if (!allowed) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({ success: false, error: "CRM operator tools are restricted to admins and coaches." }),
+            });
+            continue;
+          }
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const admin = createClient(supabaseUrl, supabaseServiceKey);
+            let result: any = { success: false };
+
+            if (tc.function.name === "crm_update_pipeline_stage") {
+              const { error } = await admin
+                .from("clients")
+                .update({ status: args.status, updated_at: new Date().toISOString() })
+                .eq("id", args.client_id);
+              if (error) throw error;
+              await admin.from("audit_logs").insert({
+                user_id: user.id,
+                action: "crm_pipeline_change",
+                resource_type: "clients",
+                resource_id: args.client_id,
+                metadata: { status: args.status, reason: args.reason || null, via: "paige" },
+              });
+              result = { success: true, client_id: args.client_id, status: args.status };
+            } else if (tc.function.name === "crm_assign_coach") {
+              // Look up coach by email via auth admin
+              const { data: u } = await admin.auth.admin.listUsers();
+              const coach = u?.users?.find((x: any) => (x.email || "").toLowerCase() === String(args.coach_email || "").toLowerCase());
+              if (!coach) throw new Error(`Coach not found for email ${args.coach_email}`);
+              const ids = Array.isArray(args.client_ids) ? args.client_ids : [];
+              const { error } = await admin
+                .from("clients")
+                .update({ assigned_coach_user_id: coach.id, updated_at: new Date().toISOString() })
+                .in("id", ids);
+              if (error) throw error;
+              await admin.from("audit_logs").insert({
+                user_id: user.id,
+                action: "crm_assign_coach",
+                resource_type: "clients",
+                metadata: { coach_user_id: coach.id, coach_email: args.coach_email, client_ids: ids, via: "paige" },
+              });
+              result = { success: true, assigned: ids.length, coach_user_id: coach.id };
+            } else if (tc.function.name === "crm_create_task") {
+              const assignee = args.assignee_user_id || user.id;
+              const { data: row, error } = await admin
+                .from("tasks")
+                .insert({
+                  user_id: assignee,
+                  title: args.title,
+                  description: args.description || null,
+                  due_date: args.due_date || null,
+                  track: args.track || null,
+                  status: "pending",
+                })
+                .select()
+                .single();
+              if (error) throw error;
+              result = { success: true, task_id: row?.id };
+            } else if (tc.function.name === "crm_log_activity") {
+              const { data: row, error } = await admin
+                .from("communication_log")
+                .insert({
+                  user_id: args.client_user_id,
+                  channel: args.channel,
+                  message_type: args.direction || "internal",
+                  subject: args.subject || null,
+                  preview: String(args.body || "").slice(0, 500),
+                  status: "logged",
+                })
+                .select()
+                .single();
+              if (error) throw error;
+              result = { success: true, log_id: row?.id };
+            }
+
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
+          } catch (err) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
+            });
+          }
         }
       }
 
