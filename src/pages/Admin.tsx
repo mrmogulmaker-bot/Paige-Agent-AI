@@ -163,6 +163,18 @@ const Admin = () => {
     <AdminLayout userRole={userRole}>
       <Routes>
         <Route index element={<AdminOverview stats={stats} />} />
+        <Route path="contacts" element={
+          <Suspense fallback={<SuspenseFallback />}><ContactsAdmin /></Suspense>
+        } />
+        <Route path="pipeline" element={
+          <Suspense fallback={<SuspenseFallback />}><PipelineAdmin /></Suspense>
+        } />
+        <Route path="tasks" element={
+          <Suspense fallback={<SuspenseFallback />}><TasksAdmin /></Suspense>
+        } />
+        <Route path="coaches" element={
+          <Suspense fallback={<SuspenseFallback />}><CoachesAdmin /></Suspense>
+        } />
         <Route path="clients" element={
           <Suspense fallback={<SuspenseFallback />}>
             <ClientManagementDashboard onViewClient={handleViewClient} onViewInternalClient={handleViewInternalClient} />
