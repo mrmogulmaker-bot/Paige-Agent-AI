@@ -881,9 +881,125 @@ serve(async (req) => {
         break;
       }
 
+      case "customer.subscription.created": {
+        const subscription = event.data.object as Stripe.Subscription;
+        logStep("Processing customer.subscription.created", { subscriptionId: subscription.id });
+        try {
+          const activeStripe = verifiedAccount === "v2" ? stripeV2 : stripe;
+          const customer = await activeStripe.customers.retrieve(subscription.customer as string);
+          const email = (customer as Stripe.Customer).email;
+          const priceId = subscription.items.data[0]?.price?.id ?? null;
+          const tier = priceIdToTier(priceId) ?? "standard";
+          if (email) {
+            await upsertTierState(supabaseAdmin, {
+              email,
+              tier,
+              paymentStatus: subscription.status === "active" ? "active" : subscription.status,
+              source: "paige.stripe",
+              stripeCustomerId: subscription.customer as string,
+              stripeSubscriptionId: subscription.id,
+              stripePriceId: priceId,
+              stripeAccountId,
+              currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+              eventId: event.id,
+              eventType: event.type,
+            });
+          }
+        } catch (e) {
+          logStep("subscription.created tier sync error", { error: String(e) });
+        }
+        break;
+      }
+
+      case "invoice.paid": {
+        const invoice = event.data.object as Stripe.Invoice;
+        logStep("Processing invoice.paid", { invoiceId: invoice.id });
+        try {
+          const activeStripe = verifiedAccount === "v2" ? stripeV2 : stripe;
+          const customerId = invoice.customer as string;
+          const customer = await activeStripe.customers.retrieve(customerId);
+          const email = (customer as Stripe.Customer).email;
+          let priceId: string | null = null;
+          let currentPeriodEnd: string | null = null;
+          if (invoice.subscription) {
+            const sub = await activeStripe.subscriptions.retrieve(invoice.subscription as string);
+            priceId = sub.items.data[0]?.price?.id ?? null;
+            currentPeriodEnd = new Date(sub.current_period_end * 1000).toISOString();
+          }
+          const tier = priceIdToTier(priceId) ?? "standard";
+          if (email) {
+            await upsertTierState(supabaseAdmin, {
+              email,
+              tier,
+              paymentStatus: "active",
+              source: "paige.stripe",
+              stripeCustomerId: customerId,
+              stripeSubscriptionId: (invoice.subscription as string) ?? null,
+              stripePriceId: priceId,
+              stripeAccountId,
+              currentPeriodEnd,
+              lastPaymentAt: new Date().toISOString(),
+              eventId: event.id,
+              eventType: event.type,
+            });
+          }
+        } catch (e) {
+          logStep("invoice.paid tier sync error", { error: String(e) });
+        }
+        break;
+      }
+
+      case "charge.refunded": {
+        const charge = event.data.object as Stripe.Charge;
+        logStep("Processing charge.refunded", { chargeId: charge.id, amount: charge.amount_refunded });
+        try {
+          const activeStripe = verifiedAccount === "v2" ? stripeV2 : stripe;
+          const customer = await activeStripe.customers.retrieve(charge.customer as string);
+          const email = (customer as Stripe.Customer).email;
+          // Full refund → downgrade to standard. Partial refund → log only.
+          const isFullRefund = charge.amount_refunded >= charge.amount;
+          if (email && isFullRefund) {
+            await upsertTierState(supabaseAdmin, {
+              email,
+              tier: "standard",
+              paymentStatus: "canceled",
+              source: "paige.stripe",
+              stripeCustomerId: charge.customer as string,
+              stripeAccountId,
+              eventId: event.id,
+              eventType: event.type,
+            });
+          } else if (email) {
+            // Partial refund: still write an audit log for compliance.
+            await supabaseAdmin.from("audit_logs").insert({
+              event_type: "stripe.charge.refunded.partial",
+              metadata: {
+                email,
+                amount: charge.amount,
+                amount_refunded: charge.amount_refunded,
+                stripe_charge_id: charge.id,
+                stripe_event_id: event.id,
+              },
+            });
+          }
+        } catch (e) {
+          logStep("charge.refunded tier sync error", { error: String(e) });
+        }
+        break;
+      }
+
       default:
         logStep("Unhandled event type", { type: event.type });
     }
+
+    // Mark event as processed (idempotency log close-out)
+    try {
+      await supabaseAdmin
+        .from("stripe_event_log")
+        .update({ processed_at: new Date().toISOString() })
+        .eq("event_id", event.id);
+    } catch (_) { /* non-fatal */ }
+
 
     return new Response(JSON.stringify({ received: true }), {
       status: 200,
