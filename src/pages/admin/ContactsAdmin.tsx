@@ -182,11 +182,7 @@ export default function ContactsAdmin() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => navigate(
-                          c.linked_user_id
-                            ? `/admin/clients/user/${c.linked_user_id}`
-                            : `/admin/clients/internal/${c.id}`
-                        )}
+                        onClick={() => navigate(`/admin/contacts/${c.id}`)}
                       >
                         Open
                       </Button>

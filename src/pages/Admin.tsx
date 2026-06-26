@@ -51,6 +51,7 @@ const BrokersAdmin = lazy(() => import("@/pages/admin/BrokersAdmin"));
 const AnalyticsDashboard = lazy(() => import("@/pages/admin/AnalyticsDashboard"));
 const SupportAdmin = lazy(() => import("@/pages/admin/SupportAdmin"));
 const ContactsAdmin = lazy(() => import("@/pages/admin/ContactsAdmin"));
+const ContactDetail = lazy(() => import("@/pages/admin/ContactDetail"));
 const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
 const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
 const TasksAdmin = lazy(() => import("@/pages/admin/TasksAdmin"));
@@ -165,6 +166,9 @@ const Admin = () => {
         <Route index element={<AdminOverview stats={stats} />} />
         <Route path="contacts" element={
           <Suspense fallback={<SuspenseFallback />}><ContactsAdmin /></Suspense>
+        } />
+        <Route path="contacts/:id" element={
+          <Suspense fallback={<SuspenseFallback />}><ContactDetail /></Suspense>
         } />
         <Route path="pipeline" element={
           <Suspense fallback={<SuspenseFallback />}><PipelineAdmin /></Suspense>
