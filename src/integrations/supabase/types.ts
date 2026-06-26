@@ -6700,6 +6700,39 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_event_log: {
+        Row: {
+          account_id: string | null
+          event_id: string
+          livemode: boolean | null
+          metadata: Json
+          payload_digest: string | null
+          processed_at: string | null
+          received_at: string
+          type: string
+        }
+        Insert: {
+          account_id?: string | null
+          event_id: string
+          livemode?: boolean | null
+          metadata?: Json
+          payload_digest?: string | null
+          processed_at?: string | null
+          received_at?: string
+          type: string
+        }
+        Update: {
+          account_id?: string | null
+          event_id?: string
+          livemode?: boolean | null
+          metadata?: Json
+          payload_digest?: string | null
+          processed_at?: string | null
+          received_at?: string
+          type?: string
+        }
+        Relationships: []
+      }
       subscription_plans: {
         Row: {
           ai_chat_limit: number | null
@@ -6936,6 +6969,71 @@ export type Database = {
             columns: ["biz_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tier_state: {
+        Row: {
+          client_id: string | null
+          contact_email: string
+          created_at: string
+          current_period_end: string | null
+          id: string
+          last_payment_at: string | null
+          organization_id: string | null
+          payment_status: string
+          source: string | null
+          stripe_account_id: string | null
+          stripe_customer_id: string | null
+          stripe_price_id: string | null
+          stripe_subscription_id: string | null
+          tier: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          client_id?: string | null
+          contact_email: string
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          last_payment_at?: string | null
+          organization_id?: string | null
+          payment_status?: string
+          source?: string | null
+          stripe_account_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_price_id?: string | null
+          stripe_subscription_id?: string | null
+          tier?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          client_id?: string | null
+          contact_email?: string
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          last_payment_at?: string | null
+          organization_id?: string | null
+          payment_status?: string
+          source?: string | null
+          stripe_account_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_price_id?: string | null
+          stripe_subscription_id?: string | null
+          tier?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tier_state_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
         ]
