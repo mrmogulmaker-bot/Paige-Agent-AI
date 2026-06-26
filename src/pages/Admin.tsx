@@ -50,6 +50,10 @@ const CommunicationsAdmin = lazy(() => import("@/pages/admin/CommunicationsAdmin
 const BrokersAdmin = lazy(() => import("@/pages/admin/BrokersAdmin"));
 const AnalyticsDashboard = lazy(() => import("@/pages/admin/AnalyticsDashboard"));
 const SupportAdmin = lazy(() => import("@/pages/admin/SupportAdmin"));
+const ContactsAdmin = lazy(() => import("@/pages/admin/ContactsAdmin"));
+const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
+const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
+const TasksAdmin = lazy(() => import("@/pages/admin/TasksAdmin"));
 
 const SuspenseFallback = () => (
   <div className="flex items-center justify-center py-12">
