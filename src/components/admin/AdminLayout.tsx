@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog,
 } from "lucide-react";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
@@ -12,12 +13,22 @@ import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
-const adminNavItems = [
-  { label: "Overview", href: "/admin", icon: BarChart3 },
-  { label: "Client Management", href: "/admin/clients", icon: Users },
-  { label: "Funding Pipeline", href: "/admin/funding", icon: DollarSign },
+// CRM-shaped primary navigation — the operator workhorse.
+const crmNavItems = [
+  { label: "Dashboard", href: "/admin", icon: BarChart3 },
+  { label: "Contacts", href: "/admin/contacts", icon: Contact },
+  { label: "Pipeline", href: "/admin/pipeline", icon: KanbanSquare },
+  { label: "Communications", href: "/admin/communications", icon: Inbox },
+  { label: "Tasks", href: "/admin/tasks", icon: CheckSquare },
+  { label: "Coaches", href: "/admin/coaches", icon: UserCog },
+  { label: "Reports", href: "/admin/analytics", icon: TrendingUp },
+];
+
+// Existing workspace tools — kept intact, grouped below the CRM nav.
+const workspaceNavItems = [
+  { label: "Client Files (Legacy)", href: "/admin/clients", icon: Users },
+  { label: "Funding Portfolio", href: "/admin/funding", icon: DollarSign },
   { label: "Funding Journey", href: "/admin/funding-pipeline", icon: Briefcase },
-  { label: "Analytics", href: "/admin/analytics", icon: TrendingUp },
   { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
   { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
@@ -26,6 +37,8 @@ const adminNavItems = [
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
+
+const adminNavItems = [...crmNavItems, ...workspaceNavItems];
 
 interface AdminLayoutProps {
   children: React.ReactNode;
