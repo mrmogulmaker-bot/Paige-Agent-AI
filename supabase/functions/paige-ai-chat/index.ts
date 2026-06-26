@@ -3559,10 +3559,10 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
                 .insert({
                   user_id: args.client_user_id,
                   channel: args.channel,
-                  direction: args.direction || "internal",
+                  message_type: args.direction || "internal",
                   subject: args.subject || null,
-                  body: args.body,
-                  metadata: { logged_by: user.id, via: "paige" },
+                  preview: String(args.body || "").slice(0, 500),
+                  status: "logged",
                 })
                 .select()
                 .single();
