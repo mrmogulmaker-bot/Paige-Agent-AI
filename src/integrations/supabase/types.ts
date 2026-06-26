@@ -1987,6 +1987,7 @@ export type Database = {
       }
       clients: {
         Row: {
+          assigned_coach_user_id: string | null
           city: string | null
           created_at: string
           created_by: string
@@ -2008,6 +2009,7 @@ export type Database = {
           zip_code: string | null
         }
         Insert: {
+          assigned_coach_user_id?: string | null
           city?: string | null
           created_at?: string
           created_by: string
@@ -2029,6 +2031,7 @@ export type Database = {
           zip_code?: string | null
         }
         Update: {
+          assigned_coach_user_id?: string | null
           city?: string | null
           created_at?: string
           created_by?: string
