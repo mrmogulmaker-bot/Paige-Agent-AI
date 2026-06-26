@@ -167,6 +167,9 @@ const Admin = () => {
         <Route path="contacts" element={
           <Suspense fallback={<SuspenseFallback />}><ContactsAdmin /></Suspense>
         } />
+        <Route path="contacts/:id" element={
+          <Suspense fallback={<SuspenseFallback />}><ContactDetail /></Suspense>
+        } />
         <Route path="pipeline" element={
           <Suspense fallback={<SuspenseFallback />}><PipelineAdmin /></Suspense>
         } />
