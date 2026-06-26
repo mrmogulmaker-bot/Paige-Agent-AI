@@ -349,30 +349,71 @@ serve(async (req) => {
     }
 
     const body = await req.text();
-    
-    // Verify webhook signature
+
+    // Verify webhook signature — try V2 secret first, fall back to legacy.
+    // Either Stripe account can fire this endpoint; whichever signing secret
+    // verifies the payload tells us which account it came from.
     let event: Stripe.Event;
-    try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-      logStep("Webhook signature verified", { type: event.type });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      logStep("Webhook signature verification failed", { error: errorMessage });
-      return new Response(JSON.stringify({ error: "Invalid signature" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    let verifiedAccount: "v2" | "legacy" | null = null;
+    if (webhookSecretV2) {
+      try {
+        event = stripeV2.webhooks.constructEvent(body, signature, webhookSecretV2);
+        verifiedAccount = "v2";
+      } catch (_) { /* fall through to legacy */ }
     }
+    if (!verifiedAccount) {
+      try {
+        event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+        verifiedAccount = "legacy";
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        logStep("Webhook signature verification failed (both accounts)", { error: errorMessage });
+        return new Response(JSON.stringify({ error: "Invalid signature" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+    logStep("Webhook signature verified", { type: event!.type, account: verifiedAccount });
+    const stripeAccountId = (event! as any).account ?? null;
 
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
+    // Idempotency gate — Stripe retries the same event on transient failures.
+    // INSERT first; if it conflicts, we already processed this event and can
+    // ACK immediately. Guarantees handlers run at-most-once per event.
+    {
+      const { error: idempErr } = await supabaseAdmin
+        .from("stripe_event_log")
+        .insert({
+          event_id: event!.id,
+          account_id: stripeAccountId,
+          type: event!.type,
+          livemode: (event! as any).livemode ?? null,
+          metadata: { verified_account: verifiedAccount },
+        });
+      if (idempErr) {
+        // Postgres unique_violation = 23505 → already processed
+        if ((idempErr as any).code === "23505") {
+          logStep("Duplicate event — already processed, acking", { eventId: event!.id });
+          return new Response(JSON.stringify({ received: true, duplicate: true }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        // Any other error: log but proceed (better to risk dup than lose the event)
+        logStep("stripe_event_log insert error (continuing)", { error: idempErr.message });
+      }
+    }
+
     // Handle different event types
     const ADDITIONAL_BUSINESS_PRICE_ID = Deno.env.get(
       "STRIPE_ADDITIONAL_BUSINESS_PRICE_ID",
     ) ?? "";
+
 
     switch (event.type) {
       case "checkout.session.completed": {
