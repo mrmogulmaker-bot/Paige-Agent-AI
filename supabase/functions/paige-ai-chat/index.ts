@@ -3104,6 +3104,73 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
               },
             },
           },
+          {
+            type: "function",
+            function: {
+              name: "crm_update_pipeline_stage",
+              description: "Admin/coach only. Move a client to a new pipeline stage. Use when the operator says things like 'move Jane to In Progress', 'mark this lead as closed', 'pause this client'.",
+              parameters: {
+                type: "object",
+                properties: {
+                  client_id: { type: "string", description: "clients.id UUID of the client to update." },
+                  status: { type: "string", enum: ["pending", "active", "inactive", "archived"], description: "Target pipeline stage. pending=Lead, active=In Progress, inactive=Paused, archived=Closed." },
+                  reason: { type: "string", description: "Short reason for the change, stored in audit log." }
+                },
+                required: ["client_id", "status"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_assign_coach",
+              description: "Admin/coach only. Assign a coach (by email) to one or more clients. Use when the operator says 'assign Antonio to these 5 BTF clients' or 'put this lead on my roster'.",
+              parameters: {
+                type: "object",
+                properties: {
+                  coach_email: { type: "string", description: "Email of the coach user. Must be an existing auth user with coach or admin role." },
+                  client_ids: { type: "array", items: { type: "string" }, description: "Array of clients.id UUIDs." }
+                },
+                required: ["coach_email", "client_ids"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_create_task",
+              description: "Admin/coach only. Create a task on the operator queue (or for an assigned user). Use for follow-ups, document collection, outreach reminders.",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  description: { type: "string" },
+                  due_date: { type: "string", description: "ISO date YYYY-MM-DD." },
+                  track: { type: "string", description: "Optional category, e.g. accel, build, fund, outreach." },
+                  assignee_user_id: { type: "string", description: "Optional auth user UUID. Defaults to current user." }
+                },
+                required: ["title"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_log_activity",
+              description: "Admin/coach only. Log a communication or activity (call, email, note, meeting) on a client's timeline.",
+              parameters: {
+                type: "object",
+                properties: {
+                  client_user_id: { type: "string", description: "auth.users.id of the client the activity is about." },
+                  channel: { type: "string", enum: ["call", "email", "sms", "note", "meeting"], description: "Activity channel." },
+                  direction: { type: "string", enum: ["inbound", "outbound", "internal"] },
+                  subject: { type: "string" },
+                  body: { type: "string" }
+                },
+                required: ["client_user_id", "channel", "body"]
+              }
+            }
+          },
         ],
         tool_choice: "auto",
         stream: true,
