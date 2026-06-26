@@ -413,6 +413,52 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "assign_coach_to_client": {
+        const { coach_email, client_ids } = actionData || {};
+        if (!coach_email || !Array.isArray(client_ids) || client_ids.length === 0) {
+          return res(400, { success: false, message: "coach_email and client_ids[] required" });
+        }
+        const normalizedEmail = String(coach_email).toLowerCase().trim();
+
+        // Look up coach by email
+        const { data: coachUsers, error: lookupErr } = await supabase.auth.admin.listUsers();
+        if (lookupErr) {
+          return res(500, { success: false, message: `Coach lookup failed: ${lookupErr.message}` });
+        }
+        const coach = coachUsers.users.find((u) => u.email?.toLowerCase() === normalizedEmail);
+        if (!coach) {
+          return res(404, { success: false, message: `Coach not found: ${coach_email}` });
+        }
+
+        // Assign coach to each client record
+        const { data: updated, error: updateErr } = await supabase
+          .from("clients")
+          .update({ assigned_coach_user_id: coach.id })
+          .in("id", client_ids)
+          .select("id, linked_user_id");
+
+        if (updateErr) {
+          return res(500, { success: false, message: `Assignment failed: ${updateErr.message}` });
+        }
+
+        await supabase.from("audit_logs").insert({
+          user_id: coach.id,
+          entity: "clients",
+          action: "assign_coach_via_webhook",
+          data: { coach_email: normalizedEmail, client_ids, assigned_count: updated?.length || 0 },
+        });
+
+        result = {
+          success: true,
+          coach_user_id: coach.id,
+          assignments_updated: updated?.length || 0,
+          client_ids: updated?.map((r) => r.id) || [],
+        };
+        break;
+      }
+
+
+
       default:
 
         return res(400, { success: false, message: `Unknown action: ${action}` });

@@ -50,6 +50,10 @@ const CommunicationsAdmin = lazy(() => import("@/pages/admin/CommunicationsAdmin
 const BrokersAdmin = lazy(() => import("@/pages/admin/BrokersAdmin"));
 const AnalyticsDashboard = lazy(() => import("@/pages/admin/AnalyticsDashboard"));
 const SupportAdmin = lazy(() => import("@/pages/admin/SupportAdmin"));
+const ContactsAdmin = lazy(() => import("@/pages/admin/ContactsAdmin"));
+const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
+const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
+const TasksAdmin = lazy(() => import("@/pages/admin/TasksAdmin"));
 
 const SuspenseFallback = () => (
   <div className="flex items-center justify-center py-12">
@@ -159,6 +163,18 @@ const Admin = () => {
     <AdminLayout userRole={userRole}>
       <Routes>
         <Route index element={<AdminOverview stats={stats} />} />
+        <Route path="contacts" element={
+          <Suspense fallback={<SuspenseFallback />}><ContactsAdmin /></Suspense>
+        } />
+        <Route path="pipeline" element={
+          <Suspense fallback={<SuspenseFallback />}><PipelineAdmin /></Suspense>
+        } />
+        <Route path="tasks" element={
+          <Suspense fallback={<SuspenseFallback />}><TasksAdmin /></Suspense>
+        } />
+        <Route path="coaches" element={
+          <Suspense fallback={<SuspenseFallback />}><CoachesAdmin /></Suspense>
+        } />
         <Route path="clients" element={
           <Suspense fallback={<SuspenseFallback />}>
             <ClientManagementDashboard onViewClient={handleViewClient} onViewInternalClient={handleViewInternalClient} />
