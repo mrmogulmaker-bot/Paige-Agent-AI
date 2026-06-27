@@ -111,6 +111,10 @@ export function AdminSettingsHub() {
           <PlatformSettingsPanel />
         </TabsContent>
 
+        <TabsContent value="pipes" className="space-y-4">
+          <PlatformPipesPanel />
+        </TabsContent>
+
         <TabsContent value="comms" className="space-y-4">
           <NotificationsCommsPanel />
         </TabsContent>
