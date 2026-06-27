@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { PageHead } from "@/components/seo/PageHead";
+
 import { Link } from "react-router-dom";
 import { Header } from "@/components/landing/Header";
 import { Footer } from "@/components/landing/Footer";

@@ -1,6 +1,8 @@
 // src/pages/AffiliateApply.tsx
 // Public affiliate landing + application page at /affiliates.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PageHead } from "@/components/seo/PageHead";
+
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
