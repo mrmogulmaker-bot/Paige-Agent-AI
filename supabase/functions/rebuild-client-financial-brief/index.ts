@@ -5,6 +5,7 @@
 // cash-flow snapshots. Runs nightly via cron and is also safe to invoke
 // per-contact via { contact_id }.
 //
+// Reconciled to actual Phase 3 schema (see embed-client-financials).
 // Service-role only.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -37,26 +38,42 @@ function fmt(n: unknown): string {
   return String(n);
 }
 
+function dollars(cents: unknown): string {
+  if (cents == null || cents === "") return "—";
+  const n = typeof cents === "number" ? cents : Number(cents);
+  if (!Number.isFinite(n)) return "—";
+  return (n / 100).toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
+
+function pick(obj: any, ...keys: string[]): unknown {
+  if (!obj || typeof obj !== "object") return null;
+  for (const k of keys) {
+    const v = obj[k];
+    if (v != null && v !== "") return v;
+  }
+  return null;
+}
+
 async function rebuildOne(admin: any, openaiKey: string, contactId: string) {
   const { data: contact } = await admin
-    .from("contacts")
-    .select("full_name, email, user_id, owner_id")
+    .from("clients")
+    .select("full_name, email, linked_user_id, owner_user_id")
     .eq("id", contactId)
     .maybeSingle();
   if (!contact) return { contact_id: contactId, skipped: "contact_missing" };
 
   const who = contact.full_name || contact.email || "Client";
-  const clientUserId = contact.user_id ?? contact.owner_id ?? null;
+  const clientUserId = contact.linked_user_id ?? contact.owner_user_id ?? null;
 
   const [bcp, ocs, bc, cfs] = await Promise.all([
     admin.from("paige_business_credit_profiles").select("*").eq("contact_id", contactId)
       .order("last_pulled_at", { ascending: false }).limit(1).maybeSingle(),
     admin.from("paige_owner_credit_snapshots").select("*").eq("contact_id", contactId)
-      .order("snapshot_date", { ascending: false }).limit(1).maybeSingle(),
+      .order("pulled_at", { ascending: false }).limit(1).maybeSingle(),
     admin.from("paige_bank_connections").select("*").eq("contact_id", contactId)
-      .order("created_at", { ascending: false }),
+      .order("connected_at", { ascending: false }),
     admin.from("paige_cash_flow_snapshots").select("*").eq("contact_id", contactId)
-      .order("snapshot_date", { ascending: false }).limit(1).maybeSingle(),
+      .order("period_end", { ascending: false }).limit(1).maybeSingle(),
   ]);
 
   const hasAny = bcp.data || ocs.data || (bc.data && bc.data.length) || cfs.data;
@@ -65,20 +82,29 @@ async function rebuildOne(admin: any, openaiKey: string, contactId: string) {
   const sections: string[] = [`Capital Readiness Brief — ${who}`];
 
   if (bcp.data) {
+    const scores = bcp.data.scores ?? {};
+    const paydex = pick(scores, "paydex", "PAYDEX", "dnb_paydex");
+    const intelliscore = pick(scores, "intelliscore", "intelliscore_plus");
+    const eqxDelinq = pick(scores, "equifax_business_delinquency", "equifax_delinquency");
+    const tlCount = Array.isArray(bcp.data.trade_lines) ? bcp.data.trade_lines.length : 0;
     sections.push(
       `\n## Business credit\n` +
-      `Paydex ${fmt(bcp.data.paydex_score)} · Intelliscore ${fmt(bcp.data.intelliscore_plus)} · ` +
-      `Equifax delinquency ${fmt(bcp.data.equifax_business_delinquency)} · ` +
-      `${fmt(bcp.data.trade_lines_count)} trade lines · last pulled ${bcp.data.last_pulled_at ?? "—"}`,
+      `Paydex ${fmt(paydex)} · Intelliscore ${fmt(intelliscore)} · ` +
+      `Equifax delinquency ${fmt(eqxDelinq)} · ` +
+      `${fmt(tlCount)} trade lines · last pulled ${bcp.data.last_pulled_at ?? "—"}`,
     );
   }
   if (ocs.data) {
+    const factors = ocs.data.factors ?? {};
+    const util = pick(factors, "revolving_utilization_pct", "utilization");
+    const inq = pick(factors, "inquiries_12mo", "hard_inquiries_12mo");
+    const neg = pick(factors, "negative_items_count", "derogatories");
     sections.push(
       `\n## Owner credit\n` +
       `${ocs.data.bureau ?? "?"} score ${fmt(ocs.data.score)} · ` +
-      `util ${fmt(ocs.data.revolving_utilization_pct)}% · ` +
-      `${fmt(ocs.data.inquiries_12mo)} inquiries in 12mo · ` +
-      `${fmt(ocs.data.negative_items_count)} negatives · as of ${ocs.data.snapshot_date ?? "—"}`,
+      `util ${fmt(util)}% · ` +
+      `${fmt(inq)} inquiries in 12mo · ` +
+      `${fmt(neg)} negatives · as of ${ocs.data.pulled_at ?? "—"}`,
     );
   }
   if (bc.data?.length) {
@@ -88,16 +114,31 @@ async function rebuildOne(admin: any, openaiKey: string, contactId: string) {
       `\n## Banking\n${active}/${bc.data.length} connections active · institutions: ${insts || "—"}`,
     );
   }
+  let readiness: number | null = null;
   if (cfs.data) {
+    const netCents =
+      (typeof cfs.data.total_deposits_cents === "number" ? cfs.data.total_deposits_cents : 0) -
+      (typeof cfs.data.total_withdrawals_cents === "number" ? cfs.data.total_withdrawals_cents : 0);
+    const periodDays =
+      cfs.data.period_start && cfs.data.period_end
+        ? Math.max(
+            1,
+            Math.round(
+              (new Date(cfs.data.period_end).getTime() - new Date(cfs.data.period_start).getTime()) /
+                (1000 * 60 * 60 * 24),
+            ),
+          )
+        : null;
+    readiness = cfs.data.funding_readiness_score ?? null;
     sections.push(
       `\n## Cash flow\n` +
-      `${fmt(cfs.data.runway_days)} day runway · readiness ${fmt(cfs.data.funding_readiness_score)}/100 · ` +
-      `net $${fmt(cfs.data.net_flow)} over last ${fmt(cfs.data.period_days ?? 30)}d · ` +
-      `avg balance $${fmt(cfs.data.avg_balance)}`,
+      `${fmt(cfs.data.runway_days)} day runway · readiness ${fmt(readiness)}/100 · ` +
+      `net ${dollars(netCents)} over ${periodDays ?? "?"}d · ` +
+      `avg daily balance ${dollars(cfs.data.avg_daily_balance_cents)} · ` +
+      `as of ${cfs.data.period_end ?? "—"}`,
     );
   }
 
-  const readiness = cfs.data?.funding_readiness_score ?? null;
   const verdict =
     readiness == null ? "Insufficient data for a funding-readiness verdict."
       : readiness >= 75 ? "Funding-ready: strong cash flow and stable banking footprint."
@@ -106,7 +147,8 @@ async function rebuildOne(admin: any, openaiKey: string, contactId: string) {
   sections.push(`\n## Verdict\n${verdict}`);
 
   const content = sections.join("\n");
-  const summary = `Readiness ${fmt(readiness)}/100 · Paydex ${fmt(bcp.data?.paydex_score)} · ${ocs.data?.bureau ?? "?"} ${fmt(ocs.data?.score)} · ${fmt(cfs.data?.runway_days)}d runway`;
+  const paydex = bcp.data ? pick(bcp.data.scores ?? {}, "paydex", "PAYDEX") : null;
+  const summary = `Readiness ${fmt(readiness)}/100 · Paydex ${fmt(paydex)} · ${ocs.data?.bureau ?? "?"} ${fmt(ocs.data?.score)} · ${fmt(cfs.data?.runway_days)}d runway`;
   const title = `Capital readiness — ${who}`;
   const dedupeKey = `client_financial_brief:${contactId}`;
   const metadata = {
@@ -115,7 +157,7 @@ async function rebuildOne(admin: any, openaiKey: string, contactId: string) {
     contact_id: contactId,
     dedupe_key: dedupeKey,
     funding_readiness_score: readiness,
-    paydex: bcp.data?.paydex_score ?? null,
+    paydex,
     owner_bureau: ocs.data?.bureau ?? null,
     owner_score: ocs.data?.score ?? null,
     runway_days: cfs.data?.runway_days ?? null,
@@ -135,7 +177,7 @@ async function rebuildOne(admin: any, openaiKey: string, contactId: string) {
       title, content, summary, embedding, metadata,
       updated_at: new Date().toISOString(),
     }).eq("id", existing.id);
-    return { contact_id: contactId, updated: existing.id };
+    return { contact_id: contactId, updated: existing.id, embedded: !!embedding };
   }
   const { data: ins, error } = await admin.from("rag_documents").insert({
     document_type: "client_financial_brief",
@@ -147,7 +189,7 @@ async function rebuildOne(admin: any, openaiKey: string, contactId: string) {
     quality_score: 0.8,
   }).select("id").single();
   if (error) throw error;
-  return { contact_id: contactId, inserted: ins.id };
+  return { contact_id: contactId, inserted: ins.id, embedded: !!embedding };
 }
 
 serve(async (req) => {
@@ -171,13 +213,11 @@ serve(async (req) => {
     if (body.contact_id) {
       contactIds = [String(body.contact_id)];
     } else {
-      // Union of all contacts present in any financial table
-      const since = new Date(Date.now() - 1000 * 60 * 60 * 24 * 60).toISOString();
       const queries = await Promise.all([
         admin.from("paige_business_credit_profiles").select("contact_id"),
-        admin.from("paige_owner_credit_snapshots").select("contact_id").gte("created_at", since),
+        admin.from("paige_owner_credit_snapshots").select("contact_id"),
         admin.from("paige_bank_connections").select("contact_id"),
-        admin.from("paige_cash_flow_snapshots").select("contact_id").gte("created_at", since),
+        admin.from("paige_cash_flow_snapshots").select("contact_id"),
       ]);
       const ids = new Set<string>();
       for (const q of queries) for (const r of q.data ?? []) if (r.contact_id) ids.add(r.contact_id);

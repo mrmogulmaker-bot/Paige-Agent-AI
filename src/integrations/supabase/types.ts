@@ -6238,6 +6238,77 @@ export type Database = {
           },
         ]
       }
+      paige_coach_assignments: {
+        Row: {
+          active: boolean
+          assigned_at: string
+          coach_id: string | null
+          contact_id: string | null
+          created_at: string
+          id: string
+          metadata: Json
+          notes: string | null
+          role: string | null
+          unassigned_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          assigned_at?: string
+          coach_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          role?: string | null
+          unassigned_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          assigned_at?: string
+          coach_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          notes?: string | null
+          role?: string | null
+          unassigned_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_coach_assignments_coach_id_fkey"
+            columns: ["coach_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_coach_assignments_coach_id_fkey"
+            columns: ["coach_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_coach_assignments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_coach_assignments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
       paige_config: {
         Row: {
           apollo_auto_enrich: boolean
@@ -6453,6 +6524,51 @@ export type Database = {
           },
           {
             foreignKeyName: "paige_enrichment_log_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
+      paige_health_snapshots: {
+        Row: {
+          components: Json
+          computed_at: string
+          contact_id: string | null
+          created_at: string
+          id: string
+          metadata: Json
+          score: number
+        }
+        Insert: {
+          components?: Json
+          computed_at?: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          score: number
+        }
+        Update: {
+          components?: Json
+          computed_at?: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json
+          score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_health_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_health_snapshots_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
@@ -6709,6 +6825,60 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_nps_responses: {
+        Row: {
+          campaign_or_survey: string | null
+          contact_id: string | null
+          created_at: string
+          feedback: string | null
+          follow_up_status: string
+          id: string
+          metadata: Json
+          score: number
+          submitted_at: string
+          updated_at: string
+        }
+        Insert: {
+          campaign_or_survey?: string | null
+          contact_id?: string | null
+          created_at?: string
+          feedback?: string | null
+          follow_up_status?: string
+          id?: string
+          metadata?: Json
+          score: number
+          submitted_at?: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_or_survey?: string | null
+          contact_id?: string | null
+          created_at?: string
+          feedback?: string | null
+          follow_up_status?: string
+          id?: string
+          metadata?: Json
+          score?: number
+          submitted_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_nps_responses_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_nps_responses_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
       paige_owner_credit_snapshots: {
         Row: {
           alerts_triggered: Json
@@ -6837,6 +7007,83 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "paige_messages_audit"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_referrals: {
+        Row: {
+          conversion_event: string | null
+          created_at: string
+          credit_amount_cents: number | null
+          credited_at: string | null
+          id: string
+          metadata: Json
+          referred_at: string
+          referred_contact_id: string | null
+          referred_email: string | null
+          referrer_contact_id: string | null
+          source: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          conversion_event?: string | null
+          created_at?: string
+          credit_amount_cents?: number | null
+          credited_at?: string | null
+          id?: string
+          metadata?: Json
+          referred_at?: string
+          referred_contact_id?: string | null
+          referred_email?: string | null
+          referrer_contact_id?: string | null
+          source?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          conversion_event?: string | null
+          created_at?: string
+          credit_amount_cents?: number | null
+          credited_at?: string | null
+          id?: string
+          metadata?: Json
+          referred_at?: string
+          referred_contact_id?: string | null
+          referred_email?: string | null
+          referrer_contact_id?: string | null
+          source?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_referrals_referred_contact_id_fkey"
+            columns: ["referred_contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_referrals_referred_contact_id_fkey"
+            columns: ["referred_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_referrals_referrer_contact_id_fkey"
+            columns: ["referrer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_referrals_referrer_contact_id_fkey"
+            columns: ["referrer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
           },
         ]
       }
