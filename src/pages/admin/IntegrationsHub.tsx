@@ -42,7 +42,7 @@ const tiles = [
   { key: "zapier", icon: Zap, title: "Zapier MCP", description: "Expose thousands of apps to Paige via the MCP client.", href: "/admin/integrations/zapier" },
   { key: "telegram", icon: Send, title: "Telegram Alerts", description: "Bot channel for admin alerts and overdue approvals.", href: "/admin/integrations/telegram" },
   { key: "gmail", icon: MessageSquare, title: "Gmail (Founder Inbox)", description: "Deliverability-sensitive sends via OAuth.", href: "/admin/integrations/gmail" },
-  { key: "tavily", icon: Search, title: "Tavily Web Search", description: "Web research for Paige's reasoning.", href: "/admin/integrations/tavily" },
+  { key: "firecrawl", icon: Search, title: "Firecrawl Web Search", description: "Live web research + bureau scraping. Replaces Tavily.", href: "/admin/integrations" },
   { key: "langsmith", icon: Activity, title: "AI Activity (LangSmith)", description: "Recent traces, cost and latency for all AI calls.", href: "/admin/integrations/ai-activity" },
   { key: "docusign", icon: FileSignature, title: "DocuSign", description: "VIP apps, coach agreements, DFY engagement letters, term sheets.", href: "/admin/integrations/docusign" },
   { key: "cal", icon: CalendarClock, title: "Cal.com", description: "Booking surface for VIP intros, DFY discovery and workshops.", href: "/admin/integrations/cal" },
