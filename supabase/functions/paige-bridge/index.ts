@@ -64,10 +64,10 @@ async function resolveOwnerUserId(): Promise<string | null> {
 const CreatePendingApprovalSchema = z.object({
   type: z.enum(["cs_draft", "campaign_send", "tier_change", "qc_finding", "milestone", "other"]),
   draft_content: z.record(z.any()),
-  contact_id: z.string().uuid().optional(),
-  contact_email: z.string().email().optional(),
-  conversation_id: z.string().uuid().optional(),
-  created_by_n8n_workflow_key: z.string().optional(),
+  contact_id: z.string().uuid().nullable().optional(),
+  contact_email: z.string().email().nullable().optional(),
+  conversation_id: z.string().uuid().nullable().optional(),
+  created_by_n8n_workflow_key: z.string().nullable().optional(),
   metadata: z.record(z.any()).optional(),
 });
 
