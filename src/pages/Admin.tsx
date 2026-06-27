@@ -329,9 +329,6 @@ const Admin = () => {
         <Route path="integrations/gmail" element={
           <Suspense fallback={<SuspenseFallback />}><GmailIntegrationConfig /></Suspense>
         } />
-        <Route path="integrations/tavily" element={
-          <Suspense fallback={<SuspenseFallback />}><TavilyIntegrationConfig /></Suspense>
-        } />
         <Route path="integrations/ai-activity" element={
           <Suspense fallback={<SuspenseFallback />}><AiActivity /></Suspense>
         } />
