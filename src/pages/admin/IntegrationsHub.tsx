@@ -7,7 +7,9 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   Workflow, CreditCard, Mail, MessageSquare, Send, Zap, Search, Activity,
   ExternalLink, FileSignature, CalendarClock, BarChart3, Bug, Share2, UserSearch,
+  Building2, ShieldCheck, Landmark,
 } from "lucide-react";
+
 
 type ConfigShape = {
   ghl_pit_ref: string | null;
@@ -48,7 +50,11 @@ const tiles = [
   { key: "apollo", icon: UserSearch, title: "Apollo Enrichment", description: "Auto-enrich new contacts; manual lookup; prospect search.", href: "/admin/integrations/apollo" },
   { key: "posthog", icon: BarChart3, title: "PostHog Analytics", description: "Product usage truth for internal + B2B rollout.", href: "/admin/observability/usage" },
   { key: "sentry", icon: Bug, title: "Sentry Errors", description: "Frontend + Edge Function error tracking with deep links.", href: "/admin/observability/errors" },
+  { key: "nav", icon: Building2, title: "Nav (Business Credit)", description: "Pull D&B / Experian / Equifax business profiles for capital readiness.", href: "/admin/integrations/nav" },
+  { key: "smartcredit", icon: ShieldCheck, title: "SmartCredit (Owner Lens)", description: "Owner credit standing — funding eligibility lens only. No dispute work.", href: "/admin/integrations/smartcredit" },
+  { key: "plaid", icon: Landmark, title: "Plaid (Banking)", description: "Cash flow + funding readiness. Scaffolding active; live when Antonio connects.", href: "/admin/integrations/plaid" },
 ] as const;
+
 
 export default function IntegrationsHub() {
   const [config, setConfig] = useState<ConfigShape | null>(null);
