@@ -81,6 +81,13 @@ const ApolloIntegrationConfig = lazy(() => import("@/pages/admin/ApolloIntegrati
 const LeadsEnrichment = lazy(() => import("@/pages/admin/LeadsEnrichment"));
 const UsageAnalytics = lazy(() => import("@/pages/admin/UsageAnalytics"));
 const ErrorTracking = lazy(() => import("@/pages/admin/ErrorTracking"));
+const NavIntegrationConfig = lazy(() => import("@/pages/admin/NavIntegrationConfig"));
+const BusinessCreditAdmin = lazy(() => import("@/pages/admin/BusinessCreditAdmin"));
+const SmartCreditIntegrationConfig = lazy(() => import("@/pages/admin/SmartCreditIntegrationConfig"));
+const OwnerCreditAdmin = lazy(() => import("@/pages/admin/OwnerCreditAdmin"));
+const PlaidIntegrationConfig = lazy(() => import("@/pages/admin/PlaidIntegrationConfig"));
+const BankingAdmin = lazy(() => import("@/pages/admin/BankingAdmin"));
+
 
 
 const SuspenseFallback = () => (
