@@ -9,11 +9,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
   MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
+  CreditCard, User, Landmark, TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { LIFECYCLE_STAGES, lifecycleMeta } from "@/lib/contacts";
 import { ContactDealsSection } from "@/components/admin/contacts/ContactDealsSection";
+import { BusinessCreditTab } from "@/components/admin/contacts/BusinessCreditTab";
+import { OwnerCreditTab } from "@/components/admin/contacts/OwnerCreditTab";
+import { BankingTab } from "@/components/admin/contacts/BankingTab";
+import { CashFlowTab } from "@/components/admin/contacts/CashFlowTab";
 
 type Client = {
   id: string;
@@ -199,16 +204,21 @@ export default function ContactDetail() {
       </div>
 
       <Tabs defaultValue="deals">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="deals"><Briefcase className="h-4 w-4 mr-1" /> Deals</TabsTrigger>
           <TabsTrigger value="activity"><Activity className="h-4 w-4 mr-1" /> Activity</TabsTrigger>
           <TabsTrigger value="comms"><MessageSquare className="h-4 w-4 mr-1" /> Communications</TabsTrigger>
           <TabsTrigger value="tasks"><CheckSquare className="h-4 w-4 mr-1" /> Tasks</TabsTrigger>
           <TabsTrigger value="notes"><StickyNote className="h-4 w-4 mr-1" /> Notes</TabsTrigger>
           <TabsTrigger value="files"><FileText className="h-4 w-4 mr-1" /> Files</TabsTrigger>
+          <TabsTrigger value="business-credit"><CreditCard className="h-4 w-4 mr-1" /> Business Credit</TabsTrigger>
+          <TabsTrigger value="owner-credit"><User className="h-4 w-4 mr-1" /> Owner Credit</TabsTrigger>
+          <TabsTrigger value="banking"><Landmark className="h-4 w-4 mr-1" /> Banking</TabsTrigger>
+          <TabsTrigger value="cash-flow"><TrendingUp className="h-4 w-4 mr-1" /> Cash Flow</TabsTrigger>
         </TabsList>
 
         <TabsContent value="deals">
+
           <Card><CardContent className="p-4">
             <ContactDealsSection contactId={client.id} />
           </CardContent></Card>
@@ -314,6 +324,11 @@ export default function ContactDetail() {
             )}
           </CardContent></Card>
         </TabsContent>
+
+        <TabsContent value="business-credit"><BusinessCreditTab contactId={client.id} /></TabsContent>
+        <TabsContent value="owner-credit"><OwnerCreditTab contactId={client.id} /></TabsContent>
+        <TabsContent value="banking"><BankingTab contactId={client.id} /></TabsContent>
+        <TabsContent value="cash-flow"><CashFlowTab contactId={client.id} /></TabsContent>
       </Tabs>
     </div>
   );

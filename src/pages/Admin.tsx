@@ -57,6 +57,7 @@ const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
 const PipelineSettings = lazy(() => import("@/pages/admin/PipelineSettings"));
 const TasksAdmin = lazy(() => import("@/pages/admin/TasksAdmin"));
 const WorkflowsList = lazy(() => import("@/pages/admin/WorkflowsList"));
+const CampaignsAdmin = lazy(() => import("@/pages/admin/CampaignsAdmin"));
 const WorkflowDetail = lazy(() => import("@/pages/admin/WorkflowDetail"));
 const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
 const WorkflowRunDetail = lazy(() => import("@/pages/admin/WorkflowRunDetail"));
@@ -290,6 +291,9 @@ const Admin = () => {
         } />
         <Route path="workflows" element={
           <Suspense fallback={<SuspenseFallback />}><WorkflowsList /></Suspense>
+        } />
+        <Route path="campaigns" element={
+          <Suspense fallback={<SuspenseFallback />}><CampaignsAdmin /></Suspense>
         } />
         <Route path="workflows/runs" element={
           <Suspense fallback={<SuspenseFallback />}><WorkflowRuns /></Suspense>

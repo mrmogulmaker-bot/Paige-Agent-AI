@@ -15,7 +15,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
@@ -31,6 +30,7 @@ const crmNavItems = [
   { label: "Tasks", href: "/admin/tasks", icon: CheckSquare },
   { label: "Approvals", href: "/admin/approvals", icon: ClipboardCheck },
   { label: "Workflows", href: "/admin/workflows", icon: Workflow },
+  { label: "Campaigns", href: "/admin/campaigns", icon: Workflow },
   { label: "Coaches", href: "/admin/coaches", icon: UserCog },
   { label: "Reports", href: "/admin/analytics", icon: TrendingUp },
 ];
@@ -134,9 +134,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           {/* Desktop utilities */}
           <div className="hidden md:flex items-center gap-1">
             <AdminBridgeBell />
-            <div className="text-primary-foreground">
-              <NotificationBell />
-            </div>
+
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

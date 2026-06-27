@@ -1,114 +1,161 @@
-## Phase 6: Paige Bridge (Reverse Direction)
+# Phase 7 Plan — Sections 3 & 4
 
-A single Edge Function `paige-bridge` that lets MMA OS + n8n push data INTO Paige, mirroring the existing MMA OS bridge. Plus a new admin-notifications surface and a bell badge in the admin header.
+Sections 1 + 2 (notification drawer + duplicate bell removal) ship directly in build mode. Plan below covers the two larger asks.
+
+Header bell audit confirmed: `AdminLayout.tsx` lines 136-138 render both `AdminBridgeBell` and the legacy `NotificationBell` (member-facing credit alerts / dispute updates). Legacy bell will be removed from the admin header in Section 2; it remains in the member dashboard chrome where it belongs.
 
 ---
 
-### 1. Secret
+## SECTION 3 — Data Visualization for Phase 3 Correction Tables
 
-- New runtime secret: `PAIGE_BRIDGE_API_KEY` — Antonio adds in Project Settings → Secrets after plan approval. Same value also goes on MMA OS Supabase + as an n8n credential.
+### 3.1 New routes
 
-### 2. Migration — single migration, four parts
+Per-client (added as tabs inside `ContactDetail.tsx`, no new top-level routes):
+- `business-credit` tab → `BusinessCreditTab.tsx`
+- `owner-credit` tab → `OwnerCreditTab.tsx` (read-only, no dispute UI)
+- `banking` tab → `BankingTab.tsx`
+- `cash-flow` tab → `CashFlowTab.tsx`
 
-**a. Status enum widening on `paige_pending_approvals.status`**
-- Drop the existing CHECK and re-add to also allow `'stale'` (the spec's `update_pending_approval` example calls out "mark stale").
+Master cross-client views (top-level admin routes, registered in `Admin.tsx`):
+- `/admin/business-credit` → `BusinessCreditOverview.tsx`
+- `/admin/owner-credit` → `OwnerCreditOverview.tsx`
+- `/admin/banking` → `BankingOverview.tsx` (current `BankingAdmin.tsx` will be refactored)
+- `/admin/cash-flow` → `CashFlowOverview.tsx`
 
-**b. Type enum widening on `paige_pending_approvals.type`**
-- Same pattern; add `'qc_finding'` and `'milestone'` to support upstream verbs (notify_admin can also funnel through, but approvals need richer types).
+Nav entry under existing "More" dropdown: a new group **"Financial Intel"** with the four overviews.
 
-**c. New table `public.paige_admin_notifications`**
+### 3.2 Shared building blocks
 
-```
-id              uuid pk default gen_random_uuid()
-severity        text check in ('info','warning','urgent') not null default 'info'
-title           text not null
-body            text
-link_to         text
-source_workflow_key text
-contact_id      uuid references clients(id) on delete set null
-read_at         timestamptz
-created_at      timestamptz not null default now()
-```
+- `src/lib/financial/queries.ts` — typed wrappers around the 5 tables (latest-per-client, time-series, joins to `clients`).
+- `src/components/financial/ScoreBadge.tsx`, `ScoreTrendArrow.tsx`, `Sparkline.tsx` (recharts `<LineChart>` mini), `RunwayPill.tsx`.
+- `useLatestPerClient(table, clientId?)` hook — DISTINCT ON (client_id) ORDER BY captured_at DESC.
 
-Standard four-step structure: CREATE → GRANT (SELECT/INSERT/UPDATE to authenticated; ALL to service_role; no anon) → ENABLE RLS → POLICIES (admins & coaches SELECT/UPDATE; service_role bypasses for inserts from the Edge Function). Add `idx_paige_admin_notifications_unread` partial index `WHERE read_at IS NULL`. Add to `supabase_realtime` publication so the bell badge updates live.
+### 3.3 Per-client tab specs
 
-**d. RPC `get_approval_queue_counts()`** — security-definer function that returns `{ pending int, by_type jsonb }` so the verb can return it cheaply without granting broad read on the table to the bridge path (bridge uses service role anyway, but this keeps the verb's query body tight).
-
-### 3. Edge Function — `supabase/functions/paige-bridge/index.ts`
-
-- `verify_jwt = false` block in `supabase/config.toml`.
-- Bearer auth: read `Authorization: Bearer <token>` → constant-time compare against `PAIGE_BRIDGE_API_KEY`. Reject with 401 otherwise.
-- Use `SUPABASE_SERVICE_ROLE_KEY` client (bypasses RLS — required since callers are server-to-server with no JWT).
-- CORS: respond to OPTIONS with `corsHeaders` from `npm:@supabase/supabase-js@2/cors`.
-- Body schema validated via Zod: `{ verb: string, payload: object }`. Each verb has its own Zod schema applied inside the switch.
-- Switch on `verb`:
-
-| Verb | Action | Notes |
+| Tab | Source tables | Key UI |
 |---|---|---|
-| `health_check` | returns `{status:'ok', version:1, timestamp}` | no payload |
-| `create_pending_approval` | insert into `paige_pending_approvals` | resolves `contact_id` from `contact_email` if id not provided (lookup in clients); returns `{id, created_at, status}` |
-| `update_pending_approval` | update by id; restrict fields to `status`, `metadata` (note: there is no `metadata` column today — store under `escalation_note` only if status='escalated', otherwise ignore metadata silently and document the limitation) | returns updated row |
-| `create_workflow_run` | resolve `registry_id` via `registry_key`; insert run with `triggered_by_user_id=null` (system); status defaults to 'queued' or 'running' | returns `{id}` |
-| `update_workflow_run` | update by id; status/result/error/completed_at | returns updated row |
-| `log_message_send` | insert into `paige_messages_audit` (map `to`→`to_address`, `from`→`from_address`) | returns `{id}` |
-| `upsert_contact_mirror` | upsert into `clients` keyed on lowercased `email`; sets `created_by` to a system sentinel uuid (see open question below); split full names if only one provided | returns `{client_id, action}` |
-| `notify_admin` | insert into `paige_admin_notifications` | returns `{id}` |
-| `read_config` | select from `paige_config` (single row table); if `key` provided return that field | read-only |
-| `get_approval_queue_count` | calls the RPC above | returns `{pending, by_type}` |
+| Business credit | `paige_business_credit_profiles` | Bureau score grid (D&B Paydex / Intelliscore / Equifax Business), trade-line count, 90d sparkline, "Last pulled" + Refresh (calls existing `nav-sync` fn) |
+| Owner credit | `paige_owner_credit_snapshots` | TU/EQ/EX score cards, factors list, alerts table; banner "Read-only — disputes managed in member dashboard per Doctrine §84" |
+| Banking | `paige_bank_connections`, `paige_bank_transactions` | Institution cards (status pill), accounts table, last 25 txns w/ filter, Refresh button (invokes `plaid-sync`) |
+| Cash flow | `paige_cash_flow_snapshots` | KPI cards: runway days, deposits/withdrawals 30d, avg balance; composite Funding Readiness gauge (0–100) computed client-side from BC + OC + CF snapshots |
 
-- Every verb wrapped in try/catch returning `{ok:false, verb, error}` with 400/500; success returns `{ok:true, verb, data}`.
-- Structured `console.log` per call: `verb`, `ok`, `duration_ms`. Never log payload bodies (PII).
+### 3.4 Master overview specs
 
-### 4. Frontend
+Each is a sortable `Table` with: client name (link to ContactDetail), key metric, last-updated timestamp, trend arrow, action menu. Default sort: most-stale-first so Antonio can spot data gaps. Filters: tier (from `tier_state`), assigned coach, score band. CSV export button.
 
-**a. New page `src/pages/admin/AdminNotifications.tsx`**
-- Route: `/admin/notifications` (add to `src/App.tsx` admin routes block).
-- List view: severity badge, title, body, relative timestamp, optional `link_to`, "Mark read" / "Mark all read" actions.
-- Tabs: Unread / All. Filter by severity.
-- Realtime: subscribe to `paige_admin_notifications` INSERT/UPDATE inside `useEffect`, cleanup on unmount.
+### 3.5 RAG / Knowledge-base wiring
 
-**b. Bell badge in `src/components/admin/AdminLayout.tsx` header**
-- New `<NotificationsBell />` component near the existing top-right cluster.
-- Query unread count on mount; subscribe via Realtime; show numeric badge if >0.
-- Click → navigates to `/admin/notifications`.
-- Toast (existing sonner) on new unread INSERT when severity is `warning` or `urgent`.
+Paige already uses `rag_documents` + `match_rag_documents()` (pgvector). Plan:
 
-### 5. Doctrine
+1. Migration adds `document_type` values `'business_credit_snapshot'`, `'owner_credit_snapshot'`, `'banking_snapshot'`, `'cash_flow_snapshot'`, `'client_financial_brief'`.
+2. New edge function `embed-client-financials`:
+   - Triggered by `pg_net` on INSERT into each of the 5 tables (DB trigger → http_post).
+   - Builds a deterministic markdown brief per row (e.g. "Client Acme Inc — Paydex 78, Intelliscore 72, pulled 2026-06-25, ↑ from 71"), embeds via Lovable AI Gateway (`text-embedding-3-small`), upserts into `rag_documents` with `metadata = { client_id, source_table, source_row_id, captured_at }`.
+   - Idempotent upsert keyed on `(source_table, source_row_id)` so re-embeds replace not duplicate.
+3. Nightly cron edge function `rebuild-client-financial-brief` composes ONE rolled-up "capital readiness assessment" doc per client (joins newest row from all 5 tables + recent deals/tasks) so questions like "what's [client]'s capital readiness?" hit a single high-signal chunk.
+4. `paige-ai-chat` system prompt gains tool hint: when the question mentions funding-ready / business credit / banking / runway, call `match_rag_documents` with `_document_types` filtered to the new types.
+5. RLS: new rag rows are admin/coach-visible only — extend existing `rag_documents` policies to gate financial-typed docs to those roles.
 
-Append §91 to the in-repo doctrine note (memory). No code change required beyond memory update.
+### 3.6 Open questions / assumptions
 
----
+- Assumption: Antonio wants composite Funding Readiness computed client-side from existing snapshot columns; no new score table.
+- Assumption: existing `nav-sync` and `plaid-sync` edge functions exist (or will) for Refresh buttons — if not, buttons render disabled with "Connect Nav/Plaid" CTA.
+- Assumption: "READ-ONLY" on owner-credit means no write/dispute actions in admin, but admins can still view the SmartCredit raw data.
 
-### Out of scope (intentional)
+### 3.7 Build order
 
-- The MMA OS side helper (`callPaigeBridge`) and the `mirror_to_paige_inbox` verb — Claude's deliverable per the spec.
-- Updating n8n CS Triage workflow — Claude's deliverable.
-- Adding a `metadata` JSONB column to `paige_pending_approvals` — flagged below as an open question; not changing schema unilaterally.
+1. Migration: rag doc-type values + RLS extension + DB triggers stub.
+2. `embed-client-financials` + `rebuild-client-financial-brief` edge functions.
+3. Per-client tabs (highest leverage — Antonio's daily surface).
+4. Master overview pages.
+5. paige-ai-chat prompt hint + smoke-test queries.
 
 ---
 
-### Open questions / flagged concerns
+## SECTION 4 — Campaign Cockpit + Member Journey
 
-1. **`metadata` field on approvals.** Spec's `create_pending_approval` and `update_pending_approval` accept `metadata`, but the table has no such column. Two options:
-   - **A (recommended):** add `metadata jsonb default '{}'` in the same Phase 6 migration. Cleanest, future-proof.
-   - **B:** silently drop the field. Lossy and surprising.
-   - Going with **A** unless you say otherwise.
+### 4.1 Routes
 
-2. **`upsert_contact_mirror` and `created_by`.** `clients.created_by` is `NOT NULL` and references `auth.users`. For a system-mirrored contact there is no human creator. Plan: reuse Antonio's owner user id (already used as the platform owner sentinel elsewhere). Confirm OK, or I can create a dedicated `system@paigeagent.ai` auth user as a sentinel.
+- `/admin/campaigns` → `CampaignsList.tsx`
+- `/admin/campaigns/:key` → `CampaignDetail.tsx`
+- `/admin/campaigns/:key/content` → `CampaignContent.tsx`
+- ContactDetail gets new tab **Journey** → `ClientJourneyTab.tsx`
 
-3. **`create_workflow_run` and `triggered_by_user_id`.** Existing RLS INSERT policy requires `triggered_by_user_id = auth.uid()`. Bridge uses service role so it bypasses RLS — fine. But the SELECT policies will hide system-triggered rows from coaches (admins still see all). I'll leave the SELECT policies as-is so the Workflows UI for admins shows everything; coaches still only see runs they triggered themselves. Confirm acceptable.
+Nav entry: new top-level **"Campaigns"** in the admin top bar (between Pipeline and More).
 
-4. **`notify_admin` recipient model.** Notifications are global to all admins (no `user_id` column per the spec). Read state is also global — first admin to mark read marks it for everyone. If you want per-admin read state, say so and I'll add a join table; otherwise shipping as spec'd.
+### 4.2 Bridge client (Paige → MMA OS, read-through)
 
-5. **Rate limiting.** Bearer-auth-only is fine for trusted server callers, but `paige-bridge` is internet-exposed. Plan: add a coarse per-IP rate limiter via existing `api_rate_limits` table (e.g. 600 req/min) and reject 429 over the limit. Low-risk to include in v1.
+New shared helper `supabase/functions/_shared/mmaOsCampaigns.ts` wrapping the 6 verbs Claude is shipping on MMA OS bridge v15:
+- `list_active_campaigns`
+- `get_campaign_detail(campaign_key)`
+- `list_contact_enrollments(email|contact_id)`
+- `enroll_contact_manual(campaign_key, email, source)`
+- `exit_contact_from_campaign(campaign_key, email, reason)`
+- `get_campaign_metrics(campaign_key, period)`
+- plus `get_journey(email|contact_id)` mega-verb
+
+Two thin Paige edge functions wrap them so the frontend never holds the bridge secret:
+- `mma-campaigns-read` — proxies all read verbs (GET-style)
+- `mma-campaigns-write` — proxies enroll/exit, requires admin role (`has_role(auth.uid(), 'admin')`)
+
+Both write all actions to `audit_logs` and (on enroll/exit) push a `paige_admin_notifications` row via the existing bridge so the bell pings.
+
+### 4.3 Cache layer
+
+Claude's weekly cron mirrors campaign state. On the Paige side:
+- New table `paige_campaign_cache` (campaign_key PK, snapshot jsonb, refreshed_at). Populated by edge function `refresh-campaign-cache` (cron every 15 min + manual "Refresh" button).
+- New table `paige_journey_cache` (contact_id PK, snapshot jsonb, refreshed_at, ttl 1h). Lazy: populated on first journey view, refreshed by user button.
+- Both tables: admin/coach read RLS; service_role write; GRANTS per house rules.
+
+UI reads cache first, falls back to live bridge call if stale > 30 min (campaigns) / 1 h (journey).
+
+### 4.4 Page specs
+
+**CampaignsList** — Table: name, status pill (active/paused/killed), enrolled, completed, last fire, open-rate sparkline. Row click → detail. Top-bar "Refresh cache" button.
+
+**CampaignDetail** — Header with Pause/Resume/Kill buttons (confirm dialog → `mma-campaigns-write`). Tabs:
+- *Enrollments* — paginated table filtered by status, with per-row "Exit" action.
+- *Schedule* — vertical step list (step #, channel, day offset, subject/preview, requires_approval flag).
+- *Metrics* — recharts area+line: sends/day, open %, click %, completion %, churn %.
+
+**CampaignContent** — Each step rendered as a `Card`: subject, rendered body with sample personalization (uses payload from `get_campaign_detail`), "Edit in Notion" deep link from content registry pointer.
+
+**ClientJourneyTab (the SaaS exit asset)**
+- Single vertical timeline (`<TimelineEvent>` component) merging events from `get_journey` payload:
+  tier changes, campaign enrollments + sends + opens + clicks, milestones (LLC/EIN/funding), CS conversations, bookings, signatures, social comments, business-credit deltas.
+- Event grouping by day; filter chips (Comms, Milestones, Money, Coaching, All).
+- Action bar at top: **Enroll in campaign** (modal w/ campaign picker → `enroll_contact_manual`), **Send one-off message** (existing send-message fn), **Open conversation** (deep-link `/admin/conversations/:id`).
+- "Export PDF" button → calls new `journey-export-pdf` edge function (server-rendered, for due-diligence handoff).
+
+ContactDetail also gets the three action buttons in its header (Enroll / Send / Open) — same handlers as Journey tab.
+
+### 4.5 Doctrine §93 enforcement
+
+Add a top-of-file comment block to each new file: "Reads through paige-bridge → MMA OS. Per Doctrine §93, never query MMA OS Supabase directly."
+
+### 4.6 Open questions / assumptions
+
+- Assumption: bridge bearer auth uses existing `MMA_OS_BRIDGE_API_KEY` secret already configured in `_shared/mmaOsBridge.ts`. If MMA OS issues a separate key for the new verbs, add `MMA_OS_BRIDGE_READ_KEY` secret.
+- Assumption: `get_journey` payload is large — we'll page comms events past 90 days behind a "Load older" button.
+- Assumption: "Kill" is a hard archive (not delete); confirm with Claude when implementing.
+- PDF export is nice-to-have — confirm priority vs cut.
+
+### 4.7 Build order
+
+1. Migration: `paige_campaign_cache`, `paige_journey_cache`, RLS, GRANTs.
+2. Edge functions: `mma-campaigns-read`, `mma-campaigns-write`, `refresh-campaign-cache`.
+3. `CampaignsList` (smallest unit of progress, validates bridge).
+4. `CampaignDetail` + Content tab.
+5. `ClientJourneyTab` + ContactDetail action buttons.
+6. `journey-export-pdf` (optional last).
 
 ---
 
-### Build sequence after approval
+## Verification gates (both sections)
 
-1. Run the migration (table + enum widening + RPC + realtime publication).
-2. Write the Edge Function with all 10 verbs + Zod schemas.
-3. Add `config.toml` block for `verify_jwt = false`.
-4. Build `AdminNotifications.tsx` page + route.
-5. Build `NotificationsBell` and wire into `AdminLayout.tsx`.
-6. Type-check clean, confirm health_check via `curl`, hand off to Antonio for `PAIGE_BRIDGE_API_KEY` secret + MMA OS-side wiring.
+- TypeScript clean (`tsgo`).
+- Supabase linter clean after each migration.
+- Smoke-test: `match_rag_documents` returns a financial brief when asked "is Acme funding-ready?".
+- Smoke-test: `mma-campaigns-read` health check returns campaign list; manual enroll writes to `audit_logs` + fires admin notification.
+
+Awaiting approval for Sections 3 + 4; will build Sections 1 + 2 directly once we flip to build mode.
