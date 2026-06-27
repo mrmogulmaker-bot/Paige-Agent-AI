@@ -128,8 +128,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: false, error: insertErr.message }), { status: 500 });
   }
 
-  fireAndForgetBridge("record_cross_system_event" as any, {
-    verb_override: "customer_support_intake",
+  fireAndForgetBridge("customer_support_intake", {
     conversation_id: convo.id,
     contact_email: fromEmail,
     channel: "email",
