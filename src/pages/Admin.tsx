@@ -327,10 +327,41 @@ const Admin = () => {
         <Route path="integrations/ai-activity" element={
           <Suspense fallback={<SuspenseFallback />}><AiActivity /></Suspense>
         } />
+        <Route path="integrations/docusign" element={
+          <Suspense fallback={<SuspenseFallback />}><DocuSignConfig /></Suspense>
+        } />
+        <Route path="signatures" element={
+          <Suspense fallback={<SuspenseFallback />}><SignaturesAdmin /></Suspense>
+        } />
+        <Route path="integrations/cal" element={
+          <Suspense fallback={<SuspenseFallback />}><CalIntegrationConfig /></Suspense>
+        } />
+        <Route path="bookings" element={
+          <Suspense fallback={<SuspenseFallback />}><BookingsAdmin /></Suspense>
+        } />
+        <Route path="integrations/meta" element={
+          <Suspense fallback={<SuspenseFallback />}><MetaIntegrationConfig /></Suspense>
+        } />
+        <Route path="social" element={
+          <Suspense fallback={<SuspenseFallback />}><SocialAdmin /></Suspense>
+        } />
+        <Route path="integrations/apollo" element={
+          <Suspense fallback={<SuspenseFallback />}><ApolloIntegrationConfig /></Suspense>
+        } />
+        <Route path="leads/enrichment" element={
+          <Suspense fallback={<SuspenseFallback />}><LeadsEnrichment /></Suspense>
+        } />
+        <Route path="observability/usage" element={
+          <Suspense fallback={<SuspenseFallback />}><UsageAnalytics /></Suspense>
+        } />
+        <Route path="observability/errors" element={
+          <Suspense fallback={<SuspenseFallback />}><ErrorTracking /></Suspense>
+        } />
       </Routes>
     </AdminLayout>
   );
 };
+
 
 function AdminOverview({ stats }: { stats: { totalUsers: number; activeSubscriptions: number; pendingApplications: number; totalRevenue: number } }) {
   return (
