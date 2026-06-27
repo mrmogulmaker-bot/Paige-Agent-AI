@@ -9,17 +9,54 @@ const corsHeaders = {
 const PLAID_CLIENT_ID = Deno.env.get('PLAID_CLIENT_ID');
 const PLAID_SECRET = Deno.env.get('PLAID_SECRET');
 const PLAID_ENV = 'sandbox';
+const PLAID_HOST = `https://${PLAID_ENV}.plaid.com`;
+
+// In-memory cache of Plaid webhook verification keys (per cold-start).
+const plaidKeyCache = new Map<string, JsonWebKey>();
+
+function b64urlToUint8(s: string): Uint8Array {
+  const pad = s.length % 4 ? '='.repeat(4 - (s.length % 4)) : '';
+  const b64 = (s + pad).replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function fetchPlaidVerificationKey(kid: string): Promise<JsonWebKey | null> {
+  const cached = plaidKeyCache.get(kid);
+  if (cached) return cached;
+  if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
+    console.error('Plaid credentials missing — cannot fetch verification key');
+    return null;
+  }
+  try {
+    const resp = await fetch(`${PLAID_HOST}/webhook_verification_key/get`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: PLAID_CLIENT_ID, secret: PLAID_SECRET, key_id: kid }),
+    });
+    if (!resp.ok) {
+      console.error('Failed to fetch Plaid verification key:', resp.status);
+      return null;
+    }
+    const json = await resp.json();
+    const jwk = json?.key as JsonWebKey | undefined;
+    if (!jwk) return null;
+    plaidKeyCache.set(kid, jwk);
+    return jwk;
+  } catch (err) {
+    console.error('Error fetching Plaid verification key:', err);
+    return null;
+  }
+}
 
 async function verifyPlaidWebhook(body: string, signedJwt: string | null): Promise<boolean> {
-  // Plaid sends a JWT in the Plaid-Verification header
-  // For production, verify JWT signature using Plaid's webhook verification key
-  // For now, require the header exists and validate structure
   if (!signedJwt) {
     console.error('Missing Plaid-Verification header');
     return false;
   }
 
-  // Verify the JWT has 3 parts (header.payload.signature)
   const parts = signedJwt.split('.');
   if (parts.length !== 3) {
     console.error('Invalid Plaid-Verification JWT format');
@@ -27,26 +64,56 @@ async function verifyPlaidWebhook(body: string, signedJwt: string | null): Promi
   }
 
   try {
-    // Decode and verify the payload contains the body hash
-    const payloadB64 = parts[1];
-    const payloadJson = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'));
-    const payload = JSON.parse(payloadJson);
+    const [headerB64, payloadB64, signatureB64] = parts;
+    const header = JSON.parse(new TextDecoder().decode(b64urlToUint8(headerB64)));
+    const payload = JSON.parse(new TextDecoder().decode(b64urlToUint8(payloadB64)));
 
-    // Verify the request body hash matches
-    const encoder = new TextEncoder();
-    const bodyBytes = encoder.encode(body);
+    // Plaid uses ES256 for webhook JWTs.
+    if (header.alg !== 'ES256' || !header.kid) {
+      console.error('Unexpected Plaid JWT header:', header);
+      return false;
+    }
+
+    // Reject stale webhooks (iat older than 5 minutes).
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (typeof payload.iat !== 'number' || nowSec - payload.iat > 5 * 60) {
+      console.error('Plaid webhook JWT is stale or missing iat');
+      return false;
+    }
+
+    // Verify the request body hash matches.
+    const bodyBytes = new TextEncoder().encode(body);
     const hashBuffer = await crypto.subtle.digest('SHA-256', bodyBytes);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const bodyHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-    if (payload.request_body_sha256 && payload.request_body_sha256 !== bodyHash) {
+    const bodyHash = Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0')).join('');
+    if (payload.request_body_sha256 !== bodyHash) {
       console.error('Plaid webhook body hash mismatch');
       return false;
     }
 
-    // In production, also fetch Plaid's verification key and verify JWT signature:
-    // GET https://{env}.plaid.com/webhook_verification_key/get with key_id from JWT header
-    // Then verify JWT signature with that key
+    // Fetch the verification JWK for this kid and verify the JWT signature.
+    const jwk = await fetchPlaidVerificationKey(header.kid);
+    if (!jwk) return false;
+
+    const cryptoKey = await crypto.subtle.importKey(
+      'jwk',
+      jwk,
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['verify'],
+    );
+    const signature = b64urlToUint8(signatureB64);
+    const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+    const ok = await crypto.subtle.verify(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      cryptoKey,
+      signature,
+      signingInput,
+    );
+    if (!ok) {
+      console.error('Plaid JWT signature verification failed');
+      return false;
+    }
 
     return true;
   } catch (err) {

@@ -525,18 +525,21 @@ function AdminCoachingPanel({ answers, score }: { answers: Answers; score: numbe
     if (!brief) return;
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    printWindow.document.write(`
-      <html><head><title>BUILD Coaching Brief</title>
+    // Build the document via DOM APIs so AI-generated `brief` text is treated
+    // as text content (not HTML) — prevents XSS via injected markup.
+    const doc = printWindow.document;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head><title>BUILD Coaching Brief</title>
       <style>body{font-family:Arial,sans-serif;max-width:700px;margin:40px auto;padding:20px;color:#222}
       h1{font-size:20px;border-bottom:2px solid #CFAE70;padding-bottom:8px}
       .score{font-size:36px;font-weight:bold;color:#CFAE70;margin:16px 0}
-      pre{white-space:pre-wrap;font-family:Arial;font-size:14px;line-height:1.6}</style></head>
-      <body><h1>BUILD Coaching Brief</h1>
-      <div class="score">${score}/100</div>
-      <pre>${brief}</pre>
-      <p style="color:#999;font-size:11px;margin-top:40px">Generated ${new Date().toLocaleDateString()}</p>
-      </body></html>`);
-    printWindow.document.close();
+      pre{white-space:pre-wrap;font-family:Arial;font-size:14px;line-height:1.6}</style></head><body></body></html>`);
+    doc.close();
+    const body = doc.body;
+    const h1 = doc.createElement('h1'); h1.textContent = 'BUILD Coaching Brief'; body.appendChild(h1);
+    const scoreDiv = doc.createElement('div'); scoreDiv.className = 'score'; scoreDiv.textContent = `${score}/100`; body.appendChild(scoreDiv);
+    const pre = doc.createElement('pre'); pre.textContent = brief; body.appendChild(pre);
+    const footer = doc.createElement('p'); footer.setAttribute('style','color:#999;font-size:11px;margin-top:40px'); footer.textContent = `Generated ${new Date().toLocaleDateString()}`; body.appendChild(footer);
     printWindow.print();
   };
 

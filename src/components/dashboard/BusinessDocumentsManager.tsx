@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import DOMPurify from "dompurify";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -259,7 +260,8 @@ export function BusinessDocumentsManager() {
         return;
       }
       if (data?.html) {
-        // Open printable window
+        // Open printable window — sanitize AI-generated HTML to prevent XSS.
+        const safeHtml = DOMPurify.sanitize(data.html, { FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed'], FORBID_ATTR: ['onerror', 'onload', 'onclick'] });
         const printWindow = window.open('', '_blank');
         if (printWindow) {
           printWindow.document.write(`
@@ -269,7 +271,7 @@ export function BusinessDocumentsManager() {
               @media print { body { margin: 0; } @page { margin: 1in; } }
               body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
             </style>
-            </head><body>${data.html}</body></html>
+            </head><body>${safeHtml}</body></html>
           `);
           printWindow.document.close();
           sonnerToast.success('Lender summary generated! Use Print → Save as PDF to download.');
