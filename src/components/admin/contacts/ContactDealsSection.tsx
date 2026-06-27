@@ -95,10 +95,8 @@ export function ContactDealsSection({ contactId }: { contactId: string }) {
           pipeline={defaultPipeline}
           stages={dealStages}
           defaultStageId={dealStages[0]?.id}
-          onCreated={async () => {
-            // pre-select the new contact by inserting then reloading
-            await load();
-          }}
+          defaultContactId={contactId}
+          onCreated={async () => { await load(); }}
         />
       )}
     </div>
