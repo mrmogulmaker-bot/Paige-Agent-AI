@@ -5886,6 +5886,110 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_bank_connections: {
+        Row: {
+          accounts: Json
+          connected_at: string
+          contact_id: string
+          created_at: string
+          id: string
+          institution_name: string | null
+          last_synced_at: string | null
+          plaid_access_token_encrypted: string | null
+          plaid_item_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          accounts?: Json
+          connected_at?: string
+          contact_id: string
+          created_at?: string
+          id?: string
+          institution_name?: string | null
+          last_synced_at?: string | null
+          plaid_access_token_encrypted?: string | null
+          plaid_item_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          accounts?: Json
+          connected_at?: string
+          contact_id?: string
+          created_at?: string
+          id?: string
+          institution_name?: string | null
+          last_synced_at?: string | null
+          plaid_access_token_encrypted?: string | null
+          plaid_item_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_bank_connections_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_bank_connections_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
+      paige_bank_transactions: {
+        Row: {
+          account_id: string | null
+          amount_cents: number
+          bank_connection_id: string
+          category: Json | null
+          created_at: string
+          date: string
+          id: string
+          name: string | null
+          pending: boolean
+          plaid_transaction_id: string | null
+        }
+        Insert: {
+          account_id?: string | null
+          amount_cents: number
+          bank_connection_id: string
+          category?: Json | null
+          created_at?: string
+          date: string
+          id?: string
+          name?: string | null
+          pending?: boolean
+          plaid_transaction_id?: string | null
+        }
+        Update: {
+          account_id?: string | null
+          amount_cents?: number
+          bank_connection_id?: string
+          category?: Json | null
+          created_at?: string
+          date?: string
+          id?: string
+          name?: string | null
+          pending?: boolean
+          plaid_transaction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_bank_transactions_bank_connection_id_fkey"
+            columns: ["bank_connection_id"]
+            isOneToOne: false
+            referencedRelation: "paige_bank_connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paige_bookings: {
         Row: {
           attendee_email: string | null
@@ -5955,6 +6059,120 @@ export type Database = {
           },
         ]
       }
+      paige_business_credit_profiles: {
+        Row: {
+          business_name: string | null
+          contact_id: string
+          created_at: string
+          ein: string | null
+          history: Json
+          id: string
+          last_pulled_at: string | null
+          nav_profile_id: string | null
+          scores: Json
+          trade_lines: Json
+          updated_at: string
+        }
+        Insert: {
+          business_name?: string | null
+          contact_id: string
+          created_at?: string
+          ein?: string | null
+          history?: Json
+          id?: string
+          last_pulled_at?: string | null
+          nav_profile_id?: string | null
+          scores?: Json
+          trade_lines?: Json
+          updated_at?: string
+        }
+        Update: {
+          business_name?: string | null
+          contact_id?: string
+          created_at?: string
+          ein?: string | null
+          history?: Json
+          id?: string
+          last_pulled_at?: string | null
+          nav_profile_id?: string | null
+          scores?: Json
+          trade_lines?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_business_credit_profiles_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_business_credit_profiles_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
+      paige_cash_flow_snapshots: {
+        Row: {
+          avg_daily_balance_cents: number
+          contact_id: string
+          created_at: string
+          funding_readiness_score: number | null
+          generated_at: string
+          id: string
+          period_end: string
+          period_start: string
+          runway_days: number | null
+          total_deposits_cents: number
+          total_withdrawals_cents: number
+        }
+        Insert: {
+          avg_daily_balance_cents?: number
+          contact_id: string
+          created_at?: string
+          funding_readiness_score?: number | null
+          generated_at?: string
+          id?: string
+          period_end: string
+          period_start: string
+          runway_days?: number | null
+          total_deposits_cents?: number
+          total_withdrawals_cents?: number
+        }
+        Update: {
+          avg_daily_balance_cents?: number
+          contact_id?: string
+          created_at?: string
+          funding_readiness_score?: number | null
+          generated_at?: string
+          id?: string
+          period_end?: string
+          period_start?: string
+          runway_days?: number | null
+          total_deposits_cents?: number
+          total_withdrawals_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_cash_flow_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_cash_flow_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
       paige_config: {
         Row: {
           apollo_auto_enrich: boolean
@@ -5972,10 +6190,15 @@ export type Database = {
           id: number
           langsmith_project: string | null
           meta_default_page_id: string | null
+          nav_partner_id: string | null
+          nav_threshold_delta: number | null
+          plaid_activated: boolean | null
+          plaid_env: string | null
           posthog_project_url: string | null
           resend_domain_verified: boolean
           sentry_org_slug: string | null
           sentry_project_slug: string | null
+          smartcredit_enabled: boolean | null
           stripe_price_tier_map: Json | null
           twilio_a2p_status: string
           updated_at: string
@@ -5997,10 +6220,15 @@ export type Database = {
           id?: number
           langsmith_project?: string | null
           meta_default_page_id?: string | null
+          nav_partner_id?: string | null
+          nav_threshold_delta?: number | null
+          plaid_activated?: boolean | null
+          plaid_env?: string | null
           posthog_project_url?: string | null
           resend_domain_verified?: boolean
           sentry_org_slug?: string | null
           sentry_project_slug?: string | null
+          smartcredit_enabled?: boolean | null
           stripe_price_tier_map?: Json | null
           twilio_a2p_status?: string
           updated_at?: string
@@ -6022,10 +6250,15 @@ export type Database = {
           id?: number
           langsmith_project?: string | null
           meta_default_page_id?: string | null
+          nav_partner_id?: string | null
+          nav_threshold_delta?: number | null
+          plaid_activated?: boolean | null
+          plaid_env?: string | null
           posthog_project_url?: string | null
           resend_domain_verified?: boolean
           sentry_org_slug?: string | null
           sentry_project_slug?: string | null
+          smartcredit_enabled?: boolean | null
           stripe_price_tier_map?: Json | null
           twilio_a2p_status?: string
           updated_at?: string
@@ -6297,6 +6530,54 @@ export type Database = {
           workflows_cache?: Json | null
         }
         Relationships: []
+      }
+      paige_owner_credit_snapshots: {
+        Row: {
+          alerts_triggered: Json
+          bureau: Database["public"]["Enums"]["owner_credit_bureau"]
+          contact_id: string
+          created_at: string
+          factors: Json
+          id: string
+          pulled_at: string
+          score: number | null
+        }
+        Insert: {
+          alerts_triggered?: Json
+          bureau: Database["public"]["Enums"]["owner_credit_bureau"]
+          contact_id: string
+          created_at?: string
+          factors?: Json
+          id?: string
+          pulled_at?: string
+          score?: number | null
+        }
+        Update: {
+          alerts_triggered?: Json
+          bureau?: Database["public"]["Enums"]["owner_credit_bureau"]
+          contact_id?: string
+          created_at?: string
+          factors?: Json
+          id?: string
+          pulled_at?: string
+          score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_owner_credit_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_owner_credit_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
       }
       paige_pending_approvals: {
         Row: {
@@ -9090,6 +9371,7 @@ export type Database = {
         | "welcome"
         | "system"
       order_status: "pending" | "completed" | "failed" | "refunded"
+      owner_credit_bureau: "experian" | "equifax" | "transunion"
       paige_booking_event_type:
         | "vip_intro"
         | "dfy_discovery"
@@ -9364,6 +9646,7 @@ export const Constants = {
         "system",
       ],
       order_status: ["pending", "completed", "failed", "refunded"],
+      owner_credit_bureau: ["experian", "equifax", "transunion"],
       paige_booking_event_type: [
         "vip_intro",
         "dfy_discovery",
