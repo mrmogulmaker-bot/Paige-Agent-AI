@@ -103,7 +103,7 @@ export default function IntegrationsHub() {
       case "zapier": return counts.mcp > 0 ? { tone: "default" as const, label: `${counts.mcp} active` } : { tone: "secondary" as const, label: "Not configured" };
       case "telegram": return counts.telegramConfigured ? { tone: "default" as const, label: "Active" } : { tone: "secondary" as const, label: "Not configured" };
       case "gmail": return config?.gmail_default_sender ? { tone: "default" as const, label: config.gmail_default_sender } : { tone: "secondary" as const, label: "Not connected" };
-      case "tavily": return { tone: "outline" as const, label: "Env-managed" };
+      case "firecrawl": return { tone: "default" as const, label: "Active (FIRECRAWL_API_KEY)" };
       case "langsmith": return config?.langsmith_project ? { tone: "default" as const, label: config.langsmith_project } : { tone: "secondary" as const, label: "Disabled" };
       case "docusign": return counts.envelopes > 0 ? { tone: "default" as const, label: `${counts.envelopes} envelope${counts.envelopes === 1 ? "" : "s"}` } : { tone: "secondary" as const, label: "Not configured" };
       case "cal": return counts.bookings > 0 ? { tone: "default" as const, label: `${counts.bookings} bookings (30d)` } : { tone: "secondary" as const, label: "Not configured" };
