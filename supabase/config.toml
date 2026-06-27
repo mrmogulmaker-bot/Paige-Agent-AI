@@ -151,3 +151,8 @@ project_id = "bfmyebsjyuoecmjskqhs"
 
   [functions.mma-campaigns]
     verify_jwt = true
+
+  [functions.embed-client-financials]
+    verify_jwt = false
+  [functions.rebuild-client-financial-brief]
+    verify_jwt = false
