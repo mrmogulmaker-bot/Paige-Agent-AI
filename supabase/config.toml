@@ -156,3 +156,6 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = false
   [functions.rebuild-client-financial-brief]
     verify_jwt = false
+
+  [functions.mma-journey]
+    verify_jwt = true
