@@ -1,5 +1,5 @@
-// Tavily web search proxy for Paige.
-// Body: { query: string, search_depth?: "basic"|"advanced", max_results?: number }
+// Paige admin web search — Firecrawl-backed (Tavily deprecated per Doctrine §88).
+// Body: { query: string, limit?: number }
 import { corsHeaders, jsonResponse, requireAdmin } from "../_shared/adminAuth.ts";
 
 Deno.serve(async (req) => {
@@ -8,23 +8,37 @@ Deno.serve(async (req) => {
   if (!guard.ok) return guard.response;
 
   const body = await req.json().catch(() => ({}));
-  if (!body?.query || typeof body.query !== "string") return jsonResponse({ error: "missing_query" }, 400);
+  const query = typeof body?.query === "string" ? body.query.trim() : "";
+  if (!query || query.length < 2 || query.length > 500) {
+    return jsonResponse({ error: "invalid_query", detail: "Provide 2-500 characters." }, 400);
+  }
+  const limit = Math.max(1, Math.min(Number(body?.limit ?? 5), 10));
 
-  const apiKey = Deno.env.get("TAVILY_API_KEY");
-  if (!apiKey) return jsonResponse({ error: "tavily_not_configured" }, 500);
+  const apiKey = Deno.env.get("FIRECRAWL_API_KEY");
+  if (!apiKey) return jsonResponse({ error: "firecrawl_not_configured" }, 500);
 
-  const res = await fetch("https://api.tavily.com/search", {
+  const res = await fetch("https://api.firecrawl.dev/v2/search", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      api_key: apiKey,
-      query: body.query,
-      search_depth: body.search_depth ?? "basic",
-      max_results: Math.min(body.max_results ?? 5, 10),
-      include_answer: true,
-    }),
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, limit }),
   });
-  if (!res.ok) return jsonResponse({ error: `tavily_${res.status}`, detail: (await res.text()).slice(0, 500) }, 502);
-  const json = await res.json();
-  return jsonResponse({ ok: true, answer: json.answer ?? null, results: json.results ?? [] });
+  if (!res.ok) {
+    return jsonResponse(
+      { error: `firecrawl_${res.status}`, detail: (await res.text()).slice(0, 500) },
+      502,
+    );
+  }
+  const data = await res.json();
+  // Firecrawl v2: { success, data: { web: [...] } } — also handle older shapes
+  let raw: Array<{ title?: string; description?: string; url?: string }> = [];
+  if (Array.isArray(data?.data?.web)) raw = data.data.web;
+  else if (Array.isArray(data?.data)) raw = data.data;
+  else if (Array.isArray(data?.web)) raw = data.web;
+  else if (Array.isArray(data?.results)) raw = data.results;
+
+  const results = raw
+    .filter((r) => r.url)
+    .map((r) => ({ title: r.title ?? r.url, description: r.description ?? "", url: r.url }));
+
+  return jsonResponse({ ok: true, query, results });
 });
