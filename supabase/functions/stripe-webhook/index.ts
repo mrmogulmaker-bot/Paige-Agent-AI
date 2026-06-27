@@ -129,14 +129,22 @@ async function upsertTierState(
     }
 
     // Short-hop to MMA OS so its brain sees the tier change instantly.
-    // Best-effort: failure never blocks the 200 back to Stripe.
-    await fireMmaOsTierSync({
+    // Best-effort, fire-and-forget with retries: must never block the 200 back to Stripe.
+    const shortHop = fireMmaOsTierSync({
       email: args.email,
       tier: args.tier,
       paymentStatus: args.paymentStatus ?? "active",
       stripeAccountId: args.stripeAccountId ?? null,
       eventId: args.eventId,
     });
+    // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(shortHop);
+    } else {
+      // Fallback: detach so retries don't block the handler.
+      shortHop.catch((e) => logStep("MMA OS short-hop detached error", { error: String(e) }));
+    }
   } catch (e) {
     logStep("upsertTierState exception", { error: String(e) });
   }
