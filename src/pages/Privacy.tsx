@@ -2,12 +2,19 @@ import { Header } from "@/components/landing/Header";
 import { Footer } from "@/components/landing/Footer";
 import { SiteBackground } from "@/components/landing/SiteBackground";
 import { SecurityBadge } from "@/components/security/SecurityBadge";
+import { PageHead } from "@/components/seo/PageHead";
 
 const Privacy = () => {
   return (
     <div className="min-h-screen bg-background">
+      <PageHead
+        title="Privacy Policy — PaigeAgent.ai"
+        description="How PaigeAgent.ai collects, protects, and uses your credit, banking, and business financial data. GLBA, FCRA, and CCPA/CPRA compliant — written in plain English."
+        path="/privacy"
+      />
       <SiteBackground />
       <Header />
+
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="flex items-start justify-between gap-4 flex-wrap mb-2">
           <h1 className="text-4xl font-bold text-foreground">Privacy Policy</h1>

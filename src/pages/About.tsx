@@ -7,11 +7,18 @@ import { Header } from "@/components/landing/Header";
 import { Footer } from "@/components/landing/Footer";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PageHead } from "@/components/seo/PageHead";
 
 const About = () => {
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <PageHead
+        title="About PaigeAgent.ai — The Entrepreneurial Operating System"
+        description="Learn how Antonio Cook and Mogul Maker Academy built PaigeAgent.ai — an AI-powered ecosystem turning credit, capital, and execution into one growth engine."
+        path="/about"
+      />
       <Header />
+
 
       <main className="flex-1">
         <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
