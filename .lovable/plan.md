@@ -1,197 +1,177 @@
 
-# Paige Becomes the OS — Phase 2 Plan (Connectors)
+# Phase 3 — Tier 3 Connectors (Signature, Booking, Observability, Social, Enrichment)
 
-Builds on Phase 1 tables (`paige_config`, `paige_messages_audit`, `paige_workflow_registry`, `paige_workflow_runs`, `paige_pending_approvals`, `mma_os_bridge_outbox`). Strict MMA-only scope — no consumer-credit, Plaid, Nav, SmartCredit, or Mogul Credit references anywhere in code, copy, prompts, or knowledge.
+Builds on Phase 1 (foundation) and Phase 2 (8 connectors). Strict MMA-only scope is preserved — zero credit repair / Mogul Credit / Plaid / Nav / SmartCredit / FCRA references anywhere in code or UI.
 
----
-
-## 0. Scope guardrail (permanent)
-
-Add to `mem://constraints/mma-only-scope`: Paige Agent AI serves MMA business-side only. Never include credit repair, consumer credit monitoring, Plaid, Nav.com, SmartCredit, personal credit dispute workflows, or FCRA/FDCPA consumer logic. Those live in a future separate product (Mogul AI).
+Recommended build order matches the brief: Sentry → PostHog → DocuSign → Cal.com → Apollo → Meta.
 
 ---
 
-## 1. Database — 4 new tables
+## 1. Database
 
-All in `public`, with `GRANT` blocks, RLS enabled, admin-only via `has_role(auth.uid(), 'admin')`. Secrets are encrypted via a small `_internal_secrets` helper (existing) — table columns hold only references / last4, never raw tokens.
+Four new tables, all admin-scoped (service role for webhook writes). Pattern matches Phase 2: `paige_*` namespace, `updated_at` trigger, RLS, GRANTs in the same migration.
 
-### 1.1 `paige_mcp_connections`
-```
-id uuid pk, label text, server_url text, transport text default 'http',
-auth_token_ref text,           -- pointer into _internal_secrets
-auth_token_last4 text,
-enabled boolean default true,
-tools_cache jsonb,             -- last client.tools() snapshot
-last_probed_at timestamptz,
-created_at, updated_at
-```
-Index: `(enabled)`. RLS: admin read/write.
+### `paige_signature_envelopes`
+DocuSign envelopes tied to a contact.
+- envelope_id (unique), contact_id (fk clients), envelope_type enum (`vip_app | coach_agreement | dfy_engagement | refund | term_sheet | other`)
+- template_id, status enum (`sent | delivered | completed | declined | voided`)
+- sent_at, signed_at, completed_pdf_url, metadata jsonb, created_by user_id
 
-### 1.2 `paige_n8n_connections`
-```
-id uuid pk, label text, base_url text,
-api_key_ref text, api_key_last4 text,
-is_default boolean default false,
-workflows_cache jsonb, last_sync_at timestamptz,
-created_at, updated_at
-```
-Partial unique index `where is_default` to enforce one default. RLS: admin only.
+### `paige_bookings`
+Cal.com bookings linked to a contact (or NULL until resolved).
+- cal_event_id (unique), contact_id (fk clients, nullable), event_type enum, scheduled_at, duration_min
+- status enum (`confirmed | canceled | rescheduled | no_show | completed`)
+- attendee_responses jsonb, metadata jsonb
 
-### 1.3 `paige_subscription_events`
-```
-id uuid pk,
-stripe_event_id text unique,    -- idempotency
-stripe_customer_id text,
-contact_id uuid references public.clients(id) on delete set null,
-event_type text,                -- subscription.created/updated/deleted, invoice.paid, payment_failed
-tier_before text, tier_after text,
-mrr_delta_cents integer,
-currency text default 'usd',
-raw jsonb,
-processed_at timestamptz,
-created_at timestamptz default now()
-```
-Indexes: `(contact_id, created_at desc)`, `(event_type)`, `(stripe_customer_id)`. RLS: admin read, service_role write.
+### `paige_social_posts`
+Meta Graph posts (FB + IG).
+- platform enum (`facebook | instagram`), platform_post_id (unique per platform), caption, media_urls jsonb
+- scheduled_at, posted_at, status enum (`scheduled | posted | failed | deleted`), metrics jsonb (likes/comments/reach), created_by user_id
 
-### 1.4 `paige_telegram_config` (singleton, id=1)
-```
-id integer primary key default 1 check (id = 1),
-bot_token_ref text, bot_token_last4 text,
-default_admin_chat_id text,
-enabled boolean default true,
-updated_at timestamptz
-```
-RLS: admin only.
+### `paige_enrichment_log`
+Append-only Apollo enrichment ledger (history + idempotency).
+- subject_type enum (`person | company`), subject_key (email or domain), contact_id (fk clients, nullable)
+- provider text default 'apollo', payload jsonb, succeeded bool, error text
+- Index on (subject_type, subject_key, created_at desc) for "most recent enrichment for X".
 
-### 1.5 Extend `paige_config` (Phase 1)
-Add columns: `ghl_pit_ref text`, `ghl_location_id text`, `gmail_default_sender text`, `langsmith_project text default 'paige-agent-mma'`.
+All four tables get:
+- `GRANT SELECT, INSERT, UPDATE, DELETE ... TO authenticated` + `GRANT ALL ... TO service_role`
+- RLS `ENABLE`
+- "admins manage" policy via `public.has_role(auth.uid(), 'admin')`
+- service_role write policy for webhooks
+- `updated_at` trigger reusing `public.update_updated_at_column()`
+
+### Schema additions to existing tables
+- `paige_config` extension: `posthog_project_url text`, `sentry_org_slug text`, `sentry_project_slug text`, `docusign_default_brand_id text`, `cal_default_event_type_id text`, `meta_default_page_id text` — all nullable, for admin UI deep-links and defaults.
+
+### Bridge verbs (extend `BridgeVerb` union)
+- `booking_created` — fires Cal booking-followup workflow
+- `signature_completed` — fires VIP onboarding / DFY kickoff workflow based on envelope_type
+- `social_comment_received` — routes Meta comments through CS Triage when support-shaped
+
+All routed via existing `fireAndForgetBridge` + outbox; no new transport code.
 
 ---
 
-## 2. Edge functions — 14 new
+## 2. Edge Functions (14)
 
-All use `corsHeaders` from `npm:@supabase/supabase-js@2/cors`, validate input with Zod, require admin/service-role JWT unless noted, and log every outbound send to `paige_messages_audit` where relevant.
+All authenticated functions reuse `_shared/adminAuth.ts` from Phase 2 (`requireAdmin`, `corsHeaders`, `jsonResponse`). Public webhooks live in their own files with provider-specific signature verification.
 
-### n8n (3)
-- `n8n-list-workflows` → GET `/api/v1/workflows`; upserts active rows into `paige_workflow_registry` (matched by `n8n_workflow_id`), returns diff summary.
-- `n8n-trigger-workflow` → POST `/api/v1/workflows/{id}/execute`; called by Phase 1's `trigger-workflow` (refactor Phase 1 to delegate here when the registry row points at an n8n connection).
-- `n8n-get-executions` → GET `/api/v1/executions?workflowId=…&limit=20`.
+### DocuSign
+- `docusign-send-envelope` (admin) — body: `{ contact_id, envelope_type, template_id, prefill?: object }`. Mints JWT, calls DocuSign Envelopes API, writes a row to `paige_signature_envelopes` with status `sent`.
+- `handle-docusign-webhook` (public, HMAC-verified via DocuSign Connect HMAC1 header) — updates status, stores completed PDF URL, fires `signature_completed` bridge verb when status = `completed`.
 
-### Stripe (1)
-- `handle-stripe-webhook` (public, signature-verified) → parses events, writes `paige_subscription_events`, derives tier from price→tier map in `paige_config.stripe_price_tier_map`, updates `public.clients.tier`, enqueues bridge verb `tier_change_notify` to MMA OS via `mma_os_bridge_outbox`. Idempotent on `stripe_event_id`.
+### Cal.com
+- `handle-cal-webhook` (public, verifies `X-Cal-Signature-256`) — upserts `paige_bookings`, links to `clients` by attendee email, fires `booking_created` bridge verb.
+- `cal-list-bookings` (admin) — proxies Cal.com REST list with status / date filters.
+- `cal-cancel-booking` (admin) — cancels via Cal API and updates the row.
 
-### GHL (3)
-- `ghl-get-contacts` (admin only) → paginated read, optional `since` param.
-- `ghl-send-email` (service-role; invoked by `send-message` fallback) → posts to Conversations API, writes audit row with `channel='email'`, `provider='ghl'`.
-- `ghl-send-sms` (service-role) → same shape, `channel='sms'`.
+### Meta Graph (FB + IG)
+- `meta-schedule-post` (admin) — body: `{ platform, caption, media_urls, scheduled_at? }`. Inserts row, calls Graph API.
+- `meta-list-comments` (admin) — by `platform_post_id`, returns recent comments.
+- `meta-get-insights` (admin) — pulls reach / engagement / impressions for a post or page summary.
+- `handle-meta-webhook` (public, verifies Meta `X-Hub-Signature-256` with `META_APP_SECRET`) — incoming comments / DMs → optional `social_comment_received` bridge verb.
 
-### Gmail (3) — uses Lovable Google connector via connector gateway
-- `gmail-list-messages` (admin) → `users/me/messages?q=…`.
-- `gmail-send-message` (admin) → builds RFC2822, base64url encodes, `users/me/messages/send`, writes audit row with `provider='gmail'`.
-- `gmail-get-thread` (admin) → `users/me/threads/{id}?format=full`.
+### Apollo
+- `apollo-enrich-person` (admin) — by email, returns company + title + social, writes `paige_enrichment_log`.
+- `apollo-enrich-company` (admin) — by domain, returns size + industry + funding.
+- `apollo-search-people` (admin) — prospect search proxy with pagination.
+- DB trigger `trg_clients_apollo_enrich` (after-insert on `clients`) calls `pg_net` to async-POST the new contact's email to `apollo-enrich-person`. Non-blocking; failures land in `paige_enrichment_log` with `succeeded=false`.
 
-### Telegram (1)
-- `send-telegram` (service-role) → POST `bot{token}/sendMessage`; default chat = Antonio's `5188669161` when not provided.
+### Sentry
+- `sentry-tunnel` (public, rate-limited) — DSN-style ingest endpoint Lovable can POST to so the Sentry DSN never ships in client JS. Forwards to Sentry `/envelope`.
 
-### Zapier MCP (1)
-- `call-zapier-action` (admin/service-role) → creates short-lived AI-SDK MCP client (`createMCPClient` over HTTP) for the chosen `paige_mcp_connections` row, calls `tools()`, invokes named action with payload, closes client. Caches `tools()` results in `tools_cache` for 10 minutes.
+### PostHog
+- No edge function needed for client tracking (PostHog JS SDK posts direct).
+- Server-side helper module `supabase/functions/_shared/posthog.ts` exposes `capture(distinctId, event, props)` used by Stripe/n8n/approval handlers to capture backend events.
 
-### Tavily (1)
-- `web-search` (admin/service-role) → POST `https://api.tavily.com/search` with `{query, search_depth, max_results, include_answer:true}`; returns `{answer, results}`.
-
-### LangSmith (1)
-- `langsmith-recent-traces` (admin) → GET `/api/v1/runs?project=paige-agent-mma&limit=50` for the observability UI. (Tracing itself is wired in-process via `langsmith` SDK wrapping Anthropic/OpenAI clients in existing edge functions — see §3.)
-
----
-
-## 3. LangSmith instrumentation
-
-- Add `langsmith` (Deno-compatible via `npm:langsmith`) to existing AI edge functions (`paige-ai-chat`, any other Anthropic/OpenAI callers).
-- Wrap clients with `wrapAnthropic` / `wrapOpenAI`. Env: `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, `LANGSMITH_PROJECT=paige-agent-mma`.
-- Zero new tables; LangSmith hosts the traces.
+### `supabase/config.toml`
+Add `verify_jwt = false` for all webhook + tunnel functions:
+`handle-docusign-webhook`, `handle-cal-webhook`, `handle-meta-webhook`, `sentry-tunnel`.
+All others remain `verify_jwt = true`.
 
 ---
 
-## 4. Admin UI — routes & screens
+## 3. Frontend Instrumentation
 
-All added under `/admin` (admin-only), lazy-loaded in `src/pages/Admin.tsx`, nav entries grouped under a new top-bar "Integrations" dropdown (cleaner than adding 6 top-level tabs).
+- **Sentry**: `@sentry/react` initialized in `src/main.tsx` with DSN from `import.meta.env.VITE_SENTRY_DSN` (publishable, safe to ship). React Router instrumentation + error boundary wrapping `Admin` routes. `tracesSampleRate: 0.1`. Server-side Sentry SDK initialized in shared edge function helper.
+- **PostHog**: `posthog-js` initialized once in `src/main.tsx` with `VITE_POSTHOG_KEY` + `VITE_POSTHOG_HOST`. `posthog.identify(user.id, { role })` in `AppShell` post-auth. Auto-capture on; manual `posthog.capture` on Approve / Send / Run Workflow / Trigger Campaign buttons.
 
-| Route | Page | Purpose |
+Both instrumentations are admin-aware: only initialize when env keys are present, so dev previews without keys stay quiet.
+
+---
+
+## 4. Admin UI Screens
+
+All new routes under `/admin/integrations/*` (and `/admin/observability/*`) following Phase 2 patterns. Added as tiles to the existing `IntegrationsHub.tsx`.
+
+| Route | Page | Notes |
 |---|---|---|
-| `/admin/integrations` | `IntegrationsHub` | Tile grid: status badge per connector (n8n, Stripe, GHL, Gmail, Zapier, Telegram, Tavily, LangSmith) |
-| `/admin/integrations/n8n` | `N8nConnectionsAdmin` | Manage connections, "Sync workflows" button, last sync info |
-| `/admin/integrations/zapier` | `ZapierMcpAdmin` | List MCP connections, probe tools, enable/disable |
-| `/admin/integrations/ghl` | `GhlAdmin` | PIT + Location ID form, "Pull contacts" action |
-| `/admin/integrations/gmail` | `GmailAdmin` | OAuth status, send-as inbox, test send |
-| `/admin/integrations/telegram` | `TelegramAdmin` | Bot token + admin chat ID, "Send test" |
-| `/admin/integrations/tavily` | `TavilyAdmin` | Status + test query box |
-| `/admin/revenue/subscriptions` | `SubscriptionsAdmin` | Live MRR card, recent events table from `paige_subscription_events`, churn alert list |
-| `/admin/observability/ai-activity` | `AiActivityAdmin` | Recent LangSmith traces, cost/latency/preview |
+| `/admin/integrations/docusign` | `DocuSignConfig.tsx` | Default brand, template picker, recent envelopes list + manual "Send envelope" form |
+| `/admin/signatures` | `SignaturesAdmin.tsx` | All envelopes, status filter, contact link, "Open PDF" |
+| `/admin/integrations/cal` | `CalIntegrationConfig.tsx` | Default event type, webhook setup help, recent bookings preview |
+| `/admin/bookings` | `BookingsAdmin.tsx` | Calendar + list view, filter by event_type, upcoming + past |
+| `/admin/integrations/meta` | `MetaIntegrationConfig.tsx` | Page + IG business IDs, token age, webhook verify URL |
+| `/admin/social` | `SocialAdmin.tsx` | Content calendar, scheduled posts, recent metrics, comment inbox |
+| `/admin/integrations/apollo` | `ApolloIntegrationConfig.tsx` | Toggle auto-enrich on contact insert, manual lookup form, recent enrichments table |
+| `/admin/leads/enrichment` | `LeadsEnrichment.tsx` | History of enrichments with payload preview |
+| `/admin/observability/usage` | `UsageAnalytics.tsx` | PostHog deep-link card; summary stats from `paige_*` tables (workflow runs, approvals, sends) |
+| `/admin/observability/errors` | `ErrorTracking.tsx` | Sentry deep-link card; recent edge-function failure summary from `paige_workflow_runs.status='failed'` and audit failures |
 
-Reuse Phase 1's `WorkflowsList` — it auto-fills once `n8n-list-workflows` runs.
+`IntegrationsHub.tsx` gets 6 new tiles in alphabetical-ish order with status badges:
+- Apollo (Auto-enrich on / off based on a feature flag in `paige_config`)
+- Cal.com (Connected / Not configured)
+- DocuSign (Connected / Not configured)
+- Meta Graph (Tokens valid / expired soonest)
+- PostHog (Connected via env / Disabled)
+- Sentry (Connected via env / Disabled)
 
----
-
-## 5. Env var manifest
-
-Add via Project Settings → Secrets (Antonio provides values):
-
-```
-LANGSMITH_API_KEY
-LANGSMITH_PROJECT=paige-agent-mma   (set via set_secret, fixed value)
-N8N_BASE_URL                         (or stored per-connection in table)
-N8N_API_KEY
-STRIPE_SECRET_KEY                    (via Lovable Stripe integration)
-STRIPE_WEBHOOK_SECRET
-GHL_PIT
-GHL_LOCATION_ID=Y8F9ygRHQSJ3zJbkQXuW (set_secret, fixed)
-TAVILY_API_KEY
-TELEGRAM_BOT_TOKEN
-TELEGRAM_DEFAULT_ADMIN_CHAT_ID=5188669161 (set_secret, fixed)
-ZAPIER_MCP_URL
-ZAPIER_MCP_TOKEN
-```
-
-Lovable native connectors enabled via the editor: **Stripe** (one-click) and **Google / Gmail** (OAuth). Stripe webhook URL to give Antonio: `https://<project-ref>.functions.supabase.co/handle-stripe-webhook`.
+`AdminLayout.tsx` top-bar "More" menu adds: Signatures, Bookings, Social (no change to the primary nav row).
 
 ---
 
-## 6. Clarifying questions for Antonio
+## 5. Env Var Manifest
 
-1. **n8n connections** — single connection (`mrmogulmaker.app.n8n.cloud`) or should we support multiple from day one? Plan defaults to multi-row with one `is_default`.
-2. **Stripe → tier mapping** — provide the `price_id → tier` map (e.g. Premium $44 → `premium`, VIP → `vip`) so the webhook can compute `tier_after`. Or should we read it from existing `subscription_plans`?
-3. **GHL send path** — should `send-message` (Phase 1) prefer GHL or Resend/Twilio for the MMA cohort right now? Phase 1 plan said Resend/Twilio primary, GHL fallback — confirm that holds with GHL PIT live.
-4. **Gmail send account** — confirm `mogulmakeracademy@gmail.com` is the only authorized sender; can other admins send-as it?
-5. **Zapier MCP** — is this a hosted Zapier MCP server URL with a static bearer token (so we skip OAuth dance), or full OAuth/dynamic registration?
-6. **LangSmith project** — confirm name `paige-agent-mma` (so I create it client-side correctly).
-7. **Telegram alert routing** — only Antonio's chat for now, or also Tashia? Plan ships single default chat with optional per-event override.
+User-provided runtime secrets (Project Settings → Secrets) — Antonio supplies:
 
----
+- DocuSign: `DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID`, `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_RSA_PRIVATE_KEY`, `DOCUSIGN_BASE_URI`, `DOCUSIGN_WEBHOOK_HMAC_KEY`
+- Cal.com: `CAL_API_KEY`, `CAL_WEBHOOK_SECRET`, `CAL_BASE_URL` (optional, defaults to `https://api.cal.com/v1`)
+- Meta: `META_APP_ID`, `META_APP_SECRET`, `META_PAGE_ACCESS_TOKEN`, `META_IG_BUSINESS_ID`, `META_WEBHOOK_VERIFY_TOKEN`
+- Apollo: `APOLLO_API_KEY`
+- Sentry (server): `SENTRY_DSN`
+- PostHog (server, optional): `POSTHOG_API_KEY`, `POSTHOG_HOST`
 
-## 7. Build sequence & estimates
-
-| # | Connector | Why first | Est. |
-|---|---|---|---|
-| 1 | n8n API + sync | Lights up Phase 1 Workflows page | 0.5 day |
-| 2 | Stripe webhook + subscriptions UI | Revenue truth, tier auto-flip | 0.75 day |
-| 3 | GHL PIT (read + 2 send pipes) | Send-pipe stability for current cohort | 0.75 day |
-| 4 | Zapier MCP client | Broad app reach | 0.5 day |
-| 5 | LangSmith tracing + UI | Observability, set-and-forget | 0.5 day |
-| 6 | Gmail (3 functions + UI) | Deliverability lane | 0.5 day |
-| 7 | Telegram alerts | Backup channel for ops | 0.25 day |
-| 8 | Tavily search | Reasoning enrichment | 0.25 day |
-
-Total ≈ 4 working days. Each step is independently shippable behind the Integrations hub.
+Frontend public values (safe to embed, auto-injected by Lovable):
+- `VITE_SENTRY_DSN`, `VITE_POSTHOG_KEY`, `VITE_POSTHOG_HOST`
 
 ---
 
-## 8. Technical notes / decisions baked in
+## 6. Out of Scope (per brief)
+YouTube Data, LinkedIn, Zoom native, Twilio Voice / Vapi / Bland, Slack, GitHub / Vercel, Buffer / Hootsuite — all deferred to a future Phase 4.
 
-- **MCP client lib**: `@ai-sdk/mcp` `createMCPClient` (HTTP transport, `redirect: "error"`), per AI-SDK guidance — not Cloudflare Agents.
-- **Secrets at rest**: tokens stored via existing `_internal_secrets` row with `*_ref` pointer; tables expose only `*_last4` for UI.
-- **Idempotency**: Stripe webhook uses `stripe_event_id` unique constraint; n8n trigger uses Phase 1's `paige_workflow_runs.id` as idempotency key already.
-- **Bridge integration**: `tier_change_notify`, `query_supabase`, `get_member_360`, `get_workflow_status` get added to `_shared/mmaOsBridge.ts` `BridgeVerb` union, enqueued through existing `mma_os_bridge_outbox`.
-- **GHL → audit**: every send writes `paige_messages_audit` with `provider`, `channel`, `external_id`, so the unified inbox stays correct regardless of pipe.
-- **No SDKs in browser**: All provider keys stay in edge functions; the React admin UI only ever calls our own functions.
+Permanent forbidden list (unchanged): Plaid, Nav.com, SmartCredit, any credit-repair tooling, Mogul Credit features.
 
-Antonio: please answer the 7 questions in §6 and approve the sequence. No code touches the repo until then.
+---
+
+## 7. Clarifying Questions for Antonio
+
+1. **DocuSign templates** — do you already have template IDs in DocuSign for each `envelope_type` (vip_app, coach_agreement, dfy_engagement, refund, term_sheet)? If so, we'll store them in a `paige_config.docusign_templates` jsonb map so the admin UI shows a friendly picker. If not, I'll ship the form with a free-text `template_id` field for now.
+2. **Cal.com flavor** — Cal.com Cloud or self-hosted? And do you have the default event type IDs we should associate with vip_intro / dfy_discovery / coffee_hour / workshop? The webhook handler classifies bookings by event-type-id mapping.
+3. **Auto-enrich on `clients` insert** — confirm you want Apollo to fire automatically for every new contact (the brief says yes; I want to flag that this consumes Apollo credits on every signup). The flag will live in `paige_config.apollo_auto_enrich` default `true` so you can flip it off without a redeploy.
+4. **Meta scope** — pages + IG business account both authorized under the same System User token, correct? And which IG account is canonical (the `META_IG_BUSINESS_ID`)?
+5. **Sentry org/project slugs** — needed for the deep-link card in `/admin/observability/errors`. Safe to ship without and you can fill in via the new `paige_config` fields after deploy.
+6. **PostHog dashboard** — do you want the Usage screen to embed a specific PostHog insight (give me the share URL) or stay as a deep-link summary?
+7. **Bookings ↔ contact matching** — when a Cal booking comes in with an email we don't recognize, should we (a) auto-create a `clients` row tagged `source=cal_booking`, or (b) leave `contact_id` NULL and surface it in `/admin/bookings` as "Unmatched" for an admin to claim? Default if you don't answer: (b), safer.
+
+---
+
+## Technical details (for engineering)
+
+- Webhook signature verification: DocuSign Connect HMAC1 (`X-DocuSign-Signature-1`), Cal.com `X-Cal-Signature-256` (HMAC-SHA256 of body), Meta `X-Hub-Signature-256` (HMAC-SHA256 with `META_APP_SECRET`). All implemented with `crypto.subtle` in the edge function — no external deps.
+- DocuSign JWT: `npm:jsonwebtoken@9` for RS256 signing; access token cached for 50 minutes in module scope to avoid per-call minting.
+- Apollo trigger uses `pg_net` (already enabled for the Phase 1 outbox cron) — no new extensions.
+- Sentry tunnel pattern: standard `https://docs.sentry.io/platforms/javascript/troubleshooting/#using-the-tunnel-option` — forwards `X-Sentry-Auth` and body unchanged. Rate-limited via in-memory token bucket per IP to prevent abuse.
+- PostHog server helper uses `posthog-node` via `npm:` specifier; failures are swallowed and logged.
+- All new admin screens follow Phase 2 patterns: `Card` + `Badge` status, `sonner` toasts, `supabase.functions.invoke`, no inline styles, semantic tokens only.
+
+Once approved I'll build in the recommended order (Sentry → PostHog → DocuSign → Cal → Apollo → Meta) and ship each connector tile working before moving to the next.
