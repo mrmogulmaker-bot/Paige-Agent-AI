@@ -1,105 +1,114 @@
+## Phase 6: Paige Bridge (Reverse Direction)
 
-# Phase 3 Addendum — Connectors 7, 8, 9 (Capital-Readiness Lane)
+A single Edge Function `paige-bridge` that lets MMA OS + n8n push data INTO Paige, mirroring the existing MMA OS bridge. Plus a new admin-notifications surface and a bell badge in the admin header.
 
-Phase 3 connectors 1–6 (Sentry, PostHog, DocuSign, Cal.com, Apollo, Meta) are already shipped. This addendum extends Phase 3 with three business-owner / business-itself connectors and the two MMA-OS bridge verbs you'll consume.
+---
 
-## Scope rule encoded in code
+### 1. Secret
 
-A constant `PAIGE_SCOPE_GUARD` in `supabase/functions/_shared/scopeGuard.ts` documents the rule and is imported by every new function header as a comment marker:
+- New runtime secret: `PAIGE_BRIDGE_API_KEY` — Antonio adds in Project Settings → Secrets after plan approval. Same value also goes on MMA OS Supabase + as an n8n credential.
 
-> "Capital-readiness for the business or business owner. No consumer-credit dispute work, no CROA-classified services. SmartCredit is funding-eligibility lens only."
+### 2. Migration — single migration, four parts
 
-SmartCredit edge functions will hard-reject any payload field named `dispute*`, `fcra_*`, or `repair_*` (400 with `scope_violation`).
+**a. Status enum widening on `paige_pending_approvals.status`**
+- Drop the existing CHECK and re-add to also allow `'stale'` (the spec's `update_pending_approval` example calls out "mark stale").
 
-## 1. Database migration (single migration, all GRANTs + RLS)
+**b. Type enum widening on `paige_pending_approvals.type`**
+- Same pattern; add `'qc_finding'` and `'milestone'` to support upstream verbs (notify_admin can also funnel through, but approvals need richer types).
 
-New tables (all admin/coach-readable via `has_role`, service-role writable):
+**c. New table `public.paige_admin_notifications`**
 
-- `paige_business_credit_profiles` — `contact_id`, `business_name`, `ein`, `nav_profile_id`, `scores jsonb` (dnb, experian_business, equifax_business, paydex, intelliscore), `trade_lines jsonb`, `last_pulled_at`, `history jsonb`
-- `paige_owner_credit_snapshots` — `contact_id`, `bureau` (enum: experian|equifax|transunion), `score int`, `pulled_at`, `factors jsonb`, `alerts_triggered jsonb`
-- `paige_bank_connections` — `contact_id`, `plaid_item_id`, `plaid_access_token_encrypted` (pgcrypto, key from `_internal_secrets`), `institution_name`, `accounts jsonb`, `status`, `connected_at`, `last_synced_at`
-- `paige_bank_transactions` — `bank_connection_id`, `plaid_transaction_id` (unique), `date`, `amount_cents`, `name`, `category jsonb`, `pending bool`, `account_id`
-- `paige_cash_flow_snapshots` — `contact_id`, `period_start`, `period_end`, `total_deposits_cents`, `total_withdrawals_cents`, `avg_daily_balance_cents`, `runway_days`, `funding_readiness_score int`, `generated_at`
+```
+id              uuid pk default gen_random_uuid()
+severity        text check in ('info','warning','urgent') not null default 'info'
+title           text not null
+body            text
+link_to         text
+source_workflow_key text
+contact_id      uuid references clients(id) on delete set null
+read_at         timestamptz
+created_at      timestamptz not null default now()
+```
 
-`paige_config` extensions:
-- `nav_partner_id text`
-- `smartcredit_enabled bool default false`
-- `plaid_activated bool default false`
-- `plaid_env text default 'sandbox'`
+Standard four-step structure: CREATE → GRANT (SELECT/INSERT/UPDATE to authenticated; ALL to service_role; no anon) → ENABLE RLS → POLICIES (admins & coaches SELECT/UPDATE; service_role bypasses for inserts from the Edge Function). Add `idx_paige_admin_notifications_unread` partial index `WHERE read_at IS NULL`. Add to `supabase_realtime` publication so the bell badge updates live.
 
-Reuse existing `qb_encrypt_token` / `qb_decrypt_token` pattern (service-role only) for Plaid access tokens — store ciphertext in `plaid_access_token_encrypted`, never plaintext.
+**d. RPC `get_approval_queue_counts()`** — security-definer function that returns `{ pending int, by_type jsonb }` so the verb can return it cheaply without granting broad read on the table to the bridge path (bridge uses service role anyway, but this keeps the verb's query body tight).
 
-## 2. Edge Functions
+### 3. Edge Function — `supabase/functions/paige-bridge/index.ts`
 
-All admin-only via `_shared/adminAuth.ts`; webhooks JWT-disabled with HMAC verification.
+- `verify_jwt = false` block in `supabase/config.toml`.
+- Bearer auth: read `Authorization: Bearer <token>` → constant-time compare against `PAIGE_BRIDGE_API_KEY`. Reject with 401 otherwise.
+- Use `SUPABASE_SERVICE_ROLE_KEY` client (bypasses RLS — required since callers are server-to-server with no JWT).
+- CORS: respond to OPTIONS with `corsHeaders` from `npm:@supabase/supabase-js@2/cors`.
+- Body schema validated via Zod: `{ verb: string, payload: object }`. Each verb has its own Zod schema applied inside the switch.
+- Switch on `verb`:
 
-**Nav.com (connector 7):**
-- `nav-pull-profile` — POST `{contact_id}` → calls Nav API with `NAV_API_KEY`, upserts `paige_business_credit_profiles`, appends to `history`, fires `business_credit_score_changed` bridge verb if any score crosses a configurable threshold (default ±20 pts)
-- `nav-refresh-scores` — cron-friendly batch refresh for active monitored businesses
+| Verb | Action | Notes |
+|---|---|---|
+| `health_check` | returns `{status:'ok', version:1, timestamp}` | no payload |
+| `create_pending_approval` | insert into `paige_pending_approvals` | resolves `contact_id` from `contact_email` if id not provided (lookup in clients); returns `{id, created_at, status}` |
+| `update_pending_approval` | update by id; restrict fields to `status`, `metadata` (note: there is no `metadata` column today — store under `escalation_note` only if status='escalated', otherwise ignore metadata silently and document the limitation) | returns updated row |
+| `create_workflow_run` | resolve `registry_id` via `registry_key`; insert run with `triggered_by_user_id=null` (system); status defaults to 'queued' or 'running' | returns `{id}` |
+| `update_workflow_run` | update by id; status/result/error/completed_at | returns updated row |
+| `log_message_send` | insert into `paige_messages_audit` (map `to`→`to_address`, `from`→`from_address`) | returns `{id}` |
+| `upsert_contact_mirror` | upsert into `clients` keyed on lowercased `email`; sets `created_by` to a system sentinel uuid (see open question below); split full names if only one provided | returns `{client_id, action}` |
+| `notify_admin` | insert into `paige_admin_notifications` | returns `{id}` |
+| `read_config` | select from `paige_config` (single row table); if `key` provided return that field | read-only |
+| `get_approval_queue_count` | calls the RPC above | returns `{pending, by_type}` |
 
-**SmartCredit (connector 8):**
-- `smartcredit-pull-snapshot` — POST `{contact_id}` → pulls owner's 3-bureau scores via `SMARTCREDIT_API_KEY`, writes `paige_owner_credit_snapshots`. Output presents "Business funding eligibility: strong/moderate/limited" — never a dispute path. Scope guard rejects dispute/repair payload fields.
-- `handle-smartcredit-alert-webhook` — public, HMAC-verified, appends alerts to latest snapshot. On alert, fires `funding_readiness_assessed` bridge verb (composite with latest Nav + cash flow data if present).
+- Every verb wrapped in try/catch returning `{ok:false, verb, error}` with 400/500; success returns `{ok:true, verb, data}`.
+- Structured `console.log` per call: `verb`, `ok`, `duration_ms`. Never log payload bodies (PII).
 
-**Plaid scaffolding (connector 9) — inactive until `paige_config.plaid_activated = true`:**
+### 4. Frontend
 
-Each function checks the flag first; if false, returns `200 { activated: false, message: "Plaid not yet activated" }` so the UI renders cleanly.
+**a. New page `src/pages/admin/AdminNotifications.tsx`**
+- Route: `/admin/notifications` (add to `src/App.tsx` admin routes block).
+- List view: severity badge, title, body, relative timestamp, optional `link_to`, "Mark read" / "Mark all read" actions.
+- Tabs: Unread / All. Filter by severity.
+- Realtime: subscribe to `paige_admin_notifications` INSERT/UPDATE inside `useEffect`, cleanup on unmount.
 
-- `plaid-link-token-create` — mints link token for a given `contact_id`
-- `plaid-public-token-exchange` — exchanges public token, stores encrypted access token + accounts list
-- `plaid-sync-transactions` — pulls /transactions/sync, upserts into `paige_bank_transactions`
-- `plaid-generate-cash-flow-snapshot` — aggregates last 90d of transactions into `paige_cash_flow_snapshots`, computes `funding_readiness_score` (deposit consistency + avg balance + runway), fires `funding_readiness_assessed` bridge verb
-- `handle-plaid-webhook` — public, verifies Plaid signature (Ed25519 verification key, same pattern as existing `handle-plaid-webhook` if present — extend rather than duplicate), processes `TRANSACTIONS:SYNC_UPDATES_AVAILABLE` and `ITEM:*` events
+**b. Bell badge in `src/components/admin/AdminLayout.tsx` header**
+- New `<NotificationsBell />` component near the existing top-right cluster.
+- Query unread count on mount; subscribe via Realtime; show numeric badge if >0.
+- Click → navigates to `/admin/notifications`.
+- Toast (existing sonner) on new unread INSERT when severity is `warning` or `urgent`.
 
-## 3. Bridge verbs (mma-os outbound)
+### 5. Doctrine
 
-Extend `supabase/functions/_shared/mmaOsBridge.ts` `BridgeVerb` union with:
-- `business_credit_score_changed` — `{ contact_id, business_name, score_type, old_value, new_value, delta, snapshot_id }`
-- `funding_readiness_assessed` — `{ contact_id, composite_score, components: { nav?, smartcredit?, cash_flow? }, recommended_lane }`
+Append §91 to the in-repo doctrine note (memory). No code change required beyond memory update.
 
-Both go through the existing outbox + retry/backoff infrastructure.
+---
 
-## 4. Admin UI
+### Out of scope (intentional)
 
-Three new routes wired into `src/pages/Admin.tsx` and added to the IntegrationsHub tile grid + "More" menu:
+- The MMA OS side helper (`callPaigeBridge`) and the `mirror_to_paige_inbox` verb — Claude's deliverable per the spec.
+- Updating n8n CS Triage workflow — Claude's deliverable.
+- Adding a `metadata` JSONB column to `paige_pending_approvals` — flagged below as an open question; not changing schema unilaterally.
 
-- `/admin/business-credit` (`BusinessCreditAdmin.tsx`) — table of monitored businesses, score-trend sparklines, "Pull now" action, threshold alert config
-- `/admin/owner-credit` (`OwnerCreditAdmin.tsx`) — per-contact 3-bureau score history, alerts feed, funding-eligibility badge (no dispute UI, no "Fix this" CTAs — strictly read-only assessment)
-- `/admin/banking` (`BankingAdmin.tsx`) — list of connected accounts (empty state explains "Plaid activation pending"), cash-flow snapshot cards with runway + funding readiness score; "Connect bank" CTA disabled until `paige_config.plaid_activated`
+---
 
-Config screens added to IntegrationsHub:
-- `NavIntegrationConfig.tsx` — partner ID, refresh cadence, threshold delta
-- `SmartCreditIntegrationConfig.tsx` — enable toggle + scope reminder banner ("Funding eligibility lens only")
-- `PlaidIntegrationConfig.tsx` — env (sandbox/dev/prod), activated toggle, link-test button (disabled until secrets present)
+### Open questions / flagged concerns
 
-## 5. Env / secrets manifest
+1. **`metadata` field on approvals.** Spec's `create_pending_approval` and `update_pending_approval` accept `metadata`, but the table has no such column. Two options:
+   - **A (recommended):** add `metadata jsonb default '{}'` in the same Phase 6 migration. Cleanest, future-proof.
+   - **B:** silently drop the field. Lossy and surprising.
+   - Going with **A** unless you say otherwise.
 
-To request from Antonio when ready:
-- `NAV_API_KEY`, `NAV_PARTNER_ID`
-- `SMARTCREDIT_API_KEY`, `SMARTCREDIT_WEBHOOK_SECRET`
-- `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_WEBHOOK_VERIFICATION_KEY` (stubs accepted; functions short-circuit until set)
+2. **`upsert_contact_mirror` and `created_by`.** `clients.created_by` is `NOT NULL` and references `auth.users`. For a system-mirrored contact there is no human creator. Plan: reuse Antonio's owner user id (already used as the platform owner sentinel elsewhere). Confirm OK, or I can create a dedicated `system@paigeagent.ai` auth user as a sentinel.
 
-I won't trigger the secret prompts in this pass — scaffolding will deploy and idle until you say "go" per connector.
+3. **`create_workflow_run` and `triggered_by_user_id`.** Existing RLS INSERT policy requires `triggered_by_user_id = auth.uid()`. Bridge uses service role so it bypasses RLS — fine. But the SELECT policies will hide system-triggered rows from coaches (admins still see all). I'll leave the SELECT policies as-is so the Workflows UI for admins shows everything; coaches still only see runs they triggered themselves. Confirm acceptable.
 
-## 6. Compliance guardrails (permanent)
+4. **`notify_admin` recipient model.** Notifications are global to all admins (no `user_id` column per the spec). Read state is also global — first admin to mark read marks it for everyone. If you want per-admin read state, say so and I'll add a join table; otherwise shipping as spec'd.
 
-- Scope-guard constant referenced in every new function header
-- SmartCredit edge functions reject dispute/repair payload fields with `scope_violation` (logged to `audit_logs`)
-- No dispute UI, letter generation, or FCRA-enforcement surface added anywhere
-- Owner-credit admin view labels itself "Funding Eligibility Lens" and links to a short copy block explaining the scope rule
+5. **Rate limiting.** Bearer-auth-only is fine for trusted server callers, but `paige-bridge` is internet-exposed. Plan: add a coarse per-IP rate limiter via existing `api_rate_limits` table (e.g. 600 req/min) and reject 429 over the limit. Low-risk to include in v1.
 
-## Out of scope (unchanged hard line)
+---
 
-Consumer credit dispute work, general credit-repair-as-a-service, personal credit issues unrelated to business funding, anything CROA-classified. Those remain in Mogul Credit / Mogul AI.
+### Build sequence after approval
 
-## Build sequence
-
-1. DB migration (tables + GRANTs + RLS + paige_config columns)
-2. Bridge verb type extension
-3. Nav functions + admin UI
-4. SmartCredit functions + admin UI (scope guard tests)
-5. Plaid scaffolding (functions return inactive, UI shows pending state)
-6. IntegrationsHub tile updates + route wiring
-7. Verify `tsgo` clean
-
-Approve and I'll build straight through.
+1. Run the migration (table + enum widening + RPC + realtime publication).
+2. Write the Edge Function with all 10 verbs + Zod schemas.
+3. Add `config.toml` block for `verify_jwt = false`.
+4. Build `AdminNotifications.tsx` page + route.
+5. Build `NotificationsBell` and wire into `AdminLayout.tsx`.
+6. Type-check clean, confirm health_check via `curl`, hand off to Antonio for `PAIGE_BRIDGE_API_KEY` secret + MMA OS-side wiring.
