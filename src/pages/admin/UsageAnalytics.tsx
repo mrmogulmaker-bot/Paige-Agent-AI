@@ -15,12 +15,10 @@ export default function UsageAnalytics() {
 
   useEffect(() => {
     void (async () => {
-      const [cfg, ap, wr, snd] = await Promise.all([
-        supabase.from("paige_config").select("posthog_project_url").eq("id", 1).maybeSingle(),
-        supabase.from("paige_pending_approvals").select("id", { count: "exact", head: true }),
-        supabase.from("paige_workflow_runs").select("id", { count: "exact", head: true }),
-        supabase.from("paige_messages_audit").select("id", { count: "exact", head: true }).eq("direction", "outbound"),
-      ]);
+      const cfg = await supabase.from("paige_config").select("posthog_project_url").eq("id", 1).maybeSingle();
+      const ap = await supabase.from("paige_pending_approvals").select("id", { count: "exact", head: true });
+      const wr = await supabase.from("paige_workflow_runs").select("id", { count: "exact", head: true });
+      const snd = await supabase.from("paige_messages_audit").select("id", { count: "exact", head: true }).eq("direction", "outbound");
       setProjectUrl(cfg.data?.posthog_project_url ?? "");
       setStats({
         approvals: ap.count ?? 0,
@@ -29,6 +27,7 @@ export default function UsageAnalytics() {
       });
     })();
   }, []);
+
 
   const save = async () => {
     const { error } = await supabase.from("paige_config").update({ posthog_project_url: projectUrl || null }).eq("id", 1);
