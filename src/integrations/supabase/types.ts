@@ -86,6 +86,13 @@ export type Database = {
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "account_modifications_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
         ]
       }
       admin_app_settings: {
@@ -1983,6 +1990,13 @@ export type Database = {
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "client_memory_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
         ]
       }
       clients: {
@@ -1992,20 +2006,29 @@ export type Database = {
           created_at: string
           created_by: string
           current_notes: string | null
+          do_not_contact: boolean
           email: string | null
           entity_name: string | null
           entity_type: string | null
           first_name: string
           funding_goal: number | null
           id: string
+          last_contacted_at: string | null
           last_name: string
+          lead_score: number
+          lifecycle_stage: string
           linked_user_id: string | null
+          linkedin_url: string | null
           monthly_revenue: number | null
           phone: string | null
+          source: string | null
           state: string | null
           status: string
           street_address: string | null
+          tags: string[]
+          title: string | null
           updated_at: string
+          website: string | null
           zip_code: string | null
         }
         Insert: {
@@ -2014,20 +2037,29 @@ export type Database = {
           created_at?: string
           created_by: string
           current_notes?: string | null
+          do_not_contact?: boolean
           email?: string | null
           entity_name?: string | null
           entity_type?: string | null
           first_name: string
           funding_goal?: number | null
           id?: string
+          last_contacted_at?: string | null
           last_name: string
+          lead_score?: number
+          lifecycle_stage?: string
           linked_user_id?: string | null
+          linkedin_url?: string | null
           monthly_revenue?: number | null
           phone?: string | null
+          source?: string | null
           state?: string | null
           status?: string
           street_address?: string | null
+          tags?: string[]
+          title?: string | null
           updated_at?: string
+          website?: string | null
           zip_code?: string | null
         }
         Update: {
@@ -2036,20 +2068,29 @@ export type Database = {
           created_at?: string
           created_by?: string
           current_notes?: string | null
+          do_not_contact?: boolean
           email?: string | null
           entity_name?: string | null
           entity_type?: string | null
           first_name?: string
           funding_goal?: number | null
           id?: string
+          last_contacted_at?: string | null
           last_name?: string
+          lead_score?: number
+          lifecycle_stage?: string
           linked_user_id?: string | null
+          linkedin_url?: string | null
           monthly_revenue?: number | null
           phone?: string | null
+          source?: string | null
           state?: string | null
           status?: string
           street_address?: string | null
+          tags?: string[]
+          title?: string | null
           updated_at?: string
+          website?: string | null
           zip_code?: string | null
         }
         Relationships: []
@@ -2642,6 +2683,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "credit_accounts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "credit_accounts_duplicate_of_id_fkey"
             columns: ["duplicate_of_id"]
             isOneToOne: false
@@ -2830,6 +2878,13 @@ export type Database = {
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "credit_factor_scores_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
         ]
       }
       credit_inquiries: {
@@ -2973,6 +3028,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "credit_negative_items_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "credit_negative_items_dispute_id_fkey"
             columns: ["dispute_id"]
             isOneToOne: false
@@ -3111,6 +3173,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "credit_report_personal_info_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "credit_report_personal_info_credit_report_upload_id_fkey"
             columns: ["credit_report_upload_id"]
             isOneToOne: false
@@ -3199,6 +3268,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_report_uploads_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
           },
         ]
       }
@@ -3456,6 +3532,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "deals_contact_client_id_fkey"
+            columns: ["contact_client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "deals_pipeline_id_fkey"
             columns: ["pipeline_id"]
             isOneToOne: false
@@ -3619,6 +3702,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "dispute_outcomes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "dispute_outcomes_dispute_id_fkey"
             columns: ["dispute_id"]
             isOneToOne: false
@@ -3696,6 +3786,13 @@ export type Database = {
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "disputes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
         ]
       }
       documents: {
@@ -3764,6 +3861,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
           },
         ]
       }
@@ -3982,6 +4086,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "extraction_quality_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "extraction_quality_log_report_id_fkey"
@@ -4320,6 +4431,13 @@ export type Database = {
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "funding_application_outcomes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
         ]
       }
       funding_application_sequence: {
@@ -4584,6 +4702,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funding_matches_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "funding_matches_offer_id_fkey"
@@ -7246,6 +7371,13 @@ export type Database = {
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "tier_state_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
         ]
       }
       user_build_milestones: {
@@ -7671,6 +7803,16 @@ export type Database = {
           feature_name: string | null
           unique_users: number | null
           usage_count: number | null
+        }
+        Relationships: []
+      }
+      contact_deal_rollup: {
+        Row: {
+          contact_id: string | null
+          open_deals: number | null
+          open_value_cents: number | null
+          won_deals: number | null
+          won_value_cents: number | null
         }
         Relationships: []
       }
