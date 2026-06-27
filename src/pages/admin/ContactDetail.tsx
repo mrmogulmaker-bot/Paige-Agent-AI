@@ -8,10 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
-  MessageSquare, CheckSquare, FileText, StickyNote, Activity,
+  MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { LIFECYCLE_STAGES, lifecycleMeta } from "@/lib/contacts";
+import { ContactDealsSection } from "@/components/admin/contacts/ContactDealsSection";
 
 type Client = {
   id: string;
@@ -20,12 +22,16 @@ type Client = {
   email: string | null;
   phone: string | null;
   entity_name: string | null;
+  title?: string | null;
   funding_goal: number | null;
   status: string;
+  lifecycle_stage?: string | null;
+  tags?: string[] | null;
+  source?: string | null;
   assigned_coach_user_id: string | null;
   linked_user_id: string | null;
   created_at: string;
-  notes?: string | null;
+  current_notes?: string | null;
 };
 
 type Coach = { user_id: string; name: string };
