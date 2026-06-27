@@ -6182,6 +6182,7 @@ export type Database = {
           default_from_email: string | null
           default_from_sms_number: string | null
           docusign_default_brand_id: string | null
+          docusign_enabled: boolean
           docusign_templates: Json
           ghl_fallback_enabled: boolean
           ghl_location_id: string | null
@@ -6189,7 +6190,12 @@ export type Database = {
           gmail_default_sender: string | null
           id: number
           langsmith_project: string | null
+          meta_ads_features_enabled: boolean
+          meta_capi_access_token: string | null
+          meta_capi_test_event_code: string | null
           meta_default_page_id: string | null
+          meta_pixel_id: string | null
+          meta_pixel_tracked_paths: Json
           nav_partner_id: string | null
           nav_threshold_delta: number | null
           plaid_activated: boolean | null
@@ -6212,6 +6218,7 @@ export type Database = {
           default_from_email?: string | null
           default_from_sms_number?: string | null
           docusign_default_brand_id?: string | null
+          docusign_enabled?: boolean
           docusign_templates?: Json
           ghl_fallback_enabled?: boolean
           ghl_location_id?: string | null
@@ -6219,7 +6226,12 @@ export type Database = {
           gmail_default_sender?: string | null
           id?: number
           langsmith_project?: string | null
+          meta_ads_features_enabled?: boolean
+          meta_capi_access_token?: string | null
+          meta_capi_test_event_code?: string | null
           meta_default_page_id?: string | null
+          meta_pixel_id?: string | null
+          meta_pixel_tracked_paths?: Json
           nav_partner_id?: string | null
           nav_threshold_delta?: number | null
           plaid_activated?: boolean | null
@@ -6242,6 +6254,7 @@ export type Database = {
           default_from_email?: string | null
           default_from_sms_number?: string | null
           docusign_default_brand_id?: string | null
+          docusign_enabled?: boolean
           docusign_templates?: Json
           ghl_fallback_enabled?: boolean
           ghl_location_id?: string | null
@@ -6249,7 +6262,12 @@ export type Database = {
           gmail_default_sender?: string | null
           id?: number
           langsmith_project?: string | null
+          meta_ads_features_enabled?: boolean
+          meta_capi_access_token?: string | null
+          meta_capi_test_event_code?: string | null
           meta_default_page_id?: string | null
+          meta_pixel_id?: string | null
+          meta_pixel_tracked_paths?: Json
           nav_partner_id?: string | null
           nav_threshold_delta?: number | null
           plaid_activated?: boolean | null
