@@ -2911,6 +2911,37 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // Build message array
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
 
+    // === OPERATOR (admin/coach) CONTEXT INJECTION ===
+    // When the signed-in user is an admin or coach, Paige gets full CRM
+    // visibility tools (search contacts, read deals, list tasks, etc.).
+    let isOperator = false;
+    try {
+      const { data: roleRows } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id);
+      const roles = (roleRows || []).map((r: any) => r.role);
+      isOperator = roles.includes("admin") || roles.includes("coach");
+    } catch (e) {
+      console.warn("[paige-ai-chat] role lookup failed:", e);
+    }
+    if (isOperator) {
+      aiMessages.push({
+        role: "system",
+        content:
+`=== CRM OPERATOR MODE ===
+The current user is an ADMIN or COACH operating the Paige CRM. You have full read access to every contact, deal, task, and activity in the system through the crm_* tools. Use them proactively whenever the operator asks anything that requires looking across the customer base — for example:
+- "Who are my new leads this week?" → crm_search_contacts with lifecycle_stage=lead, sort by created_at desc.
+- "Show me Antonio's clients" → crm_search_contacts filtered by coach.
+- "What's the pipeline look like?" → crm_pipeline_summary, then crm_list_deals for the top stages.
+- "Tell me about Jane Doe" → crm_search_contacts to resolve the id, then crm_get_contact_summary for the full file (recent activity, deals, tasks, notes, lifecycle, last touch).
+- "What tasks are overdue?" → crm_list_tasks with overdue=true.
+
+Always resolve names/emails to client_id via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
+=== END CRM OPERATOR MODE ===`,
+      });
+    }
+
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
       
@@ -3169,6 +3200,81 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
                 },
                 required: ["client_user_id", "channel", "body"]
               }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_search_contacts",
+              description: "Admin/coach only. Search the CRM contacts (clients table) across the entire platform. Use to resolve names/emails to client_id, list leads by lifecycle stage, filter by assigned coach, find recently added contacts, or browse the customer base. Returns up to 25 contacts with id, name, email, phone, lifecycle_stage, source, assigned_coach_user_id, tags, lead_score, last_contacted_at, created_at.",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: { type: "string", description: "Free-text match on first/last name, email, entity_name, or phone." },
+                  lifecycle_stage: { type: "string", enum: ["lead","mql","sql","opportunity","customer","evangelist","churned","archived"] },
+                  status: { type: "string", enum: ["pending","active","inactive","archived"] },
+                  assigned_coach_email: { type: "string", description: "Filter by the coach's email." },
+                  tag: { type: "string", description: "Match a single tag in the tags array." },
+                  limit: { type: "number", description: "Max results (default 25, hard cap 100)." },
+                  sort: { type: "string", enum: ["recent","name","lead_score","last_contacted"], description: "Sort order (default recent)." }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_get_contact_summary",
+              description: "Admin/coach only. Deep-dive on a single contact: profile, lifecycle stage, assigned coach, open/won deals with value, recent activities (last 10), open tasks, and notes. Use after crm_search_contacts to brief the operator on a specific customer.",
+              parameters: {
+                type: "object",
+                properties: {
+                  client_id: { type: "string", description: "clients.id UUID." }
+                },
+                required: ["client_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_list_deals",
+              description: "Admin/coach only. List deals on the sales pipeline. Filter by stage, status (open/won/lost), owner, or contact. Returns id, title, contact name, stage label, value_cents, expected_close_date, status, owner, updated_at.",
+              parameters: {
+                type: "object",
+                properties: {
+                  status: { type: "string", enum: ["open","won","lost","all"], description: "Default open." },
+                  stage_label: { type: "string", description: "Filter by pipeline_stages.label, e.g. 'Qualified'." },
+                  owner_email: { type: "string" },
+                  contact_client_id: { type: "string" },
+                  limit: { type: "number" }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_list_tasks",
+              description: "Admin/coach only. List operator tasks. Use for 'what's due today', 'overdue tasks', or 'tasks for [coach]'. Returns id, title, due_date, status, assignee user_id, track, deal_id.",
+              parameters: {
+                type: "object",
+                properties: {
+                  status: { type: "string", enum: ["pending","in_progress","completed","cancelled","all"] },
+                  overdue: { type: "boolean", description: "Only return tasks past due_date and not completed." },
+                  assignee_email: { type: "string" },
+                  due_within_days: { type: "number", description: "Tasks due within N days from today." },
+                  limit: { type: "number" }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_pipeline_summary",
+              description: "Admin/coach only. High-level CRM snapshot: total contacts by lifecycle stage, deals by stage with weighted forecast, open task count, and new contacts in the last 7/30 days. Use for 'how's the pipeline', 'state of the business', or any opening operator briefing.",
+              parameters: { type: "object", properties: {} }
             }
           },
         ],
@@ -3483,7 +3589,12 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
           tc.function.name === "crm_update_pipeline_stage" ||
           tc.function.name === "crm_assign_coach" ||
           tc.function.name === "crm_create_task" ||
-          tc.function.name === "crm_log_activity"
+          tc.function.name === "crm_log_activity" ||
+          tc.function.name === "crm_search_contacts" ||
+          tc.function.name === "crm_get_contact_summary" ||
+          tc.function.name === "crm_list_deals" ||
+          tc.function.name === "crm_list_tasks" ||
+          tc.function.name === "crm_pipeline_summary"
         ) {
           // Role gate: admin or coach only
           const { data: roleRows } = await supabase
@@ -3568,6 +3679,133 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
                 .single();
               if (error) throw error;
               result = { success: true, log_id: row?.id };
+            } else if (tc.function.name === "crm_search_contacts") {
+              const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
+              let q = admin.from("clients").select(
+                "id, first_name, last_name, email, phone, entity_name, lifecycle_stage, status, source, tags, lead_score, assigned_coach_user_id, last_contacted_at, created_at"
+              );
+              if (args.lifecycle_stage) q = q.eq("lifecycle_stage", args.lifecycle_stage);
+              if (args.status) q = q.eq("status", args.status);
+              if (args.tag) q = q.contains("tags", [args.tag]);
+              if (args.assigned_coach_email) {
+                const { data: us } = await admin.auth.admin.listUsers();
+                const coach = us?.users?.find((x: any) => (x.email || "").toLowerCase() === String(args.assigned_coach_email).toLowerCase());
+                q = coach ? q.eq("assigned_coach_user_id", coach.id) : q.eq("assigned_coach_user_id", "00000000-0000-0000-0000-000000000000");
+              }
+              if (args.query) {
+                const s = String(args.query).replace(/[%,]/g, " ").trim();
+                q = q.or(`first_name.ilike.%${s}%,last_name.ilike.%${s}%,email.ilike.%${s}%,entity_name.ilike.%${s}%,phone.ilike.%${s}%`);
+              }
+              const sortMap: Record<string, [string, boolean]> = {
+                recent: ["created_at", false],
+                name: ["last_name", true],
+                lead_score: ["lead_score", false],
+                last_contacted: ["last_contacted_at", false],
+              };
+              const [col, asc] = sortMap[args.sort || "recent"] || sortMap.recent;
+              const { data, error } = await q.order(col, { ascending: asc, nullsFirst: false }).limit(limit);
+              if (error) throw error;
+              result = { success: true, count: data?.length || 0, contacts: data || [] };
+            } else if (tc.function.name === "crm_get_contact_summary") {
+              const id = args.client_id;
+              const [contact, deals, tasksRes, activities] = await Promise.all([
+                admin.from("clients").select("*").eq("id", id).maybeSingle(),
+                admin.from("deals").select("id, title, status, value_cents, currency, stage_id, expected_close_date, updated_at").eq("contact_client_id", id).order("updated_at", { ascending: false }).limit(20),
+                admin.from("tasks").select("id, title, status, due_date, track").eq("biz_id", id).neq("status", "completed").order("due_date", { ascending: true, nullsFirst: false }).limit(20),
+                admin.from("deal_activities").select("id, deal_id, type, summary, created_at").in("deal_id", []).limit(1),
+              ]);
+              if (contact.error) throw contact.error;
+              let recentActivity: any[] = [];
+              const dealIds = (deals.data || []).map((d: any) => d.id);
+              if (dealIds.length) {
+                const { data: a } = await admin.from("deal_activities").select("id, deal_id, type, summary, created_at").in("deal_id", dealIds).order("created_at", { ascending: false }).limit(10);
+                recentActivity = a || [];
+              }
+              const { data: commLog } = await admin.from("communication_log").select("channel, message_type, subject, preview, created_at").eq("user_id", (contact.data as any)?.linked_user_id || "00000000-0000-0000-0000-000000000000").order("created_at", { ascending: false }).limit(10);
+              result = {
+                success: true,
+                contact: contact.data,
+                deals: deals.data || [],
+                open_tasks: tasksRes.data || [],
+                recent_deal_activity: recentActivity,
+                recent_communications: commLog || [],
+              };
+            } else if (tc.function.name === "crm_list_deals") {
+              const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
+              let q = admin.from("deals").select(
+                "id, title, status, value_cents, currency, stage_id, expected_close_date, owner_user_id, contact_client_id, updated_at, pipeline_stages!inner(label)"
+              );
+              if (!args.status || args.status !== "all") q = q.eq("status", args.status || "open");
+              if (args.contact_client_id) q = q.eq("contact_client_id", args.contact_client_id);
+              if (args.stage_label) q = q.eq("pipeline_stages.label", args.stage_label);
+              if (args.owner_email) {
+                const { data: us } = await admin.auth.admin.listUsers();
+                const owner = us?.users?.find((x: any) => (x.email || "").toLowerCase() === String(args.owner_email).toLowerCase());
+                q = owner ? q.eq("owner_user_id", owner.id) : q.eq("owner_user_id", "00000000-0000-0000-0000-000000000000");
+              }
+              const { data, error } = await q.order("updated_at", { ascending: false }).limit(limit);
+              if (error) throw error;
+              result = { success: true, count: data?.length || 0, deals: data || [] };
+            } else if (tc.function.name === "crm_list_tasks") {
+              const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
+              let q = admin.from("tasks").select("id, title, status, due_date, track, user_id, biz_id, deal_id");
+              if (args.status && args.status !== "all") q = q.eq("status", args.status);
+              else q = q.neq("status", "completed");
+              if (args.assignee_email) {
+                const { data: us } = await admin.auth.admin.listUsers();
+                const a = us?.users?.find((x: any) => (x.email || "").toLowerCase() === String(args.assignee_email).toLowerCase());
+                q = a ? q.eq("user_id", a.id) : q.eq("user_id", "00000000-0000-0000-0000-000000000000");
+              }
+              const today = new Date().toISOString().slice(0, 10);
+              if (args.overdue) q = q.lt("due_date", today);
+              if (args.due_within_days) {
+                const end = new Date(Date.now() + Number(args.due_within_days) * 86400000).toISOString().slice(0, 10);
+                q = q.gte("due_date", today).lte("due_date", end);
+              }
+              const { data, error } = await q.order("due_date", { ascending: true, nullsFirst: false }).limit(limit);
+              if (error) throw error;
+              result = { success: true, count: data?.length || 0, tasks: data || [] };
+            } else if (tc.function.name === "crm_pipeline_summary") {
+              const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+              const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+              const [byStage, openDeals, openTasks, new7, new30] = await Promise.all([
+                admin.from("clients").select("lifecycle_stage"),
+                admin.from("deals").select("value_cents, stage_id, pipeline_stages!inner(label, probability)").eq("status", "open"),
+                admin.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"),
+                admin.from("clients").select("id", { count: "exact", head: true }).gte("created_at", sevenDaysAgo),
+                admin.from("clients").select("id", { count: "exact", head: true }).gte("created_at", thirtyDaysAgo),
+              ]);
+              const lifecycleCounts: Record<string, number> = {};
+              for (const r of (byStage.data || []) as any[]) {
+                const k = r.lifecycle_stage || "lead";
+                lifecycleCounts[k] = (lifecycleCounts[k] || 0) + 1;
+              }
+              const stageRollup: Record<string, { count: number; value_cents: number; weighted_cents: number }> = {};
+              let totalOpenValue = 0;
+              let weightedForecast = 0;
+              for (const d of (openDeals.data || []) as any[]) {
+                const label = d.pipeline_stages?.label || "Unstaged";
+                const prob = Number(d.pipeline_stages?.probability || 0) / 100;
+                const v = Number(d.value_cents || 0);
+                stageRollup[label] = stageRollup[label] || { count: 0, value_cents: 0, weighted_cents: 0 };
+                stageRollup[label].count += 1;
+                stageRollup[label].value_cents += v;
+                stageRollup[label].weighted_cents += Math.round(v * prob);
+                totalOpenValue += v;
+                weightedForecast += v * prob;
+              }
+              result = {
+                success: true,
+                total_contacts: (byStage.data || []).length,
+                contacts_by_lifecycle: lifecycleCounts,
+                new_contacts_last_7_days: new7.count || 0,
+                new_contacts_last_30_days: new30.count || 0,
+                open_tasks: openTasks.count || 0,
+                open_deals_count: (openDeals.data || []).length,
+                open_pipeline_value_cents: totalOpenValue,
+                weighted_forecast_cents: Math.round(weightedForecast),
+                stage_rollup: stageRollup,
+              };
             }
 
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
