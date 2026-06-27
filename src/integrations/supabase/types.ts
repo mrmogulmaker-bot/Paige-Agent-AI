@@ -6206,6 +6206,7 @@ export type Database = {
           sentry_project_slug: string | null
           smartcredit_enabled: boolean | null
           stripe_price_tier_map: Json | null
+          telegram_command_surface_enabled: boolean
           twilio_a2p_status: string
           updated_at: string
           updated_by: string | null
@@ -6242,6 +6243,7 @@ export type Database = {
           sentry_project_slug?: string | null
           smartcredit_enabled?: boolean | null
           stripe_price_tier_map?: Json | null
+          telegram_command_surface_enabled?: boolean
           twilio_a2p_status?: string
           updated_at?: string
           updated_by?: string | null
@@ -6278,6 +6280,7 @@ export type Database = {
           sentry_project_slug?: string | null
           smartcredit_enabled?: boolean | null
           stripe_price_tier_map?: Json | null
+          telegram_command_surface_enabled?: boolean
           twilio_a2p_status?: string
           updated_at?: string
           updated_by?: string | null
@@ -6878,14 +6881,19 @@ export type Database = {
           connection_id: string | null
           created_at: string
           description: string | null
+          direct_function_name: string | null
           id: string
           is_active: boolean
           key: string
           label: string
+          langgraph_graph_id: string | null
           n8n_webhook_url: string | null
           n8n_workflow_id: string | null
+          needs_n8n_link: boolean
           parameters_schema: Json
+          provider: Database["public"]["Enums"]["workflow_provider"]
           requires_approval: boolean
+          sort_order: number
           updated_at: string
         }
         Insert: {
@@ -6893,14 +6901,19 @@ export type Database = {
           connection_id?: string | null
           created_at?: string
           description?: string | null
+          direct_function_name?: string | null
           id?: string
           is_active?: boolean
           key: string
           label: string
+          langgraph_graph_id?: string | null
           n8n_webhook_url?: string | null
           n8n_workflow_id?: string | null
+          needs_n8n_link?: boolean
           parameters_schema?: Json
+          provider?: Database["public"]["Enums"]["workflow_provider"]
           requires_approval?: boolean
+          sort_order?: number
           updated_at?: string
         }
         Update: {
@@ -6908,14 +6921,19 @@ export type Database = {
           connection_id?: string | null
           created_at?: string
           description?: string | null
+          direct_function_name?: string | null
           id?: string
           is_active?: boolean
           key?: string
           label?: string
+          langgraph_graph_id?: string | null
           n8n_webhook_url?: string | null
           n8n_workflow_id?: string | null
+          needs_n8n_link?: boolean
           parameters_schema?: Json
+          provider?: Database["public"]["Enums"]["workflow_provider"]
           requires_approval?: boolean
+          sort_order?: number
           updated_at?: string
         }
         Relationships: [
@@ -9419,6 +9437,11 @@ export type Database = {
       paige_social_platform: "facebook" | "instagram"
       paige_social_post_status: "scheduled" | "posted" | "failed" | "deleted"
       task_status: "pending" | "in_progress" | "completed" | "cancelled"
+      workflow_provider:
+        | "n8n"
+        | "langgraph"
+        | "direct_edge_function"
+        | "cron_only"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -9698,6 +9721,12 @@ export const Constants = {
       paige_social_platform: ["facebook", "instagram"],
       paige_social_post_status: ["scheduled", "posted", "failed", "deleted"],
       task_status: ["pending", "in_progress", "completed", "cancelled"],
+      workflow_provider: [
+        "n8n",
+        "langgraph",
+        "direct_edge_function",
+        "cron_only",
+      ],
     },
   },
 } as const

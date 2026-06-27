@@ -42,7 +42,7 @@ const tiles = [
   { key: "zapier", icon: Zap, title: "Zapier MCP", description: "Expose thousands of apps to Paige via the MCP client.", href: "/admin/integrations/zapier" },
   { key: "telegram", icon: Send, title: "Telegram Alerts", description: "Bot channel for admin alerts and overdue approvals.", href: "/admin/integrations/telegram" },
   { key: "gmail", icon: MessageSquare, title: "Gmail (Founder Inbox)", description: "Deliverability-sensitive sends via OAuth.", href: "/admin/integrations/gmail" },
-  { key: "tavily", icon: Search, title: "Tavily Web Search", description: "Web research for Paige's reasoning.", href: "/admin/integrations/tavily" },
+  { key: "firecrawl", icon: Search, title: "Firecrawl Web Search", description: "Live web research + bureau scraping. Replaces Tavily.", href: "/admin/integrations" },
   { key: "langsmith", icon: Activity, title: "AI Activity (LangSmith)", description: "Recent traces, cost and latency for all AI calls.", href: "/admin/integrations/ai-activity" },
   { key: "docusign", icon: FileSignature, title: "DocuSign", description: "VIP apps, coach agreements, DFY engagement letters, term sheets.", href: "/admin/integrations/docusign" },
   { key: "cal", icon: CalendarClock, title: "Cal.com", description: "Booking surface for VIP intros, DFY discovery and workshops.", href: "/admin/integrations/cal" },
@@ -103,7 +103,7 @@ export default function IntegrationsHub() {
       case "zapier": return counts.mcp > 0 ? { tone: "default" as const, label: `${counts.mcp} active` } : { tone: "secondary" as const, label: "Not configured" };
       case "telegram": return counts.telegramConfigured ? { tone: "default" as const, label: "Active" } : { tone: "secondary" as const, label: "Not configured" };
       case "gmail": return config?.gmail_default_sender ? { tone: "default" as const, label: config.gmail_default_sender } : { tone: "secondary" as const, label: "Not connected" };
-      case "tavily": return { tone: "outline" as const, label: "Env-managed" };
+      case "firecrawl": return { tone: "default" as const, label: "Active (FIRECRAWL_API_KEY)" };
       case "langsmith": return config?.langsmith_project ? { tone: "default" as const, label: config.langsmith_project } : { tone: "secondary" as const, label: "Disabled" };
       case "docusign": return counts.envelopes > 0 ? { tone: "default" as const, label: `${counts.envelopes} envelope${counts.envelopes === 1 ? "" : "s"}` } : { tone: "secondary" as const, label: "Not configured" };
       case "cal": return counts.bookings > 0 ? { tone: "default" as const, label: `${counts.bookings} bookings (30d)` } : { tone: "secondary" as const, label: "Not configured" };
