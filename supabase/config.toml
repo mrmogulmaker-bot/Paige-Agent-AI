@@ -25,8 +25,13 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = false
   [functions.handle-inbound-sms]
     verify_jwt = false
+  [functions.handle-smartcredit-alert-webhook]
+    verify_jwt = false
+  [functions.handle-paige-plaid-webhook]
+    verify_jwt = false
   [functions.isoftpull-webhook]
     verify_jwt = false
+
   [functions.issue-certificate]
     verify_jwt = true
   [functions.log-consent]
