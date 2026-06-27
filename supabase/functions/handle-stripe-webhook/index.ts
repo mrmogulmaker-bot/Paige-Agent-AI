@@ -3,7 +3,7 @@
 // Public function — relies on Stripe signature verification.
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { adminClient, corsHeaders } from "../_shared/adminAuth.ts";
-import { enqueueOutbox } from "../_shared/mmaOsBridge.ts";
+import { fireAndForgetBridge } from "../_shared/mmaOsBridge.ts";
 
 const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
 const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
@@ -65,17 +65,14 @@ Deno.serve(async (req) => {
     customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id ?? null;
   }
 
-  // Resolve contact + previous tier
+  // Resolve contact (clients table has no `tier` column — tier state lives in tier_state)
   let contactId: string | null = null;
   if (customerId) {
     const customer = await stripe.customers.retrieve(customerId);
     const email = (customer as Stripe.Customer).email;
     if (email) {
-      const c = await admin.from("clients").select("id, tier").ilike("email", email).maybeSingle();
-      if (c.data) {
-        contactId = c.data.id;
-        tierBefore = (c.data as { tier?: string | null }).tier ?? null;
-      }
+      const c = await admin.from("clients").select("id").ilike("email", email).maybeSingle();
+      if (c.data) contactId = c.data.id;
     }
   }
 
@@ -91,15 +88,15 @@ Deno.serve(async (req) => {
     processed_at: new Date().toISOString(),
   });
 
-  // Auto-update tier when subscription event
-  if (contactId && event.type.startsWith("customer.subscription.") && tierAfter !== tierBefore) {
-    await admin.from("clients").update({ tier: tierAfter }).eq("id", contactId);
-    await enqueueOutbox(admin, "tier_change_notify", {
+  // Notify MMA OS — tier_change_notify fires the cross-system tier router
+  if (event.type.startsWith("customer.subscription.")) {
+    fireAndForgetBridge("tier_change_notify", {
       contact_id: contactId,
       tier_before: tierBefore,
       tier_after: tierAfter,
       stripe_event_id: event.id,
       stripe_customer_id: customerId,
+      mrr_delta_cents: mrrDelta,
     });
   }
 
