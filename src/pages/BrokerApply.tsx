@@ -228,7 +228,13 @@ export default function BrokerApply() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <PageHead
+        title="Broker Program — PaigeAgent.ai"
+        description="Use PaigeAgent.ai as a white-label workspace for your funding clients. Apply to the Broker Program and run Paige-powered sessions with your book of business."
+        path="/broker"
+      />
       <Header />
+
 
       {/* Hero */}
       <section className="bg-gradient-to-br from-primary via-primary to-primary/90 text-primary-foreground">

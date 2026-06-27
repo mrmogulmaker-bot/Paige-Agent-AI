@@ -65,6 +65,12 @@ export default function AffiliateApply() {
       className="min-h-screen text-white"
       style={{ backgroundColor: NAVY }}
     >
+      <PageHead
+        title="Affiliate Program — PaigeAgent.ai"
+        description="Apply to the PaigeAgent.ai affiliate program. Refer entrepreneurs to the platform and earn recurring commissions on every subscription."
+        path="/affiliates"
+      />
+
       {/* Header */}
       <header className="mx-auto flex max-w-6xl items-center justify-between p-6">
         <Link to="/" className="text-xl font-semibold tracking-tight">
