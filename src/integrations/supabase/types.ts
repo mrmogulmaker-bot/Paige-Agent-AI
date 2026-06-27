@@ -2013,6 +2013,8 @@ export type Database = {
           first_name: string
           funding_goal: number | null
           id: string
+          journey_stage_entered_at: string | null
+          journey_stage_id: number | null
           last_contacted_at: string | null
           last_name: string
           lead_score: number
@@ -2044,6 +2046,8 @@ export type Database = {
           first_name: string
           funding_goal?: number | null
           id?: string
+          journey_stage_entered_at?: string | null
+          journey_stage_id?: number | null
           last_contacted_at?: string | null
           last_name: string
           lead_score?: number
@@ -2075,6 +2079,8 @@ export type Database = {
           first_name?: string
           funding_goal?: number | null
           id?: string
+          journey_stage_entered_at?: string | null
+          journey_stage_id?: number | null
           last_contacted_at?: string | null
           last_name?: string
           lead_score?: number
@@ -2093,7 +2099,15 @@ export type Database = {
           website?: string | null
           zip_code?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "clients_journey_stage_id_fkey"
+            columns: ["journey_stage_id"]
+            isOneToOne: false
+            referencedRelation: "paige_journey_stages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       coach_clients: {
         Row: {
@@ -6446,6 +6460,98 @@ export type Database = {
           },
         ]
       }
+      paige_journey_stage_transitions: {
+        Row: {
+          contact_id: string
+          from_stage_id: number | null
+          id: string
+          metadata: Json
+          source_event: string | null
+          to_stage_id: number
+          transitioned_at: string
+          transitioned_by: string | null
+        }
+        Insert: {
+          contact_id: string
+          from_stage_id?: number | null
+          id?: string
+          metadata?: Json
+          source_event?: string | null
+          to_stage_id: number
+          transitioned_at?: string
+          transitioned_by?: string | null
+        }
+        Update: {
+          contact_id?: string
+          from_stage_id?: number | null
+          id?: string
+          metadata?: Json
+          source_event?: string | null
+          to_stage_id?: number
+          transitioned_at?: string
+          transitioned_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_journey_stage_transitions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_journey_stage_transitions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_journey_stage_transitions_from_stage_id_fkey"
+            columns: ["from_stage_id"]
+            isOneToOne: false
+            referencedRelation: "paige_journey_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_journey_stage_transitions_to_stage_id_fkey"
+            columns: ["to_stage_id"]
+            isOneToOne: false
+            referencedRelation: "paige_journey_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_journey_stages: {
+        Row: {
+          color_hex: string | null
+          created_at: string
+          description: string | null
+          display_order: number
+          id: number
+          label: string
+          slug: string
+        }
+        Insert: {
+          color_hex?: string | null
+          created_at?: string
+          description?: string | null
+          display_order: number
+          id: number
+          label: string
+          slug: string
+        }
+        Update: {
+          color_hex?: string | null
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: number
+          label?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       paige_mcp_connections: {
         Row: {
           auth_token_last4: string | null
@@ -9331,6 +9437,14 @@ export type Database = {
       refresh_analytics_views: { Args: never; Returns: undefined }
       reject_affiliate_application: {
         Args: { _application_id: string; _notes?: string }
+        Returns: Json
+      }
+      set_journey_stage: {
+        Args: {
+          _contact_id: string
+          _source_event?: string
+          _stage_slug: string
+        }
         Returns: Json
       }
       trigger_business_credit_sync: {
