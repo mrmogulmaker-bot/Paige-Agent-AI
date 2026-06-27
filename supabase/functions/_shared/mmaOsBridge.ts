@@ -25,7 +25,11 @@ export type BridgeVerb =
   | "tier_change_notify"
   | "query_supabase"
   | "get_member_360"
-  | "get_workflow_status";
+  | "get_workflow_status"
+  | "booking_created"
+  | "signature_completed"
+  | "social_comment_received";
+
 
 // Fields that must never leave Paige for the MMA OS ledger.
 // Matched case-insensitively as prefix OR exact key.
