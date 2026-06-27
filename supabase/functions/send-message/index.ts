@@ -1,0 +1,213 @@
+// Unified send dispatcher — routes email via Resend, SMS via Twilio (or GHL fallback).
+// Writes every send to paige_messages_audit and mirrors outbound to paige_conversations.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callMmaOsBridge } from "../_shared/mmaOsBridge.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+interface SendBody {
+  channel: "email" | "sms";
+  to: string;
+  subject?: string;
+  body: string;
+  contact_id?: string;
+  conversation_id?: string;
+  in_reply_to?: string;
+  approval_id?: string;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const admin = createClient(supabaseUrl, serviceKey);
+
+  // Caller identity from JWT (verify_jwt=true on this fn).
+  const auth = req.headers.get("Authorization") ?? "";
+  const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    global: { headers: { Authorization: auth } },
+  });
+  const { data: { user } } = await userClient.auth.getUser();
+  if (!user) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
+  const { data: isCoach } = await admin.rpc("has_role", { _user_id: user.id, _role: "coach" });
+  if (!isAdmin && !isCoach) {
+    return new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  let body: SendBody;
+  try { body = await req.json(); } catch {
+    return new Response(JSON.stringify({ error: "invalid_json" }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!body?.channel || !body?.to || !body?.body) {
+    return new Response(JSON.stringify({ error: "missing_fields" }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: config } = await admin.from("paige_config").select("*").eq("id", 1).maybeSingle();
+
+  let pipe_used: "resend" | "twilio" | "ghl_fallback" = "resend";
+  let vendor_message_id: string | null = null;
+  let status: "sent" | "failed" = "failed";
+  let errorText: string | null = null;
+  let fromAddress: string | null = null;
+
+  try {
+    if (body.channel === "email") {
+      const resendKey = Deno.env.get("RESEND_API_KEY");
+      if (!resendKey) throw new Error("RESEND_API_KEY missing");
+      fromAddress = config?.default_from_email || "support@paigeagent.ai";
+      const headers: Record<string, string> = {};
+      if (body.in_reply_to) headers["In-Reply-To"] = body.in_reply_to;
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromAddress,
+          to: [body.to],
+          subject: body.subject || "(no subject)",
+          html: body.body,
+          headers: Object.keys(headers).length ? headers : undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(`resend_${res.status}: ${JSON.stringify(json).slice(0, 300)}`);
+      pipe_used = "resend";
+      vendor_message_id = json?.id ?? null;
+      status = "sent";
+    } else {
+      // SMS
+      const useTwilio = config?.twilio_a2p_status === "approved";
+      if (useTwilio) {
+        const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
+        const tok = Deno.env.get("TWILIO_AUTH_TOKEN");
+        const from = config?.default_from_sms_number || Deno.env.get("TWILIO_PHONE_NUMBER");
+        if (!sid || !tok || !from) throw new Error("twilio_env_incomplete");
+        fromAddress = from;
+        const params = new URLSearchParams({ To: body.to, From: from, Body: body.body });
+        const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+          method: "POST",
+          headers: {
+            Authorization: "Basic " + btoa(`${sid}:${tok}`),
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: params,
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(`twilio_${res.status}: ${JSON.stringify(json).slice(0, 300)}`);
+        pipe_used = "twilio";
+        vendor_message_id = json?.sid ?? null;
+        status = "sent";
+      } else if (config?.ghl_fallback_enabled) {
+        const ok = await callMmaOsBridge("record_cross_system_event" as any, {
+          verb_override: "ghl_send_sms_fallback",
+          to: body.to,
+          body: body.body,
+          contact_id: body.contact_id,
+        });
+        // Bridge wrapper currently only knows our 4 verbs; for the GHL fallback verb,
+        // call directly:
+        const url = Deno.env.get("MMA_OS_BRIDGE_URL");
+        const key = Deno.env.get("MMA_OS_BRIDGE_API_KEY");
+        if (!url || !key) throw new Error("bridge_env_missing");
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            verb: "ghl_send_sms_fallback",
+            payload: { to: body.to, body: body.body, contact_id: body.contact_id },
+          }),
+        });
+        if (!res.ok) throw new Error(`ghl_fallback_${res.status}`);
+        const json = await res.json().catch(() => ({}));
+        pipe_used = "ghl_fallback";
+        vendor_message_id = json?.message_id ?? null;
+        status = "sent";
+        void ok;
+      } else {
+        throw new Error("no_sms_pipe_available");
+      }
+    }
+  } catch (e) {
+    errorText = (e as Error).message.slice(0, 500);
+    status = "failed";
+  }
+
+  const { data: auditRow } = await admin
+    .from("paige_messages_audit")
+    .insert({
+      channel: body.channel,
+      pipe_used,
+      to_address: body.to,
+      from_address: fromAddress,
+      subject: body.subject,
+      body: body.body,
+      status,
+      vendor_message_id,
+      error: errorText,
+      contact_id: body.contact_id ?? null,
+      conversation_id: body.conversation_id ?? null,
+      sent_at: status === "sent" ? new Date().toISOString() : null,
+    })
+    .select("id")
+    .single();
+
+  if (status === "sent" && body.conversation_id) {
+    await admin.from("paige_conversations").insert({
+      channel: body.channel,
+      contact_id: body.contact_id ?? null,
+      direction: "outbound",
+      subject: body.subject,
+      body: body.body,
+      source_message_id: vendor_message_id,
+      status: "replied",
+      metadata: { audit_id: auditRow?.id, in_reply_to: body.conversation_id },
+    });
+    await admin.from("paige_conversations")
+      .update({ status: "replied" })
+      .eq("id", body.conversation_id);
+  }
+
+  if (body.approval_id) {
+    await admin.from("paige_pending_approvals")
+      .update({
+        status: status === "sent" ? "approved" : "pending",
+        reviewed_by_user_id: user.id,
+        reviewed_at: new Date().toISOString(),
+        sent_at: status === "sent" ? new Date().toISOString() : null,
+        sent_message_audit_id: auditRow?.id ?? null,
+      })
+      .eq("id", body.approval_id);
+  }
+
+  return new Response(
+    JSON.stringify({
+      audit_id: auditRow?.id,
+      vendor_message_id,
+      pipe_used,
+      status,
+      error: errorText,
+    }),
+    {
+      status: status === "sent" ? 200 : 502,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    },
+  );
+});
