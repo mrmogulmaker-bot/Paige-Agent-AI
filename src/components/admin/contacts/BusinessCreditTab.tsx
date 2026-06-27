@@ -54,7 +54,7 @@ export function BusinessCreditTab({ contactId }: { contactId: string }) {
         .eq("contact_id", contactId)
         .order("last_pulled_at", { ascending: false, nullsFirst: false })
         .limit(1);
-      setData((rows?.[0] as Profile) ?? null);
+      setData((rows?.[0] as unknown as Profile) ?? null);
       setLoading(false);
     })();
   }, [contactId]);
