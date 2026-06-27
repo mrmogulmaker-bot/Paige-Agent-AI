@@ -133,52 +133,74 @@ export default function ClientJourney() {
     }
 
     if (c.linked_user_id) {
-      const [msgs, conv, book, sig, bc, oc, cf, notes] = await Promise.all([
-        supabase.from("paige_messages_audit").select("created_at, channel, direction, subject, preview").eq("user_id", c.linked_user_id).order("created_at", { ascending: false }).limit(50).then(r => r.data ?? []).catch(() => []),
-        supabase.from("communication_log").select("created_at, channel, direction, summary").eq("user_id", c.linked_user_id).order("created_at", { ascending: false }).limit(50).then(r => r.data ?? []).catch(() => []),
-        supabase.from("paige_bookings").select("created_at, status, scheduled_at, event_type").eq("contact_id", c.id).order("created_at", { ascending: false }).limit(20).then(r => r.data ?? []).catch(() => []),
-        supabase.from("paige_signature_envelopes").select("created_at, status, envelope_type, document_name").eq("contact_id", c.id).order("created_at", { ascending: false }).limit(20).then(r => r.data ?? []).catch(() => []),
-        supabase.from("paige_business_credit_profiles").select("last_pulled_at, paydex_score, intelliscore_plus").eq("contact_id", c.id).order("last_pulled_at", { ascending: false }).limit(10).then(r => r.data ?? []).catch(() => []),
-        supabase.from("paige_owner_credit_snapshots").select("snapshot_date, bureau, score").eq("contact_id", c.id).order("snapshot_date", { ascending: false }).limit(10).then(r => r.data ?? []).catch(() => []),
-        supabase.from("paige_cash_flow_snapshots").select("snapshot_date, runway_days, funding_readiness_score").eq("contact_id", c.id).order("snapshot_date", { ascending: false }).limit(10).then(r => r.data ?? []).catch(() => []),
-        supabase.from("client_memory").select("created_at, memory_type, content").eq("client_user_id", c.linked_user_id).eq("is_active", true).order("created_at", { ascending: false }).limit(30).then(r => r.data ?? []).catch(() => []),
-      ]);
+      const safe = async <T,>(p: PromiseLike<{ data: T[] | null }>): Promise<T[]> => {
+        try { const r = await p; return (r.data ?? []) as T[]; } catch { return []; }
+      };
 
-      for (const m of msgs as any[]) out.push({
+      const msgs = await safe<any>(
+        supabase.from("paige_messages_audit").select("created_at, channel, subject, body, status, contact_id").eq("contact_id", c.id).order("created_at", { ascending: false }).limit(50)
+      );
+      const conv = await safe<any>(
+        supabase.from("communication_log").select("created_at, channel, message_type, subject, preview").eq("user_id", c.linked_user_id).order("created_at", { ascending: false }).limit(50)
+      );
+      const book = await safe<any>(
+        supabase.from("paige_bookings").select("created_at, status, scheduled_at, event_type, title").eq("contact_id", c.id).order("created_at", { ascending: false }).limit(20)
+      );
+      const sig = await safe<any>(
+        supabase.from("paige_signature_envelopes").select("created_at, status, envelope_type").eq("contact_id", c.id).order("created_at", { ascending: false }).limit(20)
+      );
+      const bc = await safe<any>(
+        supabase.from("paige_business_credit_profiles").select("last_pulled_at, business_name, scores").eq("contact_id", c.id).order("last_pulled_at", { ascending: false }).limit(10)
+      );
+      const oc = await safe<any>(
+        supabase.from("paige_owner_credit_snapshots").select("pulled_at, bureau, score").eq("contact_id", c.id).order("pulled_at", { ascending: false }).limit(10)
+      );
+      const cf = await safe<any>(
+        supabase.from("paige_cash_flow_snapshots").select("period_end, runway_days, funding_readiness_score").eq("contact_id", c.id).order("period_end", { ascending: false }).limit(10)
+      );
+      const notes = await safe<any>(
+        supabase.from("client_memory").select("created_at, memory_type, content").eq("client_user_id", c.linked_user_id).eq("is_active", true).order("created_at", { ascending: false }).limit(30)
+      );
+
+      for (const m of msgs) out.push({
         ts: m.created_at, kind: "message", icon: ICON.message,
-        title: `${m.direction ?? "out"} ${m.channel ?? "message"}${m.subject ? ` — ${m.subject}` : ""}`,
-        detail: m.preview ?? undefined,
+        title: `${m.channel ?? "message"}${m.subject ? ` — ${m.subject}` : ""}`,
+        detail: typeof m.body === "string" ? m.body.slice(0, 200) : undefined,
       });
-      for (const m of conv as any[]) out.push({
+      for (const m of conv) out.push({
         ts: m.created_at, kind: "conversation", icon: ICON.conversation,
-        title: `Conversation (${m.channel ?? "?"} · ${m.direction ?? "?"})`,
-        detail: m.summary ?? undefined,
+        title: `Conversation (${m.channel ?? "?"}${m.message_type ? ` · ${m.message_type}` : ""})`,
+        detail: m.subject ?? m.preview ?? undefined,
       });
-      for (const b of book as any[]) out.push({
+      for (const b of book) out.push({
         ts: b.created_at, kind: "booking", icon: ICON.booking,
         title: `Booking ${b.status ?? ""}${b.event_type ? ` — ${b.event_type}` : ""}`,
         detail: b.scheduled_at ? `Scheduled ${new Date(b.scheduled_at).toLocaleString()}` : undefined,
       });
-      for (const s of sig as any[]) out.push({
+      for (const s of sig) out.push({
         ts: s.created_at, kind: "signature", icon: ICON.signature,
         title: `Signature ${s.status ?? ""}${s.envelope_type ? ` — ${s.envelope_type}` : ""}`,
-        detail: s.document_name ?? undefined,
       });
-      for (const x of bc as any[]) if (x.last_pulled_at) out.push({
-        ts: x.last_pulled_at, kind: "credit", icon: ICON.credit,
-        title: "Business credit refreshed",
-        detail: `Paydex ${x.paydex_score ?? "—"} · Intelliscore ${x.intelliscore_plus ?? "—"}`,
-      });
-      for (const x of oc as any[]) if (x.snapshot_date) out.push({
-        ts: x.snapshot_date, kind: "credit", icon: ICON.credit,
+      for (const x of bc) if (x.last_pulled_at) {
+        const scores = (x.scores ?? {}) as Record<string, unknown>;
+        const paydex = scores.paydex ?? scores.dnb_paydex ?? "—";
+        const intelli = scores.intelliscore ?? scores.experian_intelliscore ?? "—";
+        out.push({
+          ts: x.last_pulled_at, kind: "credit", icon: ICON.credit,
+          title: `Business credit refreshed${x.business_name ? ` — ${x.business_name}` : ""}`,
+          detail: `Paydex ${paydex} · Intelliscore ${intelli}`,
+        });
+      }
+      for (const x of oc) if (x.pulled_at) out.push({
+        ts: x.pulled_at, kind: "credit", icon: ICON.credit,
         title: `Owner credit (${x.bureau ?? "?"}) ${x.score ?? "—"}`,
       });
-      for (const x of cf as any[]) if (x.snapshot_date) out.push({
-        ts: x.snapshot_date, kind: "banking", icon: ICON.banking,
+      for (const x of cf) if (x.period_end) out.push({
+        ts: x.period_end, kind: "banking", icon: ICON.banking,
         title: "Cash-flow snapshot",
         detail: `Runway ${x.runway_days ?? "—"}d · readiness ${x.funding_readiness_score ?? "—"}/100`,
       });
-      for (const n of notes as any[]) out.push({
+      for (const n of notes) out.push({
         ts: n.created_at, kind: "note", icon: ICON.note,
         title: `Note (${n.memory_type ?? "general"})`,
         detail: typeof n.content === "string" ? n.content.slice(0, 220) : undefined,
