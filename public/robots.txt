@@ -12,3 +12,7 @@ Allow: /
 
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /app
+
+Sitemap: https://paigeagent.ai/sitemap.xml
