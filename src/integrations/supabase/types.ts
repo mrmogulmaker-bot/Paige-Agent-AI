@@ -5892,8 +5892,13 @@ export type Database = {
           default_from_email: string | null
           default_from_sms_number: string | null
           ghl_fallback_enabled: boolean
+          ghl_location_id: string | null
+          ghl_pit_ref: string | null
+          gmail_default_sender: string | null
           id: number
+          langsmith_project: string | null
           resend_domain_verified: boolean
+          stripe_price_tier_map: Json | null
           twilio_a2p_status: string
           updated_at: string
           updated_by: string | null
@@ -5903,8 +5908,13 @@ export type Database = {
           default_from_email?: string | null
           default_from_sms_number?: string | null
           ghl_fallback_enabled?: boolean
+          ghl_location_id?: string | null
+          ghl_pit_ref?: string | null
+          gmail_default_sender?: string | null
           id?: number
+          langsmith_project?: string | null
           resend_domain_verified?: boolean
+          stripe_price_tier_map?: Json | null
           twilio_a2p_status?: string
           updated_at?: string
           updated_by?: string | null
@@ -5914,8 +5924,13 @@ export type Database = {
           default_from_email?: string | null
           default_from_sms_number?: string | null
           ghl_fallback_enabled?: boolean
+          ghl_location_id?: string | null
+          ghl_pit_ref?: string | null
+          gmail_default_sender?: string | null
           id?: number
+          langsmith_project?: string | null
           resend_domain_verified?: boolean
+          stripe_price_tier_map?: Json | null
           twilio_a2p_status?: string
           updated_at?: string
           updated_by?: string | null
@@ -5978,6 +5993,48 @@ export type Database = {
             referencedColumns: ["contact_id"]
           },
         ]
+      }
+      paige_mcp_connections: {
+        Row: {
+          auth_token_last4: string | null
+          auth_token_ref: string | null
+          created_at: string
+          enabled: boolean
+          id: string
+          label: string
+          last_probed_at: string | null
+          server_url: string
+          tools_cache: Json | null
+          transport: string
+          updated_at: string
+        }
+        Insert: {
+          auth_token_last4?: string | null
+          auth_token_ref?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          label: string
+          last_probed_at?: string | null
+          server_url: string
+          tools_cache?: Json | null
+          transport?: string
+          updated_at?: string
+        }
+        Update: {
+          auth_token_last4?: string | null
+          auth_token_ref?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          label?: string
+          last_probed_at?: string | null
+          server_url?: string
+          tools_cache?: Json | null
+          transport?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       paige_messages_audit: {
         Row: {
@@ -6054,6 +6111,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      paige_n8n_connections: {
+        Row: {
+          api_key_last4: string | null
+          api_key_ref: string | null
+          base_url: string
+          created_at: string
+          id: string
+          is_default: boolean
+          label: string
+          last_sync_at: string | null
+          updated_at: string
+          workflows_cache: Json | null
+        }
+        Insert: {
+          api_key_last4?: string | null
+          api_key_ref?: string | null
+          base_url: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          label: string
+          last_sync_at?: string | null
+          updated_at?: string
+          workflows_cache?: Json | null
+        }
+        Update: {
+          api_key_last4?: string | null
+          api_key_ref?: string | null
+          base_url?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          label?: string
+          last_sync_at?: string | null
+          updated_at?: string
+          workflows_cache?: Json | null
+        }
+        Relationships: []
       }
       paige_pending_approvals: {
         Row: {
@@ -6134,6 +6230,93 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      paige_subscription_events: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          currency: string | null
+          event_type: string
+          id: string
+          mrr_delta_cents: number | null
+          processed_at: string | null
+          raw: Json | null
+          stripe_customer_id: string | null
+          stripe_event_id: string
+          tier_after: string | null
+          tier_before: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          currency?: string | null
+          event_type: string
+          id?: string
+          mrr_delta_cents?: number | null
+          processed_at?: string | null
+          raw?: Json | null
+          stripe_customer_id?: string | null
+          stripe_event_id: string
+          tier_after?: string | null
+          tier_before?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          currency?: string | null
+          event_type?: string
+          id?: string
+          mrr_delta_cents?: number | null
+          processed_at?: string | null
+          raw?: Json | null
+          stripe_customer_id?: string | null
+          stripe_event_id?: string
+          tier_after?: string | null
+          tier_before?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_subscription_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_subscription_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
+      paige_telegram_config: {
+        Row: {
+          bot_token_last4: string | null
+          bot_token_ref: string | null
+          default_admin_chat_id: string | null
+          enabled: boolean
+          id: number
+          updated_at: string
+        }
+        Insert: {
+          bot_token_last4?: string | null
+          bot_token_ref?: string | null
+          default_admin_chat_id?: string | null
+          enabled?: boolean
+          id?: number
+          updated_at?: string
+        }
+        Update: {
+          bot_token_last4?: string | null
+          bot_token_ref?: string | null
+          default_admin_chat_id?: string | null
+          enabled?: boolean
+          id?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       paige_workflow_registry: {
         Row: {
