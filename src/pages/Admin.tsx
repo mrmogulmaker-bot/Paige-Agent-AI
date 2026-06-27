@@ -364,7 +364,26 @@ const Admin = () => {
         <Route path="observability/errors" element={
           <Suspense fallback={<SuspenseFallback />}><ErrorTracking /></Suspense>
         } />
+        <Route path="integrations/nav" element={
+          <Suspense fallback={<SuspenseFallback />}><NavIntegrationConfig /></Suspense>
+        } />
+        <Route path="business-credit" element={
+          <Suspense fallback={<SuspenseFallback />}><BusinessCreditAdmin /></Suspense>
+        } />
+        <Route path="integrations/smartcredit" element={
+          <Suspense fallback={<SuspenseFallback />}><SmartCreditIntegrationConfig /></Suspense>
+        } />
+        <Route path="owner-credit" element={
+          <Suspense fallback={<SuspenseFallback />}><OwnerCreditAdmin /></Suspense>
+        } />
+        <Route path="integrations/plaid" element={
+          <Suspense fallback={<SuspenseFallback />}><PlaidIntegrationConfig /></Suspense>
+        } />
+        <Route path="banking" element={
+          <Suspense fallback={<SuspenseFallback />}><BankingAdmin /></Suspense>
+        } />
       </Routes>
+
     </AdminLayout>
   );
 };
