@@ -361,6 +361,20 @@ serve(async (req) => {
       });
     }
 
+    // Ownership check: only the upload's owner, admins, or coaches may analyze.
+    if (upload.user_id !== user.id) {
+      const [{ data: isAdmin }, { data: isCoach }] = await Promise.all([
+        supabase.rpc("has_role", { _user_id: user.id, _role: "admin" }),
+        supabase.rpc("has_role", { _user_id: user.id, _role: "coach" }),
+      ]);
+      if (!isAdmin && !isCoach) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     await supabase
       .from("credit_report_uploads")
       .update({ analysis_status: "processing", error_message: null })
