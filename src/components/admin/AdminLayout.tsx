@@ -28,6 +28,8 @@ const crmNavItems = [
   { label: "Pipeline", href: "/admin/pipeline", icon: KanbanSquare },
   { label: "Communications", href: "/admin/communications", icon: Inbox },
   { label: "Tasks", href: "/admin/tasks", icon: CheckSquare },
+  { label: "Approvals", href: "/admin/approvals", icon: ClipboardCheck },
+  { label: "Workflows", href: "/admin/workflows", icon: Workflow },
   { label: "Coaches", href: "/admin/coaches", icon: UserCog },
   { label: "Reports", href: "/admin/analytics", icon: TrendingUp },
 ];
