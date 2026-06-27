@@ -52,6 +52,7 @@ const AnalyticsDashboard = lazy(() => import("@/pages/admin/AnalyticsDashboard")
 const SupportAdmin = lazy(() => import("@/pages/admin/SupportAdmin"));
 const ContactsAdmin = lazy(() => import("@/pages/admin/ContactsAdmin"));
 const ContactDetail = lazy(() => import("@/pages/admin/ContactDetail"));
+const ClientJourney = lazy(() => import("@/pages/admin/ClientJourney"));
 const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
 const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
 const PipelineSettings = lazy(() => import("@/pages/admin/PipelineSettings"));
@@ -206,6 +207,12 @@ const Admin = () => {
         } />
         <Route path="contacts/:id" element={
           <Suspense fallback={<SuspenseFallback />}><ContactDetail /></Suspense>
+        } />
+        <Route path="clients/:id/journey" element={
+          <Suspense fallback={<SuspenseFallback />}><ClientJourney /></Suspense>
+        } />
+        <Route path="contacts/:id/journey" element={
+          <Suspense fallback={<SuspenseFallback />}><ClientJourney /></Suspense>
         } />
         <Route path="pipeline" element={
           <Suspense fallback={<SuspenseFallback />}><PipelineAdmin /></Suspense>
