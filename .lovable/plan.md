@@ -1,177 +1,105 @@
 
-# Phase 3 — Tier 3 Connectors (Signature, Booking, Observability, Social, Enrichment)
+# Phase 3 Addendum — Connectors 7, 8, 9 (Capital-Readiness Lane)
 
-Builds on Phase 1 (foundation) and Phase 2 (8 connectors). Strict MMA-only scope is preserved — zero credit repair / Mogul Credit / Plaid / Nav / SmartCredit / FCRA references anywhere in code or UI.
+Phase 3 connectors 1–6 (Sentry, PostHog, DocuSign, Cal.com, Apollo, Meta) are already shipped. This addendum extends Phase 3 with three business-owner / business-itself connectors and the two MMA-OS bridge verbs you'll consume.
 
-Recommended build order matches the brief: Sentry → PostHog → DocuSign → Cal.com → Apollo → Meta.
+## Scope rule encoded in code
 
----
+A constant `PAIGE_SCOPE_GUARD` in `supabase/functions/_shared/scopeGuard.ts` documents the rule and is imported by every new function header as a comment marker:
 
-## 1. Database
+> "Capital-readiness for the business or business owner. No consumer-credit dispute work, no CROA-classified services. SmartCredit is funding-eligibility lens only."
 
-Four new tables, all admin-scoped (service role for webhook writes). Pattern matches Phase 2: `paige_*` namespace, `updated_at` trigger, RLS, GRANTs in the same migration.
+SmartCredit edge functions will hard-reject any payload field named `dispute*`, `fcra_*`, or `repair_*` (400 with `scope_violation`).
 
-### `paige_signature_envelopes`
-DocuSign envelopes tied to a contact.
-- envelope_id (unique), contact_id (fk clients), envelope_type enum (`vip_app | coach_agreement | dfy_engagement | refund | term_sheet | other`)
-- template_id, status enum (`sent | delivered | completed | declined | voided`)
-- sent_at, signed_at, completed_pdf_url, metadata jsonb, created_by user_id
+## 1. Database migration (single migration, all GRANTs + RLS)
 
-### `paige_bookings`
-Cal.com bookings linked to a contact (or NULL until resolved).
-- cal_event_id (unique), contact_id (fk clients, nullable), event_type enum, scheduled_at, duration_min
-- status enum (`confirmed | canceled | rescheduled | no_show | completed`)
-- attendee_responses jsonb, metadata jsonb
+New tables (all admin/coach-readable via `has_role`, service-role writable):
 
-### `paige_social_posts`
-Meta Graph posts (FB + IG).
-- platform enum (`facebook | instagram`), platform_post_id (unique per platform), caption, media_urls jsonb
-- scheduled_at, posted_at, status enum (`scheduled | posted | failed | deleted`), metrics jsonb (likes/comments/reach), created_by user_id
+- `paige_business_credit_profiles` — `contact_id`, `business_name`, `ein`, `nav_profile_id`, `scores jsonb` (dnb, experian_business, equifax_business, paydex, intelliscore), `trade_lines jsonb`, `last_pulled_at`, `history jsonb`
+- `paige_owner_credit_snapshots` — `contact_id`, `bureau` (enum: experian|equifax|transunion), `score int`, `pulled_at`, `factors jsonb`, `alerts_triggered jsonb`
+- `paige_bank_connections` — `contact_id`, `plaid_item_id`, `plaid_access_token_encrypted` (pgcrypto, key from `_internal_secrets`), `institution_name`, `accounts jsonb`, `status`, `connected_at`, `last_synced_at`
+- `paige_bank_transactions` — `bank_connection_id`, `plaid_transaction_id` (unique), `date`, `amount_cents`, `name`, `category jsonb`, `pending bool`, `account_id`
+- `paige_cash_flow_snapshots` — `contact_id`, `period_start`, `period_end`, `total_deposits_cents`, `total_withdrawals_cents`, `avg_daily_balance_cents`, `runway_days`, `funding_readiness_score int`, `generated_at`
 
-### `paige_enrichment_log`
-Append-only Apollo enrichment ledger (history + idempotency).
-- subject_type enum (`person | company`), subject_key (email or domain), contact_id (fk clients, nullable)
-- provider text default 'apollo', payload jsonb, succeeded bool, error text
-- Index on (subject_type, subject_key, created_at desc) for "most recent enrichment for X".
+`paige_config` extensions:
+- `nav_partner_id text`
+- `smartcredit_enabled bool default false`
+- `plaid_activated bool default false`
+- `plaid_env text default 'sandbox'`
 
-All four tables get:
-- `GRANT SELECT, INSERT, UPDATE, DELETE ... TO authenticated` + `GRANT ALL ... TO service_role`
-- RLS `ENABLE`
-- "admins manage" policy via `public.has_role(auth.uid(), 'admin')`
-- service_role write policy for webhooks
-- `updated_at` trigger reusing `public.update_updated_at_column()`
+Reuse existing `qb_encrypt_token` / `qb_decrypt_token` pattern (service-role only) for Plaid access tokens — store ciphertext in `plaid_access_token_encrypted`, never plaintext.
 
-### Schema additions to existing tables
-- `paige_config` extension: `posthog_project_url text`, `sentry_org_slug text`, `sentry_project_slug text`, `docusign_default_brand_id text`, `cal_default_event_type_id text`, `meta_default_page_id text` — all nullable, for admin UI deep-links and defaults.
+## 2. Edge Functions
 
-### Bridge verbs (extend `BridgeVerb` union)
-- `booking_created` — fires Cal booking-followup workflow
-- `signature_completed` — fires VIP onboarding / DFY kickoff workflow based on envelope_type
-- `social_comment_received` — routes Meta comments through CS Triage when support-shaped
+All admin-only via `_shared/adminAuth.ts`; webhooks JWT-disabled with HMAC verification.
 
-All routed via existing `fireAndForgetBridge` + outbox; no new transport code.
+**Nav.com (connector 7):**
+- `nav-pull-profile` — POST `{contact_id}` → calls Nav API with `NAV_API_KEY`, upserts `paige_business_credit_profiles`, appends to `history`, fires `business_credit_score_changed` bridge verb if any score crosses a configurable threshold (default ±20 pts)
+- `nav-refresh-scores` — cron-friendly batch refresh for active monitored businesses
 
----
+**SmartCredit (connector 8):**
+- `smartcredit-pull-snapshot` — POST `{contact_id}` → pulls owner's 3-bureau scores via `SMARTCREDIT_API_KEY`, writes `paige_owner_credit_snapshots`. Output presents "Business funding eligibility: strong/moderate/limited" — never a dispute path. Scope guard rejects dispute/repair payload fields.
+- `handle-smartcredit-alert-webhook` — public, HMAC-verified, appends alerts to latest snapshot. On alert, fires `funding_readiness_assessed` bridge verb (composite with latest Nav + cash flow data if present).
 
-## 2. Edge Functions (14)
+**Plaid scaffolding (connector 9) — inactive until `paige_config.plaid_activated = true`:**
 
-All authenticated functions reuse `_shared/adminAuth.ts` from Phase 2 (`requireAdmin`, `corsHeaders`, `jsonResponse`). Public webhooks live in their own files with provider-specific signature verification.
+Each function checks the flag first; if false, returns `200 { activated: false, message: "Plaid not yet activated" }` so the UI renders cleanly.
 
-### DocuSign
-- `docusign-send-envelope` (admin) — body: `{ contact_id, envelope_type, template_id, prefill?: object }`. Mints JWT, calls DocuSign Envelopes API, writes a row to `paige_signature_envelopes` with status `sent`.
-- `handle-docusign-webhook` (public, HMAC-verified via DocuSign Connect HMAC1 header) — updates status, stores completed PDF URL, fires `signature_completed` bridge verb when status = `completed`.
+- `plaid-link-token-create` — mints link token for a given `contact_id`
+- `plaid-public-token-exchange` — exchanges public token, stores encrypted access token + accounts list
+- `plaid-sync-transactions` — pulls /transactions/sync, upserts into `paige_bank_transactions`
+- `plaid-generate-cash-flow-snapshot` — aggregates last 90d of transactions into `paige_cash_flow_snapshots`, computes `funding_readiness_score` (deposit consistency + avg balance + runway), fires `funding_readiness_assessed` bridge verb
+- `handle-plaid-webhook` — public, verifies Plaid signature (Ed25519 verification key, same pattern as existing `handle-plaid-webhook` if present — extend rather than duplicate), processes `TRANSACTIONS:SYNC_UPDATES_AVAILABLE` and `ITEM:*` events
 
-### Cal.com
-- `handle-cal-webhook` (public, verifies `X-Cal-Signature-256`) — upserts `paige_bookings`, links to `clients` by attendee email, fires `booking_created` bridge verb.
-- `cal-list-bookings` (admin) — proxies Cal.com REST list with status / date filters.
-- `cal-cancel-booking` (admin) — cancels via Cal API and updates the row.
+## 3. Bridge verbs (mma-os outbound)
 
-### Meta Graph (FB + IG)
-- `meta-schedule-post` (admin) — body: `{ platform, caption, media_urls, scheduled_at? }`. Inserts row, calls Graph API.
-- `meta-list-comments` (admin) — by `platform_post_id`, returns recent comments.
-- `meta-get-insights` (admin) — pulls reach / engagement / impressions for a post or page summary.
-- `handle-meta-webhook` (public, verifies Meta `X-Hub-Signature-256` with `META_APP_SECRET`) — incoming comments / DMs → optional `social_comment_received` bridge verb.
+Extend `supabase/functions/_shared/mmaOsBridge.ts` `BridgeVerb` union with:
+- `business_credit_score_changed` — `{ contact_id, business_name, score_type, old_value, new_value, delta, snapshot_id }`
+- `funding_readiness_assessed` — `{ contact_id, composite_score, components: { nav?, smartcredit?, cash_flow? }, recommended_lane }`
 
-### Apollo
-- `apollo-enrich-person` (admin) — by email, returns company + title + social, writes `paige_enrichment_log`.
-- `apollo-enrich-company` (admin) — by domain, returns size + industry + funding.
-- `apollo-search-people` (admin) — prospect search proxy with pagination.
-- DB trigger `trg_clients_apollo_enrich` (after-insert on `clients`) calls `pg_net` to async-POST the new contact's email to `apollo-enrich-person`. Non-blocking; failures land in `paige_enrichment_log` with `succeeded=false`.
+Both go through the existing outbox + retry/backoff infrastructure.
 
-### Sentry
-- `sentry-tunnel` (public, rate-limited) — DSN-style ingest endpoint Lovable can POST to so the Sentry DSN never ships in client JS. Forwards to Sentry `/envelope`.
+## 4. Admin UI
 
-### PostHog
-- No edge function needed for client tracking (PostHog JS SDK posts direct).
-- Server-side helper module `supabase/functions/_shared/posthog.ts` exposes `capture(distinctId, event, props)` used by Stripe/n8n/approval handlers to capture backend events.
+Three new routes wired into `src/pages/Admin.tsx` and added to the IntegrationsHub tile grid + "More" menu:
 
-### `supabase/config.toml`
-Add `verify_jwt = false` for all webhook + tunnel functions:
-`handle-docusign-webhook`, `handle-cal-webhook`, `handle-meta-webhook`, `sentry-tunnel`.
-All others remain `verify_jwt = true`.
+- `/admin/business-credit` (`BusinessCreditAdmin.tsx`) — table of monitored businesses, score-trend sparklines, "Pull now" action, threshold alert config
+- `/admin/owner-credit` (`OwnerCreditAdmin.tsx`) — per-contact 3-bureau score history, alerts feed, funding-eligibility badge (no dispute UI, no "Fix this" CTAs — strictly read-only assessment)
+- `/admin/banking` (`BankingAdmin.tsx`) — list of connected accounts (empty state explains "Plaid activation pending"), cash-flow snapshot cards with runway + funding readiness score; "Connect bank" CTA disabled until `paige_config.plaid_activated`
 
----
+Config screens added to IntegrationsHub:
+- `NavIntegrationConfig.tsx` — partner ID, refresh cadence, threshold delta
+- `SmartCreditIntegrationConfig.tsx` — enable toggle + scope reminder banner ("Funding eligibility lens only")
+- `PlaidIntegrationConfig.tsx` — env (sandbox/dev/prod), activated toggle, link-test button (disabled until secrets present)
 
-## 3. Frontend Instrumentation
+## 5. Env / secrets manifest
 
-- **Sentry**: `@sentry/react` initialized in `src/main.tsx` with DSN from `import.meta.env.VITE_SENTRY_DSN` (publishable, safe to ship). React Router instrumentation + error boundary wrapping `Admin` routes. `tracesSampleRate: 0.1`. Server-side Sentry SDK initialized in shared edge function helper.
-- **PostHog**: `posthog-js` initialized once in `src/main.tsx` with `VITE_POSTHOG_KEY` + `VITE_POSTHOG_HOST`. `posthog.identify(user.id, { role })` in `AppShell` post-auth. Auto-capture on; manual `posthog.capture` on Approve / Send / Run Workflow / Trigger Campaign buttons.
+To request from Antonio when ready:
+- `NAV_API_KEY`, `NAV_PARTNER_ID`
+- `SMARTCREDIT_API_KEY`, `SMARTCREDIT_WEBHOOK_SECRET`
+- `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_WEBHOOK_VERIFICATION_KEY` (stubs accepted; functions short-circuit until set)
 
-Both instrumentations are admin-aware: only initialize when env keys are present, so dev previews without keys stay quiet.
+I won't trigger the secret prompts in this pass — scaffolding will deploy and idle until you say "go" per connector.
 
----
+## 6. Compliance guardrails (permanent)
 
-## 4. Admin UI Screens
+- Scope-guard constant referenced in every new function header
+- SmartCredit edge functions reject dispute/repair payload fields with `scope_violation` (logged to `audit_logs`)
+- No dispute UI, letter generation, or FCRA-enforcement surface added anywhere
+- Owner-credit admin view labels itself "Funding Eligibility Lens" and links to a short copy block explaining the scope rule
 
-All new routes under `/admin/integrations/*` (and `/admin/observability/*`) following Phase 2 patterns. Added as tiles to the existing `IntegrationsHub.tsx`.
+## Out of scope (unchanged hard line)
 
-| Route | Page | Notes |
-|---|---|---|
-| `/admin/integrations/docusign` | `DocuSignConfig.tsx` | Default brand, template picker, recent envelopes list + manual "Send envelope" form |
-| `/admin/signatures` | `SignaturesAdmin.tsx` | All envelopes, status filter, contact link, "Open PDF" |
-| `/admin/integrations/cal` | `CalIntegrationConfig.tsx` | Default event type, webhook setup help, recent bookings preview |
-| `/admin/bookings` | `BookingsAdmin.tsx` | Calendar + list view, filter by event_type, upcoming + past |
-| `/admin/integrations/meta` | `MetaIntegrationConfig.tsx` | Page + IG business IDs, token age, webhook verify URL |
-| `/admin/social` | `SocialAdmin.tsx` | Content calendar, scheduled posts, recent metrics, comment inbox |
-| `/admin/integrations/apollo` | `ApolloIntegrationConfig.tsx` | Toggle auto-enrich on contact insert, manual lookup form, recent enrichments table |
-| `/admin/leads/enrichment` | `LeadsEnrichment.tsx` | History of enrichments with payload preview |
-| `/admin/observability/usage` | `UsageAnalytics.tsx` | PostHog deep-link card; summary stats from `paige_*` tables (workflow runs, approvals, sends) |
-| `/admin/observability/errors` | `ErrorTracking.tsx` | Sentry deep-link card; recent edge-function failure summary from `paige_workflow_runs.status='failed'` and audit failures |
+Consumer credit dispute work, general credit-repair-as-a-service, personal credit issues unrelated to business funding, anything CROA-classified. Those remain in Mogul Credit / Mogul AI.
 
-`IntegrationsHub.tsx` gets 6 new tiles in alphabetical-ish order with status badges:
-- Apollo (Auto-enrich on / off based on a feature flag in `paige_config`)
-- Cal.com (Connected / Not configured)
-- DocuSign (Connected / Not configured)
-- Meta Graph (Tokens valid / expired soonest)
-- PostHog (Connected via env / Disabled)
-- Sentry (Connected via env / Disabled)
+## Build sequence
 
-`AdminLayout.tsx` top-bar "More" menu adds: Signatures, Bookings, Social (no change to the primary nav row).
+1. DB migration (tables + GRANTs + RLS + paige_config columns)
+2. Bridge verb type extension
+3. Nav functions + admin UI
+4. SmartCredit functions + admin UI (scope guard tests)
+5. Plaid scaffolding (functions return inactive, UI shows pending state)
+6. IntegrationsHub tile updates + route wiring
+7. Verify `tsgo` clean
 
----
-
-## 5. Env Var Manifest
-
-User-provided runtime secrets (Project Settings → Secrets) — Antonio supplies:
-
-- DocuSign: `DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID`, `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_RSA_PRIVATE_KEY`, `DOCUSIGN_BASE_URI`, `DOCUSIGN_WEBHOOK_HMAC_KEY`
-- Cal.com: `CAL_API_KEY`, `CAL_WEBHOOK_SECRET`, `CAL_BASE_URL` (optional, defaults to `https://api.cal.com/v1`)
-- Meta: `META_APP_ID`, `META_APP_SECRET`, `META_PAGE_ACCESS_TOKEN`, `META_IG_BUSINESS_ID`, `META_WEBHOOK_VERIFY_TOKEN`
-- Apollo: `APOLLO_API_KEY`
-- Sentry (server): `SENTRY_DSN`
-- PostHog (server, optional): `POSTHOG_API_KEY`, `POSTHOG_HOST`
-
-Frontend public values (safe to embed, auto-injected by Lovable):
-- `VITE_SENTRY_DSN`, `VITE_POSTHOG_KEY`, `VITE_POSTHOG_HOST`
-
----
-
-## 6. Out of Scope (per brief)
-YouTube Data, LinkedIn, Zoom native, Twilio Voice / Vapi / Bland, Slack, GitHub / Vercel, Buffer / Hootsuite — all deferred to a future Phase 4.
-
-Permanent forbidden list (unchanged): Plaid, Nav.com, SmartCredit, any credit-repair tooling, Mogul Credit features.
-
----
-
-## 7. Clarifying Questions for Antonio
-
-1. **DocuSign templates** — do you already have template IDs in DocuSign for each `envelope_type` (vip_app, coach_agreement, dfy_engagement, refund, term_sheet)? If so, we'll store them in a `paige_config.docusign_templates` jsonb map so the admin UI shows a friendly picker. If not, I'll ship the form with a free-text `template_id` field for now.
-2. **Cal.com flavor** — Cal.com Cloud or self-hosted? And do you have the default event type IDs we should associate with vip_intro / dfy_discovery / coffee_hour / workshop? The webhook handler classifies bookings by event-type-id mapping.
-3. **Auto-enrich on `clients` insert** — confirm you want Apollo to fire automatically for every new contact (the brief says yes; I want to flag that this consumes Apollo credits on every signup). The flag will live in `paige_config.apollo_auto_enrich` default `true` so you can flip it off without a redeploy.
-4. **Meta scope** — pages + IG business account both authorized under the same System User token, correct? And which IG account is canonical (the `META_IG_BUSINESS_ID`)?
-5. **Sentry org/project slugs** — needed for the deep-link card in `/admin/observability/errors`. Safe to ship without and you can fill in via the new `paige_config` fields after deploy.
-6. **PostHog dashboard** — do you want the Usage screen to embed a specific PostHog insight (give me the share URL) or stay as a deep-link summary?
-7. **Bookings ↔ contact matching** — when a Cal booking comes in with an email we don't recognize, should we (a) auto-create a `clients` row tagged `source=cal_booking`, or (b) leave `contact_id` NULL and surface it in `/admin/bookings` as "Unmatched" for an admin to claim? Default if you don't answer: (b), safer.
-
----
-
-## Technical details (for engineering)
-
-- Webhook signature verification: DocuSign Connect HMAC1 (`X-DocuSign-Signature-1`), Cal.com `X-Cal-Signature-256` (HMAC-SHA256 of body), Meta `X-Hub-Signature-256` (HMAC-SHA256 with `META_APP_SECRET`). All implemented with `crypto.subtle` in the edge function — no external deps.
-- DocuSign JWT: `npm:jsonwebtoken@9` for RS256 signing; access token cached for 50 minutes in module scope to avoid per-call minting.
-- Apollo trigger uses `pg_net` (already enabled for the Phase 1 outbox cron) — no new extensions.
-- Sentry tunnel pattern: standard `https://docs.sentry.io/platforms/javascript/troubleshooting/#using-the-tunnel-option` — forwards `X-Sentry-Auth` and body unchanged. Rate-limited via in-memory token bucket per IP to prevent abuse.
-- PostHog server helper uses `posthog-node` via `npm:` specifier; failures are swallowed and logged.
-- All new admin screens follow Phase 2 patterns: `Card` + `Badge` status, `sonner` toasts, `supabase.functions.invoke`, no inline styles, semantic tokens only.
-
-Once approved I'll build in the recommended order (Sentry → PostHog → DocuSign → Cal → Apollo → Meta) and ship each connector tile working before moving to the next.
+Approve and I'll build straight through.
