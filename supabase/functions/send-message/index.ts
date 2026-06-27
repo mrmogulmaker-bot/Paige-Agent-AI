@@ -1,7 +1,7 @@
 // Unified send dispatcher — routes email via Resend, SMS via Twilio (or GHL fallback).
 // Writes every send to paige_messages_audit and mirrors outbound to paige_conversations.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { callMmaOsBridge } from "../_shared/mmaOsBridge.ts";
+// (callMmaOsBridge intentionally not used; GHL fallback uses a direct bridge call.)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
