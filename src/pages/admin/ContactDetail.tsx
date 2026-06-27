@@ -157,19 +157,24 @@ export default function ContactDetail() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Pipeline Stage</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Lifecycle Stage</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            <Badge variant={client.status === "active" ? "default" : "outline"} className="capitalize">{client.status}</Badge>
-            <Select value={client.status} onValueChange={updateStatus}>
+            <Badge variant="outline" className={`${lcMeta.color} border-transparent`}>{lcMeta.label}</Badge>
+            <Select value={client.lifecycle_stage || "lead"} onValueChange={updateLifecycle}>
               <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="lead">Lead</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
+                {LIFECYCLE_STAGES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {client.tags && client.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-1">
+                {client.tags.map((t) => (
+                  <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -186,18 +191,29 @@ export default function ContactDetail() {
                 {coaches.map((co) => <SelectItem key={co.user_id} value={co.user_id}>{co.name}</SelectItem>)}
               </SelectContent>
             </Select>
+            {client.source && (
+              <div className="text-xs text-muted-foreground mt-2">Source: {client.source}</div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="activity">
+      <Tabs defaultValue="deals">
         <TabsList>
+          <TabsTrigger value="deals"><Briefcase className="h-4 w-4 mr-1" /> Deals</TabsTrigger>
           <TabsTrigger value="activity"><Activity className="h-4 w-4 mr-1" /> Activity</TabsTrigger>
           <TabsTrigger value="comms"><MessageSquare className="h-4 w-4 mr-1" /> Communications</TabsTrigger>
           <TabsTrigger value="tasks"><CheckSquare className="h-4 w-4 mr-1" /> Tasks</TabsTrigger>
           <TabsTrigger value="notes"><StickyNote className="h-4 w-4 mr-1" /> Notes</TabsTrigger>
           <TabsTrigger value="files"><FileText className="h-4 w-4 mr-1" /> Files</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="deals">
+          <Card><CardContent className="p-4">
+            <ContactDealsSection contactId={client.id} />
+          </CardContent></Card>
+        </TabsContent>
+
 
         <TabsContent value="activity">
           <Card><CardContent className="p-4">
