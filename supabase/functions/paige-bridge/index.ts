@@ -1,0 +1,400 @@
+// Phase 6 — Paige Bridge (reverse direction)
+// MMA OS + n8n call INTO Paige via this verb-routed Edge Function.
+// Doctrine §91: bearer auth, single function, verb router, mirrors MMA OS bridge.
+
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { z } from "npm:zod@3.23.8";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const BRIDGE_API_KEY = Deno.env.get("PAIGE_BRIDGE_API_KEY") ?? "";
+
+const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
+
+// ---------- helpers ----------
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
+function ok(verb: string, data: unknown) {
+  return new Response(JSON.stringify({ ok: true, verb, data }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    status: 200,
+  });
+}
+function fail(verb: string, status: number, error: string, details?: unknown) {
+  return new Response(JSON.stringify({ ok: false, verb, error, details }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    status,
+  });
+}
+
+function splitName(full?: string | null): { first: string; last: string } {
+  const s = (full ?? "").trim();
+  if (!s) return { first: "Unknown", last: "" };
+  const idx = s.indexOf(" ");
+  if (idx < 0) return { first: s, last: "" };
+  return { first: s.slice(0, idx), last: s.slice(idx + 1).trim() };
+}
+
+async function resolveOwnerUserId(): Promise<string | null> {
+  const { data: owner } = await supabase
+    .from("app_settings_owner")
+    .select("owner_email")
+    .limit(1)
+    .maybeSingle();
+  if (!owner?.owner_email) return null;
+  // auth admin lookup
+  const { data: list } = await supabase.auth.admin.listUsers();
+  const u = list?.users?.find(
+    (x) => (x.email ?? "").toLowerCase() === String(owner.owner_email).toLowerCase(),
+  );
+  return u?.id ?? null;
+}
+
+// ---------- verb schemas ----------
+
+const CreatePendingApprovalSchema = z.object({
+  type: z.enum(["cs_draft", "campaign_send", "tier_change", "qc_finding", "milestone", "other"]),
+  draft_content: z.record(z.any()),
+  contact_id: z.string().uuid().optional(),
+  contact_email: z.string().email().optional(),
+  conversation_id: z.string().uuid().optional(),
+  created_by_n8n_workflow_key: z.string().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+
+const UpdatePendingApprovalSchema = z.object({
+  id: z.string().uuid(),
+  status: z.enum(["pending", "approved", "edited", "skipped", "escalated", "stale"]).optional(),
+  metadata: z.record(z.any()).optional(),
+  escalation_note: z.string().max(2000).optional(),
+});
+
+const CreateWorkflowRunSchema = z.object({
+  registry_key: z.string().min(1),
+  triggered_by: z.enum(["cron", "webhook", "api"]).default("api"),
+  payload: z.record(z.any()).optional(),
+  n8n_execution_id: z.string().optional(),
+  started_at: z.string().datetime().optional(),
+});
+
+const UpdateWorkflowRunSchema = z.object({
+  id: z.string().uuid(),
+  status: z.enum(["queued", "running", "completed", "failed"]),
+  completed_at: z.string().datetime().optional(),
+  result: z.record(z.any()).optional(),
+  error: z.string().max(4000).optional(),
+});
+
+const LogMessageSendSchema = z.object({
+  channel: z.enum(["email", "sms"]),
+  pipe_used: z.enum(["resend", "twilio", "ghl_fallback"]),
+  to: z.string().min(1).max(255),
+  from: z.string().max(255).optional(),
+  subject: z.string().max(500).optional(),
+  body: z.string().optional(),
+  status: z.enum(["queued", "sent", "failed", "bounced"]),
+  contact_id: z.string().uuid().optional(),
+  conversation_id: z.string().uuid().optional(),
+  vendor_message_id: z.string().optional(),
+  error: z.string().max(4000).optional(),
+});
+
+const UpsertContactMirrorSchema = z.object({
+  email: z.string().email(),
+  first_name: z.string().max(100).optional(),
+  last_name: z.string().max(100).optional(),
+  full_name: z.string().max(200).optional(),
+  phone: z.string().max(50).optional(),
+  source: z.string().max(50).optional(),
+  tier: z.string().max(50).optional(),
+  metadata: z.record(z.any()).optional(),
+});
+
+const NotifyAdminSchema = z.object({
+  severity: z.enum(["info", "warning", "urgent"]).default("info"),
+  title: z.string().min(1).max(200),
+  body: z.string().max(4000).optional(),
+  link_to: z.string().max(500).optional(),
+  source_workflow_key: z.string().max(100).optional(),
+  contact_id: z.string().uuid().optional(),
+});
+
+const ReadConfigSchema = z.object({ key: z.string().optional() });
+
+// ---------- handler ----------
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const started = Date.now();
+  let verb = "unknown";
+
+  try {
+    if (!BRIDGE_API_KEY) return fail(verb, 500, "Bridge not configured");
+
+    const auth = req.headers.get("Authorization") ?? "";
+    if (!auth.startsWith("Bearer ")) return fail(verb, 401, "Missing bearer token");
+    if (!timingSafeEqual(auth.slice(7), BRIDGE_API_KEY)) {
+      return fail(verb, 401, "Invalid bearer token");
+    }
+
+    // Coarse rate limit per-IP (best-effort; reuses api_rate_limits sentinel uuid).
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "0.0.0.0";
+    try {
+      // Sentinel user id derived from ip for bucketing
+      const enc = new TextEncoder().encode(ip);
+      const hash = await crypto.subtle.digest("SHA-256", enc);
+      const bytes = new Uint8Array(hash).slice(0, 16);
+      // Make a deterministic uuid v4-ish
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+      const sentinel = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+      const { data: allowed } = await supabase.rpc("check_rate_limit", {
+        _user_id: sentinel,
+        _function_name: "paige-bridge",
+        _max_requests: 600,
+        _window_minutes: 1,
+      });
+      if (allowed === false) return fail(verb, 429, "Rate limit exceeded");
+    } catch { /* swallow rate-limit errors */ }
+
+    const body = await req.json().catch(() => null) as { verb?: string; payload?: unknown } | null;
+    if (!body || typeof body.verb !== "string") {
+      return fail(verb, 400, "Body must be { verb, payload }");
+    }
+    verb = body.verb;
+    const payload = (body.payload ?? {}) as Record<string, unknown>;
+
+    switch (verb) {
+      // -----------------------------------------------------------------
+      case "health_check": {
+        return ok(verb, { status: "ok", version: 1, timestamp: new Date().toISOString() });
+      }
+
+      // -----------------------------------------------------------------
+      case "create_pending_approval": {
+        const p = CreatePendingApprovalSchema.parse(payload);
+        let contactId = p.contact_id ?? null;
+        if (!contactId && p.contact_email) {
+          const { data: c } = await supabase
+            .from("clients")
+            .select("id")
+            .ilike("email", p.contact_email)
+            .limit(1)
+            .maybeSingle();
+          contactId = c?.id ?? null;
+        }
+        const { data, error } = await supabase
+          .from("paige_pending_approvals")
+          .insert({
+            type: p.type,
+            draft_content: p.draft_content,
+            contact_id: contactId,
+            conversation_id: p.conversation_id ?? null,
+            created_by_n8n_workflow_key: p.created_by_n8n_workflow_key ?? null,
+            metadata: p.metadata ?? {},
+            status: "pending",
+          })
+          .select("id, created_at, status")
+          .single();
+        if (error) throw error;
+        return ok(verb, data);
+      }
+
+      // -----------------------------------------------------------------
+      case "update_pending_approval": {
+        const p = UpdatePendingApprovalSchema.parse(payload);
+        const patch: Record<string, unknown> = {};
+        if (p.status) patch.status = p.status;
+        if (p.metadata) patch.metadata = p.metadata;
+        if (p.escalation_note) patch.escalation_note = p.escalation_note;
+        const { data, error } = await supabase
+          .from("paige_pending_approvals")
+          .update(patch)
+          .eq("id", p.id)
+          .select("id, status, metadata, updated_at")
+          .single();
+        if (error) throw error;
+        return ok(verb, data);
+      }
+
+      // -----------------------------------------------------------------
+      case "create_workflow_run": {
+        const p = CreateWorkflowRunSchema.parse(payload);
+        const { data: reg, error: regErr } = await supabase
+          .from("paige_workflow_registry")
+          .select("id")
+          .eq("key", p.registry_key)
+          .maybeSingle();
+        if (regErr) throw regErr;
+        if (!reg) return fail(verb, 404, `Registry key not found: ${p.registry_key}`);
+
+        const insertRow: Record<string, unknown> = {
+          registry_id: reg.id,
+          payload: { ...(p.payload ?? {}), triggered_by: p.triggered_by, n8n_execution_id: p.n8n_execution_id },
+          status: "running",
+          n8n_execution_id: p.n8n_execution_id ?? null,
+        };
+        if (p.started_at) insertRow.triggered_at = p.started_at;
+
+        const { data, error } = await supabase
+          .from("paige_workflow_runs")
+          .insert(insertRow)
+          .select("id")
+          .single();
+        if (error) throw error;
+        return ok(verb, data);
+      }
+
+      // -----------------------------------------------------------------
+      case "update_workflow_run": {
+        const p = UpdateWorkflowRunSchema.parse(payload);
+        const patch: Record<string, unknown> = { status: p.status };
+        if (p.completed_at) patch.completed_at = p.completed_at;
+        else if (p.status === "completed" || p.status === "failed") patch.completed_at = new Date().toISOString();
+        if (p.result !== undefined) patch.result = p.result;
+        if (p.error !== undefined) patch.error = p.error;
+        const { data, error } = await supabase
+          .from("paige_workflow_runs")
+          .update(patch)
+          .eq("id", p.id)
+          .select("id, status, completed_at")
+          .single();
+        if (error) throw error;
+        return ok(verb, data);
+      }
+
+      // -----------------------------------------------------------------
+      case "log_message_send": {
+        const p = LogMessageSendSchema.parse(payload);
+        const { data, error } = await supabase
+          .from("paige_messages_audit")
+          .insert({
+            channel: p.channel,
+            pipe_used: p.pipe_used,
+            to_address: p.to,
+            from_address: p.from ?? null,
+            subject: p.subject ?? null,
+            body: p.body ?? null,
+            status: p.status,
+            vendor_message_id: p.vendor_message_id ?? null,
+            error: p.error ?? null,
+            contact_id: p.contact_id ?? null,
+            conversation_id: p.conversation_id ?? null,
+            sent_at: p.status === "sent" ? new Date().toISOString() : null,
+          })
+          .select("id")
+          .single();
+        if (error) throw error;
+        return ok(verb, data);
+      }
+
+      // -----------------------------------------------------------------
+      case "upsert_contact_mirror": {
+        const p = UpsertContactMirrorSchema.parse(payload);
+        const emailLower = p.email.toLowerCase();
+        const fallback = splitName(p.full_name);
+        const first = (p.first_name ?? fallback.first ?? "Unknown").trim();
+        const last = (p.last_name ?? fallback.last ?? "").trim();
+
+        const ownerId = await resolveOwnerUserId();
+        if (!ownerId) return fail(verb, 500, "Platform owner not resolvable for created_by");
+
+        const { data: existing } = await supabase
+          .from("clients")
+          .select("id")
+          .ilike("email", emailLower)
+          .limit(1)
+          .maybeSingle();
+
+        if (existing?.id) {
+          const updatePatch: Record<string, unknown> = { first_name: first, last_name: last };
+          if (p.phone) updatePatch.phone = p.phone;
+          const { error } = await supabase
+            .from("clients")
+            .update(updatePatch)
+            .eq("id", existing.id);
+          if (error) throw error;
+          return ok(verb, { client_id: existing.id, action: "updated" });
+        }
+
+        const { data, error } = await supabase
+          .from("clients")
+          .insert({
+            created_by: ownerId,
+            first_name: first || "Unknown",
+            last_name: last,
+            email: emailLower,
+            phone: p.phone ?? null,
+            status: "active",
+            source: p.source ?? "mma_bridge",
+            lifecycle_stage: "lead",
+          })
+          .select("id")
+          .single();
+        if (error) throw error;
+        return ok(verb, { client_id: data.id, action: "created" });
+      }
+
+      // -----------------------------------------------------------------
+      case "notify_admin": {
+        const p = NotifyAdminSchema.parse(payload);
+        const { data, error } = await supabase
+          .from("paige_admin_notifications")
+          .insert({
+            severity: p.severity,
+            title: p.title,
+            body: p.body ?? null,
+            link_to: p.link_to ?? null,
+            source_workflow_key: p.source_workflow_key ?? null,
+            contact_id: p.contact_id ?? null,
+          })
+          .select("id")
+          .single();
+        if (error) throw error;
+        return ok(verb, data);
+      }
+
+      // -----------------------------------------------------------------
+      case "read_config": {
+        const p = ReadConfigSchema.parse(payload);
+        const { data, error } = await supabase
+          .from("paige_config")
+          .select("*")
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        if (p.key) return ok(verb, { [p.key]: (data as Record<string, unknown> | null)?.[p.key] ?? null });
+        return ok(verb, data ?? {});
+      }
+
+      // -----------------------------------------------------------------
+      case "get_approval_queue_count": {
+        const { data, error } = await supabase.rpc("get_approval_queue_counts");
+        if (error) throw error;
+        return ok(verb, data);
+      }
+
+      // -----------------------------------------------------------------
+      default:
+        return fail(verb, 400, `Unknown verb: ${verb}`);
+    }
+  } catch (err) {
+    const msg = err instanceof z.ZodError ? "validation_error" : (err as Error).message ?? "unknown_error";
+    const details = err instanceof z.ZodError ? err.flatten() : undefined;
+    console.error(JSON.stringify({ verb, ok: false, error: msg, duration_ms: Date.now() - started }));
+    return fail(verb, err instanceof z.ZodError ? 400 : 500, msg, details);
+  } finally {
+    console.log(JSON.stringify({ verb, duration_ms: Date.now() - started }));
+  }
+});
