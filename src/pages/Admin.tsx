@@ -76,6 +76,7 @@ const SignaturesAdmin = lazy(() => import("@/pages/admin/SignaturesAdmin"));
 const CalIntegrationConfig = lazy(() => import("@/pages/admin/CalIntegrationConfig"));
 const BookingsAdmin = lazy(() => import("@/pages/admin/BookingsAdmin"));
 const MetaIntegrationConfig = lazy(() => import("@/pages/admin/MetaIntegrationConfig"));
+const MetaPixelConfig = lazy(() => import("@/pages/admin/MetaPixelConfig"));
 const SocialAdmin = lazy(() => import("@/pages/admin/SocialAdmin"));
 const ApolloIntegrationConfig = lazy(() => import("@/pages/admin/ApolloIntegrationConfig"));
 const LeadsEnrichment = lazy(() => import("@/pages/admin/LeadsEnrichment"));
@@ -348,6 +349,9 @@ const Admin = () => {
         } />
         <Route path="integrations/meta" element={
           <Suspense fallback={<SuspenseFallback />}><MetaIntegrationConfig /></Suspense>
+        } />
+        <Route path="integrations/meta-pixel" element={
+          <Suspense fallback={<SuspenseFallback />}><MetaPixelConfig /></Suspense>
         } />
         <Route path="social" element={
           <Suspense fallback={<SuspenseFallback />}><SocialAdmin /></Suspense>

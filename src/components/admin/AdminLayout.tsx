@@ -45,7 +45,8 @@ const workspaceNavItems = [
   { label: "Brokers", href: "/admin/brokers", icon: Briefcase },
   { label: "Signatures", href: "/admin/signatures", icon: ClipboardCheck },
   { label: "Bookings", href: "/admin/bookings", icon: BarChart3 },
-  { label: "Social", href: "/admin/social", icon: Share2 },
+  // Social content calendar hidden by default (paige_config.meta_ads_features_enabled).
+  // Meta Pixel + CAPI config lives at /admin/integrations/meta-pixel via the Integrations hub.
   { label: "Lead Enrichment", href: "/admin/leads/enrichment", icon: Contact },
   { label: "Business Credit", href: "/admin/business-credit", icon: BarChart3 },
   { label: "Owner Credit", href: "/admin/owner-credit", icon: ClipboardCheck },
