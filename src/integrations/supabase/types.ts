@@ -6321,13 +6321,14 @@ export type Database = {
       paige_workflow_registry: {
         Row: {
           category: string
+          connection_id: string | null
           created_at: string
           description: string | null
           id: string
           is_active: boolean
           key: string
           label: string
-          n8n_webhook_url: string
+          n8n_webhook_url: string | null
           n8n_workflow_id: string | null
           parameters_schema: Json
           requires_approval: boolean
@@ -6335,13 +6336,14 @@ export type Database = {
         }
         Insert: {
           category: string
+          connection_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
           is_active?: boolean
           key: string
           label: string
-          n8n_webhook_url: string
+          n8n_webhook_url?: string | null
           n8n_workflow_id?: string | null
           parameters_schema?: Json
           requires_approval?: boolean
@@ -6349,19 +6351,28 @@ export type Database = {
         }
         Update: {
           category?: string
+          connection_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
           is_active?: boolean
           key?: string
           label?: string
-          n8n_webhook_url?: string
+          n8n_webhook_url?: string | null
           n8n_workflow_id?: string | null
           parameters_schema?: Json
           requires_approval?: boolean
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "paige_workflow_registry_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "paige_n8n_connections"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       paige_workflow_runs: {
         Row: {
