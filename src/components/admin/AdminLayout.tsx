@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
+import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
@@ -132,6 +133,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
           {/* Desktop utilities */}
           <div className="hidden md:flex items-center gap-1">
+            <AdminBridgeBell />
             <div className="text-primary-foreground">
               <NotificationBell />
             </div>

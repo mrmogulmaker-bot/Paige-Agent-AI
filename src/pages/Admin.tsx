@@ -62,6 +62,7 @@ const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
 const WorkflowRunDetail = lazy(() => import("@/pages/admin/WorkflowRunDetail"));
 const ApprovalsInbox = lazy(() => import("@/pages/admin/ApprovalsInbox"));
 const ApprovalDetail = lazy(() => import("@/pages/admin/ApprovalDetail"));
+const AdminNotifications = lazy(() => import("@/pages/admin/AdminNotifications"));
 const IntegrationsHub = lazy(() => import("@/pages/admin/IntegrationsHub"));
 const N8nIntegrationConfig = lazy(() => import("@/pages/admin/N8nIntegrationConfig"));
 const SubscriptionsRevenue = lazy(() => import("@/pages/admin/SubscriptionsRevenue"));
@@ -301,6 +302,9 @@ const Admin = () => {
         } />
         <Route path="approvals" element={
           <Suspense fallback={<SuspenseFallback />}><ApprovalsInbox /></Suspense>
+        } />
+        <Route path="notifications" element={
+          <Suspense fallback={<SuspenseFallback />}><AdminNotifications /></Suspense>
         } />
         <Route path="approvals/:id" element={
           <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
