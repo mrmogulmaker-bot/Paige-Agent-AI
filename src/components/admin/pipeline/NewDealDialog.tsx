@@ -14,13 +14,14 @@ type Props = {
   pipeline: Pipeline | null;
   stages: PipelineStage[];
   defaultStageId?: string | null;
+  defaultContactId?: string | null;
   onCreated: () => void;
 };
 
 type ContactOption = { id: string; label: string };
 type CoachOption = { user_id: string; name: string };
 
-export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultStageId, onCreated }: Props) {
+export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultStageId, defaultContactId, onCreated }: Props) {
   const [title, setTitle] = useState("");
   const [stageId, setStageId] = useState<string>("");
   const [contactId, setContactId] = useState<string>("none");
@@ -54,12 +55,12 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
       }
       setStageId(defaultStageId || stages[0]?.id || "");
       setTitle("");
-      setContactId("none");
+      setContactId(defaultContactId || "none");
       setOwnerId("me");
       setValue("");
       setCloseDate("");
     })();
-  }, [open, defaultStageId, stages]);
+  }, [open, defaultStageId, stages, defaultContactId]);
 
   const orderedStages = useMemo(() => [...stages].sort((a, b) => a.order_index - b.order_index), [stages]);
 
