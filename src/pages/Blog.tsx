@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Mail, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { PageHead } from "@/components/seo/PageHead";
+
 
 const Blog = () => {
   const [email, setEmail] = useState("");
@@ -54,7 +56,13 @@ const Blog = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      <PageHead
+        title="Blog — PaigeAgent.ai"
+        description="Articles on credit building, business funding strategy, and entrepreneurship from the team behind PaigeAgent.ai and Mogul Maker Academy."
+        path="/blog"
+      />
       <Header />
+
 
       <main className="flex-1">
         <section className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">

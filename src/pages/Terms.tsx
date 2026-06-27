@@ -1,12 +1,19 @@
 import { Header } from "@/components/landing/Header";
 import { Footer } from "@/components/landing/Footer";
 import { SiteBackground } from "@/components/landing/SiteBackground";
+import { PageHead } from "@/components/seo/PageHead";
 
 const Terms = () => {
   return (
     <div className="min-h-screen bg-background">
+      <PageHead
+        title="Terms of Service — PaigeAgent.ai"
+        description="Platform terms, compliance disclosures, and acceptable use for PaigeAgent.ai — the AI-powered entrepreneurial operating system by Mogul Maker Academy."
+        path="/terms"
+      />
       <SiteBackground />
       <Header />
+
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <h1 className="text-4xl font-bold mb-2 text-foreground">Terms of Service</h1>
         <p className="text-sm text-muted-foreground mb-10">Last updated: April 18, 2026</p>

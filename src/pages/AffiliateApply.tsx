@@ -1,6 +1,8 @@
 // src/pages/AffiliateApply.tsx
 // Public affiliate landing + application page at /affiliates.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PageHead } from "@/components/seo/PageHead";
+
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -65,6 +67,12 @@ export default function AffiliateApply() {
       className="min-h-screen text-white"
       style={{ backgroundColor: NAVY }}
     >
+      <PageHead
+        title="Affiliate Program — PaigeAgent.ai"
+        description="Apply to the PaigeAgent.ai affiliate program. Refer entrepreneurs to the platform and earn recurring commissions on every subscription."
+        path="/affiliates"
+      />
+
       {/* Header */}
       <header className="mx-auto flex max-w-6xl items-center justify-between p-6">
         <Link to="/" className="text-xl font-semibold tracking-tight">

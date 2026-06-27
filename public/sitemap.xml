@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://paigeagent.ai/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://paigeagent.ai/about</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://paigeagent.ai/blog</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://paigeagent.ai/privacy</loc><changefreq>yearly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://paigeagent.ai/terms</loc><changefreq>yearly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://paigeagent.ai/affiliates</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://paigeagent.ai/broker</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
+</urlset>
