@@ -133,6 +133,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
           {/* Desktop utilities */}
           <div className="hidden md:flex items-center gap-1">
+            <AdminBridgeBell />
             <div className="text-primary-foreground">
               <NotificationBell />
             </div>
