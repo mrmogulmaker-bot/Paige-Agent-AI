@@ -107,8 +107,25 @@ Deno.serve(async (req) => {
 
     const properties = scrub(body?.properties ?? {}) as Record<string, unknown>;
 
+    // Resolve user_id from the auth token when present; never trust body.user_id.
+    let resolvedUserId: string | null = null;
+    const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.slice(7);
+      // Only attempt user resolution if the token is not the anon publishable key.
+      try {
+        const tmp = createClient(SUPABASE_URL, SERVICE_ROLE, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { data } = await tmp.auth.getUser(token);
+        resolvedUserId = data?.user?.id ?? null;
+      } catch {
+        resolvedUserId = null;
+      }
+    }
+
     const insertRow = {
-      user_id: clampStr(body?.user_id, 64),
+      user_id: resolvedUserId,
       session_id: clampStr(body?.session_id, 80),
       event_name,
       event_category: safeCategory,
