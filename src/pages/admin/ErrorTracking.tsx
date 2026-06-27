@@ -10,11 +10,12 @@ import { Bug, ExternalLink } from "lucide-react";
 
 type FailedRun = {
   id: string;
-  workflow_key: string | null;
+  registry_id: string | null;
   status: string;
   error: string | null;
   created_at: string;
 };
+
 
 export default function ErrorTracking() {
   const [orgSlug, setOrgSlug] = useState("");
