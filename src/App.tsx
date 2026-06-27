@@ -30,6 +30,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { FloatingChatbot } from "./components/FloatingChatbot";
+import { MetaPixel } from "./components/seo/MetaPixel";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { DashboardModeProvider } from "./contexts/DashboardModeContext";
 import { BusinessProvider } from "./contexts/BusinessContext";
@@ -114,6 +115,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <AppInner />
+          <MetaPixel />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />

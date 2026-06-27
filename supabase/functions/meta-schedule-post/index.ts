@@ -10,6 +10,16 @@ Deno.serve(async (req) => {
   const guard = await requireAdmin(req);
   if (!guard.ok) return guard.response;
 
+  // Gate: ads / scheduling features are off by default per Phase 5 scope downgrade.
+  const { data: cfg } = await guard.admin
+    .from("paige_config")
+    .select("meta_ads_features_enabled")
+    .eq("id", 1)
+    .maybeSingle();
+  if (!cfg?.meta_ads_features_enabled) {
+    return jsonResponse({ error: "meta_ads_features_disabled", hint: "Enable paige_config.meta_ads_features_enabled to use scheduling." }, 403);
+  }
+
   const token = Deno.env.get("META_PAGE_ACCESS_TOKEN");
   const pageId = Deno.env.get("META_DEFAULT_PAGE_ID");
   const igId = Deno.env.get("META_IG_BUSINESS_ID");
