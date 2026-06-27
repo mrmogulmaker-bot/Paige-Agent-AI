@@ -21,7 +21,11 @@ export type BridgeVerb =
   | "record_member_event"
   | "customer_support_intake"
   | "ghl_send_sms_fallback"
-  | "ghl_send_email_fallback";
+  | "ghl_send_email_fallback"
+  | "tier_change_notify"
+  | "query_supabase"
+  | "get_member_360"
+  | "get_workflow_status";
 
 // Fields that must never leave Paige for the MMA OS ledger.
 // Matched case-insensitively as prefix OR exact key.
