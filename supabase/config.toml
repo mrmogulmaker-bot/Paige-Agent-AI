@@ -149,3 +149,5 @@ project_id = "bfmyebsjyuoecmjskqhs"
   [functions.sentry-tunnel]
     verify_jwt = false
 
+  [functions.mma-campaigns]
+    verify_jwt = true
