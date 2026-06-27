@@ -97,7 +97,7 @@ export default function ErrorTracking() {
           {recent.map((r) => (
             <div key={r.id} className="rounded-md border p-3 text-sm">
               <div className="flex items-center justify-between">
-                <div className="font-mono text-xs">{r.workflow_key ?? "—"}</div>
+                <div className="font-mono text-xs">{r.registry_id ?? "—"}</div>
                 <div className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString()}</div>
               </div>
               {r.error && <div className="mt-1 text-xs text-destructive whitespace-pre-wrap">{r.error}</div>}
