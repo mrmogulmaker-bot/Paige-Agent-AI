@@ -55,7 +55,7 @@ export default function WorkflowDetail() {
 
   if (!registry) return <div className="p-6 text-muted-foreground">Loading…</div>;
 
-  const schema = (registry.parameters_schema ?? {}) as { properties?: Record<string, SchemaProp>; required?: string[] };
+  const schema = ((registry.parameters_schema as any) ?? {}) as { properties?: Record<string, SchemaProp>; required?: string[] };
   const properties = schema.properties ?? {};
   const required = new Set(schema.required ?? []);
 
