@@ -259,6 +259,24 @@ const Admin = () => {
             <PipelineSettings />
           </Suspense>
         } />
+        <Route path="workflows" element={
+          <Suspense fallback={<SuspenseFallback />}><WorkflowsList /></Suspense>
+        } />
+        <Route path="workflows/runs" element={
+          <Suspense fallback={<SuspenseFallback />}><WorkflowRuns /></Suspense>
+        } />
+        <Route path="workflows/runs/:id" element={
+          <Suspense fallback={<SuspenseFallback />}><WorkflowRunDetail /></Suspense>
+        } />
+        <Route path="workflows/:key" element={
+          <Suspense fallback={<SuspenseFallback />}><WorkflowDetail /></Suspense>
+        } />
+        <Route path="approvals" element={
+          <Suspense fallback={<SuspenseFallback />}><ApprovalsInbox /></Suspense>
+        } />
+        <Route path="approvals/:id" element={
+          <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
+        } />
       </Routes>
     </AdminLayout>
   );
