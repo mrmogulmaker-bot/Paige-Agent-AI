@@ -71,6 +71,17 @@ const TelegramIntegrationConfig = lazy(() => import("@/pages/admin/TelegramInteg
 const GmailIntegrationConfig = lazy(() => import("@/pages/admin/GmailIntegrationConfig"));
 const TavilyIntegrationConfig = lazy(() => import("@/pages/admin/TavilyIntegrationConfig"));
 const AiActivity = lazy(() => import("@/pages/admin/AiActivity"));
+const DocuSignConfig = lazy(() => import("@/pages/admin/DocuSignConfig"));
+const SignaturesAdmin = lazy(() => import("@/pages/admin/SignaturesAdmin"));
+const CalIntegrationConfig = lazy(() => import("@/pages/admin/CalIntegrationConfig"));
+const BookingsAdmin = lazy(() => import("@/pages/admin/BookingsAdmin"));
+const MetaIntegrationConfig = lazy(() => import("@/pages/admin/MetaIntegrationConfig"));
+const SocialAdmin = lazy(() => import("@/pages/admin/SocialAdmin"));
+const ApolloIntegrationConfig = lazy(() => import("@/pages/admin/ApolloIntegrationConfig"));
+const LeadsEnrichment = lazy(() => import("@/pages/admin/LeadsEnrichment"));
+const UsageAnalytics = lazy(() => import("@/pages/admin/UsageAnalytics"));
+const ErrorTracking = lazy(() => import("@/pages/admin/ErrorTracking"));
+
 
 const SuspenseFallback = () => (
   <div className="flex items-center justify-center py-12">
