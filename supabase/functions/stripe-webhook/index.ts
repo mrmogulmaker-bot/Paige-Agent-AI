@@ -129,17 +129,42 @@ async function upsertTierState(
     }
 
     // Short-hop to MMA OS so its brain sees the tier change instantly.
-    // Best-effort: failure never blocks the 200 back to Stripe.
-    await fireMmaOsTierSync({
+    // Best-effort, fire-and-forget with retries: must never block the 200 back to Stripe.
+    const shortHop = fireMmaOsTierSync({
       email: args.email,
       tier: args.tier,
       paymentStatus: args.paymentStatus ?? "active",
       stripeAccountId: args.stripeAccountId ?? null,
       eventId: args.eventId,
     });
+    // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
+      // @ts-ignore
+      EdgeRuntime.waitUntil(shortHop);
+    } else {
+      // Fallback: detach so retries don't block the handler.
+      shortHop.catch((e) => logStep("MMA OS short-hop detached error", { error: String(e) }));
+    }
   } catch (e) {
     logStep("upsertTierState exception", { error: String(e) });
   }
+}
+
+// Transient: network error, 408, 429, or any 5xx. Permanent (4xx other): no retry.
+function isTransientStatus(status: number): boolean {
+  return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
+const MMA_OS_MAX_ATTEMPTS = 4; // 1 initial + 3 retries
+const MMA_OS_BASE_DELAY_MS = 500;
+const MMA_OS_MAX_DELAY_MS = 8000;
+const MMA_OS_TIMEOUT_MS = 10_000;
+
+function backoffDelay(attempt: number): number {
+  // attempt is 1-indexed for retries (1 = first retry)
+  const exp = Math.min(MMA_OS_BASE_DELAY_MS * Math.pow(3, attempt - 1), MMA_OS_MAX_DELAY_MS);
+  const jitter = Math.floor(Math.random() * 250);
+  return exp + jitter;
 }
 
 async function fireMmaOsTierSync(payload: {
@@ -155,34 +180,74 @@ async function fireMmaOsTierSync(payload: {
     logStep("MMA OS short-hop skipped: missing MMA_OS_EDGE_URL or MMA_OS_BRIDGE_API_KEY");
     return;
   }
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        verb: "sync_tier",
-        payload: {
-          contact_email: payload.email,
-          tier: payload.tier,
-          payment_status: payload.paymentStatus,
-          source: "paige.stripe",
-          stripe_account_id: payload.stripeAccountId,
-          stripe_event_id: payload.eventId,
-          occurred_at: new Date().toISOString(),
+
+  const body = JSON.stringify({
+    verb: "sync_tier",
+    payload: {
+      contact_email: payload.email,
+      tier: payload.tier,
+      payment_status: payload.paymentStatus,
+      source: "paige.stripe",
+      stripe_account_id: payload.stripeAccountId,
+      stripe_event_id: payload.eventId,
+      occurred_at: new Date().toISOString(),
+    },
+  });
+
+  for (let attempt = 1; attempt <= MMA_OS_MAX_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), MMA_OS_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${key}`,
+          "Idempotency-Key": `tier-sync:${payload.eventId}`,
         },
-      }),
-    });
-    if (!res.ok) {
+        body,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        logStep("MMA OS short-hop succeeded", { eventId: payload.eventId, attempt });
+        return;
+      }
+
       const text = await res.text().catch(() => "");
-      logStep("MMA OS short-hop non-2xx (non-fatal)", { status: res.status, body: text.slice(0, 200) });
-    } else {
-      logStep("MMA OS short-hop succeeded", { eventId: payload.eventId });
+      if (!isTransientStatus(res.status) || attempt === MMA_OS_MAX_ATTEMPTS) {
+        logStep("MMA OS short-hop failed (non-fatal, giving up)", {
+          status: res.status,
+          attempt,
+          body: text.slice(0, 200),
+        });
+        return;
+      }
+      const delay = backoffDelay(attempt);
+      logStep("MMA OS short-hop transient failure, retrying", {
+        status: res.status,
+        attempt,
+        nextDelayMs: delay,
+      });
+      await new Promise((r) => setTimeout(r, delay));
+    } catch (e) {
+      clearTimeout(timeout);
+      if (attempt === MMA_OS_MAX_ATTEMPTS) {
+        logStep("MMA OS short-hop exception (non-fatal, giving up)", {
+          error: String(e),
+          attempt,
+        });
+        return;
+      }
+      const delay = backoffDelay(attempt);
+      logStep("MMA OS short-hop network error, retrying", {
+        error: String(e),
+        attempt,
+        nextDelayMs: delay,
+      });
+      await new Promise((r) => setTimeout(r, delay));
     }
-  } catch (e) {
-    logStep("MMA OS short-hop exception (non-fatal)", { error: String(e) });
   }
 }
 
