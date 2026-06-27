@@ -3589,7 +3589,12 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           tc.function.name === "crm_update_pipeline_stage" ||
           tc.function.name === "crm_assign_coach" ||
           tc.function.name === "crm_create_task" ||
-          tc.function.name === "crm_log_activity"
+          tc.function.name === "crm_log_activity" ||
+          tc.function.name === "crm_search_contacts" ||
+          tc.function.name === "crm_get_contact_summary" ||
+          tc.function.name === "crm_list_deals" ||
+          tc.function.name === "crm_list_tasks" ||
+          tc.function.name === "crm_pipeline_summary"
         ) {
           // Role gate: admin or coach only
           const { data: roleRows } = await supabase
