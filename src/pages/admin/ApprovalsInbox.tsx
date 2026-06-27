@@ -36,17 +36,21 @@ export default function ApprovalsInbox() {
   const bulk = async (decision: "approve" | "reject") => {
     if (selected.size === 0) return;
     setBusy(true);
-    let ok = 0; let fail = 0;
-    for (const id of selected) {
-      const { error } = await supabase.functions.invoke("approve-pending-item", {
-        body: { approval_id: id, decision },
-      });
-      if (error) fail += 1; else ok += 1;
-    }
+    const ids = Array.from(selected);
+    const { error } = await supabase
+      .from("paige_pending_approvals")
+      .update({
+        status: decision === "approve" ? "approved" : "skipped",
+        reviewed_at: new Date().toISOString(),
+      })
+      .in("id", ids);
     setBusy(false);
     clear();
-    if (ok) toast.success(`${decision === "approve" ? "Approved" : "Rejected"} ${ok}`);
-    if (fail) toast.error(`${fail} failed`);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`${decision === "approve" ? "Approved" : "Rejected"} ${ids.length}`);
+    if (decision === "approve") {
+      toast.info("Marked approved. Items that auto-send (CS drafts, campaigns) still require opening individually to dispatch.");
+    }
   };
 
   return (
