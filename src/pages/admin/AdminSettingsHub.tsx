@@ -71,6 +71,9 @@ export function AdminSettingsHub() {
           <TabsTrigger value="platform" className="gap-2">
             <SettingsIcon className="w-4 h-4" /> Platform
           </TabsTrigger>
+          <TabsTrigger value="pipes" className="gap-2">
+            <Radio className="w-4 h-4" /> Platform Pipes
+          </TabsTrigger>
           <TabsTrigger value="comms" className="gap-2">
             <Bell className="w-4 h-4" /> Notifications
           </TabsTrigger>
