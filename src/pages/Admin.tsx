@@ -81,6 +81,13 @@ const ApolloIntegrationConfig = lazy(() => import("@/pages/admin/ApolloIntegrati
 const LeadsEnrichment = lazy(() => import("@/pages/admin/LeadsEnrichment"));
 const UsageAnalytics = lazy(() => import("@/pages/admin/UsageAnalytics"));
 const ErrorTracking = lazy(() => import("@/pages/admin/ErrorTracking"));
+const NavIntegrationConfig = lazy(() => import("@/pages/admin/NavIntegrationConfig"));
+const BusinessCreditAdmin = lazy(() => import("@/pages/admin/BusinessCreditAdmin"));
+const SmartCreditIntegrationConfig = lazy(() => import("@/pages/admin/SmartCreditIntegrationConfig"));
+const OwnerCreditAdmin = lazy(() => import("@/pages/admin/OwnerCreditAdmin"));
+const PlaidIntegrationConfig = lazy(() => import("@/pages/admin/PlaidIntegrationConfig"));
+const BankingAdmin = lazy(() => import("@/pages/admin/BankingAdmin"));
+
 
 
 const SuspenseFallback = () => (
@@ -357,7 +364,26 @@ const Admin = () => {
         <Route path="observability/errors" element={
           <Suspense fallback={<SuspenseFallback />}><ErrorTracking /></Suspense>
         } />
+        <Route path="integrations/nav" element={
+          <Suspense fallback={<SuspenseFallback />}><NavIntegrationConfig /></Suspense>
+        } />
+        <Route path="business-credit" element={
+          <Suspense fallback={<SuspenseFallback />}><BusinessCreditAdmin /></Suspense>
+        } />
+        <Route path="integrations/smartcredit" element={
+          <Suspense fallback={<SuspenseFallback />}><SmartCreditIntegrationConfig /></Suspense>
+        } />
+        <Route path="owner-credit" element={
+          <Suspense fallback={<SuspenseFallback />}><OwnerCreditAdmin /></Suspense>
+        } />
+        <Route path="integrations/plaid" element={
+          <Suspense fallback={<SuspenseFallback />}><PlaidIntegrationConfig /></Suspense>
+        } />
+        <Route path="banking" element={
+          <Suspense fallback={<SuspenseFallback />}><BankingAdmin /></Suspense>
+        } />
       </Routes>
+
     </AdminLayout>
   );
 };

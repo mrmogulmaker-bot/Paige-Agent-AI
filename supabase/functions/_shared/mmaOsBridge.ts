@@ -28,7 +28,10 @@ export type BridgeVerb =
   | "get_workflow_status"
   | "booking_created"
   | "signature_completed"
-  | "social_comment_received";
+  | "social_comment_received"
+  | "business_credit_score_changed"
+  | "funding_readiness_assessed";
+
 
 
 // Fields that must never leave Paige for the MMA OS ledger.

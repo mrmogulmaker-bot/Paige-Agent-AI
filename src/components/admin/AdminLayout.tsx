@@ -47,6 +47,10 @@ const workspaceNavItems = [
   { label: "Bookings", href: "/admin/bookings", icon: BarChart3 },
   { label: "Social", href: "/admin/social", icon: Share2 },
   { label: "Lead Enrichment", href: "/admin/leads/enrichment", icon: Contact },
+  { label: "Business Credit", href: "/admin/business-credit", icon: BarChart3 },
+  { label: "Owner Credit", href: "/admin/owner-credit", icon: ClipboardCheck },
+  { label: "Banking & Cash Flow", href: "/admin/banking", icon: BarChart3 },
+
   { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
   { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
   { label: "Support", href: "/admin/support", icon: LifeBuoy },
