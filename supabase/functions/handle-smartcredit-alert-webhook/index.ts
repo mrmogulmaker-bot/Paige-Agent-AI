@@ -3,7 +3,7 @@
 import { corsHeaders } from "../_shared/adminAuth.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fireAndForgetBridge } from "../_shared/mmaOsBridge.ts";
-import { verifyHmacSha256 } from "../_shared/webhookSig.ts";
+import { verifyHmacSha256Hex } from "../_shared/webhookSig.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
   const secret = Deno.env.get("SMARTCREDIT_WEBHOOK_SECRET");
   const sig = req.headers.get("x-smartcredit-signature") ?? "";
   if (!secret) return new Response("missing_secret", { status: 500 });
-  const ok = await verifyHmacSha256(secret, rawBody, sig);
+  const ok = await verifyHmacSha256Hex(secret, rawBody, sig);
   if (!ok) return new Response("bad_signature", { status: 401 });
 
   const event = JSON.parse(rawBody);
