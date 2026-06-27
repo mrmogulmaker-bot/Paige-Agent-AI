@@ -116,14 +116,6 @@ Deno.serve(async (req) => {
         vendor_message_id = json?.sid ?? null;
         status = "sent";
       } else if (config?.ghl_fallback_enabled) {
-        const ok = await callMmaOsBridge("record_cross_system_event" as any, {
-          verb_override: "ghl_send_sms_fallback",
-          to: body.to,
-          body: body.body,
-          contact_id: body.contact_id,
-        });
-        // Bridge wrapper currently only knows our 4 verbs; for the GHL fallback verb,
-        // call directly:
         const url = Deno.env.get("MMA_OS_BRIDGE_URL");
         const key = Deno.env.get("MMA_OS_BRIDGE_API_KEY");
         if (!url || !key) throw new Error("bridge_env_missing");
@@ -140,7 +132,6 @@ Deno.serve(async (req) => {
         pipe_used = "ghl_fallback";
         vendor_message_id = json?.message_id ?? null;
         status = "sent";
-        void ok;
       } else {
         throw new Error("no_sms_pipe_available");
       }
