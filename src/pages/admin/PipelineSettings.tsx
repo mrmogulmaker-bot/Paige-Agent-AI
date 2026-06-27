@@ -80,7 +80,7 @@ export default function PipelineSettings() {
 
   const addStage = async () => {
     if (!activeId) return;
-    const nextIdx = (stages.at(-1)?.order_index ?? 0) + 1;
+    const nextIdx = (stages.length ? stages[stages.length - 1].order_index : 0) + 1;
     const { error } = await supabase.from("pipeline_stages").insert({
       pipeline_id: activeId,
       label: "New stage",

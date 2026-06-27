@@ -62,11 +62,11 @@ export async function logDealActivity(
   payload: Record<string, unknown> = {},
 ) {
   const { data: { user } } = await supabase.auth.getUser();
-  await supabase.from("deal_activities").insert({
+  await supabase.from("deal_activities").insert([{
     deal_id: dealId,
     type,
     summary,
     actor_user_id: user?.id ?? null,
-    payload,
-  });
+    payload: payload as never,
+  }]);
 }
