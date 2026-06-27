@@ -5886,6 +5886,353 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_config: {
+        Row: {
+          created_at: string
+          default_from_email: string | null
+          default_from_sms_number: string | null
+          ghl_fallback_enabled: boolean
+          id: number
+          resend_domain_verified: boolean
+          twilio_a2p_status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          default_from_email?: string | null
+          default_from_sms_number?: string | null
+          ghl_fallback_enabled?: boolean
+          id?: number
+          resend_domain_verified?: boolean
+          twilio_a2p_status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          default_from_email?: string | null
+          default_from_sms_number?: string | null
+          ghl_fallback_enabled?: boolean
+          id?: number
+          resend_domain_verified?: boolean
+          twilio_a2p_status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      paige_conversations: {
+        Row: {
+          body: string
+          channel: string
+          contact_id: string | null
+          created_at: string
+          direction: string
+          id: string
+          metadata: Json
+          source_message_id: string | null
+          status: string
+          subject: string | null
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          channel: string
+          contact_id?: string | null
+          created_at?: string
+          direction: string
+          id?: string
+          metadata?: Json
+          source_message_id?: string | null
+          status?: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          channel?: string
+          contact_id?: string | null
+          created_at?: string
+          direction?: string
+          id?: string
+          metadata?: Json
+          source_message_id?: string | null
+          status?: string
+          subject?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_conversations_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_conversations_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
+      paige_messages_audit: {
+        Row: {
+          body: string | null
+          channel: string
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string
+          error: string | null
+          from_address: string | null
+          id: string
+          pipe_used: string
+          sent_at: string | null
+          status: string
+          subject: string | null
+          to_address: string
+          updated_at: string
+          vendor_message_id: string | null
+        }
+        Insert: {
+          body?: string | null
+          channel: string
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          from_address?: string | null
+          id?: string
+          pipe_used: string
+          sent_at?: string | null
+          status: string
+          subject?: string | null
+          to_address: string
+          updated_at?: string
+          vendor_message_id?: string | null
+        }
+        Update: {
+          body?: string | null
+          channel?: string
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          from_address?: string | null
+          id?: string
+          pipe_used?: string
+          sent_at?: string | null
+          status?: string
+          subject?: string | null
+          to_address?: string
+          updated_at?: string
+          vendor_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_messages_audit_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_messages_audit_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_messages_audit_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "paige_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_pending_approvals: {
+        Row: {
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string
+          created_by_n8n_workflow_key: string | null
+          draft_content: Json
+          escalation_note: string | null
+          id: string
+          reviewed_at: string | null
+          reviewed_by_user_id: string | null
+          sent_at: string | null
+          sent_message_audit_id: string | null
+          status: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          created_by_n8n_workflow_key?: string | null
+          draft_content: Json
+          escalation_note?: string | null
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by_user_id?: string | null
+          sent_at?: string | null
+          sent_message_audit_id?: string | null
+          status?: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          created_by_n8n_workflow_key?: string | null
+          draft_content?: Json
+          escalation_note?: string | null
+          id?: string
+          reviewed_at?: string | null
+          reviewed_by_user_id?: string | null
+          sent_at?: string | null
+          sent_message_audit_id?: string | null
+          status?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_pending_approvals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_pending_approvals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_pending_approvals_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "paige_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_pending_approvals_sent_message_audit_id_fkey"
+            columns: ["sent_message_audit_id"]
+            isOneToOne: false
+            referencedRelation: "paige_messages_audit"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_workflow_registry: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          key: string
+          label: string
+          n8n_webhook_url: string
+          n8n_workflow_id: string | null
+          parameters_schema: Json
+          requires_approval: boolean
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          key: string
+          label: string
+          n8n_webhook_url: string
+          n8n_workflow_id?: string | null
+          parameters_schema?: Json
+          requires_approval?: boolean
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          key?: string
+          label?: string
+          n8n_webhook_url?: string
+          n8n_workflow_id?: string | null
+          parameters_schema?: Json
+          requires_approval?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      paige_workflow_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error: string | null
+          id: string
+          n8n_execution_id: string | null
+          payload: Json
+          registry_id: string
+          result: Json | null
+          status: string
+          triggered_at: string
+          triggered_by_user_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          n8n_execution_id?: string | null
+          payload?: Json
+          registry_id: string
+          result?: Json | null
+          status?: string
+          triggered_at?: string
+          triggered_by_user_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          n8n_execution_id?: string | null
+          payload?: Json
+          registry_id?: string
+          result?: Json | null
+          status?: string
+          triggered_at?: string
+          triggered_by_user_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_workflow_runs_registry_id_fkey"
+            columns: ["registry_id"]
+            isOneToOne: false
+            referencedRelation: "paige_workflow_registry"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pii_access_log: {
         Row: {
           access_type: string
