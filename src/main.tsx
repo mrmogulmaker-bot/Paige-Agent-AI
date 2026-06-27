@@ -3,6 +3,11 @@ import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import App from "./App.tsx";
 import "./index.css";
+import { initObservability } from "./lib/observability";
+
+// Initialize Sentry + PostHog as early as possible (no-ops when env keys missing).
+initObservability();
+
 
 
 // ---------------------------------------------------------------------------
