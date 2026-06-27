@@ -69,7 +69,7 @@ const GhlIntegrationConfig = lazy(() => import("@/pages/admin/GhlIntegrationConf
 const ZapierIntegrationConfig = lazy(() => import("@/pages/admin/ZapierIntegrationConfig"));
 const TelegramIntegrationConfig = lazy(() => import("@/pages/admin/TelegramIntegrationConfig"));
 const GmailIntegrationConfig = lazy(() => import("@/pages/admin/GmailIntegrationConfig"));
-const TavilyIntegrationConfig = lazy(() => import("@/pages/admin/TavilyIntegrationConfig"));
+
 const AiActivity = lazy(() => import("@/pages/admin/AiActivity"));
 const DocuSignConfig = lazy(() => import("@/pages/admin/DocuSignConfig"));
 const SignaturesAdmin = lazy(() => import("@/pages/admin/SignaturesAdmin"));
