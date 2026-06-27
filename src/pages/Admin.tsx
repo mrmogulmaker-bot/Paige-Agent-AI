@@ -56,6 +56,12 @@ const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
 const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
 const PipelineSettings = lazy(() => import("@/pages/admin/PipelineSettings"));
 const TasksAdmin = lazy(() => import("@/pages/admin/TasksAdmin"));
+const WorkflowsList = lazy(() => import("@/pages/admin/WorkflowsList"));
+const WorkflowDetail = lazy(() => import("@/pages/admin/WorkflowDetail"));
+const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
+const WorkflowRunDetail = lazy(() => import("@/pages/admin/WorkflowRunDetail"));
+const ApprovalsInbox = lazy(() => import("@/pages/admin/ApprovalsInbox"));
+const ApprovalDetail = lazy(() => import("@/pages/admin/ApprovalDetail"));
 
 const SuspenseFallback = () => (
   <div className="flex items-center justify-center py-12">
@@ -252,6 +258,24 @@ const Admin = () => {
           <Suspense fallback={<SuspenseFallback />}>
             <PipelineSettings />
           </Suspense>
+        } />
+        <Route path="workflows" element={
+          <Suspense fallback={<SuspenseFallback />}><WorkflowsList /></Suspense>
+        } />
+        <Route path="workflows/runs" element={
+          <Suspense fallback={<SuspenseFallback />}><WorkflowRuns /></Suspense>
+        } />
+        <Route path="workflows/runs/:id" element={
+          <Suspense fallback={<SuspenseFallback />}><WorkflowRunDetail /></Suspense>
+        } />
+        <Route path="workflows/:key" element={
+          <Suspense fallback={<SuspenseFallback />}><WorkflowDetail /></Suspense>
+        } />
+        <Route path="approvals" element={
+          <Suspense fallback={<SuspenseFallback />}><ApprovalsInbox /></Suspense>
+        } />
+        <Route path="approvals/:id" element={
+          <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
         } />
       </Routes>
     </AdminLayout>

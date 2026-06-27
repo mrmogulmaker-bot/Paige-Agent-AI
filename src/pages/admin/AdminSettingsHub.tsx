@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio } from "lucide-react";
 import { Link } from "react-router-dom";
 import { UserManagement } from "@/components/dashboard/UserManagement";
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
@@ -70,6 +71,9 @@ export function AdminSettingsHub() {
           <TabsTrigger value="platform" className="gap-2">
             <SettingsIcon className="w-4 h-4" /> Platform
           </TabsTrigger>
+          <TabsTrigger value="pipes" className="gap-2">
+            <Radio className="w-4 h-4" /> Platform Pipes
+          </TabsTrigger>
           <TabsTrigger value="comms" className="gap-2">
             <Bell className="w-4 h-4" /> Notifications
           </TabsTrigger>
@@ -105,6 +109,10 @@ export function AdminSettingsHub() {
 
         <TabsContent value="platform" className="space-y-4">
           <PlatformSettingsPanel />
+        </TabsContent>
+
+        <TabsContent value="pipes" className="space-y-4">
+          <PlatformPipesPanel />
         </TabsContent>
 
         <TabsContent value="comms" className="space-y-4">
@@ -267,5 +275,116 @@ function NotificationsCommsPanel() {
     </div>
   );
 }
+
+interface PaigeConfig {
+  twilio_a2p_status?: "pending" | "approved" | "rejected" | "not_started";
+  resend_domain_verified?: boolean;
+  ghl_fallback_enabled?: boolean;
+  default_from_email?: string;
+  default_from_sms_number?: string;
+}
+
+function PlatformPipesPanel() {
+  const [config, setConfig] = useState<PaigeConfig>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await (supabase as any)
+        .from("paige_config")
+        .select("*")
+        .eq("id", 1)
+        .maybeSingle();
+      if (data) setConfig(data);
+      setLoading(false);
+    })();
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    const { error } = await (supabase as any)
+      .from("paige_config")
+      .upsert({ id: 1, ...config, updated_at: new Date().toISOString() });
+    setSaving(false);
+    if (error) toast.error(error.message);
+    else toast.success("Platform pipes saved");
+  };
+
+  if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Radio className="w-4 h-4" /> Send Pipes & Inbound Channels
+        </CardTitle>
+        <CardDescription>
+          Controls how Paige routes outbound email/SMS and which inbound channels are live. GHL is a temporary fallback until Twilio A2P + Resend domain are fully verified.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Twilio A2P status</Label>
+          <select
+            className="flex h-9 w-full max-w-xs rounded-md border border-input bg-background px-3 py-1 text-sm"
+            value={config.twilio_a2p_status ?? "not_started"}
+            onChange={(e) => setConfig({ ...config, twilio_a2p_status: e.target.value as PaigeConfig["twilio_a2p_status"] })}
+          >
+            <option value="not_started">Not started</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved (send via Twilio)</option>
+            <option value="rejected">Rejected</option>
+          </select>
+          <p className="text-[11px] text-muted-foreground">When approved, SMS sends go through Twilio. Otherwise they fall back to GHL.</p>
+        </div>
+
+        <div className="flex items-start justify-between gap-4 py-1">
+          <div>
+            <Label className="text-sm font-medium">Resend domain verified</Label>
+            <p className="text-xs text-muted-foreground mt-1">notify.paigeagent.ai DKIM/SPF passing.</p>
+          </div>
+          <Switch
+            checked={!!config.resend_domain_verified}
+            onCheckedChange={(c) => setConfig({ ...config, resend_domain_verified: c })}
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 py-1">
+          <div>
+            <Label className="text-sm font-medium">GHL fallback enabled</Label>
+            <p className="text-xs text-muted-foreground mt-1">Allow Paige to route through GHL when primary pipes are unavailable.</p>
+          </div>
+          <Switch
+            checked={!!config.ghl_fallback_enabled}
+            onCheckedChange={(c) => setConfig({ ...config, ghl_fallback_enabled: c })}
+          />
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Default from email</Label>
+            <Input
+              value={config.default_from_email ?? ""}
+              onChange={(e) => setConfig({ ...config, default_from_email: e.target.value })}
+              placeholder="paige@notify.paigeagent.ai"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Default from SMS number</Label>
+            <Input
+              value={config.default_from_sms_number ?? ""}
+              onChange={(e) => setConfig({ ...config, default_from_sms_number: e.target.value })}
+              placeholder="+15555550123"
+            />
+          </div>
+        </div>
+
+        <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save pipes"}</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 
 export default AdminSettingsHub;

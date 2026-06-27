@@ -18,7 +18,10 @@ export type BridgeVerb =
   | "update_paige_member_state"
   | "record_paige_feature_use"
   | "record_cross_system_event"
-  | "record_member_event";
+  | "record_member_event"
+  | "customer_support_intake"
+  | "ghl_send_sms_fallback"
+  | "ghl_send_email_fallback";
 
 // Fields that must never leave Paige for the MMA OS ledger.
 // Matched case-insensitively as prefix OR exact key.

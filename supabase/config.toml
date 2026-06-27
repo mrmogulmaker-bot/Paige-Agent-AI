@@ -21,6 +21,10 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = false
   [functions.handle-email-unsubscribe]
     verify_jwt = false
+  [functions.handle-inbound-email]
+    verify_jwt = false
+  [functions.handle-inbound-sms]
+    verify_jwt = false
   [functions.isoftpull-webhook]
     verify_jwt = false
   [functions.issue-certificate]
