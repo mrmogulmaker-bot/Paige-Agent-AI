@@ -2911,6 +2911,37 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // Build message array
     const aiMessages: any[] = [{ role: "system", content: systemPrompt }];
 
+    // === OPERATOR (admin/coach) CONTEXT INJECTION ===
+    // When the signed-in user is an admin or coach, Paige gets full CRM
+    // visibility tools (search contacts, read deals, list tasks, etc.).
+    let isOperator = false;
+    try {
+      const { data: roleRows } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id);
+      const roles = (roleRows || []).map((r: any) => r.role);
+      isOperator = roles.includes("admin") || roles.includes("coach");
+    } catch (e) {
+      console.warn("[paige-ai-chat] role lookup failed:", e);
+    }
+    if (isOperator) {
+      aiMessages.push({
+        role: "system",
+        content:
+`=== CRM OPERATOR MODE ===
+The current user is an ADMIN or COACH operating the Paige CRM. You have full read access to every contact, deal, task, and activity in the system through the crm_* tools. Use them proactively whenever the operator asks anything that requires looking across the customer base — for example:
+- "Who are my new leads this week?" → crm_search_contacts with lifecycle_stage=lead, sort by created_at desc.
+- "Show me Antonio's clients" → crm_search_contacts filtered by coach.
+- "What's the pipeline look like?" → crm_pipeline_summary, then crm_list_deals for the top stages.
+- "Tell me about Jane Doe" → crm_search_contacts to resolve the id, then crm_get_contact_summary for the full file (recent activity, deals, tasks, notes, lifecycle, last touch).
+- "What tasks are overdue?" → crm_list_tasks with overdue=true.
+
+Always resolve names/emails to client_id via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
+=== END CRM OPERATOR MODE ===`,
+      });
+    }
+
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
       
