@@ -37,7 +37,7 @@ export default function WorkflowDetail() {
         .eq("key", key)
         .maybeSingle();
       setRegistry(reg);
-      const props = (reg?.parameters_schema?.properties ?? {}) as Record<string, SchemaProp>;
+      const props = ((reg?.parameters_schema as any)?.properties ?? {}) as Record<string, SchemaProp>;
       const init: Record<string, any> = {};
       Object.entries(props).forEach(([k, v]) => { if (v.default !== undefined) init[k] = v.default; });
       setValues(init);
