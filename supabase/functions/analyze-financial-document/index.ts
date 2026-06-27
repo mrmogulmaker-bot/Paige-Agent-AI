@@ -64,6 +64,19 @@ serve(async (req) => {
       });
     }
 
+    // Ownership check: only the document's owner, admins, or coaches may analyze.
+    if (doc.user_id !== user.id) {
+      const [{ data: isAdmin }, { data: isCoach }] = await Promise.all([
+        supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' }),
+        supabase.rpc('has_role', { _user_id: user.id, _role: 'coach' }),
+      ]);
+      if (!isAdmin && !isCoach) {
+        return new Response(JSON.stringify({ error: 'Forbidden' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     // Create or update analysis record
     const { data: analysisRecord, error: insertError } = await supabase
       .from('financial_document_analyses')
