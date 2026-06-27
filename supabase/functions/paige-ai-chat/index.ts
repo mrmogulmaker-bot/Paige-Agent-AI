@@ -3202,6 +3202,81 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
               }
             }
           },
+          {
+            type: "function",
+            function: {
+              name: "crm_search_contacts",
+              description: "Admin/coach only. Search the CRM contacts (clients table) across the entire platform. Use to resolve names/emails to client_id, list leads by lifecycle stage, filter by assigned coach, find recently added contacts, or browse the customer base. Returns up to 25 contacts with id, name, email, phone, lifecycle_stage, source, assigned_coach_user_id, tags, lead_score, last_contacted_at, created_at.",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: { type: "string", description: "Free-text match on first/last name, email, entity_name, or phone." },
+                  lifecycle_stage: { type: "string", enum: ["lead","mql","sql","opportunity","customer","evangelist","churned","archived"] },
+                  status: { type: "string", enum: ["pending","active","inactive","archived"] },
+                  assigned_coach_email: { type: "string", description: "Filter by the coach's email." },
+                  tag: { type: "string", description: "Match a single tag in the tags array." },
+                  limit: { type: "number", description: "Max results (default 25, hard cap 100)." },
+                  sort: { type: "string", enum: ["recent","name","lead_score","last_contacted"], description: "Sort order (default recent)." }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_get_contact_summary",
+              description: "Admin/coach only. Deep-dive on a single contact: profile, lifecycle stage, assigned coach, open/won deals with value, recent activities (last 10), open tasks, and notes. Use after crm_search_contacts to brief the operator on a specific customer.",
+              parameters: {
+                type: "object",
+                properties: {
+                  client_id: { type: "string", description: "clients.id UUID." }
+                },
+                required: ["client_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_list_deals",
+              description: "Admin/coach only. List deals on the sales pipeline. Filter by stage, status (open/won/lost), owner, or contact. Returns id, title, contact name, stage label, value_cents, expected_close_date, status, owner, updated_at.",
+              parameters: {
+                type: "object",
+                properties: {
+                  status: { type: "string", enum: ["open","won","lost","all"], description: "Default open." },
+                  stage_label: { type: "string", description: "Filter by pipeline_stages.label, e.g. 'Qualified'." },
+                  owner_email: { type: "string" },
+                  contact_client_id: { type: "string" },
+                  limit: { type: "number" }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_list_tasks",
+              description: "Admin/coach only. List operator tasks. Use for 'what's due today', 'overdue tasks', or 'tasks for [coach]'. Returns id, title, due_date, status, assignee user_id, track, deal_id.",
+              parameters: {
+                type: "object",
+                properties: {
+                  status: { type: "string", enum: ["pending","in_progress","completed","cancelled","all"] },
+                  overdue: { type: "boolean", description: "Only return tasks past due_date and not completed." },
+                  assignee_email: { type: "string" },
+                  due_within_days: { type: "number", description: "Tasks due within N days from today." },
+                  limit: { type: "number" }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_pipeline_summary",
+              description: "Admin/coach only. High-level CRM snapshot: total contacts by lifecycle stage, deals by stage with weighted forecast, open task count, and new contacts in the last 7/30 days. Use for 'how's the pipeline', 'state of the business', or any opening operator briefing.",
+              parameters: { type: "object", properties: {} }
+            }
+          },
         ],
         tool_choice: "auto",
         stream: true,
