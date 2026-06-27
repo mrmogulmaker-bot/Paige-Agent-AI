@@ -102,30 +102,31 @@ const LogMessageSendSchema = z.object({
   subject: z.string().max(500).optional(),
   body: z.string().optional(),
   status: z.enum(["queued", "sent", "failed", "bounced"]),
-  contact_id: z.string().uuid().optional(),
-  conversation_id: z.string().uuid().optional(),
-  vendor_message_id: z.string().optional(),
-  error: z.string().max(4000).optional(),
+  contact_id: z.string().uuid().nullable().optional(),
+  conversation_id: z.string().uuid().nullable().optional(),
+  vendor_message_id: z.string().nullable().optional(),
+  error: z.string().max(4000).nullable().optional(),
 });
 
 const UpsertContactMirrorSchema = z.object({
   email: z.string().email(),
-  first_name: z.string().max(100).optional(),
-  last_name: z.string().max(100).optional(),
-  full_name: z.string().max(200).optional(),
-  phone: z.string().max(50).optional(),
-  source: z.string().max(50).optional(),
-  tier: z.string().max(50).optional(),
+  first_name: z.string().max(100).nullable().optional(),
+  last_name: z.string().max(100).nullable().optional(),
+  full_name: z.string().max(200).nullable().optional(),
+  phone: z.string().max(50).nullable().optional(),
+  source: z.string().max(50).nullable().optional(),
+  tier: z.string().max(50).nullable().optional(),
   metadata: z.record(z.any()).optional(),
 });
 
 const NotifyAdminSchema = z.object({
   severity: z.enum(["info", "warning", "urgent"]).default("info"),
   title: z.string().min(1).max(200),
-  body: z.string().max(4000).optional(),
-  link_to: z.string().max(500).optional(),
-  source_workflow_key: z.string().max(100).optional(),
-  contact_id: z.string().uuid().optional(),
+  body: z.string().max(4000).nullable().optional(),
+  link_to: z.string().max(500).nullable().optional(),
+  source_workflow_key: z.string().max(100).nullable().optional(),
+  contact_id: z.string().uuid().nullable().optional(),
+  conversation_id: z.string().uuid().nullable().optional(),
 });
 
 const ReadConfigSchema = z.object({ key: z.string().optional() });
