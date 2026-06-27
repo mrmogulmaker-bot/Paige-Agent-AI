@@ -139,6 +139,9 @@ export default function ContactDetail() {
           <h1 className="text-2xl sm:text-3xl font-bold truncate">{fullName || "Unnamed Contact"}</h1>
           <p className="text-sm text-muted-foreground">{client.entity_name || "No business on file"}</p>
         </div>
+        <Button variant="outline" size="sm" onClick={() => navigate(`/admin/contacts/${client.id}/journey`)}>
+          <Activity className="h-4 w-4 mr-1" /> Member Journey
+        </Button>
         {client.linked_user_id && (
           <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/user/${client.linked_user_id}`)}>
             <ExternalLink className="h-4 w-4 mr-1" /> Full Client File
