@@ -5886,6 +5886,57 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_admin_notifications: {
+        Row: {
+          body: string | null
+          contact_id: string | null
+          created_at: string
+          id: string
+          link_to: string | null
+          read_at: string | null
+          severity: string
+          source_workflow_key: string | null
+          title: string
+        }
+        Insert: {
+          body?: string | null
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          link_to?: string | null
+          read_at?: string | null
+          severity?: string
+          source_workflow_key?: string | null
+          title: string
+        }
+        Update: {
+          body?: string | null
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          link_to?: string | null
+          read_at?: string | null
+          severity?: string
+          source_workflow_key?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_admin_notifications_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_admin_notifications_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
       paige_bank_connections: {
         Row: {
           accounts: Json
@@ -6609,6 +6660,7 @@ export type Database = {
           draft_content: Json
           escalation_note: string | null
           id: string
+          metadata: Json
           reviewed_at: string | null
           reviewed_by_user_id: string | null
           sent_at: string | null
@@ -6625,6 +6677,7 @@ export type Database = {
           draft_content: Json
           escalation_note?: string | null
           id?: string
+          metadata?: Json
           reviewed_at?: string | null
           reviewed_by_user_id?: string | null
           sent_at?: string | null
@@ -6641,6 +6694,7 @@ export type Database = {
           draft_content?: Json
           escalation_note?: string | null
           id?: string
+          metadata?: Json
           reviewed_at?: string | null
           reviewed_by_user_id?: string | null
           sent_at?: string | null
@@ -9086,6 +9140,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_approval_queue_counts: { Args: never; Returns: Json }
       get_broker_team_member: {
         Args: { _auth_user_id: string }
         Returns: {
