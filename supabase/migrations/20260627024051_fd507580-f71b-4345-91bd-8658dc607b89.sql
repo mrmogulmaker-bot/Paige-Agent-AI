@@ -1,0 +1,1 @@
+ALTER VIEW public.contact_deal_rollup SET (security_invoker = true);

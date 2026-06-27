@@ -8,10 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
-  MessageSquare, CheckSquare, FileText, StickyNote, Activity,
+  MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { LIFECYCLE_STAGES, lifecycleMeta } from "@/lib/contacts";
+import { ContactDealsSection } from "@/components/admin/contacts/ContactDealsSection";
 
 type Client = {
   id: string;
@@ -20,12 +22,16 @@ type Client = {
   email: string | null;
   phone: string | null;
   entity_name: string | null;
+  title?: string | null;
   funding_goal: number | null;
   status: string;
+  lifecycle_stage?: string | null;
+  tags?: string[] | null;
+  source?: string | null;
   assigned_coach_user_id: string | null;
   linked_user_id: string | null;
   created_at: string;
-  notes?: string | null;
+  current_notes?: string | null;
 };
 
 type Coach = { user_id: string; name: string };
@@ -100,12 +106,23 @@ export default function ContactDetail() {
     toast.success(`Stage moved to ${status}`);
   };
 
+  const updateLifecycle = async (stage: string) => {
+    if (!client) return;
+    const { error } = await supabase.from("clients").update({ lifecycle_stage: stage }).eq("id", client.id);
+    if (error) return toast.error(error.message);
+    setClient({ ...client, lifecycle_stage: stage });
+    toast.success(`Lifecycle moved to ${stage}`);
+  };
+
   const fullName = useMemo(() => client ? `${client.first_name} ${client.last_name}`.trim() : "", [client]);
   const coachName = (uid: string | null) => uid ? (coaches.find((c) => c.user_id === uid)?.name || "Coach") : "Unassigned";
 
   if (loading || !client) {
     return <div className="p-8 text-center text-muted-foreground">Loading contact…</div>;
   }
+
+  const lcMeta = lifecycleMeta(client.lifecycle_stage);
+
 
   return (
     <div className="space-y-4">
@@ -140,19 +157,24 @@ export default function ContactDetail() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Pipeline Stage</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Lifecycle Stage</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            <Badge variant={client.status === "active" ? "default" : "outline"} className="capitalize">{client.status}</Badge>
-            <Select value={client.status} onValueChange={updateStatus}>
+            <Badge variant="outline" className={`${lcMeta.color} border-transparent`}>{lcMeta.label}</Badge>
+            <Select value={client.lifecycle_stage || "lead"} onValueChange={updateLifecycle}>
               <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="lead">Lead</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
+                {LIFECYCLE_STAGES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {client.tags && client.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-1">
+                {client.tags.map((t) => (
+                  <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -169,18 +191,29 @@ export default function ContactDetail() {
                 {coaches.map((co) => <SelectItem key={co.user_id} value={co.user_id}>{co.name}</SelectItem>)}
               </SelectContent>
             </Select>
+            {client.source && (
+              <div className="text-xs text-muted-foreground mt-2">Source: {client.source}</div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="activity">
+      <Tabs defaultValue="deals">
         <TabsList>
+          <TabsTrigger value="deals"><Briefcase className="h-4 w-4 mr-1" /> Deals</TabsTrigger>
           <TabsTrigger value="activity"><Activity className="h-4 w-4 mr-1" /> Activity</TabsTrigger>
           <TabsTrigger value="comms"><MessageSquare className="h-4 w-4 mr-1" /> Communications</TabsTrigger>
           <TabsTrigger value="tasks"><CheckSquare className="h-4 w-4 mr-1" /> Tasks</TabsTrigger>
           <TabsTrigger value="notes"><StickyNote className="h-4 w-4 mr-1" /> Notes</TabsTrigger>
           <TabsTrigger value="files"><FileText className="h-4 w-4 mr-1" /> Files</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="deals">
+          <Card><CardContent className="p-4">
+            <ContactDealsSection contactId={client.id} />
+          </CardContent></Card>
+        </TabsContent>
+
 
         <TabsContent value="activity">
           <Card><CardContent className="p-4">
