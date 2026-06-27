@@ -106,12 +106,23 @@ export default function ContactDetail() {
     toast.success(`Stage moved to ${status}`);
   };
 
+  const updateLifecycle = async (stage: string) => {
+    if (!client) return;
+    const { error } = await supabase.from("clients").update({ lifecycle_stage: stage }).eq("id", client.id);
+    if (error) return toast.error(error.message);
+    setClient({ ...client, lifecycle_stage: stage });
+    toast.success(`Lifecycle moved to ${stage}`);
+  };
+
   const fullName = useMemo(() => client ? `${client.first_name} ${client.last_name}`.trim() : "", [client]);
   const coachName = (uid: string | null) => uid ? (coaches.find((c) => c.user_id === uid)?.name || "Coach") : "Unassigned";
 
   if (loading || !client) {
     return <div className="p-8 text-center text-muted-foreground">Loading contact…</div>;
   }
+
+  const lcMeta = lifecycleMeta(client.lifecycle_stage);
+
 
   return (
     <div className="space-y-4">
