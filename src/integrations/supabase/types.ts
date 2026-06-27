@@ -5886,50 +5886,146 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_bookings: {
+        Row: {
+          attendee_email: string | null
+          attendee_name: string | null
+          attendee_responses: Json
+          cal_event_id: string
+          cal_event_type_id: string | null
+          contact_id: string | null
+          created_at: string
+          duration_min: number | null
+          event_type: Database["public"]["Enums"]["paige_booking_event_type"]
+          id: string
+          metadata: Json
+          scheduled_at: string
+          status: Database["public"]["Enums"]["paige_booking_status"]
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          attendee_email?: string | null
+          attendee_name?: string | null
+          attendee_responses?: Json
+          cal_event_id: string
+          cal_event_type_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          duration_min?: number | null
+          event_type?: Database["public"]["Enums"]["paige_booking_event_type"]
+          id?: string
+          metadata?: Json
+          scheduled_at: string
+          status?: Database["public"]["Enums"]["paige_booking_status"]
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attendee_email?: string | null
+          attendee_name?: string | null
+          attendee_responses?: Json
+          cal_event_id?: string
+          cal_event_type_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          duration_min?: number | null
+          event_type?: Database["public"]["Enums"]["paige_booking_event_type"]
+          id?: string
+          metadata?: Json
+          scheduled_at?: string
+          status?: Database["public"]["Enums"]["paige_booking_status"]
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_bookings_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_bookings_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
       paige_config: {
         Row: {
+          apollo_auto_enrich: boolean
+          cal_default_event_type_id: string | null
+          cal_event_type_map: Json
           created_at: string
           default_from_email: string | null
           default_from_sms_number: string | null
+          docusign_default_brand_id: string | null
+          docusign_templates: Json
           ghl_fallback_enabled: boolean
           ghl_location_id: string | null
           ghl_pit_ref: string | null
           gmail_default_sender: string | null
           id: number
           langsmith_project: string | null
+          meta_default_page_id: string | null
+          posthog_project_url: string | null
           resend_domain_verified: boolean
+          sentry_org_slug: string | null
+          sentry_project_slug: string | null
           stripe_price_tier_map: Json | null
           twilio_a2p_status: string
           updated_at: string
           updated_by: string | null
         }
         Insert: {
+          apollo_auto_enrich?: boolean
+          cal_default_event_type_id?: string | null
+          cal_event_type_map?: Json
           created_at?: string
           default_from_email?: string | null
           default_from_sms_number?: string | null
+          docusign_default_brand_id?: string | null
+          docusign_templates?: Json
           ghl_fallback_enabled?: boolean
           ghl_location_id?: string | null
           ghl_pit_ref?: string | null
           gmail_default_sender?: string | null
           id?: number
           langsmith_project?: string | null
+          meta_default_page_id?: string | null
+          posthog_project_url?: string | null
           resend_domain_verified?: boolean
+          sentry_org_slug?: string | null
+          sentry_project_slug?: string | null
           stripe_price_tier_map?: Json | null
           twilio_a2p_status?: string
           updated_at?: string
           updated_by?: string | null
         }
         Update: {
+          apollo_auto_enrich?: boolean
+          cal_default_event_type_id?: string | null
+          cal_event_type_map?: Json
           created_at?: string
           default_from_email?: string | null
           default_from_sms_number?: string | null
+          docusign_default_brand_id?: string | null
+          docusign_templates?: Json
           ghl_fallback_enabled?: boolean
           ghl_location_id?: string | null
           ghl_pit_ref?: string | null
           gmail_default_sender?: string | null
           id?: number
           langsmith_project?: string | null
+          meta_default_page_id?: string | null
+          posthog_project_url?: string | null
           resend_domain_verified?: boolean
+          sentry_org_slug?: string | null
+          sentry_project_slug?: string | null
           stripe_price_tier_map?: Json | null
           twilio_a2p_status?: string
           updated_at?: string
@@ -5987,6 +6083,57 @@ export type Database = {
           },
           {
             foreignKeyName: "paige_conversations_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
+      paige_enrichment_log: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          payload: Json
+          provider: string
+          subject_key: string
+          subject_type: Database["public"]["Enums"]["paige_enrichment_subject_type"]
+          succeeded: boolean
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          payload?: Json
+          provider?: string
+          subject_key: string
+          subject_type: Database["public"]["Enums"]["paige_enrichment_subject_type"]
+          succeeded?: boolean
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          payload?: Json
+          provider?: string
+          subject_key?: string
+          subject_type?: Database["public"]["Enums"]["paige_enrichment_subject_type"]
+          succeeded?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_enrichment_log_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_enrichment_log_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
@@ -6230,6 +6377,114 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      paige_signature_envelopes: {
+        Row: {
+          completed_pdf_url: string | null
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          envelope_id: string
+          envelope_type: Database["public"]["Enums"]["paige_envelope_type"]
+          id: string
+          metadata: Json
+          sent_at: string
+          signed_at: string | null
+          status: Database["public"]["Enums"]["paige_envelope_status"]
+          template_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          completed_pdf_url?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          envelope_id: string
+          envelope_type?: Database["public"]["Enums"]["paige_envelope_type"]
+          id?: string
+          metadata?: Json
+          sent_at?: string
+          signed_at?: string | null
+          status?: Database["public"]["Enums"]["paige_envelope_status"]
+          template_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          completed_pdf_url?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          envelope_id?: string
+          envelope_type?: Database["public"]["Enums"]["paige_envelope_type"]
+          id?: string
+          metadata?: Json
+          sent_at?: string
+          signed_at?: string | null
+          status?: Database["public"]["Enums"]["paige_envelope_status"]
+          template_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_signature_envelopes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_signature_envelopes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+        ]
+      }
+      paige_social_posts: {
+        Row: {
+          caption: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          media_urls: Json
+          metrics: Json
+          platform: Database["public"]["Enums"]["paige_social_platform"]
+          platform_post_id: string | null
+          posted_at: string | null
+          scheduled_at: string | null
+          status: Database["public"]["Enums"]["paige_social_post_status"]
+          updated_at: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          media_urls?: Json
+          metrics?: Json
+          platform: Database["public"]["Enums"]["paige_social_platform"]
+          platform_post_id?: string | null
+          posted_at?: string | null
+          scheduled_at?: string | null
+          status?: Database["public"]["Enums"]["paige_social_post_status"]
+          updated_at?: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          media_urls?: Json
+          metrics?: Json
+          platform?: Database["public"]["Enums"]["paige_social_platform"]
+          platform_post_id?: string | null
+          posted_at?: string | null
+          scheduled_at?: string | null
+          status?: Database["public"]["Enums"]["paige_social_post_status"]
+          updated_at?: string
+        }
+        Relationships: []
       }
       paige_subscription_events: {
         Row: {
@@ -8835,6 +9090,34 @@ export type Database = {
         | "welcome"
         | "system"
       order_status: "pending" | "completed" | "failed" | "refunded"
+      paige_booking_event_type:
+        | "vip_intro"
+        | "dfy_discovery"
+        | "coffee_hour"
+        | "workshop"
+        | "other"
+      paige_booking_status:
+        | "confirmed"
+        | "canceled"
+        | "rescheduled"
+        | "no_show"
+        | "completed"
+      paige_enrichment_subject_type: "person" | "company"
+      paige_envelope_status:
+        | "sent"
+        | "delivered"
+        | "completed"
+        | "declined"
+        | "voided"
+      paige_envelope_type:
+        | "vip_app"
+        | "coach_agreement"
+        | "dfy_engagement"
+        | "refund"
+        | "term_sheet"
+        | "other"
+      paige_social_platform: "facebook" | "instagram"
+      paige_social_post_status: "scheduled" | "posted" | "failed" | "deleted"
       task_status: "pending" | "in_progress" | "completed" | "cancelled"
     }
     CompositeTypes: {
@@ -9081,6 +9364,38 @@ export const Constants = {
         "system",
       ],
       order_status: ["pending", "completed", "failed", "refunded"],
+      paige_booking_event_type: [
+        "vip_intro",
+        "dfy_discovery",
+        "coffee_hour",
+        "workshop",
+        "other",
+      ],
+      paige_booking_status: [
+        "confirmed",
+        "canceled",
+        "rescheduled",
+        "no_show",
+        "completed",
+      ],
+      paige_enrichment_subject_type: ["person", "company"],
+      paige_envelope_status: [
+        "sent",
+        "delivered",
+        "completed",
+        "declined",
+        "voided",
+      ],
+      paige_envelope_type: [
+        "vip_app",
+        "coach_agreement",
+        "dfy_engagement",
+        "refund",
+        "term_sheet",
+        "other",
+      ],
+      paige_social_platform: ["facebook", "instagram"],
+      paige_social_post_status: ["scheduled", "posted", "failed", "deleted"],
       task_status: ["pending", "in_progress", "completed", "cancelled"],
     },
   },

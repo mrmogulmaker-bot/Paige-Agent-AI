@@ -43,11 +43,18 @@ const workspaceNavItems = [
   { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
   { label: "Brokers", href: "/admin/brokers", icon: Briefcase },
+  { label: "Signatures", href: "/admin/signatures", icon: ClipboardCheck },
+  { label: "Bookings", href: "/admin/bookings", icon: BarChart3 },
+  { label: "Social", href: "/admin/social", icon: Share2 },
+  { label: "Lead Enrichment", href: "/admin/leads/enrichment", icon: Contact },
+  { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
+  { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
   { label: "Support", href: "/admin/support", icon: LifeBuoy },
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench },
   { label: "Integrations", href: "/admin/integrations", icon: Plug },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
+
 
 const adminNavItems = [...crmNavItems, ...workspaceNavItems];
 

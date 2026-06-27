@@ -115,3 +115,30 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = true
   [functions.preview-beta-launch-email]
     verify_jwt = true
+  [functions.docusign-send-envelope]
+    verify_jwt = true
+  [functions.handle-docusign-webhook]
+    verify_jwt = false
+  [functions.cal-list-bookings]
+    verify_jwt = true
+  [functions.cal-cancel-booking]
+    verify_jwt = true
+  [functions.handle-cal-webhook]
+    verify_jwt = false
+  [functions.meta-schedule-post]
+    verify_jwt = true
+  [functions.meta-list-comments]
+    verify_jwt = true
+  [functions.meta-get-insights]
+    verify_jwt = true
+  [functions.handle-meta-webhook]
+    verify_jwt = false
+  [functions.apollo-enrich-person]
+    verify_jwt = false
+  [functions.apollo-enrich-company]
+    verify_jwt = true
+  [functions.apollo-search-people]
+    verify_jwt = true
+  [functions.sentry-tunnel]
+    verify_jwt = false
+
