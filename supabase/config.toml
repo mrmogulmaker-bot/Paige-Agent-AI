@@ -63,6 +63,26 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = true
   [functions.stripe-webhook]
     verify_jwt = false
+  [functions.handle-stripe-webhook]
+    verify_jwt = false
+  [functions.n8n-list-workflows]
+    verify_jwt = true
+  [functions.n8n-trigger-workflow]
+    verify_jwt = true
+  [functions.n8n-get-executions]
+    verify_jwt = true
+  [functions.ghl-get-contacts]
+    verify_jwt = true
+  [functions.ghl-send-email]
+    verify_jwt = true
+  [functions.ghl-send-sms]
+    verify_jwt = true
+  [functions.send-telegram]
+    verify_jwt = true
+  [functions.web-search]
+    verify_jwt = true
+  [functions.call-zapier-action]
+    verify_jwt = true
   [functions.send-sms]
     verify_jwt = true
   [functions.send-sms-verification]

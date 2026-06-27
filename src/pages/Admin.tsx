@@ -62,6 +62,15 @@ const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
 const WorkflowRunDetail = lazy(() => import("@/pages/admin/WorkflowRunDetail"));
 const ApprovalsInbox = lazy(() => import("@/pages/admin/ApprovalsInbox"));
 const ApprovalDetail = lazy(() => import("@/pages/admin/ApprovalDetail"));
+const IntegrationsHub = lazy(() => import("@/pages/admin/IntegrationsHub"));
+const N8nIntegrationConfig = lazy(() => import("@/pages/admin/N8nIntegrationConfig"));
+const SubscriptionsRevenue = lazy(() => import("@/pages/admin/SubscriptionsRevenue"));
+const GhlIntegrationConfig = lazy(() => import("@/pages/admin/GhlIntegrationConfig"));
+const ZapierIntegrationConfig = lazy(() => import("@/pages/admin/ZapierIntegrationConfig"));
+const TelegramIntegrationConfig = lazy(() => import("@/pages/admin/TelegramIntegrationConfig"));
+const GmailIntegrationConfig = lazy(() => import("@/pages/admin/GmailIntegrationConfig"));
+const TavilyIntegrationConfig = lazy(() => import("@/pages/admin/TavilyIntegrationConfig"));
+const AiActivity = lazy(() => import("@/pages/admin/AiActivity"));
 
 const SuspenseFallback = () => (
   <div className="flex items-center justify-center py-12">
@@ -276,6 +285,36 @@ const Admin = () => {
         } />
         <Route path="approvals/:id" element={
           <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
+        } />
+        <Route path="approvals/:id" element={
+          <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
+        } />
+        <Route path="integrations" element={
+          <Suspense fallback={<SuspenseFallback />}><IntegrationsHub /></Suspense>
+        } />
+        <Route path="integrations/n8n" element={
+          <Suspense fallback={<SuspenseFallback />}><N8nIntegrationConfig /></Suspense>
+        } />
+        <Route path="integrations/subscriptions" element={
+          <Suspense fallback={<SuspenseFallback />}><SubscriptionsRevenue /></Suspense>
+        } />
+        <Route path="integrations/ghl" element={
+          <Suspense fallback={<SuspenseFallback />}><GhlIntegrationConfig /></Suspense>
+        } />
+        <Route path="integrations/zapier" element={
+          <Suspense fallback={<SuspenseFallback />}><ZapierIntegrationConfig /></Suspense>
+        } />
+        <Route path="integrations/telegram" element={
+          <Suspense fallback={<SuspenseFallback />}><TelegramIntegrationConfig /></Suspense>
+        } />
+        <Route path="integrations/gmail" element={
+          <Suspense fallback={<SuspenseFallback />}><GmailIntegrationConfig /></Suspense>
+        } />
+        <Route path="integrations/tavily" element={
+          <Suspense fallback={<SuspenseFallback />}><TavilyIntegrationConfig /></Suspense>
+        } />
+        <Route path="integrations/ai-activity" element={
+          <Suspense fallback={<SuspenseFallback />}><AiActivity /></Suspense>
         } />
       </Routes>
     </AdminLayout>
