@@ -4,11 +4,18 @@
 // financial table row changes. One rag_documents row per (source_table,
 // source_row_id) — upserted on the dedupe_key in metadata.
 //
-// Triggered by Postgres AFTER INSERT/UPDATE on:
-//   - paige_business_credit_profiles  -> business_credit_snapshot
-//   - paige_owner_credit_snapshots    -> owner_credit_snapshot
-//   - paige_bank_connections          -> banking_snapshot
-//   - paige_cash_flow_snapshots       -> cash_flow_snapshot
+// Reconciled to the ACTUAL Phase 3 schema:
+//   paige_business_credit_profiles(scores jsonb, trade_lines jsonb,
+//     business_name, ein, last_pulled_at, history jsonb)
+//   paige_owner_credit_snapshots(bureau, score, pulled_at, factors jsonb,
+//     alerts_triggered jsonb)
+//   paige_bank_connections(institution_name, status, accounts jsonb,
+//     connected_at, last_synced_at)
+//   paige_bank_transactions(bank_connection_id, date, amount_cents, name,
+//     category jsonb, pending)
+//   paige_cash_flow_snapshots(period_start, period_end,
+//     total_deposits_cents, total_withdrawals_cents,
+//     avg_daily_balance_cents, runway_days, funding_readiness_score)
 //
 // Body: { source_table, source_row_id, contact_id }
 // Auth: service-role only.
@@ -31,6 +38,7 @@ const TABLE_TO_TYPE: Record<string, string> = {
   paige_business_credit_profiles: "business_credit_snapshot",
   paige_owner_credit_snapshots: "owner_credit_snapshot",
   paige_bank_connections: "banking_snapshot",
+  paige_bank_transactions: "banking_transaction",
   paige_cash_flow_snapshots: "cash_flow_snapshot",
 };
 
@@ -56,6 +64,29 @@ function fmt(n: unknown): string {
   return String(n);
 }
 
+function dollars(cents: unknown): string {
+  if (cents == null || cents === "") return "—";
+  const n = typeof cents === "number" ? cents : Number(cents);
+  if (!Number.isFinite(n)) return "—";
+  return (n / 100).toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
+
+function maskEin(ein: unknown): string {
+  if (!ein) return "—";
+  const s = String(ein).replace(/\D/g, "");
+  if (s.length < 4) return "***";
+  return `***-**-${s.slice(-4)}`;
+}
+
+function pick(obj: any, ...keys: string[]): unknown {
+  if (!obj || typeof obj !== "object") return null;
+  for (const k of keys) {
+    const v = obj[k];
+    if (v != null && v !== "") return v;
+  }
+  return null;
+}
+
 function buildContent(
   table: string,
   row: Record<string, any>,
@@ -68,86 +99,146 @@ function buildContent(
   };
 
   if (table === "paige_business_credit_profiles") {
+    const scores = (row.scores ?? {}) as Record<string, any>;
+    const paydex = pick(scores, "paydex", "PAYDEX", "dnb_paydex");
+    const intelliscore = pick(scores, "intelliscore", "intelliscore_plus", "experian_intelliscore");
+    const dnbDelinquency = pick(scores, "dnb_delinquency", "delinquency");
+    const experianFsr = pick(scores, "experian_fsr", "fsr");
+    const eqxDelinq = pick(scores, "equifax_business_delinquency", "equifax_delinquency");
+    const eqxFailure = pick(scores, "equifax_business_failure", "equifax_failure");
+    const tl = Array.isArray(row.trade_lines) ? row.trade_lines : [];
+    const tlCount = tl.length;
+    const tlBalanceCents = tl.reduce(
+      (sum: number, t: any) =>
+        sum + (typeof t?.balance_cents === "number" ? t.balance_cents : 0),
+      0,
+    );
+
     const lines = [
       `Business Credit Snapshot — ${who}`,
-      `Business: ${row.business_legal_name ?? "—"} (EIN: ${row.ein_last4 ? "***" + row.ein_last4 : "—"})`,
-      `Dun & Bradstreet Paydex: ${fmt(row.paydex_score)} | D&B Delinquency: ${fmt(row.dnb_delinquency_score)}`,
-      `Experian Intelliscore: ${fmt(row.intelliscore_plus)} | Experian FSR: ${fmt(row.experian_fsr)}`,
-      `Equifax Business Delinquency: ${fmt(row.equifax_business_delinquency)} | Equifax Failure: ${fmt(row.equifax_business_failure)}`,
-      `Trade lines reported: ${fmt(row.trade_lines_count)} | Total tradeline balance: $${fmt(row.tradeline_total_balance)}`,
-      `Last pulled: ${row.last_pulled_at ?? "—"} | Source: ${row.data_source ?? "nav"}`,
+      `Business: ${row.business_name ?? "—"} (EIN: ${maskEin(row.ein)})`,
+      `Dun & Bradstreet Paydex: ${fmt(paydex)} | D&B Delinquency: ${fmt(dnbDelinquency)}`,
+      `Experian Intelliscore: ${fmt(intelliscore)} | Experian FSR: ${fmt(experianFsr)}`,
+      `Equifax Business Delinquency: ${fmt(eqxDelinq)} | Equifax Failure: ${fmt(eqxFailure)}`,
+      `Trade lines reported: ${fmt(tlCount)} | Total tradeline balance: ${tlBalanceCents ? dollars(tlBalanceCents) : "—"}`,
+      `Last pulled: ${row.last_pulled_at ?? "—"} | Nav profile: ${row.nav_profile_id ?? "—"}`,
     ];
     Object.assign(meta, {
-      paydex: row.paydex_score,
-      intelliscore: row.intelliscore_plus,
-      trade_lines_count: row.trade_lines_count,
+      paydex,
+      intelliscore,
+      trade_lines_count: tlCount,
+      last_pulled_at: row.last_pulled_at,
     });
     return {
       title: `Business credit — ${who}`,
       content: lines.join("\n"),
-      summary: `Paydex ${fmt(row.paydex_score)} · Intelliscore ${fmt(row.intelliscore_plus)} · ${fmt(row.trade_lines_count)} trades`,
+      summary: `Paydex ${fmt(paydex)} · Intelliscore ${fmt(intelliscore)} · ${fmt(tlCount)} trades`,
       metadata: meta,
     };
   }
 
   if (table === "paige_owner_credit_snapshots") {
+    const factors = row.factors ?? {};
+    const utilization = pick(factors, "revolving_utilization_pct", "utilization", "util");
+    const inquiries = pick(factors, "inquiries_12mo", "hard_inquiries_12mo");
+    const openAccts = pick(factors, "open_accounts_count", "open_accounts");
+    const negatives = pick(factors, "negative_items_count", "derogatories");
+    const topFactors = Array.isArray(factors?.top_factors)
+      ? factors.top_factors
+      : Array.isArray(factors?.score_factors)
+      ? factors.score_factors
+      : [];
+
     const lines = [
       `Owner Credit Snapshot — ${who}`,
-      `Bureau: ${row.bureau ?? "—"} | Score: ${fmt(row.score)} | Model: ${row.score_model ?? "—"}`,
-      `Utilization: ${fmt(row.revolving_utilization_pct)}% | Inquiries (12mo): ${fmt(row.inquiries_12mo)}`,
-      `Open accounts: ${fmt(row.open_accounts_count)} | Negative items: ${fmt(row.negative_items_count)}`,
-      `Top factors: ${(row.score_factors ?? []).join(" · ") || "—"}`,
-      `Snapshot date: ${row.snapshot_date ?? "—"}`,
+      `Bureau: ${row.bureau ?? "—"} | Score: ${fmt(row.score)}`,
+      `Utilization: ${fmt(utilization)}% | Inquiries (12mo): ${fmt(inquiries)}`,
+      `Open accounts: ${fmt(openAccts)} | Negative items: ${fmt(negatives)}`,
+      `Top factors: ${topFactors.length ? topFactors.join(" · ") : "—"}`,
+      `Pulled at: ${row.pulled_at ?? "—"}`,
       `Note: read-only — Paige does not run dispute workflows (Doctrine §84).`,
     ];
     Object.assign(meta, {
       bureau: row.bureau,
       score: row.score,
-      snapshot_date: row.snapshot_date,
+      pulled_at: row.pulled_at,
     });
     return {
       title: `Owner credit (${row.bureau ?? "?"}) — ${who}`,
       content: lines.join("\n"),
-      summary: `${row.bureau ?? "?"} ${fmt(row.score)} · util ${fmt(row.revolving_utilization_pct)}%`,
+      summary: `${row.bureau ?? "?"} ${fmt(row.score)} · util ${fmt(utilization)}%`,
       metadata: meta,
     };
   }
 
   if (table === "paige_bank_connections") {
+    const accounts = Array.isArray(row.accounts) ? row.accounts : [];
     const lines = [
       `Banking Connection — ${who}`,
       `Institution: ${row.institution_name ?? "—"} | Status: ${row.status ?? "—"}`,
-      `Accounts linked: ${fmt(row.accounts_count)} | Connection type: ${row.connection_type ?? "plaid"}`,
-      `Last successful sync: ${row.last_synced_at ?? "—"}`,
-      `Consent recorded: ${row.consent_granted_at ?? "—"}`,
+      `Accounts linked: ${fmt(accounts.length)} | Item: ${row.plaid_item_id ?? "—"}`,
+      `Connected: ${row.connected_at ?? "—"} | Last sync: ${row.last_synced_at ?? "—"}`,
     ];
     Object.assign(meta, {
       institution: row.institution_name,
       status: row.status,
-      accounts_count: row.accounts_count,
+      accounts_count: accounts.length,
     });
     return {
       title: `Banking — ${row.institution_name ?? "Plaid"} — ${who}`,
       content: lines.join("\n"),
-      summary: `${row.institution_name ?? "Bank"} · ${row.status ?? "?"} · ${fmt(row.accounts_count)} accts`,
+      summary: `${row.institution_name ?? "Bank"} · ${row.status ?? "?"} · ${accounts.length} accts`,
+      metadata: meta,
+    };
+  }
+
+  if (table === "paige_bank_transactions") {
+    const lines = [
+      `Bank Transaction — ${who}`,
+      `Date: ${row.date ?? "—"} | Amount: ${dollars(row.amount_cents)}`,
+      `Description: ${row.name ?? "—"} | Pending: ${row.pending ? "yes" : "no"}`,
+      `Category: ${Array.isArray(row.category) ? row.category.join(" / ") : "—"}`,
+    ];
+    Object.assign(meta, {
+      date: row.date,
+      amount_cents: row.amount_cents,
+      pending: row.pending,
+    });
+    return {
+      title: `Transaction ${row.date ?? ""} — ${who}`,
+      content: lines.join("\n"),
+      summary: `${row.date ?? "?"} · ${dollars(row.amount_cents)} · ${row.name ?? "—"}`,
       metadata: meta,
     };
   }
 
   if (table === "paige_cash_flow_snapshots") {
+    const netCents =
+      (typeof row.total_deposits_cents === "number" ? row.total_deposits_cents : 0) -
+      (typeof row.total_withdrawals_cents === "number" ? row.total_withdrawals_cents : 0);
+    const periodDays =
+      row.period_start && row.period_end
+        ? Math.max(
+            1,
+            Math.round(
+              (new Date(row.period_end).getTime() - new Date(row.period_start).getTime()) /
+                (1000 * 60 * 60 * 24),
+            ),
+          )
+        : null;
+
     const lines = [
       `Cash-Flow Snapshot — ${who}`,
-      `Period: last ${fmt(row.period_days ?? 30)} days (as of ${row.snapshot_date ?? "—"})`,
-      `Total deposits: $${fmt(row.total_deposits)} | Total withdrawals: $${fmt(row.total_withdrawals)}`,
-      `Net flow: $${fmt(row.net_flow)} | Average balance: $${fmt(row.avg_balance)}`,
+      `Period: ${row.period_start ?? "—"} → ${row.period_end ?? "—"}${periodDays ? ` (${periodDays} days)` : ""}`,
+      `Total deposits: ${dollars(row.total_deposits_cents)} | Total withdrawals: ${dollars(row.total_withdrawals_cents)}`,
+      `Net flow: ${dollars(netCents)} | Avg daily balance: ${dollars(row.avg_daily_balance_cents)}`,
       `Runway: ${fmt(row.runway_days)} days | Funding readiness score: ${fmt(row.funding_readiness_score)}/100`,
-      `Volatility band: ${row.volatility_band ?? "—"}`,
     ];
     Object.assign(meta, {
       runway_days: row.runway_days,
       funding_readiness_score: row.funding_readiness_score,
-      net_flow: row.net_flow,
-      snapshot_date: row.snapshot_date,
+      net_flow_cents: netCents,
+      period_end: row.period_end,
     });
     return {
       title: `Cash flow — ${who}`,
@@ -196,26 +287,39 @@ serve(async (req) => {
       });
     }
 
-    // Resolve contact -> client_id (auth user) for RLS gating
-    const { data: contact } = await admin
-      .from("contacts")
-      .select("full_name, email, user_id, owner_id")
-      .eq("id", body.contact_id)
-      .maybeSingle();
-    const clientUserId: string | null =
-      (contact as any)?.user_id ?? (contact as any)?.owner_id ?? null;
+    // bank_transactions doesn't carry contact_id directly — derive via bank_connection
+    let resolvedContactId = body.contact_id;
+    if (body.source_table === "paige_bank_transactions" && !resolvedContactId && row.bank_connection_id) {
+      const { data: bc } = await admin
+        .from("paige_bank_connections")
+        .select("contact_id")
+        .eq("id", row.bank_connection_id)
+        .maybeSingle();
+      resolvedContactId = (bc as any)?.contact_id ?? resolvedContactId;
+    }
 
-    const built = buildContent(body.source_table, row, contact as any);
+    // Resolve contact -> client (auth user) for RLS gating. `clients` is the
+    // canonical contact table in Paige; some flows still pass through "contacts"
+    // alias. Try clients first.
+    const { data: client } = await admin
+      .from("clients")
+      .select("full_name, email, linked_user_id, owner_user_id")
+      .eq("id", resolvedContactId)
+      .maybeSingle();
+    const contact = client as any;
+    const clientUserId: string | null =
+      contact?.linked_user_id ?? contact?.owner_user_id ?? null;
+
+    const built = buildContent(body.source_table, row, contact);
     const dedupeKey = `${body.source_table}:${body.source_row_id}`;
     const metadata = {
       ...built.metadata,
-      contact_id: body.contact_id,
+      contact_id: resolvedContactId,
       dedupe_key: dedupeKey,
     };
 
     const embedding = openaiKey ? await embed(`${built.title}\n\n${built.content}`, openaiKey) : null;
 
-    // Upsert by dedupe_key
     const { data: existing } = await admin
       .from("rag_documents")
       .select("id")
@@ -235,7 +339,7 @@ serve(async (req) => {
         })
         .eq("id", existing.id);
       if (updErr) throw updErr;
-      return new Response(JSON.stringify({ updated: existing.id }), {
+      return new Response(JSON.stringify({ updated: existing.id, embedded: !!embedding }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -259,7 +363,7 @@ serve(async (req) => {
       .single();
     if (insErr) throw insErr;
 
-    return new Response(JSON.stringify({ inserted: ins.id }), {
+    return new Response(JSON.stringify({ inserted: ins.id, embedded: !!embedding }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
