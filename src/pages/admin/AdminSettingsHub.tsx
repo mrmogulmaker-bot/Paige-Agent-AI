@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink } from "lucide-react";
+import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import { UserManagement } from "@/components/dashboard/UserManagement";
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
@@ -60,9 +60,12 @@ export function AdminSettingsHub() {
       </div>
 
       <Tabs defaultValue="team" className="space-y-4">
-        <TabsList className="w-full sm:w-auto">
+        <TabsList className="w-full sm:w-auto flex-wrap h-auto">
           <TabsTrigger value="team" className="gap-2">
             <Shield className="w-4 h-4" /> Team & Roles
+          </TabsTrigger>
+          <TabsTrigger value="pipelines" className="gap-2">
+            <KanbanSquare className="w-4 h-4" /> Pipelines
           </TabsTrigger>
           <TabsTrigger value="platform" className="gap-2">
             <SettingsIcon className="w-4 h-4" /> Platform
@@ -77,6 +80,27 @@ export function AdminSettingsHub() {
 
         <TabsContent value="team" className="space-y-4">
           <UserManagement />
+        </TabsContent>
+
+        <TabsContent value="pipelines" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <KanbanSquare className="w-4 h-4" /> Sales Pipelines
+              </CardTitle>
+              <CardDescription>
+                Build multiple pipelines with custom stages, win probabilities, and won/lost rules. Power your weighted forecast and Paige's CRM automations.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild>
+                <Link to="/admin/settings/pipelines">
+                  Configure pipelines
+                  <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="platform" className="space-y-4">

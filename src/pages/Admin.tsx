@@ -54,6 +54,7 @@ const ContactsAdmin = lazy(() => import("@/pages/admin/ContactsAdmin"));
 const ContactDetail = lazy(() => import("@/pages/admin/ContactDetail"));
 const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
 const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
+const PipelineSettings = lazy(() => import("@/pages/admin/PipelineSettings"));
 const TasksAdmin = lazy(() => import("@/pages/admin/TasksAdmin"));
 
 const SuspenseFallback = () => (
@@ -245,6 +246,11 @@ const Admin = () => {
         <Route path="settings" element={
           <Suspense fallback={<SuspenseFallback />}>
             <AdminSettingsHub />
+          </Suspense>
+        } />
+        <Route path="settings/pipelines" element={
+          <Suspense fallback={<SuspenseFallback />}>
+            <PipelineSettings />
           </Suspense>
         } />
       </Routes>

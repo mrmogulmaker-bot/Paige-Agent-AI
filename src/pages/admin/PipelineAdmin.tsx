@@ -1,110 +1,246 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-
-type ClientRow = {
-  id: string;
-  first_name: string;
-  last_name: string;
-  entity_name: string | null;
-  status: string;
-  funding_goal: number | null;
-  linked_user_id: string | null;
-};
-
-const STAGES: { key: string; label: string }[] = [
-  { key: "pending", label: "Lead" },
-  { key: "active", label: "In Progress" },
-  { key: "inactive", label: "Paused" },
-  { key: "archived", label: "Closed" },
-];
+import { Plus, Settings, Filter, TrendingUp, Search } from "lucide-react";
+import { Deal, Pipeline, PipelineStage, formatMoney, logDealActivity } from "@/lib/pipelines";
+import { NewDealDialog } from "@/components/admin/pipeline/NewDealDialog";
+import { DealDrawer } from "@/components/admin/pipeline/DealDrawer";
 
 export default function PipelineAdmin() {
-  const navigate = useNavigate();
-  const [clients, setClients] = useState<ClientRow[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [activePipelineId, setActivePipelineId] = useState<string>("");
+  const [stages, setStages] = useState<PipelineStage[]>([]);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [contactMap, setContactMap] = useState<Record<string, { name: string; entity: string | null }>>({});
   const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [newStage, setNewStage] = useState<string | null>(null);
+  const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
+  const [search, setSearch] = useState("");
+  const [ownerFilter, setOwnerFilter] = useState("all");
+  const [coaches, setCoaches] = useState<{ user_id: string; name: string }[]>([]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { loadPipelines(); }, []);
+  useEffect(() => { if (activePipelineId) loadBoard(activePipelineId); }, [activePipelineId]);
 
-  const load = async () => {
+  const loadPipelines = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("clients")
-      .select("id, first_name, last_name, entity_name, status, funding_goal, linked_user_id")
-      .order("created_at", { ascending: false });
-    if (error) toast.error(error.message);
-    setClients(data || []);
+    const { data, error } = await supabase.from("pipelines").select("*").order("is_default", { ascending: false }).order("name");
+    if (error) { toast.error(error.message); setLoading(false); return; }
+    setPipelines(data || []);
+    if (data && data.length) setActivePipelineId(data[0].id);
+    // load coaches once
+    const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
+    const ids = (roles || []).map((r: any) => r.user_id);
+    if (ids.length) {
+      const { data: profs } = await supabase.from("profiles").select("user_id, full_name").in("user_id", ids);
+      setCoaches((profs || []).map((p: any) => ({ user_id: p.user_id, name: p.full_name || "Coach" })));
+    }
     setLoading(false);
   };
 
-  const move = async (clientId: string, newStatus: string) => {
-    setClients((prev) => prev.map((c) => c.id === clientId ? { ...c, status: newStatus } : c));
-    const { error } = await supabase.from("clients").update({ status: newStatus }).eq("id", clientId);
-    if (error) toast.error(error.message);
-    else toast.success("Stage updated");
+  const loadBoard = async (pid: string) => {
+    const [{ data: st }, { data: ds }] = await Promise.all([
+      supabase.from("pipeline_stages").select("*").eq("pipeline_id", pid).order("order_index"),
+      supabase.from("deals").select("*").eq("pipeline_id", pid).order("created_at", { ascending: false }),
+    ]);
+    setStages((st as PipelineStage[]) || []);
+    const dealList = (ds as Deal[]) || [];
+    setDeals(dealList);
+
+    const contactIds = Array.from(new Set(dealList.map((d) => d.contact_client_id).filter(Boolean) as string[]));
+    if (contactIds.length) {
+      const { data: cs } = await supabase.from("clients").select("id, first_name, last_name, entity_name").in("id", contactIds);
+      const map: Record<string, { name: string; entity: string | null }> = {};
+      (cs || []).forEach((c: any) => {
+        map[c.id] = { name: `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || "Unnamed", entity: c.entity_name };
+      });
+      setContactMap(map);
+    } else setContactMap({});
   };
 
-  const onDragStart = (e: React.DragEvent, id: string) => {
-    e.dataTransfer.setData("text/plain", id);
-  };
-  const onDrop = (e: React.DragEvent, status: string) => {
+  const activePipeline = pipelines.find((p) => p.id === activePipelineId) || null;
+
+  const filteredDeals = useMemo(() => {
+    return deals.filter((d) => {
+      if (ownerFilter !== "all" && d.owner_user_id !== ownerFilter && !(ownerFilter === "unassigned" && !d.owner_user_id)) return false;
+      if (search) {
+        const hay = (d.title + " " + (contactMap[d.contact_client_id || ""]?.name || "")).toLowerCase();
+        if (!hay.includes(search.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [deals, ownerFilter, search, contactMap]);
+
+  const stats = useMemo(() => {
+    const open = filteredDeals.filter((d) => d.status === "open");
+    const openValue = open.reduce((s, d) => s + (d.value_cents || 0), 0);
+    const weighted = open.reduce((s, d) => {
+      const stage = stages.find((st) => st.id === d.stage_id);
+      return s + ((d.value_cents || 0) * (Number(stage?.probability ?? 0) / 100));
+    }, 0);
+    const wonThisMonth = filteredDeals.filter((d) => d.status === "won" && d.actual_close_date && new Date(d.actual_close_date).getMonth() === new Date().getMonth() && new Date(d.actual_close_date).getFullYear() === new Date().getFullYear());
+    const wonValue = wonThisMonth.reduce((s, d) => s + (d.value_cents || 0), 0);
+    return { openCount: open.length, openValue, weighted, wonCount: wonThisMonth.length, wonValue };
+  }, [filteredDeals, stages]);
+
+  const onDragStart = (e: React.DragEvent, id: string) => e.dataTransfer.setData("text/plain", id);
+  const onDrop = async (e: React.DragEvent, stageId: string) => {
     e.preventDefault();
     const id = e.dataTransfer.getData("text/plain");
-    if (id) move(id, status);
+    if (!id) return;
+    const deal = deals.find((d) => d.id === id);
+    if (!deal || deal.stage_id === stageId) return;
+    const newStage = stages.find((s) => s.id === stageId);
+    const payload: Partial<Deal> = { stage_id: stageId };
+    if (newStage?.stage_type === "won") { payload.status = "won"; payload.actual_close_date = new Date().toISOString().slice(0, 10); }
+    else if (newStage?.stage_type === "lost") { payload.status = "lost"; payload.actual_close_date = new Date().toISOString().slice(0, 10); }
+    else { payload.status = "open"; payload.actual_close_date = null; }
+    setDeals((prev) => prev.map((d) => d.id === id ? { ...d, ...payload } as Deal : d));
+    const { error } = await supabase.from("deals").update(payload).eq("id", id);
+    if (error) { toast.error(error.message); loadBoard(activePipelineId); return; }
+    await logDealActivity(id, "stage_changed", `Moved to ${newStage?.label}`);
+    toast.success(`Moved to ${newStage?.label}`);
   };
+
+  if (loading) return <div className="p-8 text-center text-muted-foreground">Loading pipeline…</div>;
+
+  if (!pipelines.length) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3">
+        <p className="text-muted-foreground">No pipelines yet.</p>
+        <Button asChild><Link to="/admin/settings/pipelines">Create your first pipeline</Link></Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold">Pipeline</h1>
-        <p className="text-sm text-muted-foreground">Drag contacts across stages.</p>
+      <div className="flex flex-wrap items-end gap-3 justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl sm:text-3xl font-bold">Pipeline</h1>
+          <p className="text-sm text-muted-foreground">Drag deals across stages. Click a card for full context.</p>
+        </div>
+        <div className="flex flex-wrap gap-2 items-center">
+          <Select value={activePipelineId} onValueChange={setActivePipelineId}>
+            <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {pipelines.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}{p.is_default ? " · default" : ""}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button asChild variant="outline" size="sm"><Link to="/admin/settings/pipelines"><Settings className="w-4 h-4 mr-1" /> Configure</Link></Button>
+          <Button size="sm" onClick={() => { setNewStage(null); setShowNew(true); }}><Plus className="w-4 h-4 mr-1" /> New Deal</Button>
+        </div>
       </div>
-      {loading ? (
-        <div className="p-8 text-center text-muted-foreground">Loading pipeline…</div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          {STAGES.map((stage) => {
-            const items = clients.filter((c) => c.status === stage.key);
-            return (
-              <div
-                key={stage.key}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => onDrop(e, stage.key)}
-                className="bg-muted/30 rounded-lg p-3 min-h-[400px]"
-              >
-                <div className="flex items-center justify-between mb-3">
+
+      {/* Stats bar */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatTile label="Open deals" value={String(stats.openCount)} />
+        <StatTile label="Open pipeline value" value={formatMoney(stats.openValue)} />
+        <StatTile label="Weighted forecast" value={formatMoney(stats.weighted)} icon={<TrendingUp className="w-3.5 h-3.5" />} />
+        <StatTile label="Won this month" value={`${stats.wonCount} · ${formatMoney(stats.wonValue)}`} />
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <div className="relative flex-1 min-w-[200px] max-w-xs">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="Search deals or contacts…" className="pl-8 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+          <SelectTrigger className="w-48 h-9"><Filter className="w-3.5 h-3.5 mr-1" /><SelectValue placeholder="Owner" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All owners</SelectItem>
+            <SelectItem value="unassigned">Unassigned</SelectItem>
+            {coaches.map((c) => <SelectItem key={c.user_id} value={c.user_id}>{c.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Board */}
+      <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1">
+        {stages.map((stage) => {
+          const items = filteredDeals.filter((d) => d.stage_id === stage.id);
+          const stageValue = items.reduce((s, d) => s + (d.value_cents || 0), 0);
+          return (
+            <div
+              key={stage.id}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => onDrop(e, stage.id)}
+              className="bg-muted/30 rounded-lg p-3 min-h-[420px] w-72 shrink-0"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full" style={{ background: stage.color }} />
                   <div className="font-semibold text-sm">{stage.label}</div>
-                  <Badge variant="outline">{items.length}</Badge>
                 </div>
-                <div className="space-y-2">
-                  {items.map((c) => (
+                <Badge variant="outline">{items.length}</Badge>
+              </div>
+              <div className="text-xs text-muted-foreground mb-3 flex justify-between">
+                <span>{formatMoney(stageValue)}</span>
+                <span>{stage.probability}%</span>
+              </div>
+              <div className="space-y-2">
+                {items.map((d) => {
+                  const c = d.contact_client_id ? contactMap[d.contact_client_id] : null;
+                  return (
                     <Card
-                      key={c.id}
+                      key={d.id}
                       draggable
-                      onDragStart={(e) => onDragStart(e, c.id)}
-                      onClick={() => navigate(
-                        c.linked_user_id
-                          ? `/admin/clients/user/${c.linked_user_id}`
-                          : `/admin/clients/internal/${c.id}`
-                      )}
+                      onDragStart={(e) => onDragStart(e, d.id)}
+                      onClick={() => setSelectedDeal(d)}
                       className="p-3 cursor-grab active:cursor-grabbing hover:border-accent transition-colors"
                     >
-                      <div className="font-medium text-sm">{c.first_name} {c.last_name}</div>
-                      {c.entity_name && <div className="text-xs text-muted-foreground truncate">{c.entity_name}</div>}
-                      {c.funding_goal && (
-                        <div className="text-xs text-accent mt-1">${Number(c.funding_goal).toLocaleString()}</div>
-                      )}
+                      <div className="font-medium text-sm line-clamp-2">{d.title}</div>
+                      {c && <div className="text-xs text-muted-foreground truncate mt-0.5">{c.name}{c.entity ? ` · ${c.entity}` : ""}</div>}
+                      <div className="flex justify-between items-center mt-2">
+                        <span className="text-xs font-semibold text-accent">{formatMoney(d.value_cents, d.currency)}</span>
+                        {d.expected_close_date && <span className="text-[10px] text-muted-foreground">{new Date(d.expected_close_date).toLocaleDateString()}</span>}
+                      </div>
                     </Card>
-                  ))}
-                </div>
+                  );
+                })}
+                <button
+                  onClick={() => { setNewStage(stage.id); setShowNew(true); }}
+                  className="w-full text-xs text-muted-foreground hover:text-foreground py-1.5 border border-dashed border-border rounded hover:border-accent transition-colors"
+                >+ Add deal</button>
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          );
+        })}
+      </div>
+
+      <NewDealDialog
+        open={showNew}
+        onOpenChange={setShowNew}
+        pipeline={activePipeline}
+        stages={stages}
+        defaultStageId={newStage}
+        onCreated={() => loadBoard(activePipelineId)}
+      />
+
+      <DealDrawer
+        deal={selectedDeal}
+        stages={stages}
+        open={!!selectedDeal}
+        onOpenChange={(v) => !v && setSelectedDeal(null)}
+        onChanged={() => loadBoard(activePipelineId)}
+      />
     </div>
+  );
+}
+
+function StatTile({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
+  return (
+    <Card className="p-3">
+      <div className="text-xs text-muted-foreground flex items-center gap-1">{icon}{label}</div>
+      <div className="text-lg font-semibold mt-1">{value}</div>
+    </Card>
   );
 }

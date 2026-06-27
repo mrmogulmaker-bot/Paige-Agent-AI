@@ -3348,6 +3348,129 @@ export type Database = {
         }
         Relationships: []
       }
+      deal_activities: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          deal_id: string
+          id: string
+          payload: Json
+          summary: string | null
+          type: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          deal_id: string
+          id?: string
+          payload?: Json
+          summary?: string | null
+          type: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          deal_id?: string
+          id?: string
+          payload?: Json
+          summary?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deal_activities_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deals: {
+        Row: {
+          actual_close_date: string | null
+          contact_client_id: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          expected_close_date: string | null
+          id: string
+          lost_reason: string | null
+          notes: string | null
+          owner_user_id: string | null
+          pipeline_id: string
+          source: string | null
+          stage_id: string
+          status: string
+          tags: string[]
+          title: string
+          updated_at: string
+          value_cents: number
+        }
+        Insert: {
+          actual_close_date?: string | null
+          contact_client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          expected_close_date?: string | null
+          id?: string
+          lost_reason?: string | null
+          notes?: string | null
+          owner_user_id?: string | null
+          pipeline_id: string
+          source?: string | null
+          stage_id: string
+          status?: string
+          tags?: string[]
+          title: string
+          updated_at?: string
+          value_cents?: number
+        }
+        Update: {
+          actual_close_date?: string | null
+          contact_client_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          expected_close_date?: string | null
+          id?: string
+          lost_reason?: string | null
+          notes?: string | null
+          owner_user_id?: string | null
+          pipeline_id?: string
+          source?: string | null
+          stage_id?: string
+          status?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          value_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deals_contact_client_id_fkey"
+            columns: ["contact_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deals_stage_id_fkey"
+            columns: ["stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       disclosure_templates: {
         Row: {
           content: string
@@ -5638,6 +5761,83 @@ export type Database = {
         }
         Relationships: []
       }
+      pipeline_stages: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          label: string
+          order_index: number
+          pipeline_id: string
+          probability: number
+          stage_type: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          label: string
+          order_index?: number
+          pipeline_id: string
+          probability?: number
+          stage_type?: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          label?: string
+          order_index?: number
+          pipeline_id?: string
+          probability?: number
+          stage_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_stages_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipelines: {
+        Row: {
+          color: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_default: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       plaid_notifications: {
         Row: {
           channel: string
@@ -6924,6 +7124,7 @@ export type Database = {
         Row: {
           biz_id: string | null
           created_at: string | null
+          deal_id: string | null
           description: string | null
           due_date: string | null
           id: string
@@ -6938,6 +7139,7 @@ export type Database = {
         Insert: {
           biz_id?: string | null
           created_at?: string | null
+          deal_id?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
@@ -6952,6 +7154,7 @@ export type Database = {
         Update: {
           biz_id?: string | null
           created_at?: string | null
+          deal_id?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
@@ -6969,6 +7172,13 @@ export type Database = {
             columns: ["biz_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
             referencedColumns: ["id"]
           },
         ]
