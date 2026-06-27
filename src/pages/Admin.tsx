@@ -56,6 +56,12 @@ const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
 const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
 const PipelineSettings = lazy(() => import("@/pages/admin/PipelineSettings"));
 const TasksAdmin = lazy(() => import("@/pages/admin/TasksAdmin"));
+const WorkflowsList = lazy(() => import("@/pages/admin/WorkflowsList"));
+const WorkflowDetail = lazy(() => import("@/pages/admin/WorkflowDetail"));
+const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
+const WorkflowRunDetail = lazy(() => import("@/pages/admin/WorkflowRunDetail"));
+const ApprovalsInbox = lazy(() => import("@/pages/admin/ApprovalsInbox"));
+const ApprovalDetail = lazy(() => import("@/pages/admin/ApprovalDetail"));
 
 const SuspenseFallback = () => (
   <div className="flex items-center justify-center py-12">
