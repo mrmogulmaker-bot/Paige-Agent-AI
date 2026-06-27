@@ -5613,6 +5613,42 @@ export type Database = {
           },
         ]
       }
+      mma_os_bridge_outbox: {
+        Row: {
+          attempts: number
+          created_at: string
+          delivered_at: string | null
+          id: string
+          last_error: string | null
+          next_retry_at: string
+          payload: Json
+          updated_at: string
+          verb: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          last_error?: string | null
+          next_retry_at?: string
+          payload: Json
+          updated_at?: string
+          verb: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          last_error?: string | null
+          next_retry_at?: string
+          payload?: Json
+          updated_at?: string
+          verb?: string
+        }
+        Relationships: []
+      }
       naics_codes: {
         Row: {
           created_at: string | null
