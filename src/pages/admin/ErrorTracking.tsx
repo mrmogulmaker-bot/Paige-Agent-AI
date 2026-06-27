@@ -27,11 +27,12 @@ export default function ErrorTracking() {
     void (async () => {
       const [cfg, runs] = await Promise.all([
         supabase.from("paige_config").select("sentry_org_slug, sentry_project_slug").eq("id", 1).maybeSingle(),
-        supabase.from("paige_workflow_runs").select("id, workflow_key, status, error, created_at").eq("status", "failed").order("created_at", { ascending: false }).limit(25),
+        supabase.from("paige_workflow_runs").select("id, registry_id, status, error, created_at").eq("status", "failed").order("created_at", { ascending: false }).limit(25),
       ]);
       setOrgSlug(cfg.data?.sentry_org_slug ?? "");
       setProjectSlug(cfg.data?.sentry_project_slug ?? "");
       setRecent((runs.data ?? []) as FailedRun[]);
+
     })();
   }, []);
 
