@@ -3679,6 +3679,133 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
                 .single();
               if (error) throw error;
               result = { success: true, log_id: row?.id };
+            } else if (tc.function.name === "crm_search_contacts") {
+              const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
+              let q = admin.from("clients").select(
+                "id, first_name, last_name, email, phone, entity_name, lifecycle_stage, status, source, tags, lead_score, assigned_coach_user_id, last_contacted_at, created_at"
+              );
+              if (args.lifecycle_stage) q = q.eq("lifecycle_stage", args.lifecycle_stage);
+              if (args.status) q = q.eq("status", args.status);
+              if (args.tag) q = q.contains("tags", [args.tag]);
+              if (args.assigned_coach_email) {
+                const { data: us } = await admin.auth.admin.listUsers();
+                const coach = us?.users?.find((x: any) => (x.email || "").toLowerCase() === String(args.assigned_coach_email).toLowerCase());
+                q = coach ? q.eq("assigned_coach_user_id", coach.id) : q.eq("assigned_coach_user_id", "00000000-0000-0000-0000-000000000000");
+              }
+              if (args.query) {
+                const s = String(args.query).replace(/[%,]/g, " ").trim();
+                q = q.or(`first_name.ilike.%${s}%,last_name.ilike.%${s}%,email.ilike.%${s}%,entity_name.ilike.%${s}%,phone.ilike.%${s}%`);
+              }
+              const sortMap: Record<string, [string, boolean]> = {
+                recent: ["created_at", false],
+                name: ["last_name", true],
+                lead_score: ["lead_score", false],
+                last_contacted: ["last_contacted_at", false],
+              };
+              const [col, asc] = sortMap[args.sort || "recent"] || sortMap.recent;
+              const { data, error } = await q.order(col, { ascending: asc, nullsFirst: false }).limit(limit);
+              if (error) throw error;
+              result = { success: true, count: data?.length || 0, contacts: data || [] };
+            } else if (tc.function.name === "crm_get_contact_summary") {
+              const id = args.client_id;
+              const [contact, deals, tasksRes, activities] = await Promise.all([
+                admin.from("clients").select("*").eq("id", id).maybeSingle(),
+                admin.from("deals").select("id, title, status, value_cents, currency, stage_id, expected_close_date, updated_at").eq("contact_client_id", id).order("updated_at", { ascending: false }).limit(20),
+                admin.from("tasks").select("id, title, status, due_date, track").eq("biz_id", id).neq("status", "completed").order("due_date", { ascending: true, nullsFirst: false }).limit(20),
+                admin.from("deal_activities").select("id, deal_id, type, summary, created_at").in("deal_id", []).limit(1),
+              ]);
+              if (contact.error) throw contact.error;
+              let recentActivity: any[] = [];
+              const dealIds = (deals.data || []).map((d: any) => d.id);
+              if (dealIds.length) {
+                const { data: a } = await admin.from("deal_activities").select("id, deal_id, type, summary, created_at").in("deal_id", dealIds).order("created_at", { ascending: false }).limit(10);
+                recentActivity = a || [];
+              }
+              const { data: commLog } = await admin.from("communication_log").select("channel, message_type, subject, preview, created_at").eq("user_id", (contact.data as any)?.linked_user_id || "00000000-0000-0000-0000-000000000000").order("created_at", { ascending: false }).limit(10);
+              result = {
+                success: true,
+                contact: contact.data,
+                deals: deals.data || [],
+                open_tasks: tasksRes.data || [],
+                recent_deal_activity: recentActivity,
+                recent_communications: commLog || [],
+              };
+            } else if (tc.function.name === "crm_list_deals") {
+              const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
+              let q = admin.from("deals").select(
+                "id, title, status, value_cents, currency, stage_id, expected_close_date, owner_user_id, contact_client_id, updated_at, pipeline_stages!inner(label)"
+              );
+              if (!args.status || args.status !== "all") q = q.eq("status", args.status || "open");
+              if (args.contact_client_id) q = q.eq("contact_client_id", args.contact_client_id);
+              if (args.stage_label) q = q.eq("pipeline_stages.label", args.stage_label);
+              if (args.owner_email) {
+                const { data: us } = await admin.auth.admin.listUsers();
+                const owner = us?.users?.find((x: any) => (x.email || "").toLowerCase() === String(args.owner_email).toLowerCase());
+                q = owner ? q.eq("owner_user_id", owner.id) : q.eq("owner_user_id", "00000000-0000-0000-0000-000000000000");
+              }
+              const { data, error } = await q.order("updated_at", { ascending: false }).limit(limit);
+              if (error) throw error;
+              result = { success: true, count: data?.length || 0, deals: data || [] };
+            } else if (tc.function.name === "crm_list_tasks") {
+              const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
+              let q = admin.from("tasks").select("id, title, status, due_date, track, user_id, biz_id, deal_id");
+              if (args.status && args.status !== "all") q = q.eq("status", args.status);
+              else q = q.neq("status", "completed");
+              if (args.assignee_email) {
+                const { data: us } = await admin.auth.admin.listUsers();
+                const a = us?.users?.find((x: any) => (x.email || "").toLowerCase() === String(args.assignee_email).toLowerCase());
+                q = a ? q.eq("user_id", a.id) : q.eq("user_id", "00000000-0000-0000-0000-000000000000");
+              }
+              const today = new Date().toISOString().slice(0, 10);
+              if (args.overdue) q = q.lt("due_date", today);
+              if (args.due_within_days) {
+                const end = new Date(Date.now() + Number(args.due_within_days) * 86400000).toISOString().slice(0, 10);
+                q = q.gte("due_date", today).lte("due_date", end);
+              }
+              const { data, error } = await q.order("due_date", { ascending: true, nullsFirst: false }).limit(limit);
+              if (error) throw error;
+              result = { success: true, count: data?.length || 0, tasks: data || [] };
+            } else if (tc.function.name === "crm_pipeline_summary") {
+              const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+              const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+              const [byStage, openDeals, openTasks, new7, new30] = await Promise.all([
+                admin.from("clients").select("lifecycle_stage"),
+                admin.from("deals").select("value_cents, stage_id, pipeline_stages!inner(label, probability)").eq("status", "open"),
+                admin.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"),
+                admin.from("clients").select("id", { count: "exact", head: true }).gte("created_at", sevenDaysAgo),
+                admin.from("clients").select("id", { count: "exact", head: true }).gte("created_at", thirtyDaysAgo),
+              ]);
+              const lifecycleCounts: Record<string, number> = {};
+              for (const r of (byStage.data || []) as any[]) {
+                const k = r.lifecycle_stage || "lead";
+                lifecycleCounts[k] = (lifecycleCounts[k] || 0) + 1;
+              }
+              const stageRollup: Record<string, { count: number; value_cents: number; weighted_cents: number }> = {};
+              let totalOpenValue = 0;
+              let weightedForecast = 0;
+              for (const d of (openDeals.data || []) as any[]) {
+                const label = d.pipeline_stages?.label || "Unstaged";
+                const prob = Number(d.pipeline_stages?.probability || 0) / 100;
+                const v = Number(d.value_cents || 0);
+                stageRollup[label] = stageRollup[label] || { count: 0, value_cents: 0, weighted_cents: 0 };
+                stageRollup[label].count += 1;
+                stageRollup[label].value_cents += v;
+                stageRollup[label].weighted_cents += Math.round(v * prob);
+                totalOpenValue += v;
+                weightedForecast += v * prob;
+              }
+              result = {
+                success: true,
+                total_contacts: (byStage.data || []).length,
+                contacts_by_lifecycle: lifecycleCounts,
+                new_contacts_last_7_days: new7.count || 0,
+                new_contacts_last_30_days: new30.count || 0,
+                open_tasks: openTasks.count || 0,
+                open_deals_count: (openDeals.data || []).length,
+                open_pipeline_value_cents: totalOpenValue,
+                weighted_forecast_cents: Math.round(weightedForecast),
+                stage_rollup: stageRollup,
+              };
             }
 
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
