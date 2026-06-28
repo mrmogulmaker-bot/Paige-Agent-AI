@@ -217,3 +217,6 @@ const featureTitle = { fontSize: '14px', fontWeight: '600' as const, color: '#0a
 const featureItem = { fontSize: '14px', color: '#4b5563', lineHeight: '1.6', margin: '0 0 8px' }
 const hr = { borderColor: '#e5e7eb', margin: '24px 40px' }
 const footer = { fontSize: '12px', color: '#9ca3af', textAlign: 'center' as const, margin: '0', padding: '0 40px 32px' }
+const messageBlock = { backgroundColor: '#fef9ef', borderLeft: '3px solid #CFAE70', padding: '14px 18px', margin: '0 0 24px', borderRadius: '4px' }
+const messageLabel = { fontSize: '10px', color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '1.5px', margin: '0 0 6px', fontWeight: '600' as const }
+const messageText = { fontSize: '14px', color: '#374151', lineHeight: '1.6', margin: '0', fontStyle: 'italic' as const }
