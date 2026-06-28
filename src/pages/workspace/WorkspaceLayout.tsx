@@ -75,6 +75,9 @@ export default function WorkspaceLayout() {
             <NavLink to="/workspace/phases" className={({ isActive }) => `workspace-nav-link ${isActive ? "active" : ""}`}>
               Phases
             </NavLink>
+            <NavLink to="/workspace/intake" className={({ isActive }) => `workspace-nav-link ${isActive ? "active" : ""}`}>
+              Intake
+            </NavLink>
             <NavLink to="/workspace/documents" className={({ isActive }) => `workspace-nav-link ${isActive ? "active" : ""}`}>
               Documents
             </NavLink>
