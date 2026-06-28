@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
       funding_goal: data.funding_goal_usd ?? null,
       linked_user_id: user.id,
       lifecycle_stage: route === "coach_qualify" ? "qualifying" : "self_serve",
-      source: "self_signup_public",
+      source: "paige_public_signup",
       tier: route === "coach_qualify" ? "btf_interested" : "self_serve",
       status: "active",
       current_notes:
