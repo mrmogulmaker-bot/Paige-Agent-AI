@@ -5568,7 +5568,9 @@ export type Database = {
           expires_at: string
           id: string
           invited_by: string
+          metadata: Json
           role: Database["public"]["Enums"]["app_role"]
+          template_name: string | null
           token: string | null
           token_hash: string | null
         }
@@ -5579,7 +5581,9 @@ export type Database = {
           expires_at?: string
           id?: string
           invited_by: string
+          metadata?: Json
           role?: Database["public"]["Enums"]["app_role"]
+          template_name?: string | null
           token?: string | null
           token_hash?: string | null
         }
@@ -5590,7 +5594,9 @@ export type Database = {
           expires_at?: string
           id?: string
           invited_by?: string
+          metadata?: Json
           role?: Database["public"]["Enums"]["app_role"]
+          template_name?: string | null
           token?: string | null
           token_hash?: string | null
         }
@@ -8569,6 +8575,9 @@ export type Database = {
           ssn_last_4: string | null
           state: string | null
           stripe_customer_id: string | null
+          suspended_at: string | null
+          suspended_by: string | null
+          suspended_reason: string | null
           total_liquid_assets_range: string | null
           updated_at: string | null
           user_id: string
@@ -8640,6 +8649,9 @@ export type Database = {
           ssn_last_4?: string | null
           state?: string | null
           stripe_customer_id?: string | null
+          suspended_at?: string | null
+          suspended_by?: string | null
+          suspended_reason?: string | null
           total_liquid_assets_range?: string | null
           updated_at?: string | null
           user_id: string
@@ -8711,6 +8723,9 @@ export type Database = {
           ssn_last_4?: string | null
           state?: string | null
           stripe_customer_id?: string | null
+          suspended_at?: string | null
+          suspended_by?: string | null
+          suspended_reason?: string | null
           total_liquid_assets_range?: string | null
           updated_at?: string | null
           user_id?: string
@@ -10502,6 +10517,9 @@ export type Database = {
           ssn_last_4: string | null
           state: string | null
           stripe_customer_id: string | null
+          suspended_at: string | null
+          suspended_by: string | null
+          suspended_reason: string | null
           total_liquid_assets_range: string | null
           updated_at: string | null
           user_id: string
@@ -10594,6 +10612,7 @@ export type Database = {
           flagged_low: number
         }[]
       }
+      reactivate_user: { Args: { _user_id: string }; Returns: undefined }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
         Returns: {
@@ -10601,6 +10620,10 @@ export type Database = {
           msg_id: number
           read_ct: number
         }[]
+      }
+      reassign_coach_clients: {
+        Args: { _from_coach: string; _to_coach: string }
+        Returns: number
       }
       refresh_analytics_views: { Args: never; Returns: undefined }
       reject_affiliate_application: {
@@ -10615,6 +10638,10 @@ export type Database = {
           _stage_slug: string
         }
         Returns: Json
+      }
+      suspend_user: {
+        Args: { _reason: string; _user_id: string }
+        Returns: undefined
       }
       tier_pool_for_role: {
         Args: { _role: Database["public"]["Enums"]["app_role"] }
@@ -10685,6 +10712,7 @@ export type Database = {
         | "cs_rep"
         | "finance"
         | "viewer"
+        | "client"
       btf_doc_status: "pending" | "uploaded" | "approved" | "rejected"
       btf_item_status: "pending" | "in_progress" | "complete"
       btf_phase: "build" | "stack" | "fund" | "complete"
@@ -10961,6 +10989,7 @@ export const Constants = {
         "cs_rep",
         "finance",
         "viewer",
+        "client",
       ],
       btf_doc_status: ["pending", "uploaded", "approved", "rejected"],
       btf_item_status: ["pending", "in_progress", "complete"],

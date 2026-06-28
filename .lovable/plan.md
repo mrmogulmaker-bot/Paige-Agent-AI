@@ -1,159 +1,134 @@
 
-# BTF Client Workspace v1 — Build Plan
+# Paige Platform — Days 4-7 Plan (Multi-Role SaaS Lock-in)
 
-Spec read in full (mma-os repo, BTF-CLIENT-WORKSPACE-SPEC.md, 252 lines). Scope is achievable, schema is mostly clean, but there are 5 honest pushbacks before we cut a line of code.
+## 1. Schema audit — what already exists
 
----
+Good news: most primitives are already in place.
 
-## 1. Scope agreement
+**`app_role` enum (12 values, live today):**
+`admin · super_admin · sales_rep · coach · cs_rep · finance · broker · broker_team_member · affiliate · moderator · viewer · user`
 
-Agreed on the v1 cut as written, with these adjustments:
+**Functions:**
+- `is_platform_owner()` — already hardcodes Antonio. Owner is derived, not a row.
+- `has_role(uid, role)` — used in every RLS policy.
+- `prevent_owner_admin_removal` trigger on `user_roles` — already protects Antonio.
 
-- **Pull Funding Outcome (Section G) entirely to v2.** Spec already flags it as deferrable; locking it in v1 buys us ~1 day.
-- **Coach Messages in v1 = text + single file attachment only.** No pinning, no read receipts, no typing indicators. Pinning slides to v1.1.
-- **Intake Form = single wizard, no mid-flow edit in v1.** Editable later post-submit is v2. Jacqueline submits once, Antonio Daniel edits on her behalf via coach view if needed.
-- **"What's next" callout on Dashboard** — driven by simplest rule (first non-complete `btf_phase_items` row assigned to client). No ML, no Paige reasoning.
+**Tables:**
+- `user_roles` (uid + role, unique) — already has owner-scoped RLS.
+- `invitations` (email, role, token_hash, expires_at, accepted_at) — already hashed + 7-day TTL.
+- `profiles` — exists, no `suspended` flag yet.
+- `clients` — has `linked_user_id`, `tier`, `assigned_coach_user_id`, `source`.
 
-Everything else in the v1 list stays.
+**Edge functions:**
+- `send-admin-invitation`, `admin-list-users`, `admin-delete-user`, `admin-force-signout`, `invite-affiliate`, `invite-btf-client` (Day 3).
 
----
+**Auth UI:** `src/pages/Auth.tsx` already wires Google + Apple via `lovable.auth.signInWithOAuth`.
 
-## 2. Schema review — fits cleanly with one restructure
+## 2. Reuse vs build
 
-The 4 new tables (`btf_workspace_settings`, `btf_phase_items`, `btf_document_requests`, `btf_messages`) fit Paige's existing model. Notes:
+| Need | Reuse | Net new |
+|---|---|---|
+| Role storage | `user_roles` + `app_role` enum | Add `client` enum value (single value; cleaner RLS than deriving) |
+| Owner concept | `is_platform_owner()` | Nothing — owner stays derived, no enum value, no row. Footgun avoided. |
+| Invitations table + token hashing | `invitations` (already perfect shape) | Add optional `metadata jsonb` for role-specific onboarding hints |
+| Admin invite send | `send-admin-invitation` edge fn | Add role-aware template selection |
+| Self-serve signup auth | `Auth.tsx` Google/Apple pattern | New `/signup` page using same `lovable.auth.signInWithOAuth` helper |
+| Suspend / re-enable | none | `profiles.suspended_at` + `suspended_reason` + admin RPC |
+| Coach reassignment on removal | `clients.assigned_coach_user_id` | Reassignment RPC + UI modal |
+| Accept-invite landing | `/workspace/accept-invite` placeholder + `Auth.tsx` reset flow | One unified `/accept-invite?token=…` page that branches by invited role |
+| Owner dashboard widgets | existing admin pages | Stats card grid on `/admin` index |
+| Public lead → mma-os | `mma_os_bridge_outbox` + `paige-bridge` patterns | Call `sales_dept.handle_new_lead` after signup completes |
 
-**Reuses cleanly:**
-- `clients.tier` already exists (Wave 2) → set `tier='btf_dfy'` to gate workspace access via RLS
-- `clients.assigned_coach_user_id` already exists → drop `assigned_coach_id` from `btf_workspace_settings` (duplicate field, source-of-truth conflict)
-- `clients.ghl_contact_id` + new `mma_os_btf_deal_id` give us the cross-system join
-- `paige_audit_log` already exists → use for phase advancement audit trail; no new audit table
-- Existing `documents` table has the storage pattern — `btf_document_requests` should reference an entry in `documents` rather than re-storing `file_url/size/type` (avoid drift)
+## 3. Build order
 
-**Schema changes I'd make to the spec:**
-- Drop `assigned_coach_id` from `btf_workspace_settings` (use `clients.assigned_coach_user_id`)
-- `btf_document_requests` stores request metadata + a nullable `document_id` fk to `documents`; actual file lives in `documents` + storage bucket
-- Add `phase` enum (`build|stack|fund|complete`) at DB level, not text
-- `btf_phase_items` needs a `sort_order int` for deterministic checklist rendering
-- `btf_messages.sender_id` should be `uuid` (auth.users.id), not text — clean role check
-- New storage bucket `btf-client-docs` (private, RLS by client_id) — separate from existing `personal-documents` / `business-documents` to keep BTF auditable
+Recommendation: **Day 4 first, then Day 6, then Day 5, then Day 7.** One small swap from your order — here's why:
 
-**RLS plan:**
-- Client role (new): sees only own `btf_*` rows via `client_id = (select id from clients where linked_user_id = auth.uid())`
-- Coach role: sees rows where the underlying `clients.assigned_coach_user_id = auth.uid()` (reuses Wave 3 hybrid pattern)
-- Admin: full read (existing pattern)
+1. **Day 4 (Members panel)** is the foundation. Without it, every other invite flow has no UI to trigger from, and we have no way to see invite state.
+2. **Day 6 (Internal invite flow)** plugs straight into Day 4's "Invite Member" button and reuses `send-admin-invitation`. Doing these back-to-back is one tight loop.
+3. **Day 5 (Public signup)** is the bigger build (multi-step wizard + bridge handoff + persona routing). It's standalone — doesn't depend on Day 4/6 — so it can ship as soon as the team flow is done without rework.
+4. **Day 7 (Polish + owner home)** sits on top of everything else; needs the others to exist before it can summarize them.
 
----
+Day 3 invite endpoint ships independently (already live).
 
-## 3. Primitives we reuse vs new builds
+## 4. Detailed scope per day
 
-| Capability | Status |
-|---|---|
-| Auth (Supabase) | Reuse |
-| `invite_user` action | **New white-label variant** — `invite_btf_client` (different from-address, no Paige copy, branded landing) |
-| RLS hybrid pattern | Reuse (Wave 3) |
-| Coach assignment + round-robin | Reuse — but seed `paige_assignment_policy` row for `tier='btf_dfy'` set to `manual` for v1 (Antonio assigns, no auto) |
-| Document upload component | Reuse `DocumentUpload.tsx`, point at new bucket |
-| `paige-bridge` outbound | Reuse pattern; add 4 verbs on **mma-os side** (outside our codebase — Antonio coordinates with MMA Ops chat) |
-| `paige_admin_notifications` | Reuse for coach pings ("new client message", "doc uploaded") |
-| Realtime subscriptions | Reuse (already wired Phase 1) for live message/checklist updates |
-| Brand theme | **New** — white-label theme provider scoped to `/workspace/*` routes (Navy/Gold/Bookman/Calibri), zero Paige strings |
-| AdminBridgeBell, AdminLayout | NOT reused — workspace gets its own minimal shell `WorkspaceLayout.tsx` |
+### Day 4 — `/admin/members` (owner + admin only)
 
----
+- New page: filterable table of all platform users (joined from `auth.users` via `admin-list-users` + `user_roles`).
+- Filters: role chips (Owner / Admin / Sales / Coach / Broker / Client / All) + search by email/name + status (active / suspended / pending invite).
+- Row actions dropdown: **Add Role**, **Remove Role**, **Suspend**, **Re-enable**, **Force Sign Out**, **Remove User**.
+- Removing a coach with active clients prompts a modal to reassign them to another coach first (blocks removal until done).
+- Owner row is read-only (locked by existing trigger; UI grays the action menu).
+- Pending invites table at the bottom (from `invitations` WHERE `accepted_at IS NULL`), with **Resend** and **Revoke** actions.
 
-## 4. White-label — technical concerns
+### Day 5 — `/signup` public self-serve
 
-Low risk overall. Concrete must-dos:
+- Public route, no auth guard. Layout uses Mogul Maker Academy branding (NOT Paige).
+- Step 0: SSO row (Google + Apple via existing `lovable.auth` helper) + email/password fallback. Pre-fills next step from SSO profile.
+- Step 1: Identity — full legal name, preferred name, phone (email auto-fills).
+- Step 2: Business — entity name, structure dropdown (LLC / S-Corp / C-Corp / Sole Prop / "I don't have one yet"), state, formation date, EIN (optional), business address ("I need help getting one" toggle).
+- Step 3: Financials — personal credit band radio (Excellent / Good / Fair / Building), W-2 income (optional), funding goal $ + timeline.
+- Step 4: Attribution — source dropdown (Workshop Wed / Launch Pad / Skool / Ad / Referral / Direct / Other) + optional referral code.
+- On submit:
+  - Insert `clients` row with `source` = attribution choice, `tier` = `'self_serve'`, `linked_user_id` = new auth user.
+  - Grant `client` role via `user_roles`.
+  - Enqueue `sales_dept.handle_new_lead` through `mma_os_bridge_outbox` (with funding_goal + persona hint).
+  - Route by funding goal: `<$10K` → straight to `/workspace`; `$10K+` → "Talk to a coach first" page that books a Cal.com slot + queues a sales notification.
+- Autosave per step into `client_memory` so a dropped session can resume.
 
-- **Route isolation:** all client UI under `/workspace/*`; no shared chrome with `/app` or `/admin`
-- **`<title>` + meta tags** per-route via `react-helmet-async` (already installed) — never emit "Paige"
-- **Email templates:** new Resend templates, from `antonio@mogulmakeracademy.com`, custom HTML — do NOT reuse existing Paige auth templates (Supabase auth email templates need a separate set OR we send custom invites via edge function and skip Supabase's built-in)
-- **Auth flow gotcha:** Supabase's default "magic link" / "confirm signup" emails ARE branded by us in dashboard settings — we have ONE set of templates per project. Recommend: send invite via custom edge function with a signed token → client lands on `/workspace/accept-invite?token=…` → we call `admin.createUser` server-side → set password → sign in. Bypasses Supabase's templated emails entirely.
-- **Favicon + OG tags** per workspace route
-- **Console/network leak audit** before launch (no "paige" strings in payloads visible to client devtools — rename any user-facing API responses)
-- **Domain:** `portal.mogulmakeracademy.com` recommended over `workspace.buildbuyingpower.com` (shorter, owned, easier DNS). Needs a custom domain config; Lovable supports it but adds ~1 day for DNS + cert propagation.
+### Day 6 — Internal team invite flow
 
----
+- "Invite Member" button on `/admin/members` opens dialog: email + role multi-select + optional message.
+- Calls existing `send-admin-invitation` (extended to accept `role`, `templateName`).
+- Three new white-labeled email templates (alongside existing `role-invitation`):
+  - `team-invite-admin`, `team-invite-coach`, `team-invite-sales`, `team-invite-broker` — each with role-specific "what you'll be doing" copy. From `antonio@mogulmakeracademy.com`. Subject: "Join the Mogul Maker Academy team — [role]".
+- New unified `/accept-invite?token=…` page (replacing the placeholder workspace shell): validates token → if new user, password set + auth → assigns role(s) from the invitation row → routes by role (admin/sales/coach/broker → `/admin`, client → `/workspace`).
+- Resend + revoke wired from Day 4 pending-invites table.
 
-## 5. mma-os-bridge integration — blockers
+### Day 7 — Owner home + polish
 
-The 4 new verbs (`get_btf_deal_by_id`, `update_btf_phase`, `record_btf_payment`, `get_btf_workspace_summary`) are **outside this codebase** — they ship on the mma-os Edge Function. Our side just calls them via the existing bridge client pattern.
+- `/admin` index becomes Antonio's command center:
+  - Header KPI row: Total Members (by role pill counts), Active BTF Clients, Signups Last 7d, Pending Invites, Unread Approvals.
+  - Quick Actions panel: Invite Coach · Invite Client · Add Test Client · View Recent Activity.
+  - Recent Activity feed (joined from `paige_audit_log` + `analytics_events` last 24h).
+- "Add Test Client" opens a one-screen form that creates a `clients` row tagged `test_data` (filterable + bulk-deletable) — lets Antonio dogfood end-to-end without polluting real data.
+- White-label sweep: grep for "Paige" strings rendering on any `/workspace/*` or `/signup` or client-facing email; fix any leaks. Internal `/admin/*` keeps Paige branding.
+- Spot-check pass on every `/workspace/*` page — confirm each has real content (Day 1-2 placeholders for Phases and Payments get final copy + iconography).
 
-**Blockers / dependencies:**
-- Antonio needs to confirm with MMA Ops chat that those 4 verbs will be live before our Week 2 integration testing. Otherwise we stub them locally and swap in Week 3.
-- `mma-os.btf_deals` schema needs to be shared so we type the bridge responses correctly. Request: paste the table definition in the next turn.
-- Bridge auth key rotation just happened — workspace edge functions must use the current `MMA_OS_BRIDGE_API_KEY` secret. Already set.
-- Payment data is **read-only from mma-os** in v1 — Paige never writes payment state. `record_btf_payment` is a coach action that delegates to mma-os. Confirm that's the intent.
+## 5. Pushback on the spec
 
-No technical blockers on our side. Coordination risk only.
+- **Don't add `owner` to the enum.** `is_platform_owner()` is already the source of truth and the `prevent_owner_admin_removal` trigger already protects it. Adding `owner` as a grantable role would create a path to accidentally grant it. Owner stays derived from Antonio's auth uid only.
+- **Do add `client` to the enum.** Simplifies RLS (`has_role(uid, 'client')`) and lets us scope workspace data cleanly. Trivial migration.
+- **`profiles.suspended_at`** instead of deleting auth users for suspend/re-enable — keeps audit trail and lets us reverse it. Force sign-out + RLS check on the flag handles the lockout.
+- **Two invite tables is one too many.** `btf_workspace_invites` from Day 3 and the existing `invitations` table overlap. Keep them separate for now (different lifecycles and metadata shapes), but mark a Day 8+ task to unify under one polymorphic invite store once both flows are stable.
+- **Cal.com booking for "talk to a coach first"** assumes the Cal connector is wired with a real event type. If it isn't, fall back to a simple "we'll reach out within 24h" screen for v1 and queue the lead for sales.
+- **Apple Sign-In on `/signup`** works the same as `/auth` (already proven). No extra setup.
 
----
+## 6. Technical notes
 
-## 6. Build order (smallest meaningful slice first)
+- New migration: add `'client'` to `app_role`; add `profiles.suspended_at`, `profiles.suspended_reason`; add `invitations.metadata jsonb`; add `clients.tier` value `'self_serve'` (if a CHECK constraint exists).
+- New edge functions: `signup-complete-onboarding` (writes clients row + grants role + enqueues bridge call), `reassign-coach-clients` (RPC), `accept-invite` (validates token + grants roles + sets password).
+- Extend `send-admin-invitation` with `role` + `templateName` params; add the 4 new team-invite templates to the registry.
+- Frontend additions: `src/pages/admin/MembersAdmin.tsx`, `src/pages/Signup.tsx` + step components, `src/pages/AcceptInvite.tsx` (route `/accept-invite`, replacing the workspace placeholder), `src/components/admin/InviteMemberDialog.tsx`, `src/components/admin/ReassignCoachDialog.tsx`, owner dashboard widgets on `src/pages/Admin.tsx`.
+- RLS: extend `clients` and `workspace_*` policies to recognize `has_role(uid, 'client')` for self-access. Members panel reads protected by `is_platform_owner() OR has_role(uid, 'admin')`.
 
-**Week 1**
+## 7. Timeline
 
-1. **Day 1-2 — Foundation**
-   - Migration: 4 new tables, enums, storage bucket, RLS, seed phase-item templates for `build` phase
-   - White-label theme tokens + `WorkspaceLayout.tsx` shell
-   - Route scaffolding under `/workspace/*`
+Realistic ship windows on top of Day 3:
 
-2. **Day 3 — Auth + invite**
-   - `invite-btf-client` edge function (custom signed-token flow, MMA-branded email via Resend)
-   - `/workspace/accept-invite` page
-   - Client role + RLS verified end-to-end with a test account
+```text
+Week 1  | Day 4 Members panel + Day 6 internal invite flow (paired)
+Week 2  | Day 5 public /signup wizard + bridge handoff
+Week 3  | Day 7 owner home + white-label sweep + polish + QA
+```
 
-3. **Day 4-5 — Client-facing minimum loop**
-   - `/workspace` Dashboard (welcome, phase indicator, coach card, payment mini-card, what's next)
-   - `/workspace/intake` wizard (single submit, writes `btf_workspace_settings.intake_data`)
-   - `/workspace/phases` Phase Tracker (Phase 1 functional checklist, 2 & 3 locked tiles)
+**Total: ~3 weeks** from Day 3 → Day 7 done. Tighter than that risks shipping the public signup page without proper attribution wiring (which would lose data we'd rather not lose).
 
-**Week 2**
+## 8. What I need from you to start build
 
-4. **Day 6-7 — Documents + messaging**
-   - `/workspace/documents` (drop zone, requested-docs list, reuses `DocumentUpload`)
-   - `/workspace/messages` (basic thread, realtime, single attachment, email notify coach on new client msg)
+1. Approval on the order (4 → 6 → 5 → 7).
+2. Confirmation on the pushback list (especially: owner stays derived, add `client` enum value).
+3. Cal.com event type slug for the "talk to a coach first" booking embed — or greenlight to ship the fallback ("we'll reach out within 24h") for v1.
+4. For Day 5 attribution, confirm the dropdown options match how MMA OS expects to receive `source` on the `handle_new_lead` call.
 
-5. **Day 8 — Payment status (read-only)**
-   - `/workspace/payments` reads from mma-os via bridge `get_btf_workspace_summary`
-
-6. **Day 9 — Coach view**
-   - `/admin/btf` coach dashboard (client list + status)
-   - `/admin/btf/:clientId` per-client view (all client sections + mark-complete, advance-phase, request-doc, private notes, message)
-
-7. **Day 10 — Wire mma-os-bridge calls**
-   - `update_btf_phase` on advance
-   - `record_btf_payment` on coach log-payment
-   - `get_btf_deal_by_id` for dashboard hydration
-   - Fallback to local cache if bridge 5xx (already a pattern via outbox)
-
-8. **Day 11-12 — Hardening**
-   - White-label audit (grep for "paige" / "Paige" in `/workspace/*` bundle)
-   - RLS test matrix (client cannot see other client; coach cannot see unassigned clients; admin can)
-   - Send invite to test account, full happy-path walkthrough
-   - Antonio + a coach UAT
-
-9. **Day 13 — Production invite to Jacqueline**
-
-That's 13 working days. Tight but doable if mma-os verbs are live by Day 8.
-
----
-
-## 7. Pushback for Antonio
-
-1. **"Manual handling" payment flag** — spec doesn't say where it lives. Recommend: column on `mma-os.btf_deals`, surfaced via bridge. We don't replicate it in Paige.
-2. **Phase-item templates** — spec lists items but not who seeds them per new BTF client. Recommend: on workspace creation, an edge function clones a template row set from a new `btf_phase_item_templates` table. Otherwise every new client requires manual checklist creation.
-3. **"Share your win" social graphic** (v2) — flagging now that this needs design assets before Phase 3 clients exist. Not blocking v1.
-4. **Coach availability of Antonio Daniel + Tony Robinson** — they need accounts + the new `coach` role assigned + walkthrough. Recommend Antonio loops them in on Day 9 for UAT, not Day 13.
-5. **One-client-one-deal in v1** is fine, but `btf_workspace_settings` should have a `unique(client_id, mma_os_btf_deal_id)` constraint so we don't accidentally double-provision when Jacqueline starts business #2.
-6. **Realtime in messages** — pleasant but if mma-os-bridge slips, we ship messages with polling first (5s interval) and upgrade to realtime in v1.1. Keeps Day 13 honest.
-
----
-
-## 8. Timeline verdict
-
-- **v1 in 10–13 working days: realistic** if (a) mma-os 4 new verbs ship by our Day 8, (b) custom domain DNS is started Day 1, (c) Antonio Daniel + Tony Robinson are reachable for UAT Day 9.
-- **Slip risk:** mma-os verb readiness is the single biggest external dependency. Mitigation: stub the bridge responses Week 1 so all Paige-side dev proceeds in parallel.
-- **No technical blockers** on white-label, schema, or RLS.
-
-Awaiting greenlight + the `mma-os.btf_deals` schema before I move to build mode.
+Standing by for greenlight.
