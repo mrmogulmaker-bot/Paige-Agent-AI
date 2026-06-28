@@ -17,9 +17,10 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 });
 
 type Row = {
-  client_id: string;
+  id: string;
   email: string | null;
-  full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
   tier: string | null;
   unassigned_for_hours: number | null;
 };
