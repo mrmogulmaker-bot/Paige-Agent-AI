@@ -10,16 +10,126 @@ interface RoleInvitationProps {
   role?: string
   inviteUrl?: string
   invitedBy?: string
+  message?: string | null
 }
 
-const RoleInvitationEmail = ({ role, inviteUrl, invitedBy }: RoleInvitationProps) => {
+// Role-specific welcome copy + capability bullets.
+// Keeps the SAME visual template but adapts the words to what the recipient
+// actually gets to do once they sign in.
+const ROLE_COPY: Record<string, { headline: string; intro: string; features: string[] }> = {
+  Administrator: {
+    headline: "You're now an Administrator",
+    intro: "Full platform access — manage members, configure integrations, and oversee every client journey.",
+    features: [
+      "👥  Invite & manage the full team",
+      "⚙️  Platform settings & integrations",
+      "📊  Cross-client analytics & revenue reporting",
+      "🔐  Audit log + security controls",
+    ],
+  },
+  Coach: {
+    headline: "Welcome to your coaching workspace",
+    intro: "You'll be assigned clients to guide through the BUILD-to-FUND journey, with full visibility into their credit, business, and funding readiness.",
+    features: [
+      "🎯  Your assigned client roster & journey stages",
+      "💬  Real-time messaging with each client",
+      "📈  Health scores, milestones & next-best-action prompts",
+      "🤖  Paige AI as your co-pilot in every session",
+    ],
+  },
+  "Sales Rep": {
+    headline: "Your pipeline is ready",
+    intro: "Hit the ground running — manage your deals, follow up on warm leads, and route qualified buyers into the right offer.",
+    features: [
+      "📋  Kanban pipeline with custom stages",
+      "🔔  SLA alerts when leads go cold",
+      "📞  Conversation history per contact",
+      "💰  Revenue attribution & quota tracking",
+    ],
+  },
+  Broker: {
+    headline: "Your broker workspace is live",
+    intro: "Bring your clients into Paige, manage their funding strategy, and earn commission on every closed deal.",
+    features: [
+      "🏦  Client funding application tracking",
+      "💵  Real-time commission ledger",
+      "👥  Sub-team management (if applicable)",
+      "🤝  Direct access to lender intelligence",
+    ],
+  },
+  "Customer Success": {
+    headline: "Welcome to Customer Success",
+    intro: "Keep clients winning. You'll get the queues, the signals, and the playbooks to drive retention and outcomes.",
+    features: [
+      "❤️  Health-score dashboard across your book",
+      "📨  Auto-escalations + check-in cadences",
+      "🎓  Outcome milestone tracking",
+      "📞  Direct messaging & note history",
+    ],
+  },
+  Finance: {
+    headline: "Welcome to the Finance workspace",
+    intro: "Revenue, refunds, payouts, and reconciliation — all in one place, scoped to what you need to see.",
+    features: [
+      "💳  Stripe + invoice reconciliation",
+      "💸  Commission & payout ledger",
+      "📊  Revenue dashboards by offer",
+      "🧾  Refund & adjustment workflows",
+    ],
+  },
+  "Affiliate Partner": {
+    headline: "Welcome aboard, partner",
+    intro: "Track your referrals, watch commissions accrue in real time, and grab everything you need to promote.",
+    features: [
+      "🔗  Personal referral links & QR codes",
+      "💰  Real-time commission tracking",
+      "📈  Conversion analytics",
+      "🎨  Marketing assets & swipe copy",
+    ],
+  },
+  Moderator: {
+    headline: "Welcome, Moderator",
+    intro: "Keep the community healthy and the platform running smoothly.",
+    features: [
+      "💬  Conversation moderation tools",
+      "🚩  Flagged-content review queue",
+      "👥  Member status & history visibility",
+      "🛡️  Escalation routing to admins",
+    ],
+  },
+  Viewer: {
+    headline: "Read-only access granted",
+    intro: "You can review dashboards, reports, and client journeys without making changes.",
+    features: [
+      "📊  Cross-platform reporting dashboards",
+      "👀  Client journey & milestone visibility",
+      "📈  Revenue & outcome metrics",
+      "🔍  Search across the platform",
+    ],
+  },
+  Client: {
+    headline: "Welcome to your private workspace",
+    intro: "Everything you need to build credit, structure your business, and get funded — in one place.",
+    features: [
+      "📊  AI-powered credit analysis & monitoring",
+      "🎯  Personalized roadmap built for you",
+      "💰  Funding readiness tools & lender matching",
+      "💬  24/7 guidance from Paige",
+    ],
+  },
+}
+
+const DEFAULT_COPY = ROLE_COPY.Client
+
+const RoleInvitationEmail = ({ role, inviteUrl, invitedBy, message }: RoleInvitationProps) => {
   const roleLabel = role || 'Team Member'
   const link = inviteUrl || '#'
+  const copy = ROLE_COPY[roleLabel] ?? DEFAULT_COPY
 
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>You've been invited to join {SITE_NAME} as {roleLabel}</Preview>
+      <Preview>{copy.headline} — activate your {SITE_NAME} account</Preview>
       <Body style={main}>
         <Container style={container}>
           {/* Header bar */}
@@ -30,7 +140,7 @@ const RoleInvitationEmail = ({ role, inviteUrl, invitedBy }: RoleInvitationProps
 
           {/* Main content */}
           <Section style={contentSection}>
-            <Heading as="h2" style={h2}>You've Been Invited</Heading>
+            <Heading as="h2" style={h2}>{copy.headline}</Heading>
             <Text style={text}>
               {invitedBy
                 ? `${invitedBy} has invited you to join the ${SITE_NAME} platform.`
@@ -43,26 +153,30 @@ const RoleInvitationEmail = ({ role, inviteUrl, invitedBy }: RoleInvitationProps
               <Text style={roleBadge}>{roleLabel}</Text>
             </Section>
 
-            <Text style={text}>
-              Your account has been created and is ready. Click the button below to set your password and get started:
-            </Text>
+            <Text style={text}>{copy.intro}</Text>
+
+            {message ? (
+              <Section style={messageBlock}>
+                <Text style={messageLabel}>A NOTE FROM {invitedBy ? invitedBy.toUpperCase() : 'YOUR ADMIN'}</Text>
+                <Text style={messageText}>"{message}"</Text>
+              </Section>
+            ) : null}
 
             <Button style={button} href={link}>
-              Accept Invitation & Set Password
+              Activate Account & Set Password
             </Button>
 
             <Text style={helperText}>
-              This invitation will expire in 7 days. If you didn't expect this, you can safely ignore this email.
+              This invitation expires in 7 days. If you didn't expect this, you can safely ignore this email.
             </Text>
           </Section>
 
-          {/* What to expect */}
+          {/* What to expect — role-specific */}
           <Section style={featureSection}>
             <Text style={featureTitle}>What you'll get access to:</Text>
-            <Text style={featureItem}>📊  AI-powered credit analysis & monitoring</Text>
-            <Text style={featureItem}>🎯  Personalized credit improvement roadmaps</Text>
-            <Text style={featureItem}>💰  Funding readiness tools & lender matching</Text>
-            <Text style={featureItem}>💬  24/7 guidance from Paige, your AI credit coach</Text>
+            {copy.features.map((f, i) => (
+              <Text key={i} style={featureItem}>{f}</Text>
+            ))}
           </Section>
 
           <Hr style={hr} />
@@ -75,9 +189,13 @@ const RoleInvitationEmail = ({ role, inviteUrl, invitedBy }: RoleInvitationProps
 
 export const template = {
   component: RoleInvitationEmail,
-  subject: (data: Record<string, any>) => `You're invited to join ${SITE_NAME} as ${data.role || 'Team Member'}`,
+  subject: (data: Record<string, any>) => {
+    const role = data.role || 'Team Member'
+    const copy = ROLE_COPY[role] ?? DEFAULT_COPY
+    return `${copy.headline} · ${SITE_NAME}`
+  },
   displayName: 'Role Invitation',
-  previewData: { role: 'Administrator', inviteUrl: 'https://paigeagent.ai/auth?invite=sample-token', invitedBy: 'Antonio' },
+  previewData: { role: 'Coach', inviteUrl: 'https://paigeagent.ai/accept-invite?token=sample', invitedBy: 'Antonio', message: 'Welcome aboard — excited to have you on the team.' },
 } satisfies TemplateEntry
 
 // Styles — premium PME branding
