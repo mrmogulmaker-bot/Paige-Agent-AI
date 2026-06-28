@@ -459,6 +459,88 @@ Deno.serve(async (req) => {
       }
 
       // -----------------------------------------------------------------
+      case "get_coach_for_client": {
+        const p = GetCoachForClientSchema.parse(payload);
+        const { data: client } = await supabase
+          .from("clients")
+          .select("id, email")
+          .ilike("email", p.email)
+          .limit(1)
+          .maybeSingle();
+        if (!client?.id) return ok(verb, { client_id: null, assignments: [] });
+
+        const { data: rows, error } = await supabase
+          .from("paige_coach_assignments")
+          .select("assigned_role, rep_user_id, assigned_at, metadata")
+          .eq("contact_id", client.id)
+          .eq("active", true);
+        if (error) throw error;
+
+        const userIds = (rows ?? []).map((r: any) => r.rep_user_id).filter(Boolean);
+        const emails: Record<string, string> = {};
+        if (userIds.length) {
+          const { data: list } = await supabase.auth.admin.listUsers();
+          for (const u of list?.users ?? []) {
+            if (userIds.includes(u.id)) emails[u.id] = u.email ?? "";
+          }
+        }
+        const assignments = (rows ?? []).map((r: any) => ({
+          role: r.assigned_role,
+          user_id: r.rep_user_id,
+          email: r.rep_user_id ? emails[r.rep_user_id] ?? null : null,
+          assigned_at: r.assigned_at,
+        }));
+        return ok(verb, { client_id: client.id, assignments });
+      }
+
+      // -----------------------------------------------------------------
+      case "get_opportunities_for_contact": {
+        const p = GetOpportunitiesForContactSchema.parse(payload);
+        const { data: client } = await supabase
+          .from("clients").select("id").ilike("email", p.email).limit(1).maybeSingle();
+        if (!client?.id) return ok(verb, { client_id: null, deals: [] });
+
+        const { data, error } = await supabase
+          .from("deals")
+          .select("id, title, value_cents, currency, status, expected_close_date, actual_close_date, lost_reason, source, tags, created_at, updated_at, pipeline_id, stage_id, pipelines(name), pipeline_stages(name)")
+          .eq("contact_client_id", client.id)
+          .order("updated_at", { ascending: false })
+          .limit(p.limit);
+        if (error) throw error;
+        const deals = (data ?? []).map((d: any) => ({
+          id: d.id,
+          title: d.title,
+          value_cents: d.value_cents,
+          currency: d.currency,
+          status: d.status,
+          expected_close_date: d.expected_close_date,
+          actual_close_date: d.actual_close_date,
+          lost_reason: d.lost_reason,
+          source: d.source,
+          tags: d.tags,
+          pipeline: d.pipelines?.name ?? null,
+          stage: d.pipeline_stages?.name ?? null,
+          created_at: d.created_at,
+          updated_at: d.updated_at,
+        }));
+        return ok(verb, { client_id: client.id, deals });
+      }
+
+      // -----------------------------------------------------------------
+      case "list_modified_clients_since": {
+        const p = ListModifiedClientsSinceSchema.parse(payload);
+        const { data, error } = await supabase
+          .from("clients")
+          .select("id, email, first_name, last_name, phone, tier, ghl_contact_id, lifecycle_stage, lead_score, tags, updated_at, mirror_source")
+          .gt("updated_at", p.since)
+          .or("mirror_source.is.null,mirror_source.neq.mma_os")
+          .order("updated_at", { ascending: true })
+          .limit(p.limit);
+        if (error) throw error;
+        return ok(verb, { count: data?.length ?? 0, clients: data ?? [] });
+      }
+
+      // -----------------------------------------------------------------
       default:
         return fail(verb, 400, `Unknown verb: ${verb}`);
     }
