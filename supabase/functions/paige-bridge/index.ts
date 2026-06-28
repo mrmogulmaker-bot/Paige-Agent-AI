@@ -108,6 +108,8 @@ const LogMessageSendSchema = z.object({
   error: z.string().max(4000).nullable().optional(),
 });
 
+const TierEnum = z.enum(["lead","standard","premium","vip","internal","staff","free"]);
+
 const UpsertContactMirrorSchema = z.object({
   email: z.string().email(),
   first_name: z.string().max(100).nullable().optional(),
@@ -115,7 +117,10 @@ const UpsertContactMirrorSchema = z.object({
   full_name: z.string().max(200).nullable().optional(),
   phone: z.string().max(50).nullable().optional(),
   source: z.string().max(50).nullable().optional(),
-  tier: z.string().max(50).nullable().optional(),
+  tier: TierEnum.nullable().optional(),
+  ghl_contact_id: z.string().max(100).nullable().optional(),
+  custom_fields: z.record(z.any()).optional(),
+  assigned_to_email: z.string().email().nullable().optional(),
   metadata: z.record(z.any()).optional(),
 });
 
@@ -127,9 +132,19 @@ const NotifyAdminSchema = z.object({
   source_workflow_key: z.string().max(100).nullable().optional(),
   contact_id: z.string().uuid().nullable().optional(),
   conversation_id: z.string().uuid().nullable().optional(),
+  scope: z.enum(["global","admin","role","assigned_user"]).default("global"),
+  scope_role: z.string().max(50).nullable().optional(),
+  assigned_user_id: z.string().uuid().nullable().optional(),
 });
 
 const ReadConfigSchema = z.object({ key: z.string().optional() });
+
+const GetCoachForClientSchema = z.object({ email: z.string().email() });
+const GetOpportunitiesForContactSchema = z.object({ email: z.string().email(), limit: z.number().int().min(1).max(200).default(50) });
+const ListModifiedClientsSinceSchema = z.object({
+  since: z.string().datetime(),
+  limit: z.number().int().min(1).max(500).default(100),
+});
 
 // ---------- handler ----------
 
