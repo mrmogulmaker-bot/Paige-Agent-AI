@@ -217,6 +217,7 @@ export default function PublicSignup() {
       <PageHead
         title="Join Paige Agent AI — Let's see what's possible"
         description="Self-serve signup for the entrepreneurial operating system. Credit, capital, and execution — one connected growth engine."
+        path="/signup"
       />
       <div className="max-w-2xl mx-auto px-6 py-12">
         <header className="mb-8">
