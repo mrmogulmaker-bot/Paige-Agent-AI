@@ -2005,6 +2005,7 @@ export type Database = {
           city: string | null
           created_at: string
           created_by: string
+          cs_primary_user_id: string | null
           current_notes: string | null
           do_not_contact: boolean
           email: string | null
@@ -2017,6 +2018,7 @@ export type Database = {
           journey_stage_id: number | null
           last_contacted_at: string | null
           last_name: string
+          lead_owner_user_id: string | null
           lead_score: number
           lifecycle_stage: string
           linked_user_id: string | null
@@ -2038,6 +2040,7 @@ export type Database = {
           city?: string | null
           created_at?: string
           created_by: string
+          cs_primary_user_id?: string | null
           current_notes?: string | null
           do_not_contact?: boolean
           email?: string | null
@@ -2050,6 +2053,7 @@ export type Database = {
           journey_stage_id?: number | null
           last_contacted_at?: string | null
           last_name: string
+          lead_owner_user_id?: string | null
           lead_score?: number
           lifecycle_stage?: string
           linked_user_id?: string | null
@@ -2071,6 +2075,7 @@ export type Database = {
           city?: string | null
           created_at?: string
           created_by?: string
+          cs_primary_user_id?: string | null
           current_notes?: string | null
           do_not_contact?: boolean
           email?: string | null
@@ -2083,6 +2088,7 @@ export type Database = {
           journey_stage_id?: number | null
           last_contacted_at?: string | null
           last_name?: string
+          lead_owner_user_id?: string | null
           lead_score?: number
           lifecycle_stage?: string
           linked_user_id?: string | null
@@ -5902,34 +5908,43 @@ export type Database = {
       }
       paige_admin_notifications: {
         Row: {
+          assigned_role: string | null
+          assigned_user_id: string | null
           body: string | null
           contact_id: string | null
           created_at: string
           id: string
           link_to: string | null
           read_at: string | null
+          scope: string
           severity: string
           source_workflow_key: string | null
           title: string
         }
         Insert: {
+          assigned_role?: string | null
+          assigned_user_id?: string | null
           body?: string | null
           contact_id?: string | null
           created_at?: string
           id?: string
           link_to?: string | null
           read_at?: string | null
+          scope?: string
           severity?: string
           source_workflow_key?: string | null
           title: string
         }
         Update: {
+          assigned_role?: string | null
+          assigned_user_id?: string | null
           body?: string | null
           contact_id?: string | null
           created_at?: string
           id?: string
           link_to?: string | null
           read_at?: string | null
+          scope?: string
           severity?: string
           source_workflow_key?: string | null
           title?: string
@@ -5950,6 +5965,39 @@ export type Database = {
             referencedColumns: ["contact_id"]
           },
         ]
+      }
+      paige_audit_log: {
+        Row: {
+          action: string
+          actor_role: string | null
+          actor_user_id: string | null
+          created_at: string
+          id: string
+          payload: Json
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          action: string
+          actor_role?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          payload?: Json
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          action?: string
+          actor_role?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          payload?: Json
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Relationships: []
       }
       paige_bank_connections: {
         Row: {
@@ -6242,12 +6290,14 @@ export type Database = {
         Row: {
           active: boolean
           assigned_at: string
+          assigned_role: string | null
           coach_id: string | null
           contact_id: string | null
           created_at: string
           id: string
           metadata: Json
           notes: string | null
+          rep_user_id: string | null
           role: string | null
           unassigned_at: string | null
           updated_at: string
@@ -6255,12 +6305,14 @@ export type Database = {
         Insert: {
           active?: boolean
           assigned_at?: string
+          assigned_role?: string | null
           coach_id?: string | null
           contact_id?: string | null
           created_at?: string
           id?: string
           metadata?: Json
           notes?: string | null
+          rep_user_id?: string | null
           role?: string | null
           unassigned_at?: string | null
           updated_at?: string
@@ -6268,12 +6320,14 @@ export type Database = {
         Update: {
           active?: boolean
           assigned_at?: string
+          assigned_role?: string | null
           coach_id?: string | null
           contact_id?: string | null
           created_at?: string
           id?: string
           metadata?: Json
           notes?: string | null
+          rep_user_id?: string | null
           role?: string | null
           unassigned_at?: string | null
           updated_at?: string
@@ -6929,6 +6983,7 @@ export type Database = {
       }
       paige_pending_approvals: {
         Row: {
+          assigned_to_user_id: string | null
           contact_id: string | null
           conversation_id: string | null
           created_at: string
@@ -6944,8 +6999,10 @@ export type Database = {
           status: string
           type: string
           updated_at: string
+          visible_to_roles: string[]
         }
         Insert: {
+          assigned_to_user_id?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string
@@ -6961,8 +7018,10 @@ export type Database = {
           status?: string
           type: string
           updated_at?: string
+          visible_to_roles?: string[]
         }
         Update: {
+          assigned_to_user_id?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string
@@ -6978,6 +7037,7 @@ export type Database = {
           status?: string
           type?: string
           updated_at?: string
+          visible_to_roles?: string[]
         }
         Relationships: [
           {
@@ -7284,6 +7344,7 @@ export type Database = {
       }
       paige_workflow_registry: {
         Row: {
+          allowed_roles: string[]
           category: string
           connection_id: string | null
           created_at: string
@@ -7304,6 +7365,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          allowed_roles?: string[]
           category: string
           connection_id?: string | null
           created_at?: string
@@ -7324,6 +7386,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          allowed_roles?: string[]
           category?: string
           connection_id?: string | null
           created_at?: string
@@ -9424,6 +9487,10 @@ export type Database = {
         }
         Returns: string
       }
+      can_access_contact: {
+        Args: { _contact_id: string; _user_id: string }
+        Returns: boolean
+      }
       check_feature_access: {
         Args: { _feature: string; _user_id: string }
         Returns: boolean
@@ -9437,6 +9504,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      current_user_roles: { Args: never; Returns: string[] }
       default_max_businesses_for_plan: {
         Args: { _plan_slug: string }
         Returns: number
@@ -9604,6 +9672,10 @@ export type Database = {
         }
       }
       get_user_business_limit: { Args: { _user_id: string }; Returns: number }
+      has_any_role: {
+        Args: { _roles: string[]; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -9617,6 +9689,7 @@ export type Database = {
         Returns: boolean
       }
       is_platform_owner: { Args: never; Returns: boolean }
+      is_staff: { Args: { _user_id: string }; Returns: boolean }
       match_paige_memory: {
         Args: {
           _match_threshold?: number
@@ -9733,6 +9806,11 @@ export type Database = {
         | "coach"
         | "broker"
         | "broker_team_member"
+        | "super_admin"
+        | "sales_rep"
+        | "cs_rep"
+        | "finance"
+        | "viewer"
       business_hierarchy_type:
         | "holding"
         | "parent"
@@ -10001,6 +10079,11 @@ export const Constants = {
         "coach",
         "broker",
         "broker_team_member",
+        "super_admin",
+        "sales_rep",
+        "cs_rep",
+        "finance",
+        "viewer",
       ],
       business_hierarchy_type: [
         "holding",

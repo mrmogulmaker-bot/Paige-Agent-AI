@@ -1,161 +1,222 @@
-# Phase 7 Plan — Sections 3 & 4
 
-Sections 1 + 2 (notification drawer + duplicate bell removal) ship directly in build mode. Plan below covers the two larger asks.
+# Phase 8 — Paige as Team OS (Doctrine §96)
 
-Header bell audit confirmed: `AdminLayout.tsx` lines 136-138 render both `AdminBridgeBell` and the legacy `NotificationBell` (member-facing credit alerts / dispute updates). Legacy bell will be removed from the admin header in Section 2; it remains in the member dashboard chrome where it belongs.
+Transform Paige from Antonio's solo cockpit into the multi-rep command center. Every surface becomes role-aware and assignment-scoped. GHL is demoted to backend send pipe.
+
+## Assumptions (flag if wrong)
+
+- `app_role` enum currently has `admin`, `coach`, `user`. We'll extend it rather than create a parallel `paige_user_roles` table — the existing `user_roles` table + `has_role()` SECURITY DEFINER function is the canonical pattern in this codebase and avoids two competing role systems.
+- `paige_coach_assignments` (Wave 3) already has `role` column we can repurpose for the assignment-role enum.
+- Antonio's `mrmogulmaker@gmail.com` becomes `super_admin`; existing admins stay `admin`.
+- "Conversations" surface = `paige_conversations` table (already exists).
+- Existing `audit_logs` table is too generic / used elsewhere — we add the new `paige_audit_log` as spec'd for rep-action telemetry specifically.
 
 ---
 
-## SECTION 3 — Data Visualization for Phase 3 Correction Tables
+## Wave 1 — Role & Assignment Foundation (DDL only)
 
-### 3.1 New routes
+### 1.1 Extend app_role enum
 
-Per-client (added as tabs inside `ContactDetail.tsx`, no new top-level routes):
-- `business-credit` tab → `BusinessCreditTab.tsx`
-- `owner-credit` tab → `OwnerCreditTab.tsx` (read-only, no dispute UI)
-- `banking` tab → `BankingTab.tsx`
-- `cash-flow` tab → `CashFlowTab.tsx`
+```sql
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'super_admin';
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'sales_rep';
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'cs_rep';
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'finance';
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'viewer';
+-- 'admin' and 'coach' already exist
+```
 
-Master cross-client views (top-level admin routes, registered in `Admin.tsx`):
-- `/admin/business-credit` → `BusinessCreditOverview.tsx`
-- `/admin/owner-credit` → `OwnerCreditOverview.tsx`
-- `/admin/banking` → `BankingOverview.tsx` (current `BankingAdmin.tsx` will be refactored)
-- `/admin/cash-flow` → `CashFlowOverview.tsx`
+Add helper RPCs:
+- `public.has_any_role(_user_id uuid, _roles app_role[]) returns boolean` (SECURITY DEFINER)
+- `public.is_staff(_user_id uuid) returns boolean` — true for admin/super_admin/sales_rep/cs_rep/coach/finance
+- `public.current_user_roles() returns app_role[]` — for client-side role gating
 
-Nav entry under existing "More" dropdown: a new group **"Financial Intel"** with the four overviews.
+### 1.2 Extend paige_coach_assignments
 
-### 3.2 Shared building blocks
+```sql
+-- expand role enum (currently free-form text)
+ALTER TABLE paige_coach_assignments
+  ADD COLUMN IF NOT EXISTS assigned_role text
+    CHECK (assigned_role IN (
+      'lead_owner','cs_primary','coach_btf','coach_dfy',
+      'coach_vip','capital_strategist','coach' -- legacy
+    ));
+-- backfill assigned_role from existing role column, then drop/rename if needed
+```
 
-- `src/lib/financial/queries.ts` — typed wrappers around the 5 tables (latest-per-client, time-series, joins to `clients`).
-- `src/components/financial/ScoreBadge.tsx`, `ScoreTrendArrow.tsx`, `Sparkline.tsx` (recharts `<LineChart>` mini), `RunwayPill.tsx`.
-- `useLatestPerClient(table, clientId?)` hook — DISTINCT ON (client_id) ORDER BY captured_at DESC.
+Rename table mentally to "contact assignments" but keep physical name for compatibility.
 
-### 3.3 Per-client tab specs
+### 1.3 Assignment fields on existing tables
 
-| Tab | Source tables | Key UI |
+```sql
+ALTER TABLE paige_pending_approvals
+  ADD COLUMN IF NOT EXISTS assigned_to_user_id uuid REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS visible_to_roles text[] DEFAULT ARRAY['admin','super_admin'];
+
+ALTER TABLE paige_admin_notifications
+  ADD COLUMN IF NOT EXISTS assigned_role text,
+  ADD COLUMN IF NOT EXISTS assigned_user_id uuid REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS scope text DEFAULT 'admin'
+    CHECK (scope IN ('admin','assigned_user','role'));
+
+ALTER TABLE paige_workflow_registry
+  ADD COLUMN IF NOT EXISTS allowed_roles text[] DEFAULT ARRAY['admin','super_admin'];
+
+ALTER TABLE clients
+  ADD COLUMN IF NOT EXISTS lead_owner_user_id uuid REFERENCES auth.users(id),
+  ADD COLUMN IF NOT EXISTS cs_primary_user_id uuid REFERENCES auth.users(id);
+-- assigned_coach_user_id already exists; these are denormalized for fast filtering
+```
+
+Trigger: when `paige_coach_assignments` inserts/updates, sync the denormalized fields on `clients` for the matching role.
+
+### 1.4 Audit log
+
+```sql
+CREATE TABLE public.paige_audit_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_user_id uuid REFERENCES auth.users(id),
+  actor_role text,
+  action text NOT NULL,
+  target_type text,
+  target_id uuid,
+  payload jsonb DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+GRANT SELECT, INSERT ON public.paige_audit_log TO authenticated;
+GRANT ALL ON public.paige_audit_log TO service_role;
+ALTER TABLE public.paige_audit_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Staff insert own actions" ON public.paige_audit_log
+  FOR INSERT TO authenticated WITH CHECK (actor_user_id = auth.uid());
+CREATE POLICY "Admins read all" ON public.paige_audit_log
+  FOR SELECT TO authenticated
+  USING (has_role(auth.uid(),'admin') OR has_role(auth.uid(),'super_admin'));
+CREATE POLICY "Users read own actions" ON public.paige_audit_log
+  FOR SELECT TO authenticated USING (actor_user_id = auth.uid());
+CREATE INDEX ON paige_audit_log (target_type, target_id, created_at DESC);
+CREATE INDEX ON paige_audit_log (actor_user_id, created_at DESC);
+```
+
+### 1.5 RLS rewrites (scoped policies)
+
+Rewrite policies on these tables to use role+assignment matrix:
+- `paige_pending_approvals` — visible if admin/super_admin OR `assigned_to_user_id = auth.uid()` OR role in `visible_to_roles`
+- `paige_admin_notifications` — visible per `scope` column
+- `paige_workflow_registry` — selectable if any role in `allowed_roles` matches caller
+- `clients` — extend existing policy to allow sales_rep/cs_rep when assigned
+
+Use a new SECURITY DEFINER helper `public.can_access_contact(_user_id uuid, _contact_id uuid)` to centralize the check.
+
+---
+
+## Wave 2 — Edge Functions & Bridge
+
+### 2.1 paige-bridge v15 additions
+Add 4 verbs to `supabase/functions/paige-bridge/index.ts`:
+- `assign_contact_to_rep` — input `{contact_email, rep_email, assigned_role}` → upsert into `paige_coach_assignments`, sync denormalized columns, emit audit
+- `list_assignments_for_rep` — input `{rep_email}` → returns array of `{contact_id, contact_email, assigned_role, assigned_at}`
+- `route_notification` — extend existing notify_admin: accept `scope`, `assigned_user_id` (or `assigned_user_email`), `assigned_role`
+- `audit_log_write` — input `{actor_email, action, target_type, target_id, payload}` → insert row
+
+All verbs: Zod schema, email-to-uuid resolution helper, audit on success.
+
+### 2.2 Workflow trigger authorization
+`supabase/functions/trigger-workflow/index.ts` (or wherever workflows fire): before exec, check `has_any_role(auth.uid(), registry.allowed_roles)`. Reject 403 + audit `workflow_blocked`.
+
+### 2.3 Auto-assignment hook
+When `mirror_cs_draft_to_paige` creates an approval, resolve contact → look up `cs_primary` from `paige_coach_assignments` → set `assigned_to_user_id`. Fall back to NULL (unassigned queue).
+
+---
+
+## Wave 3 — User Management UI
+
+`src/pages/admin/UserManagement.tsx` (under AdminSettingsHub → "Team & Roles" tab, extending existing one):
+- Table: email, full_name, roles (multi-badge), assigned_contact_count, last_active, status
+- "Invite User" dialog → calls existing `admin-invite-user` edge function, extended to accept `roles: app_role[]` (multi-select)
+- Row actions: Change roles (multi-select), Deactivate (calls `admin-force-signout` + role removal), Link to coach `clients` row
+- "Assignments" sub-drawer per user: list of contacts they own, with role badges and "Reassign" button
+
+Extend `admin-invite-user` edge function to accept array of roles and write all rows to `user_roles`.
+
+---
+
+## Wave 4 — Per-Rep Workspace Pages
+
+New pages, all gated by `has_any_role([admin, super_admin, sales_rep, cs_rep, coach, finance])`:
+
+| Route | Component | Description |
 |---|---|---|
-| Business credit | `paige_business_credit_profiles` | Bureau score grid (D&B Paydex / Intelliscore / Equifax Business), trade-line count, 90d sparkline, "Last pulled" + Refresh (calls existing `nav-sync` fn) |
-| Owner credit | `paige_owner_credit_snapshots` | TU/EQ/EX score cards, factors list, alerts table; banner "Read-only — disputes managed in member dashboard per Doctrine §84" |
-| Banking | `paige_bank_connections`, `paige_bank_transactions` | Institution cards (status pill), accounts table, last 25 txns w/ filter, Refresh button (invokes `plaid-sync`) |
-| Cash flow | `paige_cash_flow_snapshots` | KPI cards: runway days, deposits/withdrawals 30d, avg balance; composite Funding Readiness gauge (0–100) computed client-side from BC + OC + CF snapshots |
+| `/admin/my-day` | `MyDay.tsx` | Personalized landing: counts of my approvals, hot leads, today's bookings, unread notifications, last 5 audit events |
+| `/admin/my-leads` | `MyLeads.tsx` | Kanban scoped to `lead_owner_user_id = me`. Reuses existing PipelineAdmin kanban with a "scope=mine" filter |
+| `/admin/my-conversations` | `MyConversations.tsx` | Inbox of `paige_conversations` where `cs_primary_user_id = me`. Click → existing conversation view |
+| `/admin/my-clients` | `MyClients.tsx` | For coaches: assigned clients with health score, last interaction, journey jump-link |
+| `/admin/audit-log` | `AuditLog.tsx` | Admin-only. Filterable by actor, action, target_type, date range |
 
-### 3.4 Master overview specs
+Admin "All" variants are the existing pages (`/admin/contacts`, `/admin/pipeline`, etc.) — no duplication, just add a "Scope: Mine | Assigned to my team | All" segmented control where appropriate.
 
-Each is a sortable `Table` with: client name (link to ContactDetail), key metric, last-updated timestamp, trend arrow, action menu. Default sort: most-stale-first so Antonio can spot data gaps. Filters: tier (from `tier_state`), assigned coach, score band. CSV export button.
+### 4.1 Role-aware navigation
+Update `AdminLayout.tsx` top bar:
+- `super_admin` / `admin`: full nav
+- `sales_rep`: My Day, My Leads, Contacts (assigned), Pipeline (mine)
+- `cs_rep`: My Day, My Conversations, Approvals (assigned), Contacts
+- `coach`: My Day, My Clients, Journey, Approvals (assigned)
+- `finance`: My Day, Subscriptions, Revenue, Stripe
+- `viewer`: My Day (read-only), Analytics dashboards only
 
-### 3.5 RAG / Knowledge-base wiring
-
-Paige already uses `rag_documents` + `match_rag_documents()` (pgvector). Plan:
-
-1. Migration adds `document_type` values `'business_credit_snapshot'`, `'owner_credit_snapshot'`, `'banking_snapshot'`, `'cash_flow_snapshot'`, `'client_financial_brief'`.
-2. New edge function `embed-client-financials`:
-   - Triggered by `pg_net` on INSERT into each of the 5 tables (DB trigger → http_post).
-   - Builds a deterministic markdown brief per row (e.g. "Client Acme Inc — Paydex 78, Intelliscore 72, pulled 2026-06-25, ↑ from 71"), embeds via Lovable AI Gateway (`text-embedding-3-small`), upserts into `rag_documents` with `metadata = { client_id, source_table, source_row_id, captured_at }`.
-   - Idempotent upsert keyed on `(source_table, source_row_id)` so re-embeds replace not duplicate.
-3. Nightly cron edge function `rebuild-client-financial-brief` composes ONE rolled-up "capital readiness assessment" doc per client (joins newest row from all 5 tables + recent deals/tasks) so questions like "what's [client]'s capital readiness?" hit a single high-signal chunk.
-4. `paige-ai-chat` system prompt gains tool hint: when the question mentions funding-ready / business credit / banking / runway, call `match_rag_documents` with `_document_types` filtered to the new types.
-5. RLS: new rag rows are admin/coach-visible only — extend existing `rag_documents` policies to gate financial-typed docs to those roles.
-
-### 3.6 Open questions / assumptions
-
-- Assumption: Antonio wants composite Funding Readiness computed client-side from existing snapshot columns; no new score table.
-- Assumption: existing `nav-sync` and `plaid-sync` edge functions exist (or will) for Refresh buttons — if not, buttons render disabled with "Connect Nav/Plaid" CTA.
-- Assumption: "READ-ONLY" on owner-credit means no write/dispute actions in admin, but admins can still view the SmartCredit raw data.
-
-### 3.7 Build order
-
-1. Migration: rag doc-type values + RLS extension + DB triggers stub.
-2. `embed-client-financials` + `rebuild-client-financial-brief` edge functions.
-3. Per-client tabs (highest leverage — Antonio's daily surface).
-4. Master overview pages.
-5. paige-ai-chat prompt hint + smoke-test queries.
+Role state from a new `useCurrentUserRoles()` hook (cached, queries `user_roles`).
 
 ---
 
-## SECTION 4 — Campaign Cockpit + Member Journey
+## Wave 5 — Notification & Approval Filtering
 
-### 4.1 Routes
+### 5.1 AdminBridgeBell update
+Query filter: `scope = 'admin' OR (scope = 'assigned_user' AND assigned_user_id = me) OR (scope = 'role' AND assigned_role = ANY(my_roles))`.
+Separate "All" tab for admins to peek at the firehose.
 
-- `/admin/campaigns` → `CampaignsList.tsx`
-- `/admin/campaigns/:key` → `CampaignDetail.tsx`
-- `/admin/campaigns/:key/content` → `CampaignContent.tsx`
-- ContactDetail gets new tab **Journey** → `ClientJourneyTab.tsx`
+### 5.2 ApprovalsInbox update
+Default filter: assigned to me OR unassigned + I'm admin/cs_rep. Add "Scope" pill: Mine / Unassigned / All (admin).
+Show assigned-user avatar on each row. Reassign action (admin/super_admin only).
 
-Nav entry: new top-level **"Campaigns"** in the admin top bar (between Pipeline and More).
-
-### 4.2 Bridge client (Paige → MMA OS, read-through)
-
-New shared helper `supabase/functions/_shared/mmaOsCampaigns.ts` wrapping the 6 verbs Claude is shipping on MMA OS bridge v15:
-- `list_active_campaigns`
-- `get_campaign_detail(campaign_key)`
-- `list_contact_enrollments(email|contact_id)`
-- `enroll_contact_manual(campaign_key, email, source)`
-- `exit_contact_from_campaign(campaign_key, email, reason)`
-- `get_campaign_metrics(campaign_key, period)`
-- plus `get_journey(email|contact_id)` mega-verb
-
-Two thin Paige edge functions wrap them so the frontend never holds the bridge secret:
-- `mma-campaigns-read` — proxies all read verbs (GET-style)
-- `mma-campaigns-write` — proxies enroll/exit, requires admin role (`has_role(auth.uid(), 'admin')`)
-
-Both write all actions to `audit_logs` and (on enroll/exit) push a `paige_admin_notifications` row via the existing bridge so the bell pings.
-
-### 4.3 Cache layer
-
-Claude's weekly cron mirrors campaign state. On the Paige side:
-- New table `paige_campaign_cache` (campaign_key PK, snapshot jsonb, refreshed_at). Populated by edge function `refresh-campaign-cache` (cron every 15 min + manual "Refresh" button).
-- New table `paige_journey_cache` (contact_id PK, snapshot jsonb, refreshed_at, ttl 1h). Lazy: populated on first journey view, refreshed by user button.
-- Both tables: admin/coach read RLS; service_role write; GRANTS per house rules.
-
-UI reads cache first, falls back to live bridge call if stale > 30 min (campaigns) / 1 h (journey).
-
-### 4.4 Page specs
-
-**CampaignsList** — Table: name, status pill (active/paused/killed), enrolled, completed, last fire, open-rate sparkline. Row click → detail. Top-bar "Refresh cache" button.
-
-**CampaignDetail** — Header with Pause/Resume/Kill buttons (confirm dialog → `mma-campaigns-write`). Tabs:
-- *Enrollments* — paginated table filtered by status, with per-row "Exit" action.
-- *Schedule* — vertical step list (step #, channel, day offset, subject/preview, requires_approval flag).
-- *Metrics* — recharts area+line: sends/day, open %, click %, completion %, churn %.
-
-**CampaignContent** — Each step rendered as a `Card`: subject, rendered body with sample personalization (uses payload from `get_campaign_detail`), "Edit in Notion" deep link from content registry pointer.
-
-**ClientJourneyTab (the SaaS exit asset)**
-- Single vertical timeline (`<TimelineEvent>` component) merging events from `get_journey` payload:
-  tier changes, campaign enrollments + sends + opens + clicks, milestones (LLC/EIN/funding), CS conversations, bookings, signatures, social comments, business-credit deltas.
-- Event grouping by day; filter chips (Comms, Milestones, Money, Coaching, All).
-- Action bar at top: **Enroll in campaign** (modal w/ campaign picker → `enroll_contact_manual`), **Send one-off message** (existing send-message fn), **Open conversation** (deep-link `/admin/conversations/:id`).
-- "Export PDF" button → calls new `journey-export-pdf` edge function (server-rendered, for due-diligence handoff).
-
-ContactDetail also gets the three action buttons in its header (Enroll / Send / Open) — same handlers as Journey tab.
-
-### 4.5 Doctrine §93 enforcement
-
-Add a top-of-file comment block to each new file: "Reads through paige-bridge → MMA OS. Per Doctrine §93, never query MMA OS Supabase directly."
-
-### 4.6 Open questions / assumptions
-
-- Assumption: bridge bearer auth uses existing `MMA_OS_BRIDGE_API_KEY` secret already configured in `_shared/mmaOsBridge.ts`. If MMA OS issues a separate key for the new verbs, add `MMA_OS_BRIDGE_READ_KEY` secret.
-- Assumption: `get_journey` payload is large — we'll page comms events past 90 days behind a "Load older" button.
-- Assumption: "Kill" is a hard archive (not delete); confirm with Claude when implementing.
-- PDF export is nice-to-have — confirm priority vs cut.
-
-### 4.7 Build order
-
-1. Migration: `paige_campaign_cache`, `paige_journey_cache`, RLS, GRANTs.
-2. Edge functions: `mma-campaigns-read`, `mma-campaigns-write`, `refresh-campaign-cache`.
-3. `CampaignsList` (smallest unit of progress, validates bridge).
-4. `CampaignDetail` + Content tab.
-5. `ClientJourneyTab` + ContactDetail action buttons.
-6. `journey-export-pdf` (optional last).
+### 5.3 Workflow page update
+`WorkflowsList.tsx`: filter rows by `allowed_roles && my_roles`. Trigger button disabled with tooltip if not allowed.
 
 ---
 
-## Verification gates (both sections)
+## Wave 6 — Audit Trail Wiring
 
-- TypeScript clean (`tsgo`).
-- Supabase linter clean after each migration.
-- Smoke-test: `match_rag_documents` returns a financial brief when asked "is Acme funding-ready?".
-- Smoke-test: `mma-campaigns-read` health check returns campaign list; manual enroll writes to `audit_logs` + fires admin notification.
+Insert audit row from every state-changing client action:
+- Approval approve/reject → `approval_approved` / `approval_rejected`
+- Workflow trigger → `workflow_triggered`
+- Contact reassign → `contact_reassigned`
+- Message send (when we wire send) → `message_sent`
+- Journey stage manual change → `journey_stage_changed`
+- Role grant/revoke → `role_granted` / `role_revoked`
 
-Awaiting approval for Sections 3 + 4; will build Sections 1 + 2 directly once we flip to build mode.
+Helper: `src/lib/audit.ts` `writeAudit({ action, target_type, target_id, payload })` — single call site, handles actor resolution. Edge functions use bridge `audit_log_write` verb or direct insert.
+
+Per-contact audit feed on `ClientJourney.tsx`: filter `paige_audit_log WHERE target_type='contact' AND target_id=:contact_id` rendered alongside journey timeline.
+
+---
+
+## Sequencing (recommended ship order)
+
+1. **Wave 1 migration** (DDL + RLS) — single migration, gated on Antonio approval
+2. **Wave 2 bridge v15 + auto-assignment** — edge function changes
+3. **Wave 3 User Management UI** — Antonio can start inviting reps immediately
+4. **Wave 4 workspace pages** + role-aware nav — reps have somewhere to land
+5. **Wave 5 filtering** on existing approvals/notifications/workflows
+6. **Wave 6 audit wiring** across all action sites
+
+Each wave is independently testable; pause between for Antonio's review.
+
+---
+
+## Open questions before build
+
+1. **Role assignment for `mrmogulmaker@gmail.com`**: auto-grant `super_admin` via the existing `ensure_owner_admin` pattern, or manual?
+2. **Multiple roles per user**: confirm a single user can hold both `sales_rep` and `coach` simultaneously (e.g. Tashia). Default plan: yes, multi-role via multiple `user_roles` rows.
+3. **`viewer` role scope**: read-only on which dashboards exactly? Plan defaults to AnalyticsDashboard + SubscriptionsRevenue + AiActivity. Confirm.
+4. **Auto-assignment fallback**: if a CS draft arrives for an unassigned contact, do we (a) leave unassigned + admin sees in "Unassigned" queue, or (b) round-robin to cs_reps? Plan defaults to (a).
+5. **GHL legacy reps**: do existing GHL user identities need to be backfilled into `user_roles` so historical assignments port over, or is everyone re-invited fresh in Paige?
+
+Reply with approval (and answers to the 5 questions) and I'll ship Wave 1 migration first.
