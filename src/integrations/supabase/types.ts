@@ -907,6 +907,348 @@ export type Database = {
           },
         ]
       }
+      btf_document_requests: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          client_id: string
+          created_at: string
+          description: string | null
+          document_id: string | null
+          file_name: string | null
+          file_size: number | null
+          file_type: string | null
+          id: string
+          phase_item_id: string | null
+          rejection_reason: string | null
+          requested_at: string
+          requested_by: string | null
+          status: Database["public"]["Enums"]["btf_doc_status"]
+          storage_path: string | null
+          title: string
+          updated_at: string
+          uploaded_at: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          client_id: string
+          created_at?: string
+          description?: string | null
+          document_id?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+          phase_item_id?: string | null
+          rejection_reason?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          status?: Database["public"]["Enums"]["btf_doc_status"]
+          storage_path?: string | null
+          title: string
+          updated_at?: string
+          uploaded_at?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          client_id?: string
+          created_at?: string
+          description?: string | null
+          document_id?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+          phase_item_id?: string | null
+          rejection_reason?: string | null
+          requested_at?: string
+          requested_by?: string | null
+          status?: Database["public"]["Enums"]["btf_doc_status"]
+          storage_path?: string | null
+          title?: string
+          updated_at?: string
+          uploaded_at?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "btf_document_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "btf_document_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "btf_document_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "btf_document_requests_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "btf_document_requests_phase_item_id_fkey"
+            columns: ["phase_item_id"]
+            isOneToOne: false
+            referencedRelation: "btf_phase_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      btf_messages: {
+        Row: {
+          attachments: Json
+          body: string
+          client_id: string
+          created_at: string
+          id: string
+          pinned: boolean
+          read_at: string | null
+          sender_id: string | null
+          sender_type: string
+        }
+        Insert: {
+          attachments?: Json
+          body: string
+          client_id: string
+          created_at?: string
+          id?: string
+          pinned?: boolean
+          read_at?: string | null
+          sender_id?: string | null
+          sender_type: string
+        }
+        Update: {
+          attachments?: Json
+          body?: string
+          client_id?: string
+          created_at?: string
+          id?: string
+          pinned?: boolean
+          read_at?: string | null
+          sender_id?: string | null
+          sender_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "btf_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "btf_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "btf_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      btf_phase_item_templates: {
+        Row: {
+          assigned_to: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          item_key: string
+          phase: Database["public"]["Enums"]["btf_phase"]
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          item_key: string
+          phase: Database["public"]["Enums"]["btf_phase"]
+          sort_order?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          item_key?: string
+          phase?: Database["public"]["Enums"]["btf_phase"]
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      btf_phase_items: {
+        Row: {
+          assigned_to: string
+          client_id: string
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          description: string | null
+          due_at: string | null
+          id: string
+          item_key: string
+          notes: string | null
+          phase: Database["public"]["Enums"]["btf_phase"]
+          sort_order: number
+          status: Database["public"]["Enums"]["btf_item_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to?: string
+          client_id: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          description?: string | null
+          due_at?: string | null
+          id?: string
+          item_key: string
+          notes?: string | null
+          phase: Database["public"]["Enums"]["btf_phase"]
+          sort_order?: number
+          status?: Database["public"]["Enums"]["btf_item_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string
+          client_id?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          description?: string | null
+          due_at?: string | null
+          id?: string
+          item_key?: string
+          notes?: string | null
+          phase?: Database["public"]["Enums"]["btf_phase"]
+          sort_order?: number
+          status?: Database["public"]["Enums"]["btf_item_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "btf_phase_items_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "btf_phase_items_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "btf_phase_items_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      btf_workspace_settings: {
+        Row: {
+          client_id: string
+          created_at: string
+          current_phase: Database["public"]["Enums"]["btf_phase"]
+          id: string
+          intake_data: Json
+          intake_submitted_at: string | null
+          last_activity_at: string | null
+          mma_os_btf_deal_id: string | null
+          portal_first_login_at: string | null
+          portal_invited_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          current_phase?: Database["public"]["Enums"]["btf_phase"]
+          id?: string
+          intake_data?: Json
+          intake_submitted_at?: string | null
+          last_activity_at?: string | null
+          mma_os_btf_deal_id?: string | null
+          portal_first_login_at?: string | null
+          portal_invited_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          current_phase?: Database["public"]["Enums"]["btf_phase"]
+          id?: string
+          intake_data?: Json
+          intake_submitted_at?: string | null
+          last_activity_at?: string | null
+          mma_os_btf_deal_id?: string | null
+          portal_first_login_at?: string | null
+          portal_invited_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "btf_workspace_settings_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "btf_workspace_settings_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "btf_workspace_settings_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       build_milestones: {
         Row: {
           created_at: string
@@ -10125,6 +10467,8 @@ export type Database = {
         Args: { _broker_id: string }
         Returns: boolean
       }
+      is_btf_assigned_coach: { Args: { _client_id: string }; Returns: boolean }
+      is_btf_client_owner: { Args: { _client_id: string }; Returns: boolean }
       is_platform_owner: { Args: never; Returns: boolean }
       is_staff: { Args: { _user_id: string }; Returns: boolean }
       match_paige_memory: {
@@ -10274,6 +10618,9 @@ export type Database = {
         | "cs_rep"
         | "finance"
         | "viewer"
+      btf_doc_status: "pending" | "uploaded" | "approved" | "rejected"
+      btf_item_status: "pending" | "in_progress" | "complete"
+      btf_phase: "build" | "stack" | "fund" | "complete"
       business_hierarchy_type:
         | "holding"
         | "parent"
@@ -10548,6 +10895,9 @@ export const Constants = {
         "finance",
         "viewer",
       ],
+      btf_doc_status: ["pending", "uploaded", "approved", "rejected"],
+      btf_item_status: ["pending", "in_progress", "complete"],
+      btf_phase: ["build", "stack", "fund", "complete"],
       business_hierarchy_type: [
         "holding",
         "parent",
