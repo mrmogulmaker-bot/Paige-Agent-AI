@@ -81,6 +81,9 @@ export function AdminSettingsHub() {
           <TabsTrigger value="system" className="gap-2">
             <Activity className="w-4 h-4" /> System Metrics
           </TabsTrigger>
+          <TabsTrigger value="mcp" className="gap-2">
+            <Plug2 className="w-4 h-4" /> MCP Sessions
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="team" className="space-y-4">
@@ -122,6 +125,10 @@ export function AdminSettingsHub() {
 
         <TabsContent value="system" className="space-y-4">
           <SystemMetrics />
+        </TabsContent>
+
+        <TabsContent value="mcp" className="space-y-4">
+          <McpSessionsPanel />
         </TabsContent>
       </Tabs>
     </div>
