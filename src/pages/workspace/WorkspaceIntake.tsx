@@ -79,7 +79,7 @@ export default function WorkspaceIntake() {
     setSaving(true);
     const payload = {
       client_id: client.id,
-      intake_data: data as unknown as Record<string, unknown>,
+      intake_data: data as any,
       updated_at: new Date().toISOString(),
       ...(markSubmitted ? { intake_submitted_at: new Date().toISOString() } : {}),
     };
