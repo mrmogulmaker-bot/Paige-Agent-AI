@@ -817,6 +817,56 @@ const CORS = {
 
 app.options("/*", (c) => c.body(null, 204, CORS));
 
+// ---------- Phase 3 scaffolding: OAuth discovery (public, unauthenticated) ----------
+// These endpoints let MCP-aware OAuth clients (Claude Desktop, ChatGPT, IDEs) discover
+// where to start an auth flow once Phase 3 lands. Today they advertise the resource and
+// point to a not-yet-implemented authorization server; clients fall back to the bearer
+// API-key path until Phase 3 ships full DCR + PKCE.
+const PUBLIC_ORIGIN = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/paige-mcp`;
+
+app.get("/.well-known/oauth-protected-resource", (c) =>
+  c.json(
+    {
+      resource: PUBLIC_ORIGIN,
+      authorization_servers: [PUBLIC_ORIGIN],
+      bearer_methods_supported: ["header"],
+      scopes_supported: ["crm.read", "crm.write", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write"],
+      resource_documentation: "https://paigeagent.ai/docs/mcp",
+    },
+    200,
+    CORS,
+  ),
+);
+
+app.get("/.well-known/oauth-authorization-server", (c) =>
+  c.json(
+    {
+      issuer: PUBLIC_ORIGIN,
+      authorization_endpoint: `${PUBLIC_ORIGIN}/oauth/authorize`,
+      token_endpoint: `${PUBLIC_ORIGIN}/oauth/token`,
+      registration_endpoint: `${PUBLIC_ORIGIN}/oauth/register`,
+      response_types_supported: ["code"],
+      grant_types_supported: ["authorization_code", "refresh_token"],
+      code_challenge_methods_supported: ["S256"],
+      token_endpoint_auth_methods_supported: ["none"],
+      scopes_supported: ["crm.read", "crm.write", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write"],
+      // status: Phase 3 (OAuth 2.1 + DCR) — endpoints below currently return 501.
+    },
+    200,
+    CORS,
+  ),
+);
+
+app.all("/oauth/*", (c) =>
+  c.json(
+    { error: "oauth_not_yet_implemented", phase: 3, hint: "Use Bearer PAIGE_MCP_PLATFORM_KEY until Phase 3 ships." },
+    501,
+    CORS,
+  ),
+);
+
+
+
 app.all("/*", async (c) => {
   if (!PLATFORM_KEY) {
     return c.json({ error: "server_misconfigured" }, 500, CORS);
