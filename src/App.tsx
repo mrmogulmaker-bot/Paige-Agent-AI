@@ -71,6 +71,16 @@ const Privacy = lazyWithReload(() => import("./pages/Privacy"));
 const About = lazyWithReload(() => import("./pages/About"));
 const Blog = lazyWithReload(() => import("./pages/Blog"));
 
+// BTF Client Workspace (white-labeled — no Paige branding in these routes)
+const WorkspaceLayout = lazyWithReload(() => import("./pages/workspace/WorkspaceLayout"));
+const WorkspaceDashboard = lazyWithReload(() => import("./pages/workspace/WorkspaceDashboard"));
+const WorkspacePhases = lazyWithReload(() => import("./pages/workspace/WorkspacePhases"));
+const WorkspaceIntake = lazyWithReload(() => import("./pages/workspace/WorkspaceIntake"));
+const WorkspaceDocuments = lazyWithReload(() => import("./pages/workspace/WorkspaceDocuments"));
+const WorkspaceMessages = lazyWithReload(() => import("./pages/workspace/WorkspaceMessages"));
+const WorkspacePayments = lazyWithReload(() => import("./pages/workspace/WorkspacePayments"));
+const WorkspaceAcceptInvite = lazyWithReload(() => import("./pages/workspace/AcceptInvite"));
+
 // Lazy-load existing dashboard sections for /app/* routes
 const RepositioningNotice = lazyWithReload(() => import("./components/dashboard/RepositioningNotice").then(m => ({ default: m.RepositioningNotice })));
 const LearningVault = lazyWithReload(() => import("./components/dashboard/LearningVault").then(m => ({ default: m.LearningVault })));
@@ -153,6 +163,17 @@ const App = () => (
             <Route path="/broker" element={<PageSuspense><BrokerApply /></PageSuspense>} />
             <Route path="/brokers" element={<Navigate to="/broker" replace />} />
             <Route path="/broker/accept-invite" element={<PageSuspense><AcceptBrokerInvite /></PageSuspense>} />
+
+            {/* BTF Client Workspace (white-labeled — Mogul Maker Academy) */}
+            <Route path="/workspace/accept-invite" element={<PageSuspense><WorkspaceAcceptInvite /></PageSuspense>} />
+            <Route path="/workspace" element={<PageSuspense><WorkspaceLayout /></PageSuspense>}>
+              <Route index element={<PageSuspense><WorkspaceDashboard /></PageSuspense>} />
+              <Route path="phases" element={<PageSuspense><WorkspacePhases /></PageSuspense>} />
+              <Route path="intake" element={<PageSuspense><WorkspaceIntake /></PageSuspense>} />
+              <Route path="documents" element={<PageSuspense><WorkspaceDocuments /></PageSuspense>} />
+              <Route path="messages" element={<PageSuspense><WorkspaceMessages /></PageSuspense>} />
+              <Route path="payments" element={<PageSuspense><WorkspacePayments /></PageSuspense>} />
+            </Route>
 
             {/* Broker workspace (signed-in brokers) */}
             <Route path="/broker/app" element={<PageSuspense><BrokerWorkspace /></PageSuspense>}>
