@@ -77,12 +77,12 @@ export default function WorkspaceIntake() {
   const saveDraft = async (markSubmitted = false) => {
     if (!client) return;
     setSaving(true);
-    const payload: Record<string, unknown> = {
+    const payload = {
       client_id: client.id,
-      intake_data: data,
+      intake_data: data as unknown as Record<string, unknown>,
       updated_at: new Date().toISOString(),
+      ...(markSubmitted ? { intake_submitted_at: new Date().toISOString() } : {}),
     };
-    if (markSubmitted) payload.intake_submitted_at = new Date().toISOString();
 
     const { error } = await supabase
       .from("btf_workspace_settings")
