@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio } from "lucide-react";
+import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { UserManagement } from "@/components/dashboard/UserManagement";
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
+import { McpSessionsPanel } from "@/components/dashboard/admin/McpSessionsPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
