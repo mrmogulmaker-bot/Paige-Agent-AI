@@ -86,7 +86,7 @@ export default function WorkspaceIntake() {
 
     const { error } = await supabase
       .from("btf_workspace_settings")
-      .upsert(payload, { onConflict: "client_id" });
+      .upsert([payload], { onConflict: "client_id" });
     setSaving(false);
     if (error) {
       toast({ title: "Could not save", description: error.message, variant: "destructive" });
