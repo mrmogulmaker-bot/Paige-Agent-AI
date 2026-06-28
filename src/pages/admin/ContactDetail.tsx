@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
   MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
-  CreditCard, User, Landmark, TrendingUp,
+  CreditCard, User, Landmark, TrendingUp, Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -122,6 +122,29 @@ export default function ContactDetail() {
   const fullName = useMemo(() => client ? `${client.first_name} ${client.last_name}`.trim() : "", [client]);
   const coachName = (uid: string | null) => uid ? (coaches.find((c) => c.user_id === uid)?.name || "Coach") : "Unassigned";
 
+  const sendBtfInvite = async () => {
+    if (!client?.email) {
+      toast.error("Add an email to this contact first");
+      return;
+    }
+    const toastId = toast.loading("Sending BTF workspace invite…");
+    try {
+      const { data, error } = await supabase.functions.invoke("invite-btf-client", {
+        body: {
+          contact_email: client.email,
+          full_name: fullName || null,
+          preferred_name: client.first_name || null,
+          paige_client_id: client.id,
+        },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Invite failed");
+      toast.success(data.email_sent ? "Invite emailed" : "Invite created (email pending)", { id: toastId });
+    } catch (e: any) {
+      toast.error(e.message || "Could not send invite", { id: toastId });
+    }
+  };
+
   if (loading || !client) {
     return <div className="p-8 text-center text-muted-foreground">Loading contact…</div>;
   }
@@ -141,6 +164,9 @@ export default function ContactDetail() {
         </div>
         <Button variant="outline" size="sm" onClick={() => navigate(`/admin/contacts/${client.id}/journey`)}>
           <Activity className="h-4 w-4 mr-1" /> Member Journey
+        </Button>
+        <Button variant="outline" size="sm" onClick={sendBtfInvite}>
+          <Send className="h-4 w-4 mr-1" /> Resend BTF Invite
         </Button>
         {client.linked_user_id && (
           <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/user/${client.linked_user_id}`)}>
