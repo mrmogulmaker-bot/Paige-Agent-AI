@@ -364,6 +364,445 @@ mcp.tool("complete_task", {
   },
 });
 
+// ---------- Workflows ----------
+mcp.tool("list_workflows", {
+  description:
+    "List Paige workflows from paige_workflow_registry. Filter by category (e.g. 'sales', 'cs', 'btf', 'compliance') or active state.",
+  inputSchema: z.object({
+    category: z.string().optional(),
+    only_active: z.boolean().optional(),
+    limit: z.number().int().optional(),
+  }),
+  handler: async (args) => {
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
+    let q = admin
+      .from("paige_workflow_registry")
+      .select("id, key, label, description, category, provider, requires_approval, is_active, allowed_roles, sort_order")
+      .order("sort_order", { ascending: true })
+      .limit(limit);
+    if (args.category) q = q.eq("category", args.category);
+    if (args.only_active !== false) q = q.eq("is_active", true);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("run_workflow", {
+  description:
+    "Trigger a Paige workflow by registry key. Returns a run_id you can poll with get_workflow_run. If the workflow has requires_approval=true the run is queued in paige_pending_approvals instead of executing immediately.",
+  inputSchema: z.object({
+    workflow_key: z.string().describe("paige_workflow_registry.key, e.g. 'sales.lead_followup'"),
+    payload: z.record(z.string(), z.any()).optional().describe("JSON arguments passed to the workflow."),
+    contact_id: z.string().optional(),
+  }),
+  annotations: { destructiveHint: true, openWorldHint: true },
+  handler: async (args) => {
+    const { data: wf, error: wfErr } = await admin
+      .from("paige_workflow_registry")
+      .select("id, key, requires_approval, is_active")
+      .eq("key", args.workflow_key)
+      .maybeSingle();
+    if (wfErr) return err(wfErr.message);
+    if (!wf) return err("workflow_not_found");
+    if (!wf.is_active) return err("workflow_inactive");
+
+    if (wf.requires_approval) {
+      const { data: pa, error: paErr } = await admin
+        .from("paige_pending_approvals")
+        .insert({
+          type: "workflow_run",
+          draft_content: { workflow_key: args.workflow_key, payload: args.payload ?? {} },
+          contact_id: args.contact_id ?? null,
+          created_by_n8n_workflow_key: args.workflow_key,
+          status: "pending",
+          metadata: { source: "mcp" },
+        })
+        .select("id")
+        .single();
+      if (paErr) return err(paErr.message);
+      await audit("queue_workflow_approval", "workflow", wf.id, { workflow_key: args.workflow_key });
+      return ok({ ok: true, queued: true, approval_id: pa.id, status: "pending_approval" });
+    }
+
+    const { data: run, error: runErr } = await admin
+      .from("paige_workflow_runs")
+      .insert({
+        registry_id: wf.id,
+        payload: args.payload ?? {},
+        status: "queued",
+      })
+      .select("id")
+      .single();
+    if (runErr) return err(runErr.message);
+    await audit("run_workflow", "workflow", wf.id, { workflow_key: args.workflow_key, run_id: run.id });
+    return ok({ ok: true, run_id: run.id, status: "queued" });
+  },
+});
+
+mcp.tool("get_workflow_run", {
+  description: "Fetch status + result of a workflow run by id.",
+  inputSchema: z.object({ run_id: z.string() }),
+  handler: async ({ run_id }) => {
+    const { data, error } = await admin
+      .from("paige_workflow_runs")
+      .select("id, registry_id, status, n8n_execution_id, result, error, payload, created_at")
+      .eq("id", run_id)
+      .maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("run_not_found");
+    return ok({ run: data });
+  },
+});
+
+mcp.tool("list_pending_approvals", {
+  description: "List items in paige_pending_approvals awaiting human review.",
+  inputSchema: z.object({
+    status: z.string().optional().describe("pending | approved | rejected | sent"),
+    limit: z.number().int().optional(),
+  }),
+  handler: async (args) => {
+    const limit = Math.min(Math.max(args.limit ?? 25, 1), 100);
+    let q = admin
+      .from("paige_pending_approvals")
+      .select("id, type, status, contact_id, created_by_n8n_workflow_key, draft_content, created_at, reviewed_at, sent_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    q = q.eq("status", args.status ?? "pending");
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("decide_pending_approval", {
+  description: "Approve or reject a pending approval. On approve, status becomes 'approved' for the downstream worker to send.",
+  inputSchema: z.object({
+    approval_id: z.string(),
+    decision: z.enum(["approve", "reject"]),
+    note: z.string().optional(),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async ({ approval_id, decision, note }) => {
+    const patch: Record<string, unknown> = {
+      status: decision === "approve" ? "approved" : "rejected",
+      reviewed_at: new Date().toISOString(),
+      escalation_note: note ?? null,
+    };
+    const { data, error } = await admin
+      .from("paige_pending_approvals")
+      .update(patch)
+      .eq("id", approval_id)
+      .select("id, status")
+      .maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("approval_not_found");
+    await audit("decide_pending_approval", "approval", approval_id, { decision, note });
+    return ok({ ok: true, approval_id, status: data.status });
+  },
+});
+
+// ---------- BTF Workspace ----------
+mcp.tool("list_btf_clients", {
+  description: "List Build-to-Fund clients with current phase + last activity. Filter by phase if needed.",
+  inputSchema: z.object({
+    phase: z.string().optional().describe("e.g. 'intake', 'build', 'underwriting', 'funding', 'graduated'"),
+    limit: z.number().int().optional(),
+  }),
+  handler: async (args) => {
+    const limit = Math.min(Math.max(args.limit ?? 25, 1), 100);
+    let q = admin
+      .from("btf_workspace_settings")
+      .select("id, client_id, current_phase, mma_os_btf_deal_id, intake_submitted_at, portal_first_login_at, last_activity_at, updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(limit);
+    if (args.phase) q = q.eq("current_phase", args.phase);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("get_btf_workspace", {
+  description: "Fetch the BTF workspace_settings + phase summary for one client.",
+  inputSchema: z.object({ client_id: z.string() }),
+  handler: async ({ client_id }) => {
+    const [{ data: ws, error: wsErr }, { data: items }] = await Promise.all([
+      admin.from("btf_workspace_settings").select("*").eq("client_id", client_id).maybeSingle(),
+      admin
+        .from("btf_phase_items")
+        .select("id, phase, item_key, title, status, due_at, sort_order")
+        .eq("client_id", client_id)
+        .order("sort_order", { ascending: true }),
+    ]);
+    if (wsErr) return err(wsErr.message);
+    if (!ws) return err("workspace_not_found");
+    return ok({ workspace: ws, items: items ?? [] });
+  },
+});
+
+mcp.tool("list_btf_phase_items", {
+  description: "List BTF phase items for a client, optionally scoped to a phase.",
+  inputSchema: z.object({
+    client_id: z.string(),
+    phase: z.string().optional(),
+  }),
+  handler: async ({ client_id, phase }) => {
+    let q = admin
+      .from("btf_phase_items")
+      .select("id, phase, item_key, title, description, status, assigned_to, due_at, sort_order, completed_at")
+      .eq("client_id", client_id)
+      .order("sort_order", { ascending: true });
+    if (phase) q = q.eq("phase", phase);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("update_btf_phase_item", {
+  description: "Update a BTF phase item's status, due date, or notes. Use to mark items in_progress/done from automation.",
+  inputSchema: z.object({
+    item_id: z.string(),
+    status: z.string().optional().describe("not_started | in_progress | blocked | done"),
+    notes: z.string().optional(),
+    due_at: z.string().optional().describe("ISO timestamp"),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async (args) => {
+    const patch: Record<string, unknown> = {};
+    if (args.status) {
+      patch.status = args.status;
+      if (args.status === "done") patch.completed_at = new Date().toISOString();
+    }
+    if (args.notes !== undefined) patch.notes = args.notes;
+    if (args.due_at !== undefined) patch.due_at = args.due_at;
+    const { data, error } = await admin
+      .from("btf_phase_items")
+      .update(patch)
+      .eq("id", args.item_id)
+      .select("id, status")
+      .maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("item_not_found");
+    await audit("update_btf_phase_item", "btf_phase_item", args.item_id, patch);
+    return ok({ ok: true, item_id: args.item_id, status: data.status });
+  },
+});
+
+mcp.tool("list_btf_document_requests", {
+  description: "List document requests/uploads for a BTF client.",
+  inputSchema: z.object({
+    client_id: z.string(),
+    status: z.string().optional().describe("requested | uploaded | approved | rejected"),
+  }),
+  handler: async ({ client_id, status }) => {
+    let q = admin
+      .from("btf_document_requests")
+      .select("id, title, status, file_name, file_size, requested_at, uploaded_at, approved_at, rejection_reason")
+      .eq("client_id", client_id)
+      .order("requested_at", { ascending: false });
+    if (status) q = q.eq("status", status);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("send_btf_message", {
+  description: "Post a message to a BTF client's workspace coach thread. sender_type='coach' by default.",
+  inputSchema: z.object({
+    client_id: z.string(),
+    body: z.string(),
+    sender_type: z.enum(["coach", "system"]).optional(),
+    pinned: z.boolean().optional(),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async (args) => {
+    const { data, error } = await admin
+      .from("btf_messages")
+      .insert({
+        client_id: args.client_id,
+        sender_type: args.sender_type ?? "coach",
+        body: args.body.slice(0, 8000),
+        pinned: args.pinned ?? false,
+      })
+      .select("id")
+      .single();
+    if (error) return err(error.message);
+    await audit("send_btf_message", "btf_message", data.id, { client_id: args.client_id });
+    return ok({ ok: true, message_id: data.id });
+  },
+});
+
+// ---------- Admin ----------
+mcp.tool("list_team_members", {
+  description: "List team members and their roles from user_roles + profiles. Filter by role if needed.",
+  inputSchema: z.object({
+    role: z.string().optional().describe("owner | admin | sales_rep | coach | broker | cs"),
+    limit: z.number().int().optional(),
+  }),
+  handler: async (args) => {
+    const limit = Math.min(Math.max(args.limit ?? 100, 1), 200);
+    let q = admin
+      .from("user_roles")
+      .select("user_id, role, created_at")
+      .limit(limit);
+    if (args.role) q = q.eq("role", args.role);
+    const { data: roles, error } = await q;
+    if (error) return err(error.message);
+    const ids = Array.from(new Set((roles ?? []).map((r) => r.user_id)));
+    const { data: profiles } = await admin
+      .from("profiles")
+      .select("user_id, full_name, suspended_at")
+      .in("user_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+    const byId = new Map((profiles ?? []).map((p) => [p.user_id, p]));
+    const items = (roles ?? []).map((r) => ({
+      user_id: r.user_id,
+      role: r.role,
+      full_name: byId.get(r.user_id)?.full_name ?? null,
+      suspended: !!byId.get(r.user_id)?.suspended_at,
+      created_at: r.created_at,
+    }));
+    return ok({ items });
+  },
+});
+
+mcp.tool("assign_coach", {
+  description: "Assign or reassign a coach to a client.",
+  inputSchema: z.object({
+    client_id: z.string(),
+    coach_user_id: z.string(),
+    reason: z.string().optional(),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async ({ client_id, coach_user_id, reason }) => {
+    const { data, error } = await admin
+      .from("clients")
+      .update({ assigned_coach_user_id: coach_user_id })
+      .eq("id", client_id)
+      .select("id, assigned_coach_user_id")
+      .maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("client_not_found");
+    await audit("assign_coach", "client", client_id, { coach_user_id, reason });
+    return ok({ ok: true, client_id, coach_user_id: data.assigned_coach_user_id });
+  },
+});
+
+mcp.tool("create_team_invitation", {
+  description:
+    "Create a team invitation row for an internal team member. Does NOT send the email — pair with the send-admin-invitation function for that.",
+  inputSchema: z.object({
+    email: z.string(),
+    role: z.string().describe("admin | sales_rep | coach | broker | cs"),
+    invited_by_user_id: z.string().optional(),
+    template_name: z.string().optional(),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async (args) => {
+    const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+    const tokenHash = await sha256Hex(token);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await admin
+      .from("invitations")
+      .insert({
+        email: args.email.toLowerCase(),
+        role: args.role,
+        invited_by: args.invited_by_user_id ?? null,
+        token_hash: tokenHash,
+        expires_at: expiresAt,
+        template_name: args.template_name ?? args.role,
+      })
+      .select("id")
+      .single();
+    if (error) return err(error.message);
+    await audit("create_team_invitation", "invitation", data.id, { email: args.email, role: args.role });
+    return ok({
+      ok: true,
+      invitation_id: data.id,
+      token,
+      accept_url: `https://paigeagent.ai/accept-invite?token=${token}`,
+      expires_at: expiresAt,
+    });
+  },
+});
+
+mcp.tool("list_unassigned_queue", {
+  description: "List contacts in paige_unassigned_queue awaiting coach/sales assignment.",
+  inputSchema: z.object({ limit: z.number().int().optional() }),
+  handler: async ({ limit }) => {
+    const cap = Math.min(Math.max(limit ?? 25, 1), 100);
+    const { data, error } = await admin
+      .from("paige_unassigned_queue")
+      .select("id, email, first_name, last_name, tier, unassigned_for_hours, priority_rank, created_at")
+      .order("priority_rank", { ascending: false })
+      .limit(cap);
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("list_admin_notifications", {
+  description: "List recent paige_admin_notifications. Filter by unread or severity.",
+  inputSchema: z.object({
+    only_unread: z.boolean().optional(),
+    severity: z.string().optional().describe("info | warning | critical"),
+    limit: z.number().int().optional(),
+  }),
+  handler: async (args) => {
+    const limit = Math.min(Math.max(args.limit ?? 25, 1), 100);
+    let q = admin
+      .from("paige_admin_notifications")
+      .select("id, severity, title, body, link_to, contact_id, source_workflow_key, assigned_role, read_at, created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (args.only_unread) q = q.is("read_at", null);
+    if (args.severity) q = q.eq("severity", args.severity);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("create_admin_notification", {
+  description: "Post a new admin notification (info/warning/critical). Use sparingly — these page humans.",
+  inputSchema: z.object({
+    severity: z.enum(["info", "warning", "critical"]),
+    title: z.string(),
+    body: z.string().optional(),
+    link_to: z.string().optional(),
+    contact_id: z.string().optional(),
+    assigned_role: z.string().optional(),
+    source_workflow_key: z.string().optional(),
+  }),
+  handler: async (args) => {
+    const { data, error } = await admin
+      .from("paige_admin_notifications")
+      .insert({
+        severity: args.severity,
+        title: args.title,
+        body: args.body ?? null,
+        link_to: args.link_to ?? null,
+        contact_id: args.contact_id ?? null,
+        assigned_role: args.assigned_role ?? null,
+        source_workflow_key: args.source_workflow_key ?? "mcp",
+        scope: "admin",
+      })
+      .select("id")
+      .single();
+    if (error) return err(error.message);
+    await audit("create_admin_notification", "notification", data.id, { severity: args.severity, title: args.title });
+    return ok({ ok: true, notification_id: data.id });
+  },
+});
+
+async function sha256Hex(input: string): Promise<string> {
+  const bytes = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 // ---------- HTTP transport + bearer auth ----------
 const app = new Hono();
 const transport = new StreamableHttpTransport();
