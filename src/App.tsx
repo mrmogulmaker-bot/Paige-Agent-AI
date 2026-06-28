@@ -41,6 +41,8 @@ import { usePageView } from "./hooks/useAnalytics";
 // Eagerly load only the public landing + auth pages (likely first-paint)
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
+const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
 import NotFound from "./pages/NotFound";
 
 // Everything else is lazy-loaded for a smaller initial bundle
