@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
 
   const { data: queue, error } = await supabase
     .from("paige_unassigned_queue")
-    .select("client_id,email,full_name,tier,unassigned_for_hours");
+    .select("id,email,first_name,last_name,tier,unassigned_for_hours");
 
   if (error) {
     return new Response(JSON.stringify({ ok: false, error: error.message }), {
