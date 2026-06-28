@@ -45,11 +45,13 @@ function classifyRoute(input: z.infer<typeof WizardSchema>): "workspace" | "coac
   return "workspace";
 }
 
-function classifyPersona(input: z.infer<typeof WizardSchema>): string {
-  if (input.entity_status === "no_entity_yet") return "credit_rebuilder";
+// Persona vocabulary matches MMA OS sales_dept v4 contract
+// (docs/PAIGE-MMA-OS-BRIDGE-CONTRACT.md on mma-os main).
+function classifyPersona(input: z.infer<typeof WizardSchema>): "credit" | "funding" | "business" {
+  if (input.entity_status === "no_entity_yet") return "credit";
   const goal = input.funding_goal_usd ?? 0;
-  if (goal >= 50_000) return "entrepreneur_funding";
-  return "entrepreneur_building";
+  if (goal >= 50_000) return "funding";
+  return "business";
 }
 
 Deno.serve(async (req) => {
@@ -121,7 +123,7 @@ Deno.serve(async (req) => {
       funding_goal: data.funding_goal_usd ?? null,
       linked_user_id: user.id,
       lifecycle_stage: route === "coach_qualify" ? "qualifying" : "self_serve",
-      source: "self_signup_public",
+      source: "paige_public_signup",
       tier: route === "coach_qualify" ? "btf_interested" : "self_serve",
       status: "active",
       current_notes:
@@ -148,9 +150,12 @@ Deno.serve(async (req) => {
       clientId = inserted.id;
     }
 
-    // Fire bridge — never blocks the response.
+    // Fire bridge — never blocks the response (EdgeRuntime.waitUntil → wait:false semantics).
+    // Field shape per docs/PAIGE-MMA-OS-BRIDGE-CONTRACT.md on mma-os main (sha 1dacf1f7).
+    const fundingGoalUsd = data.funding_goal_usd ?? 0;
+    const hasEntity = data.entity_status === "have_entity";
     fireAndForgetBridge("handle_new_lead", {
-      source: "self_signup_public",
+      source: "paige_public_signup",
       paige_client_id: clientId,
       auth_user_id: user.id,
       email: user.email,
@@ -159,6 +164,8 @@ Deno.serve(async (req) => {
       personal_phone: data.personal_phone,
       persona,
       route,
+      has_entity: hasEntity,
+      funding_goal_cents: Math.round(fundingGoalUsd * 100),
       funding_goal_usd: data.funding_goal_usd ?? null,
       funding_timeline: data.funding_timeline ?? null,
       entity: {
