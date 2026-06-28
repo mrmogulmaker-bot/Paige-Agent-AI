@@ -36,6 +36,7 @@ import { template as supportTicketResolved } from './support-ticket-resolved.tsx
 import { template as featureRequestStatusUpdate } from './feature-request-status-update.tsx'
 import { template as brokerTeamInvitation } from './broker-team-invitation.tsx'
 import { template as betaLaunchWelcome } from './beta-launch-welcome.tsx'
+import { template as btfWelcomeInvite } from './btf-welcome-invite.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'role-invitation': roleInvitation,
@@ -65,4 +66,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'feature-request-status-update': featureRequestStatusUpdate,
   'broker-team-invitation': brokerTeamInvitation,
   'beta-launch-welcome': betaLaunchWelcome,
+  'btf-welcome-invite': btfWelcomeInvite,
 }

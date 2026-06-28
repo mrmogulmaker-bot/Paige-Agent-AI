@@ -1185,6 +1185,70 @@ export type Database = {
           },
         ]
       }
+      btf_workspace_invites: {
+        Row: {
+          btf_deal_id: string | null
+          client_id: string
+          created_at: string
+          created_by_user_id: string | null
+          created_via: string
+          email: string
+          expires_at: string
+          id: string
+          metadata: Json
+          token_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          btf_deal_id?: string | null
+          client_id: string
+          created_at?: string
+          created_by_user_id?: string | null
+          created_via?: string
+          email: string
+          expires_at: string
+          id?: string
+          metadata?: Json
+          token_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          btf_deal_id?: string | null
+          client_id?: string
+          created_at?: string
+          created_by_user_id?: string | null
+          created_via?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          metadata?: Json
+          token_hash?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "btf_workspace_invites_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "btf_workspace_invites_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "btf_workspace_invites_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       btf_workspace_settings: {
         Row: {
           client_id: string
