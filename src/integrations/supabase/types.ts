@@ -6327,6 +6327,42 @@ export type Database = {
           },
         ]
       }
+      paige_bridge_auth_failures: {
+        Row: {
+          alerted_at: string | null
+          function_name: string
+          id: string
+          ip: string | null
+          occurred_at: string
+          reason: string | null
+          status: number
+          user_agent: string | null
+          verb: string | null
+        }
+        Insert: {
+          alerted_at?: string | null
+          function_name: string
+          id?: string
+          ip?: string | null
+          occurred_at?: string
+          reason?: string | null
+          status: number
+          user_agent?: string | null
+          verb?: string | null
+        }
+        Update: {
+          alerted_at?: string | null
+          function_name?: string
+          id?: string
+          ip?: string | null
+          occurred_at?: string
+          reason?: string | null
+          status?: number
+          user_agent?: string | null
+          verb?: string | null
+        }
+        Relationships: []
+      }
       paige_business_credit_profiles: {
         Row: {
           business_name: string | null
