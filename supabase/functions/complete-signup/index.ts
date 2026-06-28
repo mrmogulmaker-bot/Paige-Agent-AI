@@ -45,11 +45,13 @@ function classifyRoute(input: z.infer<typeof WizardSchema>): "workspace" | "coac
   return "workspace";
 }
 
-function classifyPersona(input: z.infer<typeof WizardSchema>): string {
-  if (input.entity_status === "no_entity_yet") return "credit_rebuilder";
+// Persona vocabulary matches MMA OS sales_dept v4 contract
+// (docs/PAIGE-MMA-OS-BRIDGE-CONTRACT.md on mma-os main).
+function classifyPersona(input: z.infer<typeof WizardSchema>): "credit" | "funding" | "business" {
+  if (input.entity_status === "no_entity_yet") return "credit";
   const goal = input.funding_goal_usd ?? 0;
-  if (goal >= 50_000) return "entrepreneur_funding";
-  return "entrepreneur_building";
+  if (goal >= 50_000) return "funding";
+  return "business";
 }
 
 Deno.serve(async (req) => {
