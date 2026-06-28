@@ -108,6 +108,8 @@ const LogMessageSendSchema = z.object({
   error: z.string().max(4000).nullable().optional(),
 });
 
+const TierEnum = z.enum(["lead","standard","premium","vip","internal","staff","free"]);
+
 const UpsertContactMirrorSchema = z.object({
   email: z.string().email(),
   first_name: z.string().max(100).nullable().optional(),
@@ -115,7 +117,10 @@ const UpsertContactMirrorSchema = z.object({
   full_name: z.string().max(200).nullable().optional(),
   phone: z.string().max(50).nullable().optional(),
   source: z.string().max(50).nullable().optional(),
-  tier: z.string().max(50).nullable().optional(),
+  tier: TierEnum.nullable().optional(),
+  ghl_contact_id: z.string().max(100).nullable().optional(),
+  custom_fields: z.record(z.any()).optional(),
+  assigned_to_email: z.string().email().nullable().optional(),
   metadata: z.record(z.any()).optional(),
 });
 
@@ -127,9 +132,19 @@ const NotifyAdminSchema = z.object({
   source_workflow_key: z.string().max(100).nullable().optional(),
   contact_id: z.string().uuid().nullable().optional(),
   conversation_id: z.string().uuid().nullable().optional(),
+  scope: z.enum(["global","admin","role","assigned_user"]).default("global"),
+  scope_role: z.string().max(50).nullable().optional(),
+  assigned_user_id: z.string().uuid().nullable().optional(),
 });
 
 const ReadConfigSchema = z.object({ key: z.string().optional() });
+
+const GetCoachForClientSchema = z.object({ email: z.string().email() });
+const GetOpportunitiesForContactSchema = z.object({ email: z.string().email(), limit: z.number().int().min(1).max(200).default(50) });
+const ListModifiedClientsSinceSchema = z.object({
+  since: z.string().datetime(),
+  limit: z.number().int().min(1).max(500).default(100),
+});
 
 // ---------- handler ----------
 
@@ -311,32 +326,76 @@ Deno.serve(async (req) => {
         const ownerId = await resolveOwnerUserId();
         if (!ownerId) return fail(verb, 500, "Platform owner not resolvable for created_by");
 
-        const { data: existing } = await supabase
-          .from("clients")
-          .select("id")
-          .ilike("email", emailLower)
-          .limit(1)
-          .maybeSingle();
+        const nowIso = new Date().toISOString();
 
-        if (existing?.id) {
-          const updatePatch: Record<string, unknown> = { first_name: first, last_name: last };
-          if (p.phone) updatePatch.phone = p.phone;
-          const { error } = await supabase
+        // Resolve assigned user mapping (auth.users by email)
+        let assignedUserId: string | null = null;
+        if (p.assigned_to_email) {
+          const { data: list } = await supabase.auth.admin.listUsers();
+          const u = list?.users?.find(
+            (x) => (x.email ?? "").toLowerCase() === p.assigned_to_email!.toLowerCase(),
+          );
+          assignedUserId = u?.id ?? null;
+        }
+
+        // Try by ghl_contact_id first, then by email
+        let existingId: string | null = null;
+        if (p.ghl_contact_id) {
+          const { data: byGhl } = await supabase
             .from("clients")
-            .update(updatePatch)
-            .eq("id", existing.id);
+            .select("id")
+            .eq("ghl_contact_id", p.ghl_contact_id)
+            .limit(1)
+            .maybeSingle();
+          existingId = byGhl?.id ?? null;
+        }
+        if (!existingId) {
+          const { data: byEmail } = await supabase
+            .from("clients")
+            .select("id")
+            .ilike("email", emailLower)
+            .limit(1)
+            .maybeSingle();
+          existingId = byEmail?.id ?? null;
+        }
+
+        const sharedPatch: Record<string, unknown> = {
+          first_name: first || "Unknown",
+          last_name: last,
+          mirror_source: "mma_os",
+          last_mirrored_at: nowIso,
+        };
+        if (p.phone) sharedPatch.phone = p.phone;
+        if (p.tier) sharedPatch.tier = p.tier;
+        if (p.ghl_contact_id) sharedPatch.ghl_contact_id = p.ghl_contact_id;
+        if (p.source) sharedPatch.source = p.source;
+
+        if (existingId) {
+          const { error } = await supabase.from("clients").update(sharedPatch).eq("id", existingId);
           if (error) throw error;
-          return ok(verb, { client_id: existing.id, action: "updated" });
+          if (assignedUserId) {
+            await supabase
+              .from("paige_coach_assignments")
+              .upsert(
+                {
+                  contact_id: existingId,
+                  assigned_role: "lead_owner",
+                  rep_user_id: assignedUserId,
+                  active: true,
+                  metadata: { source: "mma_os_assigned_to" },
+                },
+                { onConflict: "contact_id,assigned_role" } as any,
+              );
+          }
+          return ok(verb, { client_id: existingId, action: "updated" });
         }
 
         const { data, error } = await supabase
           .from("clients")
           .insert({
+            ...sharedPatch,
             created_by: ownerId,
-            first_name: first || "Unknown",
-            last_name: last,
             email: emailLower,
-            phone: p.phone ?? null,
             status: "active",
             source: p.source ?? "mma_bridge",
             lifecycle_stage: "lead",
@@ -344,6 +403,16 @@ Deno.serve(async (req) => {
           .select("id")
           .single();
         if (error) throw error;
+
+        if (assignedUserId) {
+          await supabase.from("paige_coach_assignments").insert({
+            contact_id: data.id,
+            assigned_role: "lead_owner",
+            rep_user_id: assignedUserId,
+            active: true,
+            metadata: { source: "mma_os_assigned_to" },
+          });
+        }
         return ok(verb, { client_id: data.id, action: "created" });
       }
 
@@ -359,6 +428,9 @@ Deno.serve(async (req) => {
             link_to: p.link_to ?? null,
             source_workflow_key: p.source_workflow_key ?? null,
             contact_id: p.contact_id ?? null,
+            scope: p.scope,
+            assigned_role: p.scope_role ?? null,
+            assigned_user_id: p.assigned_user_id ?? null,
           })
           .select("id")
           .single();
@@ -384,6 +456,88 @@ Deno.serve(async (req) => {
         const { data, error } = await supabase.rpc("get_approval_queue_counts");
         if (error) throw error;
         return ok(verb, data);
+      }
+
+      // -----------------------------------------------------------------
+      case "get_coach_for_client": {
+        const p = GetCoachForClientSchema.parse(payload);
+        const { data: client } = await supabase
+          .from("clients")
+          .select("id, email")
+          .ilike("email", p.email)
+          .limit(1)
+          .maybeSingle();
+        if (!client?.id) return ok(verb, { client_id: null, assignments: [] });
+
+        const { data: rows, error } = await supabase
+          .from("paige_coach_assignments")
+          .select("assigned_role, rep_user_id, assigned_at, metadata")
+          .eq("contact_id", client.id)
+          .eq("active", true);
+        if (error) throw error;
+
+        const userIds = (rows ?? []).map((r: any) => r.rep_user_id).filter(Boolean);
+        const emails: Record<string, string> = {};
+        if (userIds.length) {
+          const { data: list } = await supabase.auth.admin.listUsers();
+          for (const u of list?.users ?? []) {
+            if (userIds.includes(u.id)) emails[u.id] = u.email ?? "";
+          }
+        }
+        const assignments = (rows ?? []).map((r: any) => ({
+          role: r.assigned_role,
+          user_id: r.rep_user_id,
+          email: r.rep_user_id ? emails[r.rep_user_id] ?? null : null,
+          assigned_at: r.assigned_at,
+        }));
+        return ok(verb, { client_id: client.id, assignments });
+      }
+
+      // -----------------------------------------------------------------
+      case "get_opportunities_for_contact": {
+        const p = GetOpportunitiesForContactSchema.parse(payload);
+        const { data: client } = await supabase
+          .from("clients").select("id").ilike("email", p.email).limit(1).maybeSingle();
+        if (!client?.id) return ok(verb, { client_id: null, deals: [] });
+
+        const { data, error } = await supabase
+          .from("deals")
+          .select("id, title, value_cents, currency, status, expected_close_date, actual_close_date, lost_reason, source, tags, created_at, updated_at, pipeline_id, stage_id, pipelines(name), pipeline_stages(name)")
+          .eq("contact_client_id", client.id)
+          .order("updated_at", { ascending: false })
+          .limit(p.limit);
+        if (error) throw error;
+        const deals = (data ?? []).map((d: any) => ({
+          id: d.id,
+          title: d.title,
+          value_cents: d.value_cents,
+          currency: d.currency,
+          status: d.status,
+          expected_close_date: d.expected_close_date,
+          actual_close_date: d.actual_close_date,
+          lost_reason: d.lost_reason,
+          source: d.source,
+          tags: d.tags,
+          pipeline: d.pipelines?.name ?? null,
+          stage: d.pipeline_stages?.name ?? null,
+          created_at: d.created_at,
+          updated_at: d.updated_at,
+        }));
+        return ok(verb, { client_id: client.id, deals });
+      }
+
+      // -----------------------------------------------------------------
+      case "list_modified_clients_since": {
+        const p = ListModifiedClientsSinceSchema.parse(payload);
+        const { data, error } = await supabase
+          .from("clients")
+          .select("id, email, first_name, last_name, phone, tier, ghl_contact_id, lifecycle_stage, lead_score, tags, updated_at, mirror_source")
+          .gt("updated_at", p.since)
+          .or("mirror_source.is.null,mirror_source.neq.mma_os")
+          .order("updated_at", { ascending: true })
+          .limit(p.limit);
+        if (error) throw error;
+        return ok(verb, { count: data?.length ?? 0, clients: data ?? [] });
       }
 
       // -----------------------------------------------------------------
