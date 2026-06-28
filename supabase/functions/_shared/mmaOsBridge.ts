@@ -30,7 +30,8 @@ export type BridgeVerb =
   | "signature_completed"
   | "social_comment_received"
   | "business_credit_score_changed"
-  | "funding_readiness_assessed";
+  | "funding_readiness_assessed"
+  | "handle_new_lead";
 
 
 
