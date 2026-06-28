@@ -1,0 +1,111 @@
+/* BTF Client Workspace — white-label theme
+   Brand: Mogul Maker Academy. Navy #081428, Gold #D4AF37,
+   Bookman Old Style headers, Calibri body. NO Paige branding. */
+
+.workspace-theme {
+  --mma-navy: #081428;
+  --mma-navy-soft: #0f1f3a;
+  --mma-gold: #d4af37;
+  --mma-gold-soft: #b89320;
+  --mma-cream: #f6f1e6;
+  --mma-ink: #0a0a0a;
+  --mma-line: rgba(212, 175, 55, 0.25);
+
+  background-color: var(--mma-cream);
+  color: var(--mma-ink);
+  font-family: "Calibri", "Segoe UI", system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+}
+
+.workspace-theme h1,
+.workspace-theme h2,
+.workspace-theme h3,
+.workspace-theme h4,
+.workspace-theme .workspace-heading {
+  font-family: "Bookman Old Style", "Bookman", "Times New Roman", Georgia, serif;
+  color: var(--mma-navy);
+  letter-spacing: -0.01em;
+}
+
+.workspace-theme .workspace-topbar {
+  background-color: var(--mma-navy);
+  color: var(--mma-cream);
+  border-bottom: 2px solid var(--mma-gold);
+}
+
+.workspace-theme .workspace-card {
+  background-color: #ffffff;
+  border: 1px solid var(--mma-line);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(8, 20, 40, 0.06);
+}
+
+.workspace-theme .workspace-gold {
+  color: var(--mma-gold);
+}
+
+.workspace-theme .workspace-btn-primary {
+  background-color: var(--mma-navy);
+  color: var(--mma-cream);
+  border: 1px solid var(--mma-navy);
+  padding: 0.55rem 1.1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+.workspace-theme .workspace-btn-primary:hover {
+  background-color: var(--mma-navy-soft);
+}
+
+.workspace-theme .workspace-btn-gold {
+  background-color: var(--mma-gold);
+  color: var(--mma-navy);
+  border: 1px solid var(--mma-gold);
+  padding: 0.55rem 1.1rem;
+  border-radius: 0.5rem;
+  font-weight: 700;
+  transition: background-color 0.15s ease;
+}
+.workspace-theme .workspace-btn-gold:hover {
+  background-color: var(--mma-gold-soft);
+}
+
+.workspace-theme .workspace-nav-link {
+  color: rgba(246, 241, 230, 0.78);
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.4rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.workspace-theme .workspace-nav-link:hover {
+  color: var(--mma-cream);
+  background-color: rgba(212, 175, 55, 0.12);
+}
+.workspace-theme .workspace-nav-link.active {
+  color: var(--mma-navy);
+  background-color: var(--mma-gold);
+}
+
+.workspace-theme .workspace-phase-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.workspace-theme .workspace-phase-pill.active {
+  background-color: var(--mma-gold);
+  color: var(--mma-navy);
+}
+.workspace-theme .workspace-phase-pill.locked {
+  background-color: rgba(8, 20, 40, 0.08);
+  color: rgba(8, 20, 40, 0.55);
+}
+.workspace-theme .workspace-phase-pill.complete {
+  background-color: var(--mma-navy);
+  color: var(--mma-gold);
+}

@@ -1,95 +1,159 @@
-## Wave 3 — RLS Hybrid Visibility + SLA Watcher + Round-Robin (inert)
 
-### Answers to your three questions
-1. **`claim_client` race control:** use a **partial unique index** `(contact_id, assigned_role) WHERE active AND assigned_role='sales_rep'` combined with `INSERT … ON CONFLICT DO NOTHING` inside the RPC, returning the resulting row. Cleaner than `FOR UPDATE`, matches our existing upsert patterns in `paige-bridge`, and is the same constraint shape used by `cs_primary` assignment trigger. We already have a non-partial unique on `(contact_id, assigned_role)` from Wave 1 — Wave 3 keeps that and the RPC just leans on it.
-2. **`pg_net`:** confirmed enabled on Paige (`pg_cron` + `pg_net` both present). No CREATE EXTENSION needed.
-3. **`set_assignment_policy` bridge verb:** **yes, ship it.** Trivial to add, matches Doctrine §91 (one bridge, verb-routed), and keeps Antonio out of SQL.
+# BTF Client Workspace v1 — Build Plan
+
+Spec read in full (mma-os repo, BTF-CLIENT-WORKSPACE-SPEC.md, 252 lines). Scope is achievable, schema is mostly clean, but there are 5 honest pushbacks before we cut a line of code.
 
 ---
 
-### 1. Migration — RLS rewrite (hybrid sales/cs model)
+## 1. Scope agreement
 
-**Helper functions (SECURITY DEFINER, search_path=public):**
-- `is_assigned_to_client(_user uuid, _client uuid, _role text default null) returns boolean` — checks `paige_coach_assignments` active row.
-- `client_has_role_assigned(_client uuid, _role text) returns boolean` — used for "pool" detection (no sales_rep currently assigned).
-- `current_user_tier_pool(_role app_role) returns text[]` — returns the tier array for a role (sales_rep → `{lead,standard}`, cs_rep → `{standard,premium,vip,internal}`).
+Agreed on the v1 cut as written, with these adjustments:
 
-**Replace `clients` policies** with role-scoped set:
-- `admins_full` — `has_any_role(auth.uid(), ARRAY['admin','super_admin'])` → ALL.
-- `coaches_assigned_only` — `has_role(auth.uid(),'coach') AND is_assigned_to_client(auth.uid(), id, 'coach')` → ALL (preserves existing coach behavior).
-- `sales_rep_full_on_assigned` — `has_role(auth.uid(),'sales_rep') AND is_assigned_to_client(auth.uid(), id, 'sales_rep')` → ALL.
-- `sales_rep_pool_read` — sales_rep AND `tier = ANY('{lead,standard}')` AND `NOT client_has_role_assigned(id,'sales_rep')` → SELECT.
-- `sales_rep_peer_read` — sales_rep AND `tier = ANY('{lead,standard}')` → SELECT (covers peer same-tier visibility).
-- `cs_rep_full_on_assigned` / `cs_rep_pool_read` / `cs_rep_peer_read` — same pattern over `{standard,premium,vip,internal}` and `cs_primary` role.
-- `finance_read_all` — `has_role(auth.uid(),'finance')` → SELECT.
-- `viewer_read_all` — `has_role(auth.uid(),'viewer')` → SELECT.
+- **Pull Funding Outcome (Section G) entirely to v2.** Spec already flags it as deferrable; locking it in v1 buys us ~1 day.
+- **Coach Messages in v1 = text + single file attachment only.** No pinning, no read receipts, no typing indicators. Pinning slides to v1.1.
+- **Intake Form = single wizard, no mid-flow edit in v1.** Editable later post-submit is v2. Jacqueline submits once, Antonio Daniel edits on her behalf via coach view if needed.
+- **"What's next" callout on Dashboard** — driven by simplest rule (first non-complete `btf_phase_items` row assigned to client). No ML, no Paige reasoning.
 
-Mirror the same hybrid pattern (read scoped to assignment or tier pool, full edit only when assigned) on `paige_coach_assignments` reads so reps see who else is on their accounts.
-
-**`claim_client(_client_id uuid)` RPC** (SECURITY DEFINER):
-- Verify caller has `sales_rep` (or `cs_rep` variant — same RPC handles both via role detection).
-- Verify client tier is in caller's pool array.
-- `INSERT INTO paige_coach_assignments(contact_id, assigned_role, rep_user_id, assigned_user_id, active, metadata) VALUES (..., auth.uid(), auth.uid(), true, jsonb_build_object('source','self_claim')) ON CONFLICT (contact_id, assigned_role) DO NOTHING RETURNING *;`
-- If `NOT FOUND` → raise `claim_race_lost` (client was claimed in the gap). Frontend treats as "someone got it first, refresh queue".
-
-### 2. SLA watcher (cron + dedupe + Telegram via bridge)
-
-**New table `paige_sla_alert_log`** — `(client_id, category, severity, sent_at)` with unique partial index `(client_id, category, severity) WHERE sent_at > now() - interval '24 hours'` for dedupe.
-
-**Edge function `sla-watcher`** (verify_jwt=false, bearer-protected via shared CRON secret):
-- Query `paige_unassigned_queue` view (Wave 2).
-- Bucket by tier thresholds: vip > 6h critical, premium > 24h warning, standard > 72h low; skip leads.
-- For each row, skip if a `paige_admin_notifications` row exists with same `(contact_id, source_workflow_key='unassigned_sla', severity)` in last 24h **or** `paige_sla_alert_log` shows recent send.
-- For survivors: POST to `https://slcqeiqcrhepicqxqjng.supabase.co/functions/v1/mma-os-bridge` with `verb='push_admin_notification'` body shape you provided, bearer `MMA_OS_BRIDGE_API_KEY`.
-- Also insert local `paige_admin_notifications` row (scope='admin', severity, link_to=`/admin/contacts/{id}`) so the AdminBridgeBell drawer reflects it.
-- Insert `paige_sla_alert_log` row.
-
-**pg_cron job** every 30 min calling the function via `net.http_post` with bearer `SLA_WATCHER_CRON_SECRET` (generate). Job SQL ships via `supabase--insert` (per scheduling guidance — contains URL/keys).
-
-### 3. Round-robin (inert by default)
-
-**Table `paige_assignment_policy`:**
-```
-tier text PRIMARY KEY,
-strategy text NOT NULL DEFAULT 'manual' CHECK (strategy IN ('manual','round_robin','load_balanced')),
-eligible_user_ids uuid[] NOT NULL DEFAULT '{}',
-target_role text NOT NULL DEFAULT 'sales_rep' CHECK (target_role IN ('sales_rep','cs_primary')),
-updated_at timestamptz DEFAULT now()
-```
-Grants: `service_role` ALL; `authenticated` SELECT only when `is_staff()`. Seed one row per tier with `strategy='manual'`.
-
-**Trigger `trg_clients_round_robin`** AFTER INSERT on `clients` (fires after existing `auto_assign_on_mirror`):
-- Skip if a matching assignment already exists for `policy.target_role`.
-- Load policy; bail if `strategy='manual'` or `eligible_user_ids` empty.
-- For `round_robin`: pick user from `eligible_user_ids` with fewest active assignments for that role (single SELECT … ORDER BY count ASC LIMIT 1).
-- `load_balanced` deferred — branch stub raises notice and falls back to round_robin.
-- Insert assignment with `metadata->>'source'='round_robin'`.
-
-### 4. Bridge v16 — new verbs in `paige-bridge`
-
-- `set_assignment_policy { tier, strategy, eligible_user_ids[], target_role? }` → upsert into `paige_assignment_policy`.
-- `get_assignment_policy { tier? }` → returns rows.
-- `claim_client_for_user { client_email, user_email, assigned_role }` → admin/MMA OS escape hatch that wraps the RPC bypassing self-only check.
-
-### 5. Tiny RPC for UI later (not building UI this wave)
-
-`unassigned_queue_for_role(_role text)` returns rows from `paige_unassigned_queue` filtered to caller's tier pool. Frontend will consume in next wave.
+Everything else in the v1 list stays.
 
 ---
 
-### Technical notes / risks
+## 2. Schema review — fits cleanly with one restructure
 
-- Policy explosion on `clients` is intentional and matches Doctrine §96. Using helper functions keeps each USING expression short and avoids the recursion trap (no policy references `clients`).
-- `is_assigned_to_client` reads `paige_coach_assignments` only — safe under RLS because it's SECURITY DEFINER.
-- The `peer_read` policy intentionally lets a sales rep see another rep's `{lead,standard}` clients (per your hybrid spec). If that turns out to be too leaky we can drop just that policy without touching the rest.
-- SLA watcher writes BOTH to MMA OS bridge (Telegram fan-out) AND local `paige_admin_notifications` so the in-app bell stays consistent — single source of truth for "did we already alert" is the local table + `paige_sla_alert_log`.
-- All new tables get `GRANT` blocks per platform rule; `paige_sla_alert_log` is service_role only (no `authenticated` grant).
+The 4 new tables (`btf_workspace_settings`, `btf_phase_items`, `btf_document_requests`, `btf_messages`) fit Paige's existing model. Notes:
 
-### What ships this wave
-1 migration (RLS rewrite + claim RPC + policy table + round-robin trigger + sla_alert_log).
-1 edge function (`sla-watcher`).
-1 bridge update (`paige-bridge` v16 with 3 new verbs).
-1 pg_cron schedule insert (via `supabase--insert` since it carries URL+secret).
-1 secret to generate: `SLA_WATCHER_CRON_SECRET`. Need confirmed: `MMA_OS_BRIDGE_API_KEY` already in secrets (will check before deploy).
+**Reuses cleanly:**
+- `clients.tier` already exists (Wave 2) → set `tier='btf_dfy'` to gate workspace access via RLS
+- `clients.assigned_coach_user_id` already exists → drop `assigned_coach_id` from `btf_workspace_settings` (duplicate field, source-of-truth conflict)
+- `clients.ghl_contact_id` + new `mma_os_btf_deal_id` give us the cross-system join
+- `paige_audit_log` already exists → use for phase advancement audit trail; no new audit table
+- Existing `documents` table has the storage pattern — `btf_document_requests` should reference an entry in `documents` rather than re-storing `file_url/size/type` (avoid drift)
 
-No UI changes this wave per your scope note — sales rep dashboard / CS queue / portal land in Wave 4.
+**Schema changes I'd make to the spec:**
+- Drop `assigned_coach_id` from `btf_workspace_settings` (use `clients.assigned_coach_user_id`)
+- `btf_document_requests` stores request metadata + a nullable `document_id` fk to `documents`; actual file lives in `documents` + storage bucket
+- Add `phase` enum (`build|stack|fund|complete`) at DB level, not text
+- `btf_phase_items` needs a `sort_order int` for deterministic checklist rendering
+- `btf_messages.sender_id` should be `uuid` (auth.users.id), not text — clean role check
+- New storage bucket `btf-client-docs` (private, RLS by client_id) — separate from existing `personal-documents` / `business-documents` to keep BTF auditable
+
+**RLS plan:**
+- Client role (new): sees only own `btf_*` rows via `client_id = (select id from clients where linked_user_id = auth.uid())`
+- Coach role: sees rows where the underlying `clients.assigned_coach_user_id = auth.uid()` (reuses Wave 3 hybrid pattern)
+- Admin: full read (existing pattern)
+
+---
+
+## 3. Primitives we reuse vs new builds
+
+| Capability | Status |
+|---|---|
+| Auth (Supabase) | Reuse |
+| `invite_user` action | **New white-label variant** — `invite_btf_client` (different from-address, no Paige copy, branded landing) |
+| RLS hybrid pattern | Reuse (Wave 3) |
+| Coach assignment + round-robin | Reuse — but seed `paige_assignment_policy` row for `tier='btf_dfy'` set to `manual` for v1 (Antonio assigns, no auto) |
+| Document upload component | Reuse `DocumentUpload.tsx`, point at new bucket |
+| `paige-bridge` outbound | Reuse pattern; add 4 verbs on **mma-os side** (outside our codebase — Antonio coordinates with MMA Ops chat) |
+| `paige_admin_notifications` | Reuse for coach pings ("new client message", "doc uploaded") |
+| Realtime subscriptions | Reuse (already wired Phase 1) for live message/checklist updates |
+| Brand theme | **New** — white-label theme provider scoped to `/workspace/*` routes (Navy/Gold/Bookman/Calibri), zero Paige strings |
+| AdminBridgeBell, AdminLayout | NOT reused — workspace gets its own minimal shell `WorkspaceLayout.tsx` |
+
+---
+
+## 4. White-label — technical concerns
+
+Low risk overall. Concrete must-dos:
+
+- **Route isolation:** all client UI under `/workspace/*`; no shared chrome with `/app` or `/admin`
+- **`<title>` + meta tags** per-route via `react-helmet-async` (already installed) — never emit "Paige"
+- **Email templates:** new Resend templates, from `antonio@mogulmakeracademy.com`, custom HTML — do NOT reuse existing Paige auth templates (Supabase auth email templates need a separate set OR we send custom invites via edge function and skip Supabase's built-in)
+- **Auth flow gotcha:** Supabase's default "magic link" / "confirm signup" emails ARE branded by us in dashboard settings — we have ONE set of templates per project. Recommend: send invite via custom edge function with a signed token → client lands on `/workspace/accept-invite?token=…` → we call `admin.createUser` server-side → set password → sign in. Bypasses Supabase's templated emails entirely.
+- **Favicon + OG tags** per workspace route
+- **Console/network leak audit** before launch (no "paige" strings in payloads visible to client devtools — rename any user-facing API responses)
+- **Domain:** `portal.mogulmakeracademy.com` recommended over `workspace.buildbuyingpower.com` (shorter, owned, easier DNS). Needs a custom domain config; Lovable supports it but adds ~1 day for DNS + cert propagation.
+
+---
+
+## 5. mma-os-bridge integration — blockers
+
+The 4 new verbs (`get_btf_deal_by_id`, `update_btf_phase`, `record_btf_payment`, `get_btf_workspace_summary`) are **outside this codebase** — they ship on the mma-os Edge Function. Our side just calls them via the existing bridge client pattern.
+
+**Blockers / dependencies:**
+- Antonio needs to confirm with MMA Ops chat that those 4 verbs will be live before our Week 2 integration testing. Otherwise we stub them locally and swap in Week 3.
+- `mma-os.btf_deals` schema needs to be shared so we type the bridge responses correctly. Request: paste the table definition in the next turn.
+- Bridge auth key rotation just happened — workspace edge functions must use the current `MMA_OS_BRIDGE_API_KEY` secret. Already set.
+- Payment data is **read-only from mma-os** in v1 — Paige never writes payment state. `record_btf_payment` is a coach action that delegates to mma-os. Confirm that's the intent.
+
+No technical blockers on our side. Coordination risk only.
+
+---
+
+## 6. Build order (smallest meaningful slice first)
+
+**Week 1**
+
+1. **Day 1-2 — Foundation**
+   - Migration: 4 new tables, enums, storage bucket, RLS, seed phase-item templates for `build` phase
+   - White-label theme tokens + `WorkspaceLayout.tsx` shell
+   - Route scaffolding under `/workspace/*`
+
+2. **Day 3 — Auth + invite**
+   - `invite-btf-client` edge function (custom signed-token flow, MMA-branded email via Resend)
+   - `/workspace/accept-invite` page
+   - Client role + RLS verified end-to-end with a test account
+
+3. **Day 4-5 — Client-facing minimum loop**
+   - `/workspace` Dashboard (welcome, phase indicator, coach card, payment mini-card, what's next)
+   - `/workspace/intake` wizard (single submit, writes `btf_workspace_settings.intake_data`)
+   - `/workspace/phases` Phase Tracker (Phase 1 functional checklist, 2 & 3 locked tiles)
+
+**Week 2**
+
+4. **Day 6-7 — Documents + messaging**
+   - `/workspace/documents` (drop zone, requested-docs list, reuses `DocumentUpload`)
+   - `/workspace/messages` (basic thread, realtime, single attachment, email notify coach on new client msg)
+
+5. **Day 8 — Payment status (read-only)**
+   - `/workspace/payments` reads from mma-os via bridge `get_btf_workspace_summary`
+
+6. **Day 9 — Coach view**
+   - `/admin/btf` coach dashboard (client list + status)
+   - `/admin/btf/:clientId` per-client view (all client sections + mark-complete, advance-phase, request-doc, private notes, message)
+
+7. **Day 10 — Wire mma-os-bridge calls**
+   - `update_btf_phase` on advance
+   - `record_btf_payment` on coach log-payment
+   - `get_btf_deal_by_id` for dashboard hydration
+   - Fallback to local cache if bridge 5xx (already a pattern via outbox)
+
+8. **Day 11-12 — Hardening**
+   - White-label audit (grep for "paige" / "Paige" in `/workspace/*` bundle)
+   - RLS test matrix (client cannot see other client; coach cannot see unassigned clients; admin can)
+   - Send invite to test account, full happy-path walkthrough
+   - Antonio + a coach UAT
+
+9. **Day 13 — Production invite to Jacqueline**
+
+That's 13 working days. Tight but doable if mma-os verbs are live by Day 8.
+
+---
+
+## 7. Pushback for Antonio
+
+1. **"Manual handling" payment flag** — spec doesn't say where it lives. Recommend: column on `mma-os.btf_deals`, surfaced via bridge. We don't replicate it in Paige.
+2. **Phase-item templates** — spec lists items but not who seeds them per new BTF client. Recommend: on workspace creation, an edge function clones a template row set from a new `btf_phase_item_templates` table. Otherwise every new client requires manual checklist creation.
+3. **"Share your win" social graphic** (v2) — flagging now that this needs design assets before Phase 3 clients exist. Not blocking v1.
+4. **Coach availability of Antonio Daniel + Tony Robinson** — they need accounts + the new `coach` role assigned + walkthrough. Recommend Antonio loops them in on Day 9 for UAT, not Day 13.
+5. **One-client-one-deal in v1** is fine, but `btf_workspace_settings` should have a `unique(client_id, mma_os_btf_deal_id)` constraint so we don't accidentally double-provision when Jacqueline starts business #2.
+6. **Realtime in messages** — pleasant but if mma-os-bridge slips, we ship messages with polling first (5s interval) and upgrade to realtime in v1.1. Keeps Day 13 honest.
+
+---
+
+## 8. Timeline verdict
+
+- **v1 in 10–13 working days: realistic** if (a) mma-os 4 new verbs ship by our Day 8, (b) custom domain DNS is started Day 1, (c) Antonio Daniel + Tony Robinson are reachable for UAT Day 9.
+- **Slip risk:** mma-os verb readiness is the single biggest external dependency. Mitigation: stub the bridge responses Week 1 so all Paige-side dev proceeds in parallel.
+- **No technical blockers** on white-label, schema, or RLS.
+
+Awaiting greenlight + the `mma-os.btf_deals` schema before I move to build mode.
