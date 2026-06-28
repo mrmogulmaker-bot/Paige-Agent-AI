@@ -326,32 +326,76 @@ Deno.serve(async (req) => {
         const ownerId = await resolveOwnerUserId();
         if (!ownerId) return fail(verb, 500, "Platform owner not resolvable for created_by");
 
-        const { data: existing } = await supabase
-          .from("clients")
-          .select("id")
-          .ilike("email", emailLower)
-          .limit(1)
-          .maybeSingle();
+        const nowIso = new Date().toISOString();
 
-        if (existing?.id) {
-          const updatePatch: Record<string, unknown> = { first_name: first, last_name: last };
-          if (p.phone) updatePatch.phone = p.phone;
-          const { error } = await supabase
+        // Resolve assigned user mapping (auth.users by email)
+        let assignedUserId: string | null = null;
+        if (p.assigned_to_email) {
+          const { data: list } = await supabase.auth.admin.listUsers();
+          const u = list?.users?.find(
+            (x) => (x.email ?? "").toLowerCase() === p.assigned_to_email!.toLowerCase(),
+          );
+          assignedUserId = u?.id ?? null;
+        }
+
+        // Try by ghl_contact_id first, then by email
+        let existingId: string | null = null;
+        if (p.ghl_contact_id) {
+          const { data: byGhl } = await supabase
             .from("clients")
-            .update(updatePatch)
-            .eq("id", existing.id);
+            .select("id")
+            .eq("ghl_contact_id", p.ghl_contact_id)
+            .limit(1)
+            .maybeSingle();
+          existingId = byGhl?.id ?? null;
+        }
+        if (!existingId) {
+          const { data: byEmail } = await supabase
+            .from("clients")
+            .select("id")
+            .ilike("email", emailLower)
+            .limit(1)
+            .maybeSingle();
+          existingId = byEmail?.id ?? null;
+        }
+
+        const sharedPatch: Record<string, unknown> = {
+          first_name: first || "Unknown",
+          last_name: last,
+          mirror_source: "mma_os",
+          last_mirrored_at: nowIso,
+        };
+        if (p.phone) sharedPatch.phone = p.phone;
+        if (p.tier) sharedPatch.tier = p.tier;
+        if (p.ghl_contact_id) sharedPatch.ghl_contact_id = p.ghl_contact_id;
+        if (p.source) sharedPatch.source = p.source;
+
+        if (existingId) {
+          const { error } = await supabase.from("clients").update(sharedPatch).eq("id", existingId);
           if (error) throw error;
-          return ok(verb, { client_id: existing.id, action: "updated" });
+          if (assignedUserId) {
+            await supabase
+              .from("paige_coach_assignments")
+              .upsert(
+                {
+                  contact_id: existingId,
+                  assigned_role: "lead_owner",
+                  rep_user_id: assignedUserId,
+                  active: true,
+                  metadata: { source: "mma_os_assigned_to" },
+                },
+                { onConflict: "contact_id,assigned_role" } as any,
+              );
+          }
+          return ok(verb, { client_id: existingId, action: "updated" });
         }
 
         const { data, error } = await supabase
           .from("clients")
           .insert({
+            ...sharedPatch,
             created_by: ownerId,
-            first_name: first || "Unknown",
-            last_name: last,
             email: emailLower,
-            phone: p.phone ?? null,
             status: "active",
             source: p.source ?? "mma_bridge",
             lifecycle_stage: "lead",
@@ -359,6 +403,16 @@ Deno.serve(async (req) => {
           .select("id")
           .single();
         if (error) throw error;
+
+        if (assignedUserId) {
+          await supabase.from("paige_coach_assignments").insert({
+            contact_id: data.id,
+            assigned_role: "lead_owner",
+            rep_user_id: assignedUserId,
+            active: true,
+            metadata: { source: "mma_os_assigned_to" },
+          });
+        }
         return ok(verb, { client_id: data.id, action: "created" });
       }
 
@@ -374,6 +428,9 @@ Deno.serve(async (req) => {
             link_to: p.link_to ?? null,
             source_workflow_key: p.source_workflow_key ?? null,
             contact_id: p.contact_id ?? null,
+            scope: p.scope,
+            assigned_role: p.scope_role ?? null,
+            assigned_user_id: p.assigned_user_id ?? null,
           })
           .select("id")
           .single();
