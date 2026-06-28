@@ -1,4 +1,4 @@
-// Generates a 6-digit code, stores in sms_verifications, sends via Twilio.
+// Generates a 6-digit code, stores HASHED in sms_verifications, sends plaintext via Twilio.
 // Rate-limited: max 3 sends per phone per hour.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
@@ -20,13 +20,19 @@ function generateCode(): string {
   return String(arr[0] % 1_000_000).padStart(6, '0')
 }
 
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-  // Validate caller JWT
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) return jsonResp({ error: 'Missing authorization' }, 401)
 
@@ -56,7 +62,6 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-  // Rate limit: 3 per hour per phone
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
   const { count } = await supabase
     .from('sms_verifications')
@@ -69,12 +74,13 @@ Deno.serve(async (req) => {
   }
 
   const code = generateCode()
+  const codeHash = await sha256Hex(code)
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
 
   const { error: insertErr } = await supabase.from('sms_verifications').insert({
     user_id: userId,
     phone_number: phone,
-    verification_code: code,
+    verification_code: codeHash,
     expires_at: expiresAt,
   })
 
@@ -83,7 +89,6 @@ Deno.serve(async (req) => {
     return jsonResp({ error: 'Failed to create verification' }, 500)
   }
 
-  // Save the phone on the prefs row (unverified) so send-sms can find it
   await supabase
     .from('communication_preferences')
     .upsert(
@@ -91,7 +96,6 @@ Deno.serve(async (req) => {
       { onConflict: 'user_id' },
     )
 
-  // Send via send-sms with skip_preference_check
   const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
     method: 'POST',
     headers: {
