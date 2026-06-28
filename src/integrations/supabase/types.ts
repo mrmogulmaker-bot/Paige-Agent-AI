@@ -4465,21 +4465,21 @@ export type Database = {
           created_at: string
           email: string
           id: string
-          token: string
+          token_hash: string
           used_at: string | null
         }
         Insert: {
           created_at?: string
           email: string
           id?: string
-          token: string
+          token_hash: string
           used_at?: string | null
         }
         Update: {
           created_at?: string
           email?: string
           id?: string
-          token?: string
+          token_hash?: string
           used_at?: string | null
         }
         Relationships: []
@@ -9311,6 +9311,7 @@ export type Database = {
       sms_verifications: {
         Row: {
           attempts: number
+          code_hashed: boolean
           created_at: string
           expires_at: string
           id: string
@@ -9321,6 +9322,7 @@ export type Database = {
         }
         Insert: {
           attempts?: number
+          code_hashed?: boolean
           created_at?: string
           expires_at: string
           id?: string
@@ -9331,6 +9333,7 @@ export type Database = {
         }
         Update: {
           attempts?: number
+          code_hashed?: boolean
           created_at?: string
           expires_at?: string
           id?: string
