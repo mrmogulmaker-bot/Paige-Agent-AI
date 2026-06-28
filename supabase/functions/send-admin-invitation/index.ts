@@ -96,26 +96,11 @@ const handler = async (req: Request): Promise<Response> => {
       .from("user_roles")
       .upsert({ user_id: targetUserId, role }, { onConflict: "user_id,role" });
 
-    // 4. Generate a password reset link so the invitee can set their own password
-    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-      type: "recovery",
-      email,
-      options: {
-        redirectTo: "https://paigeagent.ai/auth",
-      },
-    });
-
-    if (linkError) {
-      console.error("Failed to generate recovery link:", linkError);
-    }
-
-    // Build the invite URL — use the magic link if available, otherwise fallback to auth page
-    const inviteUrl = linkData?.properties?.action_link || `https://paigeagent.ai/auth?mode=login`;
-
-    // 5. Create invitation record for audit trail
+    // 4. Mint our own opaque token; the BEFORE INSERT trigger hashes it and clears the plaintext.
     const rawToken = Array.from(crypto.getRandomValues(new Uint8Array(32)))
       .map(b => b.toString(16).padStart(2, '0')).join('');
 
+    // 5. Create invitation record (token gets hashed by trg_hash_invitation_token).
     const { data: invitation, error: inviteError } = await supabase
       .from("invitations")
       .insert({
@@ -123,19 +108,18 @@ const handler = async (req: Request): Promise<Response> => {
         role,
         invited_by: user.id,
         token: rawToken,
+        expires_at: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
         template_name: templateName ?? null,
-        metadata: message ? { message } : {},
+        metadata: { ...(message ? { message } : {}), invited_by_name: inviterName },
       })
       .select()
       .single();
 
     if (inviteError) throw inviteError;
 
-    // Mark as accepted immediately since account is pre-created
-    await supabase
-      .from("invitations")
-      .update({ accepted_at: new Date().toISOString() })
-      .eq("id", invitation.id);
+    // Invite URL points at our unified /accept-invite page; the edge function
+    // hashes the raw token, looks it up, and routes by role on consume.
+    const inviteUrl = `https://paigeagent.ai/accept-invite?token=${rawToken}`;
 
     // 6. Send branded invitation email
     const roleLabels: Record<string, string> = {
