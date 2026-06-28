@@ -84,15 +84,30 @@ function err(message: string) {
   return { content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }], isError: true };
 }
 
+// Per-request actor context (set by the HTTP route before invoking the MCP transport).
+// Phase 3: bearer tokens can resolve to either the platform key or a user OAuth token.
+type ActorCtx = {
+  kind: "platform" | "user";
+  user_id: string | null;
+  client_id: string | null;
+  scopes: string[];
+};
+import { AsyncLocalStorage } from "node:async_hooks";
+const actorStore = new AsyncLocalStorage<ActorCtx>();
+function currentActor(): ActorCtx {
+  return actorStore.getStore() ?? { kind: "platform", user_id: null, client_id: null, scopes: [] };
+}
+
 async function audit(action: string, target_type: string | null, target_id: string | null, payload: Record<string, unknown>) {
   try {
+    const a = currentActor();
     await admin.from("paige_audit_log").insert({
-      actor_user_id: null,
-      actor_role: "mcp:platform",
+      actor_user_id: a.user_id,
+      actor_role: a.kind === "user" ? "mcp:user" : "mcp:platform",
       action,
       target_type,
       target_id,
-      payload,
+      payload: { ...payload, ...(a.client_id ? { mcp_client_id: a.client_id } : {}) },
     });
   } catch (e) {
     console.error("[paige-mcp] audit failed", (e as Error).message);
