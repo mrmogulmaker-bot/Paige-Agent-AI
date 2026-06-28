@@ -1,69 +1,95 @@
-# Paige Wave 2 — Build Plan
+## Wave 3 — RLS Hybrid Visibility + SLA Watcher + Round-Robin (inert)
 
-Answers to Antonio's 3 open questions land inline. Doctrine §82, §85, §86 honored: MMA OS = upstream, Paige = pipeline source of truth, no GHL direct reads.
+### Answers to your three questions
+1. **`claim_client` race control:** use a **partial unique index** `(contact_id, assigned_role) WHERE active AND assigned_role='sales_rep'` combined with `INSERT … ON CONFLICT DO NOTHING` inside the RPC, returning the resulting row. Cleaner than `FOR UPDATE`, matches our existing upsert patterns in `paige-bridge`, and is the same constraint shape used by `cs_primary` assignment trigger. We already have a non-partial unique on `(contact_id, assigned_role)` from Wave 1 — Wave 3 keeps that and the RPC just leans on it.
+2. **`pg_net`:** confirmed enabled on Paige (`pg_cron` + `pg_net` both present). No CREATE EXTENSION needed.
+3. **`set_assignment_policy` bridge verb:** **yes, ship it.** Trivial to add, matches Doctrine §91 (one bridge, verb-routed), and keeps Antonio out of SQL.
 
-## Answers to open Qs
+---
 
-1. **`clients.tier` column?** No — `lifecycle_stage` exists but uses a different enum (lead/mql/sql/opportunity/customer/...). **Adding `tier` as a separate column** matching MMA OS enum (`lead`, `standard`, `premium`, `vip`, `internal`, `staff`).
-2. **`clients.ghl_contact_id`?** No — **adding it**, indexed unique-when-not-null, populated by `upsert_contact_mirror`.
-3. **Paige opportunities table?** Named **`deals`** (already in production, Phase pipeline overhaul). Columns: `id, title, pipeline_id, stage_id, contact_client_id, owner_user_id, value_cents, currency, expected_close_date, actual_close_date, status (open|won|lost|abandoned), lost_reason, source, tags[], notes, created_by`. No rename needed — bridge verb `get_opportunities_for_contact` reads from `deals`.
+### 1. Migration — RLS rewrite (hybrid sales/cs model)
 
-## Database migration
+**Helper functions (SECURITY DEFINER, search_path=public):**
+- `is_assigned_to_client(_user uuid, _client uuid, _role text default null) returns boolean` — checks `paige_coach_assignments` active row.
+- `client_has_role_assigned(_client uuid, _role text) returns boolean` — used for "pool" detection (no sales_rep currently assigned).
+- `current_user_tier_pool(_role app_role) returns text[]` — returns the tier array for a role (sales_rep → `{lead,standard}`, cs_rep → `{standard,premium,vip,internal}`).
 
-```text
-clients
-  + tier                  text  (check constraint: lead|standard|premium|vip|internal|staff)
-  + ghl_contact_id        text  (unique partial index where not null)
-  + last_mirrored_at      timestamptz
-  + mirror_source         text  ('mma_os' | 'manual' | 'ghl_legacy')
+**Replace `clients` policies** with role-scoped set:
+- `admins_full` — `has_any_role(auth.uid(), ARRAY['admin','super_admin'])` → ALL.
+- `coaches_assigned_only` — `has_role(auth.uid(),'coach') AND is_assigned_to_client(auth.uid(), id, 'coach')` → ALL (preserves existing coach behavior).
+- `sales_rep_full_on_assigned` — `has_role(auth.uid(),'sales_rep') AND is_assigned_to_client(auth.uid(), id, 'sales_rep')` → ALL.
+- `sales_rep_pool_read` — sales_rep AND `tier = ANY('{lead,standard}')` AND `NOT client_has_role_assigned(id,'sales_rep')` → SELECT.
+- `sales_rep_peer_read` — sales_rep AND `tier = ANY('{lead,standard}')` → SELECT (covers peer same-tier visibility).
+- `cs_rep_full_on_assigned` / `cs_rep_pool_read` / `cs_rep_peer_read` — same pattern over `{standard,premium,vip,internal}` and `cs_primary` role.
+- `finance_read_all` — `has_role(auth.uid(),'finance')` → SELECT.
+- `viewer_read_all` — `has_role(auth.uid(),'viewer')` → SELECT.
 
-paige_unassigned_queue   VIEW
-  SELECT clients ordered by tier priority, with unassigned_for_hours computed,
-  filtered to rows with no active paige_coach_assignments row for lead_owner/cs_primary.
+Mirror the same hybrid pattern (read scoped to assignment or tier pool, full edit only when assigned) on `paige_coach_assignments` reads so reps see who else is on their accounts.
 
-Function: public.auto_assign_on_mirror(client_id uuid)
-  - reads tier
-  - tier in (premium,vip,internal,staff) → insert assignment role='cs_primary', rep_user_id=NULL
-  - tier in (lead,standard,free) → no row (lives in pool)
-  - if metadata.assigned_to maps to known Paige user → insert role='lead_owner', rep_user_id=mapped
+**`claim_client(_client_id uuid)` RPC** (SECURITY DEFINER):
+- Verify caller has `sales_rep` (or `cs_rep` variant — same RPC handles both via role detection).
+- Verify client tier is in caller's pool array.
+- `INSERT INTO paige_coach_assignments(contact_id, assigned_role, rep_user_id, assigned_user_id, active, metadata) VALUES (..., auth.uid(), auth.uid(), true, jsonb_build_object('source','self_claim')) ON CONFLICT (contact_id, assigned_role) DO NOTHING RETURNING *;`
+- If `NOT FOUND` → raise `claim_race_lost` (client was claimed in the gap). Frontend treats as "someone got it first, refresh queue".
 
-Trigger: trg_clients_auto_assign  AFTER INSERT on clients WHEN mirror_source='mma_os'
+### 2. SLA watcher (cron + dedupe + Telegram via bridge)
+
+**New table `paige_sla_alert_log`** — `(client_id, category, severity, sent_at)` with unique partial index `(client_id, category, severity) WHERE sent_at > now() - interval '24 hours'` for dedupe.
+
+**Edge function `sla-watcher`** (verify_jwt=false, bearer-protected via shared CRON secret):
+- Query `paige_unassigned_queue` view (Wave 2).
+- Bucket by tier thresholds: vip > 6h critical, premium > 24h warning, standard > 72h low; skip leads.
+- For each row, skip if a `paige_admin_notifications` row exists with same `(contact_id, source_workflow_key='unassigned_sla', severity)` in last 24h **or** `paige_sla_alert_log` shows recent send.
+- For survivors: POST to `https://slcqeiqcrhepicqxqjng.supabase.co/functions/v1/mma-os-bridge` with `verb='push_admin_notification'` body shape you provided, bearer `MMA_OS_BRIDGE_API_KEY`.
+- Also insert local `paige_admin_notifications` row (scope='admin', severity, link_to=`/admin/contacts/{id}`) so the AdminBridgeBell drawer reflects it.
+- Insert `paige_sla_alert_log` row.
+
+**pg_cron job** every 30 min calling the function via `net.http_post` with bearer `SLA_WATCHER_CRON_SECRET` (generate). Job SQL ships via `supabase--insert` (per scheduling guidance — contains URL/keys).
+
+### 3. Round-robin (inert by default)
+
+**Table `paige_assignment_policy`:**
 ```
+tier text PRIMARY KEY,
+strategy text NOT NULL DEFAULT 'manual' CHECK (strategy IN ('manual','round_robin','load_balanced')),
+eligible_user_ids uuid[] NOT NULL DEFAULT '{}',
+target_role text NOT NULL DEFAULT 'sales_rep' CHECK (target_role IN ('sales_rep','cs_primary')),
+updated_at timestamptz DEFAULT now()
+```
+Grants: `service_role` ALL; `authenticated` SELECT only when `is_staff()`. Seed one row per tier with `strategy='manual'`.
 
-## Bridge v15 — new + extended verbs
+**Trigger `trg_clients_round_robin`** AFTER INSERT on `clients` (fires after existing `auto_assign_on_mirror`):
+- Skip if a matching assignment already exists for `policy.target_role`.
+- Load policy; bail if `strategy='manual'` or `eligible_user_ids` empty.
+- For `round_robin`: pick user from `eligible_user_ids` with fewest active assignments for that role (single SELECT … ORDER BY count ASC LIMIT 1).
+- `load_balanced` deferred — branch stub raises notice and falls back to round_robin.
+- Insert assignment with `metadata->>'source'='round_robin'`.
 
-Add to `supabase/functions/paige-bridge/index.ts`:
+### 4. Bridge v16 — new verbs in `paige-bridge`
 
-| Verb | In/Out | Behavior |
-|------|--------|----------|
-| `get_coach_for_client` | MMA OS → Paige | Input `{email}`. Returns active assignments `[{role, user_id, email}]` from `paige_coach_assignments` joined to `auth.users`. |
-| `get_opportunities_for_contact` | MMA OS → Paige | Input `{email}`. Returns `deals` rows for the matched `clients.id` with stage + pipeline names. |
-| `list_modified_clients_since` | MMA OS → Paige | Input `{since: ISO ts, limit}`. Returns `clients` rows where `updated_at > since AND (mirror_source IS NULL OR mirror_source <> 'mma_os')` — i.e. Paige-side edits to mirror back. |
-| `notify_admin` (extended) | MMA OS → Paige | Accept `scope: 'global'|'role'|'assigned_user'`, `scope_role`, `assigned_user_id`. Persist to `paige_admin_notifications` (add `scope`, `scope_role`, `assigned_user_id` columns). |
-| `upsert_contact_mirror` (extended) | MMA OS → Paige | Accept `tier`, `ghl_contact_id`, `custom_fields`, `assigned_to_email`. Sets `mirror_source='mma_os'`, `last_mirrored_at=now()`. Auto-assignment trigger fires. |
+- `set_assignment_policy { tier, strategy, eligible_user_ids[], target_role? }` → upsert into `paige_assignment_policy`.
+- `get_assignment_policy { tier? }` → returns rows.
+- `claim_client_for_user { client_email, user_email, assigned_role }` → admin/MMA OS escape hatch that wraps the RPC bypassing self-only check.
 
-## RLS scoping (Q3 hybrid)
+### 5. Tiny RPC for UI later (not building UI this wave)
 
-`clients` SELECT policy rewrite:
-- super_admin / admin / coach → all
-- sales_rep → assigned (lead_owner) OR unassigned in tier IN ('lead','standard') OR same-tier read-only
-- cs_rep → assigned (cs_primary) OR tier IN ('premium','vip','internal','staff')
-- viewer / linked_user → own row only
+`unassigned_queue_for_role(_role text)` returns rows from `paige_unassigned_queue` filtered to caller's tier pool. Frontend will consume in next wave.
 
-## Unassigned queue + SLA alerts
+---
 
-`paige_unassigned_queue` view (super_admin + admin always; reps scoped to their tier).
-Edge cron `unassigned-sla-watcher` (later wave) fires `notify_admin` when VIP > 24h or Premium > 72h.
+### Technical notes / risks
 
-## What we won't do this wave
+- Policy explosion on `clients` is intentional and matches Doctrine §96. Using helper functions keeps each USING expression short and avoids the recursion trap (no policy references `clients`).
+- `is_assigned_to_client` reads `paige_coach_assignments` only — safe under RLS because it's SECURITY DEFINER.
+- The `peer_read` policy intentionally lets a sales rep see another rep's `{lead,standard}` clients (per your hybrid spec). If that turns out to be too leaky we can drop just that policy without touching the rest.
+- SLA watcher writes BOTH to MMA OS bridge (Telegram fan-out) AND local `paige_admin_notifications` so the in-app bell stays consistent — single source of truth for "did we already alert" is the local table + `paige_sla_alert_log`.
+- All new tables get `GRANT` blocks per platform rule; `paige_sla_alert_log` is service_role only (no `authenticated` grant).
 
-- Round-robin auto-distribution (deferred per Q1)
-- GHL direct pulls (deprecated per §86)
-- Mirror MMA OS `customer_profiles` into Paige (read on-demand via future bridge GETs, not denormalized)
-- SLA watcher cron (Wave 3)
+### What ships this wave
+1 migration (RLS rewrite + claim RPC + policy table + round-robin trigger + sla_alert_log).
+1 edge function (`sla-watcher`).
+1 bridge update (`paige-bridge` v16 with 3 new verbs).
+1 pg_cron schedule insert (via `supabase--insert` since it carries URL+secret).
+1 secret to generate: `SLA_WATCHER_CRON_SECRET`. Need confirmed: `MMA_OS_BRIDGE_API_KEY` already in secrets (will check before deploy).
 
-## Verification
-
-- `psql \d clients` shows new columns
-- Hit `paige-bridge` with each new verb using `PAIGE_BRIDGE_API_KEY`, expect 200 + shape
-- Insert a test client with `mirror_source='mma_os'` + `tier='vip'` → assignment row auto-created
+No UI changes this wave per your scope note — sales rep dashboard / CS queue / portal land in Wave 4.

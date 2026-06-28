@@ -6083,6 +6083,30 @@ export type Database = {
           },
         ]
       }
+      paige_assignment_policy: {
+        Row: {
+          eligible_user_ids: string[]
+          strategy: string
+          target_role: string
+          tier: string
+          updated_at: string
+        }
+        Insert: {
+          eligible_user_ids?: string[]
+          strategy?: string
+          target_role?: string
+          tier: string
+          updated_at?: string
+        }
+        Update: {
+          eligible_user_ids?: string[]
+          strategy?: string
+          target_role?: string
+          tier?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       paige_audit_log: {
         Row: {
           action: string
@@ -7440,6 +7464,58 @@ export type Database = {
           {
             foreignKeyName: "paige_signature_envelopes_contact_id_fkey"
             columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_sla_alert_log: {
+        Row: {
+          category: string
+          client_id: string | null
+          hours_unassigned: number | null
+          id: string
+          metadata: Json
+          sent_at: string
+          severity: string
+        }
+        Insert: {
+          category: string
+          client_id?: string | null
+          hours_unassigned?: number | null
+          id?: string
+          metadata?: Json
+          sent_at?: string
+          severity: string
+        }
+        Update: {
+          category?: string
+          client_id?: string | null
+          hours_unassigned?: number | null
+          id?: string
+          metadata?: Json
+          sent_at?: string
+          severity?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_sla_alert_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_sla_alert_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_sla_alert_log_client_id_fkey"
+            columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
@@ -9766,6 +9842,10 @@ export type Database = {
         Args: { _application_id: string; _notes?: string; _tier_key?: string }
         Returns: Json
       }
+      assignment_role_for: {
+        Args: { _role: Database["public"]["Enums"]["app_role"] }
+        Returns: string
+      }
       attribute_conversion: {
         Args: {
           p_amount_cents: number
@@ -9791,6 +9871,34 @@ export type Database = {
           _user_id: string
           _window_minutes?: number
         }
+        Returns: boolean
+      }
+      claim_client: {
+        Args: { _client_id: string }
+        Returns: {
+          active: boolean
+          assigned_at: string
+          assigned_role: string | null
+          coach_id: string | null
+          contact_id: string | null
+          created_at: string
+          id: string
+          metadata: Json
+          notes: string | null
+          rep_user_id: string | null
+          role: string | null
+          unassigned_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "paige_coach_assignments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      client_has_role_assigned: {
+        Args: { _assignment_role: string; _client: string }
         Returns: boolean
       }
       current_user_roles: { Args: never; Returns: string[] }
@@ -9973,6 +10081,10 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: { p_user_id: string }; Returns: boolean }
+      is_assigned_to_client: {
+        Args: { _assignment_role?: string; _client: string; _user: string }
+        Returns: boolean
+      }
       is_broker_team_member_of: {
         Args: { _broker_id: string }
         Returns: boolean
@@ -10057,9 +10169,34 @@ export type Database = {
         }
         Returns: Json
       }
+      tier_pool_for_role: {
+        Args: { _role: Database["public"]["Enums"]["app_role"] }
+        Returns: string[]
+      }
       trigger_business_credit_sync: {
         Args: { _user_id: string }
         Returns: Json
+      }
+      unassigned_queue_for_caller: {
+        Args: never
+        Returns: {
+          created_at: string | null
+          email: string | null
+          first_name: string | null
+          ghl_contact_id: string | null
+          id: string | null
+          last_mirrored_at: string | null
+          last_name: string | null
+          priority_rank: number | null
+          tier: string | null
+          unassigned_for_hours: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "paige_unassigned_queue"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       update_profile_ssn: {
         Args: {
