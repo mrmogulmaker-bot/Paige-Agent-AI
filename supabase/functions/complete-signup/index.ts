@@ -150,9 +150,12 @@ Deno.serve(async (req) => {
       clientId = inserted.id;
     }
 
-    // Fire bridge — never blocks the response.
+    // Fire bridge — never blocks the response (EdgeRuntime.waitUntil → wait:false semantics).
+    // Field shape per docs/PAIGE-MMA-OS-BRIDGE-CONTRACT.md on mma-os main (sha 1dacf1f7).
+    const fundingGoalUsd = data.funding_goal_usd ?? 0;
+    const hasEntity = data.entity_status === "have_entity";
     fireAndForgetBridge("handle_new_lead", {
-      source: "self_signup_public",
+      source: "paige_public_signup",
       paige_client_id: clientId,
       auth_user_id: user.id,
       email: user.email,
@@ -161,6 +164,8 @@ Deno.serve(async (req) => {
       personal_phone: data.personal_phone,
       persona,
       route,
+      has_entity: hasEntity,
+      funding_goal_cents: Math.round(fundingGoalUsd * 100),
       funding_goal_usd: data.funding_goal_usd ?? null,
       funding_timeline: data.funding_timeline ?? null,
       entity: {
