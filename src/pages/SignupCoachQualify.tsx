@@ -1,0 +1,51 @@
+// Public coach-qualify landing — shown after signup when funding goal $50K+ AND entity exists.
+// Soft handoff to a coach conversation before workspace access.
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { PageHead } from "@/components/seo/PageHead";
+
+export default function SignupCoachQualify() {
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <PageHead
+        title="Let's talk to a coach first — Paige Agent AI"
+        description="Funding goals at this level deserve a real plan. A coach will walk you through the next step."
+        path="/signup/coach-qualify"
+      />
+      <div className="max-w-2xl mx-auto px-6 py-16">
+        <h1 className="font-[Playfair_Display] text-4xl md:text-5xl tracking-tight">
+          You're aiming bigger. Let's talk first.
+        </h1>
+        <p className="mt-4 text-muted-foreground text-lg">
+          Goals at this level don't get solved with a generic dashboard. Before you start running the
+          workspace, a coach will walk you through what's actually possible — and what the right next
+          move looks like for your specific situation.
+        </p>
+
+        <div className="mt-8 rounded-xl border border-border bg-card p-6 space-y-3">
+          <h2 className="font-semibold">What happens next</h2>
+          <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-2">
+            <li>Your information was just sent to our sales team.</li>
+            <li>A coach will reach out within one business day to set up a short call.</li>
+            <li>If we're a fit, you'll get full workspace access right after that conversation.</li>
+          </ol>
+        </div>
+
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Button asChild>
+            <a href="https://www.skool.com/mogul-maker-academy" target="_blank" rel="noreferrer">
+              Join the community while you wait
+            </a>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/app">Continue to your dashboard</Link>
+          </Button>
+        </div>
+
+        <p className="text-xs text-muted-foreground mt-10">
+          Questions in the meantime? Reply to the welcome email or text us at +1 470-594-4470.
+        </p>
+      </div>
+    </div>
+  );
+}
