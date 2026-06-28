@@ -9,12 +9,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const VALID_ROLES = ["user", "coach", "moderator", "admin", "affiliate"] as const;
+const VALID_ROLES = [
+  "user", "client", "coach", "moderator", "admin",
+  "affiliate", "sales_rep", "broker", "cs_rep", "finance", "viewer",
+] as const;
 type InviteRole = typeof VALID_ROLES[number];
 
 interface InvitationRequest {
   email: string;
   role: InviteRole;
+  templateName?: string;
+  message?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -33,16 +38,21 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) throw new Error("Unauthorized");
 
-    const { data: roleData } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("role", "admin")
-      .single();
+    // Accept admin OR platform owner (Antonio)
+    const [{ data: ownerCheck }, { data: roleData }] = await Promise.all([
+      supabase.rpc("is_platform_owner"),
+      supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle(),
+    ]);
 
-    if (!roleData) throw new Error("Insufficient permissions");
+    if (!ownerCheck && !roleData) throw new Error("Insufficient permissions");
 
-    const { email, role }: InvitationRequest = await req.json();
+    const body: InvitationRequest = await req.json();
+    const { email, role, templateName, message } = body;
     if (!email || !role) throw new Error("Email and role are required");
     if (!VALID_ROLES.includes(role)) throw new Error(`Invalid role: ${role}`);
 
@@ -108,7 +118,14 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { data: invitation, error: inviteError } = await supabase
       .from("invitations")
-      .insert({ email, role, invited_by: user.id, token: rawToken })
+      .insert({
+        email,
+        role,
+        invited_by: user.id,
+        token: rawToken,
+        template_name: templateName ?? null,
+        metadata: message ? { message } : {},
+      })
       .select()
       .single();
 
@@ -123,16 +140,18 @@ const handler = async (req: Request): Promise<Response> => {
     // 6. Send branded invitation email
     const roleLabels: Record<string, string> = {
       admin: "Administrator", coach: "Coach", moderator: "Moderator",
-      affiliate: "Affiliate Partner", user: "Client",
+      affiliate: "Affiliate Partner", user: "Client", client: "Client",
+      sales_rep: "Sales Rep", broker: "Broker", cs_rep: "Customer Success",
+      finance: "Finance", viewer: "Viewer",
     };
     const roleLabel = roleLabels[role] || role;
 
     const { error: emailError } = await supabase.functions.invoke("send-transactional-email", {
       body: {
-        templateName: "role-invitation",
+        templateName: templateName || "role-invitation",
         recipientEmail: email,
         idempotencyKey: `invite-${invitation.id}`,
-        templateData: { role: roleLabel, inviteUrl, invitedBy: inviterName },
+        templateData: { role: roleLabel, inviteUrl, invitedBy: inviterName, message: message ?? null },
       },
     });
 
