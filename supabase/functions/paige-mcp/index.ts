@@ -1,11 +1,21 @@
-// Paige MCP Server — Phase 1 (API-key auth, CRM tools).
+// Paige MCP Server — Phase 2 (API-key auth, 30 tools across CRM/Workflows/BTF/Admin).
 // Hosted at https://<project>/functions/v1/paige-mcp (custom domain mcp.paigeagent.ai later).
 // Auth: Bearer PAIGE_MCP_PLATFORM_KEY in Authorization header.
 //
-// Tool catalog v1 (10 CRM tools):
-//   search_contacts, get_contact, update_contact_stage, add_contact_note
-//   list_deals, move_deal_stage, create_deal
-//   list_tasks, create_task, complete_task
+// Tool catalog:
+//  CRM (10): search_contacts, get_contact, update_contact_stage, add_contact_note,
+//            list_deals, move_deal_stage, create_deal, list_tasks, create_task, complete_task
+//  Workflows (5): list_workflows, run_workflow*, get_workflow_run,
+//                 list_pending_approvals, decide_pending_approval*
+//  BTF (6): list_btf_clients, get_btf_workspace, list_btf_phase_items,
+//           update_btf_phase_item*, list_btf_document_requests, send_btf_message*
+//  Admin (6): list_team_members, assign_coach*, create_team_invitation*,
+//             list_unassigned_queue, list_admin_notifications, create_admin_notification
+//  Destructive tools marked * carry annotations.destructiveHint=true so MCP hosts
+//  (Claude Desktop, ChatGPT, etc.) can gate them behind user approval.
+//
+// Phase 3 (next): OAuth 2.1 + Dynamic Client Registration + per-user RLS tokens.
+// Discovery endpoints below are scaffolding for that work.
 
 import { Hono } from "npm:hono@4";
 import { McpServer, StreamableHttpTransport } from "npm:mcp-lite@^0.10.0";
