@@ -170,6 +170,21 @@ const ClaimClientForUserSchema = z.object({
 
 // ---------- handler ----------
 
+async function logAuthFailure(req: Request, status: number, reason: string, verb: string) {
+  try {
+    await supabase.from("paige_bridge_auth_failures").insert({
+      function_name: "paige-bridge",
+      status,
+      verb,
+      reason,
+      ip: req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? null,
+      user_agent: req.headers.get("user-agent") ?? null,
+    });
+  } catch (e) {
+    console.error("auth_failure_log_error", String(e));
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -180,10 +195,15 @@ Deno.serve(async (req) => {
     if (!BRIDGE_API_KEY) return fail(verb, 500, "Bridge not configured");
 
     const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) return fail(verb, 401, "Missing bearer token");
+    if (!auth.startsWith("Bearer ")) {
+      await logAuthFailure(req, 401, "Missing bearer token", verb);
+      return fail(verb, 401, "Missing bearer token");
+    }
     if (!timingSafeEqual(auth.slice(7), BRIDGE_API_KEY)) {
+      await logAuthFailure(req, 401, "Invalid bearer token", verb);
       return fail(verb, 401, "Invalid bearer token");
     }
+
 
     // Coarse rate limit per-IP (best-effort; reuses api_rate_limits sentinel uuid).
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "0.0.0.0";
