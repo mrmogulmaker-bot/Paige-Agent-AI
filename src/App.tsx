@@ -43,6 +43,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
 const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
+const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
 import NotFound from "./pages/NotFound";
 
 // Everything else is lazy-loaded for a smaller initial bundle
