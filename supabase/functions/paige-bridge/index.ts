@@ -146,6 +146,28 @@ const ListModifiedClientsSinceSchema = z.object({
   limit: z.number().int().min(1).max(500).default(100),
 });
 
+const StrategyEnum = z.enum(["manual", "round_robin", "load_balanced"]);
+const AssignRoleEnum = z.enum(["lead_owner", "cs_primary"]);
+
+const SetAssignmentPolicySchema = z.object({
+  tier: TierEnum,
+  strategy: StrategyEnum,
+  target_role: AssignRoleEnum.optional(),
+  eligible_user_ids: z.array(z.string().uuid()).default([]),
+  eligible_user_emails: z.array(z.string().email()).optional(),
+});
+
+const GetAssignmentPolicySchema = z.object({
+  tier: TierEnum.optional(),
+});
+
+const ClaimClientForUserSchema = z.object({
+  client_email: z.string().email().optional(),
+  client_id: z.string().uuid().optional(),
+  user_email: z.string().email(),
+  assigned_role: AssignRoleEnum.default("lead_owner"),
+});
+
 // ---------- handler ----------
 
 Deno.serve(async (req) => {
