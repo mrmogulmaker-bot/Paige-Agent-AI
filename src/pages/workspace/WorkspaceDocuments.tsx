@@ -83,7 +83,7 @@ export default function WorkspaceDocuments() {
         file_type: file.type || null,
         uploaded_at: new Date().toISOString(),
         uploaded_by: auth.user?.id ?? null,
-        status: "submitted",
+        status: "uploaded",
         rejection_reason: null,
       })
       .eq("id", req.id);
@@ -98,12 +98,13 @@ export default function WorkspaceDocuments() {
 
   const statusBadge = (s: string) => {
     const map: Record<string, { v: "default" | "secondary" | "destructive" | "outline"; icon: typeof Clock; label: string }> = {
+      pending: { v: "outline", icon: Clock, label: "Requested" },
       requested: { v: "outline", icon: Clock, label: "Requested" },
-      submitted: { v: "secondary", icon: Upload, label: "Submitted" },
+      uploaded: { v: "secondary", icon: Upload, label: "Submitted" },
       approved: { v: "default", icon: CheckCircle2, label: "Approved" },
       rejected: { v: "destructive", icon: AlertCircle, label: "Needs redo" },
     };
-    const m = map[s] ?? map.requested;
+    const m = map[s] ?? map.pending;
     const Icon = m.icon;
     return <Badge variant={m.v} className="gap-1"><Icon className="h-3 w-3" />{m.label}</Badge>;
   };
@@ -127,7 +128,7 @@ export default function WorkspaceDocuments() {
       ) : (
         <div className="space-y-4">
           {requests.map((req) => {
-            const canUpload = req.status === "requested" || req.status === "rejected";
+            const canUpload = req.status === "pending" || req.status === "requested" || req.status === "rejected";
             const isDragging = dragId === req.id;
             return (
               <div
