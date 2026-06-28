@@ -840,11 +840,13 @@ const DISCOVERY_AS = {
 
 app.all("/*", async (c) => {
   const url = new URL(c.req.url);
+  const path = url.pathname;
+  console.log("[paige-mcp]", c.req.method, path);
   // Public discovery + OAuth stubs (no auth required).
-  if (c.req.method === "GET" && url.pathname.endsWith("/.well-known/oauth-protected-resource")) {
+  if (c.req.method === "GET" && path.includes("/.well-known/oauth-protected-resource")) {
     return c.json(DISCOVERY_RESOURCE, 200, CORS);
   }
-  if (c.req.method === "GET" && url.pathname.endsWith("/.well-known/oauth-authorization-server")) {
+  if (c.req.method === "GET" && path.includes("/.well-known/oauth-authorization-server")) {
     return c.json(DISCOVERY_AS, 200, CORS);
   }
   if (url.pathname.includes("/oauth/")) {
