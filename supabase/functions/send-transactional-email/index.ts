@@ -228,7 +228,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ error: 'Failed to prepare email' }),
       {
-        status: 200,
+        status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     )
