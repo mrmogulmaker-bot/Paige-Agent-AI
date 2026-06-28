@@ -60,7 +60,12 @@ Deno.serve(async (req) => {
     return jsonResp({ error: 'Too many failed attempts. Request a new code.' }, 429)
   }
 
-  if (record.verification_code !== body.code) {
+  const codeHashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body.code))
+  const codeHash = Array.from(new Uint8Array(codeHashBuf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+
+  if (record.verification_code !== codeHash) {
     await supabase
       .from('sms_verifications')
       .update({ attempts: record.attempts + 1 })
