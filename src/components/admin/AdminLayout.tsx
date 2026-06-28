@@ -37,6 +37,7 @@ const crmNavItems = [
 
 // Secondary workspace tools — tucked into a "More" menu to keep the bar clean.
 const workspaceNavItems = [
+  { label: "Members & Roles", href: "/admin/members", icon: UserCog },
   { label: "Client Files (Legacy)", href: "/admin/clients", icon: Users },
   { label: "Funding Portfolio", href: "/admin/funding", icon: DollarSign },
   { label: "Funding Journey", href: "/admin/funding-pipeline", icon: Briefcase },

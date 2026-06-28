@@ -91,6 +91,7 @@ const SmartCreditIntegrationConfig = lazy(() => import("@/pages/admin/SmartCredi
 const OwnerCreditAdmin = lazy(() => import("@/pages/admin/OwnerCreditAdmin"));
 const PlaidIntegrationConfig = lazy(() => import("@/pages/admin/PlaidIntegrationConfig"));
 const BankingAdmin = lazy(() => import("@/pages/admin/BankingAdmin"));
+const MembersAdmin = lazy(() => import("@/pages/admin/MembersAdmin"));
 
 
 
@@ -397,6 +398,9 @@ const Admin = () => {
         } />
         <Route path="banking" element={
           <Suspense fallback={<SuspenseFallback />}><BankingAdmin /></Suspense>
+        } />
+        <Route path="members" element={
+          <Suspense fallback={<SuspenseFallback />}><MembersAdmin /></Suspense>
         } />
       </Routes>
 
