@@ -563,6 +563,88 @@ Deno.serve(async (req) => {
       }
 
       // -----------------------------------------------------------------
+      case "set_assignment_policy": {
+        const p = SetAssignmentPolicySchema.parse(payload);
+        let userIds = [...(p.eligible_user_ids ?? [])];
+        if (p.eligible_user_emails?.length) {
+          const { data: list } = await supabase.auth.admin.listUsers();
+          const wanted = new Set(p.eligible_user_emails.map((e) => e.toLowerCase()));
+          for (const u of list?.users ?? []) {
+            if (u.email && wanted.has(u.email.toLowerCase()) && !userIds.includes(u.id)) {
+              userIds.push(u.id);
+            }
+          }
+        }
+        const target_role = p.target_role ??
+          (["premium", "vip", "internal"].includes(p.tier) ? "cs_primary" : "lead_owner");
+
+        const { data, error } = await supabase
+          .from("paige_assignment_policy")
+          .upsert(
+            {
+              tier: p.tier,
+              strategy: p.strategy,
+              target_role,
+              eligible_user_ids: userIds,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "tier" },
+          )
+          .select("*")
+          .single();
+        if (error) throw error;
+        return ok(verb, data);
+      }
+
+      // -----------------------------------------------------------------
+      case "get_assignment_policy": {
+        const p = GetAssignmentPolicySchema.parse(payload);
+        let q = supabase.from("paige_assignment_policy").select("*").order("tier");
+        if (p.tier) q = q.eq("tier", p.tier);
+        const { data, error } = await q;
+        if (error) throw error;
+        return ok(verb, data ?? []);
+      }
+
+      // -----------------------------------------------------------------
+      case "claim_client_for_user": {
+        const p = ClaimClientForUserSchema.parse(payload);
+
+        // Resolve client_id
+        let clientId = p.client_id ?? null;
+        if (!clientId && p.client_email) {
+          const { data: c } = await supabase
+            .from("clients").select("id").ilike("email", p.client_email).limit(1).maybeSingle();
+          clientId = c?.id ?? null;
+        }
+        if (!clientId) return fail(verb, 404, "client_not_found");
+
+        // Resolve user_id
+        const { data: list } = await supabase.auth.admin.listUsers();
+        const u = list?.users?.find(
+          (x) => (x.email ?? "").toLowerCase() === p.user_email.toLowerCase(),
+        );
+        if (!u?.id) return fail(verb, 404, "user_not_found");
+
+        const { data, error } = await supabase
+          .from("paige_coach_assignments")
+          .upsert(
+            {
+              contact_id: clientId,
+              assigned_role: p.assigned_role,
+              rep_user_id: u.id,
+              active: true,
+              metadata: { source: "bridge_admin_assign" },
+            },
+            { onConflict: "contact_id,assigned_role" } as any,
+          )
+          .select("*")
+          .single();
+        if (error) throw error;
+        return ok(verb, data);
+      }
+
+      // -----------------------------------------------------------------
       default:
         return fail(verb, 400, `Unknown verb: ${verb}`);
     }
