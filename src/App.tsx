@@ -80,6 +80,7 @@ const WorkspaceDocuments = lazyWithReload(() => import("./pages/workspace/Worksp
 const WorkspaceMessages = lazyWithReload(() => import("./pages/workspace/WorkspaceMessages"));
 const WorkspacePayments = lazyWithReload(() => import("./pages/workspace/WorkspacePayments"));
 const WorkspaceAcceptInvite = lazyWithReload(() => import("./pages/workspace/AcceptInvite"));
+const AcceptInvite = lazyWithReload(() => import("./pages/AcceptInvite"));
 
 // Lazy-load existing dashboard sections for /app/* routes
 const RepositioningNotice = lazyWithReload(() => import("./components/dashboard/RepositioningNotice").then(m => ({ default: m.RepositioningNotice })));
@@ -130,6 +131,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
+            <Route path="/accept-invite" element={<PageSuspense><AcceptInvite /></PageSuspense>} />
 
             {/* New agent-first dashboard */}
             <Route path="/app" element={<PageSuspense><AppShell /></PageSuspense>}>
