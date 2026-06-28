@@ -9733,6 +9733,11 @@ export type Database = {
         | "coach"
         | "broker"
         | "broker_team_member"
+        | "super_admin"
+        | "sales_rep"
+        | "cs_rep"
+        | "finance"
+        | "viewer"
       business_hierarchy_type:
         | "holding"
         | "parent"
@@ -10001,6 +10006,11 @@ export const Constants = {
         "coach",
         "broker",
         "broker_team_member",
+        "super_admin",
+        "sales_rep",
+        "cs_rep",
+        "finance",
+        "viewer",
       ],
       business_hierarchy_type: [
         "holding",
