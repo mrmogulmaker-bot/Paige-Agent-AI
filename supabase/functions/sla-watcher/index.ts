@@ -73,24 +73,26 @@ Deno.serve(async (req) => {
     const t = thresholdFor(row.tier, hours);
     if (!t) continue;
 
+    const fullName = `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() || "Unknown";
+
     // Dedupe: skip if a matching alert in last 24h
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: recent } = await supabase
       .from("paige_sla_alert_log")
       .select("id")
-      .eq("client_id", row.client_id)
+      .eq("client_id", row.id)
       .eq("category", "unassigned_sla")
       .eq("severity", t.severity)
       .gte("sent_at", since)
       .limit(1);
     if (recent && recent.length > 0) {
-      skipped.push({ client_id: row.client_id, reason: "dedupe_24h" });
+      skipped.push({ client_id: row.id, reason: "dedupe_24h" });
       continue;
     }
 
     const message =
       `${t.emoji} ${row.tier?.toUpperCase()} unassigned > threshold: ` +
-      `${row.full_name ?? "Unknown"} (${row.email ?? "no-email"}) | ` +
+      `${fullName} (${row.email ?? "no-email"}) | ` +
       `tier: ${row.tier} | unassigned_for_hours: ${hours.toFixed(1)}`;
 
     // 1. Local mirror notification (drives in-app bell)
@@ -98,9 +100,9 @@ Deno.serve(async (req) => {
       severity: t.severity === "critical" ? "urgent" : t.severity === "warning" ? "warning" : "info",
       title: `Unassigned ${row.tier} > SLA`,
       body: message,
-      link_to: `/admin/contacts/${row.client_id}`,
+      link_to: `/admin/contacts/${row.id}`,
       source_workflow_key: "unassigned_sla",
-      contact_id: row.client_id,
+      contact_id: row.id,
       scope: "admin",
     });
 
@@ -119,7 +121,7 @@ Deno.serve(async (req) => {
             severity: t.severity,
             message,
             metadata: {
-              client_id: row.client_id,
+              client_id: row.id,
               email: row.email,
               tier: row.tier,
               hours_unassigned: hours,
@@ -133,15 +135,16 @@ Deno.serve(async (req) => {
 
     // 3. Dedupe log
     await supabase.from("paige_sla_alert_log").insert({
-      client_id: row.client_id,
+      client_id: row.id,
       category: "unassigned_sla",
       severity: t.severity,
       hours_unassigned: hours,
       metadata: { email: row.email, tier: row.tier },
     });
 
-    fired.push({ client_id: row.client_id, severity: t.severity, hours });
+    fired.push({ client_id: row.id, severity: t.severity, hours });
   }
+
 
   return new Response(
     JSON.stringify({ ok: true, scanned: queue?.length ?? 0, fired, skipped_count: skipped.length }),
