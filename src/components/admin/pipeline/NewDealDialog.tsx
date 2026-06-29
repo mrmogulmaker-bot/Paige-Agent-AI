@@ -11,7 +11,7 @@ import { Check, ChevronsUpDown, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Pipeline, PipelineStage, dollarsToCents, logDealActivity } from "@/lib/pipelines";
-import { CONSUMER_OFFER_TYPES as OFFER_TYPES } from "@/lib/contacts";
+import { useTenantOffers } from "@/hooks/useTenantOffers";
 import { NewContactDialog } from "@/components/admin/contacts/NewContactDialog";
 
 type Props = {
