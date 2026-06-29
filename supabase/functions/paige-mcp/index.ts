@@ -629,19 +629,31 @@ mcp.tool("get_workflow_run", {
 });
 
 mcp.tool("list_pending_approvals", {
-  description: "List items in paige_pending_approvals awaiting human review.",
+  description:
+    "List items in paige_pending_approvals awaiting human review. Supports filtering by category, contact, assignee, and risk level. Returns enriched rows from paige_approval_queue_v including SLA state and assigned reviewer.",
   inputSchema: z.object({
-    status: z.string().optional().describe("pending | approved | rejected | sent"),
+    status: z.string().optional().describe("pending | approved | rejected | changes_requested | escalated | skipped | sent"),
+    category: z.string().optional().describe("e.g. refund | dispute_letter | campaign | ai_draft | field_ingest"),
+    contact_id: z.string().uuid().optional(),
+    assigned_to_user_id: z.string().uuid().optional(),
+    risk_level: z.enum(["low", "medium", "high"]).optional(),
+    only_overdue: z.boolean().optional(),
     limit: z.number().int().optional(),
   }),
   handler: async (args) => {
     const limit = Math.min(Math.max(args.limit ?? 25, 1), 100);
     let q = admin
-      .from("paige_pending_approvals")
-      .select("id, type, status, contact_id, created_by_n8n_workflow_key, draft_content, created_at, reviewed_at, sent_at")
-      .order("created_at", { ascending: false })
+      .from("paige_approval_queue_v")
+      .select("*")
+      .order("priority", { ascending: true, nullsFirst: false })
+      .order("sla_due_at", { ascending: true, nullsFirst: false })
       .limit(limit);
     q = q.eq("status", args.status ?? "pending");
+    if (args.category) q = q.eq("category", args.category);
+    if (args.contact_id) q = q.eq("contact_id", args.contact_id);
+    if (args.assigned_to_user_id) q = q.eq("assigned_to_user_id", args.assigned_to_user_id);
+    if (args.risk_level) q = q.eq("risk_level", args.risk_level);
+    if (args.only_overdue) q = q.eq("sla_state", "overdue");
     const { data, error } = await q;
     if (error) return err(error.message);
     return ok({ items: data ?? [] });
@@ -649,18 +661,29 @@ mcp.tool("list_pending_approvals", {
 });
 
 mcp.tool("decide_pending_approval", {
-  description: "Approve or reject a pending approval. On approve, status becomes 'approved' for the downstream worker to send.",
+  description:
+    "Approve, reject, request_changes, or escalate a pending approval. Provide a rationale for any non-approve decision. On approve, status becomes 'approved' for the downstream worker to send.",
   inputSchema: z.object({
     approval_id: z.string(),
-    decision: z.enum(["approve", "reject"]),
+    decision: z.enum(["approve", "reject", "request_changes", "escalate"]),
     note: z.string().optional(),
   }),
   annotations: { destructiveHint: true },
   handler: async ({ approval_id, decision, note }) => {
+    if (decision !== "approve" && !note?.trim()) {
+      return err("note_required_for_non_approve_decision");
+    }
+    const statusMap: Record<string, string> = {
+      approve: "approved",
+      reject: "rejected",
+      request_changes: "changes_requested",
+      escalate: "escalated",
+    };
     const patch: Record<string, unknown> = {
-      status: decision === "approve" ? "approved" : "rejected",
+      status: statusMap[decision],
       reviewed_at: new Date().toISOString(),
-      escalation_note: note ?? null,
+      decision_rationale: note ?? null,
+      escalation_note: decision === "escalate" ? note : null,
     };
     const { data, error } = await admin
       .from("paige_pending_approvals")
@@ -672,6 +695,99 @@ mcp.tool("decide_pending_approval", {
     if (!data) return err("approval_not_found");
     await audit("decide_pending_approval", "approval", approval_id, { decision, note });
     return ok({ ok: true, approval_id, status: data.status });
+  },
+});
+
+mcp.tool("create_approval", {
+  description:
+    "File a new item for human review. Use when a coach, agent, or external LLM wants a teammate to sign off before action (e.g., refund > $X, legal-sensitive dispute letter, campaign launch, AI draft). The tenant's policy engine auto-routes based on category and assigns SLA + reviewer role.",
+  inputSchema: z.object({
+    category: z.enum([
+      "refund", "dispute_letter", "campaign", "ai_draft",
+      "field_ingest", "workflow", "compliance", "legal", "other",
+    ]),
+    summary: z.string().describe("One-line description of what needs approval."),
+    draft_content: z.record(z.any()).optional().describe("The proposed action payload (email body, refund amount, etc.)"),
+    contact_id: z.string().uuid().optional(),
+    conversation_id: z.string().uuid().optional(),
+    risk_level: z.enum(["low", "medium", "high"]).optional(),
+    priority: z.number().int().min(1).max(5).optional(),
+  }),
+  handler: async (args) => {
+    const { data, error } = await admin
+      .from("paige_pending_approvals")
+      .insert({
+        type: args.category,
+        category: args.category,
+        summary: args.summary,
+        draft_content: args.draft_content ?? {},
+        contact_id: args.contact_id ?? null,
+        conversation_id: args.conversation_id ?? null,
+        risk_level: args.risk_level ?? "medium",
+        priority: args.priority ?? 3,
+        source: "mcp",
+        status: "pending",
+      })
+      .select("id, status, requires_role, sla_due_at, assigned_to_user_id")
+      .maybeSingle();
+    if (error) return err(error.message);
+    await audit("create_approval", "approval", data?.id ?? "", { category: args.category });
+    return ok({ ok: true, approval: data });
+  },
+});
+
+mcp.tool("claim_approval", {
+  description:
+    "Claim ownership of a pending approval so other reviewers know you're handling it. Reassigns assigned_to_user_id to the calling user.",
+  inputSchema: z.object({ approval_id: z.string() }),
+  handler: async ({ approval_id }, ctx) => {
+    const userId = (ctx as any)?.userId;
+    if (!userId) return err("missing_user");
+    const { data, error } = await admin
+      .from("paige_pending_approvals")
+      .update({ assigned_to_user_id: userId, claimed_at: new Date().toISOString() })
+      .eq("id", approval_id)
+      .select("id, assigned_to_user_id")
+      .maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("approval_not_found");
+    await audit("claim_approval", "approval", approval_id, {});
+    return ok({ ok: true, approval_id, assigned_to_user_id: data.assigned_to_user_id });
+  },
+});
+
+mcp.tool("comment_on_approval", {
+  description:
+    "Post a comment on an approval so other reviewers and the original submitter can see context, questions, or guidance.",
+  inputSchema: z.object({
+    approval_id: z.string(),
+    body: z.string().min(1),
+  }),
+  handler: async ({ approval_id, body }, ctx) => {
+    const userId = (ctx as any)?.userId;
+    if (!userId) return err("missing_user");
+    const { data, error } = await admin
+      .from("paige_approval_comments")
+      .insert({ approval_id, author_id: userId, body })
+      .select("id, created_at")
+      .maybeSingle();
+    if (error) return err(error.message);
+    await audit("comment_on_approval", "approval", approval_id, { length: body.length });
+    return ok({ ok: true, comment: data });
+  },
+});
+
+mcp.tool("list_approval_comments", {
+  description: "Read the discussion thread on an approval.",
+  inputSchema: z.object({ approval_id: z.string() }),
+  handler: async ({ approval_id }) => {
+    const { data, error } = await admin
+      .from("paige_approval_comments")
+      .select("id, author_id, body, created_at")
+      .eq("approval_id", approval_id)
+      .order("created_at", { ascending: true });
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
   },
 });
 
