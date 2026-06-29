@@ -863,6 +863,138 @@ mcp.tool("assign_coach", {
   },
 });
 
+// ---------- Coach Ops ----------
+mcp.tool("list_coaches", {
+  description: "List all coaches with their profile metadata (specialties, capacity, accepting-new-clients) and live client counts.",
+  inputSchema: z.object({
+    accepting_only: z.boolean().optional().describe("If true, return only coaches accepting new clients."),
+    specialty: z.string().optional().describe("Filter by a single specialty tag, e.g. 'personal_credit'."),
+  }),
+  handler: async ({ accepting_only, specialty }) => {
+    const { data: roles, error: rolesErr } = await admin.from("user_roles").select("user_id").eq("role", "coach");
+    if (rolesErr) return err(rolesErr.message);
+    const ids = (roles ?? []).map((r: any) => r.user_id);
+    if (!ids.length) return ok({ items: [] });
+    const [profilesRes, clientsRes] = await Promise.all([
+      admin.from("profiles").select("user_id, full_name, coach_specialties, coach_capacity, coach_accepting_clients, coach_bio, coach_timezone, suspended_at").in("user_id", ids),
+      admin.from("clients").select("assigned_coach_user_id, status").in("assigned_coach_user_id", ids),
+    ]);
+    const items = ids.map((id) => {
+      const p: any = (profilesRes.data || []).find((x: any) => x.user_id === id) || {};
+      const assigned = (clientsRes.data || []).filter((c: any) => c.assigned_coach_user_id === id);
+      return {
+        user_id: id,
+        full_name: p.full_name ?? null,
+        specialties: p.coach_specialties ?? [],
+        capacity: p.coach_capacity ?? null,
+        accepting_clients: p.coach_accepting_clients ?? true,
+        bio: p.coach_bio ?? null,
+        timezone: p.coach_timezone ?? null,
+        suspended: !!p.suspended_at,
+        active_clients: assigned.filter((c: any) => (c.status ?? "active") === "active").length,
+        total_clients: assigned.length,
+      };
+    }).filter((c) => {
+      if (accepting_only && !c.accepting_clients) return false;
+      if (specialty && !(c.specialties as string[]).includes(specialty)) return false;
+      return true;
+    });
+    return ok({ items });
+  },
+});
+
+mcp.tool("add_coach_role", {
+  description: "Grant the 'coach' role to an existing user. Idempotent.",
+  inputSchema: z.object({ user_id: z.string() }),
+  annotations: { destructiveHint: true },
+  handler: async ({ user_id }) => {
+    const { error } = await admin.from("user_roles").upsert({ user_id, role: "coach" }, { onConflict: "user_id,role" });
+    if (error) return err(error.message);
+    await audit("add_coach_role", "user", user_id, {});
+    return ok({ ok: true });
+  },
+});
+
+mcp.tool("remove_coach_role", {
+  description: "Revoke the 'coach' role. Blocked if the coach still has active clients — reassign them first via assign_coach or bulk_assign_clients_to_coach.",
+  inputSchema: z.object({ user_id: z.string() }),
+  annotations: { destructiveHint: true },
+  handler: async ({ user_id }) => {
+    const { data, error } = await admin.rpc("admin_remove_coach_role", { _user_id: user_id });
+    if (error) return err(error.message);
+    await audit("remove_coach_role", "user", user_id, { result: data });
+    return ok(data);
+  },
+});
+
+mcp.tool("update_coach_profile", {
+  description: "Update a coach's specialties, capacity, accepting-new-clients toggle, bio, or timezone. Omitted fields are left unchanged.",
+  inputSchema: z.object({
+    user_id: z.string(),
+    specialties: z.array(z.string()).optional(),
+    capacity: z.number().int().optional(),
+    accepting_clients: z.boolean().optional(),
+    bio: z.string().optional(),
+    timezone: z.string().optional(),
+  }),
+  handler: async (args) => {
+    const patch: Record<string, unknown> = {};
+    if (args.specialties !== undefined) patch.coach_specialties = args.specialties;
+    if (args.capacity !== undefined) patch.coach_capacity = args.capacity;
+    if (args.accepting_clients !== undefined) patch.coach_accepting_clients = args.accepting_clients;
+    if (args.bio !== undefined) patch.coach_bio = args.bio;
+    if (args.timezone !== undefined) patch.coach_timezone = args.timezone;
+    if (Object.keys(patch).length === 0) return err("no_fields_to_update");
+    const { error } = await admin.from("profiles").update(patch).eq("user_id", args.user_id);
+    if (error) return err(error.message);
+    await audit("update_coach_profile", "user", args.user_id, patch);
+    return ok({ ok: true });
+  },
+});
+
+mcp.tool("bulk_assign_clients_to_coach", {
+  description: "Assign many clients to one coach in a single call. Returns the number of rows updated.",
+  inputSchema: z.object({
+    coach_user_id: z.string(),
+    client_ids: z.array(z.string()).describe("Array of clients.id UUIDs."),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async ({ coach_user_id, client_ids }) => {
+    const { data, error } = await admin.rpc("admin_bulk_assign_coach", { _coach: coach_user_id, _client_ids: client_ids });
+    if (error) return err(error.message);
+    await audit("bulk_assign_clients_to_coach", "user", coach_user_id, { count: client_ids.length });
+    return ok(data);
+  },
+});
+
+mcp.tool("get_coach_performance", {
+  description: "Performance snapshot for a coach: active clients vs capacity, open/completed task counts (30d), pipeline value, and last activity.",
+  inputSchema: z.object({ coach_user_id: z.string() }),
+  handler: async ({ coach_user_id }) => {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const [prof, clientsRes, openTasksRes, doneTasksRes, dealsRes] = await Promise.all([
+      admin.from("profiles").select("full_name, coach_capacity, coach_accepting_clients").eq("user_id", coach_user_id).maybeSingle(),
+      admin.from("clients").select("id, status").eq("assigned_coach_user_id", coach_user_id),
+      admin.from("tasks").select("id", { count: "exact", head: true }).eq("user_id", coach_user_id).in("status", ["pending", "in_progress"]),
+      admin.from("tasks").select("id", { count: "exact", head: true }).eq("user_id", coach_user_id).eq("status", "completed").gte("updated_at", since),
+      admin.from("deals").select("amount").eq("owner_user_id", coach_user_id),
+    ]);
+    const clients = clientsRes.data ?? [];
+    const pipeline_value = (dealsRes.data ?? []).reduce((s: number, d: any) => s + Number(d.amount || 0), 0);
+    return ok({
+      coach_user_id,
+      full_name: prof.data?.full_name ?? null,
+      capacity: prof.data?.coach_capacity ?? null,
+      accepting_clients: prof.data?.coach_accepting_clients ?? true,
+      active_clients: clients.filter((c: any) => (c.status ?? "active") === "active").length,
+      total_clients: clients.length,
+      open_tasks: openTasksRes.count ?? 0,
+      completed_tasks_30d: doneTasksRes.count ?? 0,
+      pipeline_value,
+    });
+  },
+});
+
 mcp.tool("create_team_invitation", {
   description:
     "Create a team invitation row for an internal team member. Does NOT send the email — pair with the send-admin-invitation function for that.",
@@ -2035,6 +2167,13 @@ const TOOL_SCOPE: Record<string, Scope> = {
   send_sms: "crm.write",
   create_invoice: "crm.write",
   send_invoice: "crm.write",
+  // Coach Ops
+  list_coaches: "admin.read",
+  add_coach_role: "admin.write",
+  remove_coach_role: "admin.write",
+  update_coach_profile: "admin.write",
+  bulk_assign_clients_to_coach: "admin.write",
+  get_coach_performance: "admin.read",
 };
 
 const DISCOVERY_RESOURCE = {
