@@ -1,21 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Search, Plus, Download, Users, Briefcase, Sparkles, Tag } from "lucide-react";
+import {
+  Search, Plus, Download, Users, Briefcase, Sparkles, Tag, Pencil, BanIcon,
+  Star, Filter,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   LIFECYCLE_STAGES, lifecycleMeta, contactsToCSV, downloadCSV,
 } from "@/lib/contacts";
 import { formatMoney } from "@/lib/pipelines";
 import { NewContactDialog } from "@/components/admin/contacts/NewContactDialog";
-import { formatDistanceToNow } from "date-fns";
+import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog";
+import { BulkActionsBar } from "@/components/admin/contacts/BulkActionsBar";
+import { formatDistanceToNow, format } from "date-fns";
 
 type ClientRow = {
   id: string;
@@ -24,15 +31,16 @@ type ClientRow = {
   email: string | null;
   phone: string | null;
   entity_name: string | null;
+  title: string | null;
   funding_goal: number | null;
   status: string;
   lifecycle_stage: string;
   source: string | null;
-  title: string | null;
   tags: string[] | null;
   lead_score: number | null;
   last_contacted_at: string | null;
   do_not_contact: boolean | null;
+  current_notes: string | null;
   assigned_coach_user_id: string | null;
   linked_user_id: string | null;
   created_at: string;
@@ -47,23 +55,69 @@ type Rollup = {
   won_value_cents: number;
 };
 
+type Segment = {
+  id: string;
+  label: string;
+  description: string;
+  match: (c: ClientRow, ctx: { meId: string | null }) => boolean;
+};
+
+const SEGMENTS: Segment[] = [
+  { id: "my", label: "My coachees", description: "Assigned to me",
+    match: (c, { meId }) => !!meId && c.assigned_coach_user_id === meId },
+  { id: "unassigned", label: "Unassigned", description: "No coach yet",
+    match: (c) => !c.assigned_coach_user_id },
+  { id: "hot", label: "Hot leads", description: "Lead score ≥ 70",
+    match: (c) => (c.lead_score ?? 0) >= 70 },
+  { id: "stale", label: "Stale (30d+)", description: "No touch in 30+ days",
+    match: (c) => {
+      const t = c.last_contacted_at ? new Date(c.last_contacted_at).getTime() : 0;
+      return Date.now() - t > 30 * 86_400_000;
+    } },
+  { id: "btf", label: "BTF Active", description: "Tagged BTF Active",
+    match: (c) => (c.tags || []).includes("BTF Active") },
+  { id: "dnc", label: "DNC", description: "Do Not Contact",
+    match: (c) => !!c.do_not_contact },
+  { id: "churned", label: "Churned", description: "Churned lifecycle",
+    match: (c) => c.lifecycle_stage === "churned" },
+];
+
 export default function ContactsAdmin() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [rollup, setRollup] = useState<Record<string, Rollup>>({});
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [lifecycle, setLifecycle] = useState<string>("all");
-  const [coachFilter, setCoachFilter] = useState<string>("all");
-  const [tagFilter, setTagFilter] = useState<string>("all");
+  const [meId, setMeId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const [editTarget, setEditTarget] = useState<ClientRow | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+
+  // URL-synced filters
+  const search = searchParams.get("q") || "";
+  const lifecycle = searchParams.get("lifecycle") || "all";
+  const coachFilter = searchParams.get("coach") || "all";
+  const tagFilter = searchParams.get("tag") || "all";
+  const segment = searchParams.get("segment") || "";
+
+  const setParam = (key: string, value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (!value || value === "all") next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
+  };
 
   useEffect(() => { load(); }, []);
 
   const load = async () => {
     setLoading(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      setMeId(user?.id || null);
+
       const [clientsRes, rolesRes, rollupRes] = await Promise.all([
         supabase.from("clients").select("*").order("created_at", { ascending: false }),
         supabase.from("user_roles").select("user_id").eq("role", "coach"),
@@ -105,13 +159,17 @@ export default function ContactsAdmin() {
     if (coachFilter === "unassigned" && c.assigned_coach_user_id) return false;
     if (coachFilter !== "all" && coachFilter !== "unassigned" && c.assigned_coach_user_id !== coachFilter) return false;
     if (tagFilter !== "all" && !(c.tags || []).includes(tagFilter)) return false;
+    if (segment) {
+      const seg = SEGMENTS.find((s) => s.id === segment);
+      if (seg && !seg.match(c, { meId })) return false;
+    }
     if (search) {
       const s = search.toLowerCase();
       const hay = `${c.first_name} ${c.last_name} ${c.email || ""} ${c.entity_name || ""} ${(c.tags || []).join(" ")}`.toLowerCase();
       if (!hay.includes(s)) return false;
     }
     return true;
-  }), [clients, search, lifecycle, coachFilter, tagFilter]);
+  }), [clients, search, lifecycle, coachFilter, tagFilter, segment, meId]);
 
   const stats = useMemo(() => {
     const totalOpenDeals = Object.values(rollup).reduce((a, r) => a + (r.open_deals || 0), 0);
@@ -135,7 +193,10 @@ export default function ContactsAdmin() {
   };
 
   const exportCSV = () => {
-    const rows = filtered.map((c) => ({
+    const source = selected.size > 0
+      ? filtered.filter((c) => selected.has(c.id))
+      : filtered;
+    const rows = source.map((c) => ({
       first_name: c.first_name,
       last_name: c.last_name,
       email: c.email,
@@ -145,6 +206,8 @@ export default function ContactsAdmin() {
       lifecycle: c.lifecycle_stage,
       source: c.source,
       tags: (c.tags || []).join("; "),
+      lead_score: c.lead_score ?? "",
+      do_not_contact: c.do_not_contact ? "yes" : "",
       coach: coachName(c.assigned_coach_user_id),
       open_deals: rollup[c.id]?.open_deals || 0,
       open_value: ((rollup[c.id]?.open_value_cents || 0) / 100).toFixed(2),
@@ -153,212 +216,278 @@ export default function ContactsAdmin() {
     downloadCSV(`contacts-${new Date().toISOString().slice(0, 10)}.csv`, contactsToCSV(rows));
   };
 
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    if (selected.size === filtered.length) setSelected(new Set());
+    else setSelected(new Set(filtered.map((c) => c.id)));
+  };
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Contacts</h1>
-          <p className="text-sm text-muted-foreground">
-            Your CRM contact book — segment, assign, and push straight into the pipeline.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={exportCSV}>
-            <Download className="h-4 w-4 mr-1" /> Export CSV
-          </Button>
-          <Button size="sm" onClick={() => setNewOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" /> New contact
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard icon={Users} label="Total contacts" value={clients.length.toString()} />
-        <StatCard icon={Sparkles} label="Active leads (Lead → SQL)" value={stats.leads.toString()} />
-        <StatCard icon={Briefcase} label="Open deals" value={stats.totalOpenDeals.toString()} sub={formatMoney(stats.totalOpenValue)} />
-        <StatCard icon={Tag} label="Customers" value={stats.customers.toString()} />
-      </div>
-
-      <Card className="p-3 flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search name, email, business, tag…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <Select value={lifecycle} onValueChange={setLifecycle}>
-          <SelectTrigger className="w-[170px]"><SelectValue placeholder="Lifecycle" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All lifecycle stages</SelectItem>
-            {LIFECYCLE_STAGES.map((s) => (
-              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={coachFilter} onValueChange={setCoachFilter}>
-          <SelectTrigger className="w-[200px]"><SelectValue placeholder="Coach" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All coaches</SelectItem>
-            <SelectItem value="unassigned">Unassigned</SelectItem>
-            {coaches.map((c) => (
-              <SelectItem key={c.user_id} value={c.user_id}>{c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={tagFilter} onValueChange={setTagFilter}>
-          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Tag" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All tags</SelectItem>
-            {allTags.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </Card>
-
-      {/* Lifecycle quick filter chips */}
-      <div className="flex flex-wrap gap-2">
-        <Chip active={lifecycle === "all"} onClick={() => setLifecycle("all")} label={`All · ${clients.length}`} />
-        {LIFECYCLE_STAGES.map((s) => {
-          const count = clients.filter((c) => c.lifecycle_stage === s.value).length;
-          if (count === 0 && s.value !== lifecycle) return null;
-          return (
-            <Chip
-              key={s.value}
-              active={lifecycle === s.value}
-              onClick={() => setLifecycle(s.value)}
-              label={`${s.label} · ${count}`}
-              colorClass={s.color}
-            />
-          );
-        })}
-      </div>
-
-      <Card className="overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-muted-foreground">Loading contacts…</div>
-        ) : filtered.length === 0 ? (
-          <div className="p-10 text-center">
-            <Users className="h-10 w-10 mx-auto text-muted-foreground/40 mb-2" />
-            <div className="font-medium">No contacts match your filters</div>
-            <div className="text-sm text-muted-foreground mb-4">
-              {clients.length === 0 ? "Add your first contact to get started." : "Try clearing filters or change your search."}
-            </div>
+    <TooltipProvider delayDuration={250}>
+      <div className="space-y-4 pb-24">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold">Contacts</h1>
+            <p className="text-sm text-muted-foreground">
+              Your CRM contact book — segment, assign, edit, and push straight into the pipeline.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={exportCSV}>
+              <Download className="h-4 w-4 mr-1" /> Export {selected.size > 0 ? `(${selected.size})` : "CSV"}
+            </Button>
             <Button size="sm" onClick={() => setNewOpen(true)}>
               <Plus className="h-4 w-4 mr-1" /> New contact
             </Button>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-3 text-left">Contact</th>
-                  <th className="px-4 py-3 text-left">Lifecycle</th>
-                  <th className="px-4 py-3 text-left">Tags</th>
-                  <th className="px-4 py-3 text-right">Open deals</th>
-                  <th className="px-4 py-3 text-left">Coach</th>
-                  <th className="px-4 py-3 text-left">Last touch</th>
-                  <th className="px-4 py-3 text-right">Open</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((c) => {
-                  const meta = lifecycleMeta(c.lifecycle_stage);
-                  const r = rollup[c.id];
-                  const name = `${c.first_name} ${c.last_name}`.trim() || c.email || "Unnamed";
-                  return (
-                    <tr key={c.id} className="border-t border-border hover:bg-muted/30">
-                      <td className="px-4 py-3">
-                        <button
-                          className="text-left"
-                          onClick={() => navigate(`/admin/contacts/${c.id}`)}
-                        >
-                          <div className="font-medium">{name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {c.entity_name || "—"}{c.email ? ` · ${c.email}` : ""}
-                          </div>
-                        </button>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Select
-                          value={c.lifecycle_stage || "lead"}
-                          onValueChange={(v) => updateLifecycle(c.id, v)}
-                        >
-                          <SelectTrigger className="h-8 w-[150px] border-0 bg-transparent p-0 focus:ring-0">
-                            <Badge variant="outline" className={`${meta.color} border-transparent`}>
-                              {meta.label}
-                            </Badge>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {LIFECYCLE_STAGES.map((s) => (
-                              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1 max-w-[200px]">
-                          {(c.tags || []).slice(0, 3).map((t) => (
-                            <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
-                          ))}
-                          {(c.tags || []).length > 3 && (
-                            <span className="text-xs text-muted-foreground">+{(c.tags || []).length - 3}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="font-medium">{r?.open_deals || 0}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {r?.open_value_cents ? formatMoney(r.open_value_cents) : "—"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Select
-                          value={c.assigned_coach_user_id || "unassigned"}
-                          onValueChange={(v) => assignCoach(c.id, v === "unassigned" ? null : v)}
-                        >
-                          <SelectTrigger className="h-8 w-[170px]">
-                            <SelectValue>{coachName(c.assigned_coach_user_id)}</SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unassigned">Unassigned</SelectItem>
-                            {coaches.map((co) => (
-                              <SelectItem key={co.user_id} value={co.user_id}>{co.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
-                        {c.last_contacted_at
-                          ? formatDistanceToNow(new Date(c.last_contacted_at), { addSuffix: true })
-                          : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate(`/admin/contacts/${c.id}`)}
-                        >
-                          Open
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+        </div>
 
-      <NewContactDialog
-        open={newOpen}
-        onOpenChange={setNewOpen}
-        onCreated={(id) => navigate(`/admin/contacts/${id}`)}
-      />
-    </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard icon={Users} label="Total contacts" value={clients.length.toString()} />
+          <StatCard icon={Sparkles} label="Active leads (Lead → SQL)" value={stats.leads.toString()} />
+          <StatCard icon={Briefcase} label="Open deals" value={stats.totalOpenDeals.toString()} sub={formatMoney(stats.totalOpenValue)} />
+          <StatCard icon={Tag} label="Customers" value={stats.customers.toString()} />
+        </div>
+
+        {/* Smart segments */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-xs text-muted-foreground flex items-center gap-1 mr-1">
+            <Filter className="h-3 w-3" /> Segments:
+          </span>
+          <Chip active={!segment} onClick={() => setParam("segment", "")} label="All" />
+          {SEGMENTS.map((s) => (
+            <Tooltip key={s.id}>
+              <TooltipTrigger asChild>
+                <span>
+                  <Chip
+                    active={segment === s.id}
+                    onClick={() => setParam("segment", segment === s.id ? "" : s.id)}
+                    label={s.label}
+                  />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{s.description}</TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
+
+        <Card className="p-3 flex flex-wrap gap-2">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search name, email, business, tag…"
+              value={search}
+              onChange={(e) => setParam("q", e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Select value={lifecycle} onValueChange={(v) => setParam("lifecycle", v)}>
+            <SelectTrigger className="w-[170px]"><SelectValue placeholder="Lifecycle" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All lifecycle stages</SelectItem>
+              {LIFECYCLE_STAGES.map((s) => (
+                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={coachFilter} onValueChange={(v) => setParam("coach", v)}>
+            <SelectTrigger className="w-[200px]"><SelectValue placeholder="Coach" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All coaches</SelectItem>
+              <SelectItem value="unassigned">Unassigned</SelectItem>
+              {coaches.map((c) => (
+                <SelectItem key={c.user_id} value={c.user_id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={tagFilter} onValueChange={(v) => setParam("tag", v)}>
+            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Tag" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All tags</SelectItem>
+              {allTags.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </Card>
+
+        <Card className="overflow-hidden">
+          {loading ? (
+            <div className="p-8 text-center text-muted-foreground">Loading contacts…</div>
+          ) : filtered.length === 0 ? (
+            <div className="p-10 text-center">
+              <Users className="h-10 w-10 mx-auto text-muted-foreground/40 mb-2" />
+              <div className="font-medium">No contacts match your filters</div>
+              <div className="text-sm text-muted-foreground mb-4">
+                {clients.length === 0 ? "Add your first contact to get started." : "Try clearing filters or change your search."}
+              </div>
+              <Button size="sm" onClick={() => setNewOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" /> New contact
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-3 w-8">
+                      <Checkbox
+                        checked={selected.size > 0 && selected.size === filtered.length}
+                        onCheckedChange={toggleSelectAll}
+                        aria-label="Select all"
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-left">Contact</th>
+                    <th className="px-4 py-3 text-left">Lifecycle</th>
+                    <th className="px-4 py-3 text-left">Tags</th>
+                    <th className="px-4 py-3 text-right">Score</th>
+                    <th className="px-4 py-3 text-right">Open deals</th>
+                    <th className="px-4 py-3 text-left">Coach</th>
+                    <th className="px-4 py-3 text-left">Last touch</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((c) => {
+                    const meta = lifecycleMeta(c.lifecycle_stage);
+                    const r = rollup[c.id];
+                    const name = `${c.first_name} ${c.last_name}`.trim() || c.email || "Unnamed";
+                    const isSel = selected.has(c.id);
+                    return (
+                      <tr key={c.id} className={`border-t border-border hover:bg-muted/30 ${isSel ? "bg-primary/5" : ""}`}>
+                        <td className="px-3 py-3">
+                          <Checkbox
+                            checked={isSel}
+                            onCheckedChange={() => toggleSelect(c.id)}
+                            aria-label={`Select ${name}`}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <button className="text-left" onClick={() => navigate(`/admin/contacts/${c.id}`)}>
+                            <div className="font-medium flex items-center gap-2">
+                              {name}
+                              {c.do_not_contact && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <BanIcon className="h-3.5 w-3.5 text-red-600" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>Do Not Contact</TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {c.entity_name || "—"}{c.email ? ` · ${c.email}` : ""}
+                            </div>
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Select value={c.lifecycle_stage || "lead"} onValueChange={(v) => updateLifecycle(c.id, v)}>
+                            <SelectTrigger className="h-8 w-[150px] border-0 bg-transparent p-0 focus:ring-0">
+                              <Badge variant="outline" className={`${meta.color} border-transparent`}>
+                                {meta.label}
+                              </Badge>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {LIFECYCLE_STAGES.map((s) => (
+                                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1 max-w-[200px]">
+                            {(c.tags || []).slice(0, 3).map((t) => (
+                              <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                            ))}
+                            {(c.tags || []).length > 3 && (
+                              <span className="text-xs text-muted-foreground">+{(c.tags || []).length - 3}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <LeadScore score={c.lead_score} />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="font-medium">{r?.open_deals || 0}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {r?.open_value_cents ? formatMoney(r.open_value_cents) : "—"}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Select
+                            value={c.assigned_coach_user_id || "unassigned"}
+                            onValueChange={(v) => assignCoach(c.id, v === "unassigned" ? null : v)}
+                          >
+                            <SelectTrigger className="h-8 w-[170px]">
+                              <SelectValue>{coachName(c.assigned_coach_user_id)}</SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {coaches.map((co) => (
+                                <SelectItem key={co.user_id} value={co.user_id}>{co.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          {c.last_contacted_at ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>{formatDistanceToNow(new Date(c.last_contacted_at), { addSuffix: true })}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>{format(new Date(c.last_contacted_at), "PPpp")}</TooltipContent>
+                            </Tooltip>
+                          ) : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <Button variant="ghost" size="icon" onClick={() => setEditTarget(c)} aria-label="Edit contact">
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/contacts/${c.id}`)}>
+                            Open
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        <BulkActionsBar
+          selectedIds={Array.from(selected)}
+          coaches={coaches}
+          knownTags={allTags}
+          onCleared={() => setSelected(new Set())}
+          onChanged={load}
+          onExport={exportCSV}
+        />
+
+        <NewContactDialog
+          open={newOpen}
+          onOpenChange={setNewOpen}
+          onCreated={(id) => navigate(`/admin/contacts/${id}`)}
+        />
+
+        <EditContactDialog
+          open={!!editTarget}
+          onOpenChange={(v) => !v && setEditTarget(null)}
+          contact={editTarget}
+          coaches={coaches}
+          knownTags={allTags}
+          onSaved={(updated) => {
+            setClients((prev) => prev.map((c) => c.id === updated.id ? { ...c, ...updated } : c));
+            setEditTarget(null);
+          }}
+        />
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -376,6 +505,19 @@ function Chip({
     >
       {label}
     </button>
+  );
+}
+
+function LeadScore({ score }: { score: number | null }) {
+  if (score == null) return <span className="text-xs text-muted-foreground">—</span>;
+  const color =
+    score >= 70 ? "bg-red-500/15 text-red-700 dark:text-red-300" :
+    score >= 40 ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" :
+    "bg-muted text-muted-foreground";
+  return (
+    <Badge variant="outline" className={`${color} border-transparent gap-1`}>
+      <Star className="h-3 w-3" /> {score}
+    </Badge>
   );
 }
 
