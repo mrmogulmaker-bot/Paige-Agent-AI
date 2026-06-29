@@ -8678,6 +8678,7 @@ export type Database = {
           provider: Database["public"]["Enums"]["workflow_provider"]
           requires_approval: boolean
           sort_order: number
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -8699,6 +8700,7 @@ export type Database = {
           provider?: Database["public"]["Enums"]["workflow_provider"]
           requires_approval?: boolean
           sort_order?: number
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -8720,6 +8722,7 @@ export type Database = {
           provider?: Database["public"]["Enums"]["workflow_provider"]
           requires_approval?: boolean
           sort_order?: number
+          tenant_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -8728,6 +8731,13 @@ export type Database = {
             columns: ["connection_id"]
             isOneToOne: false
             referencedRelation: "paige_n8n_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_workflow_registry_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]

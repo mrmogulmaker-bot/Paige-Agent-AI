@@ -124,7 +124,31 @@ async function audit(action: string, target_type: string | null, target_id: stri
 
 // Workflow dispatcher lives in _shared so the pg_cron sweeper
 // (dispatch-queued-workflow-runs) can re-use the same routing logic.
-import { dispatchWorkflowRun } from "../_shared/workflowDispatch.ts";
+import { dispatchWorkflowRun, MMA_TENANT_ID } from "../_shared/workflowDispatch.ts";
+
+// Doctrine §118 master-only MCP tools. Hidden from tools/list when caller's
+// tenant != MMA. These are forward-looking — none are implemented yet but the
+// gate is in place so any future addition is opt-out by default.
+const MASTER_ONLY_TOOLS = new Set<string>([
+  "list_tenants",
+  "switch_active_tenant",
+  "update_tenant_features",
+]);
+
+// Resolve the actor's effective tenant_id WITHOUT falling back to MMA.
+// Platform-key callers → MMA (they ARE the platform owner).
+// User callers → their profiles.active_tenant_id, or null if unset.
+async function actorTenantId(): Promise<string | null> {
+  const actor = currentActor();
+  if (actor.kind === "platform") return MMA_TENANT_ID;
+  if (!actor.user_id) return null;
+  const { data } = await admin
+    .from("profiles")
+    .select("active_tenant_id")
+    .eq("user_id", actor.user_id)
+    .maybeSingle();
+  return (data?.active_tenant_id as string | null) ?? null;
+}
 
 
 
@@ -404,13 +428,18 @@ mcp.tool("list_workflows", {
   }),
   handler: async (args) => {
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
+    const tenantId = await actorTenantId();
     let q = admin
       .from("paige_workflow_registry")
-      .select("id, key, label, description, category, provider, requires_approval, is_active, allowed_roles, sort_order")
+      .select("id, key, label, description, category, provider, requires_approval, is_active, allowed_roles, sort_order, tenant_id")
       .order("sort_order", { ascending: true })
       .limit(limit);
     if (args.category) q = q.eq("category", args.category);
     if (args.only_active !== false) q = q.eq("is_active", true);
+    // Doctrine §118: caller sees platform-default rows (tenant_id IS NULL) plus
+    // rows owned by their tenant. Platform/MMA callers therefore see MMA rows too.
+    if (tenantId) q = q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
+    else q = q.is("tenant_id", null);
     const { data, error } = await q;
     if (error) return err(error.message);
     return ok({ items: data ?? [] });
@@ -454,12 +483,18 @@ mcp.tool("run_workflow", {
 
     const { data: wf, error: wfErr } = await admin
       .from("paige_workflow_registry")
-      .select("id, key, requires_approval, is_active, provider, n8n_webhook_url, needs_n8n_link, langgraph_graph_id, direct_function_name")
+      .select("id, key, requires_approval, is_active, provider, n8n_webhook_url, needs_n8n_link, langgraph_graph_id, direct_function_name, tenant_id")
       .eq("key", args.workflow_key)
       .maybeSingle();
     if (wfErr) return err(wfErr.message);
     if (!wf) return err("workflow_not_found");
     if (!wf.is_active) return err("workflow_inactive");
+
+    // Doctrine §118: tenant-scoped workflows are only runnable by their owner tenant.
+    const callerTenantId = await actorTenantId();
+    if (wf.tenant_id && wf.tenant_id !== callerTenantId) {
+      return err("workflow_restricted_to_owning_tenant");
+    }
 
     if (wf.requires_approval) {
       const { data: pa, error: paErr } = await admin
@@ -500,6 +535,7 @@ mcp.tool("run_workflow", {
       langgraphGraphId: wf.langgraph_graph_id,
       directFunctionName: wf.direct_function_name,
       payload,
+      callerTenantId,
     });
 
     return ok({
@@ -1677,19 +1713,68 @@ app.all("/*", async (c) => {
   }
 
   // Peek the body to enforce per-tool scope for user tokens. Clone first so the transport can re-read.
+  let peekedBody: any = null;
   if (method === "POST") {
     const raw = c.req.raw.clone();
-    const peek = await raw.json().catch(() => null);
-    const gate = enforceScopeForBody(peek, actor);
+    peekedBody = await raw.json().catch(() => null);
+    const gate = enforceScopeForBody(peekedBody, actor);
     if (!gate.ok) {
       return c.json({
-        jsonrpc: "2.0", id: peek?.id ?? null,
+        jsonrpc: "2.0", id: peekedBody?.id ?? null,
         error: { code: -32001, message: gate.error },
       }, gate.status, CORS);
     }
   }
 
   const res = await actorStore.run(actor, () => httpHandler(c.req.raw));
+
+  // Doctrine §118: filter master-only tools out of tools/list for non-MMA callers.
+  if (method === "POST" && peekedBody?.method === "tools/list") {
+    try {
+      const callerTenant = await actorStore.run(actor, () => actorTenantId());
+      if (callerTenant !== MMA_TENANT_ID) {
+        const cloned = res.clone();
+        const text = await cloned.text();
+        // Handle both plain JSON and SSE event-stream responses from mcp-lite.
+        const ct = res.headers.get("content-type") ?? "";
+        if (ct.includes("application/json")) {
+          const body = JSON.parse(text);
+          if (Array.isArray(body?.result?.tools)) {
+            body.result.tools = body.result.tools.filter(
+              (t: any) => !MASTER_ONLY_TOOLS.has(t?.name),
+            );
+          }
+          const filtered = new Response(JSON.stringify(body), {
+            status: res.status,
+            headers: res.headers,
+          });
+          for (const [k, v] of Object.entries(CORS)) filtered.headers.set(k, v);
+          return filtered;
+        } else if (ct.includes("text/event-stream")) {
+          // SSE frames like: "data: {...}\n\n". Rewrite each JSON payload.
+          const rewritten = text.replace(/^data: (\{.*\})$/gm, (_m, json) => {
+            try {
+              const body = JSON.parse(json);
+              if (Array.isArray(body?.result?.tools)) {
+                body.result.tools = body.result.tools.filter(
+                  (t: any) => !MASTER_ONLY_TOOLS.has(t?.name),
+                );
+              }
+              return `data: ${JSON.stringify(body)}`;
+            } catch {
+              return `data: ${json}`;
+            }
+          });
+          const filtered = new Response(rewritten, { status: res.status, headers: res.headers });
+          for (const [k, v] of Object.entries(CORS)) filtered.headers.set(k, v);
+          return filtered;
+        }
+      }
+    } catch (e) {
+      console.error("[paige-mcp] tools/list filter failed", (e as Error).message);
+    }
+  }
+
   for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
   return res;
 });
