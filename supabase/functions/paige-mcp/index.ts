@@ -1962,6 +1962,14 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_signed_agreements: "btf.read", list_intake_submissions: "btf.read",
   list_payment_authorizations: "btf.read",
   resolve_sender_identity: "admin.read",
+  // Batch #2 (Doctrine §119) — observability + comms + invoicing
+  list_workflow_runs: "crm.read",
+  cancel_workflow_run: "workflows.run",
+  register_workflow: "admin.write",
+  send_transactional_email: "crm.write",
+  send_sms: "crm.write",
+  create_invoice: "crm.write",
+  send_invoice: "crm.write",
 };
 
 const DISCOVERY_RESOURCE = {
