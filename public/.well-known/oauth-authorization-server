@@ -1,0 +1,12 @@
+{
+  "issuer": "https://paigeagent.ai",
+  "authorization_endpoint": "https://paigeagent.ai/mcp/authorize",
+  "token_endpoint": "https://bfmyebsjyuoecmjskqhs.supabase.co/functions/v1/paige-mcp/oauth/token",
+  "registration_endpoint": "https://bfmyebsjyuoecmjskqhs.supabase.co/functions/v1/paige-mcp/oauth/register",
+  "revocation_endpoint": "https://bfmyebsjyuoecmjskqhs.supabase.co/functions/v1/paige-mcp/oauth/revoke",
+  "response_types_supported": ["code"],
+  "grant_types_supported": ["authorization_code", "refresh_token"],
+  "code_challenge_methods_supported": ["S256"],
+  "token_endpoint_auth_methods_supported": ["none"],
+  "scopes_supported": ["crm.read", "crm.write", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write"]
+}
