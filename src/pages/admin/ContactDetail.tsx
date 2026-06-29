@@ -145,6 +145,28 @@ export default function ContactDetail() {
     }
   };
 
+  const startOnboarding = async () => {
+    if (!client?.email) {
+      toast.error("Add an email to this contact first");
+      return;
+    }
+    const ok = window.confirm(
+      `Start BTF onboarding for ${fullName || client.email}? This will mark them as an active client and email them the welcome / magic-link.`,
+    );
+    if (!ok) return;
+    const toastId = toast.loading("Starting onboarding…");
+    try {
+      const { data, error } = await supabase.functions.invoke("start-btf-onboarding", {
+        body: { client_id: client.id },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || "Could not start onboarding");
+      toast.success("Onboarding started — welcome email sent", { id: toastId });
+    } catch (e: any) {
+      toast.error(e.message || "Could not start onboarding", { id: toastId });
+    }
+  };
+
   if (loading || !client) {
     return <div className="p-8 text-center text-muted-foreground">Loading contact…</div>;
   }
