@@ -1,67 +1,81 @@
+## Goal
+Right now Signatures, Business Credit, Owner Credit, Banking, and Cash Flow live as **five separate admin pages** AND as **five tabs inside each Contact**. That's duplicated, fragmented, and not wired to the client portal. Consolidate everything into one **Funding Readiness Lens** that is per-client, visible to both Admin and Client, and rolls up into an analytics view.
 
-# Contacts Hub Upgrade Plan
+## What Lives Where Today
+- Admin sidebar: 5 standalone pages (`/admin/signatures`, `/admin/business-credit`, `/admin/owner-credit`, `/admin/banking`, `/admin/banking` for cash flow)
+- Contact Detail tabs: same 5 sections, but actually wired per-client
+- Client portal: nothing — clients can't see their own credit, banking, signatures, or cash-flow data inside Build to Fund Workspace
 
-## What's missing today
-The contacts list lets you change lifecycle and reassign coach inline, but everything else (name, email, phone, business, title, funding goal, tags, DNC, lead score, source, notes) is read-only. There's no bulk anything, no quick-log, no merge, no delete, and no way to add a deal or task from the detail page header. Tags appear but can't be edited from the UI — they only exist if seeded by intake/imports.
+## Target Architecture
 
-## Build order (one ship, ~6 sections)
-
-### 1. Editable contact — full inline editor
-- Add `EditContactDialog.tsx` covering: first/last name, email, phone, business name, title, source, funding goal, lifecycle stage, assigned coach, DNC toggle, tags (chip input with autocomplete from existing tags), and a free-text "current notes" field.
-- Wire **Edit** button into both the contact list row (icon button next to Open) and the ContactDetail header.
-- All writes flow through a single `updateContact(id, patch)` helper in `src/lib/contacts.ts` with optimistic UI + toast.
-
-### 2. Tag system — first-class
-- New helper component `TagPicker.tsx` (combobox + create-new) reused inside Edit dialog, bulk-action menu, and a new "Tags" cell action in the list.
-- Seed a starter palette of suggested tags ("BTF Active", "BTF Lead", "VIP", "Premium", "Cold", "Hot Lead", "Needs Follow-Up", "Funded", "Churn Risk", "Coach Required") via `src/lib/contactTags.ts` so the dropdown isn't empty on a fresh install.
-- Tags persist to `clients.tags text[]` (already exists) — no migration.
-
-### 3. Bulk actions toolbar
-- Checkbox column + "select all on page" in the list.
-- Floating bulk bar appears when ≥1 selected: **Assign coach**, **Set lifecycle**, **Add tag**, **Remove tag**, **Mark DNC**, **Export selected**, **Delete**.
-- Delete uses a guarded confirm dialog and a new `delete_contact` Cloud function (admin-only, blocks if linked_user_id has live BTF workspace).
-
-### 4. Quick-log + quick-create from contact detail
-- Header gains a **"+ Log"** menu (Call, Email, SMS, Meeting, Note) → inserts into `communication_log` with the right channel/message_type.
-- Header gains **"+ Add task"** (opens task dialog pre-filled with this contact) and **"+ New deal"** (jumps to pipeline pre-filled).
-
-### 5. Saved views + smart segments
-- A row of preset chips above the table: **My Coachees**, **Unassigned**, **Hot Leads (lead_score ≥ 70)**, **Stale (no touch 30d+)**, **BTF Active**, **DNC**, **Churned**. Each is a one-click filter combination.
-- Filter state syncs to URL search params so views are shareable.
-
-### 6. Duplicate detection + merge (lightweight)
-- A "Possible duplicates" banner appears on ContactDetail when another contact shares the same email or phone.
-- One-click **Merge into…** picker that calls a new `merge_contacts` Cloud function which moves deals, tasks, notes, files, and communication_log to the surviving record and soft-deletes the loser.
-
-## Bonus polish (cheap)
-- Show `lead_score` as a colored chip in the list.
-- Show `do_not_contact` as a red ribbon on the detail header.
-- "Last touch" cell becomes a tooltip with the actual date.
-- CSV export respects bulk selection if any rows are selected.
-
-## Technical notes (devs only)
-
-```
-src/
-  lib/
-    contacts.ts             ← add updateContact, deleteContact, mergeContacts, applyTags
-    contactTags.ts          ← suggested tag palette
-  components/admin/contacts/
-    EditContactDialog.tsx   ← new
-    TagPicker.tsx           ← new
-    BulkActionsBar.tsx      ← new
-    QuickLogMenu.tsx        ← new
-    DuplicatesBanner.tsx    ← new
-  pages/admin/
-    ContactsAdmin.tsx       ← add selection, bulk bar, edit launcher, smart segments
-    ContactDetail.tsx       ← header edit/log/task/deal buttons, dup banner, DNC ribbon
-supabase/functions/
-  delete-contact/           ← admin-guarded hard delete
-  merge-contacts/           ← move children, soft-delete loser
+```text
+                     ┌────────────────────────────────────────┐
+                     │   FUNDING READINESS LENS (per client)  │
+                     │                                        │
+                     │   • Owner Credit                       │
+                     │   • Business Credit                    │
+                     │   • Banking                            │
+                     │   • Cash Flow                          │
+                     │   • Signatures & Agreements            │
+                     │   • Readiness Score (composite)        │
+                     └─────┬────────────────────┬─────────────┘
+                           │                    │
+              ┌────────────▼─────────┐   ┌──────▼──────────────┐
+              │  Admin: ContactDetail │   │ Client: /workspace/ │
+              │  → "Funding Lens" tab │   │ funding-readiness   │
+              └────────────┬─────────┘   └──────┬──────────────┘
+                           │                    │
+                           └─────────┬──────────┘
+                                     │
+                         ┌───────────▼────────────┐
+                         │  /admin/funding-lens   │
+                         │  Cross-client roll-up  │
+                         │  + reportable analytics│
+                         └────────────────────────┘
 ```
 
-No schema changes required — `clients` already has `tags`, `lead_score`, `do_not_contact`, `source`, `current_notes`. Only two new edge functions and no migrations.
+## Build Order
 
-## Out of scope (call out separately)
-- Custom fields per tenant (would need a `contact_custom_fields` table) — flag this as a Phase 2 ask.
-- Email/SMS sending from the contact page — already covered by the existing campaign + paige-mcp `send_transactional_email` tools; we'll just link to them rather than rebuild.
+### 1. Collapse the admin sidebar
+Replace the 5 standalone items with **one** entry: **"Funding Readiness Lens"** → `/admin/funding-lens`. The old routes redirect there (no broken bookmarks). Signatures gets folded in as a sub-tab (it really is a funding-readiness artifact).
+
+### 2. New shared component: `<FundingReadinessLens contactId={…} mode="admin|client" />`
+- Re-uses the existing `BusinessCreditTab`, `OwnerCreditTab`, `BankingTab`, `CashFlowTab` so we don't rewrite anything that already works.
+- Adds a **Signatures sub-tab** (envelopes filtered to that client).
+- Adds a top **Readiness Snapshot strip**: FICO range, business bureau scores, bank balance trend, runway months, # signed agreements, composite readiness score (0–100).
+- `mode="client"` hides admin-only controls (coach notes, internal lender match scores) and shows education copy + privacy reminder.
+
+### 3. Wire it into ContactDetail
+Replace the 5 separate tabs on `/admin/contacts/:id` with a single **"Funding Lens"** tab that renders `<FundingReadinessLens mode="admin" />`. Existing Deals / Tasks / Notes / Files tabs stay.
+
+### 4. Expose it in the Client Portal
+- New route `/workspace/funding-readiness` rendering `<FundingReadinessLens mode="client" />` scoped to the logged-in client.
+- Add "Funding Readiness" to `WorkspaceLayout` nav.
+- White-labeled (no Paige branding) per BTF rules.
+
+### 5. Cross-client analytics page `/admin/funding-lens`
+Two views, toggled at the top:
+- **Roster view** — table of every contact with their readiness snapshot columns (sortable, filterable by lifecycle/coach/tag, click-through to the per-client lens).
+- **Analytics view** — distribution charts: FICO buckets, business credit buckets, banking health, signature completion rate, readiness-score histogram, week-over-week trend.
+
+Backed by a new SQL view `contact_readiness_rollup` that joins the existing credit/banking/cash-flow/signature tables into one row per `contact_id`.
+
+### 6. MCP exposure (so MMA OS Claude can read the lens)
+Add three read-only tools to `paige-mcp`:
+- `get_funding_readiness(contact_id)` — full snapshot
+- `list_funding_readiness(filter)` — roster
+- `get_readiness_analytics()` — aggregates
+
+## What Stays Out
+- No new data capture. We're consolidating views over existing tables, not changing what's collected.
+- No change to the `paige_signature_envelopes`, credit, or banking schemas.
+- Stripe/Plaid intake flows are untouched.
+
+## Technical Notes
+- New files: `src/components/funding-lens/FundingReadinessLens.tsx`, `SignaturesSubTab.tsx`, `ReadinessSnapshotStrip.tsx`, `RosterTable.tsx`, `AnalyticsCharts.tsx`; new pages `src/pages/admin/FundingLensHub.tsx`, `src/pages/workspace/WorkspaceFundingReadiness.tsx`.
+- Edited: `AdminLayout.tsx` (sidebar collapse + redirects), `ContactDetail.tsx` (tabs), `WorkspaceLayout.tsx` + `App.tsx` (routes), `paige-mcp/index.ts` (3 tools).
+- Migration: `contact_readiness_rollup` view + composite scoring SQL function; RLS so clients see only their own row, coaches see assigned, admins see all.
+- Old pages (`BusinessCreditAdmin.tsx` etc.) deleted after the redirect ships — they're already replaced by the per-client tabs.
+
+## Open Question
+For the composite **Readiness Score (0–100)**, do you want me to use the existing `funding_readiness_scores` table's formula (already a 0–100 deductible model), or compute a fresh one from the rolled-up snapshot? I'd default to the existing table if it's already populated, falling back to a computed score when blank.

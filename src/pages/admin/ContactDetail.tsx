@@ -15,10 +15,7 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { LIFECYCLE_STAGES, lifecycleMeta } from "@/lib/contacts";
 import { ContactDealsSection } from "@/components/admin/contacts/ContactDealsSection";
-import { BusinessCreditTab } from "@/components/admin/contacts/BusinessCreditTab";
-import { OwnerCreditTab } from "@/components/admin/contacts/OwnerCreditTab";
-import { BankingTab } from "@/components/admin/contacts/BankingTab";
-import { CashFlowTab } from "@/components/admin/contacts/CashFlowTab";
+import { FundingReadinessLens } from "@/components/funding-lens/FundingReadinessLens";
 import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog";
 import { QuickLogMenu } from "@/components/admin/contacts/QuickLogMenu";
 import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
@@ -290,10 +287,7 @@ export default function ContactDetail() {
           <TabsTrigger value="tasks"><CheckSquare className="h-4 w-4 mr-1" /> Tasks</TabsTrigger>
           <TabsTrigger value="notes"><StickyNote className="h-4 w-4 mr-1" /> Notes</TabsTrigger>
           <TabsTrigger value="files"><FileText className="h-4 w-4 mr-1" /> Files</TabsTrigger>
-          <TabsTrigger value="business-credit"><CreditCard className="h-4 w-4 mr-1" /> Business Credit</TabsTrigger>
-          <TabsTrigger value="owner-credit"><User className="h-4 w-4 mr-1" /> Owner Credit</TabsTrigger>
-          <TabsTrigger value="banking"><Landmark className="h-4 w-4 mr-1" /> Banking</TabsTrigger>
-          <TabsTrigger value="cash-flow"><TrendingUp className="h-4 w-4 mr-1" /> Cash Flow</TabsTrigger>
+          <TabsTrigger value="funding-lens"><TrendingUp className="h-4 w-4 mr-1" /> Funding Readiness</TabsTrigger>
         </TabsList>
 
         <TabsContent value="deals">
@@ -404,10 +398,7 @@ export default function ContactDetail() {
           </CardContent></Card>
         </TabsContent>
 
-        <TabsContent value="business-credit"><BusinessCreditTab contactId={client.id} /></TabsContent>
-        <TabsContent value="owner-credit"><OwnerCreditTab contactId={client.id} /></TabsContent>
-        <TabsContent value="banking"><BankingTab contactId={client.id} /></TabsContent>
-        <TabsContent value="cash-flow"><CashFlowTab contactId={client.id} /></TabsContent>
+        <TabsContent value="funding-lens"><FundingReadinessLens contactId={client.id} mode="admin" /></TabsContent>
       </Tabs>
 
       <EditContactDialog

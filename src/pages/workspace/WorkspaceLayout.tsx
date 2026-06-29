@@ -90,6 +90,9 @@ export default function WorkspaceLayout() {
             <NavLink to="/workspace/tasks" className={({ isActive }) => `workspace-nav-link ${isActive ? "active" : ""}`}>
               Tasks
             </NavLink>
+            <NavLink to="/workspace/funding-readiness" className={({ isActive }) => `workspace-nav-link ${isActive ? "active" : ""}`}>
+              Funding Readiness
+            </NavLink>
           </nav>
 
           <button onClick={handleSignOut} className="workspace-nav-link text-sm">

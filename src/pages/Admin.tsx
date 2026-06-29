@@ -93,6 +93,7 @@ const OwnerCreditAdmin = lazy(() => import("@/pages/admin/OwnerCreditAdmin"));
 const PlaidIntegrationConfig = lazy(() => import("@/pages/admin/PlaidIntegrationConfig"));
 const BankingAdmin = lazy(() => import("@/pages/admin/BankingAdmin"));
 const MembersAdmin = lazy(() => import("@/pages/admin/MembersAdmin"));
+const FundingLensHub = lazy(() => import("@/pages/admin/FundingLensHub"));
 
 
 
@@ -402,6 +403,9 @@ const Admin = () => {
         } />
         <Route path="members" element={
           <Suspense fallback={<SuspenseFallback />}><MembersAdmin /></Suspense>
+        } />
+        <Route path="funding-lens" element={
+          <Suspense fallback={<SuspenseFallback />}><FundingLensHub /></Suspense>
         } />
         <Route path="platform/tenants" element={
           <Suspense fallback={<SuspenseFallback />}><PlatformTenants /></Suspense>
