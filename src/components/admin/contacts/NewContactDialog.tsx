@@ -52,34 +52,56 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
   }, [open]);
 
   const handleSave = async () => {
-    if (!firstName.trim() && !lastName.trim() && !email.trim()) {
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    const em = email.trim();
+    if (!fn && !ln && !em) {
       toast.error("Add at least a name or email");
       return;
     }
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.id) {
+      setSaving(false);
+      toast.error("You must be signed in to create a contact");
+      return;
+    }
     const tags = tagsRaw.split(",").map((t) => t.trim()).filter(Boolean);
+    // first_name / last_name are NOT NULL — derive sensible fallbacks from email when missing.
+    const emailLocal = em ? em.split("@")[0] : "";
+    const safeFirst = fn || emailLocal || "New";
+    const safeLast  = ln || (em ? "Contact" : "Contact");
+    const offerValue =
+      primaryOffer === "none" ? null :
+      primaryOffer === "other" ? (offerCustom.trim() || "other") :
+      primaryOffer;
+
     const { data, error } = await supabase
       .from("clients")
       .insert({
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        email: email.trim() || null,
+        first_name: safeFirst,
+        last_name: safeLast,
+        email: em || null,
         phone: phone.trim() || null,
         entity_name: entityName.trim() || null,
         title: title.trim() || null,
         lifecycle_stage: lifecycleStage,
         source,
         tags,
+        primary_offer: offerValue,
         current_notes: notes.trim() || null,
         assigned_coach_user_id: coachId === "unassigned" ? null : coachId,
         status: "active",
-        created_by: user?.id ?? null,
+        created_by: user.id,
       })
       .select("id")
       .single();
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      console.error("[NewContactDialog] insert failed", error);
+      toast.error(error.message || "Could not create contact");
+      return;
+    }
     toast.success("Contact created");
     onOpenChange(false);
     if (data) onCreated(data.id);
