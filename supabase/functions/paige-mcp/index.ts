@@ -27,6 +27,7 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PLATFORM_KEY = Deno.env.get("PAIGE_MCP_PLATFORM_KEY") ?? "";
 const MMA_OS_CLAUDE_PLATFORM_KEY = Deno.env.get("MMA_OS_CLAUDE_PLATFORM_KEY") ?? "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+const RESEND_API_KEY_MMA = Deno.env.get("RESEND_API_KEY_MMA") ?? "";
 // Registered platform keys: label → secret value. Empty values are filtered.
 const PLATFORM_KEYS: Array<{ label: string; value: string }> = [
   { label: "paige_default", value: PLATFORM_KEY },
@@ -957,7 +958,7 @@ mcp.tool("send_btf_template_email", {
   }),
   annotations: { destructiveHint: true },
   handler: async (args) => {
-    if (!RESEND_API_KEY) return err("resend_not_configured");
+    // Per-key check happens below after we know the template's product_scope.
     const vars = args.vars ?? {};
 
     const { data: tpl, error: tplErr } = await admin
@@ -989,10 +990,23 @@ mcp.tool("send_btf_template_email", {
     const fromAddr = `${fromName} <${fromEmail}>`;
     const replyTo = args.reply_to ?? scopeCfg.reply_to;
 
+    // Split-key routing: BTF/MMA scopes send through Antonio's MMA Resend account
+    // (only account with portal.mogulmakeracademy.com verified). Paige scope stays on
+    // the native Paige Resend account (notify.paigeagent.ai).
+    const useMmaAccount = tpl.product_scope === "btf" || tpl.product_scope === "mma";
+    let apiKey = useMmaAccount ? RESEND_API_KEY_MMA : RESEND_API_KEY;
+    let senderAccount: "mma_os" | "paige_native" = useMmaAccount ? "mma_os" : "paige_native";
+    if (useMmaAccount && !RESEND_API_KEY_MMA) {
+      console.warn("[STUB] missing MMA key — falling back to RESEND_API_KEY for scope", tpl.product_scope);
+      apiKey = RESEND_API_KEY;
+      senderAccount = "paige_native";
+    }
+    if (!apiKey) return err("resend_not_configured");
+
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -1004,13 +1018,14 @@ mcp.tool("send_btf_template_email", {
         tags: [
           { name: "template_key", value: tpl.template_key.replace(/[^a-zA-Z0-9_-]/g, "_") },
           { name: "product_scope", value: tpl.product_scope },
+          { name: "sender_account", value: senderAccount },
         ],
       }),
     });
     const payload = await resendRes.json().catch(() => ({}));
     if (!resendRes.ok) {
       await audit("send_btf_template_email_failed", "email_template", tpl.template_key, {
-        to: args.to_email, from: fromEmail, status: resendRes.status, payload,
+        to: args.to_email, from: fromEmail, sender_account: senderAccount, status: resendRes.status, payload,
       });
       return err(`resend_${resendRes.status}: ${JSON.stringify(payload)}`);
     }
@@ -1022,10 +1037,11 @@ mcp.tool("send_btf_template_email", {
       recipient_email: args.to_email.toLowerCase(),
       message_id: messageId,
       status: "sent",
-      metadata: { product_scope: tpl.product_scope, from: fromEmail, via: "mcp.send_btf_template_email" },
+      sender_account: senderAccount,
+      metadata: { product_scope: tpl.product_scope, from: fromEmail, sender_account: senderAccount, via: "mcp.send_btf_template_email" },
     }).then(() => {}, () => {});
     await audit("send_btf_template_email", "email_template", tpl.template_key, {
-      to: args.to_email, from: fromEmail, message_id: messageId,
+      to: args.to_email, from: fromEmail, sender_account: senderAccount, message_id: messageId,
     });
 
     return ok({ ok: true, message_id: messageId, from: fromEmail, template_key: tpl.template_key, sent_at: sentAt });
