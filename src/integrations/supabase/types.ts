@@ -9188,6 +9188,108 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_subagent_invocations: {
+        Row: {
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          input: Json | null
+          invoked_by: string | null
+          langgraph_run_id: string | null
+          latency_ms: number | null
+          output: Json | null
+          status: string
+          subagent_slug: string
+        }
+        Insert: {
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          input?: Json | null
+          invoked_by?: string | null
+          langgraph_run_id?: string | null
+          latency_ms?: number | null
+          output?: Json | null
+          status?: string
+          subagent_slug: string
+        }
+        Update: {
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          input?: Json | null
+          invoked_by?: string | null
+          langgraph_run_id?: string | null
+          latency_ms?: number | null
+          output?: Json | null
+          status?: string
+          subagent_slug?: string
+        }
+        Relationships: []
+      }
+      paige_subagents: {
+        Row: {
+          created_at: string
+          description: string
+          display_order: number
+          domain: string
+          edge_function: string | null
+          enabled: boolean
+          id: string
+          input_schema: Json
+          langgraph_graph: string | null
+          name: string
+          output_schema: Json
+          requires_role: string[]
+          runtime: string
+          slug: string
+          triggers: string[]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          display_order?: number
+          domain: string
+          edge_function?: string | null
+          enabled?: boolean
+          id?: string
+          input_schema?: Json
+          langgraph_graph?: string | null
+          name: string
+          output_schema?: Json
+          requires_role?: string[]
+          runtime: string
+          slug: string
+          triggers?: string[]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          display_order?: number
+          domain?: string
+          edge_function?: string | null
+          enabled?: boolean
+          id?: string
+          input_schema?: Json
+          langgraph_graph?: string | null
+          name?: string
+          output_schema?: Json
+          requires_role?: string[]
+          runtime?: string
+          slug?: string
+          triggers?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       paige_subscription_events: {
         Row: {
           contact_id: string | null
