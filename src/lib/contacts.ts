@@ -19,6 +19,32 @@ export const CONTACT_SOURCES = [
   "manual", "referral", "website", "ghl", "stripe", "paige", "import", "skool", "event", "partner",
 ];
 
+// Productized offers / programs a contact can be enrolled in or pursuing.
+// Used by the New Contact + New Deal dialogs and rendered on pipeline cards.
+export const OFFER_TYPES: { value: string; label: string; group: string }[] = [
+  { value: "btf",            label: "BTF — Build to Fund ($4,997)",  group: "Flagship" },
+  { value: "premium",        label: "Premium Membership ($44/mo)",    group: "Membership" },
+  { value: "vip",            label: "VIP Membership",                 group: "Membership" },
+  { value: "standard",       label: "Standard / Free",                group: "Membership" },
+  { value: "accel",          label: "ACCEL — Personal Credit",        group: "Program" },
+  { value: "build_personal", label: "BUILD — Personal",               group: "Program" },
+  { value: "build_business", label: "BUILD — Business",               group: "Program" },
+  { value: "fund",           label: "FUND — Capital Deployment",      group: "Program" },
+  { value: "launch",         label: "LAUNCH",                         group: "Program" },
+  { value: "drive",          label: "DRIVE",                          group: "Program" },
+  { value: "shield",         label: "SHIELD — Asset Protection",      group: "Program" },
+  { value: "acquire",        label: "ACQUIRE — Business Acquisition", group: "Program" },
+  { value: "coaching",       label: "1:1 Coaching",                   group: "Service" },
+  { value: "consult",        label: "Strategy Consult",               group: "Service" },
+  { value: "other",          label: "Other (custom)",                 group: "Other" },
+];
+
+export function offerLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return OFFER_TYPES.find((o) => o.value === value)?.label ?? value;
+}
+
+
 export function lifecycleMeta(stage: string | null | undefined) {
   return LIFECYCLE_STAGES.find((s) => s.value === stage) ||
     { value: stage || "lead", label: stage || "Lead", color: "bg-muted text-muted-foreground" };

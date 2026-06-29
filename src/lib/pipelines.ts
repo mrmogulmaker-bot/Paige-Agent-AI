@@ -38,6 +38,7 @@ export type Deal = {
   source: string | null;
   tags: string[];
   notes: string | null;
+  offer_type: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

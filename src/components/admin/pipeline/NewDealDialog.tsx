@@ -11,6 +11,7 @@ import { Check, ChevronsUpDown, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Pipeline, PipelineStage, dollarsToCents, logDealActivity } from "@/lib/pipelines";
+import { OFFER_TYPES } from "@/lib/contacts";
 import { NewContactDialog } from "@/components/admin/contacts/NewContactDialog";
 
 type Props = {
@@ -33,6 +34,8 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
   const [ownerId, setOwnerId] = useState<string>("me");
   const [value, setValue] = useState<string>("");
   const [closeDate, setCloseDate] = useState<string>("");
+  const [offerType, setOfferType] = useState<string>("none");
+  const [offerCustom, setOfferCustom] = useState("");
   const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [contactSearch, setContactSearch] = useState("");
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
@@ -74,6 +77,8 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
       setOwnerId("me");
       setValue("");
       setCloseDate("");
+      setOfferType("none");
+      setOfferCustom("");
       setContactSearch("");
     })();
   }, [open, defaultStageId, stages, defaultContactId]);
@@ -95,6 +100,10 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     const resolvedOwner = ownerId === "me" ? user?.id : ownerId === "none" ? null : ownerId;
+    const resolvedOffer =
+      offerType === "none" ? null :
+      offerType === "other" ? (offerCustom.trim() || "other") :
+      offerType;
     const { data, error } = await supabase
       .from("deals")
       .insert({
@@ -105,6 +114,7 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
         owner_user_id: resolvedOwner ?? null,
         value_cents: dollarsToCents(value || "0"),
         expected_close_date: closeDate || null,
+        offer_type: resolvedOffer,
         created_by: user?.id ?? null,
       })
       .select()
@@ -232,11 +242,32 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
                 </Select>
               </div>
             </div>
-            <div>
-              <Label className="text-xs">Expected close date</Label>
-              <Input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Offer / product</Label>
+                <Select value={offerType} onValueChange={setOfferType}>
+                  <SelectTrigger><SelectValue placeholder="Select offer" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— None —</SelectItem>
+                    {OFFER_TYPES.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Expected close date</Label>
+                <Input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
+              </div>
             </div>
+            {offerType === "other" && (
+              <div>
+                <Label className="text-xs">Custom offer name</Label>
+                <Input value={offerCustom} onChange={(e) => setOfferCustom(e.target.value)} placeholder="Name this offer" />
+              </div>
+            )}
           </div>
+
           <DialogFooter>
             <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Create deal"}</Button>

@@ -2452,6 +2452,7 @@ export type Database = {
           onboarding_stage: string | null
           onboarding_started_at: string | null
           phone: string | null
+          primary_offer: string | null
           source: string | null
           state: string | null
           status: string
@@ -2495,6 +2496,7 @@ export type Database = {
           onboarding_stage?: string | null
           onboarding_started_at?: string | null
           phone?: string | null
+          primary_offer?: string | null
           source?: string | null
           state?: string | null
           status?: string
@@ -2538,6 +2540,7 @@ export type Database = {
           onboarding_stage?: string | null
           onboarding_started_at?: string | null
           phone?: string | null
+          primary_offer?: string | null
           source?: string | null
           state?: string | null
           status?: string
@@ -3972,6 +3975,7 @@ export type Database = {
           id: string
           lost_reason: string | null
           notes: string | null
+          offer_type: string | null
           owner_user_id: string | null
           pipeline_id: string
           source: string | null
@@ -3992,6 +3996,7 @@ export type Database = {
           id?: string
           lost_reason?: string | null
           notes?: string | null
+          offer_type?: string | null
           owner_user_id?: string | null
           pipeline_id: string
           source?: string | null
@@ -4012,6 +4017,7 @@ export type Database = {
           id?: string
           lost_reason?: string | null
           notes?: string | null
+          offer_type?: string | null
           owner_user_id?: string | null
           pipeline_id?: string
           source?: string | null

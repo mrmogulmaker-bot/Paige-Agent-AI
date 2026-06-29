@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { LIFECYCLE_STAGES, CONTACT_SOURCES } from "@/lib/contacts";
+import { LIFECYCLE_STAGES, CONTACT_SOURCES, OFFER_TYPES } from "@/lib/contacts";
 
 type Coach = { user_id: string; name: string };
 
@@ -27,6 +27,8 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
   const [lifecycleStage, setLifecycleStage] = useState("lead");
   const [source, setSource] = useState<string>("manual");
   const [coachId, setCoachId] = useState<string>("unassigned");
+  const [primaryOffer, setPrimaryOffer] = useState<string>("none");
+  const [offerCustom, setOfferCustom] = useState("");
   const [tagsRaw, setTagsRaw] = useState("");
   const [notes, setNotes] = useState("");
   const [coaches, setCoaches] = useState<Coach[]>([]);
@@ -36,7 +38,9 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
     if (!open) return;
     setFirstName(""); setLastName(""); setEmail(""); setPhone("");
     setEntityName(""); setTitle(""); setLifecycleStage("lead");
-    setSource("manual"); setCoachId("unassigned"); setTagsRaw(""); setNotes("");
+    setSource("manual"); setCoachId("unassigned");
+    setPrimaryOffer("none"); setOfferCustom("");
+    setTagsRaw(""); setNotes("");
     (async () => {
       const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
       const ids = (roles || []).map((r: any) => r.user_id);
@@ -48,34 +52,56 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
   }, [open]);
 
   const handleSave = async () => {
-    if (!firstName.trim() && !lastName.trim() && !email.trim()) {
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    const em = email.trim();
+    if (!fn && !ln && !em) {
       toast.error("Add at least a name or email");
       return;
     }
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.id) {
+      setSaving(false);
+      toast.error("You must be signed in to create a contact");
+      return;
+    }
     const tags = tagsRaw.split(",").map((t) => t.trim()).filter(Boolean);
+    // first_name / last_name are NOT NULL — derive sensible fallbacks from email when missing.
+    const emailLocal = em ? em.split("@")[0] : "";
+    const safeFirst = fn || emailLocal || "New";
+    const safeLast  = ln || (em ? "Contact" : "Contact");
+    const offerValue =
+      primaryOffer === "none" ? null :
+      primaryOffer === "other" ? (offerCustom.trim() || "other") :
+      primaryOffer;
+
     const { data, error } = await supabase
       .from("clients")
       .insert({
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        email: email.trim() || null,
+        first_name: safeFirst,
+        last_name: safeLast,
+        email: em || null,
         phone: phone.trim() || null,
         entity_name: entityName.trim() || null,
         title: title.trim() || null,
         lifecycle_stage: lifecycleStage,
         source,
         tags,
+        primary_offer: offerValue,
         current_notes: notes.trim() || null,
         assigned_coach_user_id: coachId === "unassigned" ? null : coachId,
         status: "active",
-        created_by: user?.id ?? null,
+        created_by: user.id,
       })
       .select("id")
       .single();
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      console.error("[NewContactDialog] insert failed", error);
+      toast.error(error.message || "Could not create contact");
+      return;
+    }
     toast.success("Contact created");
     onOpenChange(false);
     if (data) onCreated(data.id);
@@ -146,10 +172,31 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
               </Select>
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Primary offer / product</Label>
+              <Select value={primaryOffer} onValueChange={setPrimaryOffer}>
+                <SelectTrigger><SelectValue placeholder="Select offer" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— None —</SelectItem>
+                  {OFFER_TYPES.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {primaryOffer === "other" && (
+              <div>
+                <Label className="text-xs">Custom offer name</Label>
+                <Input value={offerCustom} onChange={(e) => setOfferCustom(e.target.value)} placeholder="Name this offer" />
+              </div>
+            )}
+          </div>
           <div>
             <Label className="text-xs">Tags (comma separated)</Label>
             <Input value={tagsRaw} onChange={(e) => setTagsRaw(e.target.value)} placeholder="vip, funding-ready, mma" />
           </div>
+
           <div>
             <Label className="text-xs">Notes</Label>
             <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
