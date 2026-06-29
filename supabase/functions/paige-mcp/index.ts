@@ -1235,7 +1235,7 @@ mcp.tool("resend_btf_invite", {
       .from("btf_workspace_invites")
       .update({ metadata: { superseded_at: new Date().toISOString(), superseded_by: "mcp_resend" } })
       .eq("client_id", contact_id)
-      .is("accepted_at", null);
+      .is("used_at", null);
 
     const res = await fetch(`${SUPABASE_URL}/functions/v1/invite-btf-client`, {
       method: "POST",
