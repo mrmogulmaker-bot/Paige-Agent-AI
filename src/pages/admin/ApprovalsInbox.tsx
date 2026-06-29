@@ -5,10 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDistanceToNow } from "date-fns";
-import { Inbox, Check, X } from "lucide-react";
+import { Inbox, Check, X, Mic } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import FieldIngestionTab from "@/components/admin/FieldIngestionTab";
 
 const typeLabel: Record<string, string> = {
   cs_draft: "Customer Support Draft",
@@ -60,9 +62,22 @@ export default function ApprovalsInbox() {
           <Inbox className="w-6 h-6" /> Approvals
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          AI-drafted items waiting for human approval. Updates live.
+          AI-drafted items and field-ops ingest waiting for human approval.
         </p>
       </div>
+
+      <Tabs defaultValue="drafts">
+        <TabsList>
+          <TabsTrigger value="drafts" className="gap-1.5">
+            <Inbox className="w-3.5 h-3.5" /> Drafts
+          </TabsTrigger>
+          <TabsTrigger value="field" className="gap-1.5">
+            <Mic className="w-3.5 h-3.5" /> Field Ingestion
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="drafts" className="mt-4">
+
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-3">
@@ -134,6 +149,13 @@ export default function ApprovalsInbox() {
           })}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="field" className="mt-4">
+          <FieldIngestionTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
+
