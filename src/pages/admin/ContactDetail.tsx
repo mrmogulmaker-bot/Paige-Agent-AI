@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
   MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
-  CreditCard, User, Landmark, TrendingUp, Send,
+  CreditCard, User, Landmark, TrendingUp, Send, Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -19,6 +19,9 @@ import { BusinessCreditTab } from "@/components/admin/contacts/BusinessCreditTab
 import { OwnerCreditTab } from "@/components/admin/contacts/OwnerCreditTab";
 import { BankingTab } from "@/components/admin/contacts/BankingTab";
 import { CashFlowTab } from "@/components/admin/contacts/CashFlowTab";
+import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog";
+import { QuickLogMenu } from "@/components/admin/contacts/QuickLogMenu";
+import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 
 type Client = {
@@ -52,6 +55,7 @@ export default function ContactDetail() {
   const [notes, setNotes] = useState<any[]>([]);
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => { if (id) load(id); }, [id]);
 
@@ -186,6 +190,15 @@ export default function ContactDetail() {
           <h1 className="text-2xl sm:text-3xl font-bold truncate">{fullName || "Unnamed Contact"}</h1>
           <p className="text-sm text-muted-foreground">{client.entity_name || "No business on file"}</p>
         </div>
+        <QuickLogMenu
+          contactId={client.id}
+          contactUserId={client.linked_user_id}
+          contactDisplay={fullName || client.email || "contact"}
+          onLogged={() => id && load(id)}
+        />
+        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+          <Pencil className="h-4 w-4 mr-1" /> Edit
+        </Button>
         <Button variant="outline" size="sm" onClick={() => navigate(`/admin/contacts/${client.id}/journey`)}>
           <Activity className="h-4 w-4 mr-1" /> Member Journey
         </Button>
@@ -212,6 +225,10 @@ export default function ContactDetail() {
           </Button>
         )}
       </div>
+
+      <DuplicatesBanner contactId={client.id} email={client.email} phone={client.phone} />
+
+
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card>
@@ -392,6 +409,17 @@ export default function ContactDetail() {
         <TabsContent value="banking"><BankingTab contactId={client.id} /></TabsContent>
         <TabsContent value="cash-flow"><CashFlowTab contactId={client.id} /></TabsContent>
       </Tabs>
+
+      <EditContactDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        contact={client as any}
+        coaches={coaches}
+        onSaved={(updated) => {
+          setClient((prev) => prev ? { ...prev, ...(updated as any) } : prev);
+          setEditOpen(false);
+        }}
+      />
     </div>
   );
 }
