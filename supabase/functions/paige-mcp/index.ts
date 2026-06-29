@@ -1434,6 +1434,12 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_unassigned_queue: "admin.read", list_admin_notifications: "admin.read", create_admin_notification: "admin.write",
   // Email templates
   list_email_templates: "admin.read", upsert_email_template: "admin.write", send_btf_template_email: "btf.write",
+  // Batch #1 (Doctrine §119)
+  create_contact: "crm.write", update_lifecycle_stage: "crm.write",
+  start_btf_onboarding: "btf.write", resend_btf_invite: "btf.write",
+  list_signed_agreements: "btf.read", list_intake_submissions: "btf.read",
+  list_payment_authorizations: "btf.read",
+  resolve_sender_identity: "admin.read",
 };
 
 const DISCOVERY_RESOURCE = {
