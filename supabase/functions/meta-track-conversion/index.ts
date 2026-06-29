@@ -59,12 +59,17 @@ Deno.serve(async (req) => {
   );
   const { data: cfg } = await supabase
     .from("paige_config")
-    .select("meta_pixel_id, meta_capi_access_token, meta_capi_test_event_code")
+    .select("meta_pixel_id, meta_capi_test_event_code")
     .eq("id", 1)
+    .maybeSingle();
+  const { data: secretRow } = await supabase
+    .from("_internal_secrets")
+    .select("value")
+    .eq("key", "meta_capi_access_token")
     .maybeSingle();
 
   const pixelId = cfg?.meta_pixel_id;
-  const token = cfg?.meta_capi_access_token;
+  const token = secretRow?.value ?? null;
   if (!pixelId || !token) {
     return new Response(JSON.stringify({ ok: true, skipped: "meta_capi_not_configured" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
