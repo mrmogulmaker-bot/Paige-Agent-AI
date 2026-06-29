@@ -8738,10 +8738,13 @@ export type Database = {
           created_at: string
           error: string | null
           id: string
+          langgraph_thread_id: string | null
+          last_dispatched_at: string | null
           n8n_execution_id: string | null
           payload: Json
           registry_id: string
           result: Json | null
+          retry_count: number
           status: string
           tenant_id: string | null
           triggered_at: string
@@ -8753,10 +8756,13 @@ export type Database = {
           created_at?: string
           error?: string | null
           id?: string
+          langgraph_thread_id?: string | null
+          last_dispatched_at?: string | null
           n8n_execution_id?: string | null
           payload?: Json
           registry_id: string
           result?: Json | null
+          retry_count?: number
           status?: string
           tenant_id?: string | null
           triggered_at?: string
@@ -8768,10 +8774,13 @@ export type Database = {
           created_at?: string
           error?: string | null
           id?: string
+          langgraph_thread_id?: string | null
+          last_dispatched_at?: string | null
           n8n_execution_id?: string | null
           payload?: Json
           registry_id?: string
           result?: Json | null
+          retry_count?: number
           status?: string
           tenant_id?: string | null
           triggered_at?: string
