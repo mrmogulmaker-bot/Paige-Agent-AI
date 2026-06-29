@@ -149,6 +149,13 @@ export default function ApprovalsInbox() {
           })}
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="field" className="mt-4">
+          <FieldIngestionTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
+
