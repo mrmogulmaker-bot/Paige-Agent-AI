@@ -10,6 +10,7 @@ export function AdminViewBanner() {
   if (!isCoachOrAdmin || mode !== "client") return null;
 
   const handleReturn = () => {
+    try { sessionStorage.removeItem("paige_stay_in_client_view"); } catch {}
     navigate("/admin");
   };
 
