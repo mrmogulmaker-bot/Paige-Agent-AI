@@ -426,10 +426,52 @@ export const useTasks = (options: UseTasksOptions = {}) => {
     };
   }, []);
 
+  /**
+   * Validation-free create used by admin/operator + client workspace flows where
+   * Personal-vs-Business-credit keyword filtering does not apply. Accepts an
+   * explicit owner so admins can assign tasks to other users.
+   */
+  const createTaskRaw = async (
+    taskData: Partial<Task> & { user_id?: string }
+  ) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data, error } = await supabase
+        .from("tasks")
+        .insert([{
+          user_id: taskData.user_id || user.id,
+          title: taskData.title || "",
+          description: taskData.description ?? null,
+          status: taskData.status || "pending",
+          track: taskData.track ?? null,
+          due_date: taskData.due_date ?? null,
+          metadata: (taskData.metadata as any) ?? null,
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      await fetchTasks();
+      return data as unknown as Task;
+    } catch (error) {
+      console.error("Error creating task:", error);
+      toast({
+        title: "Error",
+        description: "Failed to create task",
+        variant: "destructive",
+      });
+      return null;
+    }
+  };
+
   return {
     tasks,
     loading,
+    currentUserId,
     createTask,
+    createTaskRaw,
     updateTask,
     deleteTask,
     generateAccelTasks,
