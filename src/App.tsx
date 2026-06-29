@@ -43,6 +43,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
 const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
+const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
 import NotFound from "./pages/NotFound";
 
 // Everything else is lazy-loaded for a smaller initial bundle
@@ -136,6 +137,7 @@ const App = () => (
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
             <Route path="/accept-invite" element={<PageSuspense><AcceptInvite /></PageSuspense>} />
+            <Route path="/mcp/authorize" element={<PageSuspense><McpAuthorize /></PageSuspense>} />
 
             {/* New agent-first dashboard */}
             <Route path="/app" element={<PageSuspense><AppShell /></PageSuspense>}>

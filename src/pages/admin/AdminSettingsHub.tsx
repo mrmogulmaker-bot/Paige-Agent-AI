@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio } from "lucide-react";
+import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { UserManagement } from "@/components/dashboard/UserManagement";
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
+import { McpSessionsPanel } from "@/components/dashboard/admin/McpSessionsPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -80,6 +81,9 @@ export function AdminSettingsHub() {
           <TabsTrigger value="system" className="gap-2">
             <Activity className="w-4 h-4" /> System Metrics
           </TabsTrigger>
+          <TabsTrigger value="mcp" className="gap-2">
+            <Plug2 className="w-4 h-4" /> MCP Sessions
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="team" className="space-y-4">
@@ -121,6 +125,10 @@ export function AdminSettingsHub() {
 
         <TabsContent value="system" className="space-y-4">
           <SystemMetrics />
+        </TabsContent>
+
+        <TabsContent value="mcp" className="space-y-4">
+          <McpSessionsPanel />
         </TabsContent>
       </Tabs>
     </div>

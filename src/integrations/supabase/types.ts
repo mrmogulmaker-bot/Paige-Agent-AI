@@ -7423,6 +7423,148 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_mcp_oauth_clients: {
+        Row: {
+          client_id: string
+          client_name: string
+          client_uri: string | null
+          created_at: string
+          created_by_user_id: string | null
+          grant_types: string[]
+          redirect_uris: string[]
+          response_types: string[]
+          scope: string
+          token_endpoint_auth_method: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          client_name: string
+          client_uri?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          grant_types?: string[]
+          redirect_uris: string[]
+          response_types?: string[]
+          scope?: string
+          token_endpoint_auth_method?: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          client_name?: string
+          client_uri?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          grant_types?: string[]
+          redirect_uris?: string[]
+          response_types?: string[]
+          scope?: string
+          token_endpoint_auth_method?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      paige_mcp_oauth_codes: {
+        Row: {
+          client_id: string
+          code_challenge: string
+          code_challenge_method: string
+          code_hash: string
+          consumed_at: string | null
+          created_at: string
+          expires_at: string
+          redirect_uri: string
+          scopes: string[]
+          user_id: string
+        }
+        Insert: {
+          client_id: string
+          code_challenge: string
+          code_challenge_method?: string
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at: string
+          redirect_uri: string
+          scopes: string[]
+          user_id: string
+        }
+        Update: {
+          client_id?: string
+          code_challenge?: string
+          code_challenge_method?: string
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string
+          expires_at?: string
+          redirect_uri?: string
+          scopes?: string[]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_mcp_oauth_codes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_mcp_oauth_clients"
+            referencedColumns: ["client_id"]
+          },
+        ]
+      }
+      paige_mcp_oauth_tokens: {
+        Row: {
+          access_expires_at: string
+          access_token_hash: string
+          client_id: string
+          client_name_cache: string | null
+          created_at: string
+          id: string
+          last_used_at: string | null
+          refresh_expires_at: string | null
+          refresh_token_hash: string | null
+          revoked_at: string | null
+          scopes: string[]
+          user_id: string
+        }
+        Insert: {
+          access_expires_at: string
+          access_token_hash: string
+          client_id: string
+          client_name_cache?: string | null
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          refresh_expires_at?: string | null
+          refresh_token_hash?: string | null
+          revoked_at?: string | null
+          scopes: string[]
+          user_id: string
+        }
+        Update: {
+          access_expires_at?: string
+          access_token_hash?: string
+          client_id?: string
+          client_name_cache?: string | null
+          created_at?: string
+          id?: string
+          last_used_at?: string | null
+          refresh_expires_at?: string | null
+          refresh_token_hash?: string | null
+          revoked_at?: string | null
+          scopes?: string[]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_mcp_oauth_tokens_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_mcp_oauth_clients"
+            referencedColumns: ["client_id"]
+          },
+        ]
+      }
       paige_messages_audit: {
         Row: {
           body: string | null

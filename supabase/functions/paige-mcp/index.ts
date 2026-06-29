@@ -84,15 +84,30 @@ function err(message: string) {
   return { content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }], isError: true };
 }
 
+// Per-request actor context (set by the HTTP route before invoking the MCP transport).
+// Phase 3: bearer tokens can resolve to either the platform key or a user OAuth token.
+type ActorCtx = {
+  kind: "platform" | "user";
+  user_id: string | null;
+  client_id: string | null;
+  scopes: string[];
+};
+import { AsyncLocalStorage } from "node:async_hooks";
+const actorStore = new AsyncLocalStorage<ActorCtx>();
+function currentActor(): ActorCtx {
+  return actorStore.getStore() ?? { kind: "platform", user_id: null, client_id: null, scopes: [] };
+}
+
 async function audit(action: string, target_type: string | null, target_id: string | null, payload: Record<string, unknown>) {
   try {
+    const a = currentActor();
     await admin.from("paige_audit_log").insert({
-      actor_user_id: null,
-      actor_role: "mcp:platform",
+      actor_user_id: a.user_id,
+      actor_role: a.kind === "user" ? "mcp:user" : "mcp:platform",
       action,
       target_type,
       target_id,
-      payload,
+      payload: { ...payload, ...(a.client_id ? { mcp_client_id: a.client_id } : {}) },
     });
   } catch (e) {
     console.error("[paige-mcp] audit failed", (e as Error).message);
@@ -817,54 +832,276 @@ const CORS = {
 
 app.options("/*", (c) => c.body(null, 204, CORS));
 
-// ---------- Phase 3 scaffolding: OAuth discovery (public, unauthenticated) ----------
+// ---------- Phase 3: OAuth 2.1 + Dynamic Client Registration ----------
 const PUBLIC_ORIGIN = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/paige-mcp`;
+const APP_ORIGIN = Deno.env.get("PAIGE_APP_ORIGIN") ?? "https://paigeagent.ai";
+const SUPPORTED_SCOPES = ["crm.read", "crm.write", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write"] as const;
+type Scope = (typeof SUPPORTED_SCOPES)[number];
+
+// Tool → required scope. Read tools need .read; mutating tools need .write (or .run for workflows).
+const TOOL_SCOPE: Record<string, Scope> = {
+  // CRM
+  search_contacts: "crm.read", get_contact: "crm.read",
+  update_contact_stage: "crm.write", add_contact_note: "crm.write",
+  list_deals: "crm.read", move_deal_stage: "crm.write", create_deal: "crm.write",
+  list_tasks: "crm.read", create_task: "crm.write", complete_task: "crm.write",
+  // Workflows
+  list_workflows: "crm.read", run_workflow: "workflows.run", get_workflow_run: "crm.read",
+  list_pending_approvals: "crm.read", decide_pending_approval: "workflows.run",
+  // BTF
+  list_btf_clients: "btf.read", get_btf_workspace: "btf.read", list_btf_phase_items: "btf.read",
+  update_btf_phase_item: "btf.write", list_btf_document_requests: "btf.read", send_btf_message: "btf.write",
+  // Admin
+  list_team_members: "admin.read", assign_coach: "admin.write", create_team_invitation: "admin.write",
+  list_unassigned_queue: "admin.read", list_admin_notifications: "admin.read", create_admin_notification: "admin.write",
+};
+
 const DISCOVERY_RESOURCE = {
-  resource: PUBLIC_ORIGIN,
-  authorization_servers: [PUBLIC_ORIGIN],
-  bearer_methods_supported: ["header"],
-  scopes_supported: ["crm.read", "crm.write", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write"],
+  resource: PUBLIC_ORIGIN, authorization_servers: [PUBLIC_ORIGIN],
+  bearer_methods_supported: ["header"], scopes_supported: SUPPORTED_SCOPES,
   resource_documentation: "https://paigeagent.ai/docs/mcp",
 };
 const DISCOVERY_AS = {
   issuer: PUBLIC_ORIGIN,
-  authorization_endpoint: `${PUBLIC_ORIGIN}/oauth/authorize`,
+  authorization_endpoint: `${APP_ORIGIN}/mcp/authorize`,
   token_endpoint: `${PUBLIC_ORIGIN}/oauth/token`,
   registration_endpoint: `${PUBLIC_ORIGIN}/oauth/register`,
-  response_types_supported: ["code"],
-  grant_types_supported: ["authorization_code", "refresh_token"],
-  code_challenge_methods_supported: ["S256"],
-  token_endpoint_auth_methods_supported: ["none"],
-  scopes_supported: DISCOVERY_RESOURCE.scopes_supported,
+  revocation_endpoint: `${PUBLIC_ORIGIN}/oauth/revoke`,
+  response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"],
+  code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"],
+  scopes_supported: SUPPORTED_SCOPES,
 };
+
+function randToken(bytes = 48): string {
+  const buf = new Uint8Array(bytes);
+  crypto.getRandomValues(buf);
+  return btoa(String.fromCharCode(...buf)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+async function verifyPkceS256(verifier: string, challenge: string): Promise<boolean> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return b64 === challenge;
+}
+const NO_STORE = { "Cache-Control": "no-store", "Pragma": "no-cache" };
+
+// Resolve a presented bearer token into an actor context. Returns null on unauthorized.
+async function resolveBearer(presented: string): Promise<ActorCtx | null> {
+  if (!presented) return null;
+  if (PLATFORM_KEY && presented === PLATFORM_KEY) {
+    return { kind: "platform", user_id: null, client_id: null, scopes: [...SUPPORTED_SCOPES] };
+  }
+  const hash = await sha256Hex(presented);
+  const { data } = await admin
+    .from("paige_mcp_oauth_tokens")
+    .select("user_id, client_id, scopes, access_expires_at, revoked_at")
+    .eq("access_token_hash", hash)
+    .maybeSingle();
+  if (!data || data.revoked_at || new Date(data.access_expires_at) < new Date()) return null;
+  admin.from("paige_mcp_oauth_tokens").update({ last_used_at: new Date().toISOString() }).eq("access_token_hash", hash).then(() => {});
+  return { kind: "user", user_id: data.user_id, client_id: data.client_id, scopes: data.scopes ?? [] };
+}
+
+// Inspect the JSON-RPC body and enforce per-tool scope for `tools/call`.
+function enforceScopeForBody(body: any, actor: ActorCtx): { ok: true } | { ok: false; status: number; error: string } {
+  if (actor.kind === "platform") return { ok: true };
+  if (body?.method !== "tools/call") return { ok: true };
+  const toolName = body?.params?.name;
+  const required = TOOL_SCOPE[toolName];
+  if (!required) return { ok: false, status: 403, error: `unknown_tool:${toolName}` };
+  if (!actor.scopes.includes(required)) {
+    return { ok: false, status: 403, error: `insufficient_scope: tool '${toolName}' requires '${required}'` };
+  }
+  return { ok: true };
+}
 
 app.all("/*", async (c) => {
   const url = new URL(c.req.url);
   const path = url.pathname;
-  console.log("[paige-mcp]", c.req.method, path);
-  // Public discovery + OAuth stubs (no auth required).
-  if (c.req.method === "GET" && path.includes("/.well-known/oauth-protected-resource")) {
-    return c.json(DISCOVERY_RESOURCE, 200, CORS);
+  const method = c.req.method;
+  console.log("[paige-mcp]", method, path);
+
+  // ----- Public discovery -----
+  if (method === "GET" && path.includes("/.well-known/oauth-protected-resource")) {
+    return c.json(DISCOVERY_RESOURCE, 200, { ...CORS, ...NO_STORE });
   }
-  if (c.req.method === "GET" && path.includes("/.well-known/oauth-authorization-server")) {
-    return c.json(DISCOVERY_AS, 200, CORS);
+  if (method === "GET" && path.includes("/.well-known/oauth-authorization-server")) {
+    return c.json(DISCOVERY_AS, 200, { ...CORS, ...NO_STORE });
   }
-  if (url.pathname.includes("/oauth/")) {
-    return c.json(
-      { error: "oauth_not_yet_implemented", phase: 3, hint: "Use Bearer PAIGE_MCP_PLATFORM_KEY until Phase 3 ships." },
-      501,
-      CORS,
-    );
+
+  // ----- /oauth/register : Dynamic Client Registration (RFC 7591) -----
+  if (method === "POST" && path.endsWith("/oauth/register")) {
+    const body = await c.req.json().catch(() => ({}));
+    const name = String(body.client_name ?? "Unnamed MCP Client").slice(0, 200);
+    const uris: string[] = Array.isArray(body.redirect_uris) ? body.redirect_uris.filter((u: any) => typeof u === "string") : [];
+    if (uris.length === 0) return c.json({ error: "invalid_redirect_uri", error_description: "redirect_uris required" }, 400, { ...CORS, ...NO_STORE });
+    for (const u of uris) {
+      try {
+        const parsed = new URL(u);
+        if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+          return c.json({ error: "invalid_redirect_uri", error_description: `non-https redirect: ${u}` }, 400, { ...CORS, ...NO_STORE });
+        }
+      } catch {
+        return c.json({ error: "invalid_redirect_uri" }, 400, { ...CORS, ...NO_STORE });
+      }
+    }
+    const client_id = `mcp_${randToken(16)}`;
+    const requestedScope = typeof body.scope === "string" ? body.scope : "crm.read";
+    const { error } = await admin.from("paige_mcp_oauth_clients").insert({
+      client_id, client_name: name, client_uri: body.client_uri ?? null,
+      redirect_uris: uris, scope: requestedScope,
+      grant_types: ["authorization_code", "refresh_token"], response_types: ["code"],
+      token_endpoint_auth_method: "none",
+    });
+    if (error) return c.json({ error: "server_error", error_description: error.message }, 500, { ...CORS, ...NO_STORE });
+    return c.json({
+      client_id, client_id_issued_at: Math.floor(Date.now() / 1000),
+      client_name: name, redirect_uris: uris, scope: requestedScope,
+      grant_types: ["authorization_code", "refresh_token"], response_types: ["code"],
+      token_endpoint_auth_method: "none",
+    }, 201, { ...CORS, ...NO_STORE });
   }
-  if (!PLATFORM_KEY) {
-    return c.json({ error: "server_misconfigured" }, 500, CORS);
+
+  // ----- /oauth/authorize : 302 to the in-app consent screen -----
+  if (method === "GET" && path.endsWith("/oauth/authorize")) {
+    const qs = url.searchParams.toString();
+    const target = `${APP_ORIGIN}/mcp/authorize?${qs}`;
+    return new Response(null, { status: 302, headers: { ...CORS, ...NO_STORE, Location: target } });
   }
-  const auth = c.req.header("authorization") ?? "";
-  const presented = auth.replace(/^Bearer\s+/i, "").trim();
-  if (presented !== PLATFORM_KEY) {
-    return c.json({ error: "unauthorized" }, 401, { ...CORS, "WWW-Authenticate": 'Bearer realm="paige-mcp"' });
+
+  // ----- /oauth/token : code & refresh_token grants -----
+  if (method === "POST" && path.endsWith("/oauth/token")) {
+    const ct = c.req.header("content-type") ?? "";
+    let p: Record<string, string> = {};
+    if (ct.includes("application/x-www-form-urlencoded")) {
+      const text = await c.req.text();
+      for (const [k, v] of new URLSearchParams(text)) p[k] = v;
+    } else {
+      p = await c.req.json().catch(() => ({}));
+    }
+    const grant = p.grant_type;
+
+    if (grant === "authorization_code") {
+      const code = p.code;
+      const verifier = p.code_verifier;
+      const client_id = p.client_id;
+      const redirect_uri = p.redirect_uri;
+      if (!code || !verifier || !client_id || !redirect_uri) {
+        return c.json({ error: "invalid_request" }, 400, { ...CORS, ...NO_STORE });
+      }
+      const code_hash = await sha256Hex(code);
+      const { data: codeRow } = await admin
+        .from("paige_mcp_oauth_codes")
+        .select("*")
+        .eq("code_hash", code_hash)
+        .maybeSingle();
+      if (!codeRow || codeRow.consumed_at || new Date(codeRow.expires_at) < new Date()) {
+        return c.json({ error: "invalid_grant" }, 400, { ...CORS, ...NO_STORE });
+      }
+      if (codeRow.client_id !== client_id || codeRow.redirect_uri !== redirect_uri) {
+        return c.json({ error: "invalid_grant" }, 400, { ...CORS, ...NO_STORE });
+      }
+      if (!(await verifyPkceS256(verifier, codeRow.code_challenge))) {
+        return c.json({ error: "invalid_grant", error_description: "pkce_failed" }, 400, { ...CORS, ...NO_STORE });
+      }
+      await admin.from("paige_mcp_oauth_codes").update({ consumed_at: new Date().toISOString() }).eq("code_hash", code_hash);
+
+      const access = randToken(48);
+      const refresh = randToken(48);
+      const now = new Date();
+      const access_exp = new Date(now.getTime() + 60 * 60 * 1000); // 1h
+      const refresh_exp = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30d
+      const { data: clientRow } = await admin.from("paige_mcp_oauth_clients").select("client_name").eq("client_id", client_id).maybeSingle();
+      await admin.from("paige_mcp_oauth_tokens").insert({
+        access_token_hash: await sha256Hex(access),
+        refresh_token_hash: await sha256Hex(refresh),
+        client_id, user_id: codeRow.user_id, scopes: codeRow.scopes,
+        access_expires_at: access_exp.toISOString(), refresh_expires_at: refresh_exp.toISOString(),
+        client_name_cache: clientRow?.client_name ?? null,
+      });
+      return c.json({
+        access_token: access, token_type: "Bearer", expires_in: 3600,
+        refresh_token: refresh, scope: codeRow.scopes.join(" "),
+      }, 200, { ...CORS, ...NO_STORE });
+    }
+
+    if (grant === "refresh_token") {
+      const refresh = p.refresh_token;
+      if (!refresh) return c.json({ error: "invalid_request" }, 400, { ...CORS, ...NO_STORE });
+      const rh = await sha256Hex(refresh);
+      const { data: tok } = await admin
+        .from("paige_mcp_oauth_tokens")
+        .select("*")
+        .eq("refresh_token_hash", rh)
+        .maybeSingle();
+      if (!tok || tok.revoked_at || (tok.refresh_expires_at && new Date(tok.refresh_expires_at) < new Date())) {
+        return c.json({ error: "invalid_grant" }, 400, { ...CORS, ...NO_STORE });
+      }
+      // Rotate: revoke old, issue new pair.
+      await admin.from("paige_mcp_oauth_tokens").update({ revoked_at: new Date().toISOString() }).eq("id", tok.id);
+      const access = randToken(48);
+      const refreshNew = randToken(48);
+      const now = new Date();
+      await admin.from("paige_mcp_oauth_tokens").insert({
+        access_token_hash: await sha256Hex(access),
+        refresh_token_hash: await sha256Hex(refreshNew),
+        client_id: tok.client_id, user_id: tok.user_id, scopes: tok.scopes,
+        access_expires_at: new Date(now.getTime() + 60 * 60 * 1000).toISOString(),
+        refresh_expires_at: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        client_name_cache: tok.client_name_cache,
+      });
+      return c.json({
+        access_token: access, token_type: "Bearer", expires_in: 3600,
+        refresh_token: refreshNew, scope: (tok.scopes ?? []).join(" "),
+      }, 200, { ...CORS, ...NO_STORE });
+    }
+
+    return c.json({ error: "unsupported_grant_type" }, 400, { ...CORS, ...NO_STORE });
   }
-  const res = await httpHandler(c.req.raw);
+
+  // ----- /oauth/revoke : RFC 7009 -----
+  if (method === "POST" && path.endsWith("/oauth/revoke")) {
+    const ct = c.req.header("content-type") ?? "";
+    let p: Record<string, string> = {};
+    if (ct.includes("application/x-www-form-urlencoded")) {
+      for (const [k, v] of new URLSearchParams(await c.req.text())) p[k] = v;
+    } else {
+      p = await c.req.json().catch(() => ({}));
+    }
+    const tok = p.token;
+    if (tok) {
+      const h = await sha256Hex(tok);
+      await admin.from("paige_mcp_oauth_tokens")
+        .update({ revoked_at: new Date().toISOString() })
+        .or(`access_token_hash.eq.${h},refresh_token_hash.eq.${h}`);
+    }
+    return c.json({}, 200, { ...CORS, ...NO_STORE });
+  }
+
+  // ----- MCP protocol endpoint (requires bearer) -----
+  if (!PLATFORM_KEY) return c.json({ error: "server_misconfigured" }, 500, CORS);
+  const presented = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  const actor = await resolveBearer(presented);
+  if (!actor) {
+    return c.json({ error: "unauthorized" }, 401, {
+      ...CORS,
+      "WWW-Authenticate": `Bearer realm="paige-mcp", resource_metadata="${PUBLIC_ORIGIN}/.well-known/oauth-protected-resource"`,
+    });
+  }
+
+  // Peek the body to enforce per-tool scope for user tokens. Clone first so the transport can re-read.
+  if (method === "POST") {
+    const raw = c.req.raw.clone();
+    const peek = await raw.json().catch(() => null);
+    const gate = enforceScopeForBody(peek, actor);
+    if (!gate.ok) {
+      return c.json({
+        jsonrpc: "2.0", id: peek?.id ?? null,
+        error: { code: -32001, message: gate.error },
+      }, gate.status, CORS);
+    }
+  }
+
+  const res = await actorStore.run(actor, () => httpHandler(c.req.raw));
   for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
   return res;
 });
