@@ -200,11 +200,19 @@ export default function PipelineAdmin() {
                     >
                       <div className="font-medium text-sm line-clamp-2">{d.title}</div>
                       {c && <div className="text-xs text-muted-foreground truncate mt-0.5">{c.name}{c.entity ? ` · ${c.entity}` : ""}</div>}
+                      {d.offer_type && (
+                        <div className="mt-1.5">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-accent border border-accent/20">
+                            {offerLabel(d.offer_type)}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center mt-2">
                         <span className="text-xs font-semibold text-accent">{formatMoney(d.value_cents, d.currency)}</span>
                         {d.expected_close_date && <span className="text-[10px] text-muted-foreground">{new Date(d.expected_close_date).toLocaleDateString()}</span>}
                       </div>
                     </Card>
+
                   );
                 })}
                 <button
