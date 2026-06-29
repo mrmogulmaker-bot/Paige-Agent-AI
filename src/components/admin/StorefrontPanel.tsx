@@ -395,17 +395,25 @@ export function StorefrontPanel() {
                         </p>
                       )}
                     </div>
-                    <div className="text-right text-sm">
-                      {productPrices.map((pr) => (
-                        <div key={pr.id} className="font-medium">
-                          ${(pr.unit_amount / 100).toFixed(2)}{" "}
-                          <span className="text-xs text-muted-foreground">
-                            {pr.billing_interval && pr.billing_interval !== "one_time"
-                              ? `/ ${pr.billing_interval}`
-                              : "one-time"}
-                          </span>
-                        </div>
-                      ))}
+                    <div className="text-right text-sm space-y-0.5">
+                      {productPrices.map((pr) => {
+                        const amt = `$${(pr.unit_amount / 100).toFixed(2)}`;
+                        let suffix = "one-time";
+                        if (pr.kind === "deposit") suffix = "deposit";
+                        else if (pr.kind === "installment")
+                          suffix = `× ${pr.installments_total ?? "?"} ${pr.billing_interval ?? "month"}`;
+                        else if (pr.kind === "recurring" || (pr.billing_interval && pr.billing_interval !== "one_time"))
+                          suffix = `/ ${pr.billing_interval ?? "month"}`;
+                        return (
+                          <div key={pr.id} className="font-medium">
+                            {pr.nickname && (
+                              <span className="text-xs text-muted-foreground mr-1.5">{pr.nickname}:</span>
+                            )}
+                            {amt}{" "}
+                            <span className="text-xs text-muted-foreground">{suffix}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
