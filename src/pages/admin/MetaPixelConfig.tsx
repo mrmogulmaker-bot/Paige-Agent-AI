@@ -29,8 +29,8 @@ export default function MetaPixelConfig() {
       const arr = (data?.meta_pixel_tracked_paths ?? []) as string[];
       if (Array.isArray(arr) && arr.length) setPathsText(arr.join("\n"));
 
-      const { data: isSet } = await supabase.rpc("admin_meta_capi_token_is_set");
-      setCapiTokenSet(Boolean(isSet));
+      const { data: statusRes } = await supabase.functions.invoke("meta-capi-admin", { body: { action: "status" } });
+      setCapiTokenSet(Boolean((statusRes as { is_set?: boolean } | null)?.is_set));
     })();
   }, []);
 
@@ -45,7 +45,7 @@ export default function MetaPixelConfig() {
 
     // Only push the CAPI token through the secure RPC when the admin entered a new value.
     if (!error && capiToken.trim().length > 0) {
-      const { error: tokErr } = await supabase.rpc("admin_set_meta_capi_token", { _token: capiToken });
+      const { error: tokErr } = await supabase.functions.invoke("meta-capi-admin", { body: { action: "set", token: capiToken } });
       if (tokErr) {
         setSaving(false);
         toast.error(tokErr.message);
@@ -60,7 +60,7 @@ export default function MetaPixelConfig() {
   };
 
   const clearToken = async () => {
-    const { error } = await supabase.rpc("admin_set_meta_capi_token", { _token: null });
+    const { error } = await supabase.functions.invoke("meta-capi-admin", { body: { action: "clear" } });
     if (error) { toast.error(error.message); return; }
     setCapiTokenSet(false);
     setCapiToken("");
