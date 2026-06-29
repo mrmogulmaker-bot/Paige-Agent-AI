@@ -124,14 +124,22 @@ export default function FieldIngestionTab() {
       } else if (p.tool_name === "propose_client_update" && p.client_id) {
         await supabase.from("clients").update(payload.updates ?? {}).eq("id", p.client_id);
       } else if (p.tool_name === "ingest_banking_snapshot" && p.client_id) {
-        await supabase.from("manual_banking_entries").insert({
-          client_id: p.client_id,
-          bank_name: payload.bank_name ?? "Unknown",
-          current_balance: payload.current_balance ?? null,
-          avg_daily_balance: payload.avg_daily_balance ?? null,
-          nsf_count_30d: payload.nsf_count_30d ?? null,
-          monthly_deposits: payload.monthly_deposits ?? null,
-        });
+        const { data: cli } = await supabase
+          .from("clients")
+          .select("linked_user_id")
+          .eq("id", p.client_id)
+          .maybeSingle();
+        if (cli?.linked_user_id) {
+          await supabase.from("manual_banking_entries").upsert(
+            {
+              user_id: cli.linked_user_id,
+              avg_daily_balance: payload.avg_daily_balance ?? 0,
+              avg_monthly_revenue: payload.monthly_deposits ?? 0,
+              monthly_nsf_count: payload.nsf_count_30d ?? 0,
+            },
+            { onConflict: "user_id" },
+          );
+        }
       }
       await supabase
         .from("paige_ingestion_proposals")
