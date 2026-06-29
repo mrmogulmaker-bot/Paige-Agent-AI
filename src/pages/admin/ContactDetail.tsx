@@ -190,6 +190,11 @@ export default function ContactDetail() {
         <Button variant="outline" size="sm" onClick={sendBtfInvite}>
           <Send className="h-4 w-4 mr-1" /> Resend BTF Invite
         </Button>
+        {client.lifecycle_stage === "won" && (
+          <Button size="sm" onClick={startOnboarding}>
+            <Send className="h-4 w-4 mr-1" /> Start Onboarding
+          </Button>
+        )}
         {client.linked_user_id && (
           <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/user/${client.linked_user_id}`)}>
             <ExternalLink className="h-4 w-4 mr-1" /> Full Client File
