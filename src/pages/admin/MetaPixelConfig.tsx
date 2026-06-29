@@ -12,6 +12,7 @@ import { Target } from "lucide-react";
 export default function MetaPixelConfig() {
   const [pixelId, setPixelId] = useState("");
   const [capiToken, setCapiToken] = useState("");
+  const [capiTokenSet, setCapiTokenSet] = useState(false);
   const [testCode, setTestCode] = useState("");
   const [pathsText, setPathsText] = useState("/\n/about\n/pricing");
   const [saving, setSaving] = useState(false);
@@ -20,14 +21,16 @@ export default function MetaPixelConfig() {
     void (async () => {
       const { data } = await supabase
         .from("paige_config")
-        .select("meta_pixel_id, meta_capi_access_token, meta_capi_test_event_code, meta_pixel_tracked_paths")
+        .select("meta_pixel_id, meta_capi_test_event_code, meta_pixel_tracked_paths")
         .eq("id", 1)
         .maybeSingle();
       setPixelId(data?.meta_pixel_id ?? "");
-      setCapiToken(data?.meta_capi_access_token ?? "");
       setTestCode(data?.meta_capi_test_event_code ?? "");
       const arr = (data?.meta_pixel_tracked_paths ?? []) as string[];
       if (Array.isArray(arr) && arr.length) setPathsText(arr.join("\n"));
+
+      const { data: isSet } = await supabase.rpc("admin_meta_capi_token_is_set");
+      setCapiTokenSet(Boolean(isSet));
     })();
   }, []);
 
@@ -36,12 +39,32 @@ export default function MetaPixelConfig() {
     const paths = pathsText.split("\n").map((s) => s.trim()).filter(Boolean);
     const { error } = await supabase.from("paige_config").update({
       meta_pixel_id: pixelId || null,
-      meta_capi_access_token: capiToken || null,
       meta_capi_test_event_code: testCode || null,
       meta_pixel_tracked_paths: paths,
     }).eq("id", 1);
+
+    // Only push the CAPI token through the secure RPC when the admin entered a new value.
+    if (!error && capiToken.trim().length > 0) {
+      const { error: tokErr } = await supabase.rpc("admin_set_meta_capi_token", { _token: capiToken });
+      if (tokErr) {
+        setSaving(false);
+        toast.error(tokErr.message);
+        return;
+      }
+      setCapiToken("");
+      setCapiTokenSet(true);
+    }
+
     setSaving(false);
     if (error) toast.error(error.message); else toast.success("Saved");
+  };
+
+  const clearToken = async () => {
+    const { error } = await supabase.rpc("admin_set_meta_capi_token", { _token: null });
+    if (error) { toast.error(error.message); return; }
+    setCapiTokenSet(false);
+    setCapiToken("");
+    toast.success("CAPI access token cleared");
   };
 
   const capiUrl = `${import.meta.env.VITE_SUPABASE_URL ?? ""}/functions/v1/meta-track-conversion`;
