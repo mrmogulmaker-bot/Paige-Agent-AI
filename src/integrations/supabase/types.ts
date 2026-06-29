@@ -7548,6 +7548,111 @@ export type Database = {
           },
         ]
       }
+      paige_invoices: {
+        Row: {
+          amount_total_cents: number
+          contact_id: string
+          created_at: string
+          created_by: string | null
+          currency: string
+          deal_id: string | null
+          due_date: string | null
+          hosted_invoice_url: string | null
+          id: string
+          invoice_number: string
+          line_items: Json
+          memo: string | null
+          paid_at: string | null
+          payment_plan_key: string | null
+          sent_at: string | null
+          sent_to_email: string | null
+          status: string
+          stripe_invoice_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount_total_cents: number
+          contact_id: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          deal_id?: string | null
+          due_date?: string | null
+          hosted_invoice_url?: string | null
+          id?: string
+          invoice_number: string
+          line_items?: Json
+          memo?: string | null
+          paid_at?: string | null
+          payment_plan_key?: string | null
+          sent_at?: string | null
+          sent_to_email?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount_total_cents?: number
+          contact_id?: string
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          deal_id?: string | null
+          due_date?: string | null
+          hosted_invoice_url?: string | null
+          id?: string
+          invoice_number?: string
+          line_items?: Json
+          memo?: string | null
+          paid_at?: string | null
+          payment_plan_key?: string | null
+          sent_at?: string | null
+          sent_to_email?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_invoices_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_invoices_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_invoices_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_invoices_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_invoices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paige_journey_stage_transitions: {
         Row: {
           contact_id: string
