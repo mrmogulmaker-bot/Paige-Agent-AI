@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
   MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
-  CreditCard, User, Landmark, TrendingUp, Send, Pencil,
+  CreditCard, User, Landmark, TrendingUp, Send, Pencil, ClipboardCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -20,6 +20,8 @@ import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog
 import { QuickLogMenu } from "@/components/admin/contacts/QuickLogMenu";
 import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
+import { usePendingApprovals } from "@/hooks/usePendingApprovals";
+import { CATEGORY_LABEL, RISK_COLOR, type ApprovalCategory } from "@/lib/approvals";
 
 type Client = {
   id: string;
@@ -53,6 +55,7 @@ export default function ContactDetail() {
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
+  const { items: contactApprovals } = usePendingApprovals({ contactId: id });
 
   useEffect(() => { if (id) load(id); }, [id]);
 
@@ -288,6 +291,14 @@ export default function ContactDetail() {
           <TabsTrigger value="notes"><StickyNote className="h-4 w-4 mr-1" /> Notes</TabsTrigger>
           <TabsTrigger value="files"><FileText className="h-4 w-4 mr-1" /> Files</TabsTrigger>
           <TabsTrigger value="funding-lens"><TrendingUp className="h-4 w-4 mr-1" /> Funding Readiness</TabsTrigger>
+          <TabsTrigger value="approvals">
+            <ClipboardCheck className="h-4 w-4 mr-1" /> Approvals
+            {contactApprovals.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px] bg-accent text-accent-foreground">
+                {contactApprovals.length}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="deals">
@@ -399,6 +410,48 @@ export default function ContactDetail() {
         </TabsContent>
 
         <TabsContent value="funding-lens"><FundingReadinessLens contactId={client.id} mode="admin" /></TabsContent>
+
+        <TabsContent value="approvals">
+          <Card><CardContent className="p-4">
+            {contactApprovals.length === 0 ? (
+              <EmptyMsg msg="No pending approvals for this contact." />
+            ) : (
+              <div className="space-y-2">
+                {contactApprovals.map((a: any) => {
+                  const cat = (a.category ?? a.type ?? "other") as ApprovalCategory;
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() => navigate(`/admin/approvals/${a.id}`)}
+                      className="w-full text-left border border-border rounded p-3 hover:bg-muted/40 transition"
+                    >
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <Badge variant="secondary" className="text-[10px]">{CATEGORY_LABEL[cat] ?? cat}</Badge>
+                        {a.risk_level && (
+                          <Badge variant="outline" className={`text-[10px] ${RISK_COLOR[a.risk_level] ?? ""}`}>
+                            {a.risk_level}
+                          </Badge>
+                        )}
+                        {a.priority && <Badge variant="outline" className="text-[10px]">P{a.priority}</Badge>}
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {formatDistanceToNow(new Date(a.created_at), { addSuffix: true })}
+                        </span>
+                      </div>
+                      <div className="text-sm font-medium line-clamp-1">
+                        {a.summary || a.draft_content?.subject || "Pending approval"}
+                      </div>
+                      {a.sla_due_at && (
+                        <div className="text-[10px] text-muted-foreground mt-1">
+                          SLA {formatDistanceToNow(new Date(a.sla_due_at), { addSuffix: true })}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent></Card>
+        </TabsContent>
       </Tabs>
 
       <EditContactDialog

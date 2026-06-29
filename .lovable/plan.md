@@ -1,100 +1,125 @@
-# Voice/Chat-Driven CRM Ingestion via MCP
 
-Goal: any teammate (coach, broker, sales, admin) connects their own LLM (Claude Desktop, ChatGPT, voice client) to Paige MCP and **dictates or uploads client data** — credit scores, bureau pulls, banking, income, notes — and Paige writes it into the correct client record with **verification, hallucination guards, and full audit**. Every tenant gets these capabilities (except master-only tools already gated by §118).
+# Approvals Hub v2
 
-## 1. New MCP tools (Batch #3 — "Field Ops Ingestion")
+Today `/admin/approvals` is a thin inbox: AI drafts on one tab, field-ingest proposals on the other. The table already supports `assigned_to_user_id`, `visible_to_roles`, `tenant_id`, `contact_id`, `metadata` — those columns are barely used. This plan turns Approvals into the central "human-in-the-loop" surface for the whole platform and exposes it on the MCP so external LLMs (Claude Desktop, ChatGPT, voice) participate in the same review queue.
 
-All tenant-scoped, all reversible, all logged to `paige_audit_log`. All require `actor_role IN ('coach','broker','sales','admin','owner')` and `can_access_contact(actor, client_id)`.
+## Goals
+1. Every action that touches compliance, money, contracts, or client data flows through one Approvals queue.
+2. Each approval is **always** tied to a client (when one exists), with full context one click away.
+3. Reviewers see what's theirs — by role, by assignment, by tenant.
+4. MCP exposes approvals so Claude/ChatGPT can list, claim, approve, reject, comment.
 
-| Tool | Purpose |
-|---|---|
-| `propose_client_update` | Stage a write (any field on `clients`, `businesses`, `client_memory`). Returns a `proposal_id` + diff. **Does NOT write yet.** |
-| `confirm_client_update` | Commit a staged proposal after the actor (or Paige) re-reads it back. |
-| `ingest_credit_scores` | Structured: `{ client_id, bureau, score, source, pulled_on }`. Validates 300–850, bureau ∈ {TU,EX,EQ}, source ∈ {soft_pull, hard_pull, client_self_reported, report_upload, monitoring_service}. Confidence flag required. |
-| `ingest_bureau_report` | Accepts a parsed JSON payload (from external LLM that read a PDF) + a hash of the original file. Stages into `credit_report_uploads` with `extraction_source='external_llm'` and `requires_review=true`. |
-| `ingest_banking_snapshot` | Balance, avg daily balance, NSFs, deposits — staged into `manual_banking_entries`. |
-| `ingest_income_or_revenue` | Personal income or business revenue with period + source. |
-| `append_client_note` | Free-form coach note → `client_memory` with `category` + `confidence`. |
-| `attach_client_document` | Client-supplied doc metadata (url or base64) → `documents` table, scoped to tenant storage. |
-| `search_clients_fuzzy` | Voice-friendly: "the client named Marcus from Atlanta" → ranked matches with disambiguation prompt. |
+---
 
-## 2. Hallucination & accuracy guards
+## 1. Schema additions (single migration)
 
-Built into every ingestion tool:
+Add to `paige_pending_approvals`:
+- `category` text — one of: `ai_draft`, `field_ingest`, `compliance`, `legal`, `financial`, `dispute_letter`, `campaign`, `contract`, `refund`, `tier_change`, `workflow_action`, `other`
+- `priority` smallint default 3 — 1 critical → 5 low; drives sort and SLA color
+- `sla_due_at` timestamptz — auto-set by trigger from category (legal 4h, refund 2h, ai_draft 24h, default 48h)
+- `risk_level` text — `low | medium | high | blocker`
+- `requires_role` app_role — minimum role allowed to approve (e.g. `admin` for refunds, `coach` for drafts)
+- `summary` text — one-line human summary, populated by submitter or AI
+- `source` text — `paige_ai`, `mcp:<client_name>`, `n8n:<workflow_key>`, `manual`, `system`
+- `decision_rationale` text — required on reject/escalate, optional on approve
+- Comments table: `paige_approval_comments(id, approval_id, author_id, body, created_at)` for back-and-forth between reviewer and submitter
 
-1. **Two-phase commit** — `propose_*` returns a structured diff; `confirm_*` commits. Paige (or the connected LLM) is system-prompted to read back the diff verbatim to the human before confirming.
-2. **Schema validation** — Zod on the edge function. Bureau scores 300–850, dates ISO, enums locked, currency numeric.
-3. **Source provenance** — every write stamps `source` (`voice`, `chat`, `external_llm`, `pdf_upload`), `actor_id`, `actor_role`, `confidence` (`high|medium|low`), and `external_llm_model` when applicable.
-4. **Conflict detection** — if a new score contradicts a stored score from the last 30 days by >40 points, the proposal is marked `needs_review` and routed to `paige_pending_approvals` instead of auto-committing.
-5. **Fuzzy contact match guard** — if `search_clients_fuzzy` returns >1 match above threshold, ingestion tools refuse to commit and force disambiguation.
-6. **PDF/report cross-check** — for `ingest_bureau_report`, the staged payload is re-validated against required fields (bureau, pull date, score, at least one tradeline). Missing fields → rejected with a checklist back to the LLM.
-7. **Audit trail** — every proposal + confirmation logged to `paige_audit_log` with the raw tool args and the resulting row IDs. Coaches can see "who said what" forever.
+New view: `paige_approval_queue_v` joining contact name/email/lifecycle, assignee name, tenant name, age, sla status.
 
-## 3. Multi-tenant enforcement
+GRANT + RLS: authenticated read scoped to tenant + (assigned_to_user_id = auth.uid() OR role in visible_to_roles OR is_admin). Comments inherit approval's tenant scope.
 
-- All new tools resolve `tenant_id` from the API key → `platform_api_keys` (already in place).
-- `clients.tenant_id` filter applied to every read/write.
-- Role-filtering in `tools/list`: master-only ingestion variants (e.g. cross-tenant merges) stay hidden from non-MMA tenants per §118.
-- Storage uploads land in tenant-scoped buckets (`tenant-<id>/clients/<client_id>/...`).
-- Rate limit per actor per tenant via `api_rate_limits` (default 60 writes/min).
+## 2. Approval Policy Engine
 
-## 4. Pending Approvals inbox surface
+New table `paige_approval_policies` (tenant-scoped) defining rules:
+- trigger pattern (category + optional filter, e.g. `category=refund AND amount>500`)
+- `requires_role`, `auto_assign_to` (role or specific user), `sla_minutes`, `risk_level`
+- `auto_approve_if` — JSON predicate (e.g. drafts under 200 chars from trusted workflow)
 
-`/admin/approvals` already exists. We extend it with a new tab **"Field Ingestion"** that lists every proposal marked `needs_review` (large-delta scores, low-confidence PDF extractions, duplicate-match risk). Admin can approve, edit, or reject — rejection writes back to the audit log and notifies the originating coach.
+Seed with sane defaults for Mogul Maker Academy tenant:
+- Refunds → admin, 2h SLA, high risk
+- Dispute letters → compliance role, 4h SLA, blocker
+- Campaign sends >100 recipients → admin, 8h SLA
+- AI drafts (CS) → coach, 24h SLA, low
+- Field-ingest with confidence <0.7 → coach, 4h SLA
 
-## 5. Voice-first UX nudges (system-prompt level)
+A small edge function `evaluate-approval-policy` runs on insert (DB trigger calls `pg_net` → function, or inline plpgsql for simple rules). Sets `requires_role`, `assigned_to_user_id`, `sla_due_at`, `priority`.
 
-We ship a short **"Paige Field Agent" system prompt** in the MCP `prompts/list` capability that any connected LLM (Claude Desktop, ChatGPT custom GPT, voice client) loads automatically. It enforces:
-- Always call `search_clients_fuzzy` before any ingestion tool
-- Always read the proposed diff back to the human before calling `confirm_*`
-- Always ask for the bureau + pull source when a score is dictated
-- Never invent tradelines from a PDF — only extract what's literally on the page
-- Stamp `confidence='low'` on any verbal "I think it was around…" input
+## 3. UI overhaul — `ApprovalsInbox.tsx`
 
-## 6. Schema additions (one migration)
+Replace the 2-tab layout with a **categorized hub**:
 
-```sql
-CREATE TABLE public.paige_ingestion_proposals (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id uuid NOT NULL,
-  actor_id uuid NOT NULL,
-  actor_role text NOT NULL,
-  client_id uuid,
-  tool_name text NOT NULL,
-  payload jsonb NOT NULL,
-  diff jsonb NOT NULL,
-  status text NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending','confirmed','rejected','expired','needs_review')),
-  confidence text CHECK (confidence IN ('high','medium','low')),
-  source text NOT NULL,
-  external_llm_model text,
-  review_reason text,
-  created_at timestamptz DEFAULT now(),
-  decided_at timestamptz,
-  decided_by uuid,
-  expires_at timestamptz DEFAULT now() + interval '30 minutes'
-);
--- + GRANTs, RLS scoped to tenant + actor, has_role admin override.
+```text
+┌─ KPI Strip ─────────────────────────────────────────┐
+│ 7 Open · 2 Overdue · 1 Critical · Avg age 3h        │
+└─────────────────────────────────────────────────────┘
+┌─ Filters ──────────────────────────────────────────┐
+│ [All] [Mine] [My Team] [Unassigned]                │
+│ Category ▾  Priority ▾  Risk ▾  Client ▾  Search ▾ │
+└─────────────────────────────────────────────────────┘
+┌─ Queue (grouped by category, sortable)              │
+│  🔴 LEGAL · Dispute letter for Sarah K · 1h overdue │
+│  🟡 REFUND · $850 refund — A. Cook to approve       │
+│  🟢 AI DRAFT · CS reply to lead #284                │
+└─────────────────────────────────────────────────────┘
 ```
 
-Plus columns added to `client_memory` and `credit_report_uploads`: `ingestion_proposal_id`, `external_llm_model`, `confidence`.
+- Each row links to client profile (if `contact_id`), shows assignee avatar, SLA badge (green/amber/red), bulk select.
+- Right-rail drawer for quick approve/reject without leaving the list.
+
+Update `ApprovalDetail.tsx`:
+- Add **Client context card** (lifecycle stage, FICO snapshot, last touch) when `contact_id` set, pulled from existing `contact_readiness_rollup` + `paige_conversations`.
+- Add **Comments thread** (uses new `paige_approval_comments`).
+- Add **Policy chip** ("Routed to you because: refund > $500").
+- Add **Assign** dropdown (reassign to another teammate).
+- Keep existing send/skip/escalate, add **Request changes** (sends back to submitter with comment, status `changes_requested`).
+
+## 4. Cross-platform wiring (the "hardwire to rest of platform")
+
+Replace ad-hoc approval creation with one helper `createApproval()` in `src/lib/approvals.ts` and `_shared/createApproval.ts` (edge). Migrate these existing flows to use it:
+- `dispute-letter-generator` edge fn → submits as `dispute_letter`
+- Campaign send in `CampaignsAdmin` >100 recipients → `campaign`
+- Stripe refund flow → `refund`
+- Tier change writes to `tier_state` from non-admin → `tier_change`
+- BTF document acceptance for legal docs → `contract`
+- Manual coach-initiated dispute → `compliance`
+
+Add an **"Approvals" badge in `AdminLayout`** sidebar with live count via existing `usePendingApprovals` hook (extend to count by role).
+
+Add an "Approvals" tile on each client profile (`ContactDetail.tsx`) showing open approvals tied to that client — closes the loop the user called out.
+
+## 5. MCP exposure (new tools in `paige-mcp`)
+
+Add 6 reversible tools, role-gated, tenant-scoped:
+- `list_approvals(status?, category?, mine_only?, contact_id?)`
+- `get_approval(id)` — returns approval + comments + client snapshot
+- `claim_approval(id)` — sets `assigned_to_user_id = caller`
+- `approve_approval(id, rationale?)` — only if caller has `requires_role`
+- `reject_approval(id, rationale)` — rationale required
+- `comment_on_approval(id, body)`
+
+Tool registration honors the existing `requires_role` / tenant filter pattern in `paige-mcp`. Update `tools/list` filter so non-admins don't see `approve_approval` for refund category etc. (handled at execution time via policy check, advertised in description).
+
+This lets Antonio say in Claude Desktop: *"Show me my open approvals over 4 hours old"*, then *"Approve the Sarah K dispute letter with note: 'cleared with compliance'."* All gets audited.
+
+## 6. Improvement ideas worth flagging (for follow-up turns)
+- **Approval templates** — pre-canned rationales ("Approved — within policy" / "Rejected — out of scope") to speed review.
+- **Slack/Telegram bridge** — push critical approvals to Antonio's Telegram via existing bot, with inline approve/reject buttons.
+- **Auto-summarize on submit** — call AI Gateway to write `summary` field when submitter leaves blank.
+- **Learning loop** — track approve/reject rates per workflow; auto-promote consistently-approved patterns to `auto_approve_if`.
+- **Voice approvals** — pipe approve/reject into the existing VoiceSessionModal so Antonio can clear the queue hands-free.
+- **Weekly digest** — Monday email to each tenant admin: "12 approved, 3 rejected, 1 still open from last week."
 
 ## 7. Build order
+1. Schema + policy engine + seed defaults (1 migration)
+2. `createApproval()` shared helper + migrate dispute/campaign/refund/tier flows
+3. New `ApprovalsInbox.tsx` with KPI strip, filters, grouped queue
+4. Enhanced `ApprovalDetail.tsx` with client card + comments + assign
+5. Client profile "Open approvals" tile
+6. MCP tools (6) + redeploy `paige-mcp`
+7. Sidebar badge + Telegram bridge stub (optional)
 
-1. Migration: `paige_ingestion_proposals` + GRANTs + RLS + new columns.
-2. `_shared/ingestion-guards.ts` (validation, conflict detection, fuzzy match).
-3. `paige-mcp`: register 9 new tools, all going through proposal → confirm flow.
-4. Redeploy `paige-mcp` (per stale-bundle doctrine).
-5. Approvals UI: add **Field Ingestion** tab to `/admin/approvals`.
-6. Publish `paige-field-agent` system prompt via MCP `prompts/list`.
-7. Smoke test: from Claude Desktop, dictate "Marcus's TransUnion is 520 from a soft pull today" → confirm → row lands in `client_memory` + `credit_factor_scores` snapshot.
-
-## 8. Out of scope this round (flagged for next)
-
-- Direct PDF-to-Paige extraction (we accept LLM-parsed JSON for now; native parser is a separate workstream).
-- Voice transcription hosting (we rely on the user's existing voice client → LLM → MCP).
-- Cross-tenant merges / consolidations (master-only, separate spec).
-
-## Timeline
-
-~1 working session for the migration + tools + UI tab + redeploy + smoke test.
+## 8. Questions before I build
+- **Roles & SLA defaults** — confirm: refunds=admin/2h, dispute letters=coach+compliance/4h, campaign sends=admin/8h, AI drafts=coach/24h. OK as starting policy, or different?
+- **Comments visibility** — should comments be visible to the original submitter (e.g. n8n workflow → no human submitter, fine), or strictly internal among reviewers?
+- **MCP scope** — start with the 6 reversible tools above, or also expose `bulk_approve` / `set_policy` from day one?
+- **Telegram inline approve** — build now as part of this pass, or queue for a follow-up?

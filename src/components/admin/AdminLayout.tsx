@@ -21,6 +21,7 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
+import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
 // Pipedrive-style: primary CRM verbs live in the top bar.
@@ -79,6 +80,8 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const { items: pendingApprovals } = usePendingApprovals({ scope: "all" });
+  const pendingCount = pendingApprovals.length;
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -198,6 +201,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               >
                 <item.icon className="w-4 h-4" />
                 <span>{item.label}</span>
+                {item.href === "/admin/approvals" && pendingCount > 0 && (
+                  <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] bg-accent text-accent-foreground">
+                    {pendingCount > 99 ? "99+" : pendingCount}
+                  </Badge>
+                )}
                 {active && (
                   <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-t-full" />
                 )}

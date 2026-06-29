@@ -6760,6 +6760,96 @@ export type Database = {
           },
         ]
       }
+      paige_approval_comments: {
+        Row: {
+          approval_id: string
+          author_id: string
+          body: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          approval_id: string
+          author_id: string
+          body: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          approval_id?: string
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_approval_comments_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "paige_approval_queue_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_approval_comments_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "paige_pending_approvals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_approval_policies: {
+        Row: {
+          active: boolean | null
+          auto_assign_role: Database["public"]["Enums"]["app_role"] | null
+          auto_assign_user_id: string | null
+          category: string
+          created_at: string | null
+          id: string
+          match_predicate: Json | null
+          priority: number | null
+          requires_role: Database["public"]["Enums"]["app_role"] | null
+          risk_level: string | null
+          sla_minutes: number | null
+          tenant_id: string | null
+          updated_at: string | null
+          visible_to_roles: Database["public"]["Enums"]["app_role"][] | null
+        }
+        Insert: {
+          active?: boolean | null
+          auto_assign_role?: Database["public"]["Enums"]["app_role"] | null
+          auto_assign_user_id?: string | null
+          category: string
+          created_at?: string | null
+          id?: string
+          match_predicate?: Json | null
+          priority?: number | null
+          requires_role?: Database["public"]["Enums"]["app_role"] | null
+          risk_level?: string | null
+          sla_minutes?: number | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          visible_to_roles?: Database["public"]["Enums"]["app_role"][] | null
+        }
+        Update: {
+          active?: boolean | null
+          auto_assign_role?: Database["public"]["Enums"]["app_role"] | null
+          auto_assign_user_id?: string | null
+          category?: string
+          created_at?: string | null
+          id?: string
+          match_predicate?: Json | null
+          priority?: number | null
+          requires_role?: Database["public"]["Enums"]["app_role"] | null
+          risk_level?: string | null
+          sla_minutes?: number | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          visible_to_roles?: Database["public"]["Enums"]["app_role"][] | null
+        }
+        Relationships: []
+      }
       paige_assignment_policy: {
         Row: {
           eligible_user_ids: string[]
@@ -8601,19 +8691,29 @@ export type Database = {
       paige_pending_approvals: {
         Row: {
           assigned_to_user_id: string | null
+          category: string | null
+          claimed_at: string | null
           contact_id: string | null
           conversation_id: string | null
           created_at: string
           created_by_n8n_workflow_key: string | null
+          decision_rationale: string | null
           draft_content: Json
           escalation_note: string | null
           id: string
           metadata: Json
+          priority: number | null
+          requires_role: Database["public"]["Enums"]["app_role"] | null
           reviewed_at: string | null
           reviewed_by_user_id: string | null
+          risk_level: string | null
           sent_at: string | null
           sent_message_audit_id: string | null
+          sla_due_at: string | null
+          source: string | null
           status: string
+          submitted_by_user_id: string | null
+          summary: string | null
           tenant_id: string | null
           type: string
           updated_at: string
@@ -8621,19 +8721,29 @@ export type Database = {
         }
         Insert: {
           assigned_to_user_id?: string | null
+          category?: string | null
+          claimed_at?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string
           created_by_n8n_workflow_key?: string | null
+          decision_rationale?: string | null
           draft_content: Json
           escalation_note?: string | null
           id?: string
           metadata?: Json
+          priority?: number | null
+          requires_role?: Database["public"]["Enums"]["app_role"] | null
           reviewed_at?: string | null
           reviewed_by_user_id?: string | null
+          risk_level?: string | null
           sent_at?: string | null
           sent_message_audit_id?: string | null
+          sla_due_at?: string | null
+          source?: string | null
           status?: string
+          submitted_by_user_id?: string | null
+          summary?: string | null
           tenant_id?: string | null
           type: string
           updated_at?: string
@@ -8641,19 +8751,29 @@ export type Database = {
         }
         Update: {
           assigned_to_user_id?: string | null
+          category?: string | null
+          claimed_at?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string
           created_by_n8n_workflow_key?: string | null
+          decision_rationale?: string | null
           draft_content?: Json
           escalation_note?: string | null
           id?: string
           metadata?: Json
+          priority?: number | null
+          requires_role?: Database["public"]["Enums"]["app_role"] | null
           reviewed_at?: string | null
           reviewed_by_user_id?: string | null
+          risk_level?: string | null
           sent_at?: string | null
           sent_message_audit_id?: string | null
+          sla_due_at?: string | null
+          source?: string | null
           status?: string
+          submitted_by_user_id?: string | null
+          summary?: string | null
           tenant_id?: string | null
           type?: string
           updated_at?: string
@@ -11976,6 +12096,81 @@ export type Database = {
           tags: string[] | null
         }
         Relationships: []
+      }
+      paige_approval_queue_v: {
+        Row: {
+          age_seconds: number | null
+          assigned_to_user_id: string | null
+          category: string | null
+          contact_email: string | null
+          contact_first_name: string | null
+          contact_id: string | null
+          contact_last_name: string | null
+          contact_lifecycle_stage: string | null
+          conversation_id: string | null
+          created_at: string | null
+          draft_content: Json | null
+          id: string | null
+          metadata: Json | null
+          priority: number | null
+          requires_role: Database["public"]["Enums"]["app_role"] | null
+          reviewed_at: string | null
+          risk_level: string | null
+          sent_at: string | null
+          sla_due_at: string | null
+          sla_state: string | null
+          source: string | null
+          status: string | null
+          submitted_by_user_id: string | null
+          summary: string | null
+          tenant_id: string | null
+          type: string | null
+          visible_to_roles: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_pending_approvals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_pending_approvals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_pending_approvals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_pending_approvals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_pending_approvals_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "paige_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_pending_approvals_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       paige_unassigned_queue: {
         Row: {
