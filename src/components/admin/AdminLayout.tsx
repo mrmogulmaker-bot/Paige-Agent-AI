@@ -47,14 +47,12 @@ const workspaceNavItems = [
   { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
   { label: "Brokers", href: "/admin/brokers", icon: Briefcase },
-  { label: "Signatures", href: "/admin/signatures", icon: ClipboardCheck },
+  { label: "Funding Readiness Lens", href: "/admin/funding-lens", icon: TrendingUp },
   { label: "Bookings", href: "/admin/bookings", icon: BarChart3 },
   // Social content calendar hidden by default (paige_config.meta_ads_features_enabled).
   // Meta Pixel + CAPI config lives at /admin/integrations/meta-pixel via the Integrations hub.
   { label: "Lead Enrichment", href: "/admin/leads/enrichment", icon: Contact },
-  { label: "Business Credit", href: "/admin/business-credit", icon: BarChart3 },
-  { label: "Owner Credit", href: "/admin/owner-credit", icon: ClipboardCheck },
-  { label: "Banking & Cash Flow", href: "/admin/banking", icon: BarChart3 },
+
 
   { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
   { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
