@@ -19,6 +19,7 @@ import { BusinessCreditTab } from "@/components/admin/contacts/BusinessCreditTab
 import { OwnerCreditTab } from "@/components/admin/contacts/OwnerCreditTab";
 import { BankingTab } from "@/components/admin/contacts/BankingTab";
 import { CashFlowTab } from "@/components/admin/contacts/CashFlowTab";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
 
 type Client = {
   id: string;
@@ -120,6 +121,7 @@ export default function ContactDetail() {
   };
 
   const fullName = useMemo(() => client ? `${client.first_name} ${client.last_name}`.trim() : "", [client]);
+  const { enabled: btfEnabled } = useTenantFeature("btf_enabled");
   const coachName = (uid: string | null) => uid ? (coaches.find((c) => c.user_id === uid)?.name || "Coach") : "Unassigned";
 
   const sendBtfInvite = async () => {
