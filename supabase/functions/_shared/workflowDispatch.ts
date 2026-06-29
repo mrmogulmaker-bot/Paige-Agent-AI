@@ -75,6 +75,18 @@ export async function dispatchWorkflowRun(opts: DispatchOpts): Promise<DispatchR
     return { status: "failed", error: errText };
   }
 
+  // Doctrine §118 provider gate — n8n + langgraph_bridge are MMA-tenant only.
+  if (
+    opts.callerTenantId !== undefined &&
+    opts.callerTenantId !== null &&
+    PLATFORM_OWNER_PROVIDERS.has(provider) &&
+    opts.callerTenantId !== MMA_TENANT_ID
+  ) {
+    const errText = "provider_restricted_to_platform_owner";
+    await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
+    return { status: "failed", error: errText };
+  }
+
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 12_000);
 
