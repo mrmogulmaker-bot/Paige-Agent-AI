@@ -77,6 +77,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const navigate = useNavigate();
   const { setMode } = useDashboardMode();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
+  const { isPlatformOwner } = useTenantContext();
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -136,7 +137,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
           {/* Desktop utilities */}
           <div className="hidden md:flex items-center gap-1">
+            <TenantSwitcher />
             <AdminBridgeBell />
+
 
 
             <DropdownMenu>
