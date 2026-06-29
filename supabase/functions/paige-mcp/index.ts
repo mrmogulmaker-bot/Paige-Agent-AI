@@ -2797,6 +2797,8 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Workflows
   list_workflows: "crm.read", run_workflow: "workflows.run", get_workflow_run: "crm.read",
   list_pending_approvals: "crm.read", decide_pending_approval: "workflows.run",
+  create_approval: "crm.write", claim_approval: "crm.write",
+  comment_on_approval: "crm.write", list_approval_comments: "crm.read",
   // BTF
   list_btf_clients: "btf.read", get_btf_workspace: "btf.read", list_btf_phase_items: "btf.read",
   update_btf_phase_item: "btf.write", list_btf_document_requests: "btf.read", send_btf_message: "btf.write",
