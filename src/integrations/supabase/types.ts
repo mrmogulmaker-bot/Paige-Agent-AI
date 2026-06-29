@@ -10407,6 +10407,245 @@ export type Database = {
           },
         ]
       }
+      tenant_orders: {
+        Row: {
+          amount_total: number | null
+          application_fee_amount: number | null
+          created_at: string
+          currency: string | null
+          customer_email: string | null
+          customer_name: string | null
+          id: string
+          metadata: Json
+          price_id: string | null
+          product_id: string | null
+          status: string
+          stripe_payment_intent_id: string | null
+          stripe_session_id: string | null
+          stripe_subscription_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount_total?: number | null
+          application_fee_amount?: number | null
+          created_at?: string
+          currency?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          id?: string
+          metadata?: Json
+          price_id?: string | null
+          product_id?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount_total?: number | null
+          application_fee_amount?: number | null
+          created_at?: string
+          currency?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          id?: string
+          metadata?: Json
+          price_id?: string | null
+          product_id?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_orders_price_id_fkey"
+            columns: ["price_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_orders_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_prices: {
+        Row: {
+          active: boolean
+          billing_interval: string | null
+          created_at: string
+          currency: string
+          id: string
+          interval_count: number | null
+          nickname: string | null
+          product_id: string
+          stripe_price_id: string | null
+          tenant_id: string
+          unit_amount: number
+        }
+        Insert: {
+          active?: boolean
+          billing_interval?: string | null
+          created_at?: string
+          currency?: string
+          id?: string
+          interval_count?: number | null
+          nickname?: string | null
+          product_id: string
+          stripe_price_id?: string | null
+          tenant_id: string
+          unit_amount: number
+        }
+        Update: {
+          active?: boolean
+          billing_interval?: string | null
+          created_at?: string
+          currency?: string
+          id?: string
+          interval_count?: number | null
+          nickname?: string | null
+          product_id?: string
+          stripe_price_id?: string | null
+          tenant_id?: string
+          unit_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_prices_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_prices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_products: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          image_url: string | null
+          metadata: Json
+          name: string
+          product_type: string
+          status: string
+          stripe_product_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          metadata?: Json
+          name: string
+          product_type?: string
+          status?: string
+          stripe_product_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string | null
+          metadata?: Json
+          name?: string
+          product_type?: string
+          status?: string
+          stripe_product_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_products_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_stripe_accounts: {
+        Row: {
+          account_type: string
+          charges_enabled: boolean
+          country: string | null
+          created_at: string
+          default_currency: string | null
+          details_submitted: boolean
+          payouts_enabled: boolean
+          requirements: Json | null
+          stripe_account_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_type?: string
+          charges_enabled?: boolean
+          country?: string | null
+          created_at?: string
+          default_currency?: string | null
+          details_submitted?: boolean
+          payouts_enabled?: boolean
+          requirements?: Json | null
+          stripe_account_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_type?: string
+          charges_enabled?: boolean
+          country?: string | null
+          created_at?: string
+          default_currency?: string | null
+          details_submitted?: boolean
+          payouts_enabled?: boolean
+          requirements?: Json | null
+          stripe_account_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_stripe_accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           brand: Json
@@ -10417,9 +10656,11 @@ export type Database = {
           name: string
           owner_user_id: string | null
           plan_offer: string | null
+          platform_fee_bps: number
           seat_limit: number
           slug: string
           status: Database["public"]["Enums"]["tenant_status"]
+          storefront_enabled: boolean
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           trial_ends_at: string | null
@@ -10434,9 +10675,11 @@ export type Database = {
           name: string
           owner_user_id?: string | null
           plan_offer?: string | null
+          platform_fee_bps?: number
           seat_limit?: number
           slug: string
           status?: Database["public"]["Enums"]["tenant_status"]
+          storefront_enabled?: boolean
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           trial_ends_at?: string | null
@@ -10451,9 +10694,11 @@ export type Database = {
           name?: string
           owner_user_id?: string | null
           plan_offer?: string | null
+          platform_fee_bps?: number
           seat_limit?: number
           slug?: string
           status?: Database["public"]["Enums"]["tenant_status"]
+          storefront_enabled?: boolean
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           trial_ends_at?: string | null
