@@ -84,6 +84,9 @@ type Price = {
   unit_amount: number;
   currency: string;
   billing_interval: string | null;
+  kind?: string | null;
+  installments_total?: number | null;
+  nickname?: string | null;
 };
 
 type Order = {
