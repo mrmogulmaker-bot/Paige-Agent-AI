@@ -231,6 +231,19 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                   {item.label}
                 </DropdownMenuItem>
               ))}
+              {isPlatformOwner && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Platform</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => navigate("/admin/platform/tenants")}
+                    className={isActive("/admin/platform/tenants") ? "bg-muted" : ""}
+                  >
+                    <Building2 className="w-4 h-4 mr-2" />
+                    Tenants
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
