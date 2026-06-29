@@ -242,11 +242,32 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
                 </Select>
               </div>
             </div>
-            <div>
-              <Label className="text-xs">Expected close date</Label>
-              <Input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Offer / product</Label>
+                <Select value={offerType} onValueChange={setOfferType}>
+                  <SelectTrigger><SelectValue placeholder="Select offer" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— None —</SelectItem>
+                    {OFFER_TYPES.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Expected close date</Label>
+                <Input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
+              </div>
             </div>
+            {offerType === "other" && (
+              <div>
+                <Label className="text-xs">Custom offer name</Label>
+                <Input value={offerCustom} onChange={(e) => setOfferCustom(e.target.value)} placeholder="Name this offer" />
+              </div>
+            )}
           </div>
+
           <DialogFooter>
             <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Create deal"}</Button>
