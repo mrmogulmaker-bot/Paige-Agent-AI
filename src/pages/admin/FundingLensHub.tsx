@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Gauge, TrendingUp, Users } from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
+
 
 type Row = {
   contact_id: string;
@@ -34,7 +34,15 @@ function band(s: number | null) {
 }
 
 export default function FundingLensHub() {
-  const { profile } = useAuth();
+  const [role, setRole] = useState<string>("admin");
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: p } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+      if (p?.role) setRole(p.role);
+    })();
+  }, []);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
