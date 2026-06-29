@@ -25,6 +25,13 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PLATFORM_KEY = Deno.env.get("PAIGE_MCP_PLATFORM_KEY") ?? "";
+const MMA_OS_CLAUDE_PLATFORM_KEY = Deno.env.get("MMA_OS_CLAUDE_PLATFORM_KEY") ?? "";
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+// Registered platform keys: label → secret value. Empty values are filtered.
+const PLATFORM_KEYS: Array<{ label: string; value: string }> = [
+  { label: "paige_default", value: PLATFORM_KEY },
+  { label: "mma_os_claude", value: MMA_OS_CLAUDE_PLATFORM_KEY },
+].filter((k) => k.value.length > 0);
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
