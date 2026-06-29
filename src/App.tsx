@@ -44,6 +44,7 @@ import Auth from "./pages/Auth";
 const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
 const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
 const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
+const JoinWorkspace = lazyWithReload(() => import("./pages/JoinWorkspace"));
 import NotFound from "./pages/NotFound";
 
 // Everything else is lazy-loaded for a smaller initial bundle
