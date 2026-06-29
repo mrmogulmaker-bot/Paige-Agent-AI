@@ -43,6 +43,7 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
   const [coaches, setCoaches] = useState<CoachOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [meId, setMeId] = useState<string | null>(null);
+  const { offers: tenantOffers } = useTenantOffers();
 
   const loadContacts = async () => {
     const { data: cs } = await supabase
