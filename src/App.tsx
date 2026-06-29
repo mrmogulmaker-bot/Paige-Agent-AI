@@ -104,6 +104,8 @@ const BusinessInfrastructureAssessment = lazyWithReload(() => import("./componen
 const ProfileSettings = lazyWithReload(() => import("./components/dashboard/ProfileSettings").then(m => ({ default: m.ProfileSettings })));
 const AffiliateTracking = lazyWithReload(() => import("./components/dashboard/AffiliateTracking").then(m => ({ default: m.AffiliateTracking })));
 const Support = lazyWithReload(() => import("./pages/Support"));
+const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
+const WorkspaceApprovals = lazyWithReload(() => import("./pages/workspace/WorkspaceApprovals"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
