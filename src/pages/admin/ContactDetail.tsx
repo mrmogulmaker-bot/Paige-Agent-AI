@@ -55,6 +55,7 @@ export default function ContactDetail() {
   const [notes, setNotes] = useState<any[]>([]);
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => { if (id) load(id); }, [id]);
 
