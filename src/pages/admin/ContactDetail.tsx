@@ -409,6 +409,17 @@ export default function ContactDetail() {
         <TabsContent value="banking"><BankingTab contactId={client.id} /></TabsContent>
         <TabsContent value="cash-flow"><CashFlowTab contactId={client.id} /></TabsContent>
       </Tabs>
+
+      <EditContactDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        contact={client as any}
+        coaches={coaches}
+        onSaved={(updated) => {
+          setClient((prev) => prev ? { ...prev, ...(updated as any) } : prev);
+          setEditOpen(false);
+        }}
+      />
     </div>
   );
 }
