@@ -16,6 +16,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
+import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
+import { useTenantContext } from "@/hooks/useTenantContext";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
@@ -75,6 +77,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const navigate = useNavigate();
   const { setMode } = useDashboardMode();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
+  const { isPlatformOwner } = useTenantContext();
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -134,7 +137,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
           {/* Desktop utilities */}
           <div className="hidden md:flex items-center gap-1">
+            <TenantSwitcher />
             <AdminBridgeBell />
+
 
 
             <DropdownMenu>
@@ -226,6 +231,19 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                   {item.label}
                 </DropdownMenuItem>
               ))}
+              {isPlatformOwner && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Platform</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => navigate("/admin/platform/tenants")}
+                    className={isActive("/admin/platform/tenants") ? "bg-muted" : ""}
+                  >
+                    <Building2 className="w-4 h-4 mr-2" />
+                    Tenants
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
