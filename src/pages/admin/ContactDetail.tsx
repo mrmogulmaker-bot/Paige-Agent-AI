@@ -410,6 +410,48 @@ export default function ContactDetail() {
         </TabsContent>
 
         <TabsContent value="funding-lens"><FundingReadinessLens contactId={client.id} mode="admin" /></TabsContent>
+
+        <TabsContent value="approvals">
+          <Card><CardContent className="p-4">
+            {contactApprovals.length === 0 ? (
+              <EmptyMsg msg="No pending approvals for this contact." />
+            ) : (
+              <div className="space-y-2">
+                {contactApprovals.map((a: any) => {
+                  const cat = (a.category ?? a.type ?? "other") as ApprovalCategory;
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() => navigate(`/admin/approvals/${a.id}`)}
+                      className="w-full text-left border border-border rounded p-3 hover:bg-muted/40 transition"
+                    >
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <Badge variant="secondary" className="text-[10px]">{CATEGORY_LABEL[cat] ?? cat}</Badge>
+                        {a.risk_level && (
+                          <Badge variant="outline" className={`text-[10px] ${RISK_COLOR[a.risk_level] ?? ""}`}>
+                            {a.risk_level}
+                          </Badge>
+                        )}
+                        {a.priority && <Badge variant="outline" className="text-[10px]">P{a.priority}</Badge>}
+                        <span className="text-[10px] text-muted-foreground ml-auto">
+                          {formatDistanceToNow(new Date(a.created_at), { addSuffix: true })}
+                        </span>
+                      </div>
+                      <div className="text-sm font-medium line-clamp-1">
+                        {a.summary || a.draft_content?.subject || "Pending approval"}
+                      </div>
+                      {a.sla_due_at && (
+                        <div className="text-[10px] text-muted-foreground mt-1">
+                          SLA {formatDistanceToNow(new Date(a.sla_due_at), { addSuffix: true })}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent></Card>
+        </TabsContent>
       </Tabs>
 
       <EditContactDialog
