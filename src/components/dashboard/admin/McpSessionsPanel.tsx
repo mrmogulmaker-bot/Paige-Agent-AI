@@ -52,7 +52,92 @@ export function McpSessionsPanel() {
     load();
   }
 
+  function copy(text: string, label: string) {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copied`);
+  }
+
   return (
+    <div className="space-y-4">
+      {/* Connect external AI tools */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Sparkles className="w-4 h-4" /> Connect Paige to your AI tools
+          </CardTitle>
+          <CardDescription>
+            Paige exposes a Model Context Protocol (MCP) server so Claude,
+            ChatGPT, Cursor, or any MCP-aware agent can read and act on your
+            workspace. Each tool signs in with <strong>your Paige account</strong>{" "}
+            through OAuth — no API keys to copy around.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <div className="text-xs font-medium text-muted-foreground mb-1">
+              MCP server URL
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-muted px-2 py-1.5 rounded text-xs break-all">
+                {MCP_ENDPOINT}
+              </code>
+              <Button size="sm" variant="outline" onClick={() => copy(MCP_ENDPOINT, "URL")}>
+                <Copy className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-3 text-xs">
+            <div className="rounded-md border p-3">
+              <div className="font-semibold mb-1">Claude Desktop / Claude.ai</div>
+              <p className="text-muted-foreground">
+                Settings → Connectors → <em>Add custom connector</em>. Paste the
+                URL above. Claude will pop a browser window to sign you into
+                Paige.
+              </p>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="font-semibold mb-1">ChatGPT</div>
+              <p className="text-muted-foreground">
+                Available on Business / Enterprise plans: Settings → Connectors
+                → <em>Add MCP server</em>. Paste the URL and complete the OAuth
+                handshake.
+              </p>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="font-semibold mb-1">Cursor / custom agents</div>
+              <p className="text-muted-foreground">
+                Add as a remote MCP server using the URL above. Your agent will
+                be prompted to authorize against your Paige account.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-md bg-amber-500/5 border border-amber-500/30 p-3 text-xs text-muted-foreground">
+            <strong className="text-amber-700 dark:text-amber-400">
+              How sign-in works:
+            </strong>{" "}
+            When a tool first connects, it opens Paige's OAuth screen. Log in
+            with the same email you use here, approve the requested scopes, and
+            the session shows up below — you can revoke it any time.
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" asChild>
+              <a
+                href="https://modelcontextprotocol.io/clients"
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                MCP-compatible apps
+              </a>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Active sessions */}
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
