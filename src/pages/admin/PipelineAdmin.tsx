@@ -26,6 +26,7 @@ export default function PipelineAdmin() {
   const [search, setSearch] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [coaches, setCoaches] = useState<{ user_id: string; name: string }[]>([]);
+  const { offerLabel } = useTenantOffers();
 
   useEffect(() => { loadPipelines(); }, []);
   useEffect(() => { if (activePipelineId) loadBoard(activePipelineId); }, [activePipelineId]);
