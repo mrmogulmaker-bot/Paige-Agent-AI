@@ -84,6 +84,9 @@ type Price = {
   unit_amount: number;
   currency: string;
   billing_interval: string | null;
+  kind?: string | null;
+  installments_total?: number | null;
+  nickname?: string | null;
 };
 
 type Order = {
@@ -139,8 +142,9 @@ export function StorefrontPanel() {
           .order("created_at", { ascending: false }),
         supabase
           .from("tenant_prices")
-          .select("id, product_id, unit_amount, currency, billing_interval")
+          .select("id, product_id, unit_amount, currency, billing_interval, kind, installments_total, nickname")
           .eq("tenant_id", tid)
+          .order("sort_order", { ascending: true })
           .order("created_at", { ascending: false }),
         supabase
           .from("tenant_orders")
@@ -391,17 +395,25 @@ export function StorefrontPanel() {
                         </p>
                       )}
                     </div>
-                    <div className="text-right text-sm">
-                      {productPrices.map((pr) => (
-                        <div key={pr.id} className="font-medium">
-                          ${(pr.unit_amount / 100).toFixed(2)}{" "}
-                          <span className="text-xs text-muted-foreground">
-                            {pr.billing_interval && pr.billing_interval !== "one_time"
-                              ? `/ ${pr.billing_interval}`
-                              : "one-time"}
-                          </span>
-                        </div>
-                      ))}
+                    <div className="text-right text-sm space-y-0.5">
+                      {productPrices.map((pr) => {
+                        const amt = `$${(pr.unit_amount / 100).toFixed(2)}`;
+                        let suffix = "one-time";
+                        if (pr.kind === "deposit") suffix = "deposit";
+                        else if (pr.kind === "installment")
+                          suffix = `× ${pr.installments_total ?? "?"} ${pr.billing_interval ?? "month"}`;
+                        else if (pr.kind === "recurring" || (pr.billing_interval && pr.billing_interval !== "one_time"))
+                          suffix = `/ ${pr.billing_interval ?? "month"}`;
+                        return (
+                          <div key={pr.id} className="font-medium">
+                            {pr.nickname && (
+                              <span className="text-xs text-muted-foreground mr-1.5">{pr.nickname}:</span>
+                            )}
+                            {amt}{" "}
+                            <span className="text-xs text-muted-foreground">{suffix}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -462,6 +474,29 @@ export function StorefrontPanel() {
   );
 }
 
+type PlanDraft = {
+  kind: "one_time" | "deposit" | "recurring" | "installment";
+  nickname: string;
+  amount: string;
+  billing_interval: "week" | "month" | "year";
+  installments_total: string;
+};
+
+function makePlan(kind: PlanDraft["kind"] = "one_time"): PlanDraft {
+  return {
+    kind,
+    nickname:
+      kind === "deposit"
+        ? "Deposit"
+        : kind === "installment"
+          ? "Installment plan"
+          : "",
+    amount: "",
+    billing_interval: "month",
+    installments_total: "6",
+  };
+}
+
 function CreateProductDialog({
   creating,
   setCreating,
@@ -474,51 +509,99 @@ function CreateProductDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"draft" | "active">("active");
-  const [amount, setAmount] = useState("");
-  const [interval, setInterval] = useState<string>("one_time");
+  const [plans, setPlans] = useState<PlanDraft[]>([makePlan("one_time")]);
+
+  function updatePlan(idx: number, patch: Partial<PlanDraft>) {
+    setPlans((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  }
+  function addPlan(kind: PlanDraft["kind"]) {
+    setPlans((prev) => [...prev, makePlan(kind)]);
+  }
+  function removePlan(idx: number) {
+    setPlans((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)));
+  }
 
   async function submit() {
-    if (!name || !amount) {
-      toast.error("Name and price are required");
+    if (!name.trim()) {
+      toast.error("Name is required");
       return;
     }
-    const unit = Math.round(parseFloat(amount) * 100);
-    if (isNaN(unit) || unit <= 0) {
-      toast.error("Enter a valid price");
+    if (plans.length === 0) {
+      toast.error("Add at least one billing plan");
       return;
     }
+    const pricesPayload: any[] = [];
+    for (const p of plans) {
+      const unit = Math.round(parseFloat(p.amount) * 100);
+      if (isNaN(unit) || unit <= 0) {
+        toast.error(`Enter a valid amount for ${p.nickname || p.kind}`);
+        return;
+      }
+      const installments =
+        p.kind === "installment" ? parseInt(p.installments_total, 10) : null;
+      if (p.kind === "installment" && (!installments || installments < 2)) {
+        toast.error("Installment plan needs at least 2 payments");
+        return;
+      }
+      pricesPayload.push({
+        kind: p.kind,
+        nickname: p.nickname || null,
+        unit_amount: unit,
+        currency: "usd",
+        billing_interval:
+          p.kind === "recurring" || p.kind === "installment"
+            ? p.billing_interval
+            : "one_time",
+        interval_count: 1,
+        installments_total: installments ?? undefined,
+      });
+    }
+
+    const hasRecurring = plans.some(
+      (p) => p.kind === "recurring" || p.kind === "installment",
+    );
+
     setCreating(true);
-    const { error } = await supabase.functions.invoke("tenant-product-upsert", {
-      body: {
-        name,
-        description: description || undefined,
-        status,
-        product_type: interval === "one_time" ? "one_time" : "recurring",
-        price: {
-          unit_amount: unit,
-          currency: "usd",
-          billing_interval: interval,
+    const { data, error } = await supabase.functions.invoke(
+      "tenant-product-upsert",
+      {
+        body: {
+          name: name.trim(),
+          description: description || undefined,
+          status,
+          product_type: hasRecurring ? "recurring" : "one_time",
+          prices: pricesPayload,
         },
       },
-    });
+    );
     setCreating(false);
-    if (error) {
-      toast.error(error.message ?? "Failed to create product");
+    const serverErr = (data as any)?.error;
+    if (error || serverErr) {
+      console.error("tenant-product-upsert failed", { error, data });
+      toast.error(serverErr || error?.message || "Failed to create product");
       return;
     }
     toast.success("Product created");
     setName("");
     setDescription("");
-    setAmount("");
+    setPlans([makePlan("one_time")]);
     onCreated();
   }
 
+  const planLabels: Record<PlanDraft["kind"], string> = {
+    one_time: "One-time payment",
+    deposit: "Deposit / initial payment",
+    recurring: "Recurring subscription",
+    installment: "Installment plan (split payments)",
+  };
+
   return (
-    <DialogContent>
+    <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>New product</DialogTitle>
         <DialogDescription>
-          Mirrored to your Stripe catalog and ready to sell.
+          Mirrored to your Stripe catalog. Stack multiple billing plans — e.g. a
+          deposit plus an installment schedule, or one-time plus a subscription.
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-4">
@@ -534,32 +617,139 @@ function CreateProductDialog({
             rows={3}
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Price (USD)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="99.00"
-            />
-          </div>
-          <div>
-            <Label>Billing</Label>
-            <Select value={interval} onValueChange={setInterval}>
-              <SelectTrigger>
-                <SelectValue />
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Label>Billing plans</Label>
+            <Select
+              value=""
+              onValueChange={(v) => addPlan(v as PlanDraft["kind"])}
+            >
+              <SelectTrigger className="w-44 h-8">
+                <SelectValue placeholder="+ Add plan" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="one_time">One-time</SelectItem>
-                <SelectItem value="month">Monthly</SelectItem>
-                <SelectItem value="year">Yearly</SelectItem>
+                <SelectItem value="deposit">Deposit</SelectItem>
+                <SelectItem value="recurring">Recurring</SelectItem>
+                <SelectItem value="installment">Installments</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {plans.map((plan, i) => (
+            <div key={i} className="rounded-md border p-3 space-y-3 bg-muted/30">
+              <div className="flex items-center justify-between gap-2">
+                <Select
+                  value={plan.kind}
+                  onValueChange={(v) =>
+                    updatePlan(i, { kind: v as PlanDraft["kind"] })
+                  }
+                >
+                  <SelectTrigger className="h-8 flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="one_time">{planLabels.one_time}</SelectItem>
+                    <SelectItem value="deposit">{planLabels.deposit}</SelectItem>
+                    <SelectItem value="recurring">{planLabels.recurring}</SelectItem>
+                    <SelectItem value="installment">{planLabels.installment}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {plans.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removePlan(i)}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs">Label (optional)</Label>
+                  <Input
+                    placeholder="e.g. Deposit, Monthly"
+                    value={plan.nickname}
+                    onChange={(e) => updatePlan(i, { nickname: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">
+                    {plan.kind === "installment" ? "Per-payment (USD)" : "Amount (USD)"}
+                  </Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="99.00"
+                    value={plan.amount}
+                    onChange={(e) => updatePlan(i, { amount: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {(plan.kind === "recurring" || plan.kind === "installment") && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">Interval</Label>
+                    <Select
+                      value={plan.billing_interval}
+                      onValueChange={(v) =>
+                        updatePlan(i, { billing_interval: v as PlanDraft["billing_interval"] })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="week">Weekly</SelectItem>
+                        <SelectItem value="month">Monthly</SelectItem>
+                        <SelectItem value="year">Yearly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {plan.kind === "installment" && (
+                    <div>
+                      <Label className="text-xs"># of payments</Label>
+                      <Input
+                        type="number"
+                        min="2"
+                        step="1"
+                        value={plan.installments_total}
+                        onChange={(e) =>
+                          updatePlan(i, { installments_total: e.target.value })
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {plan.kind === "installment" && plan.amount && plan.installments_total && (
+                <p className="text-xs text-muted-foreground">
+                  Total collected: $
+                  {(
+                    parseFloat(plan.amount || "0") *
+                    parseInt(plan.installments_total || "0", 10)
+                  ).toFixed(2)}{" "}
+                  over {plan.installments_total} {plan.billing_interval}
+                  {parseInt(plan.installments_total, 10) > 1 ? "s" : ""}.
+                </p>
+              )}
+              {plan.kind === "deposit" && (
+                <p className="text-xs text-muted-foreground">
+                  Add a second plan for the balance (one-time, installments, or
+                  recurring) to complete the offer.
+                </p>
+              )}
+            </div>
+          ))}
         </div>
+
         <div>
           <Label>Status</Label>
           <Select
@@ -575,6 +765,7 @@ function CreateProductDialog({
             </SelectContent>
           </Select>
         </div>
+
         <Button onClick={submit} disabled={creating} className="w-full">
           {creating ? "Creating…" : "Create product"}
         </Button>

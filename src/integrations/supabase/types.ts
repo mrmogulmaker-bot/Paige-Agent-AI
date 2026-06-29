@@ -10493,9 +10493,12 @@ export type Database = {
           created_at: string
           currency: string
           id: string
+          installments_total: number | null
           interval_count: number | null
+          kind: string
           nickname: string | null
           product_id: string
+          sort_order: number
           stripe_price_id: string | null
           tenant_id: string
           unit_amount: number
@@ -10506,9 +10509,12 @@ export type Database = {
           created_at?: string
           currency?: string
           id?: string
+          installments_total?: number | null
           interval_count?: number | null
+          kind?: string
           nickname?: string | null
           product_id: string
+          sort_order?: number
           stripe_price_id?: string | null
           tenant_id: string
           unit_amount: number
@@ -10519,9 +10525,12 @@ export type Database = {
           created_at?: string
           currency?: string
           id?: string
+          installments_total?: number | null
           interval_count?: number | null
+          kind?: string
           nickname?: string | null
           product_id?: string
+          sort_order?: number
           stripe_price_id?: string | null
           tenant_id?: string
           unit_amount?: number
