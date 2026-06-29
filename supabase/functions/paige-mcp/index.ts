@@ -832,8 +832,6 @@ const CORS = {
 
 app.options("/*", (c) => c.body(null, 204, CORS));
 
-// ---------- Phase 3 scaffolding: OAuth discovery (public, unauthenticated) ----------
-const PUBLIC_ORIGIN = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/paige-mcp`;
 // ---------- Phase 3: OAuth 2.1 + Dynamic Client Registration ----------
 const PUBLIC_ORIGIN = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/paige-mcp`;
 const APP_ORIGIN = Deno.env.get("PAIGE_APP_ORIGIN") ?? "https://paigeagent.ai";
