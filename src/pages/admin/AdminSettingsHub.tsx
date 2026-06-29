@@ -67,6 +67,9 @@ export function AdminSettingsHub() {
           <TabsTrigger value="team" className="gap-2">
             <Shield className="w-4 h-4" /> Team & Roles
           </TabsTrigger>
+          <TabsTrigger value="workspace" className="gap-2">
+            <Building2 className="w-4 h-4" /> Workspace
+          </TabsTrigger>
           <TabsTrigger value="pipelines" className="gap-2">
             <KanbanSquare className="w-4 h-4" /> Pipelines
           </TabsTrigger>
@@ -89,6 +92,10 @@ export function AdminSettingsHub() {
 
         <TabsContent value="team" className="space-y-4">
           <UserManagement />
+        </TabsContent>
+
+        <TabsContent value="workspace" className="space-y-4">
+          <WorkspaceSettingsPanel />
         </TabsContent>
 
         <TabsContent value="pipelines" className="space-y-4">
