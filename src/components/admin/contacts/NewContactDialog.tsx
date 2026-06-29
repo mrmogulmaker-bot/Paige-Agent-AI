@@ -27,6 +27,8 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
   const [lifecycleStage, setLifecycleStage] = useState("lead");
   const [source, setSource] = useState<string>("manual");
   const [coachId, setCoachId] = useState<string>("unassigned");
+  const [primaryOffer, setPrimaryOffer] = useState<string>("none");
+  const [offerCustom, setOfferCustom] = useState("");
   const [tagsRaw, setTagsRaw] = useState("");
   const [notes, setNotes] = useState("");
   const [coaches, setCoaches] = useState<Coach[]>([]);
