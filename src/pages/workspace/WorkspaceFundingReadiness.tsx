@@ -1,19 +1,18 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
 import { FundingReadinessLens } from "@/components/funding-lens/FundingReadinessLens";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 
 export default function WorkspaceFundingReadiness() {
-  const { user } = useAuth();
   const [contactId, setContactId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user?.id) return;
     let cancel = false;
     (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
       const { data } = await supabase
         .from("clients")
         .select("id")
@@ -27,7 +26,7 @@ export default function WorkspaceFundingReadiness() {
       }
     })();
     return () => { cancel = true; };
-  }, [user?.id]);
+  }, []);
 
   if (loading) {
     return (

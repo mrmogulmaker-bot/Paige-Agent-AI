@@ -39,8 +39,14 @@ export default function FundingLensHub() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data: p } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-      if (p?.role) setRole(p.role);
+      const { data: r } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .order("role", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (r?.role) setRole(r.role);
     })();
   }, []);
   const [rows, setRows] = useState<Row[]>([]);
@@ -86,7 +92,7 @@ export default function FundingLensHub() {
   }, [rows]);
 
   return (
-    <AdminLayout userRole={profile?.role || "admin"}>
+    <AdminLayout userRole={role}>
       <div className="p-6 space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Funding Readiness Lens</h1>
