@@ -1087,7 +1087,7 @@ app.all("/*", async (c) => {
   }
 
   // ----- MCP protocol endpoint (requires bearer) -----
-  if (!PLATFORM_KEY) return c.json({ error: "server_misconfigured" }, 500, CORS);
+  if (PLATFORM_KEYS.length === 0) return c.json({ error: "server_misconfigured" }, 500, CORS);
   const presented = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   const actor = await resolveBearer(presented);
   if (!actor) {
