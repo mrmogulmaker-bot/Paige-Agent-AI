@@ -77,6 +77,8 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
       setOwnerId("me");
       setValue("");
       setCloseDate("");
+      setOfferType("none");
+      setOfferCustom("");
       setContactSearch("");
     })();
   }, [open, defaultStageId, stages, defaultContactId]);
