@@ -172,10 +172,31 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
               </Select>
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Primary offer / product</Label>
+              <Select value={primaryOffer} onValueChange={setPrimaryOffer}>
+                <SelectTrigger><SelectValue placeholder="Select offer" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— None —</SelectItem>
+                  {OFFER_TYPES.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {primaryOffer === "other" && (
+              <div>
+                <Label className="text-xs">Custom offer name</Label>
+                <Input value={offerCustom} onChange={(e) => setOfferCustom(e.target.value)} placeholder="Name this offer" />
+              </div>
+            )}
+          </div>
           <div>
             <Label className="text-xs">Tags (comma separated)</Label>
             <Input value={tagsRaw} onChange={(e) => setTagsRaw(e.target.value)} placeholder="vip, funding-ready, mma" />
           </div>
+
           <div>
             <Label className="text-xs">Notes</Label>
             <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
