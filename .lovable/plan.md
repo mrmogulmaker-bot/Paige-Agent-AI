@@ -1,71 +1,52 @@
+## Plan: MMA OS Platform Key + `email_templates` Infrastructure
 
-# Phase 3 — MCP OAuth 2.1 + Dynamic Client Registration
+### Part 1 — Platform Key Handoff (Option B)
 
-Goal: let Claude Desktop, ChatGPT, and other MCP hosts connect to `paige-mcp` as a specific Paige user, with scoped permissions that respect existing RLS — without anyone hand-pasting an API key. The existing `PAIGE_MCP_PLATFORM_KEY` path stays live for MMA OS and internal callers.
+Mint a new MMA-OS-scoped platform key so it can be revoked independently of the existing `PAIGE_MCP_PLATFORM_KEY`.
 
-## What ships
+1. Generate a fresh 64-char random secret and store it as `MMA_OS_CLAUDE_PLATFORM_KEY` in Paige edge function secrets (via `generate_secret`).
+2. Insert a row into `platform_api_keys` registering the new key with:
+   - `name`: `mma_os_claude`
+   - `scope`: same as existing platform key (full MCP tool access)
+   - `key_hash`: SHA-256 of the secret (matching whatever hashing pattern the existing key uses — I'll inspect `paige-mcp/index.ts` auth path to mirror it exactly)
+   - `revocable`: true
+3. Update `paige-mcp` edge function auth handler (only if needed) so it accepts either platform key by hash-lookup against `platform_api_keys` rather than a single env-var compare.
+4. Reply to Claude in the next message with the raw token value (one-time delivery, since Antonio can't fetch it himself).
 
-1. **Three new tables** (all RLS-locked, owner-scoped)
-   - `paige_mcp_oauth_clients` — DCR registrations (client_id, client_name, redirect_uris[], created_by_user_id)
-   - `paige_mcp_oauth_codes` — short-lived authz codes (10 min TTL, PKCE S256 challenge, requested scopes, user_id)
-   - `paige_mcp_oauth_tokens` — issued access + refresh tokens (sha-256 hashed at rest, scopes[], expires_at, revoked_at, user_id, client_id)
+### Part 2 — `email_templates` Table + MCP Tools
 
-2. **Edge function routes** added to existing `paige-mcp/index.ts`
-   - `POST /oauth/register` — DCR per RFC 7591 (public, rate-limited, no auth required)
-   - `GET  /oauth/authorize` — redirects to `/mcp/authorize?...` consent screen
-   - `POST /oauth/token` — exchanges code↔access_token (PKCE verify) and refresh_token↔access_token
-   - `POST /oauth/revoke` — RFC 7009
-   - `.well-known/*` already live from Phase 3 scaffolding — fill in real values
+**Migration:**
+- Create `public.email_templates` exactly as Claude specified, plus standard GRANTs (service_role full; authenticated SELECT only — writes happen via service-role edge functions / MCP tools).
+- RLS:
+  - `SELECT` for `authenticated` where `has_role(auth.uid(), 'admin')` OR `has_role(auth.uid(), 'super_admin')` — non-admins don't need to browse templates.
+  - All writes go through service-role (MCP / admin tools), no client-side INSERT/UPDATE/DELETE policy.
+- Trigger: `updated_at` auto-update.
+- Optional helpful index: `(category, product_scope) WHERE active = true`.
 
-3. **Consent screen** at `/mcp/authorize` (new React route)
-   - Shows requesting client name, requested scopes (human-readable), and Allow/Deny
-   - Requires existing Paige session; if logged out, kicks to `/auth` and returns
-   - On Allow → mints authz code, 302 to `redirect_uri?code=…&state=…`
+**Edge function additions** in `supabase/functions/paige-mcp/index.ts` — register 3 new MCP tools:
 
-4. **Per-user MCP requests**
-   - Bearer token → look up `paige_mcp_oauth_tokens`, verify hash + expiry, load user_id + scopes
-   - Set request-scoped Supabase client using a signed JWT for that user_id so RLS applies naturally
-   - Scope gate per tool: `crm.read|write`, `workflows.run`, `btf.read|write`, `admin.read|write`
-   - Audit log entries written as `actor_role='mcp:user'` with `actor_user_id` populated
+| Tool | Purpose | destructiveHint |
+|---|---|---|
+| `list_email_templates` | Read-only catalog browse, filter by `category` / `product_scope` / `active` | false |
+| `upsert_email_template` | Insert or update template by `template_key`; sets `updated_by_user_id` from auth context | true |
+| `send_btf_template_email` | Lookup → mustache render `{{var}}` against `vars` → enqueue via existing `send-transactional-email` infra → return `{ok, message_id, template_key, sent_at}` | true |
 
-5. **Admin surface** — new tab in `/admin/settings` "MCP Sessions"
-   - List active tokens (client name, scopes, last-used, expires)
-   - One-click revoke
-   - Owner can see all; non-owners see only their own
+**Renderer:** lightweight inline mustache (no npm dep) — `body_markdown.replace(/\{\{(\w+)\}\}/g, ...)` + same for `subject` and `preheader`. Missing variables: return `{ok: false, error: "missing_var: <name>"}` so Claude's smoke-test catches gaps before customer fire.
 
-## Build order (single session)
+**Send path:** route through the existing transactional email queue (`enqueue_email` RPC into `transactional_emails` pgmq) so it inherits suppression checks, retry/DLQ, and rate limits. `from_name` defaults to `"Build to Fund"`; `reply_to` defaults to `coach@mogulmakeracademy.com`.
 
-1. Migration: tables + RLS + GRANTs
-2. Edge function: token storage helpers, PKCE verifier, scope→tool gate
-3. Edge function: `/oauth/register`, `/oauth/authorize`, `/oauth/token`, `/oauth/revoke`
-4. Refactor `assertAuth` in `paige-mcp` to accept either platform key OR user token
-5. Per-tool scope guards (table-driven, defined once)
-6. React route `/mcp/authorize` (Mogul Maker Academy gold/navy is owner-side; this is Paige-branded since it's the platform itself)
-7. Admin "MCP Sessions" tab + revoke action
-8. Smoke test: simulate full DCR → authorize → token → tools/call flow against a test user
+**Registry update:** add the 3 new tools to whatever tool catalog drives `tools/list` so Claude sees them immediately on next `initialize`.
 
-## Technical notes (for the dev-curious)
+### Out of Scope (explicitly not doing)
+- Rendering `body_html` cache on save (Claude marked optional; markdown→HTML happens at send time via existing email renderer).
+- Admin UI for browsing/editing templates (Claude said admin UI not required; he'll push via SQL or `upsert_email_template`).
+- Seeding the 14 BTF templates — Claude will push those himself once the table is live.
 
-- Token format: opaque random 48-byte base64url; only sha-256 hash stored
-- PKCE: S256 only (no `plain`); reject if `code_challenge_method !== "S256"`
-- Access token TTL: 1 hour; refresh token TTL: 30 days, rotates on use
-- DCR has no auth (per spec) but is rate-limited at 10/hour per IP via `paige_bridge_auth_failures` pattern
-- All OAuth endpoints set `Cache-Control: no-store`
-- Per-user Supabase client is built by signing a short-lived JWT with the project's JWT secret carrying `sub: user_id, role: 'authenticated'` — this is the same trick the BTF signed-invite flow already uses, so the helper is reusable
-- `mcp.paigeagent.ai` custom domain is a future ops concern, not blocking this phase
+### Deliverables on this turn (once approved → build mode)
+1. `secrets--generate_secret` → `MMA_OS_CLAUDE_PLATFORM_KEY`
+2. Migration: `email_templates` table + GRANTs + RLS + trigger + `platform_api_keys` row for the new key
+3. Edit `supabase/functions/paige-mcp/index.ts`: register 3 new tools + (if needed) multi-key auth lookup
+4. Reply message to Claude with the raw platform key value and confirmation that all 3 tools are live
 
-## Out of scope (call out separately when relevant)
-
-- Multi-tenant org scoping (Phase 4)
-- Listing in the Lovable / Anthropic MCP catalog (Phase 4)
-- Per-tool rate limits beyond the global one (future)
-- UI for end users to manage their own MCP sessions outside admin (future)
-
-## Acceptance
-
-- `curl POST /oauth/register` returns a client_id without auth
-- Claude Desktop "Add MCP server" flow against `https://bfmyebsjyuoecmjskqhs.supabase.co/functions/v1/paige-mcp` walks discovery → DCR → consent → tools listed
-- A token issued with only `crm.read` can call `search_contacts` but is 403'd from `update_contact_stage`
-- Revoking a token in `/admin/settings` immediately 401s the next request from that token
-- Audit log shows `actor_user_id` populated on user-token calls and NULL on platform-key calls
-- Existing `PAIGE_MCP_PLATFORM_KEY` callers (MMA OS) continue to work unchanged
+### One Confirmation Needed
+The new `MMA_OS_CLAUDE_PLATFORM_KEY` will be delivered to Claude in the next chat message (single-use handoff, since Antonio doesn't have edge-function-secret access to retrieve it later). Confirming you (Antonio) are OK with the key value appearing once in the chat log — same trust boundary as the API-to-API messages Claude has been sending. If you'd rather I deliver it some other way, say so before I switch to build.
