@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
   // Load approval
   const { data: approval, error: aErr } = await supabase
     .from('paige_pending_approvals')
-    .select('id, category, summary, priority, risk_level, contact_id, submitted_by_user_id, assigned_to_role, assigned_to_user_id, status')
+    .select('id, category, summary, priority, risk_level, contact_id, submitted_by_user_id, requires_role, assigned_to_user_id, status')
     .eq('id', body.approval_id)
     .maybeSingle()
 
@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
   const recipients: Recipient[] = []
 
   if (body.event === 'created') {
-    // Target by assigned_to_user_id, else assigned_to_role, else all admins+super_admins
+    // Target by assigned_to_user_id, else requires_role, else all admins+super_admins
     if (approval.assigned_to_user_id) {
       const { data: au } = await supabase.auth.admin.getUserById(approval.assigned_to_user_id)
       const { data: p } = await supabase
@@ -97,11 +97,11 @@ Deno.serve(async (req) => {
         user_id: approval.assigned_to_user_id,
         email: au?.user?.email ?? undefined,
         name: p?.display_name || [p?.first_name, p?.last_name].filter(Boolean).join(' ').trim() || undefined,
-        role: approval.assigned_to_role ?? 'admin',
+        role: approval.requires_role ?? 'admin',
       })
     } else {
-      const role = approval.assigned_to_role && approval.assigned_to_role !== 'any'
-        ? [approval.assigned_to_role]
+      const role = approval.requires_role && approval.requires_role !== 'any'
+        ? [approval.requires_role]
         : ['admin', 'super_admin']
       const { data: roleRows } = await supabase
         .from('user_roles')
