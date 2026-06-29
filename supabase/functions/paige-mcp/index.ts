@@ -920,14 +920,39 @@ function mdToHtml(md: string): string {
   return blocks.join("\n");
 }
 
+// Per-product_scope sender map. Each `from` must be on a domain verified in the Resend
+// account that holds RESEND_API_KEY. BTF/MMA route to MMA's verified portal subdomain so
+// white-labeled customer emails never expose Paige branding (Doctrine §46 + §123).
+const SCOPE_SENDERS: Record<string, { from: string; name: string; reply_to: string }> = {
+  btf: {
+    from: "alerts@portal.mogulmakeracademy.com",
+    name: "Mogul Maker Academy",
+    reply_to: "coach@mogulmakeracademy.com",
+  },
+  mma: {
+    from: "alerts@portal.mogulmakeracademy.com",
+    name: "Mogul Maker Academy",
+    reply_to: "coach@mogulmakeracademy.com",
+  },
+  // launchpad: add once launchpad.mogulmakeracademy.com (or designated subdomain) is verified in Resend.
+  paige: {
+    from: "hello@notify.paigeagent.ai",
+    name: "Paige",
+    reply_to: "support@paigeagent.ai",
+  },
+};
+const DEFAULT_SCOPE_SENDER = SCOPE_SENDERS.btf;
+
 mcp.tool("send_btf_template_email", {
   description:
-    "Look up an email_templates row by template_key, render {{vars}}, and send via Resend through the verified notify.paigeagent.ai sender. Sends real customer email — use idempotency in the caller. from_name defaults to 'Build to Fund'.",
+    "Look up an email_templates row by template_key, render {{vars}}, and send via Resend. From-address is auto-selected by the template's product_scope (BTF/MMA → portal.mogulmakeracademy.com; Paige internal → notify.paigeagent.ai). Override with `from_override` for one-off sends. Sends real customer email — use idempotency in the caller.",
   inputSchema: z.object({
     to_email: z.string().describe("Recipient email"),
     template_key: z.string().describe("public.email_templates.template_key"),
     vars: z.record(z.any()).optional().describe("Variable values for {{var}} substitution"),
     from_name: z.string().optional(),
+    from_override: z.string().email().optional()
+      .describe("Full from address (e.g. 'alerts@portal.mogulmakeracademy.com'). Must be a domain verified in Resend. Overrides product_scope default."),
     reply_to: z.string().optional(),
   }),
   annotations: { destructiveHint: true },
@@ -957,8 +982,12 @@ mcp.tool("send_btf_template_email", {
     if (!preheaderR.ok) return err(`missing_var:${preheaderR.missing} (preheader)`);
 
     const html = (preheaderR.out ? `<div style="display:none;max-height:0;overflow:hidden">${escapeHtml(preheaderR.out)}</div>` : "") + mdToHtml(bodyR.out);
-    const fromName = args.from_name ?? "Build to Fund";
-    const fromAddr = `${fromName} <hello@notify.paigeagent.ai>`;
+
+    const scopeCfg = SCOPE_SENDERS[tpl.product_scope] ?? DEFAULT_SCOPE_SENDER;
+    const fromName = args.from_name ?? scopeCfg.name;
+    const fromEmail = args.from_override ?? scopeCfg.from;
+    const fromAddr = `${fromName} <${fromEmail}>`;
+    const replyTo = args.reply_to ?? scopeCfg.reply_to;
 
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -971,7 +1000,7 @@ mcp.tool("send_btf_template_email", {
         to: [args.to_email],
         subject: subjectR.out,
         html,
-        reply_to: args.reply_to ?? "coach@mogulmakeracademy.com",
+        reply_to: replyTo,
         tags: [
           { name: "template_key", value: tpl.template_key.replace(/[^a-zA-Z0-9_-]/g, "_") },
           { name: "product_scope", value: tpl.product_scope },
@@ -981,7 +1010,7 @@ mcp.tool("send_btf_template_email", {
     const payload = await resendRes.json().catch(() => ({}));
     if (!resendRes.ok) {
       await audit("send_btf_template_email_failed", "email_template", tpl.template_key, {
-        to: args.to_email, status: resendRes.status, payload,
+        to: args.to_email, from: fromEmail, status: resendRes.status, payload,
       });
       return err(`resend_${resendRes.status}: ${JSON.stringify(payload)}`);
     }
@@ -993,13 +1022,13 @@ mcp.tool("send_btf_template_email", {
       recipient_email: args.to_email.toLowerCase(),
       message_id: messageId,
       status: "sent",
-      metadata: { product_scope: tpl.product_scope, via: "mcp.send_btf_template_email" },
+      metadata: { product_scope: tpl.product_scope, from: fromEmail, via: "mcp.send_btf_template_email" },
     }).then(() => {}, () => {});
     await audit("send_btf_template_email", "email_template", tpl.template_key, {
-      to: args.to_email, message_id: messageId,
+      to: args.to_email, from: fromEmail, message_id: messageId,
     });
 
-    return ok({ ok: true, message_id: messageId, template_key: tpl.template_key, sent_at: sentAt });
+    return ok({ ok: true, message_id: messageId, from: fromEmail, template_key: tpl.template_key, sent_at: sentAt });
   },
 });
 
