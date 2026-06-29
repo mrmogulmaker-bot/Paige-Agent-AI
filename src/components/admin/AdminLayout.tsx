@@ -93,7 +93,10 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
   const handleSwitchToClientView = () => {
     setMode("client");
-    navigate("/app");
+    // Mark intent so AppShell's role-based redirect doesn't bounce admins
+    // straight back to /admin when they're previewing the client view.
+    try { sessionStorage.setItem("paige_stay_in_client_view", "1"); } catch {}
+    navigate("/app?stay=1");
   };
 
   const isActive = (href: string) => {
