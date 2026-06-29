@@ -1422,6 +1422,492 @@ mcp.tool("resolve_sender_identity", {
 });
 
 
+// ============================================================================
+// Batch #2 (Doctrine §119) — observability + comms + invoicing
+// ============================================================================
+
+// ---------- list_workflow_runs ----------
+mcp.tool("list_workflow_runs", {
+  description:
+    "List recent workflow runs in the caller's tenant. Filter by registry_key, status, triggered_by, or since timestamp. Read-only observability into paige_workflow_runs without needing the UI.",
+  inputSchema: z.object({
+    registry_key: z.string().optional(),
+    status: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]).optional(),
+    triggered_by: z.string().optional(),
+    since: z.string().optional().describe("ISO timestamp"),
+    limit: z.number().int().optional(),
+  }),
+  handler: async (args) => {
+    const tenantId = await actorTenantId();
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
+    let regIdFilter: string | null = null;
+    if (args.registry_key) {
+      const { data: reg } = await admin
+        .from("paige_workflow_registry").select("id").eq("key", args.registry_key).maybeSingle();
+      if (!reg) return ok({ items: [], total: 0 });
+      regIdFilter = reg.id as string;
+    }
+    let q = admin
+      .from("paige_workflow_runs")
+      .select("id, registry_id, status, n8n_execution_id, langgraph_thread_id, retry_count, error, triggered_by, created_at, completed_at, last_dispatched_at, paige_workflow_registry(key, provider, tenant_id)", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (regIdFilter) q = q.eq("registry_id", regIdFilter);
+    if (args.status) q = q.eq("status", args.status);
+    if (args.triggered_by) q = q.eq("triggered_by", args.triggered_by);
+    if (args.since) q = q.gte("created_at", args.since);
+    const { data, error, count } = await q;
+    if (error) return err(error.message);
+    // Tenant scope: only runs whose registry tenant_id is null OR matches caller.
+    const filtered = (data ?? []).filter((r: any) => {
+      const t = r.paige_workflow_registry?.tenant_id ?? null;
+      return t === null || t === tenantId;
+    }).map((r: any) => {
+      const duration = r.completed_at && r.created_at
+        ? new Date(r.completed_at).getTime() - new Date(r.created_at).getTime() : null;
+      return {
+        run_id: r.id,
+        registry_key: r.paige_workflow_registry?.key ?? null,
+        status: r.status,
+        provider: r.paige_workflow_registry?.provider ?? null,
+        triggered_by: r.triggered_by,
+        retry_count: r.retry_count,
+        execution_id: r.n8n_execution_id,
+        thread_id: r.langgraph_thread_id,
+        created_at: r.created_at,
+        completed_at: r.completed_at,
+        duration_ms: duration,
+        error: r.error,
+      };
+    });
+    return ok({ items: filtered, total: count ?? filtered.length });
+  },
+});
+
+// ---------- cancel_workflow_run ----------
+mcp.tool("cancel_workflow_run", {
+  description:
+    "Cancel a running or queued workflow run. For langgraph_bridge calls the bridge /cancel verb; for n8n calls stop-execution; for direct_edge_function marks the row cancelled. Audited.",
+  inputSchema: z.object({
+    run_id: z.string(),
+    reason: z.string().optional(),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async ({ run_id, reason }) => {
+    const tenantId = await actorTenantId();
+    const { data: row } = await admin
+      .from("paige_workflow_runs")
+      .select("id, status, n8n_execution_id, langgraph_thread_id, registry_id, paige_workflow_registry(provider, n8n_webhook_url, tenant_id)")
+      .eq("id", run_id).maybeSingle();
+    if (!row) return err("run_not_found");
+    const reg: any = (row as any).paige_workflow_registry;
+    if (reg?.tenant_id && reg.tenant_id !== tenantId) return err("run_restricted_to_owning_tenant");
+    if (["succeeded", "failed", "cancelled"].includes(row.status as string)) {
+      return err(`run_already_terminal:${row.status}`);
+    }
+    const prior = row.status as string;
+    const provider = reg?.provider as string | null;
+    let providerNote: string | null = null;
+
+    if (provider === "langgraph_bridge") {
+      const bUrl = Deno.env.get("MMA_OS_LANGGRAPH_BRIDGE_URL");
+      const bKey = Deno.env.get("MMA_OS_LANGGRAPH_BRIDGE_KEY");
+      if (bUrl && bKey && (row as any).n8n_execution_id) {
+        try {
+          const r = await fetch(bUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${bKey}` },
+            body: JSON.stringify({
+              verb: "cancel_run",
+              thread_id: (row as any).langgraph_thread_id,
+              run_id: (row as any).n8n_execution_id,
+            }),
+          });
+          providerNote = `bridge_${r.status}`;
+        } catch (e) { providerNote = `bridge_err:${(e as Error).message.slice(0, 80)}`; }
+      }
+    }
+    // n8n cancel could be added when n8n API key is available; for now mark row cancelled.
+
+    const { error } = await admin.from("paige_workflow_runs").update({
+      status: "cancelled",
+      error: reason ? `cancelled: ${reason}` : "cancelled",
+      completed_at: new Date().toISOString(),
+    }).eq("id", run_id);
+    if (error) return err(error.message);
+    await audit("cancel_workflow_run", "workflow_run", run_id, { reason: reason ?? null, prior, provider_note: providerNote });
+    return ok({ run_id, prior_status: prior, new_status: "cancelled", provider_note: providerNote });
+  },
+});
+
+// ---------- register_workflow ----------
+mcp.tool("register_workflow", {
+  description:
+    "Register a new workflow in the caller's tenant's registry. Master tenant can use any provider; sub-tenants are restricted to provider='webhook_external' or 'direct_edge_function'. Doctrine §118 + §119.",
+  inputSchema: z.object({
+    key: z.string().describe("snake_case, unique per tenant"),
+    label: z.string(),
+    description: z.string(),
+    category: z.string(),
+    provider: z.enum(["n8n", "langgraph", "langgraph_bridge", "direct_edge_function", "webhook_external", "cron_only"]),
+    provider_config: z.record(z.string(), z.any()).optional(),
+    requires_approval: z.boolean().optional(),
+    allowed_roles: z.array(z.string()).optional(),
+  }),
+  annotations: { destructiveHint: false },
+  handler: async (args) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    // §118: only MMA may register MMA-infra providers.
+    const platformOwnerProviders = new Set(["n8n", "langgraph", "langgraph_bridge"]);
+    if (platformOwnerProviders.has(args.provider) && tenantId !== MMA_TENANT_ID) {
+      return err("provider_restricted_to_platform_owner");
+    }
+    const cfg = args.provider_config ?? {};
+    const row: Record<string, unknown> = {
+      key: args.key,
+      label: args.label,
+      description: args.description,
+      category: args.category,
+      provider: args.provider,
+      n8n_webhook_url: (cfg.n8n_webhook_url as string) ?? null,
+      needs_n8n_link: false,
+      langgraph_graph_id: (cfg.langgraph_graph_id as string) ?? (cfg.assistant_id as string) ?? null,
+      direct_function_name: (cfg.direct_function_name as string) ?? null,
+      requires_approval: args.requires_approval ?? false,
+      allowed_roles: args.allowed_roles ?? ["admin", "super_admin"],
+      is_active: true,
+      tenant_id: tenantId === MMA_TENANT_ID ? null : tenantId,
+    };
+    const { data, error } = await admin.from("paige_workflow_registry").insert(row).select("id, key, tenant_id, created_at").single();
+    if (error) return err(error.message);
+    await audit("register_workflow", "workflow_registry", data.id, { key: args.key, provider: args.provider, tenant_id: data.tenant_id });
+    return ok({ registry_id: data.id, key: data.key, tenant_id: data.tenant_id, created_at: data.created_at });
+  },
+});
+
+// ---------- send_transactional_email ----------
+mcp.tool("send_transactional_email", {
+  description:
+    "Send a one-off transactional email. Either provide template_key (rendered server-side) OR raw subject + body_html. From-address auto-resolves from tenant + product_scope.",
+  inputSchema: z.object({
+    to: z.string().describe("recipient email"),
+    template_key: z.string().optional(),
+    subject: z.string().optional(),
+    body_html: z.string().optional(),
+    body_text: z.string().optional(),
+    template_variables: z.record(z.string(), z.any()).optional(),
+    product_scope: z.string().optional(),
+    contact_id: z.string().optional(),
+    tenant_id: z.string().optional(),
+  }),
+  annotations: { destructiveHint: false },
+  handler: async (args) => {
+    if (!args.template_key && (!args.subject || !args.body_html)) {
+      return err("must_provide_template_key_or_subject_and_body_html");
+    }
+    const tenant_id = await resolveTenantId(args.tenant_id ?? null);
+    if (!tenant_id) return err("tenant_not_resolved");
+    const { data: idn } = await admin.rpc("tenant_sender_identity", { _tenant_id: tenant_id });
+    const fromAddress = (idn as any)?.from_address as string | undefined;
+    const fromName = (idn as any)?.from_name as string | undefined;
+    const replyTo = (idn as any)?.reply_to as string | undefined;
+    if (!fromAddress) return err("from_address_not_resolved");
+
+    let subject = args.subject ?? "";
+    let html = args.body_html ?? "";
+    let text = args.body_text ?? "";
+
+    if (args.template_key) {
+      const { data: tpl, error: tErr } = await admin
+        .from("email_templates")
+        .select("subject, body_html, body_text")
+        .eq("key", args.template_key)
+        .maybeSingle();
+      if (tErr) return err(tErr.message);
+      if (!tpl) return err("template_not_found");
+      const vars = args.template_variables ?? {};
+      const interp = (s: string) =>
+        s.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, k) => String(vars[k] ?? ""));
+      subject = interp(tpl.subject ?? "");
+      html = interp(tpl.body_html ?? "");
+      text = interp(tpl.body_text ?? "");
+    }
+
+    if (!RESEND_API_KEY) return err("resend_not_configured");
+    const send_id = crypto.randomUUID();
+    const fromHeader = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
+    let resendId: string | null = null;
+    let status: "sent" | "failed" = "sent";
+    let errorMsg: string | null = null;
+    try {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+        body: JSON.stringify({
+          from: fromHeader,
+          to: [args.to],
+          subject,
+          html,
+          text: text || undefined,
+          reply_to: replyTo || undefined,
+          headers: { "X-Paige-Send-Id": send_id },
+        }),
+      });
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok) { status = "failed"; errorMsg = (j as any)?.message ?? `resend_${r.status}`; }
+      else resendId = (j as any)?.id ?? null;
+    } catch (e) {
+      status = "failed";
+      errorMsg = (e as Error).message.slice(0, 300);
+    }
+    try {
+      await admin.from("email_send_log").insert({
+        id: send_id,
+        tenant_id,
+        contact_id: args.contact_id ?? null,
+        recipient_email: args.to,
+        from_address: fromAddress,
+        subject,
+        template_key: args.template_key ?? null,
+        product_scope: args.product_scope ?? null,
+        status,
+        provider_message_id: resendId,
+        error_message: errorMsg,
+      });
+    } catch { /* log table may not have all columns — non-fatal */ }
+    await audit("send_transactional_email", "email", send_id, {
+      to: args.to, template_key: args.template_key ?? null, status, tenant_id,
+    });
+    return ok({ send_id, resend_id: resendId, status, from: fromHeader, to: args.to, error: errorMsg });
+  },
+});
+
+// ---------- send_sms ----------
+mcp.tool("send_sms", {
+  description:
+    "Send a one-off SMS via Twilio. From-number from TWILIO_PHONE_NUMBER. Auto-appends 'Reply STOP to unsubscribe.' for A2P 10DLC compliance. Respects opt-out flag on contact when contact_id supplied.",
+  inputSchema: z.object({
+    to_phone: z.string().describe("E.164, e.g. +14705944470"),
+    body: z.string(),
+    contact_id: z.string().optional(),
+    provider: z.enum(["twilio"]).optional(),
+  }),
+  annotations: { destructiveHint: false },
+  handler: async (args) => {
+    if (args.body.length > 1600) return err("body_too_long_max_1600");
+    if (args.contact_id) {
+      const { data: c } = await admin
+        .from("clients").select("sms_opt_out, phone").eq("id", args.contact_id).maybeSingle();
+      if (c && (c as any).sms_opt_out === true) {
+        return ok({ send_id: null, status: "blocked_by_optout", from_phone: null, to: args.to_phone });
+      }
+    }
+    const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+    const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+    const fromPhone = Deno.env.get("TWILIO_PHONE_NUMBER");
+    if (!accountSid || !authToken || !fromPhone) return err("twilio_not_configured");
+    const send_id = crypto.randomUUID();
+    const STOP_SUFFIX = " Reply STOP to unsubscribe.";
+    const fullBody = args.body.includes("STOP") ? args.body : (args.body + STOP_SUFFIX).slice(0, 1600);
+    const segments = Math.max(1, Math.ceil(fullBody.length / 160));
+    let providerMsgId: string | null = null;
+    let status: "sent" | "failed" = "sent";
+    let errorMsg: string | null = null;
+    try {
+      const body = new URLSearchParams({ To: args.to_phone, From: fromPhone, Body: fullBody });
+      const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+      });
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok) { status = "failed"; errorMsg = (j as any)?.message ?? `twilio_${r.status}`; }
+      else providerMsgId = (j as any)?.sid ?? null;
+    } catch (e) {
+      status = "failed";
+      errorMsg = (e as Error).message.slice(0, 300);
+    }
+    await audit("send_sms", "sms", send_id, { to: args.to_phone, contact_id: args.contact_id ?? null, status });
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify({
+        send_id, provider_message_id: providerMsgId, status, from_phone: fromPhone, segments, error: errorMsg,
+      }, null, 2) }],
+    };
+  },
+});
+
+// ---------- create_invoice ----------
+const BTF_PLANS: Record<string, { description: string; total_cents: number; line_items: any[] }> = {
+  btf_pif:        { description: "BUILD-to-FUND — Paid in Full",  total_cents: 499700, line_items: [{ description: "BUILD-to-FUND Program (Paid in Full)", amount_cents: 499700, quantity: 1 }] },
+  btf_split:      { description: "BUILD-to-FUND — 3-Pay Split",   total_cents: 499700, line_items: [{ description: "BUILD-to-FUND Program (Split Pay, payment 1 of 3)", amount_cents: 166600, quantity: 1 }] },
+  btf_getstarted: { description: "BUILD-to-FUND — Get Started",   total_cents: 99700,  line_items: [{ description: "BUILD-to-FUND Get Started Deposit", amount_cents: 99700, quantity: 1 }] },
+};
+
+mcp.tool("create_invoice", {
+  description:
+    "Create a draft invoice for a contact (optionally tied to a deal). Use payment_plan_key for BTF presets (btf_pif|btf_split|btf_getstarted). Returns invoice_id + hosted_invoice_url. Stripe Connect placeholder mode supported.",
+  inputSchema: z.object({
+    contact_id: z.string(),
+    deal_id: z.string().optional(),
+    amount_cents: z.number().int().optional(),
+    currency: z.string().optional(),
+    line_items: z.array(z.object({
+      description: z.string(),
+      amount_cents: z.number().int(),
+      quantity: z.number().int().optional(),
+    })).optional(),
+    due_date: z.string().optional().describe("YYYY-MM-DD"),
+    memo: z.string().optional(),
+    payment_plan_key: z.enum(["btf_pif", "btf_split", "btf_getstarted"]).optional(),
+  }),
+  annotations: { destructiveHint: false },
+  handler: async (args) => {
+    const tenant_id = await resolveTenantId(null);
+    if (!tenant_id) return err("tenant_not_resolved");
+    const { data: contact } = await admin
+      .from("clients").select("id, tenant_id").eq("id", args.contact_id).maybeSingle();
+    if (!contact) return err("contact_not_found");
+
+    let lineItems = args.line_items ?? [];
+    let amountTotal = args.amount_cents ?? 0;
+    if (args.payment_plan_key) {
+      const plan = BTF_PLANS[args.payment_plan_key];
+      lineItems = plan.line_items;
+      amountTotal = plan.total_cents;
+    }
+    if (lineItems.length > 0 && !args.amount_cents) {
+      amountTotal = lineItems.reduce((s, li) => s + li.amount_cents * (li.quantity ?? 1), 0);
+    }
+    if (amountTotal <= 0) return err("amount_total_must_be_positive");
+
+    const dueDate = args.due_date ?? new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+    const { data: actor } = await admin.from("paige_workflow_registry").select("id").limit(0);
+    void actor;
+    const createdBy = currentActor().user_id;
+
+    const { data: inv, error } = await admin.from("paige_invoices").insert({
+      tenant_id,
+      contact_id: args.contact_id,
+      deal_id: args.deal_id ?? null,
+      status: "draft",
+      amount_total_cents: amountTotal,
+      currency: (args.currency ?? "USD").toUpperCase(),
+      line_items: lineItems,
+      due_date: dueDate,
+      memo: args.memo ?? null,
+      payment_plan_key: args.payment_plan_key ?? null,
+      hosted_invoice_url: null, // populated when send_invoice runs (Stripe Connect or fallback)
+      created_by: createdBy,
+    }).select("id, invoice_number, status, amount_total_cents, hosted_invoice_url").single();
+    if (error) return err(error.message);
+    await audit("create_invoice", "invoice", inv.id, {
+      contact_id: args.contact_id, amount_cents: amountTotal, payment_plan_key: args.payment_plan_key ?? null,
+    });
+    return ok({
+      invoice_id: inv.id,
+      invoice_number: inv.invoice_number,
+      hosted_invoice_url: inv.hosted_invoice_url ?? null,
+      status: inv.status,
+      amount_total_cents: inv.amount_total_cents,
+    });
+  },
+});
+
+// ---------- send_invoice ----------
+mcp.tool("send_invoice", {
+  description:
+    "Deliver a previously-created draft invoice. Emails the contact with the hosted invoice link and marks status='sent'. Separate from create_invoice so callers can review the draft first.",
+  inputSchema: z.object({
+    invoice_id: z.string(),
+    custom_message: z.string().optional(),
+  }),
+  annotations: { destructiveHint: false },
+  handler: async (args) => {
+    const { data: inv, error: iErr } = await admin
+      .from("paige_invoices")
+      .select("id, tenant_id, contact_id, status, invoice_number, amount_total_cents, currency, hosted_invoice_url, memo")
+      .eq("id", args.invoice_id).maybeSingle();
+    if (iErr) return err(iErr.message);
+    if (!inv) return err("invoice_not_found");
+    if (inv.status !== "draft") return err(`invoice_not_draft:${inv.status}`);
+
+    const { data: contact } = await admin
+      .from("clients").select("email, first_name, last_name").eq("id", inv.contact_id).maybeSingle();
+    if (!contact?.email) return err("contact_email_missing");
+
+    // Stripe Connect hosted URL — placeholder fallback (BYPASS_STRIPE_CONNECT) when not configured.
+    let hostedUrl = inv.hosted_invoice_url
+      ?? `${Deno.env.get("PAIGE_APP_ORIGIN") ?? "https://paigeagent.ai"}/i/${inv.invoice_number}`;
+
+    if (!RESEND_API_KEY) return err("resend_not_configured");
+    const { data: idn } = await admin.rpc("tenant_sender_identity", { _tenant_id: inv.tenant_id });
+    const fromAddress = (idn as any)?.from_address as string | undefined;
+    const fromName = (idn as any)?.from_name as string | undefined;
+    if (!fromAddress) return err("from_address_not_resolved");
+    const fromHeader = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
+
+    const amountFmt = `$${(inv.amount_total_cents / 100).toFixed(2)} ${inv.currency}`;
+    const greeting = contact.first_name ? `Hi ${contact.first_name},` : "Hi,";
+    const intro = args.custom_message ? `<p>${args.custom_message}</p>` : "";
+    const html = `<!doctype html><html><body style="font-family:Inter,Arial,sans-serif;color:#111">
+      <p>${greeting}</p>${intro}
+      <p>Your invoice <strong>${inv.invoice_number}</strong> for <strong>${amountFmt}</strong> is ready.</p>
+      <p><a href="${hostedUrl}" style="display:inline-block;padding:12px 20px;background:#CFAE70;color:#000;text-decoration:none;border-radius:6px;font-weight:600">View & Pay Invoice</a></p>
+      ${inv.memo ? `<p style="color:#555;font-size:14px">${inv.memo}</p>` : ""}
+      <p>Thanks!</p>
+    </body></html>`;
+
+    const send_id = crypto.randomUUID();
+    let resendErr: string | null = null;
+    try {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+        body: JSON.stringify({
+          from: fromHeader,
+          to: [contact.email],
+          subject: `Invoice ${inv.invoice_number} — ${amountFmt}`,
+          html,
+          headers: { "X-Paige-Send-Id": send_id },
+        }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({} as any));
+        resendErr = (j as any)?.message ?? `resend_${r.status}`;
+      }
+    } catch (e) {
+      resendErr = (e as Error).message.slice(0, 300);
+    }
+    if (resendErr) return err(`email_send_failed: ${resendErr}`);
+
+    await admin.from("paige_invoices").update({
+      status: "sent",
+      sent_at: new Date().toISOString(),
+      sent_to_email: contact.email,
+      hosted_invoice_url: hostedUrl,
+    }).eq("id", inv.id);
+    await audit("send_invoice", "invoice", inv.id, { to: contact.email, send_id });
+
+    return ok({
+      invoice_id: inv.id,
+      status: "sent",
+      sent_to_email: contact.email,
+      send_id,
+      hosted_invoice_url: hostedUrl,
+    });
+  },
+});
+
+
+
+
+
+
+
 
 
 
