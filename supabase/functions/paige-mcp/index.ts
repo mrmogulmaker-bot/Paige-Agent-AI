@@ -1320,7 +1320,7 @@ app.all("/*", async (c) => {
   if (!actor) {
     return c.json({ error: "unauthorized" }, 401, {
       ...CORS,
-      "WWW-Authenticate": `Bearer realm="paige-mcp", resource_metadata="${PUBLIC_ORIGIN}/.well-known/oauth-protected-resource"`,
+      "WWW-Authenticate": `Bearer realm="paige-mcp", resource_metadata="${APP_ORIGIN}/.well-known/oauth-protected-resource"`,
     });
   }
 
