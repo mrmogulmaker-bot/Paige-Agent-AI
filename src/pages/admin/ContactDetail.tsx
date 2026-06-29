@@ -226,6 +226,10 @@ export default function ContactDetail() {
         )}
       </div>
 
+      <DuplicatesBanner contactId={client.id} email={client.email} phone={client.phone} />
+
+
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card>
           <CardContent className="p-4 space-y-2 text-sm">
