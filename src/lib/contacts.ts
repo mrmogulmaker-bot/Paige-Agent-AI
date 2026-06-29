@@ -58,3 +58,131 @@ export function downloadCSV(filename: string, csv: string) {
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
+
+// -----------------------------------------------------------------------------
+// Contact CRUD helpers (admin-side). Centralized so list, detail, and bulk
+// flows all funnel through the same shape and the same realtime invalidation.
+// -----------------------------------------------------------------------------
+
+import { supabase } from "@/integrations/supabase/client";
+
+export type ContactPatch = Partial<{
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  entity_name: string | null;
+  title: string | null;
+  funding_goal: number | null;
+  status: string;
+  lifecycle_stage: LifecycleStage | string;
+  source: string | null;
+  tags: string[] | null;
+  do_not_contact: boolean | null;
+  current_notes: string | null;
+  assigned_coach_user_id: string | null;
+  primary_offer: string | null;
+}>;
+
+export async function updateContact(id: string, patch: ContactPatch) {
+  const { data, error } = await supabase
+    .from("clients")
+    .update(patch)
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function bulkUpdateContacts(ids: string[], patch: ContactPatch) {
+  if (!ids.length) return 0;
+  const { error, count } = await supabase
+    .from("clients")
+    .update(patch, { count: "exact" })
+    .in("id", ids);
+  if (error) throw error;
+  return count ?? ids.length;
+}
+
+/** Add a tag to many contacts (union, no duplicates). */
+export async function bulkAddTag(ids: string[], tag: string) {
+  if (!ids.length || !tag) return 0;
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, tags")
+    .in("id", ids);
+  if (error) throw error;
+  const updates = (data || []).map((r: any) => {
+    const next = Array.from(new Set([...(r.tags || []), tag]));
+    return supabase.from("clients").update({ tags: next }).eq("id", r.id);
+  });
+  await Promise.all(updates);
+  return updates.length;
+}
+
+/** Remove a tag from many contacts. */
+export async function bulkRemoveTag(ids: string[], tag: string) {
+  if (!ids.length || !tag) return 0;
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, tags")
+    .in("id", ids);
+  if (error) throw error;
+  const updates = (data || []).map((r: any) => {
+    const next = (r.tags || []).filter((t: string) => t !== tag);
+    return supabase.from("clients").update({ tags: next }).eq("id", r.id);
+  });
+  await Promise.all(updates);
+  return updates.length;
+}
+
+/** Admin-only hard delete via edge function (handles FK cleanup + audit). */
+export async function deleteContact(id: string) {
+  const { data, error } = await supabase.functions.invoke("delete-contact", {
+    body: { contact_id: id },
+  });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error || "Delete failed");
+  return data;
+}
+
+export async function findDuplicates(contact: {
+  id: string;
+  email?: string | null;
+  phone?: string | null;
+}) {
+  const filters: string[] = [];
+  if (contact.email) filters.push(`email.eq.${contact.email}`);
+  if (contact.phone) filters.push(`phone.eq.${contact.phone}`);
+  if (!filters.length) return [];
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, first_name, last_name, email, phone, entity_name, lifecycle_stage, created_at")
+    .or(filters.join(","))
+    .neq("id", contact.id)
+    .limit(5);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function logQuickActivity(args: {
+  user_id: string; // contact.linked_user_id required
+  channel: "call" | "email" | "sms" | "meeting" | "note";
+  subject?: string | null;
+  preview?: string | null;
+}) {
+  const { error } = await supabase.from("communication_log").insert({
+    user_id: args.user_id,
+    channel: args.channel,
+    message_type: args.channel === "note" ? "internal_note" : "manual_log",
+    subject: args.subject ?? null,
+    preview: args.preview ?? null,
+    status: "logged",
+  });
+  if (error) throw error;
+  await supabase.from("clients").update({
+    last_contacted_at: new Date().toISOString(),
+  }).eq("linked_user_id", args.user_id);
+}
+
