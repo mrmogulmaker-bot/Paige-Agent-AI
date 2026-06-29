@@ -100,6 +100,10 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     const resolvedOwner = ownerId === "me" ? user?.id : ownerId === "none" ? null : ownerId;
+    const resolvedOffer =
+      offerType === "none" ? null :
+      offerType === "other" ? (offerCustom.trim() || "other") :
+      offerType;
     const { data, error } = await supabase
       .from("deals")
       .insert({
@@ -110,6 +114,7 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
         owner_user_id: resolvedOwner ?? null,
         value_cents: dollarsToCents(value || "0"),
         expected_close_date: closeDate || null,
+        offer_type: resolvedOffer,
         created_by: user?.id ?? null,
       })
       .select()
