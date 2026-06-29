@@ -80,6 +80,8 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const { items: pendingApprovals } = usePendingApprovals({ scope: "all" });
+  const pendingCount = pendingApprovals.length;
 
   useEffect(() => {
     setMobileNavOpen(false);
