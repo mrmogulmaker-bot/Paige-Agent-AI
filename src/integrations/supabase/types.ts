@@ -8692,6 +8692,7 @@ export type Database = {
         Row: {
           assigned_to_user_id: string | null
           category: string | null
+          claimed_at: string | null
           contact_id: string | null
           conversation_id: string | null
           created_at: string
@@ -8721,6 +8722,7 @@ export type Database = {
         Insert: {
           assigned_to_user_id?: string | null
           category?: string | null
+          claimed_at?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string
@@ -8750,6 +8752,7 @@ export type Database = {
         Update: {
           assigned_to_user_id?: string | null
           category?: string | null
+          claimed_at?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string
