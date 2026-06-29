@@ -10412,6 +10412,7 @@ export type Database = {
           brand: Json
           created_at: string
           customer_limit: number
+          features: Json
           id: string
           name: string
           owner_user_id: string | null
@@ -10428,6 +10429,7 @@ export type Database = {
           brand?: Json
           created_at?: string
           customer_limit?: number
+          features?: Json
           id?: string
           name: string
           owner_user_id?: string | null
@@ -10444,6 +10446,7 @@ export type Database = {
           brand?: Json
           created_at?: string
           customer_limit?: number
+          features?: Json
           id?: string
           name?: string
           owner_user_id?: string | null
@@ -11449,6 +11452,8 @@ export type Database = {
         Args: { _reason: string; _user_id: string }
         Returns: undefined
       }
+      tenant_has_feature: { Args: { _feature: string }; Returns: boolean }
+      tenant_sender_identity: { Args: { _tenant_id: string }; Returns: Json }
       tier_pool_for_role: {
         Args: { _role: Database["public"]["Enums"]["app_role"] }
         Returns: string[]
