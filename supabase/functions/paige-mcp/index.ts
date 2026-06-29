@@ -428,13 +428,18 @@ mcp.tool("list_workflows", {
   }),
   handler: async (args) => {
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
+    const tenantId = await actorTenantId();
     let q = admin
       .from("paige_workflow_registry")
-      .select("id, key, label, description, category, provider, requires_approval, is_active, allowed_roles, sort_order")
+      .select("id, key, label, description, category, provider, requires_approval, is_active, allowed_roles, sort_order, tenant_id")
       .order("sort_order", { ascending: true })
       .limit(limit);
     if (args.category) q = q.eq("category", args.category);
     if (args.only_active !== false) q = q.eq("is_active", true);
+    // Doctrine §118: caller sees platform-default rows (tenant_id IS NULL) plus
+    // rows owned by their tenant. Platform/MMA callers therefore see MMA rows too.
+    if (tenantId) q = q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
+    else q = q.is("tenant_id", null);
     const { data, error } = await q;
     if (error) return err(error.message);
     return ok({ items: data ?? [] });
