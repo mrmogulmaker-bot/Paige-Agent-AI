@@ -1,66 +1,34 @@
 ## Goal
-Stop sending BTF customer emails from `hello@notify.paigeagent.ai`. Route them through the verified MMA-branded sender `alerts@portal.mogulmakeracademy.com`, and make the from-address per-product_scope so LaunchPad and future scopes follow the same pattern.
+Antonio chose Option A and verified `notify.paigeagent.ai` in the shared Resend account. One API key (`RESEND_API_KEY`) now authenticates sends from both `notify.paigeagent.ai` (Paige scope) and `portal.mogulmakeracademy.com` (BTF/MMA scope). The split-key plumbing shipped yesterday is dead weight — collapse it.
 
-## File to change
-`supabase/functions/paige-mcp/index.ts` — `send_btf_template_email` tool (~lines 923–1004).
+What stays unchanged:
+- `auth-email-hook` and `send-transactional-email` Edge Functions (already use single `RESEND_API_KEY` via the queue dispatcher — no edits)
+- `SCOPE_SENDERS` / from-address routing by `product_scope` in `paige-mcp` (correct as-is)
+- `email_send_log.sender_account` column (kept, but always populated as `mma_os_shared`)
 
-## Changes
+## Changes — `supabase/functions/paige-mcp/index.ts`
 
-### 1. Scope → sender map (module-level const)
-```ts
-const SCOPE_SENDERS: Record<string, { from: string; name: string; reply_to: string }> = {
-  btf: {
-    from: "alerts@portal.mogulmakeracademy.com",
-    name: "Mogul Maker Academy",
-    reply_to: "coach@mogulmakeracademy.com",
-  },
-  mma: {
-    from: "alerts@portal.mogulmakeracademy.com",
-    name: "Mogul Maker Academy",
-    reply_to: "coach@mogulmakeracademy.com",
-  },
-  // launchpad: filled in when that subdomain is verified
-  paige: {
-    from: "hello@notify.paigeagent.ai",
-    name: "Paige",
-    reply_to: "support@paigeagent.ai",
-  },
-};
-const DEFAULT_SCOPE_SENDER = SCOPE_SENDERS.btf;
-```
+1. Remove `RESEND_API_KEY_MMA` env read (line 30).
+2. In `send_btf_template_email` (lines ~993–1004):
+   - Delete split-key branch (`useMmaAccount`, fallback warning, dynamic `apiKey` selection).
+   - Always use `RESEND_API_KEY`.
+   - Set `const senderAccount = "mma_os_shared"` as a constant string for audit/log continuity.
+3. Keep the `sender_account` field in:
+   - Resend tag (line 1021)
+   - `email_send_log` insert (lines 1040–1041)
+   - `audit()` calls (lines 1028, 1044)
+   All three now always log `"mma_os_shared"`.
+4. Redeploy `paige-mcp`.
 
-### 2. New optional input
-Add `from_override` to the Zod schema:
-```ts
-from_override: z.string().email().optional()
-  .describe("Full from address (e.g. 'alerts@portal.mogulmakeracademy.com'). Must be a domain verified in Resend. Overrides product_scope default."),
-```
-Update `description` to: "Look up an email_templates row by template_key, render {{vars}}, and send via Resend. From-address is auto-selected by the template's product_scope (BTF/MMA → portal.mogulmakeracademy.com; Paige internal → notify.paigeagent.ai). Override with `from_override` for one-off sends."
-
-### 3. Resolve from-address inside handler
-Replace the current `fromName` / `fromAddr` block:
-```ts
-const scopeCfg = SCOPE_SENDERS[tpl.product_scope] ?? DEFAULT_SCOPE_SENDER;
-const fromName = args.from_name ?? scopeCfg.name;
-const fromEmail = args.from_override ?? scopeCfg.from;
-const fromAddr = `${fromName} <${fromEmail}>`;
-const replyTo = args.reply_to ?? scopeCfg.reply_to;
-```
-Use `replyTo` in the Resend body instead of the hardcoded value.
-
-### 4. Audit + log enrichment
-Include `from: fromEmail` in both the success and failure `audit(...)` calls and in `email_send_log.metadata`, so we can see per-product routing in the audit trail.
+## Secret cleanup
+- Delete the `RESEND_API_KEY_MMA` secret from Lovable Cloud (no longer referenced anywhere in code after the edit).
 
 ## Out of scope
-- No DB migration. `email_templates.product_scope` already exists.
-- No Option A. We are not verifying `notify.paigeagent.ai` in MMA's Resend account; Paige-internal scope keeps using its own verified sender as today.
-- No changes to other MCP tools or the standalone `send-transactional-email` edge function.
-
-## Deploy
-After the edit, redeploy only `paige-mcp`.
+- No DB migration. The `sender_account` column added yesterday stays; we just narrow its value domain.
+- No changes to `auth-email-hook` (`notify.paigeagent.ai` sender), `send-transactional-email`, queue infra, or `process-email-queue`.
+- No changes to `SCOPE_SENDERS` mapping or `from_override` parameter behavior.
 
 ## Verification
-1. `list_email_templates` → pick a `btf_education_*` key.
-2. `send_btf_template_email` to mrmogulmaker@gmail.com with no `from_override` → Resend accepts, message arrives From "Mogul Maker Academy &lt;alerts@portal.mogulmakeracademy.com&gt;".
-3. Repeat with `from_override: "hello@notify.paigeagent.ai"` and a Paige-scope template → arrives from Paige sender.
-4. Check `paige_audit_log` row contains `from` field.
+- `rg "RESEND_API_KEY_MMA"` returns zero hits after edit.
+- `tsgo` clean.
+- After redeploy, MMA OS Claude's smoke test on Paige auth signup confirms `notify.paigeagent.ai` send succeeds end-to-end.
