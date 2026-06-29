@@ -1,4 +1,7 @@
 // Shared CRM contact helpers — lifecycle stages, sources, formatters.
+// Note: product/offer catalogs are NOT defined here. Each tenant defines its
+// own offers in Admin → Settings → Storefront. Use the `useTenantOffers` hook
+// in React, or call `offerLabel` for legacy fallback rendering only.
 
 export type LifecycleStage =
   | "lead" | "mql" | "sql" | "opportunity"
@@ -19,74 +22,19 @@ export const CONTACT_SOURCES = [
   "manual", "referral", "website", "tenant_invite", "stripe", "paige", "import", "event", "partner",
 ];
 
-// Productized offers a contact can be enrolled in.
-// SOURCE OF TRUTH (June 28, 2026): the CRM only sells BTF and Paige Agent AI.
-// Community / Launch Pad live in other systems — never enroll a contact in those here.
-// Two distinct buckets:
-//   1. CRM-suite offers (`crm_*`) — what a TENANT subscribes to to use this platform.
-//   2. Customer offers (BTF / Paige plans) — what a TENANT enrolls a CONSUMER in.
-export type OfferKind = "crm_suite" | "btf" | "paige";
-
-export const OFFER_TYPES: { value: string; label: string; group: string; kind: OfferKind }[] = [
-  // ── CRM-Suite (Tenant subscriptions — sold by us to coaches/agencies/buyers) ──
-  { value: "crm_coach",      label: "CRM — Coach Workspace ($97/mo)",         group: "CRM Suite", kind: "crm_suite" },
-  { value: "crm_agency",     label: "CRM — Agency Workspace ($297/mo)",       group: "CRM Suite", kind: "crm_suite" },
-  { value: "crm_enterprise", label: "CRM — Enterprise (custom)",              group: "CRM Suite", kind: "crm_suite" },
-
-  // ── BUILD-to-FUND ($4,997 flagship — done-for-you) ──
-  { value: "btf_pif",        label: "BTF — Pay in Full ($4,997)",             group: "BUILD-to-FUND", kind: "btf" },
-  { value: "btf_split",      label: "BTF — Split ($1,997 down + $1,000 × 3)", group: "BUILD-to-FUND", kind: "btf" },
-  { value: "btf_getstarted", label: "BTF — Get-Started ($997 + $497/mo)",     group: "BUILD-to-FUND", kind: "btf" },
-
-  // ── Paige Agent AI (consumer plans — enrolled by tenant for their consumers) ──
-  { value: "paige_enterprise", label: "Paige Enterprise — $497/mo",           group: "Paige Agent AI", kind: "paige" },
-  { value: "paige_scale",      label: "Paige Scale — $397/mo",                group: "Paige Agent AI", kind: "paige" },
-  { value: "paige_growth",     label: "Paige Growth — $149/mo",               group: "Paige Agent AI", kind: "paige" },
-  { value: "paige_starter",    label: "Paige Starter — $49/mo",               group: "Paige Agent AI", kind: "paige" },
-  { value: "paige_free",       label: "Paige Free",                           group: "Paige Agent AI", kind: "paige" },
-
-  { value: "other",          label: "Other (custom)",                         group: "Other", kind: "btf" },
-];
-
-// Legacy slugs that may still live in DB rows — map onto the new canon so
-// older records still render a readable label instead of a raw slug.
-const LEGACY_OFFER_ALIASES: Record<string, string> = {
-  btf: "btf_pif",
-  premium: "paige_growth",
-  vip: "paige_scale",
-  standard: "paige_free",
-  accel: "other",
-  build_personal: "other",
-  build_business: "other",
-  fund: "other",
-  launch: "other",
-  drive: "other",
-  shield: "other",
-  acquire: "other",
-  coaching: "other",
-  consult: "other",
-};
-
-export function canonicalOffer(value: string | null | undefined): string | null {
-  if (!value) return null;
-  return LEGACY_OFFER_ALIASES[value] ?? value;
-}
-
+// Pure helper for legacy/static rendering paths (e.g. rows where the React
+// hook isn't readily available). For real UI pickers use `useTenantOffers`.
+// Returns a humanized version of the raw stored value (id, slug, or label).
 export function offerLabel(value: string | null | undefined): string | null {
   if (!value) return null;
-  const canonical = canonicalOffer(value)!;
-  return OFFER_TYPES.find((o) => o.value === canonical)?.label ?? value;
+  // UUIDs (tenant_products.id) — display as-is; the hook-powered components
+  // will replace this with the real product name once loaded.
+  if (/^[0-9a-f-]{36}$/i.test(value)) return value;
+  // Slug → Title Case
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
-
-export function offerKind(value: string | null | undefined): OfferKind | null {
-  if (!value) return null;
-  const canonical = canonicalOffer(value)!;
-  return OFFER_TYPES.find((o) => o.value === canonical)?.kind ?? null;
-}
-
-// Offers shown when enrolling a CONSUMER (the typical New Contact / New Deal case).
-// Excludes the CRM-suite SKUs, which are picked at tenant-signup time, not here.
-export const CONSUMER_OFFER_TYPES = OFFER_TYPES.filter((o) => o.kind !== "crm_suite");
 
 export function lifecycleMeta(stage: string | null | undefined) {
   return LIFECYCLE_STAGES.find((s) => s.value === stage) ||
