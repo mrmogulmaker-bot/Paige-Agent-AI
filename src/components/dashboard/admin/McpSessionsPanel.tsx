@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plug2, Loader2, ShieldOff } from "lucide-react";
+import { Plug2, Loader2, ShieldOff, Copy, ExternalLink, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+
+const MCP_ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-mcp`;
 
 type Token = {
   id: string;
