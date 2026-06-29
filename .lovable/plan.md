@@ -1,114 +1,89 @@
-## Goal
 
-Two changes landing together:
+# Tenant Storefront + Email Identity
 
-1. **Offer cleanup** — the CRM only sells BTF and Paige Agent AI. Drop community / Launch Pad slugs from the offer picker.
-2. **Multi-tenant pivot** — introduce a real Tenant ↔ Customer distinction across schema, RLS, UI, and signup flow.
+## What we learned about your invite
+Both invites you sent today (`firssterlingcapital@gmail.com`, `tonigivalli@gmail.com`) **were sent successfully**, then **bounced back from Gmail as "invalid mailbox."** The first one almost certainly has a typo (`firss` vs `first`). They're now on the suppression list — once you confirm the right spellings I'll clear them and resend. So nothing was broken in the send path; the addresses themselves don't exist.
 
-The platform stops being "Antonio's single org" and becomes a SaaS where any qualified buyer (coach, agency, etc.) can subscribe to the CRM suite and onboard their own consumers underneath their tenant.
-
----
-
-## Part 1 — Offer catalog
-
-Single source of truth in `src/lib/contacts.ts`.
-
-**Tenant-facing offers (what a buyer subscribes to — sold by us):**
-- `crm_coach` — Coach Workspace, **$97/mo** (1 owner seat + up to 25 customers)
-- `crm_agency` — Agency Workspace, **$297/mo** (5 team seats + up to 250 customers)
-- `crm_enterprise` — Enterprise (custom, sales-led)
-
-**Customer-facing offers (what a tenant enrolls a consumer in):**
-- `btf_pif` — BTF Pay in Full ($4,997)
-- `btf_split` — BTF Split ($1,997 down + $1,000 × 3)
-- `btf_getstarted` — BTF Get-Started ($997 + $497/mo)
-- `paige_free` / `paige_starter` / `paige_growth` / `paige_scale` / `paige_enterprise` — existing Paige plans (kept as-is, re-keyed from current `subscription_plans` slugs)
-
-Legacy values (`btf`, `premium`, `vip`, `accel`, `launch`, etc.) get aliased so old rows still render a label and aren't lost.
+That said, the From-address is still hardcoded to MMA's domain, which is the deeper issue you flagged. Fixing that is Part 3 below.
 
 ---
 
-## Part 2 — Tenant model
+## Part 1 — Lock BTF to MMA tenant
 
-### New tables
+1. Add `features jsonb` column to `tenants` (e.g. `{ "btf_enabled": true }`).
+2. Backfill MMA tenant with `btf_enabled: true`; everyone else `false`.
+3. Add `useTenantFeature('btf_enabled')` hook.
+4. Hide BTF nav items, `/onboard`, `/workspace/*`, "Start Onboarding" button, "Resend BTF Invite" button when the active tenant doesn't have the flag.
+5. Edge functions (`invite-btf-client`, `paige-mcp` BTF tools) reject calls from tenants without the flag.
 
-- **`tenants`** — one row per CRM-suite subscriber org. Fields: `slug` (URL token), `name`, `brand` (logo / colors / from-name for invites), `plan_offer` (one of the `crm_*` slugs), `stripe_customer_id`, `stripe_subscription_id`, `status` (`trial` / `active` / `past_due` / `canceled`), `seat_limit`, `customer_limit`, `owner_user_id`.
-- **`tenant_members`** — `(tenant_id, user_id, role, status)` where role is `owner` / `admin` / `coach` / `member`. Determines who in the CRM belongs to which tenant.
-- **`tenant_invite_tokens`** — signed tokens for consumer self-signup links (`tenants/:slug/join?t=…`). Records who used it and when.
+## Part 2 — Tenant Offers & Products
 
-### Tenancy on existing tables
+### Schema
+- `tenant_stripe_accounts` — stripe_account_id, charges_enabled, payouts_enabled, country, onboarded_at
+- `tenant_products` — tenant_id, name, slug, description, image_url, type (`one_time` | `recurring` | `productized_service` | `lead_magnet`), status (`draft` | `active` | `archived`), stripe_product_id
+- `tenant_prices` — product_id, amount_cents, currency, interval (`null` | `month` | `year`), stripe_price_id, is_default
+- `tenant_checkout_sessions` — product_id, stripe_session_id, customer_email, contact_id, status, amount_cents
+- All tenant-scoped with `stamp_tenant_id` trigger + restrictive RLS
 
-Add `tenant_id uuid` to: `clients`, `deals`, `pipelines`, `pipeline_stages`, `tasks`, `paige_coach_assignments`, `paige_pending_approvals`, `invitations`, `email_send_log`, `email_templates`, `paige_conversations`, `paige_workflow_runs`, `paige_audit_log`. Backfill all existing rows to `tenant_id = <Antonio's tenant>`.
+### Edge functions
+- `stripe-connect-onboard` — kicks off Stripe Connect OAuth, returns onboarding link
+- `stripe-connect-return` — handles return URL, syncs account status
+- `create-checkout-session` — public endpoint, takes `product_slug` + email, creates Stripe session on the tenant's connected account (with optional 2% application fee)
+- `stripe-connect-webhook` — listens for `checkout.session.completed`, creates contact + writes order, fires workflow
 
-`businesses` and consumer-owned tables (`credit_*`, `paige_btf_documents`, etc.) stay user-scoped but inherit their tenant via the consumer's `clients.tenant_id`.
+### UI
+- `/admin/products` — list view with Create, Edit, Archive
+- New Product wizard:
+  - Step 1: Type (one-time / subscription / productized service / lead magnet)
+  - Step 2: Details (name, description, image, slug)
+  - Step 3: Pricing (amount, currency, interval if recurring) — skipped for lead-magnet
+  - Step 4: Workflow trigger (which n8n workflow runs on purchase, e.g. send welcome email, assign coach)
+  - Step 5: Publish — generates public checkout link `https://paigeagent.ai/buy/{tenant-slug}/{product-slug}`
+- Public `/buy/:tenantSlug/:productSlug` page — tenant-branded, mobile-first, single CTA
+- `/admin/settings → Payments tab` — Connect/Disconnect Stripe, account status, last 10 orders
 
-### RLS rewrite
+### Lead-magnet flow
+- Free products skip Stripe entirely
+- Public page collects email → creates contact → fires workflow → shows download/thank-you
 
-Replace ad-hoc "is admin or assigned coach" policies with a layered model:
+## Part 3 — Per-tenant email sender (Lead Connector model)
 
-- **Platform owner** (Antonio) → sees all tenants.
-- **Tenant owner / admin** → sees everything where `tenant_id = current_user_tenant_id()`.
-- **Tenant coach / member** → sees only contacts they're assigned to within their tenant.
-- **Consumer (linked_user_id)** → sees only their own rows, regardless of tenant.
+### Default behavior (zero setup)
+- All tenants send from `notify.paigeagent.ai` 
+- From-name = tenant's display name (`{tenant.brand.from_name} <notify@paigeagent.ai>`)
+- Reply-To = `tenant.brand.support_email` (already on `tenants` table)
+- All invite/onboarding/workflow emails route through this
 
-Security-definer helpers: `current_user_tenant_id()`, `is_tenant_admin(_tenant)`, `is_tenant_member(_tenant)`. All policies route through these — no recursive lookups.
+### Custom domain (opt-in upgrade)
+- New table `tenant_email_domains` — domain, status (`pending` | `verified` | `failed`), spf_token, dkim_tokens, created_at, verified_at
+- `/admin/settings → Email tab`:
+  - Step 1: Enter domain (e.g. `mail.acme.com`)
+  - Step 2: System generates DNS records via Resend Domains API
+  - Step 3: Display copy-to-clipboard DNS records (SPF TXT, DKIM CNAMEs, Return-Path CNAME)
+  - Step 4: "Verify" button → calls Resend, polls status
+- Once verified, all sends for that tenant switch to the custom domain automatically
+- `resolveSenderForTenant(tenantId)` helper in `_shared/` — used by every send function (`paige-mcp` `send_btf_template_email`, `invite-btf-client`, `send-transactional-email`, etc.)
 
----
-
-## Part 3 — Consumer signup under a tenant
-
-1. Tenant admin opens **Settings → Signup Link** → gets `https://<host>/join/<tenant-slug>?t=<token>`.
-2. Consumer hits the link → branded landing page (tenant's logo + name) → email/password or Google sign-in.
-3. On successful signup, a new row is added to `clients` with `tenant_id` set, `lifecycle_stage='customer'`, `source='tenant_invite'`, `linked_user_id=auth.uid()`.
-4. Edge function `accept-tenant-invite` validates the token, enforces `customer_limit`, and dispatches the welcome email using the tenant's branding.
-5. Consumer lands in the existing Paige consumer app (`/app/*`) — exactly the experience that exists today.
-
----
-
-## Part 4 — Admin UI
-
-- **Sidebar split:** "My Tenant" (everything you already have) vs new **"Platform"** section visible only to platform owner — Tenants list, billing, usage, audit.
-- **Tenants page** — table of tenants with plan, seat usage, customer usage, MRR, status. Drill into a tenant for member list and impersonation.
-- **Tenant switcher** — header dropdown for platform owner to scope the entire CRM view to one tenant.
-- **Settings → Workspace** — for tenant admins: brand (logo, color, from-name), invite link, member management, plan/usage card.
-- **Contacts page** language — keep calling these "Contacts / Customers". The word "Subscribers" is reserved for tenant-level CRM buyers and only appears in the Platform area.
-
----
-
-## Part 5 — Billing for CRM suite
-
-- Create three Stripe products: Coach Workspace, Agency Workspace, Enterprise (placeholder).
-- New `/get-started` public page (separate from `/signup` consumer flow) — pick a tier → Stripe Checkout → on success, `provision-tenant` edge function creates the `tenants` row, makes the buyer the `owner`, seeds default pipeline + email templates, redirects to the new workspace.
-- `stripe-webhook` extended: on `customer.subscription.updated` / `.deleted`, sync `tenants.status`, `seat_limit`, `customer_limit`.
-- Existing consumer Stripe handling (Paige plans) is untouched.
-
----
-
-## Part 6 — Rollout order
-
-1. Offer catalog refactor + legacy aliases (ships immediately, no schema change).
-2. `tenants` / `tenant_members` / `tenant_invite_tokens` migration + backfill Antonio's tenant.
-3. Add `tenant_id` to in-scope tables + backfill + RLS rewrite behind a feature flag.
-4. Tenant switcher + Platform → Tenants page (owner-only).
-5. Workspace settings (brand + invite link) + `accept-tenant-invite` edge function.
-6. Stripe products + `/get-started` + `provision-tenant` + webhook sync.
-7. Flip feature flag, retire legacy "single-org" policies.
+### Audit
+- `email_send_log.metadata.tenant_id` and `metadata.sender_account` so we can trace which tenant sent what from where
 
 ---
 
-## Technical notes
+## Build order (4 ship-able chunks)
 
-- All new tables include `created_at` / `updated_at` triggers and follow `GRANT … TO authenticated/service_role` pattern.
-- `current_user_tenant_id()` is `STABLE SECURITY DEFINER`, returns the tenant id of the requesting user from `tenant_members` (or the platform-owner's "active" tenant when impersonating, stored in `profiles.active_tenant_id`).
-- Backfill uses Antonio's `auth.users.id` resolved via `app_settings_owner.owner_email`.
-- Invite tokens: HMAC-signed (HS256) with `INVITE_TOKEN_SECRET`, 30-day expiry, one-time-use enforced in DB.
-- No breaking changes to consumer-facing `/app/*` routes — only the `clients` row they hang off gains a `tenant_id`.
-- Edge functions touched: new `provision-tenant`, new `accept-tenant-invite`, extended `stripe-webhook`, extended `invite-btf-client` to stamp `tenant_id`.
+1. **Part 1 — BTF lockdown** (1 short pass) — unblocks the "this isn't for other tenants" confusion immediately
+2. **Part 3a — Per-tenant From-name on shared subdomain** (1 pass) — fixes the email-identity issue for invites today
+3. **Part 2 — Offers, Products, Stripe Connect, public checkout** (3 passes — schema, admin UI, public flow)
+4. **Part 3b — Custom-domain self-service** (1 pass — depends on Resend Domains API quota; we'll verify before building)
 
 ---
 
-## Out of scope (call out, don't build)
+## Decisions still needed (only when we get to that step)
 
-- Tenant-level custom domains (Phase 2 — would need Vercel/Cloudflare wildcard config).
-- Per-tenant Stripe Connect for tenants to bill their own consumers (Phase 3).
-- Cross-tenant data export / migration tooling.
+- **Application fee %** for Part 2 — default 0% for now (Paige doesn't take a cut), revisit when we onboard non-MMA tenants
+- **Stripe Connect country support** — start US-only, add more later
+- **Custom domain pricing gate** — free for all tenants v1, or Pro-tier only? Recommend free initially, tier-gate later
+
+---
+
+If this matches what you want, say "ship Part 1" (or "ship 1 and 2") and I'll start with the BTF lockdown + per-tenant From-name in one pass. We can keep Stripe Connect (Part 2) as the next chunk once those are verified.
