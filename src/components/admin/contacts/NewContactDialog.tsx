@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { LIFECYCLE_STAGES, CONTACT_SOURCES, OFFER_TYPES } from "@/lib/contacts";
+import { LIFECYCLE_STAGES, CONTACT_SOURCES, CONSUMER_OFFER_TYPES as OFFER_TYPES } from "@/lib/contacts";
 
 type Coach = { user_id: string; name: string };
 
