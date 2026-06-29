@@ -7765,6 +7765,104 @@ export type Database = {
           },
         ]
       }
+      paige_ingestion_proposals: {
+        Row: {
+          actor_label: string | null
+          actor_role: string
+          actor_user_id: string | null
+          applied_row_ids: Json | null
+          client_id: string | null
+          confidence: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          diff: Json
+          expires_at: string
+          external_llm_model: string | null
+          id: string
+          payload: Json
+          review_reason: string | null
+          source: string
+          status: string
+          target_table: string | null
+          tenant_id: string | null
+          tool_name: string
+        }
+        Insert: {
+          actor_label?: string | null
+          actor_role?: string
+          actor_user_id?: string | null
+          applied_row_ids?: Json | null
+          client_id?: string | null
+          confidence?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          diff?: Json
+          expires_at?: string
+          external_llm_model?: string | null
+          id?: string
+          payload?: Json
+          review_reason?: string | null
+          source?: string
+          status?: string
+          target_table?: string | null
+          tenant_id?: string | null
+          tool_name: string
+        }
+        Update: {
+          actor_label?: string | null
+          actor_role?: string
+          actor_user_id?: string | null
+          applied_row_ids?: Json | null
+          client_id?: string | null
+          confidence?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          diff?: Json
+          expires_at?: string
+          external_llm_model?: string | null
+          id?: string
+          payload?: Json
+          review_reason?: string | null
+          source?: string
+          status?: string
+          target_table?: string | null
+          tenant_id?: string | null
+          tool_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_ingestion_proposals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_ingestion_proposals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_ingestion_proposals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_ingestion_proposals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paige_invoices: {
         Row: {
           amount_total_cents: number
