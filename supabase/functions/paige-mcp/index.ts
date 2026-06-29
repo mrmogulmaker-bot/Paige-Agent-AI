@@ -122,136 +122,9 @@ async function audit(action: string, target_type: string | null, target_id: stri
   }
 }
 
-// ---------- Workflow dispatcher ----------
-// Routes a queued paige_workflow_runs row to its declared provider and updates the row in place.
-// Designed to run inline from run_workflow so MCP callers don't need a separate poll loop.
-async function dispatchWorkflowRun(opts: {
-  runId: string;
-  provider: string | null;
-  n8nWebhookUrl: string | null;
-  needsN8nLink: boolean | null;
-  langgraphGraphId: string | null;
-  directFunctionName: string | null;
-  payload: Record<string, unknown>;
-}): Promise<{ status: "running" | "succeeded" | "failed"; executionId?: string | null; error?: string | null }> {
-  const { runId, provider, payload } = opts;
-  const updateRun = async (patch: Record<string, unknown>) => {
-    await admin.from("paige_workflow_runs").update(patch).eq("id", runId);
-  };
-
-  if (!provider || provider === "cron_only") {
-    const errText = provider === "cron_only" ? "cron_only_workflow" : "no_provider_configured";
-    await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
-    return { status: "failed", error: errText };
-  }
-
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 12_000);
-
-  try {
-    if (provider === "n8n") {
-      if (!opts.n8nWebhookUrl || opts.needsN8nLink) {
-        const errText = "needs_n8n_link";
-        await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
-        return { status: "failed", error: errText };
-      }
-      const res = await fetch(opts.n8nWebhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, paige_run_id: runId, source: "mcp" }),
-        signal: controller.signal,
-      });
-      const txt = await res.text();
-      if (!res.ok) {
-        const errText = `n8n_${res.status}: ${txt.slice(0, 300)}`;
-        await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
-        return { status: "failed", error: errText };
-      }
-      let executionId: string | null = null;
-      try {
-        const j = JSON.parse(txt);
-        executionId = j?.executionId ?? j?.execution_id ?? null;
-      } catch { /* webhook may return plain text */ }
-      await updateRun({ status: "running", n8n_execution_id: executionId });
-      return { status: "running", executionId };
-    }
-
-    if (provider === "langgraph") {
-      const lgKey = Deno.env.get("LANGGRAPH_API_KEY");
-      const lgBase = Deno.env.get("LANGGRAPH_BASE_URL");
-      if (!lgKey || !lgBase || !opts.langgraphGraphId) {
-        const errText = "langgraph_not_configured";
-        await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
-        return { status: "failed", error: errText };
-      }
-      const res = await fetch(`${lgBase.replace(/\/$/, "")}/runs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": lgKey },
-        body: JSON.stringify({
-          assistant_id: opts.langgraphGraphId,
-          input: payload,
-          metadata: { paige_run_id: runId, source: "mcp" },
-        }),
-        signal: controller.signal,
-      });
-      const txt = await res.text();
-      if (!res.ok) {
-        const errText = `langgraph_${res.status}: ${txt.slice(0, 300)}`;
-        await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
-        return { status: "failed", error: errText };
-      }
-      const j = JSON.parse(txt);
-      const executionId = j?.run_id ?? j?.id ?? null;
-      await updateRun({ status: "running", n8n_execution_id: executionId, result: j });
-      return { status: "running", executionId };
-    }
-
-    if (provider === "direct_edge_function") {
-      if (!opts.directFunctionName) {
-        const errText = "direct_function_name_missing";
-        await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
-        return { status: "failed", error: errText };
-      }
-      const url = `${SUPABASE_URL}/functions/v1/${opts.directFunctionName}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-          apikey: SERVICE_ROLE_KEY,
-        },
-        body: JSON.stringify({ ...payload, paige_run_id: runId, source: "mcp" }),
-        signal: controller.signal,
-      });
-      const txt = await res.text();
-      let resultJson: unknown;
-      try { resultJson = JSON.parse(txt); } catch { resultJson = { raw: txt.slice(0, 1000) }; }
-      if (!res.ok) {
-        const errText = `direct_${res.status}: ${txt.slice(0, 300)}`;
-        await updateRun({
-          status: "failed", error: errText, result: resultJson as never,
-          completed_at: new Date().toISOString(),
-        });
-        return { status: "failed", error: errText };
-      }
-      await updateRun({
-        status: "succeeded", result: resultJson as never,
-        completed_at: new Date().toISOString(),
-      });
-      return { status: "succeeded" };
-    }
-
-    const errText = `unknown_provider:${provider}`;
-    await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
-    return { status: "failed", error: errText };
-  } catch (e) {
-    const errText = (e as Error).message.slice(0, 500);
-    await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
-    return { status: "failed", error: errText };
-  } finally {
-    clearTimeout(t);
-  }
-}
+// Workflow dispatcher lives in _shared so the pg_cron sweeper
+// (dispatch-queued-workflow-runs) can re-use the same routing logic.
+import { dispatchWorkflowRun } from "../_shared/workflowDispatch.ts";
 
 
 
@@ -1220,6 +1093,302 @@ mcp.tool("send_btf_template_email", {
 });
 
 
+// ---------- Batch #1 (Doctrine §119 reversible-ops) ----------
+// Helper: resolve a tenant_id for the actor. User actors → their active_tenant_id.
+// Platform actors → optional explicit arg, falling back to the MMA tenant (slug='mma').
+async function resolveTenantId(explicit?: string | null): Promise<string | null> {
+  if (explicit) return explicit;
+  const actor = currentActor();
+  if (actor.kind === "user" && actor.user_id) {
+    const { data } = await admin.from("profiles").select("active_tenant_id").eq("user_id", actor.user_id).maybeSingle();
+    if (data?.active_tenant_id) return data.active_tenant_id as string;
+  }
+  // Platform fallback (single-tenant phase): MMA workspace.
+  const { data: mma } = await admin.from("tenants").select("id").eq("slug", "mma").maybeSingle();
+  return (mma?.id as string) ?? null;
+}
+
+// ---------- Contacts (extended) ----------
+mcp.tool("create_contact", {
+  description:
+    "Create a new contact (clients row) in the caller's tenant. Returns the new contact_id. Tenant is auto-resolved from the caller (user's active tenant, or MMA for platform callers).",
+  inputSchema: z.object({
+    first_name: z.string(),
+    last_name: z.string().optional(),
+    email: z.string().optional(),
+    phone: z.string().optional(),
+    entity_name: z.string().optional(),
+    source: z.string().optional(),
+    lifecycle_stage: z.string().optional().describe("Default 'new_lead'."),
+    notes: z.string().optional().describe("Seeded into current_notes."),
+    tenant_id: z.string().optional().describe("Override the auto-resolved tenant_id (platform-only)."),
+  }),
+  handler: async (args) => {
+    const tenant_id = await resolveTenantId(args.tenant_id ?? null);
+    const row: Record<string, unknown> = {
+      first_name: args.first_name,
+      last_name: args.last_name ?? null,
+      email: args.email ?? null,
+      phone: args.phone ?? null,
+      entity_name: args.entity_name ?? null,
+      source: args.source ?? "mcp",
+      lifecycle_stage: args.lifecycle_stage ?? "new_lead",
+      status: "active",
+      current_notes: args.notes ?? null,
+      tenant_id,
+    };
+    const { data, error } = await admin.from("clients").insert(row).select("id, created_at").single();
+    if (error) return err(error.message);
+    await audit("create_contact", "client", data.id, { email: args.email ?? null, tenant_id });
+    return ok({ ok: true, contact_id: data.id, created_at: data.created_at, tenant_id });
+  },
+});
+
+mcp.tool("update_lifecycle_stage", {
+  description:
+    "Update a contact's lifecycle stage per Doctrine §111 (new_lead, qualified, nurturing, hot_lead, negotiating, won, client_active, client_paused, client_churned, client_funded, client_alumni).",
+  inputSchema: z.object({
+    contact_id: z.string(),
+    new_stage: z.enum([
+      "new_lead", "qualified", "nurturing", "hot_lead", "negotiating",
+      "won", "client_active", "client_paused", "client_churned", "client_funded", "client_alumni",
+    ]),
+    reason: z.string().optional(),
+  }),
+  handler: async ({ contact_id, new_stage, reason }) => {
+    const { data: cur } = await admin.from("clients").select("lifecycle_stage").eq("id", contact_id).maybeSingle();
+    if (!cur) return err("contact_not_found");
+    const old_stage = (cur.lifecycle_stage as string | null) ?? null;
+    const { error } = await admin.from("clients").update({ lifecycle_stage: new_stage }).eq("id", contact_id);
+    if (error) return err(error.message);
+    if (reason) {
+      const { data: c } = await admin.from("clients").select("current_notes").eq("id", contact_id).maybeSingle();
+      const stamp = new Date().toISOString();
+      const next = `${c?.current_notes ?? ""}\n\n[${stamp} · lifecycle ${old_stage ?? "∅"}→${new_stage}] ${reason}`.trim().slice(0, 8000);
+      await admin.from("clients").update({ current_notes: next }).eq("id", contact_id);
+    }
+    await audit("update_lifecycle_stage", "client", contact_id, { old_stage, new_stage, reason: reason ?? null });
+    return ok({ ok: true, contact_id, old_stage, new_stage });
+  },
+});
+
+// ---------- BTF onboarding ----------
+mcp.tool("start_btf_onboarding", {
+  description:
+    "Kick off the 6-step BTF onboarding wizard for a paying contact. Generates a magic-link, sends the welcome email, and sets onboarding_stage='invited'. Tenant must have features.btf_enabled=true.",
+  inputSchema: z.object({
+    contact_id: z.string(),
+    payment_plan: z.enum(["btf_pif", "btf_split", "btf_getstarted"]).describe("Selected payment plan; stamped on the contact for downstream routing."),
+    notes: z.string().optional(),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async ({ contact_id, payment_plan, notes }) => {
+    // Stamp payment plan + optional notes BEFORE invoking the edge function so the welcome email picks it up.
+    const patch: Record<string, unknown> = { primary_offer: payment_plan };
+    if (notes) {
+      const { data: c } = await admin.from("clients").select("current_notes").eq("id", contact_id).maybeSingle();
+      const stamp = new Date().toISOString();
+      patch.current_notes = `${c?.current_notes ?? ""}\n\n[${stamp} · btf onboarding · ${payment_plan}] ${notes}`.trim().slice(0, 8000);
+    }
+    await admin.from("clients").update(patch).eq("id", contact_id);
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/start-btf-onboarding`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        apikey: SERVICE_ROLE_KEY,
+      },
+      body: JSON.stringify({ client_id: contact_id }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body?.ok === false) {
+      return err(`start_btf_onboarding_${res.status}: ${body?.error ?? "unknown"}`);
+    }
+    await audit("start_btf_onboarding", "client", contact_id, { payment_plan });
+    return ok({
+      ok: true,
+      onboarding_session_id: contact_id, // Paige uses the contact as the wizard session anchor.
+      magic_link_url: body?.onboard_url ?? null,
+      email_sent: body?.email_sent ?? false,
+      payment_plan,
+    });
+  },
+});
+
+mcp.tool("resend_btf_invite", {
+  description:
+    "Resend a BTF workspace invite. Mints a fresh magic-link token, supersedes any prior unused link, and sends the white-labeled welcome email again.",
+  inputSchema: z.object({ contact_id: z.string() }),
+  annotations: { destructiveHint: true },
+  handler: async ({ contact_id }) => {
+    const { data: c } = await admin
+      .from("clients")
+      .select("id, email, first_name, last_name")
+      .eq("id", contact_id)
+      .maybeSingle();
+    if (!c) return err("contact_not_found");
+    if (!c.email) return err("contact_missing_email");
+
+    // Mark prior unused invites for this client as superseded.
+    await admin
+      .from("btf_workspace_invites")
+      .update({ metadata: { superseded_at: new Date().toISOString(), superseded_by: "mcp_resend" } })
+      .eq("client_id", contact_id)
+      .is("used_at", null);
+
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/invite-btf-client`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        apikey: SERVICE_ROLE_KEY,
+      },
+      body: JSON.stringify({
+        paige_client_id: contact_id,
+        contact_email: c.email,
+        full_name: `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || null,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body?.ok === false) {
+      return err(`resend_btf_invite_${res.status}: ${body?.error ?? "unknown"}`);
+    }
+    await audit("resend_btf_invite", "client", contact_id, { email: c.email });
+    return ok({
+      ok: true,
+      new_magic_link_url: body?.invite_url ?? null,
+      expires_at: body?.expires_at ?? null,
+      previous_link_revoked: true,
+      email_sent: body?.email_sent ?? false,
+    });
+  },
+});
+
+// ---------- Read-only BTF / agreements / payments ----------
+mcp.tool("list_signed_agreements", {
+  description: "List signed service agreements in the caller's tenant (paige_signed_agreements). Paginated.",
+  inputSchema: z.object({
+    contact_id: z.string().optional(),
+    since: z.string().optional().describe("ISO timestamp; filters signed_at >= since."),
+    limit: z.number().int().optional().describe("1-200, default 50."),
+  }),
+  handler: async (args) => {
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
+    let q = admin
+      .from("paige_signed_agreements")
+      .select("id, client_id, agreement_template_key, agreement_version, signed_pdf_path, signature_data, signed_at, created_at")
+      .order("signed_at", { ascending: false })
+      .limit(limit);
+    if (args.contact_id) q = q.eq("client_id", args.contact_id);
+    if (args.since) q = q.gte("signed_at", args.since);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    const items = (data ?? []).map((row: any) => ({
+      agreement_id: row.id,
+      contact_id: row.client_id,
+      signed_at: row.signed_at,
+      signer_name: row.signature_data?.signer_name ?? row.signature_data?.full_name ?? null,
+      document_url: row.signed_pdf_path,
+      agreement_template_key: row.agreement_template_key,
+      agreement_version: row.agreement_version,
+    }));
+    return ok({ items, count: items.length });
+  },
+});
+
+mcp.tool("list_intake_submissions", {
+  description: "List BTF intake submissions (paige_client_intake_submissions). Filter by contact or status.",
+  inputSchema: z.object({
+    contact_id: z.string().optional(),
+    status: z.enum(["in_progress", "submitted", "all"]).optional(),
+    limit: z.number().int().optional(),
+  }),
+  handler: async (args) => {
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
+    let q = admin
+      .from("paige_client_intake_submissions")
+      .select("id, client_id, section, payload, submitted_at, created_at, updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(limit);
+    if (args.contact_id) q = q.eq("client_id", args.contact_id);
+    if (args.status === "submitted") q = q.not("submitted_at", "is", null);
+    else if (args.status === "in_progress") q = q.is("submitted_at", null);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    const items = (data ?? []).map((row: any) => ({
+      submission_id: row.id,
+      contact_id: row.client_id,
+      section: row.section,
+      status: row.submitted_at ? "submitted" : "in_progress",
+      submitted_at: row.submitted_at,
+      updated_at: row.updated_at,
+      sections_completed: row.payload ? Object.keys(row.payload).length : 0,
+    }));
+    return ok({ items, count: items.length });
+  },
+});
+
+mcp.tool("list_payment_authorizations", {
+  description: "List Stripe payment authorizations (paige_payment_authorizations). Filter by contact or date.",
+  inputSchema: z.object({
+    contact_id: z.string().optional(),
+    since: z.string().optional().describe("ISO timestamp; filters authorized_at >= since."),
+    limit: z.number().int().optional(),
+  }),
+  handler: async (args) => {
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
+    let q = admin
+      .from("paige_payment_authorizations")
+      .select("id, client_id, plan_selected, stripe_customer_id, stripe_payment_method_id, stripe_subscription_id, authorized_at, status, created_at")
+      .order("authorized_at", { ascending: false, nullsFirst: false })
+      .limit(limit);
+    if (args.contact_id) q = q.eq("client_id", args.contact_id);
+    if (args.since) q = q.gte("authorized_at", args.since);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    const items = (data ?? []).map((row: any) => ({
+      auth_id: row.id,
+      contact_id: row.client_id,
+      payment_plan: row.plan_selected,
+      stripe_customer_id: row.stripe_customer_id,
+      stripe_subscription_id: row.stripe_subscription_id,
+      status: row.status,
+      authorized_at: row.authorized_at,
+    }));
+    return ok({ items, count: items.length });
+  },
+});
+
+// ---------- Sender identity (debug) ----------
+mcp.tool("resolve_sender_identity", {
+  description:
+    "Read-only debug tool. Returns the from-address, display name, and reply-to a given tenant + product_scope combo would produce, without sending an email. Use to verify domain config after changes.",
+  inputSchema: z.object({
+    tenant_id: z.string().optional().describe("Defaults to caller's tenant."),
+    product_scope: z.string().optional().describe("Optional, e.g. 'btf' or 'paige'. Currently advisory."),
+  }),
+  handler: async (args) => {
+    const tenant_id = await resolveTenantId(args.tenant_id ?? null);
+    if (!tenant_id) return err("tenant_not_resolved");
+    const { data, error } = await admin.rpc("tenant_sender_identity", { _tenant_id: tenant_id });
+    if (error) return err(error.message);
+    if (!data) return err("tenant_not_found");
+    return ok({
+      tenant_id,
+      product_scope: args.product_scope ?? null,
+      identity: data,
+      from_address: (data as any)?.from_address ?? null,
+      from_name: (data as any)?.from_name ?? null,
+      reply_to: (data as any)?.reply_to ?? null,
+    });
+  },
+});
+
+
+
+
+
 
 async function sha256Hex(input: string): Promise<string> {
   const bytes = new TextEncoder().encode(input);
@@ -1265,6 +1434,12 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_unassigned_queue: "admin.read", list_admin_notifications: "admin.read", create_admin_notification: "admin.write",
   // Email templates
   list_email_templates: "admin.read", upsert_email_template: "admin.write", send_btf_template_email: "btf.write",
+  // Batch #1 (Doctrine §119)
+  create_contact: "crm.write", update_lifecycle_stage: "crm.write",
+  start_btf_onboarding: "btf.write", resend_btf_invite: "btf.write",
+  list_signed_agreements: "btf.read", list_intake_submissions: "btf.read",
+  list_payment_authorizations: "btf.read",
+  resolve_sender_identity: "admin.read",
 };
 
 const DISCOVERY_RESOURCE = {
