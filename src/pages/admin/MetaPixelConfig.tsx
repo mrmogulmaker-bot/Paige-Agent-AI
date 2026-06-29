@@ -110,8 +110,19 @@ export default function MetaPixelConfig() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1">
-            <Label>CAPI Access Token</Label>
-            <Input type="password" value={capiToken} onChange={(e) => setCapiToken(e.target.value)} placeholder="EAAB..." />
+            <Label>CAPI Access Token {capiTokenSet && <span className="text-xs text-emerald-600">(currently set — leave blank to keep)</span>}</Label>
+            <Input
+              type="password"
+              value={capiToken}
+              onChange={(e) => setCapiToken(e.target.value)}
+              placeholder={capiTokenSet ? "•••••••• (enter new value to replace)" : "EAAB..."}
+              autoComplete="off"
+            />
+            {capiTokenSet && (
+              <Button type="button" variant="ghost" size="sm" onClick={clearToken} className="mt-1 h-7 px-2 text-xs">
+                Clear stored token
+              </Button>
+            )}
           </div>
           <div className="space-y-1">
             <Label>Test Event Code (optional)</Label>
