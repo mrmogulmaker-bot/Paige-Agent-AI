@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,52 +9,29 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from "@/components/ui/dialog";
 import { CheckSquare, Clock, Plus, Pencil } from "lucide-react";
-import { toast } from "sonner";
+import { useTasks, type Task } from "@/hooks/useTasks";
 
-type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
-
-type TaskRow = {
-  id: string;
-  user_id: string;
-  title: string;
-  description: string | null;
-  status: TaskStatus;
-  due_date: string | null;
-  track: string | null;
-};
+type TaskStatus = Task["status"];
 
 /**
  * Client-facing tasks list — white-labeled.
  * The product name "Paige" must never appear here.
  */
 export default function WorkspaceTasks() {
-  const [tasks, setTasks] = useState<TaskRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [meId, setMeId] = useState<string | null>(null);
+  const {
+    tasks,
+    loading,
+    currentUserId,
+    createTaskRaw,
+    updateTask,
+  } = useTasks({ scope: "self", limit: 200 });
 
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<TaskRow | null>(null);
+  const [editing, setEditing] = useState<Task | null>(null);
   const [fTitle, setFTitle] = useState("");
   const [fDesc, setFDesc] = useState("");
   const [fDue, setFDue] = useState("");
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    setMeId(user?.id || null);
-    const { data } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("user_id", user?.id || "")
-      .order("status", { ascending: true })
-      .order("due_date", { ascending: true, nullsFirst: false })
-      .limit(200);
-    setTasks((data || []) as TaskRow[]);
-    setLoading(false);
-  };
 
   const openNew = () => {
     setEditing(null);
@@ -63,7 +39,7 @@ export default function WorkspaceTasks() {
     setOpen(true);
   };
 
-  const openEdit = (t: TaskRow) => {
+  const openEdit = (t: Task) => {
     setEditing(t);
     setFTitle(t.title);
     setFDesc(t.description || "");
@@ -72,29 +48,24 @@ export default function WorkspaceTasks() {
   };
 
   const save = async () => {
-    if (!fTitle.trim() || !meId) return;
+    if (!fTitle.trim() || !currentUserId) return;
     setSaving(true);
     const payload = {
       title: fTitle.trim(),
       description: fDesc.trim() || null,
       due_date: fDue ? new Date(fDue).toISOString() : null,
-      user_id: meId,
+      user_id: currentUserId,
     };
-    const { error } = editing
-      ? await supabase.from("tasks").update(payload).eq("id", editing.id)
-      : await supabase.from("tasks").insert({ ...payload, status: "pending" as TaskStatus });
+    const result = editing
+      ? await updateTask(editing.id, payload)
+      : await createTaskRaw({ ...payload, status: "pending" });
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success(editing ? "Updated" : "Added to your list");
-    setOpen(false);
-    load();
+    if (result) setOpen(false);
   };
 
-  const toggle = async (t: TaskRow) => {
+  const toggle = async (t: Task) => {
     const next: TaskStatus = t.status === "completed" ? "pending" : "completed";
-    const { error } = await supabase.from("tasks").update({ status: next }).eq("id", t.id);
-    if (error) { toast.error(error.message); return; }
-    load();
+    await updateTask(t.id, { status: next });
   };
 
   return (
