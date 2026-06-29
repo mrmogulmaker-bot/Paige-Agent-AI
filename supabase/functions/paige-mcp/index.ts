@@ -122,6 +122,139 @@ async function audit(action: string, target_type: string | null, target_id: stri
   }
 }
 
+// ---------- Workflow dispatcher ----------
+// Routes a queued paige_workflow_runs row to its declared provider and updates the row in place.
+// Designed to run inline from run_workflow so MCP callers don't need a separate poll loop.
+async function dispatchWorkflowRun(opts: {
+  runId: string;
+  provider: string | null;
+  n8nWebhookUrl: string | null;
+  needsN8nLink: boolean | null;
+  langgraphGraphId: string | null;
+  directFunctionName: string | null;
+  payload: Record<string, unknown>;
+}): Promise<{ status: "running" | "succeeded" | "failed"; executionId?: string | null; error?: string | null }> {
+  const { runId, provider, payload } = opts;
+  const updateRun = async (patch: Record<string, unknown>) => {
+    await admin.from("paige_workflow_runs").update(patch).eq("id", runId);
+  };
+
+  if (!provider || provider === "cron_only") {
+    const errText = provider === "cron_only" ? "cron_only_workflow" : "no_provider_configured";
+    await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
+    return { status: "failed", error: errText };
+  }
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 12_000);
+
+  try {
+    if (provider === "n8n") {
+      if (!opts.n8nWebhookUrl || opts.needsN8nLink) {
+        const errText = "needs_n8n_link";
+        await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
+        return { status: "failed", error: errText };
+      }
+      const res = await fetch(opts.n8nWebhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, paige_run_id: runId, source: "mcp" }),
+        signal: controller.signal,
+      });
+      const txt = await res.text();
+      if (!res.ok) {
+        const errText = `n8n_${res.status}: ${txt.slice(0, 300)}`;
+        await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
+        return { status: "failed", error: errText };
+      }
+      let executionId: string | null = null;
+      try {
+        const j = JSON.parse(txt);
+        executionId = j?.executionId ?? j?.execution_id ?? null;
+      } catch { /* webhook may return plain text */ }
+      await updateRun({ status: "running", n8n_execution_id: executionId });
+      return { status: "running", executionId };
+    }
+
+    if (provider === "langgraph") {
+      const lgKey = Deno.env.get("LANGGRAPH_API_KEY");
+      const lgBase = Deno.env.get("LANGGRAPH_BASE_URL");
+      if (!lgKey || !lgBase || !opts.langgraphGraphId) {
+        const errText = "langgraph_not_configured";
+        await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
+        return { status: "failed", error: errText };
+      }
+      const res = await fetch(`${lgBase.replace(/\/$/, "")}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": lgKey },
+        body: JSON.stringify({
+          assistant_id: opts.langgraphGraphId,
+          input: payload,
+          metadata: { paige_run_id: runId, source: "mcp" },
+        }),
+        signal: controller.signal,
+      });
+      const txt = await res.text();
+      if (!res.ok) {
+        const errText = `langgraph_${res.status}: ${txt.slice(0, 300)}`;
+        await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
+        return { status: "failed", error: errText };
+      }
+      const j = JSON.parse(txt);
+      const executionId = j?.run_id ?? j?.id ?? null;
+      await updateRun({ status: "running", n8n_execution_id: executionId, result: j });
+      return { status: "running", executionId };
+    }
+
+    if (provider === "direct_edge_function") {
+      if (!opts.directFunctionName) {
+        const errText = "direct_function_name_missing";
+        await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
+        return { status: "failed", error: errText };
+      }
+      const url = `${SUPABASE_URL}/functions/v1/${opts.directFunctionName}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+          apikey: SERVICE_ROLE_KEY,
+        },
+        body: JSON.stringify({ ...payload, paige_run_id: runId, source: "mcp" }),
+        signal: controller.signal,
+      });
+      const txt = await res.text();
+      let resultJson: unknown;
+      try { resultJson = JSON.parse(txt); } catch { resultJson = { raw: txt.slice(0, 1000) }; }
+      if (!res.ok) {
+        const errText = `direct_${res.status}: ${txt.slice(0, 300)}`;
+        await updateRun({
+          status: "failed", error: errText, result: resultJson as never,
+          completed_at: new Date().toISOString(),
+        });
+        return { status: "failed", error: errText };
+      }
+      await updateRun({
+        status: "succeeded", result: resultJson as never,
+        completed_at: new Date().toISOString(),
+      });
+      return { status: "succeeded" };
+    }
+
+    const errText = `unknown_provider:${provider}`;
+    await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
+    return { status: "failed", error: errText };
+  } catch (e) {
+    const errText = (e as Error).message.slice(0, 500);
+    await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
+    return { status: "failed", error: errText };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+
+
 // ---------- Contacts ----------
 mcp.tool("search_contacts", {
   description:
@@ -416,14 +549,39 @@ mcp.tool("run_workflow", {
     "Trigger a Paige workflow by registry key. Returns a run_id you can poll with get_workflow_run. If the workflow has requires_approval=true the run is queued in paige_pending_approvals instead of executing immediately.",
   inputSchema: z.object({
     workflow_key: z.string().describe("paige_workflow_registry.key, e.g. 'sales.lead_followup'"),
-    payload: z.record(z.string(), z.any()).optional().describe("JSON arguments passed to the workflow."),
+    payload: z
+      .union([z.record(z.string(), z.any()), z.string()])
+      .optional()
+      .describe("JSON arguments passed to the workflow. Accepts an object or a JSON-encoded string."),
     contact_id: z.string().optional(),
   }),
   annotations: { destructiveHint: true, openWorldHint: true },
   handler: async (args) => {
+    // Coerce payload: accept object OR JSON string (some MCP clients stringify nested args).
+    let payload: Record<string, unknown> = {};
+    if (args.payload != null) {
+      if (typeof args.payload === "string") {
+        const trimmed = args.payload.trim();
+        if (trimmed.length > 0) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+              payload = parsed as Record<string, unknown>;
+            } else {
+              return err("payload_must_be_json_object");
+            }
+          } catch {
+            return err("payload_invalid_json");
+          }
+        }
+      } else {
+        payload = args.payload as Record<string, unknown>;
+      }
+    }
+
     const { data: wf, error: wfErr } = await admin
       .from("paige_workflow_registry")
-      .select("id, key, requires_approval, is_active")
+      .select("id, key, requires_approval, is_active, provider, n8n_webhook_url, needs_n8n_link, langgraph_graph_id, direct_function_name")
       .eq("key", args.workflow_key)
       .maybeSingle();
     if (wfErr) return err(wfErr.message);
@@ -435,7 +593,7 @@ mcp.tool("run_workflow", {
         .from("paige_pending_approvals")
         .insert({
           type: "workflow_run",
-          draft_content: { workflow_key: args.workflow_key, payload: args.payload ?? {} },
+          draft_content: { workflow_key: args.workflow_key, payload },
           contact_id: args.contact_id ?? null,
           created_by_n8n_workflow_key: args.workflow_key,
           status: "pending",
@@ -452,14 +610,33 @@ mcp.tool("run_workflow", {
       .from("paige_workflow_runs")
       .insert({
         registry_id: wf.id,
-        payload: args.payload ?? {},
+        payload,
         status: "queued",
       })
       .select("id")
       .single();
     if (runErr) return err(runErr.message);
     await audit("run_workflow", "workflow", wf.id, { workflow_key: args.workflow_key, run_id: run.id });
-    return ok({ ok: true, run_id: run.id, status: "queued" });
+
+    // Inline dispatch — route the queued run to its declared provider.
+    const dispatch = await dispatchWorkflowRun({
+      runId: run.id,
+      provider: wf.provider,
+      n8nWebhookUrl: wf.n8n_webhook_url,
+      needsN8nLink: wf.needs_n8n_link,
+      langgraphGraphId: wf.langgraph_graph_id,
+      directFunctionName: wf.direct_function_name,
+      payload,
+    });
+
+    return ok({
+      ok: true,
+      run_id: run.id,
+      status: dispatch.status,
+      provider: wf.provider,
+      n8n_execution_id: dispatch.executionId ?? null,
+      dispatch_error: dispatch.error ?? null,
+    });
   },
 });
 
