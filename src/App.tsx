@@ -190,6 +190,17 @@ const App = () => (
               <Route path="payments" element={<PageSuspense><WorkspacePayments /></PageSuspense>} />
             </Route>
 
+            {/* BTF Onboarding Wizard — admin-triggered, magic-link entry */}
+            <Route path="/onboard" element={<PageSuspense><OnboardLayout /></PageSuspense>}>
+              <Route index element={<PageSuspense><OnboardStep1 /></PageSuspense>} />
+              <Route path="welcome" element={<PageSuspense><OnboardStep1 /></PageSuspense>} />
+              <Route path="agreement" element={<PageSuspense><OnboardStep2 /></PageSuspense>} />
+              <Route path="payment" element={<PageSuspense><OnboardStep3 /></PageSuspense>} />
+              <Route path="intake" element={<PageSuspense><OnboardStep4 /></PageSuspense>} />
+              <Route path="documents" element={<PageSuspense><OnboardStep5 /></PageSuspense>} />
+              <Route path="complete" element={<PageSuspense><OnboardStep6 /></PageSuspense>} />
+            </Route>
+
             {/* Broker workspace (signed-in brokers) */}
             <Route path="/broker/app" element={<PageSuspense><BrokerWorkspace /></PageSuspense>}>
               <Route index element={<PageSuspense><BrokerOverview /></PageSuspense>} />
