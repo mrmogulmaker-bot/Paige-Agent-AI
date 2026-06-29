@@ -121,6 +121,49 @@ const AppShell = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  // Role-based landing redirect: admins/coaches → /admin, brokers → /broker/app,
+  // BTF workspace clients → /workspace. Honors ?stay=1 so users can opt into the
+  // client view (the AdminViewBanner uses this when an internal user wants to
+  // preview the client experience).
+  useEffect(() => {
+    if (!user) return;
+    if (location.pathname !== "/app") return;
+    const params = new URLSearchParams(location.search);
+    if (params.get("stay") === "1") return;
+    try {
+      const stay = sessionStorage.getItem("paige_stay_in_client_view");
+      if (stay === "1") return;
+    } catch {}
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const [rolesRes, clientRes] = await Promise.all([
+          supabase.from("user_roles").select("role").eq("user_id", user.id),
+          supabase.from("clients").select("id").eq("linked_user_id", user.id).maybeSingle(),
+        ]);
+        if (cancelled) return;
+        const roles = (rolesRes.data || []).map((r: any) => r.role);
+        if (roles.includes("admin") || roles.includes("coach")) {
+          navigate("/admin", { replace: true });
+          return;
+        }
+        if (roles.includes("broker") || roles.includes("broker_team_member")) {
+          navigate("/broker/app", { replace: true });
+          return;
+        }
+        if (clientRes.data?.id) {
+          navigate("/workspace", { replace: true });
+        }
+      } catch {
+        /* stay on /app */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, location.pathname, location.search, navigate]);
+
+
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
