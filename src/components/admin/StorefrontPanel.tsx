@@ -142,8 +142,9 @@ export function StorefrontPanel() {
           .order("created_at", { ascending: false }),
         supabase
           .from("tenant_prices")
-          .select("id, product_id, unit_amount, currency, billing_interval")
+          .select("id, product_id, unit_amount, currency, billing_interval, kind, installments_total, nickname")
           .eq("tenant_id", tid)
+          .order("sort_order", { ascending: true })
           .order("created_at", { ascending: false }),
         supabase
           .from("tenant_orders")
