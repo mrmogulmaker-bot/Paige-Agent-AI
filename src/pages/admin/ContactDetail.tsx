@@ -55,6 +55,7 @@ export default function ContactDetail() {
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
+  const { items: contactApprovals } = usePendingApprovals({ contactId: id });
 
   useEffect(() => { if (id) load(id); }, [id]);
 
