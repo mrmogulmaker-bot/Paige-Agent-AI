@@ -16,34 +16,77 @@ export const LIFECYCLE_STAGES: { value: LifecycleStage; label: string; color: st
 ];
 
 export const CONTACT_SOURCES = [
-  "manual", "referral", "website", "ghl", "stripe", "paige", "import", "skool", "event", "partner",
+  "manual", "referral", "website", "tenant_invite", "stripe", "paige", "import", "event", "partner",
 ];
 
-// Productized offers / programs a contact can be enrolled in or pursuing.
-// Used by the New Contact + New Deal dialogs and rendered on pipeline cards.
-export const OFFER_TYPES: { value: string; label: string; group: string }[] = [
-  { value: "btf",            label: "BTF — Build to Fund ($4,997)",  group: "Flagship" },
-  { value: "premium",        label: "Premium Membership ($44/mo)",    group: "Membership" },
-  { value: "vip",            label: "VIP Membership",                 group: "Membership" },
-  { value: "standard",       label: "Standard / Free",                group: "Membership" },
-  { value: "accel",          label: "ACCEL — Personal Credit",        group: "Program" },
-  { value: "build_personal", label: "BUILD — Personal",               group: "Program" },
-  { value: "build_business", label: "BUILD — Business",               group: "Program" },
-  { value: "fund",           label: "FUND — Capital Deployment",      group: "Program" },
-  { value: "launch",         label: "LAUNCH",                         group: "Program" },
-  { value: "drive",          label: "DRIVE",                          group: "Program" },
-  { value: "shield",         label: "SHIELD — Asset Protection",      group: "Program" },
-  { value: "acquire",        label: "ACQUIRE — Business Acquisition", group: "Program" },
-  { value: "coaching",       label: "1:1 Coaching",                   group: "Service" },
-  { value: "consult",        label: "Strategy Consult",               group: "Service" },
-  { value: "other",          label: "Other (custom)",                 group: "Other" },
+// Productized offers a contact can be enrolled in.
+// SOURCE OF TRUTH (June 28, 2026): the CRM only sells BTF and Paige Agent AI.
+// Community / Launch Pad live in other systems — never enroll a contact in those here.
+// Two distinct buckets:
+//   1. CRM-suite offers (`crm_*`) — what a TENANT subscribes to to use this platform.
+//   2. Customer offers (BTF / Paige plans) — what a TENANT enrolls a CONSUMER in.
+export type OfferKind = "crm_suite" | "btf" | "paige";
+
+export const OFFER_TYPES: { value: string; label: string; group: string; kind: OfferKind }[] = [
+  // ── CRM-Suite (Tenant subscriptions — sold by us to coaches/agencies/buyers) ──
+  { value: "crm_coach",      label: "CRM — Coach Workspace ($97/mo)",         group: "CRM Suite", kind: "crm_suite" },
+  { value: "crm_agency",     label: "CRM — Agency Workspace ($297/mo)",       group: "CRM Suite", kind: "crm_suite" },
+  { value: "crm_enterprise", label: "CRM — Enterprise (custom)",              group: "CRM Suite", kind: "crm_suite" },
+
+  // ── BUILD-to-FUND ($4,997 flagship — done-for-you) ──
+  { value: "btf_pif",        label: "BTF — Pay in Full ($4,997)",             group: "BUILD-to-FUND", kind: "btf" },
+  { value: "btf_split",      label: "BTF — Split ($1,997 down + $1,000 × 3)", group: "BUILD-to-FUND", kind: "btf" },
+  { value: "btf_getstarted", label: "BTF — Get-Started ($997 + $497/mo)",     group: "BUILD-to-FUND", kind: "btf" },
+
+  // ── Paige Agent AI (consumer plans — enrolled by tenant for their consumers) ──
+  { value: "paige_enterprise", label: "Paige Enterprise — $497/mo",           group: "Paige Agent AI", kind: "paige" },
+  { value: "paige_scale",      label: "Paige Scale — $397/mo",                group: "Paige Agent AI", kind: "paige" },
+  { value: "paige_growth",     label: "Paige Growth — $149/mo",               group: "Paige Agent AI", kind: "paige" },
+  { value: "paige_starter",    label: "Paige Starter — $49/mo",               group: "Paige Agent AI", kind: "paige" },
+  { value: "paige_free",       label: "Paige Free",                           group: "Paige Agent AI", kind: "paige" },
+
+  { value: "other",          label: "Other (custom)",                         group: "Other", kind: "btf" },
 ];
+
+// Legacy slugs that may still live in DB rows — map onto the new canon so
+// older records still render a readable label instead of a raw slug.
+const LEGACY_OFFER_ALIASES: Record<string, string> = {
+  btf: "btf_pif",
+  premium: "paige_growth",
+  vip: "paige_scale",
+  standard: "paige_free",
+  accel: "other",
+  build_personal: "other",
+  build_business: "other",
+  fund: "other",
+  launch: "other",
+  drive: "other",
+  shield: "other",
+  acquire: "other",
+  coaching: "other",
+  consult: "other",
+};
+
+export function canonicalOffer(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return LEGACY_OFFER_ALIASES[value] ?? value;
+}
 
 export function offerLabel(value: string | null | undefined): string | null {
   if (!value) return null;
-  return OFFER_TYPES.find((o) => o.value === value)?.label ?? value;
+  const canonical = canonicalOffer(value)!;
+  return OFFER_TYPES.find((o) => o.value === canonical)?.label ?? value;
 }
 
+export function offerKind(value: string | null | undefined): OfferKind | null {
+  if (!value) return null;
+  const canonical = canonicalOffer(value)!;
+  return OFFER_TYPES.find((o) => o.value === canonical)?.kind ?? null;
+}
+
+// Offers shown when enrolling a CONSUMER (the typical New Contact / New Deal case).
+// Excludes the CRM-suite SKUs, which are picked at tenant-signup time, not here.
+export const CONSUMER_OFFER_TYPES = OFFER_TYPES.filter((o) => o.kind !== "crm_suite");
 
 export function lifecycleMeta(stage: string | null | undefined) {
   return LIFECYCLE_STAGES.find((s) => s.value === stage) ||
