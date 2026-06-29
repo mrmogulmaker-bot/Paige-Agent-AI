@@ -2114,6 +2114,521 @@ async function sha256Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// ---------- Batch #3: Field-Ops Ingestion (voice/chat from external LLMs) ----------
+// All tools below stage writes through `paige_ingestion_proposals` so that:
+//   1. Every ingest is auditable + reversible.
+//   2. Hallucination guards (range checks, conflict deltas, fuzzy-match disambiguation) run before commit.
+//   3. Tenant scoping is enforced on every read/write.
+//   4. Admins can review `needs_review` items in /admin/approvals.
+//
+// Tools: search_clients_fuzzy, propose_client_update, confirm_proposal, reject_proposal,
+//        ingest_credit_scores, ingest_banking_snapshot, append_client_memory,
+//        list_my_proposals.
+
+const BUREAUS = ["TU", "EX", "EQ"] as const;
+const SCORE_SOURCES = [
+  "soft_pull",
+  "hard_pull",
+  "client_self_reported",
+  "report_upload",
+  "monitoring_service",
+  "voice_dictation",
+] as const;
+const CONFIDENCE = ["high", "medium", "low"] as const;
+
+async function tenantScopedClient(client_id: string): Promise<{ ok: boolean; tenant_id: string | null; reason?: string }> {
+  const tid = await actorTenantId();
+  const { data, error } = await admin
+    .from("clients")
+    .select("id, tenant_id")
+    .eq("id", client_id)
+    .maybeSingle();
+  if (error) return { ok: false, tenant_id: null, reason: error.message };
+  if (!data) return { ok: false, tenant_id: null, reason: "client_not_found" };
+  // Master tenant (MMA) can reach across; everyone else is hard-scoped.
+  if (tid !== MMA_TENANT_ID && data.tenant_id !== tid) {
+    return { ok: false, tenant_id: data.tenant_id as string | null, reason: "cross_tenant_forbidden" };
+  }
+  return { ok: true, tenant_id: data.tenant_id as string | null };
+}
+
+async function recordProposal(input: {
+  client_id: string | null;
+  tool_name: string;
+  target_table: string | null;
+  payload: Record<string, unknown>;
+  diff: Record<string, unknown>;
+  confidence: typeof CONFIDENCE[number];
+  source: string;
+  external_llm_model?: string | null;
+  review_reason?: string | null;
+  auto_status?: "pending" | "needs_review";
+}): Promise<{ id: string } | null> {
+  const actor = currentActor();
+  const tenant_id = input.client_id
+    ? (await admin.from("clients").select("tenant_id").eq("id", input.client_id).maybeSingle()).data?.tenant_id ?? null
+    : await actorTenantId();
+  const { data, error } = await admin
+    .from("paige_ingestion_proposals")
+    .insert({
+      tenant_id,
+      actor_user_id: actor.user_id,
+      actor_role: actor.kind === "user" ? "mcp:user" : "mcp:platform",
+      actor_label: actor.client_id ?? null,
+      client_id: input.client_id,
+      tool_name: input.tool_name,
+      target_table: input.target_table,
+      payload: input.payload,
+      diff: input.diff,
+      status: input.auto_status ?? "pending",
+      confidence: input.confidence,
+      source: input.source,
+      external_llm_model: input.external_llm_model ?? null,
+      review_reason: input.review_reason ?? null,
+    })
+    .select("id")
+    .single();
+  if (error) {
+    console.error("[paige-mcp] recordProposal failed", error.message);
+    return null;
+  }
+  return { id: data.id };
+}
+
+mcp.tool("search_clients_fuzzy", {
+  description:
+    "Voice/chat friendly fuzzy contact lookup. Use this BEFORE any ingest_* tool to resolve which client a teammate is talking about. Returns ranked candidates and a `disambiguation_required` flag when more than one strong match is found.",
+  inputSchema: z.object({
+    query: z.string().describe('Free text: "Marcus from Atlanta", "the Johnson LLC client", an email, or a phone fragment.'),
+    limit: z.number().int().optional(),
+  }),
+  handler: async ({ query, limit }) => {
+    const max = Math.min(Math.max(limit ?? 8, 1), 25);
+    const tid = await actorTenantId();
+    const safe = String(query).replace(/[,()%]/g, " ").trim();
+    if (!safe) return err("empty_query");
+    let q = admin
+      .from("clients")
+      .select("id, first_name, last_name, email, phone, entity_name, city, state, lifecycle_stage, tenant_id, updated_at")
+      .or(
+        `first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,email.ilike.%${safe}%,phone.ilike.%${safe}%,entity_name.ilike.%${safe}%,city.ilike.%${safe}%`,
+      )
+      .order("updated_at", { ascending: false })
+      .limit(max);
+    if (tid && tid !== MMA_TENANT_ID) q = q.eq("tenant_id", tid);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    const items = data ?? [];
+    return ok({
+      items,
+      count: items.length,
+      disambiguation_required: items.length > 1,
+      hint:
+        items.length === 0
+          ? "No match. Ask the teammate for an email, phone, or company name."
+          : items.length === 1
+            ? "Single match. Safe to proceed with the returned id."
+            : "Multiple matches. Read the list back to the teammate and ask which client they mean before calling any ingest_* tool.",
+    });
+  },
+});
+
+mcp.tool("propose_client_update", {
+  description:
+    "Stage a free-form update against a single contact. DOES NOT WRITE. Returns a proposal_id and a diff that the connected LLM MUST read back to the teammate before calling `confirm_proposal`. Use this for ad-hoc changes that don't have a dedicated ingest_* tool.",
+  inputSchema: z.object({
+    client_id: z.string(),
+    updates: z.record(z.any()).describe("Partial fields on clients (whitelisted): first_name, last_name, email, phone, entity_name, entity_type, street_address, city, state, zip_code, funding_goal, monthly_revenue, primary_offer, lifecycle_stage, tier, source, title, website, current_notes."),
+    confidence: z.enum(CONFIDENCE).describe("high = teammate confirmed verbatim, medium = paraphrased, low = unsure/approximate."),
+    external_llm_model: z.string().optional(),
+    review_reason: z.string().optional().describe("Why this might need human review."),
+  }),
+  handler: async ({ client_id, updates, confidence, external_llm_model, review_reason }) => {
+    const scope = await tenantScopedClient(client_id);
+    if (!scope.ok) return err(scope.reason ?? "scope_denied");
+    const ALLOWED = new Set([
+      "first_name","last_name","email","phone","entity_name","entity_type",
+      "street_address","city","state","zip_code","funding_goal","monthly_revenue",
+      "primary_offer","lifecycle_stage","tier","source","title","website","current_notes",
+    ]);
+    const clean: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(updates ?? {})) if (ALLOWED.has(k)) clean[k] = v;
+    if (Object.keys(clean).length === 0) return err("no_whitelisted_fields");
+
+    const { data: current } = await admin.from("clients").select(Object.keys(clean).join(",")).eq("id", client_id).maybeSingle();
+    const diff: Record<string, { from: unknown; to: unknown }> = {};
+    for (const [k, v] of Object.entries(clean)) {
+      diff[k] = { from: (current as Record<string, unknown> | null)?.[k] ?? null, to: v };
+    }
+
+    const needsReview = confidence === "low" || !!review_reason;
+    const proposal = await recordProposal({
+      client_id,
+      tool_name: "propose_client_update",
+      target_table: "clients",
+      payload: { updates: clean },
+      diff,
+      confidence,
+      source: "mcp:field_ops",
+      external_llm_model,
+      review_reason: needsReview ? (review_reason ?? "low_confidence") : null,
+      auto_status: needsReview ? "needs_review" : "pending",
+    });
+    if (!proposal) return err("proposal_insert_failed");
+    await audit("propose_client_update", "client", client_id, { proposal_id: proposal.id, fields: Object.keys(clean) });
+    return ok({
+      proposal_id: proposal.id,
+      client_id,
+      diff,
+      status: needsReview ? "needs_review" : "pending",
+      next_step: needsReview
+        ? "Routed to admin /admin/approvals. Do not call confirm_proposal."
+        : "Read the diff back to the teammate verbatim, then call confirm_proposal with this proposal_id once they say yes.",
+    });
+  },
+});
+
+mcp.tool("ingest_credit_scores", {
+  description:
+    'Record one or more bureau credit scores for a client. Each score must include bureau (TU/EX/EQ), score (300-850), source, and a pulled_on date. Auto-flags as needs_review if (a) confidence=low, (b) score differs from the most recent stored estimate for that bureau by >40 points, or (c) the score falls outside 300-850. On confirm, writes to profiles.estimated_fico_* (when client has a linked user) AND always logs a structured client_memory entry.',
+  inputSchema: z.object({
+    client_id: z.string(),
+    scores: z.array(
+      z.object({
+        bureau: z.enum(BUREAUS),
+        score: z.number().int(),
+        source: z.enum(SCORE_SOURCES),
+        pulled_on: z.string().describe("ISO date, e.g. 2026-06-29."),
+      }),
+    ),
+    confidence: z.enum(CONFIDENCE),
+    external_llm_model: z.string().optional(),
+    auto_confirm: z.boolean().optional().describe("If true AND no review flags, apply immediately without a second tool call. Default false."),
+  }),
+  handler: async (args) => {
+    const scope = await tenantScopedClient(args.client_id);
+    if (!scope.ok) return err(scope.reason ?? "scope_denied");
+
+    // Validation
+    const reviewReasons: string[] = [];
+    for (const s of args.scores) {
+      if (s.score < 300 || s.score > 850) reviewReasons.push(`score_out_of_range:${s.bureau}:${s.score}`);
+      if (Number.isNaN(Date.parse(s.pulled_on))) reviewReasons.push(`bad_date:${s.bureau}`);
+    }
+    if (args.confidence === "low") reviewReasons.push("low_confidence");
+
+    // Conflict detection against profiles.estimated_fico_* via linked_user_id
+    const { data: client } = await admin
+      .from("clients")
+      .select("id, linked_user_id, first_name, last_name")
+      .eq("id", args.client_id)
+      .maybeSingle();
+    let priorScores: Record<string, number | null> = {};
+    if (client?.linked_user_id) {
+      const { data: prof } = await admin
+        .from("profiles")
+        .select("estimated_fico_tu, estimated_fico_ex, estimated_fico_eq")
+        .eq("user_id", client.linked_user_id)
+        .maybeSingle();
+      priorScores = {
+        TU: (prof?.estimated_fico_tu as number | null) ?? null,
+        EX: (prof?.estimated_fico_ex as number | null) ?? null,
+        EQ: (prof?.estimated_fico_eq as number | null) ?? null,
+      };
+      for (const s of args.scores) {
+        const prior = priorScores[s.bureau];
+        if (prior != null && Math.abs(prior - s.score) > 40) {
+          reviewReasons.push(`large_delta:${s.bureau}:${prior}->${s.score}`);
+        }
+      }
+    }
+
+    const needsReview = reviewReasons.length > 0;
+    const diff: Record<string, unknown> = {};
+    for (const s of args.scores) diff[`fico_${s.bureau.toLowerCase()}`] = { from: priorScores[s.bureau] ?? null, to: s.score, source: s.source, pulled_on: s.pulled_on };
+
+    const proposal = await recordProposal({
+      client_id: args.client_id,
+      tool_name: "ingest_credit_scores",
+      target_table: "profiles",
+      payload: { scores: args.scores },
+      diff,
+      confidence: args.confidence,
+      source: "mcp:field_ops",
+      external_llm_model: args.external_llm_model,
+      review_reason: needsReview ? reviewReasons.join(", ") : null,
+      auto_status: needsReview ? "needs_review" : "pending",
+    });
+    if (!proposal) return err("proposal_insert_failed");
+    await audit("ingest_credit_scores", "client", args.client_id, { proposal_id: proposal.id, count: args.scores.length, needs_review: needsReview });
+
+    if (!needsReview && args.auto_confirm) {
+      const applied = await applyProposal(proposal.id);
+      if (!applied.ok) return err(applied.reason ?? "apply_failed");
+      return ok({ proposal_id: proposal.id, status: "applied", applied: applied.applied, client_id: args.client_id });
+    }
+
+    return ok({
+      proposal_id: proposal.id,
+      status: needsReview ? "needs_review" : "pending",
+      diff,
+      review_reasons: reviewReasons,
+      next_step: needsReview
+        ? "Routed to /admin/approvals for human review. Do NOT confirm."
+        : 'Read the scores back verbatim ("TransUnion 520 from a soft pull on 2026-06-29 — correct?"). Then call confirm_proposal.',
+    });
+  },
+});
+
+mcp.tool("ingest_banking_snapshot", {
+  description:
+    "Stage a manual banking snapshot for a client (current balance, avg daily balance, NSFs in last 30d, monthly deposits). Goes through the same proposal workflow as ingest_credit_scores. Applied write lands in manual_banking_entries on confirm.",
+  inputSchema: z.object({
+    client_id: z.string(),
+    bank_name: z.string(),
+    current_balance: z.number().optional(),
+    avg_daily_balance: z.number().optional(),
+    nsf_count_30d: z.number().int().optional(),
+    monthly_deposits: z.number().optional(),
+    period_label: z.string().optional().describe('Free text e.g. "June 2026" or "Last 30 days".'),
+    confidence: z.enum(CONFIDENCE),
+    external_llm_model: z.string().optional(),
+  }),
+  handler: async (args) => {
+    const scope = await tenantScopedClient(args.client_id);
+    if (!scope.ok) return err(scope.reason ?? "scope_denied");
+    const review: string[] = [];
+    if ((args.current_balance ?? 0) < 0) review.push("negative_balance");
+    if ((args.nsf_count_30d ?? 0) > 20) review.push("high_nsf_count");
+    if (args.confidence === "low") review.push("low_confidence");
+
+    const proposal = await recordProposal({
+      client_id: args.client_id,
+      tool_name: "ingest_banking_snapshot",
+      target_table: "manual_banking_entries",
+      payload: args,
+      diff: { snapshot: args },
+      confidence: args.confidence,
+      source: "mcp:field_ops",
+      external_llm_model: args.external_llm_model,
+      review_reason: review.length ? review.join(", ") : null,
+      auto_status: review.length ? "needs_review" : "pending",
+    });
+    if (!proposal) return err("proposal_insert_failed");
+    await audit("ingest_banking_snapshot", "client", args.client_id, { proposal_id: proposal.id });
+    return ok({
+      proposal_id: proposal.id,
+      status: review.length ? "needs_review" : "pending",
+      review_reasons: review,
+      next_step: review.length
+        ? "Routed to /admin/approvals."
+        : "Read snapshot back to teammate, then call confirm_proposal.",
+    });
+  },
+});
+
+mcp.tool("append_client_memory", {
+  description:
+    "Append a structured coach/agent note to a client's long-term memory. Goes straight into client_memory once confirmed. Use this for context Paige should remember (e.g. \"client just had a baby\", \"prefers SBA over MCA\", \"working on Equifax disputes only\").",
+  inputSchema: z.object({
+    client_id: z.string(),
+    note: z.string().describe("Plain text, max 4000 chars."),
+    category: z.enum(["coach_note", "session_summary", "milestone_completed", "lender_researched"]).default("coach_note"),
+    confidence: z.enum(CONFIDENCE),
+    auto_confirm: z.boolean().optional(),
+    external_llm_model: z.string().optional(),
+  }),
+  handler: async (args) => {
+    const scope = await tenantScopedClient(args.client_id);
+    if (!scope.ok) return err(scope.reason ?? "scope_denied");
+    const text = String(args.note).slice(0, 4000);
+    const needsReview = args.confidence === "low";
+    const proposal = await recordProposal({
+      client_id: args.client_id,
+      tool_name: "append_client_memory",
+      target_table: "client_memory",
+      payload: { note: text, category: args.category },
+      diff: { note: { to: text, category: args.category } },
+      confidence: args.confidence,
+      source: "mcp:field_ops",
+      external_llm_model: args.external_llm_model,
+      review_reason: needsReview ? "low_confidence" : null,
+      auto_status: needsReview ? "needs_review" : "pending",
+    });
+    if (!proposal) return err("proposal_insert_failed");
+    await audit("append_client_memory", "client", args.client_id, { proposal_id: proposal.id });
+
+    if (!needsReview && args.auto_confirm) {
+      const applied = await applyProposal(proposal.id);
+      if (!applied.ok) return err(applied.reason ?? "apply_failed");
+      return ok({ proposal_id: proposal.id, status: "applied", applied: applied.applied });
+    }
+    return ok({
+      proposal_id: proposal.id,
+      status: needsReview ? "needs_review" : "pending",
+      next_step: needsReview ? "Routed to /admin/approvals." : "Read back to teammate, then call confirm_proposal.",
+    });
+  },
+});
+
+mcp.tool("confirm_proposal", {
+  description:
+    "Commit a staged ingestion proposal after the teammate has verified the diff verbatim. Applies the write to the underlying table (profiles / client_memory / manual_banking_entries / clients) and stamps `applied`. Rejects proposals that are expired, already-decided, or in needs_review (those require admin sign-off).",
+  inputSchema: z.object({ proposal_id: z.string() }),
+  handler: async ({ proposal_id }) => {
+    const applied = await applyProposal(proposal_id);
+    if (!applied.ok) return err(applied.reason ?? "apply_failed");
+    return ok({ proposal_id, status: "applied", applied: applied.applied });
+  },
+});
+
+mcp.tool("reject_proposal", {
+  description: "Discard a staged proposal. Use when the teammate corrects themselves before confirming.",
+  inputSchema: z.object({ proposal_id: z.string(), reason: z.string().optional() }),
+  handler: async ({ proposal_id, reason }) => {
+    const actor = currentActor();
+    const { error } = await admin
+      .from("paige_ingestion_proposals")
+      .update({ status: "rejected", decided_at: new Date().toISOString(), decided_by: actor.user_id, review_reason: reason ?? null })
+      .eq("id", proposal_id)
+      .in("status", ["pending", "needs_review"]);
+    if (error) return err(error.message);
+    await audit("reject_proposal", "proposal", proposal_id, { reason: reason ?? null });
+    return ok({ proposal_id, status: "rejected" });
+  },
+});
+
+mcp.tool("list_my_proposals", {
+  description: "List recent ingestion proposals the caller created. Useful for status checks (\"did that update go through?\").",
+  inputSchema: z.object({
+    status: z.enum(["pending", "needs_review", "applied", "rejected", "expired"]).optional(),
+    limit: z.number().int().optional(),
+  }),
+  handler: async ({ status, limit }) => {
+    const max = Math.min(Math.max(limit ?? 20, 1), 100);
+    const actor = currentActor();
+    let q = admin
+      .from("paige_ingestion_proposals")
+      .select("id, client_id, tool_name, status, confidence, review_reason, created_at, decided_at")
+      .order("created_at", { ascending: false })
+      .limit(max);
+    if (actor.user_id) q = q.eq("actor_user_id", actor.user_id);
+    if (status) q = q.eq("status", status);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [], count: (data ?? []).length });
+  },
+});
+
+// Shared committer used by confirm_proposal and ingest_*({auto_confirm:true}).
+async function applyProposal(proposal_id: string): Promise<{ ok: boolean; applied?: Record<string, unknown>; reason?: string }> {
+  const { data: prop, error } = await admin
+    .from("paige_ingestion_proposals")
+    .select("*")
+    .eq("id", proposal_id)
+    .maybeSingle();
+  if (error) return { ok: false, reason: error.message };
+  if (!prop) return { ok: false, reason: "proposal_not_found" };
+  if (prop.status !== "pending") return { ok: false, reason: `proposal_status_${prop.status}` };
+  if (prop.expires_at && new Date(prop.expires_at) < new Date()) {
+    await admin.from("paige_ingestion_proposals").update({ status: "expired" }).eq("id", proposal_id);
+    return { ok: false, reason: "proposal_expired" };
+  }
+
+  const actor = currentActor();
+  const payload = (prop.payload ?? {}) as Record<string, any>;
+  const applied: Record<string, unknown> = {};
+
+  try {
+    switch (prop.tool_name) {
+      case "propose_client_update": {
+        const updates = payload.updates ?? {};
+        const { error: upErr } = await admin.from("clients").update(updates).eq("id", prop.client_id);
+        if (upErr) throw upErr;
+        applied.clients = { id: prop.client_id, updated_fields: Object.keys(updates) };
+        break;
+      }
+      case "ingest_credit_scores": {
+        const { data: cli } = await admin.from("clients").select("linked_user_id").eq("id", prop.client_id).maybeSingle();
+        const scores = payload.scores ?? [];
+        if (cli?.linked_user_id) {
+          const patch: Record<string, number | string> = {};
+          for (const s of scores) {
+            if (s.bureau === "TU") patch.estimated_fico_tu = s.score;
+            if (s.bureau === "EX") patch.estimated_fico_ex = s.score;
+            if (s.bureau === "EQ") patch.estimated_fico_eq = s.score;
+          }
+          if (Object.keys(patch).length) {
+            const { error: pErr } = await admin.from("profiles").update(patch).eq("user_id", cli.linked_user_id);
+            if (pErr) throw pErr;
+            applied.profiles = { user_id: cli.linked_user_id, patch };
+          }
+        }
+        // Always log a structured memory entry so non-linked clients still capture history.
+        const summary = scores
+          .map((s: any) => `${s.bureau} ${s.score} (${s.source}, ${s.pulled_on})`)
+          .join("; ");
+        const { error: mErr } = await admin.from("client_memory").insert({
+          client_user_id: actor.user_id ?? "00000000-0000-0000-0000-000000000000",
+          client_id: prop.client_id,
+          memory_type: "report_upload",
+          content: `Credit scores ingested via MCP field-ops: ${summary}`,
+          metadata: { proposal_id, scores, source: "mcp:field_ops", external_llm_model: prop.external_llm_model ?? null },
+        });
+        if (mErr) console.error("[apply credit_scores] memory insert failed", mErr.message);
+        applied.client_memory = { logged: true };
+        break;
+      }
+      case "ingest_banking_snapshot": {
+        const ins: Record<string, unknown> = {
+          client_id: prop.client_id,
+          bank_name: payload.bank_name ?? "Unknown",
+          current_balance: payload.current_balance ?? null,
+          avg_daily_balance: payload.avg_daily_balance ?? null,
+          nsf_count_30d: payload.nsf_count_30d ?? null,
+          monthly_deposits: payload.monthly_deposits ?? null,
+        };
+        const { data: bRow, error: bErr } = await admin.from("manual_banking_entries").insert(ins).select("id").single();
+        if (bErr) throw bErr;
+        applied.manual_banking_entries = { id: bRow?.id };
+        break;
+      }
+      case "append_client_memory": {
+        const { data: mRow, error: mErr } = await admin
+          .from("client_memory")
+          .insert({
+            client_user_id: actor.user_id ?? "00000000-0000-0000-0000-000000000000",
+            client_id: prop.client_id,
+            memory_type: payload.category ?? "coach_note",
+            content: payload.note,
+            metadata: { proposal_id, source: "mcp:field_ops", external_llm_model: prop.external_llm_model ?? null },
+          })
+          .select("id")
+          .single();
+        if (mErr) throw mErr;
+        applied.client_memory = { id: mRow?.id };
+        break;
+      }
+      default:
+        return { ok: false, reason: `unknown_tool:${prop.tool_name}` };
+    }
+  } catch (e) {
+    const msg = (e as Error).message;
+    await admin
+      .from("paige_ingestion_proposals")
+      .update({ status: "needs_review", review_reason: `apply_failed: ${msg}` })
+      .eq("id", proposal_id);
+    return { ok: false, reason: `apply_failed:${msg}` };
+  }
+
+  await admin
+    .from("paige_ingestion_proposals")
+    .update({ status: "applied", decided_at: new Date().toISOString(), decided_by: actor.user_id, applied_row_ids: applied })
+    .eq("id", proposal_id);
+  await audit("apply_proposal", "proposal", proposal_id, { tool: prop.tool_name, applied });
+  return { ok: true, applied };
+}
+
 // ---------- HTTP transport + bearer auth ----------
 const app = new Hono();
 const transport = new StreamableHttpTransport();
