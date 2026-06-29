@@ -16,6 +16,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
+import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
+import { useTenantContext } from "@/hooks/useTenantContext";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
