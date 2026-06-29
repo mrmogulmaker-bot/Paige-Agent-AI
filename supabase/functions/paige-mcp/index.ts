@@ -3,7 +3,7 @@
 // Auth: Bearer PAIGE_MCP_PLATFORM_KEY in Authorization header.
 //
 // Tool catalog:
-//  CRM (10): search_contacts, get_contact, update_contact_stage, add_contact_note,
+//  CRM (10): search_contacts, get_contact, update_contact_stage [DEPRECATED → update_lifecycle_stage], add_contact_note,
 //            list_deals, move_deal_stage, create_deal, list_tasks, create_task, complete_task
 //  Workflows (5): list_workflows, run_workflow*, get_workflow_run,
 //                 list_pending_approvals, decide_pending_approval*
@@ -167,7 +167,7 @@ mcp.tool("get_contact", {
 
 mcp.tool("update_contact_stage", {
   description:
-    "Move a contact through the lifecycle pipeline (e.g. lead → qualifying → active → won). Idempotent — calling with the current stage is a no-op.",
+    "DEPRECATED — use `update_lifecycle_stage` instead. Free-form predecessor that accepts any string for `lifecycle_stage`. Kept for backward compatibility with existing automations; will be removed in a future release. New callers should use update_lifecycle_stage (Doctrine §111 enum-validated).",
   inputSchema: z.object({
     contact_id: z.string(),
     lifecycle_stage: z.string().describe("New value, e.g. 'lead', 'qualifying', 'active', 'won', 'lost', 'self_serve'."),
