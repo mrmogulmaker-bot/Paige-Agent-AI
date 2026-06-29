@@ -1,24 +1,43 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import fs from "fs";
 import { componentTagger } from "lovable-tagger";
 
+// Serve /.well-known/* JSON files (oauth-protected-resource,
+// oauth-authorization-server) in dev. Static dotfile dirs are otherwise
+// filtered by sirv/Vite's default config, but MCP clients require them at the
+// host root. Production CDN serves them straight from /public/.well-known/.
+function wellKnownPlugin() {
+  return {
+    name: "well-known-static",
+    configureServer(server: any) {
+      server.middlewares.use((req: any, res: any, next: any) => {
+        if (req.url && req.url.startsWith("/.well-known/")) {
+          const rel = req.url.split("?")[0];
+          const fp = path.resolve(__dirname, "public" + rel);
+          if (fs.existsSync(fp) && fs.statSync(fp).isFile()) {
+            res.setHeader("Content-Type", "application/json");
+            res.setHeader("Cache-Control", "no-store");
+            res.setHeader("Access-Control-Allow-Origin", "*");
+            res.end(fs.readFileSync(fp));
+            return;
+          }
+        }
+        next();
+      });
+    },
+  };
+}
+
 // https://vitejs.dev/config/
-// NOTE: VitePWA / workbox precaching has been intentionally REMOVED.
-// It was generating a service worker that cached index.html + JS/CSS bundles,
-// causing users to see stale builds after we published updates (they had to
-// refresh twice — or hard-refresh — to get the new version).
-//
-// Push-notification support still works via the hand-written /public/sw.js,
-// which is registered on demand by usePushNotifications and does NOT cache
-// any app assets. "Add to Home Screen" still works via /public/manifest
-// links in index.html / icons.
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
   },
-  plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [react(), wellKnownPlugin(), mode === "development" && componentTagger()].filter(Boolean),
+
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
