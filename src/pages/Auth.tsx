@@ -44,6 +44,13 @@ const Auth = () => {
   }, [searchParams]);
 
   const redirectByRole = async (userId: string) => {
+    // Honor ?next= for invite acceptance flows (e.g. /join/:token).
+    // Only same-origin relative paths are allowed.
+    const nextParam = searchParams.get("next");
+    if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
+      navigate(nextParam);
+      return;
+    }
     try {
       const { data: roles } = await supabase
         .from("user_roles")
