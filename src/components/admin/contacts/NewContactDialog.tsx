@@ -34,6 +34,7 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
   const [notes, setNotes] = useState("");
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [saving, setSaving] = useState(false);
+  const { offers: tenantOffers } = useTenantOffers();
 
   useEffect(() => {
     if (!open) return;
