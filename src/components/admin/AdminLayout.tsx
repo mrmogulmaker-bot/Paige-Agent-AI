@@ -201,6 +201,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               >
                 <item.icon className="w-4 h-4" />
                 <span>{item.label}</span>
+                {item.href === "/admin/approvals" && pendingCount > 0 && (
+                  <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] bg-accent text-accent-foreground">
+                    {pendingCount > 99 ? "99+" : pendingCount}
+                  </Badge>
+                )}
                 {active && (
                   <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-t-full" />
                 )}
