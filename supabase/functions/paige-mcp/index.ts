@@ -2580,17 +2580,38 @@ async function applyProposal(proposal_id: string): Promise<{ ok: boolean; applie
         break;
       }
       case "ingest_banking_snapshot": {
-        const ins: Record<string, unknown> = {
-          client_id: prop.client_id,
-          bank_name: payload.bank_name ?? "Unknown",
-          current_balance: payload.current_balance ?? null,
-          avg_daily_balance: payload.avg_daily_balance ?? null,
-          nsf_count_30d: payload.nsf_count_30d ?? null,
-          monthly_deposits: payload.monthly_deposits ?? null,
-        };
-        const { data: bRow, error: bErr } = await admin.from("manual_banking_entries").insert(ins).select("id").single();
-        if (bErr) throw bErr;
-        applied.manual_banking_entries = { id: bRow?.id };
+        const { data: cli } = await admin
+          .from("clients")
+          .select("linked_user_id")
+          .eq("id", prop.client_id)
+          .maybeSingle();
+        if (!cli?.linked_user_id) {
+          // No linked auth user — capture the snapshot as a structured memory entry instead.
+          await admin.from("client_memory").insert({
+            client_user_id: actor.user_id ?? "00000000-0000-0000-0000-000000000000",
+            client_id: prop.client_id,
+            memory_type: "session_summary",
+            content: `Banking snapshot (no linked user): ${JSON.stringify(payload)}`,
+            metadata: { proposal_id, source: "mcp:field_ops:banking_no_link" },
+          });
+          applied.client_memory = { logged: true, note: "client has no linked_user_id; stored in memory" };
+        } else {
+          const { data: bRow, error: bErr } = await admin
+            .from("manual_banking_entries")
+            .upsert(
+              {
+                user_id: cli.linked_user_id,
+                avg_daily_balance: payload.avg_daily_balance ?? 0,
+                avg_monthly_revenue: payload.monthly_deposits ?? 0,
+                monthly_nsf_count: payload.nsf_count_30d ?? 0,
+              },
+              { onConflict: "user_id" },
+            )
+            .select("id")
+            .single();
+          if (bErr) throw bErr;
+          applied.manual_banking_entries = { id: bRow?.id, user_id: cli.linked_user_id };
+        }
         break;
       }
       case "append_client_memory": {
