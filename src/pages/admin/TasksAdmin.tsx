@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,33 +17,29 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CheckSquare, Clock, Plus, Pencil, Trash2, RotateCcw, Check } from "lucide-react";
-import { toast } from "sonner";
+import { useTasks, type Task } from "@/hooks/useTasks";
 
-type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
-
-type TaskRow = {
-  id: string;
-  user_id: string;
-  title: string;
-  description: string | null;
-  status: TaskStatus;
-  due_date: string | null;
-  track: string | null;
-  deal_id: string | null;
-  created_at: string;
-};
-
+type TaskStatus = Task["status"];
 const STATUS_OPTS: TaskStatus[] = ["pending", "in_progress", "completed", "cancelled"];
 
 export default function TasksAdmin() {
-  const [meId, setMeId] = useState<string | null>(null);
-  const [mine, setMine] = useState<TaskRow[]>([]);
-  const [all, setAll] = useState<TaskRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    tasks,
+    loading,
+    currentUserId,
+    createTaskRaw,
+    updateTask,
+    deleteTask,
+  } = useTasks({ scope: "all", limit: 200 });
+
+  const mine = useMemo(
+    () => tasks.filter((t) => t.user_id === currentUserId),
+    [tasks, currentUserId],
+  );
 
   // editor dialog state
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editing, setEditing] = useState<TaskRow | null>(null);
+  const [editing, setEditing] = useState<Task | null>(null);
   const [fTitle, setFTitle] = useState("");
   const [fDesc, setFDesc] = useState("");
   const [fStatus, setFStatus] = useState<TaskStatus>("pending");
@@ -53,23 +48,6 @@ export default function TasksAdmin() {
   const [fOwner, setFOwner] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { load(); }, []);
-
-  const load = async () => {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    setMeId(user?.id || null);
-    const { data } = await supabase
-      .from("tasks")
-      .select("*")
-      .order("due_date", { ascending: true, nullsFirst: false })
-      .limit(200);
-    const tasks = (data || []) as TaskRow[];
-    setAll(tasks);
-    setMine(tasks.filter((t) => t.user_id === user?.id));
-    setLoading(false);
-  };
-
   const openNew = () => {
     setEditing(null);
     setFTitle("");
@@ -77,11 +55,11 @@ export default function TasksAdmin() {
     setFStatus("pending");
     setFTrack("");
     setFDue("");
-    setFOwner(meId || "");
+    setFOwner(currentUserId || "");
     setEditorOpen(true);
   };
 
-  const openEdit = (t: TaskRow) => {
+  const openEdit = (t: Task) => {
     setEditing(t);
     setFTitle(t.title);
     setFDesc(t.description || "");
@@ -93,8 +71,7 @@ export default function TasksAdmin() {
   };
 
   const save = async () => {
-    if (!fTitle.trim()) { toast.error("Title is required"); return; }
-    if (!fOwner.trim()) { toast.error("Assignee (user_id) is required"); return; }
+    if (!fTitle.trim() || !fOwner.trim()) return;
     setSaving(true);
     const payload = {
       title: fTitle.trim(),
@@ -104,32 +81,19 @@ export default function TasksAdmin() {
       due_date: fDue ? new Date(fDue).toISOString() : null,
       user_id: fOwner.trim(),
     };
-    const { error } = editing
-      ? await supabase.from("tasks").update(payload).eq("id", editing.id)
-      : await supabase.from("tasks").insert(payload);
+    const result = editing
+      ? await updateTask(editing.id, payload)
+      : await createTaskRaw(payload);
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success(editing ? "Task updated" : "Task created");
-    setEditorOpen(false);
-    load();
+    if (result) setEditorOpen(false);
   };
 
-  const toggleComplete = async (t: TaskRow) => {
+  const toggleComplete = async (t: Task) => {
     const next: TaskStatus = t.status === "completed" ? "pending" : "completed";
-    const { error } = await supabase.from("tasks").update({ status: next }).eq("id", t.id);
-    if (error) { toast.error(error.message); return; }
-    toast.success(next === "completed" ? "Marked complete" : "Reopened");
-    load();
+    await updateTask(t.id, { status: next });
   };
 
-  const remove = async (t: TaskRow) => {
-    const { error } = await supabase.from("tasks").delete().eq("id", t.id);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Task deleted");
-    load();
-  };
-
-  const renderList = (items: TaskRow[]) => {
+  const renderList = (items: Task[]) => {
     if (loading) return <div className="p-8 text-center text-muted-foreground">Loading…</div>;
     if (!items.length) return <div className="p-8 text-center text-muted-foreground">No tasks.</div>;
     return (
@@ -176,7 +140,7 @@ export default function TasksAdmin() {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => remove(t)}>Delete</AlertDialogAction>
+                    <AlertDialogAction onClick={() => deleteTask(t.id)}>Delete</AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
@@ -250,10 +214,10 @@ export default function TasksAdmin() {
         <Tabs defaultValue="mine">
           <TabsList className="m-3">
             <TabsTrigger value="mine">Assigned to me ({mine.length})</TabsTrigger>
-            <TabsTrigger value="all">All visible ({all.length})</TabsTrigger>
+            <TabsTrigger value="all">All visible ({tasks.length})</TabsTrigger>
           </TabsList>
           <TabsContent value="mine" className="mt-0">{renderList(mine)}</TabsContent>
-          <TabsContent value="all" className="mt-0">{renderList(all)}</TabsContent>
+          <TabsContent value="all" className="mt-0">{renderList(tasks)}</TabsContent>
         </Tabs>
       </Card>
     </div>

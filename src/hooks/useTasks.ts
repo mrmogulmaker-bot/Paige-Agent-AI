@@ -27,21 +27,35 @@ export interface Task {
   biz_id?: string | null;
 }
 
-export const useTasks = () => {
+export interface UseTasksOptions {
+  /** 'self' (default) limits to current user's tasks; 'all' fetches every visible row (admin). */
+  scope?: "self" | "all";
+  /** Cap the number of rows returned. */
+  limit?: number;
+}
+
+export const useTasks = (options: UseTasksOptions = {}) => {
+  const { scope = "self", limit } = options;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const fetchTasks = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setCurrentUserId(user.id);
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("tasks")
         .select("*")
-        .eq("user_id", user.id)
         .order("due_date", { ascending: true, nullsFirst: false });
+
+      if (scope === "self") query = query.eq("user_id", user.id);
+      if (limit) query = query.limit(limit);
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setTasks((data || []) as unknown as Task[]);
@@ -412,10 +426,52 @@ export const useTasks = () => {
     };
   }, []);
 
+  /**
+   * Validation-free create used by admin/operator + client workspace flows where
+   * Personal-vs-Business-credit keyword filtering does not apply. Accepts an
+   * explicit owner so admins can assign tasks to other users.
+   */
+  const createTaskRaw = async (
+    taskData: Partial<Task> & { user_id?: string }
+  ) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data, error } = await supabase
+        .from("tasks")
+        .insert([{
+          user_id: taskData.user_id || user.id,
+          title: taskData.title || "",
+          description: taskData.description ?? null,
+          status: taskData.status || "pending",
+          track: taskData.track ?? null,
+          due_date: taskData.due_date ?? null,
+          metadata: (taskData.metadata as any) ?? null,
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      await fetchTasks();
+      return data as unknown as Task;
+    } catch (error) {
+      console.error("Error creating task:", error);
+      toast({
+        title: "Error",
+        description: "Failed to create task",
+        variant: "destructive",
+      });
+      return null;
+    }
+  };
+
   return {
     tasks,
     loading,
+    currentUserId,
     createTask,
+    createTaskRaw,
     updateTask,
     deleteTask,
     generateAccelTasks,
