@@ -57,13 +57,13 @@ Deno.serve(async (req) => {
     const { error: delErr } = await admin.from("clients").delete().eq("id", contactId);
     if (delErr) return json(400, { ok: false, error: delErr.message });
 
-    // Audit
+    // Audit (best effort)
     await admin.from("audit_logs").insert({
       action: "contact.deleted",
-      target_type: "client",
-      target_id: contactId,
-      actor_user_id: user.id,
-      metadata: { source: "delete-contact-fn" },
+      entity: "client",
+      entity_id: contactId,
+      user_id: user.id,
+      data: { source: "delete-contact-fn" },
     }).then(() => {}).catch(() => {});
 
     return json(200, { ok: true, deleted_id: contactId });
