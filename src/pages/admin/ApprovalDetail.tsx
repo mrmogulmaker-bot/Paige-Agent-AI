@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   ArrowLeft, Send, Pencil, SkipForward, AlertTriangle, MessageSquare,
-  UserCog, Check, RotateCcw, Shield,
+  UserCog, Check, RotateCcw, Shield, Eye, EyeOff,
 } from "lucide-react";
 import {
   CATEGORY_LABEL, RISK_COLOR, type ApprovalCategory,
