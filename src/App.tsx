@@ -83,6 +83,13 @@ const WorkspaceDocuments = lazyWithReload(() => import("./pages/workspace/Worksp
 const WorkspaceMessages = lazyWithReload(() => import("./pages/workspace/WorkspaceMessages"));
 const WorkspacePayments = lazyWithReload(() => import("./pages/workspace/WorkspacePayments"));
 const WorkspaceAcceptInvite = lazyWithReload(() => import("./pages/workspace/AcceptInvite"));
+const OnboardLayout = lazyWithReload(() => import("./pages/onboard/OnboardLayout"));
+const OnboardStep1 = lazyWithReload(() => import("./pages/onboard/Step1Welcome"));
+const OnboardStep2 = lazyWithReload(() => import("./pages/onboard/Step2Agreement"));
+const OnboardStep3 = lazyWithReload(() => import("./pages/onboard/Step3Payment"));
+const OnboardStep4 = lazyWithReload(() => import("./pages/onboard/Step4Intake"));
+const OnboardStep5 = lazyWithReload(() => import("./pages/onboard/Step5Documents"));
+const OnboardStep6 = lazyWithReload(() => import("./pages/onboard/Step6Complete"));
 const AcceptInvite = lazyWithReload(() => import("./pages/AcceptInvite"));
 
 // Lazy-load existing dashboard sections for /app/* routes
