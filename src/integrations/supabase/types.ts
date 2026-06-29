@@ -9218,6 +9218,11 @@ export type Database = {
           avatar_url: string | null
           biggest_obstacle: string | null
           city: string | null
+          coach_accepting_clients: boolean
+          coach_bio: string | null
+          coach_capacity: number | null
+          coach_specialties: string[]
+          coach_timezone: string | null
           consent_data_usage: boolean
           consent_marketing: boolean
           consent_privacy_policy: boolean
@@ -9293,6 +9298,11 @@ export type Database = {
           avatar_url?: string | null
           biggest_obstacle?: string | null
           city?: string | null
+          coach_accepting_clients?: boolean
+          coach_bio?: string | null
+          coach_capacity?: number | null
+          coach_specialties?: string[]
+          coach_timezone?: string | null
           consent_data_usage?: boolean
           consent_marketing?: boolean
           consent_privacy_policy?: boolean
@@ -9368,6 +9378,11 @@ export type Database = {
           avatar_url?: string | null
           biggest_obstacle?: string | null
           city?: string | null
+          coach_accepting_clients?: boolean
+          coach_bio?: string | null
+          coach_capacity?: number | null
+          coach_specialties?: string[]
+          coach_timezone?: string | null
           consent_data_usage?: boolean
           consent_marketing?: boolean
           consent_privacy_policy?: boolean
@@ -11428,7 +11443,12 @@ export type Database = {
         Returns: Json
       }
       accept_tenant_invite: { Args: { _token: string }; Returns: string }
+      admin_bulk_assign_coach: {
+        Args: { _client_ids: string[]; _coach: string }
+        Returns: Json
+      }
       admin_meta_capi_token_is_set: { Args: never; Returns: boolean }
+      admin_remove_coach_role: { Args: { _user_id: string }; Returns: Json }
       admin_set_meta_capi_token: {
         Args: { _token: string }
         Returns: undefined
@@ -11627,6 +11647,11 @@ export type Database = {
           avatar_url: string | null
           biggest_obstacle: string | null
           city: string | null
+          coach_accepting_clients: boolean
+          coach_bio: string | null
+          coach_capacity: number | null
+          coach_specialties: string[]
+          coach_timezone: string | null
           consent_data_usage: boolean
           consent_marketing: boolean
           consent_privacy_policy: boolean
