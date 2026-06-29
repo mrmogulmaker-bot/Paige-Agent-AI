@@ -34,6 +34,8 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
   const [ownerId, setOwnerId] = useState<string>("me");
   const [value, setValue] = useState<string>("");
   const [closeDate, setCloseDate] = useState<string>("");
+  const [offerType, setOfferType] = useState<string>("none");
+  const [offerCustom, setOfferCustom] = useState("");
   const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [contactSearch, setContactSearch] = useState("");
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
