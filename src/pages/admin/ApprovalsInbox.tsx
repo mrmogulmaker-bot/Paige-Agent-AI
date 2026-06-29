@@ -62,9 +62,22 @@ export default function ApprovalsInbox() {
           <Inbox className="w-6 h-6" /> Approvals
         </h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          AI-drafted items waiting for human approval. Updates live.
+          AI-drafted items and field-ops ingest waiting for human approval.
         </p>
       </div>
+
+      <Tabs defaultValue="drafts">
+        <TabsList>
+          <TabsTrigger value="drafts" className="gap-1.5">
+            <Inbox className="w-3.5 h-3.5" /> Drafts
+          </TabsTrigger>
+          <TabsTrigger value="field" className="gap-1.5">
+            <Mic className="w-3.5 h-3.5" /> Field Ingestion
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="drafts" className="mt-4">
+
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-3">
