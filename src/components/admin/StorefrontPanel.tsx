@@ -239,54 +239,38 @@ export function StorefrontPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!connect && (
-            <Button onClick={startConnect}>
-              Connect Stripe account
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </Button>
-          )}
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+            <div className="flex items-center gap-2 font-medium text-amber-700 dark:text-amber-400">
+              <AlertCircle className="w-4 h-4" />
+              Stripe connection paused — placeholder mode
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              You can still create products, configure your storefront, and
+              preview the public page. Live checkout will activate once a Stripe
+              account is connected.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" disabled>
+                Connect Stripe (coming soon)
+              </Button>
+              <Button size="sm" variant="ghost" onClick={refreshStatus}>
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                Refresh status
+              </Button>
+            </div>
+          </div>
           {connect && (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  variant={connectReady ? "default" : "secondary"}
-                  className="gap-1"
-                >
-                  {connectReady ? (
-                    <CheckCircle2 className="w-3 h-3" />
-                  ) : (
-                    <AlertCircle className="w-3 h-3" />
-                  )}
-                  {connectReady ? "Charges enabled" : "Setup incomplete"}
-                </Badge>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary" className="gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                Existing account on file
+              </Badge>
+              {connect.country && (
                 <Badge variant="outline">
-                  Payouts: {connect.payouts_enabled ? "on" : "off"}
+                  {connect.country.toUpperCase()} •{" "}
+                  {(connect.default_currency ?? "").toUpperCase()}
                 </Badge>
-                {connect.country && (
-                  <Badge variant="outline">
-                    {connect.country.toUpperCase()} •{" "}
-                    {(connect.default_currency ?? "").toUpperCase()}
-                  </Badge>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {!connectReady && (
-                  <Button size="sm" onClick={startConnect}>
-                    Finish onboarding
-                  </Button>
-                )}
-                <Button size="sm" variant="outline" onClick={refreshStatus}>
-                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-                  Refresh status
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={openStripeLogin}
-                >
-                  Open Stripe dashboard
-                </Button>
-              </div>
+              )}
             </div>
           )}
         </CardContent>
