@@ -19,6 +19,7 @@ import { BusinessCreditTab } from "@/components/admin/contacts/BusinessCreditTab
 import { OwnerCreditTab } from "@/components/admin/contacts/OwnerCreditTab";
 import { BankingTab } from "@/components/admin/contacts/BankingTab";
 import { CashFlowTab } from "@/components/admin/contacts/CashFlowTab";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
 
 type Client = {
   id: string;
@@ -120,6 +121,7 @@ export default function ContactDetail() {
   };
 
   const fullName = useMemo(() => client ? `${client.first_name} ${client.last_name}`.trim() : "", [client]);
+  const { enabled: btfEnabled } = useTenantFeature("btf_enabled");
   const coachName = (uid: string | null) => uid ? (coaches.find((c) => c.user_id === uid)?.name || "Coach") : "Unassigned";
 
   const sendBtfInvite = async () => {
@@ -187,13 +189,17 @@ export default function ContactDetail() {
         <Button variant="outline" size="sm" onClick={() => navigate(`/admin/contacts/${client.id}/journey`)}>
           <Activity className="h-4 w-4 mr-1" /> Member Journey
         </Button>
-        <Button variant="outline" size="sm" onClick={sendBtfInvite}>
-          <Send className="h-4 w-4 mr-1" /> Resend BTF Invite
-        </Button>
-        {client.lifecycle_stage === "won" && (
-          <Button size="sm" onClick={startOnboarding}>
-            <Send className="h-4 w-4 mr-1" /> Start Onboarding
-          </Button>
+        {btfEnabled && (
+          <>
+            <Button variant="outline" size="sm" onClick={sendBtfInvite}>
+              <Send className="h-4 w-4 mr-1" /> Resend BTF Invite
+            </Button>
+            {client.lifecycle_stage === "won" && (
+              <Button size="sm" onClick={startOnboarding}>
+                <Send className="h-4 w-4 mr-1" /> Start Onboarding
+              </Button>
+            )}
+          </>
         )}
         {client.linked_user_id && (
           <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/user/${client.linked_user_id}`)}>

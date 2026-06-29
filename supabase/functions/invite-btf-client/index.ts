@@ -86,6 +86,29 @@ Deno.serve(async (req) => {
     return err(401, "UNAUTHORIZED", "Missing credentials");
   }
 
+  // ----- Tenant feature gate -----
+  // BTF is exclusive to tenants where features.btf_enabled = true (Mogul Maker Academy).
+  // MMA OS service calls bypass this — that integration IS the MMA tenant.
+  if (authMode === "user" && actingUserId) {
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("active_tenant_id")
+      .eq("user_id", actingUserId)
+      .maybeSingle();
+    const tenantId = profile?.active_tenant_id;
+    if (tenantId) {
+      const { data: tenant } = await admin
+        .from("tenants")
+        .select("features")
+        .eq("id", tenantId)
+        .maybeSingle();
+      const btfEnabled = (tenant?.features as Record<string, unknown> | null)?.btf_enabled === true;
+      if (!btfEnabled) {
+        return err(403, "BTF_NOT_ENABLED", "BTF program is not enabled for this workspace");
+      }
+    }
+  }
+
   // ----- Parse body -----
   let body: any;
   try { body = await req.json(); } catch { return err(400, "INVALID_BODY", "Invalid JSON"); }

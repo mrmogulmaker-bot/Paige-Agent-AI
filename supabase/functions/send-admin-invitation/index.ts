@@ -58,13 +58,14 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Creating invitation for ${email} with role ${role}`);
 
-    // Get inviter's name for the email
+    // Get inviter's name + active tenant for the email
     const { data: inviterProfile } = await supabase
       .from("profiles")
-      .select("full_name")
+      .select("full_name, active_tenant_id")
       .eq("user_id", user.id)
       .single();
     const inviterName = inviterProfile?.full_name || user.email || "An administrator";
+    const inviterTenantId = inviterProfile?.active_tenant_id || null;
 
     // 1. Check if user already exists
     const { data: existingUsers } = await supabase.auth.admin.listUsers();
@@ -135,6 +136,7 @@ const handler = async (req: Request): Promise<Response> => {
         templateName: templateName || "role-invitation",
         recipientEmail: email,
         idempotencyKey: `invite-${invitation.id}`,
+        tenantId: inviterTenantId,
         templateData: { role: roleLabel, inviteUrl, invitedBy: inviterName, message: message ?? null },
       },
     });

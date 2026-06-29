@@ -68,6 +68,9 @@ Deno.serve(async (req) => {
   let idempotencyKey: string
   let messageId: string
   let templateData: Record<string, any> = {}
+  let tenantId: string | null = null
+  let fromOverride: string | null = null
+  let replyToOverride: string | null = null
   try {
     const body = await req.json()
     templateName = body.templateName || body.template_name
@@ -78,6 +81,9 @@ Deno.serve(async (req) => {
     if (body.templateData && typeof body.templateData === 'object') {
       templateData = body.templateData
     }
+    tenantId = body.tenantId || body.tenant_id || null
+    fromOverride = body.fromOverride || body.from_override || null
+    replyToOverride = body.replyToOverride || body.reply_to_override || null
   } catch {
     return new Response(
       JSON.stringify({ error: 'Invalid JSON in request body' }),
@@ -249,7 +255,29 @@ Deno.serve(async (req) => {
       ? template.subject(templateData)
       : template.subject
 
-  // 5. Enqueue the pre-rendered email for async processing by the dispatcher.
+  // 5. Resolve sender identity.
+  // Default: shared Paige subdomain with the project's From name.
+  // If a tenantId is provided, look up the tenant's sender identity so each
+  // tenant's invites/notifications show their own name in the From header.
+  // Explicit fromOverride / replyToOverride always win.
+  let resolvedFrom = `${SITE_NAME} <noreply@${FROM_DOMAIN}>`
+  let resolvedReplyTo: string | null = null
+  if (tenantId) {
+    const { data: senderRow } = await supabase.rpc('tenant_sender_identity', {
+      _tenant_id: tenantId,
+    })
+    const sender = (senderRow ?? null) as
+      | { from_name?: string; from_address?: string; reply_to?: string }
+      | null
+    if (sender?.from_name && sender?.from_address) {
+      resolvedFrom = `${sender.from_name} <${sender.from_address}>`
+      resolvedReplyTo = sender.reply_to ?? null
+    }
+  }
+  if (fromOverride) resolvedFrom = fromOverride
+  if (replyToOverride) resolvedReplyTo = replyToOverride
+
+  // 6. Enqueue the pre-rendered email for async processing by the dispatcher.
   // The dispatcher (process-email-queue) handles sending, retries, and rate-limit backoff.
 
   // Log pending BEFORE enqueue so we have a record even if enqueue crashes
@@ -258,6 +286,8 @@ Deno.serve(async (req) => {
     template_name: templateName,
     recipient_email: effectiveRecipient,
     status: 'pending',
+    tenant_id: tenantId,
+    metadata: { from: resolvedFrom, reply_to: resolvedReplyTo },
   })
 
   const { error: enqueueError } = await supabase.rpc('enqueue_email', {
@@ -265,7 +295,7 @@ Deno.serve(async (req) => {
     payload: {
       message_id: messageId,
       to: effectiveRecipient,
-      from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
+      from: resolvedFrom,
       sender_domain: SENDER_DOMAIN,
       subject: resolvedSubject,
       html,

@@ -68,6 +68,26 @@ Deno.serve(async (req) => {
   const isOwner = client.lead_owner_user_id === actorId;
   if (!isAdmin && !isOwner) return err(403, "FORBIDDEN", "Admin or contact owner required");
 
+  // ----- Tenant feature gate -----
+  // BTF onboarding is exclusive to tenants with features.btf_enabled = true (MMA).
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("active_tenant_id")
+    .eq("user_id", actorId)
+    .maybeSingle();
+  const tenantId = profile?.active_tenant_id;
+  if (tenantId) {
+    const { data: tenant } = await admin
+      .from("tenants")
+      .select("features")
+      .eq("id", tenantId)
+      .maybeSingle();
+    const btfEnabled = (tenant?.features as Record<string, unknown> | null)?.btf_enabled === true;
+    if (!btfEnabled) {
+      return err(403, "BTF_NOT_ENABLED", "BTF onboarding is not enabled for this workspace");
+    }
+  }
+
   if (!client.email) return err(400, "MISSING_EMAIL", "Contact has no email — add one first");
 
   // ----- Update lifecycle + onboarding stage (no downgrade) -----
