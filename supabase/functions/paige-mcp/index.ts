@@ -894,8 +894,10 @@ const NO_STORE = { "Cache-Control": "no-store", "Pragma": "no-cache" };
 // Resolve a presented bearer token into an actor context. Returns null on unauthorized.
 async function resolveBearer(presented: string): Promise<ActorCtx | null> {
   if (!presented) return null;
-  if (PLATFORM_KEY && presented === PLATFORM_KEY) {
-    return { kind: "platform", user_id: null, client_id: null, scopes: [...SUPPORTED_SCOPES] };
+  for (const k of PLATFORM_KEYS) {
+    if (presented === k.value) {
+      return { kind: "platform", user_id: null, client_id: k.label, scopes: [...SUPPORTED_SCOPES] };
+    }
   }
   const hash = await sha256Hex(presented);
   const { data } = await admin
