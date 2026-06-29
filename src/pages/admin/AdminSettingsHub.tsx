@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2 } from "lucide-react";
+import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { UserManagement } from "@/components/dashboard/UserManagement";
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
 import { McpSessionsPanel } from "@/components/dashboard/admin/McpSessionsPanel";
+import { WorkspaceSettingsPanel } from "@/components/admin/WorkspaceSettingsPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -66,6 +67,9 @@ export function AdminSettingsHub() {
           <TabsTrigger value="team" className="gap-2">
             <Shield className="w-4 h-4" /> Team & Roles
           </TabsTrigger>
+          <TabsTrigger value="workspace" className="gap-2">
+            <Building2 className="w-4 h-4" /> Workspace
+          </TabsTrigger>
           <TabsTrigger value="pipelines" className="gap-2">
             <KanbanSquare className="w-4 h-4" /> Pipelines
           </TabsTrigger>
@@ -88,6 +92,10 @@ export function AdminSettingsHub() {
 
         <TabsContent value="team" className="space-y-4">
           <UserManagement />
+        </TabsContent>
+
+        <TabsContent value="workspace" className="space-y-4">
+          <WorkspaceSettingsPanel />
         </TabsContent>
 
         <TabsContent value="pipelines" className="space-y-4">

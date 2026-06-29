@@ -11046,6 +11046,7 @@ export type Database = {
         Args: { _token: string; _user_id: string }
         Returns: Json
       }
+      accept_tenant_invite: { Args: { _token: string }; Returns: string }
       admin_meta_capi_token_is_set: { Args: never; Returns: boolean }
       admin_set_meta_capi_token: {
         Args: { _token: string }
@@ -11118,6 +11119,36 @@ export type Database = {
       client_has_role_assigned: {
         Args: { _assignment_role: string; _client: string }
         Returns: boolean
+      }
+      create_tenant_invite_token: {
+        Args: {
+          _default_role?: Database["public"]["Enums"]["tenant_role"]
+          _expires_in_days?: number
+          _kind?: string
+          _max_uses?: number
+          _tenant_id: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          default_role: Database["public"]["Enums"]["tenant_role"]
+          expires_at: string
+          id: string
+          kind: string
+          last_used_at: string | null
+          max_uses: number | null
+          revoked_at: string | null
+          tenant_id: string
+          token: string
+          updated_at: string
+          uses: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenant_invite_tokens"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       current_user_roles: { Args: never; Returns: string[] }
       current_user_tenant_id: { Args: never; Returns: string }
@@ -11364,6 +11395,19 @@ export type Database = {
           source_queue: string
         }
         Returns: number
+      }
+      peek_tenant_invite: {
+        Args: { _token: string }
+        Returns: {
+          brand: Json
+          default_role: Database["public"]["Enums"]["tenant_role"]
+          expires_at: string
+          is_valid: boolean
+          kind: string
+          tenant_id: string
+          tenant_name: string
+          tenant_slug: string
+        }[]
       }
       qb_decrypt_token: { Args: { _ciphertext: string }; Returns: string }
       qb_encrypt_token: { Args: { _plaintext: string }; Returns: string }
