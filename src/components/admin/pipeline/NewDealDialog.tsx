@@ -5,8 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Check, ChevronsUpDown, UserPlus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Pipeline, PipelineStage, dollarsToCents, logDealActivity } from "@/lib/pipelines";
+import { NewContactDialog } from "@/components/admin/contacts/NewContactDialog";
 
 type Props = {
   open: boolean;
@@ -18,7 +23,7 @@ type Props = {
   onCreated: () => void;
 };
 
-type ContactOption = { id: string; label: string };
+type ContactOption = { id: string; label: string; email?: string | null };
 type CoachOption = { user_id: string; name: string };
 
 export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultStageId, defaultContactId, onCreated }: Props) {
@@ -29,23 +34,33 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
   const [value, setValue] = useState<string>("");
   const [closeDate, setCloseDate] = useState<string>("");
   const [contacts, setContacts] = useState<ContactOption[]>([]);
+  const [contactSearch, setContactSearch] = useState("");
+  const [contactPickerOpen, setContactPickerOpen] = useState(false);
+  const [newContactOpen, setNewContactOpen] = useState(false);
   const [coaches, setCoaches] = useState<CoachOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [meId, setMeId] = useState<string | null>(null);
+
+  const loadContacts = async () => {
+    const { data: cs } = await supabase
+      .from("clients")
+      .select("id, first_name, last_name, entity_name, email")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    setContacts((cs || []).map((c: any) => ({
+      id: c.id,
+      label: `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() + (c.entity_name ? ` · ${c.entity_name}` : ""),
+      email: c.email,
+    })));
+  };
 
   useEffect(() => {
     if (!open) return;
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setMeId(user?.id ?? null);
-      const [{ data: cs }, { data: roles }] = await Promise.all([
-        supabase.from("clients").select("id, first_name, last_name, entity_name").order("created_at", { ascending: false }).limit(200),
-        supabase.from("user_roles").select("user_id").eq("role", "coach"),
-      ]);
-      setContacts((cs || []).map((c: any) => ({
-        id: c.id,
-        label: `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() + (c.entity_name ? ` · ${c.entity_name}` : ""),
-      })));
+      await loadContacts();
+      const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
       const coachIds = (roles || []).map((r: any) => r.user_id);
       if (coachIds.length) {
         const { data: profs } = await supabase.from("profiles").select("user_id, full_name").in("user_id", coachIds);
@@ -59,10 +74,18 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
       setOwnerId("me");
       setValue("");
       setCloseDate("");
+      setContactSearch("");
     })();
   }, [open, defaultStageId, stages, defaultContactId]);
 
   const orderedStages = useMemo(() => [...stages].sort((a, b) => a.order_index - b.order_index), [stages]);
+  const selectedContact = contacts.find((c) => c.id === contactId);
+
+  const handleContactCreated = async (newId: string) => {
+    await loadContacts();
+    setContactId(newId);
+    setContactPickerOpen(false);
+  };
 
   const handleSave = async () => {
     if (!pipeline || !stageId || !title.trim()) {
@@ -95,64 +118,137 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>New Deal</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label className="text-xs">Title *</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Acme SBA Loan" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>New Deal</DialogTitle></DialogHeader>
+          <div className="space-y-3">
             <div>
-              <Label className="text-xs">Stage</Label>
-              <Select value={stageId} onValueChange={setStageId}>
-                <SelectTrigger><SelectValue placeholder="Pick stage" /></SelectTrigger>
-                <SelectContent>
-                  {orderedStages.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label className="text-xs">Title *</Label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Acme SBA Loan" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Stage</Label>
+                <Select value={stageId} onValueChange={setStageId}>
+                  <SelectTrigger><SelectValue placeholder="Pick stage" /></SelectTrigger>
+                  <SelectContent>
+                    {orderedStages.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Value ($)</Label>
+                <Input type="number" min="0" value={value} onChange={(e) => setValue(e.target.value)} placeholder="50000" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Contact</Label>
+                <Popover open={contactPickerOpen} onOpenChange={setContactPickerOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      className="w-full justify-between font-normal"
+                    >
+                      <span className="truncate">
+                        {contactId === "none"
+                          ? "— None —"
+                          : selectedContact?.label || "Unnamed contact"}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput
+                        placeholder="Search contacts by name, business, email…"
+                        value={contactSearch}
+                        onValueChange={setContactSearch}
+                      />
+                      <CommandList>
+                        <CommandEmpty>
+                          <div className="p-2 text-center text-sm text-muted-foreground">
+                            No contacts found.
+                          </div>
+                        </CommandEmpty>
+                        <CommandGroup>
+                          <CommandItem
+                            value="__create_new__"
+                            onSelect={() => {
+                              setContactPickerOpen(false);
+                              setNewContactOpen(true);
+                            }}
+                            className="text-primary font-medium"
+                          >
+                            <UserPlus className="mr-2 h-4 w-4" />
+                            Create new contact{contactSearch ? `: "${contactSearch}"` : ""}
+                          </CommandItem>
+                          <CommandItem
+                            value="none"
+                            onSelect={() => {
+                              setContactId("none");
+                              setContactPickerOpen(false);
+                            }}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", contactId === "none" ? "opacity-100" : "opacity-0")} />
+                            — None —
+                          </CommandItem>
+                          {contacts.map((c) => (
+                            <CommandItem
+                              key={c.id}
+                              value={`${c.label} ${c.email ?? ""} ${c.id}`}
+                              onSelect={() => {
+                                setContactId(c.id);
+                                setContactPickerOpen(false);
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", contactId === c.id ? "opacity-100" : "opacity-0")} />
+                              <div className="flex flex-col">
+                                <span>{c.label || "Unnamed"}</span>
+                                {c.email && <span className="text-xs text-muted-foreground">{c.email}</span>}
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div>
+                <Label className="text-xs">Owner</Label>
+                <Select value={ownerId} onValueChange={setOwnerId}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="me">Me</SelectItem>
+                    <SelectItem value="none">Unassigned</SelectItem>
+                    {coaches.filter((c) => c.user_id !== meId).map((c) => (
+                      <SelectItem key={c.user_id} value={c.user_id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div>
-              <Label className="text-xs">Value ($)</Label>
-              <Input type="number" min="0" value={value} onChange={(e) => setValue(e.target.value)} placeholder="50000" />
+              <Label className="text-xs">Expected close date</Label>
+              <Input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Contact</Label>
-              <Select value={contactId} onValueChange={setContactId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent className="max-h-72">
-                  <SelectItem value="none">— None —</SelectItem>
-                  {contacts.map((c) => <SelectItem key={c.id} value={c.id}>{c.label || "Unnamed"}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Owner</Label>
-              <Select value={ownerId} onValueChange={setOwnerId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="me">Me</SelectItem>
-                  <SelectItem value="none">Unassigned</SelectItem>
-                  {coaches.filter((c) => c.user_id !== meId).map((c) => (
-                    <SelectItem key={c.user_id} value={c.user_id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs">Expected close date</Label>
-            <Input type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Create deal"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Create deal"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <NewContactDialog
+        open={newContactOpen}
+        onOpenChange={setNewContactOpen}
+        onCreated={handleContactCreated}
+      />
+    </>
   );
 }
