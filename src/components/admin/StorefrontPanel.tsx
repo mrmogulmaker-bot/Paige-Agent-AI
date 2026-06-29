@@ -217,7 +217,10 @@ export function StorefrontPanel() {
     toast.success(enabled ? "Storefront is live" : "Storefront hidden");
   }
 
-  const connectReady = !!connect?.charges_enabled;
+  // TEMP: Stripe Connect bypassed while Antonio provisions a new Stripe account.
+  // Flip BYPASS_STRIPE_CONNECT back to false once the real account is wired.
+  const BYPASS_STRIPE_CONNECT = true;
+  const connectReady = BYPASS_STRIPE_CONNECT || !!connect?.charges_enabled;
   const storefrontUrl = tenant?.slug
     ? `${window.location.origin}/store/${tenant.slug}`
     : null;
