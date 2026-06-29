@@ -1,0 +1,1 @@
+ALTER TYPE public.workflow_provider ADD VALUE IF NOT EXISTS 'langgraph_bridge';

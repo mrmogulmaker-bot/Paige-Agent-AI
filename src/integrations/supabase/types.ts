@@ -11917,6 +11917,7 @@ export type Database = {
         | "langgraph"
         | "direct_edge_function"
         | "cron_only"
+        | "langgraph_bridge"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -12212,6 +12213,7 @@ export const Constants = {
         "langgraph",
         "direct_edge_function",
         "cron_only",
+        "langgraph_bridge",
       ],
     },
   },
