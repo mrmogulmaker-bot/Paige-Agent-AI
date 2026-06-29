@@ -27,7 +27,19 @@ export type DispatchOpts = {
   payload: Record<string, unknown>;
   /** When invoked from the sweeper we want to bump retry_count. */
   isRetry?: boolean;
+  /**
+   * Doctrine §118 provider gate. When provided (e.g. from paige-mcp.run_workflow),
+   * n8n and langgraph_bridge are restricted to the MMA tenant — those route to the
+   * platform owner's shared infra and must not be reachable by other tenants.
+   * Omit (e.g. from the cron sweeper) to bypass the gate for system-level retries.
+   */
+  callerTenantId?: string | null;
 };
+
+// Doctrine §118: platform-owner tenant for shared infra (MMA OS LangGraph bridge,
+// MMA n8n instance). Kept in sync with public.tenants WHERE slug='mma'.
+export const MMA_TENANT_ID = "a25194e0-93c4-4e2c-91d0-66ea012660b2";
+const PLATFORM_OWNER_PROVIDERS = new Set(["n8n", "langgraph_bridge"]);
 
 export type DispatchResult = {
   status: "running" | "succeeded" | "failed";
