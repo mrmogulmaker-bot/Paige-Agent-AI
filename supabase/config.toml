@@ -11,6 +11,8 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = true
   [functions.admin-delete-user]
     verify_jwt = true
+  [functions.delete-contact]
+    verify_jwt = true
   [functions.auth-email-hook]
     verify_jwt = false
   [functions.backfill-memory-embeddings]
