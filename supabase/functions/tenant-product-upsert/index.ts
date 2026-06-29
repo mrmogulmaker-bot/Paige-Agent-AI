@@ -160,12 +160,24 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ----- Optional price -----
-  let priceRow: any = null;
-  if (body.price && body.price.unit_amount != null) {
-    const currency = (body.price.currency ?? "usd").toLowerCase();
-    const interval = body.price.billing_interval ?? "one_time";
-    const intervalCount = body.price.interval_count ?? 1;
+  // ----- Prices (support multiple billing plans per product) -----
+  // Accept either `prices: [...]` array OR legacy single `price` object.
+  const incomingPrices: any[] = Array.isArray(body.prices)
+    ? body.prices
+    : body.price
+      ? [body.price]
+      : [];
+
+  const createdPrices: any[] = [];
+  for (let i = 0; i < incomingPrices.length; i++) {
+    const p = incomingPrices[i];
+    if (p == null || p.unit_amount == null) continue;
+    const currency = (p.currency ?? "usd").toLowerCase();
+    const kind = p.kind ?? "one_time"; // one_time | deposit | recurring | installment
+    const isRecurring = kind === "recurring" || kind === "installment";
+    const interval = isRecurring ? (p.billing_interval ?? "month") : "one_time";
+    const intervalCount = p.interval_count ?? 1;
+    const installmentsTotal = kind === "installment" ? (p.installments_total ?? null) : null;
 
     let stripePriceId: string | null = null;
     if (stripe && productRow.stripe_product_id) {
@@ -173,13 +185,16 @@ Deno.serve(async (req) => {
         const sp = await stripe.prices.create({
           product: productRow.stripe_product_id,
           currency,
-          unit_amount: body.price.unit_amount,
-          nickname: body.price.nickname ?? undefined,
-          recurring:
-            interval && interval !== "one_time"
-              ? { interval: interval as any, interval_count: intervalCount }
-              : undefined,
-          metadata: { tenant_id: tenantId },
+          unit_amount: p.unit_amount,
+          nickname: p.nickname ?? undefined,
+          recurring: isRecurring
+            ? { interval: interval as any, interval_count: intervalCount }
+            : undefined,
+          metadata: {
+            tenant_id: tenantId,
+            kind,
+            ...(installmentsTotal ? { installments_total: String(installmentsTotal) } : {}),
+          },
         });
         stripePriceId = sp.id;
       } catch (e) {
@@ -187,27 +202,34 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { data: prRow } = await admin
+    const { data: prRow, error: priceErr } = await admin
       .from("tenant_prices")
       .insert({
         tenant_id: tenantId,
         product_id: productRow.id,
         stripe_price_id: stripePriceId,
-        nickname: body.price.nickname ?? null,
+        nickname: p.nickname ?? null,
         currency,
-        unit_amount: body.price.unit_amount,
+        unit_amount: p.unit_amount,
         billing_interval: interval,
         interval_count: intervalCount,
+        kind,
+        installments_total: installmentsTotal,
+        sort_order: i,
         active: true,
       })
       .select("*")
       .single();
-    priceRow = prRow;
+    if (priceErr) {
+      console.error("tenant_prices insert failed", priceErr);
+      return json(400, { error: `price_insert_failed: ${priceErr.message}` });
+    }
+    createdPrices.push(prRow);
   }
 
   return json(200, {
     product: productRow,
-    price: priceRow,
+    prices: createdPrices,
     connect_ready: !!connect?.charges_enabled,
   });
 });
