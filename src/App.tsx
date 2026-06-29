@@ -145,6 +145,7 @@ const App = () => (
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
             <Route path="/accept-invite" element={<PageSuspense><AcceptInvite /></PageSuspense>} />
+            <Route path="/join/:token" element={<PageSuspense><JoinWorkspace /></PageSuspense>} />
             <Route path="/mcp/authorize" element={<PageSuspense><McpAuthorize /></PageSuspense>} />
 
             {/* New agent-first dashboard */}
