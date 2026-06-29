@@ -27,7 +27,7 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PLATFORM_KEY = Deno.env.get("PAIGE_MCP_PLATFORM_KEY") ?? "";
 const MMA_OS_CLAUDE_PLATFORM_KEY = Deno.env.get("MMA_OS_CLAUDE_PLATFORM_KEY") ?? "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-const RESEND_API_KEY_MMA = Deno.env.get("RESEND_API_KEY_MMA") ?? "";
+
 // Registered platform keys: label → secret value. Empty values are filtered.
 const PLATFORM_KEYS: Array<{ label: string; value: string }> = [
   { label: "paige_default", value: PLATFORM_KEY },
@@ -990,17 +990,11 @@ mcp.tool("send_btf_template_email", {
     const fromAddr = `${fromName} <${fromEmail}>`;
     const replyTo = args.reply_to ?? scopeCfg.reply_to;
 
-    // Split-key routing: BTF/MMA scopes send through Antonio's MMA Resend account
-    // (only account with portal.mogulmakeracademy.com verified). Paige scope stays on
-    // the native Paige Resend account (notify.paigeagent.ai).
-    const useMmaAccount = tpl.product_scope === "btf" || tpl.product_scope === "mma";
-    let apiKey = useMmaAccount ? RESEND_API_KEY_MMA : RESEND_API_KEY;
-    let senderAccount: "mma_os" | "paige_native" = useMmaAccount ? "mma_os" : "paige_native";
-    if (useMmaAccount && !RESEND_API_KEY_MMA) {
-      console.warn("[STUB] missing MMA key — falling back to RESEND_API_KEY for scope", tpl.product_scope);
-      apiKey = RESEND_API_KEY;
-      senderAccount = "paige_native";
-    }
+    // Single shared Resend account authenticates sends from both notify.paigeagent.ai
+    // (Paige scope) and portal.mogulmakeracademy.com (BTF/MMA scope). sender_account
+    // is retained in logs/audits as a constant for historical continuity.
+    const apiKey = RESEND_API_KEY;
+    const senderAccount = "mma_os_shared" as const;
     if (!apiKey) return err("resend_not_configured");
 
     const resendRes = await fetch("https://api.resend.com/emails", {
