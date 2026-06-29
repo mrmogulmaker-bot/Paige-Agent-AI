@@ -3,7 +3,7 @@
 // Auth: Bearer PAIGE_MCP_PLATFORM_KEY in Authorization header.
 //
 // Tool catalog:
-//  CRM (10): search_contacts, get_contact, update_contact_stage, add_contact_note,
+//  CRM (10): search_contacts, get_contact, update_contact_stage [DEPRECATED → update_lifecycle_stage], add_contact_note,
 //            list_deals, move_deal_stage, create_deal, list_tasks, create_task, complete_task
 //  Workflows (5): list_workflows, run_workflow*, get_workflow_run,
 //                 list_pending_approvals, decide_pending_approval*
