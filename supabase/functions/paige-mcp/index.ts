@@ -27,6 +27,7 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PLATFORM_KEY = Deno.env.get("PAIGE_MCP_PLATFORM_KEY") ?? "";
 const MMA_OS_CLAUDE_PLATFORM_KEY = Deno.env.get("MMA_OS_CLAUDE_PLATFORM_KEY") ?? "";
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+const RESEND_API_KEY_MMA = Deno.env.get("RESEND_API_KEY_MMA") ?? "";
 // Registered platform keys: label → secret value. Empty values are filtered.
 const PLATFORM_KEYS: Array<{ label: string; value: string }> = [
   { label: "paige_default", value: PLATFORM_KEY },
