@@ -1,104 +1,114 @@
-# BTF Client Onboarding Flow — Build Plan
+## Goal
 
-## Answers to your 5 questions (decisions baked into the plan below)
+Two changes landing together:
 
-1. **Estimate.** v1 MVP (eSign + payment auth + intake + workspace handoff, admin-triggered): **~3 working days**. Full scope (admin "Start Onboarding" UX, task templates, bridge events for every transition, polished signed-PDF rendering, save/resume on every step): **~7–9 working days** total, landed in 3 increments.
-2. **eSign approach.** Native. HTML canvas signature pad + typed-name fallback + server-side PDF render in an edge function using `pdf-lib` (already proven in our stack, no Chromium). Stored in a private Storage bucket with short-lived signed URLs. E-SIGN / UETA consent checkboxes captured into `signature_data` alongside IP, UA, tz, timestamp.
-3. **Payment processor.** **Stripe.** Already connected (live + 2 sandbox per project memory), already used for `tier_state` + `stripe-webhook`. We'll use Stripe Customer + PaymentMethod (SetupIntent) for card-on-file, then a Subscription with a custom schedule for the split plans. No new processor.
-4. **Separate flow, confirmed.** This is gated behind admin "Start Onboarding" → magic-link → `/onboard` wizard. It is NOT the `/signup` public wizard and does NOT share its routing. Public signup stays untouched.
-5. **MVP for Jacqueline this week.** Ship in this exact order so she can be onboarded mid-week even if v2 polish slips:
-   - Day 1: schema + admin "Start Onboarding" button + magic-link email (template already exists)
-   - Day 2: `/onboard` Steps 1–3 (welcome, sign agreement, payment auth)
-   - Day 3: Steps 4–6 (intake, doc upload, workspace handoff) + bridge events for `agreement_signed` / `payment_authorized` / `onboarding_completed`
-   - v2: remaining 3 bridge events, task-template assignment UI, signed-PDF download in client workspace, save/resume polish, admin onboarding-state dashboard
+1. **Offer cleanup** — the CRM only sells BTF and Paige Agent AI. Drop community / Launch Pad slugs from the offer picker.
+2. **Multi-tenant pivot** — introduce a real Tenant ↔ Customer distinction across schema, RLS, UI, and signup flow.
 
-If we slip past Wednesday, fall back to Antonio's manual hybrid for Jacqueline and ship the wizard clean for client #2.
+The platform stops being "Antonio's single org" and becomes a SaaS where any qualified buyer (coach, agency, etc.) can subscribe to the CRM suite and onboard their own consumers underneath their tenant.
 
 ---
 
-## Phase 1 — Schema (Day 1, single migration)
+## Part 1 — Offer catalog
 
-New tables (all with `service_role` + `authenticated` grants, RLS scoped to `linked_user_id = auth.uid()` for client reads and `can_access_contact()` for staff):
+Single source of truth in `src/lib/contacts.ts`.
 
-- `paige_signed_agreements` — id, client_id, agreement_template_key, agreement_version, signed_pdf_path (Storage), signature_data jsonb, agreement_text_snapshot text, ip inet, user_agent text, signed_at timestamptz
-- `paige_payment_authorizations` — id, client_id, plan_selected enum(`pay_in_full|split|get_started`), stripe_customer_id, stripe_payment_method_id, stripe_subscription_id, recurring_auth_text_snapshot, ip, user_agent, authorized_at, status enum(`active|revoked|expired`)
-- `paige_client_intake_submissions` — id, client_id, section enum(`about_you|business|current_state|docs_checklist`), payload jsonb, submitted_at — one row per section so save/resume is trivial
-- `paige_btf_documents` — id, client_id, category text (id, articles, ein_letter, bank_stmt, credit_report, other), storage_path, original_filename, mime, size_bytes, uploaded_by, uploaded_at
+**Tenant-facing offers (what a buyer subscribes to — sold by us):**
+- `crm_coach` — Coach Workspace, **$97/mo** (1 owner seat + up to 25 customers)
+- `crm_agency` — Agency Workspace, **$297/mo** (5 team seats + up to 250 customers)
+- `crm_enterprise` — Enterprise (custom, sales-led)
 
-New columns on `clients` (additive, nullable):
+**Customer-facing offers (what a tenant enrolls a consumer in):**
+- `btf_pif` — BTF Pay in Full ($4,997)
+- `btf_split` — BTF Split ($1,997 down + $1,000 × 3)
+- `btf_getstarted` — BTF Get-Started ($997 + $497/mo)
+- `paige_free` / `paige_starter` / `paige_growth` / `paige_scale` / `paige_enterprise` — existing Paige plans (kept as-is, re-keyed from current `subscription_plans` slugs)
 
-- `lifecycle_stage` text — 11-state enum from Doctrine §111 (stored as text + CHECK so we can evolve without enum migrations)
-- `onboarding_stage` text — `pre_invite|invited|signing_agreement|accepting_payment|completing_intake|uploading_docs|completed`
-- `onboarding_started_at`, `onboarding_completed_at`, `agreement_signed_at` timestamptz (denormalized)
+Legacy values (`btf`, `premium`, `vip`, `accel`, `launch`, etc.) get aliased so old rows still render a label and aren't lost.
 
-Storage: new private bucket `btf-onboarding` for signed PDFs + uploaded docs. RLS on `storage.objects` mirroring contact-access rules.
+---
 
-## Phase 2 — Admin "Start Onboarding" trigger (Day 1, late)
+## Part 2 — Tenant model
 
-- New button in `ContactDetail.tsx` shown when `lifecycle_stage IN ('won','negotiating')` and `email IS NOT NULL`. Disabled with tooltip otherwise.
-- New edge function `start-btf-onboarding`:
-  1. Verifies caller has `admin`/`super_admin` or `lead_owner` of the contact
-  2. Sets `clients.lifecycle_stage='client_active'`, `onboarding_stage='invited'`, `onboarding_started_at=now()`
-  3. Mints a magic-link token (reuse the signed-JWT pattern from `invite-btf-client`) scoped to `/onboard`
-  4. Calls existing `send_btf_template_email` MCP tool with `template_key='btf_welcome'` (creates template if missing)
-  5. Audit-logs `start_onboarding` with deal_id, actor, contact_id
-- Fires bridge event `client.onboarding_started` via `fireAndForgetBridge`.
+### New tables
 
-## Phase 3 — `/onboard` Wizard (Days 2–3)
+- **`tenants`** — one row per CRM-suite subscriber org. Fields: `slug` (URL token), `name`, `brand` (logo / colors / from-name for invites), `plan_offer` (one of the `crm_*` slugs), `stripe_customer_id`, `stripe_subscription_id`, `status` (`trial` / `active` / `past_due` / `canceled`), `seat_limit`, `customer_limit`, `owner_user_id`.
+- **`tenant_members`** — `(tenant_id, user_id, role, status)` where role is `owner` / `admin` / `coach` / `member`. Determines who in the CRM belongs to which tenant.
+- **`tenant_invite_tokens`** — signed tokens for consumer self-signup links (`tenants/:slug/join?t=…`). Records who used it and when.
 
-New route tree under `src/pages/onboard/`, white-labeled (Navy/Gold workspace shell, no "Paige" copy):
+### Tenancy on existing tables
 
-- `OnboardLayout.tsx` — magic-link token verification, loads client row, enforces `onboarding_stage` so users can't deep-link past their current step.
-- `Step1Welcome.tsx` — confirms email/phone, password set if not yet set (Supabase `updateUser`). Advances stage → `signing_agreement`.
-- `Step2Agreement.tsx`:
-  - Renders agreement template (Phase 5 below) with placeholders filled.
-  - Scroll-sentinel enables signature block.
-  - Signature: `react-signature-canvas` (lightweight, no new heavy dep) + typed-name fallback + 2 consent checkboxes.
-  - Submit → `POST /functions/v1/finalize-agreement` → edge fn renders PDF via `pdf-lib`, uploads to `btf-onboarding`, inserts `paige_signed_agreements`, sets `clients.agreement_signed_at`, advances stage, fires `client.agreement_signed`.
-- `Step3Payment.tsx`:
-  - Stripe Elements (PaymentElement) in SetupIntent mode.
-  - Renders payment-plan summary from the deal record.
-  - On confirm → `POST /functions/v1/authorize-btf-payment` → creates/attaches PaymentMethod, creates Customer if missing, creates Subscription per plan, inserts `paige_payment_authorizations`, advances stage, fires `client.payment_authorized`.
-- `Step4Intake.tsx` — 4 sub-sections (About / Business / Current State / Docs Checklist). Each section autosaves to `paige_client_intake_submissions` on blur. Final submit advances stage and fires `client.intake_submitted`.
-- `Step5Documents.tsx` — drag-drop per category, ID required, others optional. Skip allowed for non-ID categories. Fires `client.initial_docs_uploaded` (even with only the ID).
-- `Step6Complete.tsx` — phase tracker + first 3 tasks (read from `paige_btf_phase_items` seeded by admin or by a default Phase-1 template). CTA → `/workspace`. Fires `client.onboarding_completed`.
+Add `tenant_id uuid` to: `clients`, `deals`, `pipelines`, `pipeline_stages`, `tasks`, `paige_coach_assignments`, `paige_pending_approvals`, `invitations`, `email_send_log`, `email_templates`, `paige_conversations`, `paige_workflow_runs`, `paige_audit_log`. Backfill all existing rows to `tenant_id = <Antonio's tenant>`.
 
-Wizard is fully resumable: any visit to `/onboard` jumps to current `onboarding_stage`.
+`businesses` and consumer-owned tables (`credit_*`, `paige_btf_documents`, etc.) stay user-scoped but inherit their tenant via the consumer's `clients.tenant_id`.
 
-## Phase 4 — Bridge events
+### RLS rewrite
 
-Single helper `fireOnboardingBridge(verb, client_id, extra)` calling `fireAndForgetBridge` (sanitization already strips consumer-credit fields). All 6 verbs wired in Phases 2–3.
+Replace ad-hoc "is admin or assigned coach" policies with a layered model:
 
-## Phase 5 — Agreement template infrastructure
+- **Platform owner** (Antonio) → sees all tenants.
+- **Tenant owner / admin** → sees everything where `tenant_id = current_user_tenant_id()`.
+- **Tenant coach / member** → sees only contacts they're assigned to within their tenant.
+- **Consumer (linked_user_id)** → sees only their own rows, regardless of tenant.
 
-- New table row in existing `email_templates` won't fit (different shape) — instead use existing `rag_documents` with `document_type='legal_agreement_template'` keyed by `agreement_template_key` + `agreement_version`. Free-form markdown + `metadata.placeholders[]`.
-- Seed v1 from `mma-os/docs/legal/btf-service-agreement-v1.md` via a one-off `supabase--insert`. Future updates by upserting a new `agreement_version`; old signed agreements keep their `agreement_text_snapshot`.
-- Renderer (`src/lib/agreementRenderer.ts`): mustache-style placeholder substitution, returns plain text + structured blocks for the PDF generator.
+Security-definer helpers: `current_user_tenant_id()`, `is_tenant_admin(_tenant)`, `is_tenant_member(_tenant)`. All policies route through these — no recursive lookups.
 
-## Phase 6 — Task templates + admin task UI (v2, Days 6–8)
+---
 
-- Seed `btf_phase_item_templates` with the Phase-1 BUILD checklist (8 items) already referenced in MMA OS docs.
-- Admin button on `ContactDetail.tsx`: "Load Phase 1 BUILD checklist" → bulk-inserts into `paige_btf_phase_items`.
-- Add task create / complete UI (client can check `client_action`, coach can check `agency_action`) — extend existing `WorkspacePhases.tsx`.
+## Part 3 — Consumer signup under a tenant
 
-## Phase 7 — Verification
+1. Tenant admin opens **Settings → Signup Link** → gets `https://<host>/join/<tenant-slug>?t=<token>`.
+2. Consumer hits the link → branded landing page (tenant's logo + name) → email/password or Google sign-in.
+3. On successful signup, a new row is added to `clients` with `tenant_id` set, `lifecycle_stage='customer'`, `source='tenant_invite'`, `linked_user_id=auth.uid()`.
+4. Edge function `accept-tenant-invite` validates the token, enforces `customer_limit`, and dispatches the welcome email using the tenant's branding.
+5. Consumer lands in the existing Paige consumer app (`/app/*`) — exactly the experience that exists today.
 
-- `tsgo` clean.
-- Playwright smoke: trigger onboarding for a seed contact, walk all 6 steps headless, assert `clients.onboarding_stage='completed'`, `paige_signed_agreements` row exists, signed PDF downloads, Stripe subscription created (test mode).
-- Manually verify Jacqueline's row before sending her the live email.
+---
 
-## Out of scope (call out so we don't scope-creep)
+## Part 4 — Admin UI
 
-- DocuSign / HelloSign integration (native eSign instead).
-- Public landing page changes.
-- Mobile-app shell — wizard is responsive web, no native build.
-- Refactoring the existing `/signup` public wizard.
-- Lawyer-stamped v2 agreement — we ship v1 from Antonio's paralegal draft; v2 drops in as a new `agreement_version` row without code changes.
+- **Sidebar split:** "My Tenant" (everything you already have) vs new **"Platform"** section visible only to platform owner — Tenants list, billing, usage, audit.
+- **Tenants page** — table of tenants with plan, seat usage, customer usage, MRR, status. Drill into a tenant for member list and impersonation.
+- **Tenant switcher** — header dropdown for platform owner to scope the entire CRM view to one tenant.
+- **Settings → Workspace** — for tenant admins: brand (logo, color, from-name), invite link, member management, plan/usage card.
+- **Contacts page** language — keep calling these "Contacts / Customers". The word "Subscribers" is reserved for tenant-level CRM buyers and only appears in the Platform area.
 
-## Open items needing your confirmation before I start
+---
 
-1. **Stripe price IDs for the 3 plans (`pay_in_full $4,997`, `split`, `get_started`).** I'll create them via `stripe--create_stripe_product_and_price` if you confirm the exact split schedule (e.g. Jacqueline = $497/mo × 8 starting [date]).
-2. **Magic-link domain.** Same `portal.mogulmakeracademy.com` we use for BTF invites — confirming we reuse, not introduce a new host.
-3. **Whose name signs the company side** of the rendered PDF — "Antonio Cook, Mogul Maker Academy LLC"? Need the exact legal entity string for the template snapshot.
+## Part 5 — Billing for CRM suite
 
-I can start Phase 1 the moment you greenlight. If you want me to defer Stripe (Phase 3 Step 3) and ship a "payment confirmed manually" stub for Jacqueline only, say the word and I'll cut a day off the MVP.
+- Create three Stripe products: Coach Workspace, Agency Workspace, Enterprise (placeholder).
+- New `/get-started` public page (separate from `/signup` consumer flow) — pick a tier → Stripe Checkout → on success, `provision-tenant` edge function creates the `tenants` row, makes the buyer the `owner`, seeds default pipeline + email templates, redirects to the new workspace.
+- `stripe-webhook` extended: on `customer.subscription.updated` / `.deleted`, sync `tenants.status`, `seat_limit`, `customer_limit`.
+- Existing consumer Stripe handling (Paige plans) is untouched.
+
+---
+
+## Part 6 — Rollout order
+
+1. Offer catalog refactor + legacy aliases (ships immediately, no schema change).
+2. `tenants` / `tenant_members` / `tenant_invite_tokens` migration + backfill Antonio's tenant.
+3. Add `tenant_id` to in-scope tables + backfill + RLS rewrite behind a feature flag.
+4. Tenant switcher + Platform → Tenants page (owner-only).
+5. Workspace settings (brand + invite link) + `accept-tenant-invite` edge function.
+6. Stripe products + `/get-started` + `provision-tenant` + webhook sync.
+7. Flip feature flag, retire legacy "single-org" policies.
+
+---
+
+## Technical notes
+
+- All new tables include `created_at` / `updated_at` triggers and follow `GRANT … TO authenticated/service_role` pattern.
+- `current_user_tenant_id()` is `STABLE SECURITY DEFINER`, returns the tenant id of the requesting user from `tenant_members` (or the platform-owner's "active" tenant when impersonating, stored in `profiles.active_tenant_id`).
+- Backfill uses Antonio's `auth.users.id` resolved via `app_settings_owner.owner_email`.
+- Invite tokens: HMAC-signed (HS256) with `INVITE_TOKEN_SECRET`, 30-day expiry, one-time-use enforced in DB.
+- No breaking changes to consumer-facing `/app/*` routes — only the `clients` row they hang off gains a `tenant_id`.
+- Edge functions touched: new `provision-tenant`, new `accept-tenant-invite`, extended `stripe-webhook`, extended `invite-btf-client` to stamp `tenant_id`.
+
+---
+
+## Out of scope (call out, don't build)
+
+- Tenant-level custom domains (Phase 2 — would need Vercel/Cloudflare wildcard config).
+- Per-tenant Stripe Connect for tenants to bill their own consumers (Phase 3).
+- Cross-tenant data export / migration tooling.
