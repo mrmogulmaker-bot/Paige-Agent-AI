@@ -92,7 +92,7 @@ export default function FundingLensHub() {
   }, [rows]);
 
   return (
-    <AdminLayout userRole={role}>
+    <AdminLayout userRole={role === "coach" ? "coach" : "admin"}>
       <div className="p-6 space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Funding Readiness Lens</h1>
