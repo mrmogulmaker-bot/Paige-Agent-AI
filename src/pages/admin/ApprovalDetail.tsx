@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   ArrowLeft, Send, Pencil, SkipForward, AlertTriangle, MessageSquare,
-  UserCog, Check, RotateCcw, Shield,
+  UserCog, Check, RotateCcw, Shield, Eye, EyeOff,
 } from "lucide-react";
 import {
   CATEGORY_LABEL, RISK_COLOR, type ApprovalCategory,
@@ -54,7 +54,7 @@ export default function ApprovalDetail() {
     if (row?.contact_id) {
       const { data: c } = await supabase
         .from("clients")
-        .select("id, first_name, last_name, email, phone, lifecycle_stage, tier, assigned_coach_user_id")
+        .select("id, first_name, last_name, email, phone, lifecycle_stage, tier, assigned_coach_user_id, linked_user_id")
         .eq("id", row.contact_id).maybeSingle();
       setContact(c);
       const { data: t } = await supabase
@@ -328,6 +328,13 @@ export default function ApprovalDetail() {
                       <strong>{readiness.composite_score}/100</strong>
                     </div>
                   )}
+                  <div className="pt-2 flex items-center gap-1.5 text-[11px]">
+                    {contact.linked_user_id ? (
+                      <><Eye className="w-3 h-3 text-emerald-600" /><span className="text-emerald-700">Visible to client in portal</span></>
+                    ) : (
+                      <><EyeOff className="w-3 h-3 text-muted-foreground" /><span className="text-muted-foreground">Client has no portal login — internal only</span></>
+                    )}
+                  </div>
                   <Link to={`/admin/contacts/${contact.id}`} className="text-xs text-accent hover:underline block pt-2">
                     Open full profile →
                   </Link>

@@ -104,6 +104,8 @@ const BusinessInfrastructureAssessment = lazyWithReload(() => import("./componen
 const ProfileSettings = lazyWithReload(() => import("./components/dashboard/ProfileSettings").then(m => ({ default: m.ProfileSettings })));
 const AffiliateTracking = lazyWithReload(() => import("./components/dashboard/AffiliateTracking").then(m => ({ default: m.AffiliateTracking })));
 const Support = lazyWithReload(() => import("./pages/Support"));
+const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
+const WorkspaceApprovals = lazyWithReload(() => import("./pages/workspace/WorkspaceApprovals"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -167,6 +169,7 @@ const App = () => (
               <Route path="support" element={<PageSuspense><Support /></PageSuspense>} />
               <Route path="settings" element={<PageSuspense><ProfileSettings /></PageSuspense>} />
               <Route path="affiliate" element={<PageSuspense><AffiliateTracking /></PageSuspense>} />
+              <Route path="approvals" element={<PageSuspense><ClientApprovals /></PageSuspense>} />
             </Route>
 
             {/* Backward compat redirect */}
@@ -198,6 +201,7 @@ const App = () => (
               <Route path="payments" element={<PageSuspense><WorkspacePayments /></PageSuspense>} />
               <Route path="tasks" element={<PageSuspense><WorkspaceTasks /></PageSuspense>} />
               <Route path="funding-readiness" element={<PageSuspense><WorkspaceFundingReadiness /></PageSuspense>} />
+              <Route path="approvals" element={<PageSuspense><WorkspaceApprovals /></PageSuspense>} />
             </Route>
 
             {/* BTF Onboarding Wizard — admin-triggered, magic-link entry */}
