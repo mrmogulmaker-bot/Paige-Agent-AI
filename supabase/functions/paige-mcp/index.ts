@@ -1713,19 +1713,68 @@ app.all("/*", async (c) => {
   }
 
   // Peek the body to enforce per-tool scope for user tokens. Clone first so the transport can re-read.
+  let peekedBody: any = null;
   if (method === "POST") {
     const raw = c.req.raw.clone();
-    const peek = await raw.json().catch(() => null);
-    const gate = enforceScopeForBody(peek, actor);
+    peekedBody = await raw.json().catch(() => null);
+    const gate = enforceScopeForBody(peekedBody, actor);
     if (!gate.ok) {
       return c.json({
-        jsonrpc: "2.0", id: peek?.id ?? null,
+        jsonrpc: "2.0", id: peekedBody?.id ?? null,
         error: { code: -32001, message: gate.error },
       }, gate.status, CORS);
     }
   }
 
   const res = await actorStore.run(actor, () => httpHandler(c.req.raw));
+
+  // Doctrine §118: filter master-only tools out of tools/list for non-MMA callers.
+  if (method === "POST" && peekedBody?.method === "tools/list") {
+    try {
+      const callerTenant = await actorStore.run(actor, () => actorTenantId());
+      if (callerTenant !== MMA_TENANT_ID) {
+        const cloned = res.clone();
+        const text = await cloned.text();
+        // Handle both plain JSON and SSE event-stream responses from mcp-lite.
+        const ct = res.headers.get("content-type") ?? "";
+        if (ct.includes("application/json")) {
+          const body = JSON.parse(text);
+          if (Array.isArray(body?.result?.tools)) {
+            body.result.tools = body.result.tools.filter(
+              (t: any) => !MASTER_ONLY_TOOLS.has(t?.name),
+            );
+          }
+          const filtered = new Response(JSON.stringify(body), {
+            status: res.status,
+            headers: res.headers,
+          });
+          for (const [k, v] of Object.entries(CORS)) filtered.headers.set(k, v);
+          return filtered;
+        } else if (ct.includes("text/event-stream")) {
+          // SSE frames like: "data: {...}\n\n". Rewrite each JSON payload.
+          const rewritten = text.replace(/^data: (\{.*\})$/gm, (_m, json) => {
+            try {
+              const body = JSON.parse(json);
+              if (Array.isArray(body?.result?.tools)) {
+                body.result.tools = body.result.tools.filter(
+                  (t: any) => !MASTER_ONLY_TOOLS.has(t?.name),
+                );
+              }
+              return `data: ${JSON.stringify(body)}`;
+            } catch {
+              return `data: ${json}`;
+            }
+          });
+          const filtered = new Response(rewritten, { status: res.status, headers: res.headers });
+          for (const [k, v] of Object.entries(CORS)) filtered.headers.set(k, v);
+          return filtered;
+        }
+      }
+    } catch (e) {
+      console.error("[paige-mcp] tools/list filter failed", (e as Error).message);
+    }
+  }
+
   for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
   return res;
 });
