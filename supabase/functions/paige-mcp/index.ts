@@ -2167,6 +2167,13 @@ const TOOL_SCOPE: Record<string, Scope> = {
   send_sms: "crm.write",
   create_invoice: "crm.write",
   send_invoice: "crm.write",
+  // Coach Ops
+  list_coaches: "admin.read",
+  add_coach_role: "admin.write",
+  remove_coach_role: "admin.write",
+  update_coach_profile: "admin.write",
+  bulk_assign_clients_to_coach: "admin.write",
+  get_coach_performance: "admin.read",
 };
 
 const DISCOVERY_RESOURCE = {
