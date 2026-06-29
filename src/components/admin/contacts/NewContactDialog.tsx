@@ -38,7 +38,9 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
     if (!open) return;
     setFirstName(""); setLastName(""); setEmail(""); setPhone("");
     setEntityName(""); setTitle(""); setLifecycleStage("lead");
-    setSource("manual"); setCoachId("unassigned"); setTagsRaw(""); setNotes("");
+    setSource("manual"); setCoachId("unassigned");
+    setPrimaryOffer("none"); setOfferCustom("");
+    setTagsRaw(""); setNotes("");
     (async () => {
       const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
       const ids = (roles || []).map((r: any) => r.user_id);
