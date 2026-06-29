@@ -97,6 +97,13 @@ export type Database = {
             foreignKeyName: "account_modifications_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "account_modifications_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -993,6 +1000,13 @@ export type Database = {
             foreignKeyName: "btf_document_requests_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "btf_document_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -1059,6 +1073,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "btf_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -1180,6 +1201,13 @@ export type Database = {
             foreignKeyName: "btf_phase_items_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "btf_phase_items_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -1244,6 +1272,13 @@ export type Database = {
             foreignKeyName: "btf_workspace_invites_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "btf_workspace_invites_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -1302,6 +1337,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "btf_workspace_settings_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -2414,6 +2456,13 @@ export type Database = {
             foreignKeyName: "client_memory_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "client_memory_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -3170,6 +3219,13 @@ export type Database = {
             foreignKeyName: "credit_accounts_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "credit_accounts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -3373,6 +3429,13 @@ export type Database = {
             foreignKeyName: "credit_factor_scores_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "credit_factor_scores_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -3523,6 +3586,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "credit_negative_items_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -3681,6 +3751,13 @@ export type Database = {
             foreignKeyName: "credit_report_personal_info_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "credit_report_personal_info_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -3779,6 +3856,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "credit_report_uploads_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -4060,6 +4144,13 @@ export type Database = {
             foreignKeyName: "deals_contact_client_id_fkey"
             columns: ["contact_client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "deals_contact_client_id_fkey"
+            columns: ["contact_client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -4244,6 +4335,13 @@ export type Database = {
             foreignKeyName: "dispute_outcomes_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "dispute_outcomes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -4336,6 +4434,13 @@ export type Database = {
             foreignKeyName: "disputes_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "disputes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -4413,6 +4518,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -4721,6 +4833,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "extraction_quality_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -5078,6 +5197,13 @@ export type Database = {
             foreignKeyName: "funding_application_outcomes_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "funding_application_outcomes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -5351,6 +5477,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "funding_matches_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -6615,6 +6748,13 @@ export type Database = {
             foreignKeyName: "paige_admin_notifications_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_admin_notifications_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -6747,6 +6887,13 @@ export type Database = {
             foreignKeyName: "paige_bank_connections_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_bank_connections_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -6870,6 +7017,13 @@ export type Database = {
             foreignKeyName: "paige_bookings_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_bookings_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -6964,6 +7118,13 @@ export type Database = {
             foreignKeyName: "paige_btf_documents_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_btf_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -7022,6 +7183,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_business_credit_profiles_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -7092,6 +7260,13 @@ export type Database = {
             foreignKeyName: "paige_cash_flow_snapshots_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_cash_flow_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -7138,6 +7313,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_client_intake_submissions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -7217,6 +7399,13 @@ export type Database = {
             foreignKeyName: "paige_coach_assignments_coach_id_fkey"
             columns: ["coach_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_coach_assignments_coach_id_fkey"
+            columns: ["coach_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -7232,6 +7421,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_coach_assignments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -7426,6 +7622,13 @@ export type Database = {
             foreignKeyName: "paige_conversations_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_conversations_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -7491,6 +7694,13 @@ export type Database = {
             foreignKeyName: "paige_enrichment_log_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_enrichment_log_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -7537,6 +7747,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_health_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -7634,6 +7851,13 @@ export type Database = {
             foreignKeyName: "paige_invoices_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_invoices_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -7697,6 +7921,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_journey_stage_transitions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -8007,6 +8238,13 @@ export type Database = {
             foreignKeyName: "paige_messages_audit_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_messages_audit_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -8114,6 +8352,13 @@ export type Database = {
             foreignKeyName: "paige_nps_responses_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_nps_responses_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -8163,6 +8408,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_owner_credit_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -8230,6 +8482,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_payment_authorizations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -8315,6 +8574,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_pending_approvals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -8412,6 +8678,13 @@ export type Database = {
             foreignKeyName: "paige_referrals_referred_contact_id_fkey"
             columns: ["referred_contact_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_referrals_referred_contact_id_fkey"
+            columns: ["referred_contact_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -8427,6 +8700,13 @@ export type Database = {
             columns: ["referrer_contact_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_referrals_referrer_contact_id_fkey"
+            columns: ["referrer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -8503,6 +8783,13 @@ export type Database = {
             foreignKeyName: "paige_signature_envelopes_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_signature_envelopes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -8567,6 +8854,13 @@ export type Database = {
             foreignKeyName: "paige_signed_agreements_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_signed_agreements_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -8613,6 +8907,13 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_sla_alert_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -8725,6 +9026,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_subscription_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
             referencedColumns: ["contact_id"]
           },
           {
@@ -10928,6 +11236,13 @@ export type Database = {
             foreignKeyName: "tier_state_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "tier_state_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
@@ -11336,6 +11651,164 @@ export type Database = {
       }
     }
     Views: {
+      _bank_rollup: {
+        Row: {
+          bank_connections: number | null
+          bank_connections_active: number | null
+          contact_id: string | null
+          last_bank_sync_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_bank_connections_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_bank_connections_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_bank_connections_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_bank_connections_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      _latest_cash_flow: {
+        Row: {
+          avg_daily_balance_cents: number | null
+          contact_id: string | null
+          funding_readiness_score: number | null
+          generated_at: string | null
+          period_end: string | null
+          period_start: string | null
+          runway_days: number | null
+          total_deposits_cents: number | null
+          total_withdrawals_cents: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_cash_flow_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_cash_flow_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_cash_flow_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_cash_flow_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      _latest_owner_credit: {
+        Row: {
+          bureau: Database["public"]["Enums"]["owner_credit_bureau"] | null
+          contact_id: string | null
+          pulled_at: string | null
+          score: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_owner_credit_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_owner_credit_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_owner_credit_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_owner_credit_snapshots_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      _signature_rollup: {
+        Row: {
+          contact_id: string | null
+          envelopes_completed: number | null
+          envelopes_pending: number | null
+          envelopes_total: number | null
+          last_signed_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_signature_envelopes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_signature_envelopes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_signature_envelopes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_signature_envelopes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       analytics_daily_summary: {
         Row: {
           active_users: number | null
@@ -11366,6 +11839,43 @@ export type Database = {
           open_value_cents: number | null
           won_deals: number | null
           won_value_cents: number | null
+        }
+        Relationships: []
+      }
+      contact_readiness_rollup: {
+        Row: {
+          assigned_coach_user_id: string | null
+          avg_daily_balance_cents: number | null
+          bank_connections: number | null
+          bank_connections_active: number | null
+          business_pulled_at: string | null
+          business_scores: Json | null
+          cash_flow_period_end: string | null
+          cash_flow_readiness: number | null
+          contact_id: string | null
+          email: string | null
+          entity_name: string | null
+          envelopes_completed: number | null
+          envelopes_pending: number | null
+          envelopes_total: number | null
+          first_name: string | null
+          funding_goal: number | null
+          last_bank_sync_at: string | null
+          last_contacted_at: string | null
+          last_name: string | null
+          last_signed_at: string | null
+          lifecycle_stage: string | null
+          linked_user_id: string | null
+          owner_bureau:
+            | Database["public"]["Enums"]["owner_credit_bureau"]
+            | null
+          owner_fico: number | null
+          owner_pulled_at: string | null
+          readiness_score: number | null
+          runway_days: number | null
+          stored_overall_score: number | null
+          stored_score_at: string | null
+          tags: string[] | null
         }
         Relationships: []
       }
@@ -11520,6 +12030,10 @@ export type Database = {
       client_has_role_assigned: {
         Args: { _assignment_role: string; _client: string }
         Returns: boolean
+      }
+      compute_contact_readiness: {
+        Args: { _contact_id: string }
+        Returns: number
       }
       create_tenant_invite_token: {
         Args: {
