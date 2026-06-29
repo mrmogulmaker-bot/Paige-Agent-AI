@@ -2421,6 +2421,7 @@ export type Database = {
       }
       clients: {
         Row: {
+          agreement_signed_at: string | null
           assigned_coach_user_id: string | null
           city: string | null
           created_at: string
@@ -2447,6 +2448,9 @@ export type Database = {
           linkedin_url: string | null
           mirror_source: string | null
           monthly_revenue: number | null
+          onboarding_completed_at: string | null
+          onboarding_stage: string | null
+          onboarding_started_at: string | null
           phone: string | null
           source: string | null
           state: string | null
@@ -2460,6 +2464,7 @@ export type Database = {
           zip_code: string | null
         }
         Insert: {
+          agreement_signed_at?: string | null
           assigned_coach_user_id?: string | null
           city?: string | null
           created_at?: string
@@ -2486,6 +2491,9 @@ export type Database = {
           linkedin_url?: string | null
           mirror_source?: string | null
           monthly_revenue?: number | null
+          onboarding_completed_at?: string | null
+          onboarding_stage?: string | null
+          onboarding_started_at?: string | null
           phone?: string | null
           source?: string | null
           state?: string | null
@@ -2499,6 +2507,7 @@ export type Database = {
           zip_code?: string | null
         }
         Update: {
+          agreement_signed_at?: string | null
           assigned_coach_user_id?: string | null
           city?: string | null
           created_at?: string
@@ -2525,6 +2534,9 @@ export type Database = {
           linkedin_url?: string | null
           mirror_source?: string | null
           monthly_revenue?: number | null
+          onboarding_completed_at?: string | null
+          onboarding_stage?: string | null
+          onboarding_started_at?: string | null
           phone?: string | null
           source?: string | null
           state?: string | null
@@ -6829,6 +6841,64 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_btf_documents: {
+        Row: {
+          category: string
+          client_id: string
+          id: string
+          mime: string | null
+          original_filename: string | null
+          size_bytes: number | null
+          storage_path: string
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          category: string
+          client_id: string
+          id?: string
+          mime?: string | null
+          original_filename?: string | null
+          size_bytes?: number | null
+          storage_path: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          category?: string
+          client_id?: string
+          id?: string
+          mime?: string | null
+          original_filename?: string | null
+          size_bytes?: number | null
+          storage_path?: string
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_btf_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_btf_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_btf_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paige_business_credit_profiles: {
         Row: {
           business_name: string | null
@@ -6951,6 +7021,58 @@ export type Database = {
           {
             foreignKeyName: "paige_cash_flow_snapshots_contact_id_fkey"
             columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_client_intake_submissions: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          payload: Json
+          section: string
+          submitted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          payload?: Json
+          section: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          payload?: Json
+          section?: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_client_intake_submissions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_client_intake_submissions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_client_intake_submissions_client_id_fkey"
+            columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
@@ -7857,6 +7979,73 @@ export type Database = {
           },
         ]
       }
+      paige_payment_authorizations: {
+        Row: {
+          authorized_at: string
+          client_id: string
+          created_at: string
+          id: string
+          ip: unknown
+          plan_selected: string
+          recurring_auth_text_snapshot: string | null
+          status: string
+          stripe_customer_id: string | null
+          stripe_payment_method_id: string | null
+          stripe_subscription_id: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          authorized_at?: string
+          client_id: string
+          created_at?: string
+          id?: string
+          ip?: unknown
+          plan_selected: string
+          recurring_auth_text_snapshot?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          authorized_at?: string
+          client_id?: string
+          created_at?: string
+          id?: string
+          ip?: unknown
+          plan_selected?: string
+          recurring_auth_text_snapshot?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_payment_method_id?: string | null
+          stripe_subscription_id?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_payment_authorizations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_payment_authorizations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_payment_authorizations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paige_pending_approvals: {
         Row: {
           assigned_to_user_id: string | null
@@ -8108,6 +8297,70 @@ export type Database = {
           {
             foreignKeyName: "paige_signature_envelopes_contact_id_fkey"
             columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_signed_agreements: {
+        Row: {
+          agreement_template_key: string
+          agreement_text_snapshot: string
+          agreement_version: string
+          client_id: string
+          created_at: string
+          id: string
+          ip: unknown
+          signature_data: Json
+          signed_at: string
+          signed_pdf_path: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          agreement_template_key: string
+          agreement_text_snapshot: string
+          agreement_version: string
+          client_id: string
+          created_at?: string
+          id?: string
+          ip?: unknown
+          signature_data?: Json
+          signed_at?: string
+          signed_pdf_path?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          agreement_template_key?: string
+          agreement_text_snapshot?: string
+          agreement_version?: string
+          client_id?: string
+          created_at?: string
+          id?: string
+          ip?: unknown
+          signature_data?: Json
+          signed_at?: string
+          signed_pdf_path?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_signed_agreements_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_signed_agreements_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_signed_agreements_client_id_fkey"
+            columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
