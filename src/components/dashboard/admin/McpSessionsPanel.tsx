@@ -199,5 +199,6 @@ export function McpSessionsPanel() {
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }
