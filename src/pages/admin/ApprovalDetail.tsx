@@ -54,7 +54,7 @@ export default function ApprovalDetail() {
     if (row?.contact_id) {
       const { data: c } = await supabase
         .from("clients")
-        .select("id, first_name, last_name, email, phone, lifecycle_stage, tier, assigned_coach_user_id")
+        .select("id, first_name, last_name, email, phone, lifecycle_stage, tier, assigned_coach_user_id, linked_user_id")
         .eq("id", row.contact_id).maybeSingle();
       setContact(c);
       const { data: t } = await supabase
