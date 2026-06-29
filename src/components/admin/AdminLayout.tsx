@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -41,6 +41,7 @@ const crmNavItems = [
 // Secondary workspace tools — tucked into a "More" menu to keep the bar clean.
 const workspaceNavItems = [
   { label: "Members & Roles", href: "/admin/members", icon: UserCog },
+  { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
   { label: "Client Files (Legacy)", href: "/admin/clients", icon: Users },
   { label: "Funding Portfolio", href: "/admin/funding", icon: DollarSign },
   { label: "Funding Journey", href: "/admin/funding-pipeline", icon: Briefcase },
