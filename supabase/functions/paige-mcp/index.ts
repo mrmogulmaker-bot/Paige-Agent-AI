@@ -347,23 +347,25 @@ mcp.tool("create_deal", {
 
 // ---------- Tasks ----------
 mcp.tool("list_tasks", {
-  description: "List tasks, optionally scoped to an owner, deal, or status. Returns up to 50.",
+  description: "List tasks, optionally scoped to an owner (assignee auth.users.id), deal, status, or track. Returns up to 50.",
   inputSchema: z.object({
     owner_user_id: z.string().optional(),
     deal_id: z.string().optional(),
-    status: z.string().optional().describe("Task status, typically 'open' | 'done' | 'snoozed'."),
+    status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
+    track: z.string().optional(),
     limit: z.number().int().optional(),
   }),
   handler: async (args) => {
     const limit = Math.min(Math.max(args.limit ?? 25, 1), 50);
     let q = admin
       .from("tasks")
-      .select("id, user_id, deal_id, title, description, status, due_date, created_at")
+      .select("id, user_id, deal_id, biz_id, title, description, status, track, due_date, metadata, created_at, updated_at")
       .order("due_date", { ascending: true, nullsFirst: false })
       .limit(limit);
     if (args.owner_user_id) q = q.eq("user_id", args.owner_user_id);
     if (args.deal_id) q = q.eq("deal_id", args.deal_id);
     if (args.status) q = q.eq("status", args.status);
+    if (args.track) q = q.eq("track", args.track);
     const { data, error } = await q;
     if (error) return err(error.message);
     return ok({ items: data ?? [] });
@@ -371,26 +373,29 @@ mcp.tool("list_tasks", {
 });
 
 mcp.tool("create_task", {
-  description: "Create a CRM task. Either owner_user_id or deal_id should be provided so the task surfaces somewhere.",
+  description: "Create a task assigned to a user (auth.users.id). owner_user_id is required because tasks.user_id is NOT NULL. Status defaults to 'pending'.",
   inputSchema: z.object({
+    owner_user_id: z.string().describe("auth.users.id of the assignee. REQUIRED."),
     title: z.string(),
     description: z.string().optional(),
-    owner_user_id: z.string().optional().describe("auth.users.id of the assignee."),
     deal_id: z.string().optional(),
     due_date: z.string().optional().describe("ISO timestamp."),
-    track: z.string().optional().describe("Free-form bucket, e.g. 'sales', 'cs', 'btf'."),
+    track: z.string().optional().describe("Free-form bucket, e.g. 'sales', 'cs', 'btf', 'BUILD'."),
+    status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
+    metadata: z.record(z.string(), z.any()).optional(),
   }),
   handler: async (args) => {
     const { data, error } = await admin
       .from("tasks")
       .insert({
+        user_id: args.owner_user_id,
         title: args.title,
         description: args.description ?? null,
-        user_id: args.owner_user_id ?? null,
         deal_id: args.deal_id ?? null,
         due_date: args.due_date ?? null,
-        track: args.track ?? "sales",
-        status: "open",
+        track: args.track ?? null,
+        status: args.status ?? "pending",
+        metadata: args.metadata ?? null,
       })
       .select("id")
       .single();
@@ -400,13 +405,42 @@ mcp.tool("create_task", {
   },
 });
 
+mcp.tool("update_task", {
+  description: "Update a task's fields. Any omitted field is left unchanged.",
+  inputSchema: z.object({
+    task_id: z.string(),
+    title: z.string().optional(),
+    description: z.string().nullable().optional(),
+    status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
+    track: z.string().nullable().optional(),
+    due_date: z.string().nullable().optional(),
+    metadata: z.record(z.string(), z.any()).nullable().optional(),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async (args) => {
+    const patch: Record<string, unknown> = {};
+    if (args.title !== undefined) patch.title = args.title;
+    if (args.description !== undefined) patch.description = args.description;
+    if (args.status !== undefined) patch.status = args.status;
+    if (args.track !== undefined) patch.track = args.track;
+    if (args.due_date !== undefined) patch.due_date = args.due_date;
+    if (args.metadata !== undefined) patch.metadata = args.metadata;
+    if (Object.keys(patch).length === 0) return err("no_fields_to_update");
+    const { data, error } = await admin.from("tasks").update(patch).eq("id", args.task_id).select("id").maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("task_not_found");
+    await audit("update_task", "task", args.task_id, patch);
+    return ok({ ok: true, task_id: args.task_id });
+  },
+});
+
 mcp.tool("complete_task", {
-  description: "Mark a task as done.",
+  description: "Mark a task as completed.",
   inputSchema: z.object({ task_id: z.string() }),
   handler: async ({ task_id }) => {
     const { data, error } = await admin
       .from("tasks")
-      .update({ status: "done" })
+      .update({ status: "completed" })
       .eq("id", task_id)
       .select("id")
       .maybeSingle();
@@ -416,6 +450,36 @@ mcp.tool("complete_task", {
     return ok({ ok: true, task_id });
   },
 });
+
+mcp.tool("reopen_task", {
+  description: "Move a task back to 'pending' (undo complete/cancel).",
+  inputSchema: z.object({ task_id: z.string() }),
+  handler: async ({ task_id }) => {
+    const { data, error } = await admin
+      .from("tasks")
+      .update({ status: "pending" })
+      .eq("id", task_id)
+      .select("id")
+      .maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("task_not_found");
+    await audit("reopen_task", "task", task_id, {});
+    return ok({ ok: true, task_id });
+  },
+});
+
+mcp.tool("delete_task", {
+  description: "Permanently delete a task. Destructive — prefer update_task(status='cancelled') when reversibility matters.",
+  inputSchema: z.object({ task_id: z.string() }),
+  annotations: { destructiveHint: true },
+  handler: async ({ task_id }) => {
+    const { error } = await admin.from("tasks").delete().eq("id", task_id);
+    if (error) return err(error.message);
+    await audit("delete_task", "task", task_id, {});
+    return ok({ ok: true, task_id });
+  },
+});
+
 
 // ---------- Workflows ----------
 mcp.tool("list_workflows", {
