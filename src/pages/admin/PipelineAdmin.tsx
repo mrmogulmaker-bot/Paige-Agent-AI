@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Plus, Settings, Filter, TrendingUp, Search } from "lucide-react";
 import { Deal, Pipeline, PipelineStage, formatMoney, logDealActivity } from "@/lib/pipelines";
-import { offerLabel } from "@/lib/contacts";
+import { useTenantOffers } from "@/hooks/useTenantOffers";
 import { NewDealDialog } from "@/components/admin/pipeline/NewDealDialog";
 import { DealDrawer } from "@/components/admin/pipeline/DealDrawer";
 
@@ -26,6 +26,7 @@ export default function PipelineAdmin() {
   const [search, setSearch] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [coaches, setCoaches] = useState<{ user_id: string; name: string }[]>([]);
+  const { offerLabel } = useTenantOffers();
 
   useEffect(() => { loadPipelines(); }, []);
   useEffect(() => { if (activePipelineId) loadBoard(activePipelineId); }, [activePipelineId]);

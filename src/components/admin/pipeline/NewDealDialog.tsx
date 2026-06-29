@@ -11,7 +11,7 @@ import { Check, ChevronsUpDown, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Pipeline, PipelineStage, dollarsToCents, logDealActivity } from "@/lib/pipelines";
-import { CONSUMER_OFFER_TYPES as OFFER_TYPES } from "@/lib/contacts";
+import { useTenantOffers } from "@/hooks/useTenantOffers";
 import { NewContactDialog } from "@/components/admin/contacts/NewContactDialog";
 
 type Props = {
@@ -43,6 +43,7 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
   const [coaches, setCoaches] = useState<CoachOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [meId, setMeId] = useState<string | null>(null);
+  const { offers: tenantOffers } = useTenantOffers();
 
   const loadContacts = async () => {
     const { data: cs } = await supabase
@@ -249,9 +250,15 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
                   <SelectTrigger><SelectValue placeholder="Select offer" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">— None —</SelectItem>
-                    {OFFER_TYPES.map((o) => (
+                    {tenantOffers.length === 0 && (
+                      <SelectItem value="__no_offers__" disabled>
+                        No products yet — add them in Settings → Storefront
+                      </SelectItem>
+                    )}
+                    {tenantOffers.map((o) => (
                       <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                     ))}
+                    <SelectItem value="other">Other (custom)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

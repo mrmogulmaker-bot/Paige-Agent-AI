@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { LIFECYCLE_STAGES, CONTACT_SOURCES, CONSUMER_OFFER_TYPES as OFFER_TYPES } from "@/lib/contacts";
+import { LIFECYCLE_STAGES, CONTACT_SOURCES } from "@/lib/contacts";
+import { useTenantOffers } from "@/hooks/useTenantOffers";
 
 type Coach = { user_id: string; name: string };
 
@@ -33,6 +34,7 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
   const [notes, setNotes] = useState("");
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [saving, setSaving] = useState(false);
+  const { offers: tenantOffers } = useTenantOffers();
 
   useEffect(() => {
     if (!open) return;
@@ -217,9 +219,15 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
                 <SelectTrigger><SelectValue placeholder="Select offer" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">— None —</SelectItem>
-                  {OFFER_TYPES.map((o) => (
+                  {tenantOffers.length === 0 && (
+                    <SelectItem value="__no_offers__" disabled>
+                      No products yet — add them in Settings → Storefront
+                    </SelectItem>
+                  )}
+                  {tenantOffers.map((o) => (
                     <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                   ))}
+                  <SelectItem value="other">Other (custom)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
