@@ -227,6 +227,9 @@ const Admin = () => {
         <Route path="coaches" element={
           <Suspense fallback={<SuspenseFallback />}><CoachesAdmin /></Suspense>
         } />
+        <Route path="sub-agents" element={
+          <Suspense fallback={<SuspenseFallback />}><SubAgentsAdmin /></Suspense>
+        } />
         <Route path="clients" element={
           <Suspense fallback={<SuspenseFallback />}>
             <ClientManagementDashboard onViewClient={handleViewClient} onViewInternalClient={handleViewInternalClient} />
