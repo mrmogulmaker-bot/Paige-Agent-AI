@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
   MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
-  CreditCard, User, Landmark, TrendingUp, Send,
+  CreditCard, User, Landmark, TrendingUp, Send, Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -19,6 +19,9 @@ import { BusinessCreditTab } from "@/components/admin/contacts/BusinessCreditTab
 import { OwnerCreditTab } from "@/components/admin/contacts/OwnerCreditTab";
 import { BankingTab } from "@/components/admin/contacts/BankingTab";
 import { CashFlowTab } from "@/components/admin/contacts/CashFlowTab";
+import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog";
+import { QuickLogMenu } from "@/components/admin/contacts/QuickLogMenu";
+import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 
 type Client = {
