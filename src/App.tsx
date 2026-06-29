@@ -83,6 +83,13 @@ const WorkspaceDocuments = lazyWithReload(() => import("./pages/workspace/Worksp
 const WorkspaceMessages = lazyWithReload(() => import("./pages/workspace/WorkspaceMessages"));
 const WorkspacePayments = lazyWithReload(() => import("./pages/workspace/WorkspacePayments"));
 const WorkspaceAcceptInvite = lazyWithReload(() => import("./pages/workspace/AcceptInvite"));
+const OnboardLayout = lazyWithReload(() => import("./pages/onboard/OnboardLayout"));
+const OnboardStep1 = lazyWithReload(() => import("./pages/onboard/Step1Welcome"));
+const OnboardStep2 = lazyWithReload(() => import("./pages/onboard/Step2Agreement"));
+const OnboardStep3 = lazyWithReload(() => import("./pages/onboard/Step3Payment"));
+const OnboardStep4 = lazyWithReload(() => import("./pages/onboard/Step4Intake"));
+const OnboardStep5 = lazyWithReload(() => import("./pages/onboard/Step5Documents"));
+const OnboardStep6 = lazyWithReload(() => import("./pages/onboard/Step6Complete"));
 const AcceptInvite = lazyWithReload(() => import("./pages/AcceptInvite"));
 
 // Lazy-load existing dashboard sections for /app/* routes
@@ -181,6 +188,17 @@ const App = () => (
               <Route path="documents" element={<PageSuspense><WorkspaceDocuments /></PageSuspense>} />
               <Route path="messages" element={<PageSuspense><WorkspaceMessages /></PageSuspense>} />
               <Route path="payments" element={<PageSuspense><WorkspacePayments /></PageSuspense>} />
+            </Route>
+
+            {/* BTF Onboarding Wizard — admin-triggered, magic-link entry */}
+            <Route path="/onboard" element={<PageSuspense><OnboardLayout /></PageSuspense>}>
+              <Route index element={<PageSuspense><OnboardStep1 /></PageSuspense>} />
+              <Route path="welcome" element={<PageSuspense><OnboardStep1 /></PageSuspense>} />
+              <Route path="agreement" element={<PageSuspense><OnboardStep2 /></PageSuspense>} />
+              <Route path="payment" element={<PageSuspense><OnboardStep3 /></PageSuspense>} />
+              <Route path="intake" element={<PageSuspense><OnboardStep4 /></PageSuspense>} />
+              <Route path="documents" element={<PageSuspense><OnboardStep5 /></PageSuspense>} />
+              <Route path="complete" element={<PageSuspense><OnboardStep6 /></PageSuspense>} />
             </Route>
 
             {/* Broker workspace (signed-in brokers) */}
