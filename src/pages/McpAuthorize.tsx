@@ -33,41 +33,74 @@ export default function McpAuthorize() {
     code_challenge_method: params.get("code_challenge_method") ?? "S256",
   }), [params]);
 
+  // Direct fetch with explicit headers — avoids supabase.functions.invoke quirks
+  // ("Failed to send a request to the Edge Function" generic errors) and lets us
+  // surface the actual server response body.
+  const callConsent = async (action: "lookup" | "approve" | "deny", token: string | null) => {
+    const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-mcp-consent`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    let resp: Response;
+    try {
+      resp = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ action, ...req }),
+      });
+    } catch (err) {
+      throw new Error(err instanceof Error ? err.message : "Network error reaching authorization service");
+    }
+    const text = await resp.text();
+    let parsed: any = {};
+    try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
+    if (!resp.ok || parsed?.error) {
+      const code = parsed?.error ?? `HTTP ${resp.status}`;
+      throw new Error(typeof code === "string" ? code : JSON.stringify(code));
+    }
+    return parsed;
+  };
+
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        const next = `/mcp/authorize?${params.toString()}`;
-        sessionStorage.setItem("post_auth_redirect", next);
-        setStatus("needs_auth");
-        return;
-      }
-      const { data, error: invErr } = await supabase.functions.invoke("paige-mcp-consent", {
-        body: { action: "lookup", ...req },
-      });
-      if (invErr || data?.error) {
-        setError(data?.error ?? invErr?.message ?? "Unknown error");
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          const next = `/mcp/authorize?${params.toString()}`;
+          sessionStorage.setItem("post_auth_redirect", next);
+          setStatus("needs_auth");
+          return;
+        }
+        const data = await callConsent("lookup", session.access_token);
+        setClient(data.client);
+        setScopes(data.scopes);
+        setStatus("ready");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unknown error");
         setStatus("error");
-        return;
       }
-      setClient(data.client);
-      setScopes(data.scopes);
-      setStatus("ready");
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [req, params]);
 
   const decide = async (action: "approve" | "deny") => {
     setStatus("submitting");
-    const { data, error: invErr } = await supabase.functions.invoke("paige-mcp-consent", {
-      body: { action, ...req },
-    });
-    if (invErr || data?.error || !data?.redirect_url) {
-      setError(data?.error ?? invErr?.message ?? "Failed to submit decision");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setStatus("needs_auth");
+        return;
+      }
+      const data = await callConsent(action, session.access_token);
+      if (!data?.redirect_url) throw new Error("Server did not return a redirect URL");
+      setStatus("redirecting");
+      window.location.href = data.redirect_url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to submit decision");
       setStatus("error");
-      return;
     }
-    setStatus("redirecting");
-    window.location.href = data.redirect_url;
   };
 
   if (status === "loading") {
