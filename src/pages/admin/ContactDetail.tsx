@@ -190,6 +190,15 @@ export default function ContactDetail() {
           <h1 className="text-2xl sm:text-3xl font-bold truncate">{fullName || "Unnamed Contact"}</h1>
           <p className="text-sm text-muted-foreground">{client.entity_name || "No business on file"}</p>
         </div>
+        <QuickLogMenu
+          contactId={client.id}
+          contactUserId={client.linked_user_id}
+          contactDisplay={fullName || client.email || "contact"}
+          onLogged={() => id && load(id)}
+        />
+        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+          <Pencil className="h-4 w-4 mr-1" /> Edit
+        </Button>
         <Button variant="outline" size="sm" onClick={() => navigate(`/admin/contacts/${client.id}/journey`)}>
           <Activity className="h-4 w-4 mr-1" /> Member Journey
         </Button>
