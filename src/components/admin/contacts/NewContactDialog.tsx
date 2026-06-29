@@ -76,6 +76,25 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
       primaryOffer === "other" ? (offerCustom.trim() || "other") :
       primaryOffer;
 
+    // Pre-check: this user already has a contact with this email?
+    if (em) {
+      const { data: existing } = await supabase
+        .from("clients")
+        .select("id, first_name, last_name")
+        .eq("created_by", user.id)
+        .eq("email", em)
+        .maybeSingle();
+      if (existing) {
+        setSaving(false);
+        toast.message("Contact already exists", {
+          description: `${existing.first_name || ""} ${existing.last_name || ""} is already in your contacts. Opening it now.`,
+        });
+        onOpenChange(false);
+        onCreated(existing.id);
+        return;
+      }
+    }
+
     const { data, error } = await supabase
       .from("clients")
       .insert({
@@ -99,6 +118,25 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
     setSaving(false);
     if (error) {
       console.error("[NewContactDialog] insert failed", error);
+      // 23505 = unique_violation. Race with the pre-check above, or constraint on another column.
+      if ((error as any).code === "23505" || /duplicate key/i.test(error.message || "")) {
+        if (em) {
+          const { data: existing } = await supabase
+            .from("clients")
+            .select("id")
+            .eq("created_by", user.id)
+            .eq("email", em)
+            .maybeSingle();
+          if (existing) {
+            toast.message("Contact already exists — opening it");
+            onOpenChange(false);
+            onCreated(existing.id);
+            return;
+          }
+        }
+        toast.error("A contact with this email already exists in your account.");
+        return;
+      }
       toast.error(error.message || "Could not create contact");
       return;
     }
