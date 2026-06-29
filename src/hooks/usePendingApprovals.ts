@@ -1,36 +1,68 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-export interface PendingApproval {
+export interface ApprovalQueueRow {
   id: string;
-  type: "cs_draft" | "campaign_send" | "tier_change" | "other";
-  draft_content: any;
+  type: string;
+  category: string | null;
+  status: string;
+  priority: number | null;
+  risk_level: string | null;
+  summary: string | null;
+  source: string | null;
+  requires_role: string | null;
+  tenant_id: string | null;
   contact_id: string | null;
   conversation_id: string | null;
-  created_by_n8n_workflow_key: string | null;
-  status: string;
+  assigned_to_user_id: string | null;
+  submitted_by_user_id: string | null;
+  sla_due_at: string | null;
   created_at: string;
+  reviewed_at: string | null;
+  sent_at: string | null;
+  draft_content: any;
+  metadata: any;
+  contact_first_name: string | null;
+  contact_last_name: string | null;
+  contact_email: string | null;
+  contact_lifecycle_stage: string | null;
+  age_seconds: number;
+  sla_state: "overdue" | "due_soon" | "on_track" | "closed" | "unscheduled";
 }
 
-export function usePendingApprovals() {
-  const [items, setItems] = useState<PendingApproval[]>([]);
+// Back-compat alias kept so old call sites keep working.
+export type PendingApproval = ApprovalQueueRow & {
+  created_by_n8n_workflow_key: string | null;
+};
+
+export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?: string }) {
+  const [items, setItems] = useState<ApprovalQueueRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const { data } = await supabase
-      .from("paige_pending_approvals")
-      .select("id, type, draft_content, contact_id, conversation_id, created_by_n8n_workflow_key, status, created_at")
+    let q = supabase
+      .from("paige_approval_queue_v")
+      .select("*")
       .eq("status", "pending")
-      .order("created_at", { ascending: false })
-      .limit(200);
-    setItems((data as any) ?? []);
+      .order("priority", { ascending: true, nullsFirst: false })
+      .order("sla_due_at", { ascending: true, nullsFirst: false })
+      .limit(300);
+
+    if (opts?.contactId) q = q.eq("contact_id", opts.contactId);
+    if (opts?.scope === "mine") {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) q = q.eq("assigned_to_user_id", user.id);
+    }
+
+    const { data } = await q;
+    setItems((data as ApprovalQueueRow[] | null) ?? []);
     setLoading(false);
-  }, []);
+  }, [opts?.scope, opts?.contactId]);
 
   useEffect(() => {
     refresh();
     const channel = supabase
-      .channel("paige_pending_approvals_inbox")
+      .channel(`paige_approvals_${opts?.scope ?? "all"}_${opts?.contactId ?? "any"}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "paige_pending_approvals" },
@@ -38,7 +70,7 @@ export function usePendingApprovals() {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [refresh]);
+  }, [refresh, opts?.scope, opts?.contactId]);
 
   return { items, loading, refresh };
 }
