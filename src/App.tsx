@@ -45,6 +45,7 @@ const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
 const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
 const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
 const JoinWorkspace = lazyWithReload(() => import("./pages/JoinWorkspace"));
+const TenantStorefront = lazyWithReload(() => import("./pages/public/TenantStorefront"));
 import NotFound from "./pages/NotFound";
 
 // Everything else is lazy-loaded for a smaller initial bundle
@@ -180,6 +181,9 @@ const App = () => (
             <Route path="/broker" element={<PageSuspense><BrokerApply /></PageSuspense>} />
             <Route path="/brokers" element={<Navigate to="/broker" replace />} />
             <Route path="/broker/accept-invite" element={<PageSuspense><AcceptBrokerInvite /></PageSuspense>} />
+
+            {/* Public tenant storefront */}
+            <Route path="/store/:slug" element={<PageSuspense><TenantStorefront /></PageSuspense>} />
 
             {/* BTF Client Workspace (white-labeled — Mogul Maker Academy) */}
             <Route path="/workspace/accept-invite" element={<PageSuspense><WorkspaceAcceptInvite /></PageSuspense>} />
