@@ -25,6 +25,13 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const PLATFORM_KEY = Deno.env.get("PAIGE_MCP_PLATFORM_KEY") ?? "";
+const MMA_OS_CLAUDE_PLATFORM_KEY = Deno.env.get("MMA_OS_CLAUDE_PLATFORM_KEY") ?? "";
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+// Registered platform keys: label → secret value. Empty values are filtered.
+const PLATFORM_KEYS: Array<{ label: string; value: string }> = [
+  { label: "paige_default", value: PLATFORM_KEY },
+  { label: "mma_os_claude", value: MMA_OS_CLAUDE_PLATFORM_KEY },
+].filter((k) => k.value.length > 0);
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -812,6 +819,192 @@ mcp.tool("create_admin_notification", {
   },
 });
 
+// ---------- Email Templates (DB-stored, key-addressable) ----------
+mcp.tool("list_email_templates", {
+  description:
+    "List rows from public.email_templates. Filter by category, product_scope, or active. Read-only catalog browse.",
+  inputSchema: z.object({
+    category: z.string().optional().describe("e.g. 'btf_lifecycle', 'btf_education', 'btf_stall'"),
+    product_scope: z.string().optional().describe("e.g. 'btf', 'launchpad', 'mma'"),
+    active: z.boolean().optional(),
+    limit: z.number().int().optional().describe("1-200, default 100"),
+  }),
+  handler: async (args) => {
+    const limit = Math.min(Math.max(args.limit ?? 100, 1), 200);
+    let q = admin
+      .from("email_templates")
+      .select("template_key, subject, preheader, variables, category, product_scope, active, notes, updated_at")
+      .order("template_key", { ascending: true })
+      .limit(limit);
+    if (args.category) q = q.eq("category", args.category);
+    if (args.product_scope) q = q.eq("product_scope", args.product_scope);
+    if (typeof args.active === "boolean") q = q.eq("active", args.active);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [], count: (data ?? []).length });
+  },
+});
+
+mcp.tool("upsert_email_template", {
+  description:
+    "Insert or update an email template by template_key. Stores markdown source of truth; rendering happens at send time. Use for the canonical BTF/launchpad/mma email libraries.",
+  inputSchema: z.object({
+    template_key: z.string().describe("Stable kebab-case key, e.g. 'btf-welcome-day-1'"),
+    subject: z.string(),
+    preheader: z.string().optional(),
+    body_markdown: z.string().describe("Source of truth. Use {{var_name}} for substitutions."),
+    variables: z.array(z.string()).optional().describe("Declared variable names for editor hints"),
+    category: z.string().describe("'btf_lifecycle' | 'btf_education' | 'btf_stall' | etc."),
+    product_scope: z.string().describe("'btf' | 'launchpad' | 'mma'"),
+    active: z.boolean().optional(),
+    notes: z.string().optional().describe("Voice/context notes for human editors"),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async (args) => {
+    const row = {
+      template_key: args.template_key,
+      subject: args.subject,
+      preheader: args.preheader ?? null,
+      body_markdown: args.body_markdown,
+      variables: args.variables ?? [],
+      category: args.category,
+      product_scope: args.product_scope,
+      active: args.active ?? true,
+      notes: args.notes ?? null,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await admin
+      .from("email_templates")
+      .upsert(row, { onConflict: "template_key" })
+      .select("template_key, updated_at")
+      .single();
+    if (error) return err(error.message);
+    await audit("upsert_email_template", "email_template", data.template_key, {
+      category: args.category, product_scope: args.product_scope,
+    });
+    return ok({ ok: true, template_key: data.template_key, updated_at: data.updated_at });
+  },
+});
+
+// Minimal mustache-style renderer: replaces {{var}} with vars[var]. Returns missing-var error on first miss.
+function renderMustache(tpl: string, vars: Record<string, unknown>): { ok: true; out: string } | { ok: false; missing: string } {
+  const pattern = /\{\{\s*([\w.]+)\s*\}\}/g;
+  let missing: string | null = null;
+  const out = tpl.replace(pattern, (_m, name: string) => {
+    if (missing) return "";
+    if (Object.prototype.hasOwnProperty.call(vars, name)) {
+      const v = (vars as any)[name];
+      return v == null ? "" : String(v);
+    }
+    missing = name;
+    return "";
+  });
+  if (missing) return { ok: false, missing };
+  return { ok: true, out };
+}
+
+// Markdown → minimal HTML (paragraphs, line breaks, **bold**, *italic*, [text](url)). No HTML injection from vars
+// since vars are substituted before this step but values are escaped first.
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function mdToHtml(md: string): string {
+  const blocks = md.split(/\n{2,}/).map((block) => {
+    const escaped = escapeHtml(block)
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+      .replace(/\n/g, "<br/>");
+    return `<p>${escaped}</p>`;
+  });
+  return blocks.join("\n");
+}
+
+mcp.tool("send_btf_template_email", {
+  description:
+    "Look up an email_templates row by template_key, render {{vars}}, and send via Resend through the verified notify.paigeagent.ai sender. Sends real customer email — use idempotency in the caller. from_name defaults to 'Build to Fund'.",
+  inputSchema: z.object({
+    to_email: z.string().describe("Recipient email"),
+    template_key: z.string().describe("public.email_templates.template_key"),
+    vars: z.record(z.any()).optional().describe("Variable values for {{var}} substitution"),
+    from_name: z.string().optional(),
+    reply_to: z.string().optional(),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async (args) => {
+    if (!RESEND_API_KEY) return err("resend_not_configured");
+    const vars = args.vars ?? {};
+
+    const { data: tpl, error: tplErr } = await admin
+      .from("email_templates")
+      .select("template_key, subject, preheader, body_markdown, active, product_scope")
+      .eq("template_key", args.template_key)
+      .maybeSingle();
+    if (tplErr) return err(tplErr.message);
+    if (!tpl) return err(`template_not_found:${args.template_key}`);
+    if (!tpl.active) return err(`template_inactive:${args.template_key}`);
+
+    // Suppression check
+    const { data: sup } = await admin
+      .from("suppressed_emails").select("email").eq("email", args.to_email.toLowerCase()).maybeSingle();
+    if (sup) return err(`recipient_suppressed:${args.to_email}`);
+
+    const subjectR = renderMustache(tpl.subject, vars);
+    if (!subjectR.ok) return err(`missing_var:${subjectR.missing} (subject)`);
+    const bodyR = renderMustache(tpl.body_markdown, vars);
+    if (!bodyR.ok) return err(`missing_var:${bodyR.missing} (body)`);
+    const preheaderR = tpl.preheader ? renderMustache(tpl.preheader, vars) : { ok: true as const, out: "" };
+    if (!preheaderR.ok) return err(`missing_var:${preheaderR.missing} (preheader)`);
+
+    const html = (preheaderR.out ? `<div style="display:none;max-height:0;overflow:hidden">${escapeHtml(preheaderR.out)}</div>` : "") + mdToHtml(bodyR.out);
+    const fromName = args.from_name ?? "Build to Fund";
+    const fromAddr = `${fromName} <hello@notify.paigeagent.ai>`;
+
+    const resendRes = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromAddr,
+        to: [args.to_email],
+        subject: subjectR.out,
+        html,
+        reply_to: args.reply_to ?? "coach@mogulmakeracademy.com",
+        tags: [
+          { name: "template_key", value: tpl.template_key.replace(/[^a-zA-Z0-9_-]/g, "_") },
+          { name: "product_scope", value: tpl.product_scope },
+        ],
+      }),
+    });
+    const payload = await resendRes.json().catch(() => ({}));
+    if (!resendRes.ok) {
+      await audit("send_btf_template_email_failed", "email_template", tpl.template_key, {
+        to: args.to_email, status: resendRes.status, payload,
+      });
+      return err(`resend_${resendRes.status}: ${JSON.stringify(payload)}`);
+    }
+
+    const messageId = payload?.id ?? null;
+    const sentAt = new Date().toISOString();
+    await admin.from("email_send_log").insert({
+      template_name: tpl.template_key,
+      recipient_email: args.to_email.toLowerCase(),
+      message_id: messageId,
+      status: "sent",
+      metadata: { product_scope: tpl.product_scope, via: "mcp.send_btf_template_email" },
+    }).then(() => {}, () => {});
+    await audit("send_btf_template_email", "email_template", tpl.template_key, {
+      to: args.to_email, message_id: messageId,
+    });
+
+    return ok({ ok: true, message_id: messageId, template_key: tpl.template_key, sent_at: sentAt });
+  },
+});
+
+
+
 async function sha256Hex(input: string): Promise<string> {
   const bytes = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -854,6 +1047,8 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Admin
   list_team_members: "admin.read", assign_coach: "admin.write", create_team_invitation: "admin.write",
   list_unassigned_queue: "admin.read", list_admin_notifications: "admin.read", create_admin_notification: "admin.write",
+  // Email templates
+  list_email_templates: "admin.read", upsert_email_template: "admin.write", send_btf_template_email: "btf.write",
 };
 
 const DISCOVERY_RESOURCE = {
@@ -887,8 +1082,10 @@ const NO_STORE = { "Cache-Control": "no-store", "Pragma": "no-cache" };
 // Resolve a presented bearer token into an actor context. Returns null on unauthorized.
 async function resolveBearer(presented: string): Promise<ActorCtx | null> {
   if (!presented) return null;
-  if (PLATFORM_KEY && presented === PLATFORM_KEY) {
-    return { kind: "platform", user_id: null, client_id: null, scopes: [...SUPPORTED_SCOPES] };
+  for (const k of PLATFORM_KEYS) {
+    if (presented === k.value) {
+      return { kind: "platform", user_id: null, client_id: k.label, scopes: [...SUPPORTED_SCOPES] };
+    }
   }
   const hash = await sha256Hex(presented);
   const { data } = await admin
@@ -1078,7 +1275,7 @@ app.all("/*", async (c) => {
   }
 
   // ----- MCP protocol endpoint (requires bearer) -----
-  if (!PLATFORM_KEY) return c.json({ error: "server_misconfigured" }, 500, CORS);
+  if (PLATFORM_KEYS.length === 0) return c.json({ error: "server_misconfigured" }, 500, CORS);
   const presented = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   const actor = await resolveBearer(presented);
   if (!actor) {
