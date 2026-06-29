@@ -85,6 +85,7 @@ const WorkspaceDocuments = lazyWithReload(() => import("./pages/workspace/Worksp
 const WorkspaceMessages = lazyWithReload(() => import("./pages/workspace/WorkspaceMessages"));
 const WorkspacePayments = lazyWithReload(() => import("./pages/workspace/WorkspacePayments"));
 const WorkspaceTasks = lazyWithReload(() => import("./pages/workspace/WorkspaceTasks"));
+const WorkspaceFundingReadiness = lazyWithReload(() => import("./pages/workspace/WorkspaceFundingReadiness"));
 const WorkspaceAcceptInvite = lazyWithReload(() => import("./pages/workspace/AcceptInvite"));
 const OnboardLayout = lazyWithReload(() => import("./pages/onboard/OnboardLayout"));
 const OnboardStep1 = lazyWithReload(() => import("./pages/onboard/Step1Welcome"));
@@ -196,6 +197,7 @@ const App = () => (
               <Route path="messages" element={<PageSuspense><WorkspaceMessages /></PageSuspense>} />
               <Route path="payments" element={<PageSuspense><WorkspacePayments /></PageSuspense>} />
               <Route path="tasks" element={<PageSuspense><WorkspaceTasks /></PageSuspense>} />
+              <Route path="funding-readiness" element={<PageSuspense><WorkspaceFundingReadiness /></PageSuspense>} />
             </Route>
 
             {/* BTF Onboarding Wizard — admin-triggered, magic-link entry */}
