@@ -1047,6 +1047,8 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Admin
   list_team_members: "admin.read", assign_coach: "admin.write", create_team_invitation: "admin.write",
   list_unassigned_queue: "admin.read", list_admin_notifications: "admin.read", create_admin_notification: "admin.write",
+  // Email templates
+  list_email_templates: "admin.read", upsert_email_template: "admin.write", send_btf_template_email: "btf.write",
 };
 
 const DISCOVERY_RESOURCE = {
