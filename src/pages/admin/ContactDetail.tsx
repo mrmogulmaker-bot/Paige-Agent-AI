@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
   MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
-  CreditCard, User, Landmark, TrendingUp, Send, Pencil,
+  CreditCard, User, Landmark, TrendingUp, Send, Pencil, ClipboardCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -20,6 +20,8 @@ import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog
 import { QuickLogMenu } from "@/components/admin/contacts/QuickLogMenu";
 import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
+import { usePendingApprovals } from "@/hooks/usePendingApprovals";
+import { CATEGORY_LABEL, RISK_COLOR, type ApprovalCategory } from "@/lib/approvals";
 
 type Client = {
   id: string;
