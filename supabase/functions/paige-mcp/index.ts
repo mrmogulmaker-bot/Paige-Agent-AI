@@ -124,7 +124,31 @@ async function audit(action: string, target_type: string | null, target_id: stri
 
 // Workflow dispatcher lives in _shared so the pg_cron sweeper
 // (dispatch-queued-workflow-runs) can re-use the same routing logic.
-import { dispatchWorkflowRun } from "../_shared/workflowDispatch.ts";
+import { dispatchWorkflowRun, MMA_TENANT_ID } from "../_shared/workflowDispatch.ts";
+
+// Doctrine §118 master-only MCP tools. Hidden from tools/list when caller's
+// tenant != MMA. These are forward-looking — none are implemented yet but the
+// gate is in place so any future addition is opt-out by default.
+const MASTER_ONLY_TOOLS = new Set<string>([
+  "list_tenants",
+  "switch_active_tenant",
+  "update_tenant_features",
+]);
+
+// Resolve the actor's effective tenant_id WITHOUT falling back to MMA.
+// Platform-key callers → MMA (they ARE the platform owner).
+// User callers → their profiles.active_tenant_id, or null if unset.
+async function actorTenantId(): Promise<string | null> {
+  const actor = currentActor();
+  if (actor.kind === "platform") return MMA_TENANT_ID;
+  if (!actor.user_id) return null;
+  const { data } = await admin
+    .from("profiles")
+    .select("active_tenant_id")
+    .eq("user_id", actor.user_id)
+    .maybeSingle();
+  return (data?.active_tenant_id as string | null) ?? null;
+}
 
 
 
