@@ -167,7 +167,7 @@ mcp.tool("get_contact", {
 
 mcp.tool("update_contact_stage", {
   description:
-    "Move a contact through the lifecycle pipeline (e.g. lead → qualifying → active → won). Idempotent — calling with the current stage is a no-op.",
+    "DEPRECATED — use `update_lifecycle_stage` instead. Free-form predecessor that accepts any string for `lifecycle_stage`. Kept for backward compatibility with existing automations; will be removed in a future release. New callers should use update_lifecycle_stage (Doctrine §111 enum-validated).",
   inputSchema: z.object({
     contact_id: z.string(),
     lifecycle_stage: z.string().describe("New value, e.g. 'lead', 'qualifying', 'active', 'won', 'lost', 'self_serve'."),
