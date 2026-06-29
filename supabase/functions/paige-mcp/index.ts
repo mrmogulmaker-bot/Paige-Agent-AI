@@ -958,7 +958,7 @@ mcp.tool("send_btf_template_email", {
   }),
   annotations: { destructiveHint: true },
   handler: async (args) => {
-    if (!RESEND_API_KEY) return err("resend_not_configured");
+    // Per-key check happens below after we know the template's product_scope.
     const vars = args.vars ?? {};
 
     const { data: tpl, error: tplErr } = await admin
