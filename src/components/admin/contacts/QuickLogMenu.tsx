@@ -57,17 +57,17 @@ export function QuickLogMenu({ contactId, contactUserId, contactDisplay, onLogge
           preview: body.trim() || null,
         });
       } else {
-        // No portal account — write to client_memory as an internal coach note.
-        const { error } = await supabase.from("client_memory").insert({
-          client_id: contactId,
-          memory_type: `quick_${open}`,
-          content: subject.trim() ? `${subject.trim()}\n${body.trim()}` : body.trim(),
-          is_active: true,
-        });
-        if (error) throw error;
-        await supabase.from("clients").update({
+        // No portal account — append to the contact's internal notes thread.
+        const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+        const entry = `[${stamp}] ${open.toUpperCase()}${subject.trim() ? ` — ${subject.trim()}` : ""}${body.trim() ? `\n${body.trim()}` : ""}`;
+        const { data: existing } = await supabase
+          .from("clients").select("current_notes").eq("id", contactId).maybeSingle();
+        const merged = existing?.current_notes ? `${existing.current_notes}\n\n${entry}` : entry;
+        const { error } = await supabase.from("clients").update({
+          current_notes: merged,
           last_contacted_at: new Date().toISOString(),
         }).eq("id", contactId);
+        if (error) throw error;
       }
       toast.success(`${open.toUpperCase()} logged for ${contactDisplay}`);
       close();
