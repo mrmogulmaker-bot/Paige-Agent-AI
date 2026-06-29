@@ -169,6 +169,7 @@ const App = () => (
               <Route path="support" element={<PageSuspense><Support /></PageSuspense>} />
               <Route path="settings" element={<PageSuspense><ProfileSettings /></PageSuspense>} />
               <Route path="affiliate" element={<PageSuspense><AffiliateTracking /></PageSuspense>} />
+              <Route path="approvals" element={<PageSuspense><ClientApprovals /></PageSuspense>} />
             </Route>
 
             {/* Backward compat redirect */}
