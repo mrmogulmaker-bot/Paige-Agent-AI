@@ -296,7 +296,6 @@ Deno.serve(async (req) => {
       message_id: messageId,
       to: effectiveRecipient,
       from: resolvedFrom,
-      reply_to: resolvedReplyTo,
       sender_domain: SENDER_DOMAIN,
       subject: resolvedSubject,
       html,
