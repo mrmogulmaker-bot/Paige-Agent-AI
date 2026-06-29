@@ -21,6 +21,7 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
+import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
 // Pipedrive-style: primary CRM verbs live in the top bar.
