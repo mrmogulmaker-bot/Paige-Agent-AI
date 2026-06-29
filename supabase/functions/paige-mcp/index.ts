@@ -483,12 +483,18 @@ mcp.tool("run_workflow", {
 
     const { data: wf, error: wfErr } = await admin
       .from("paige_workflow_registry")
-      .select("id, key, requires_approval, is_active, provider, n8n_webhook_url, needs_n8n_link, langgraph_graph_id, direct_function_name")
+      .select("id, key, requires_approval, is_active, provider, n8n_webhook_url, needs_n8n_link, langgraph_graph_id, direct_function_name, tenant_id")
       .eq("key", args.workflow_key)
       .maybeSingle();
     if (wfErr) return err(wfErr.message);
     if (!wf) return err("workflow_not_found");
     if (!wf.is_active) return err("workflow_inactive");
+
+    // Doctrine §118: tenant-scoped workflows are only runnable by their owner tenant.
+    const callerTenantId = await actorTenantId();
+    if (wf.tenant_id && wf.tenant_id !== callerTenantId) {
+      return err("workflow_restricted_to_owning_tenant");
+    }
 
     if (wf.requires_approval) {
       const { data: pa, error: paErr } = await admin
