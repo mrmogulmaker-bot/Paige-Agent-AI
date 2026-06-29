@@ -535,6 +535,7 @@ mcp.tool("run_workflow", {
       langgraphGraphId: wf.langgraph_graph_id,
       directFunctionName: wf.direct_function_name,
       payload,
+      callerTenantId,
     });
 
     return ok({
