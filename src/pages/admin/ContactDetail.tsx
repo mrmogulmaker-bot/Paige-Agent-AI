@@ -291,6 +291,14 @@ export default function ContactDetail() {
           <TabsTrigger value="notes"><StickyNote className="h-4 w-4 mr-1" /> Notes</TabsTrigger>
           <TabsTrigger value="files"><FileText className="h-4 w-4 mr-1" /> Files</TabsTrigger>
           <TabsTrigger value="funding-lens"><TrendingUp className="h-4 w-4 mr-1" /> Funding Readiness</TabsTrigger>
+          <TabsTrigger value="approvals">
+            <ClipboardCheck className="h-4 w-4 mr-1" /> Approvals
+            {contactApprovals.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px] bg-accent text-accent-foreground">
+                {contactApprovals.length}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="deals">
