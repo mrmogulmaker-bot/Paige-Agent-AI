@@ -27,21 +27,35 @@ export interface Task {
   biz_id?: string | null;
 }
 
-export const useTasks = () => {
+export interface UseTasksOptions {
+  /** 'self' (default) limits to current user's tasks; 'all' fetches every visible row (admin). */
+  scope?: "self" | "all";
+  /** Cap the number of rows returned. */
+  limit?: number;
+}
+
+export const useTasks = (options: UseTasksOptions = {}) => {
+  const { scope = "self", limit } = options;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const fetchTasks = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setCurrentUserId(user.id);
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("tasks")
         .select("*")
-        .eq("user_id", user.id)
         .order("due_date", { ascending: true, nullsFirst: false });
+
+      if (scope === "self") query = query.eq("user_id", user.id);
+      if (limit) query = query.limit(limit);
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setTasks((data || []) as unknown as Task[]);
