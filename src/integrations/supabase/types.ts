@@ -10436,6 +10436,11 @@ export type Database = {
         Args: { _token: string; _user_id: string }
         Returns: Json
       }
+      admin_meta_capi_token_is_set: { Args: never; Returns: boolean }
+      admin_set_meta_capi_token: {
+        Args: { _token: string }
+        Returns: undefined
+      }
       admin_set_user_business_limit: {
         Args: { _max_businesses: number; _target_user_id: string }
         Returns: Json
