@@ -74,8 +74,23 @@ export const UserManagement = () => {
   const [sending, setSending] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [profileTarget, setProfileTarget] = useState<MemberProfile | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
 
-  const deleteUser = async () => {
+  const openProfile = (u: User) => {
+    setProfileTarget({
+      user_id: u.id,
+      email: u.email,
+      full_name: u.full_name,
+      created_at: u.created_at,
+      last_sign_in_at: null,
+      suspended_at: null,
+      suspended_reason: null,
+      roles: u.roles.filter((r) => r !== "user"),
+      is_owner: u.roles.includes("owner") || u.roles.includes("super_admin"),
+    });
+    setProfileOpen(true);
+  };
     if (!deleteTarget) return;
     setDeleting(true);
     try {
