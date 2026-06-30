@@ -20,6 +20,7 @@ import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog
 import { QuickLogMenu } from "@/components/admin/contacts/QuickLogMenu";
 import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
 import { ContactCampaignAttribution } from "@/components/admin/contacts/ContactCampaignAttribution";
+import { BusinessVerificationCard } from "@/components/admin/contacts/BusinessVerificationCard";
 
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
@@ -57,6 +58,7 @@ export default function ContactDetail() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
   const [files, setFiles] = useState<any[]>([]);
+  const [businesses, setBusinesses] = useState<Array<{ id: string; legal_name: string | null; dba: string | null; entity_type: string | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const { items: contactApprovals } = usePendingApprovals({ contactId: id });
@@ -81,16 +83,18 @@ export default function ContactDetail() {
       }
 
       if (c.linked_user_id) {
-        const [actRes, taskRes, noteRes, fileRes] = await Promise.all([
+        const [actRes, taskRes, noteRes, fileRes, bizRes] = await Promise.all([
           supabase.from("communication_log").select("*").eq("user_id", c.linked_user_id).order("created_at", { ascending: false }).limit(50),
           supabase.from("tasks").select("*").eq("user_id", c.linked_user_id).order("created_at", { ascending: false }).limit(50),
           supabase.from("client_memory").select("*").eq("client_user_id", c.linked_user_id).eq("is_active", true).order("created_at", { ascending: false }).limit(50),
           supabase.from("documents").select("*").eq("user_id", c.linked_user_id).order("uploaded_at", { ascending: false }).limit(50),
+          supabase.from("businesses").select("id, legal_name, dba, entity_type").eq("owner_user_id", c.linked_user_id).order("created_at", { ascending: false }),
         ]);
         setActivity(actRes.data || []);
         setTasks(taskRes.data || []);
         setNotes(noteRes.data || []);
         setFiles(fileRes.data || []);
+        setBusinesses((bizRes.data as any) || []);
       } else {
         const [noteRes, fileRes] = await Promise.all([
           supabase.from("client_memory").select("*").eq("client_id", clientId).eq("is_active", true).order("created_at", { ascending: false }).limit(50),
@@ -98,6 +102,7 @@ export default function ContactDetail() {
         ]);
         setNotes(noteRes.data || []);
         setFiles(fileRes.data || []);
+        setBusinesses([]);
       }
     } catch (e: any) {
       toast.error(e.message || "Failed to load contact");
@@ -299,6 +304,7 @@ export default function ContactDetail() {
           <TabsTrigger value="tasks"><CheckSquare className="h-4 w-4 mr-1" /> Tasks</TabsTrigger>
           <TabsTrigger value="notes"><StickyNote className="h-4 w-4 mr-1" /> Notes</TabsTrigger>
           <TabsTrigger value="files"><FileText className="h-4 w-4 mr-1" /> Files</TabsTrigger>
+          <TabsTrigger value="business"><Building2 className="h-4 w-4 mr-1" /> Business</TabsTrigger>
           <TabsTrigger value="funding-lens"><TrendingUp className="h-4 w-4 mr-1" /> Funding Readiness</TabsTrigger>
           <TabsTrigger value="approvals">
             <ClipboardCheck className="h-4 w-4 mr-1" /> Approvals
@@ -416,6 +422,27 @@ export default function ContactDetail() {
               </div>
             )}
           </CardContent></Card>
+        </TabsContent>
+
+        <TabsContent value="business">
+          {!client.linked_user_id ? (
+            <Card><CardContent className="p-4"><EmptyMsg msg="Link this contact to a user account to manage businesses + run verifications." /></CardContent></Card>
+          ) : businesses.length === 0 ? (
+            <Card><CardContent className="p-4"><EmptyMsg msg="No businesses on file for this contact yet." /></CardContent></Card>
+          ) : (
+            <div className="space-y-4">
+              {businesses.map((b) => (
+                <div key={b.id} className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">{b.legal_name || b.dba || "Unnamed business"}</span>
+                    {b.entity_type && <Badge variant="outline" className="text-[10px]">{b.entity_type}</Badge>}
+                  </div>
+                  <BusinessVerificationCard businessId={b.id} />
+                </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="funding-lens"><FundingReadinessLens contactId={client.id} mode="admin" /></TabsContent>
