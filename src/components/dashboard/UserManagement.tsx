@@ -289,14 +289,14 @@ export const UserManagement = () => {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="role">Role</Label>
-                  <Select value={inviteRole} onValueChange={(value: any) => setInviteRole(value)}>
+                  <Select value={inviteRole} onValueChange={(value: AssignableRole) => setInviteRole(value)}>
                     <SelectTrigger id="role">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="user">User</SelectItem>
-                      <SelectItem value="moderator">Moderator</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
+                      {ASSIGNABLE_ROLES.map((r) => (
+                        <SelectItem key={r} value={r}>{r}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -313,21 +313,37 @@ export const UserManagement = () => {
               <TableRow>
                 <TableHead>Email</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Role</TableHead>
+                <TableHead>Roles</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {users.map((user) => {
+                const protectedRole = (r: string) => r === "owner" || r === "super_admin";
+                return (
                 <TableRow key={user.id}>
                   <TableCell className="font-medium">{user.email}</TableCell>
                   <TableCell>{user.full_name || "-"}</TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 flex-wrap">
                       {user.roles.map((role) => (
-                        <Badge key={role} variant={role === "admin" ? "default" : "secondary"}>
+                        <Badge
+                          key={role}
+                          variant={role === "admin" || role === "owner" || role === "super_admin" ? "default" : "secondary"}
+                          className="flex items-center gap-1"
+                        >
                           {role}
+                          {!protectedRole(role) && role !== "user" && (
+                            <button
+                              onClick={() => removeUserRole(user.id, role)}
+                              className="ml-0.5 rounded-full hover:bg-foreground/10 p-0.5"
+                              title={`Remove ${role}`}
+                              aria-label={`Remove ${role}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
                         </Badge>
                       ))}
                     </div>
@@ -336,16 +352,16 @@ export const UserManagement = () => {
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Select
-                        defaultValue={user.roles[0] || "user"}
-                        onValueChange={(value: "admin" | "moderator" | "user" | "coach" | "affiliate") => updateUserRole(user.id, value)}
+                        value=""
+                        onValueChange={(value: AssignableRole) => addUserRole(user.id, value)}
                       >
-                        <SelectTrigger className="w-[130px]">
-                          <SelectValue />
+                        <SelectTrigger className="w-[150px]">
+                          <SelectValue placeholder="+ Add role" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="user">User</SelectItem>
-                          <SelectItem value="moderator">Moderator</SelectItem>
-                          <SelectItem value="admin">Admin</SelectItem>
+                          {ASSIGNABLE_ROLES.filter((r) => !user.roles.includes(r)).map((r) => (
+                            <SelectItem key={r} value={r}>{r}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <Button
