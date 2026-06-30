@@ -153,12 +153,40 @@ async function dispatchLangGraph(
   });
   const text = await resp.text();
   let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = { raw: text };
-  }
+  try { body = JSON.parse(text); } catch { body = { raw: text }; }
   return { status: resp.status, body };
+}
+
+// Soft sub-agent runtime — prompt-only, executed against the Lovable AI Gateway.
+// No new edge function required; Paige can spin these up on her own.
+async function invokeSoft(
+  agent: { slug: string; name: string; system_prompt: string | null; config: Record<string, unknown> | null },
+  input: Record<string, unknown>,
+  _context: OrchestratorRequest["context"],
+) {
+  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!apiKey) return { status: 503, body: { ok: false, error: "LOVABLE_API_KEY not configured" } };
+  if (!agent.system_prompt) return { status: 500, body: { ok: false, error: `Soft agent ${agent.slug} missing system_prompt` } };
+  const cfg = (agent.config ?? {}) as Record<string, unknown>;
+  const model = (cfg.model as string | undefined) ?? "google/gemini-2.5-flash";
+  const userPayload = typeof input === "string" ? input : JSON.stringify(input);
+  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: agent.system_prompt },
+        { role: "user", content: userPayload },
+      ],
+    }),
+  });
+  const text = await resp.text();
+  let body: unknown;
+  try { body = JSON.parse(text); } catch { body = { raw: text }; }
+  if (!resp.ok) return { status: resp.status, body };
+  const answer = (body as { choices?: Array<{ message?: { content?: string } }> })?.choices?.[0]?.message?.content ?? "";
+  return { status: 200, body: { ok: true, agent: agent.slug, answer, raw: body } };
 }
 
 Deno.serve(async (req) => {
