@@ -475,6 +475,22 @@ export default function ContactsAdmin() {
                           <Button variant="ghost" size="icon" onClick={() => setEditTarget(c)} aria-label="Edit contact">
                             <Pencil className="h-4 w-4" />
                           </Button>
+                          {isAdmin && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setDeleteTarget(c)}
+                                  aria-label="Delete contact"
+                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Delete contact (admin)</TooltipContent>
+                            </Tooltip>
+                          )}
                           <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/contacts/${c.id}`)}>
                             Open
                           </Button>
