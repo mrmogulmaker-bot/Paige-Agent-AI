@@ -201,7 +201,10 @@ export default function MyReferralsPanel() {
             {stats.tier_name} · {formatPercent(stats.commission_rate)} commission
           </p>
         </div>
-        <Badge className="bg-[#1a2840] text-white">{stats.referral_code}</Badge>
+        <div className="flex flex-col items-end gap-1.5">
+          <Badge className="bg-[#1a2840] text-white">{stats.referral_code}</Badge>
+          <LiveSyncIndicator lastUpdatedAt={lastSyncAt} justUpdated={justSynced} />
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="flex flex-col gap-2 md:flex-row">
