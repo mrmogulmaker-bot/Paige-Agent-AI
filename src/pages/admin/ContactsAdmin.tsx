@@ -241,8 +241,17 @@ export default function ContactsAdmin() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await deleteContact(deleteTarget.id);
-      toast.success("Contact deleted");
+      // If the contact has a portal login and admin opted in, nuke the auth user too.
+      if (alsoDeleteAuth && deleteTarget.linked_user_id) {
+        const { data, error } = await supabase.functions.invoke("admin-delete-user", {
+          body: { user_id: deleteTarget.linked_user_id, keep_contact: false },
+        });
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+      } else {
+        await deleteContact(deleteTarget.id);
+      }
+      toast.success(alsoDeleteAuth ? "Contact + platform account deleted" : "Contact deleted");
       setClients((prev) => prev.filter((c) => c.id !== deleteTarget.id));
       setSelected((prev) => {
         const next = new Set(prev);
@@ -250,6 +259,7 @@ export default function ContactsAdmin() {
         return next;
       });
       setDeleteTarget(null);
+      setAlsoDeleteAuth(false);
     } catch (e: any) {
       toast.error(e?.message || "Delete failed");
     } finally {
