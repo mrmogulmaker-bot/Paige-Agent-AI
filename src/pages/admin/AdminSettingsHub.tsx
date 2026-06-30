@@ -139,6 +139,10 @@ export function AdminSettingsHub() {
           <PlatformPipesPanel />
         </TabsContent>
 
+        <TabsContent value="email-domains" className="space-y-4">
+          <EmailDomainsPanel />
+        </TabsContent>
+
         <TabsContent value="comms" className="space-y-4">
           <NotificationsCommsPanel />
         </TabsContent>
