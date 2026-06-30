@@ -4232,8 +4232,9 @@ const TOOL_SCOPE: Record<string, Scope> = {
 
 // Branding shown by MCP clients (ChatGPT, Claude, etc.) in the connector
 // picker and OAuth consent screen. logo_uri must be a public https URL.
-const PAIGE_LOGO_URI = `${APP_ORIGIN}/pwa-512x512.png`;
+const PAIGE_LOGO_URI = `${APP_ORIGIN}/mcp-logo.png`;
 const PAIGE_BRAND_NAME = "Paige Agent AI";
+const PAIGE_TAGLINE = "The Entrepreneurial Operating System — credit, capital, and execution in one connected engine.";
 
 const DISCOVERY_RESOURCE = {
   resource: PUBLIC_ORIGIN, authorization_servers: [PUBLIC_ORIGIN],
