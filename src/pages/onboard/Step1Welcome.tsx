@@ -68,7 +68,7 @@ export default function Step1Welcome() {
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={begin}>Begin onboarding</Button>
+          <Button onClick={begin} disabled={busy}>{busy ? "Starting…" : "Begin onboarding"}</Button>
         </div>
       </div>
     </>
