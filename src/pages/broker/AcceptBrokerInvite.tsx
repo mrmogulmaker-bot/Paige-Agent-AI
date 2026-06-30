@@ -179,6 +179,32 @@ const AcceptBrokerInvite = () => {
         });
       } catch (_) {}
 
+      // 4b. Record Workforce Acknowledgment + Terms acceptances (audit trail).
+      try {
+        const { data: reqDocs } = await supabase
+          .from("legal_documents")
+          .select("slug, version")
+          .in("slug", ["workforce-acknowledgment", "terms", "privacy", "esign", "ai-disclaimer"])
+          .eq("is_current", true);
+        if (reqDocs && reqDocs.length) {
+          await recordAcceptances(
+            authUserId,
+            reqDocs.map((d: any) => ({
+              slug: d.slug,
+              version: d.version,
+              context: {
+                source: "broker_team_member_accept",
+                broker_id: invite.broker_id,
+                team_member_id: invite.id,
+                role: invite.role,
+              },
+            }))
+          );
+        }
+      } catch (e) {
+        console.warn("[AcceptBrokerInvite] legal acceptance write failed", e);
+      }
+
       // Analytics
       void trackEvent("broker_team_member_accepted", "engagement", {
         broker_id: invite.broker_id,
