@@ -4241,7 +4241,11 @@ const DISCOVERY_RESOURCE = {
   bearer_methods_supported: ["header"], scopes_supported: SUPPORTED_SCOPES,
   resource_documentation: "https://paigeagent.ai/docs/mcp",
   resource_name: PAIGE_BRAND_NAME,
+  resource_description: PAIGE_TAGLINE,
   logo_uri: PAIGE_LOGO_URI,
+  icon_uri: PAIGE_LOGO_URI,
+  policy_uri: "https://paigeagent.ai/privacy",
+  tos_uri: "https://paigeagent.ai/terms",
 };
 const DISCOVERY_AS = {
   issuer: PUBLIC_ORIGIN,
@@ -4256,9 +4260,11 @@ const DISCOVERY_AS = {
   op_name: PAIGE_BRAND_NAME,
   service_documentation: "https://paigeagent.ai/docs/mcp",
   logo_uri: PAIGE_LOGO_URI,
+  icon_uri: PAIGE_LOGO_URI,
   op_logo_uri: PAIGE_LOGO_URI,
   op_policy_uri: "https://paigeagent.ai/privacy",
   op_tos_uri: "https://paigeagent.ai/terms",
+  ui_locales_supported: ["en-US"],
 };
 
 function randToken(bytes = 48): string {
