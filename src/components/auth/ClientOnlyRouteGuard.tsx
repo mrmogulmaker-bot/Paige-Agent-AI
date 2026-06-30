@@ -52,14 +52,22 @@ export function ClientOnlyRouteGuard() {
 
   // Re-check on auth changes (sign-in / sign-out / role grant).
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_e, session) => {
-      if (!session) { setIsClientOnly(false); return; }
+    const loadRoles = async (userId: string) => {
       const { data: roles } = await supabase
         .from("user_roles")
         .select("role")
-        .eq("user_id", session.user.id);
+        .eq("user_id", userId);
       const list = (roles ?? []).map((r: any) => String(r.role));
       setIsClientOnly(!list.some((r) => STAFF_ROLES.has(r)));
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!session) { setIsClientOnly(false); return; }
+      // Keep Supabase queries out of the auth callback itself. Running them
+      // synchronously here can deadlock session hydration on reload/sign-in.
+      window.setTimeout(() => {
+        void loadRoles(session.user.id);
+      }, 0);
     });
     return () => subscription.unsubscribe();
   }, []);

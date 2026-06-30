@@ -10,11 +10,13 @@ const lazyWithReload = <T extends React.ComponentType<any>>(
 ) =>
   React.lazy(async () => {
     try {
-      return await factory();
+      const mod = await factory();
+      try { sessionStorage.removeItem("__chunk_reload__"); } catch {}
+      return mod;
     } catch (err: any) {
       const msg = String(err?.message || err);
       if (
-        /Failed to fetch dynamically imported module|Importing a module script failed/i.test(msg) &&
+        /Failed to fetch dynamically imported module|Importing a module script failed|Unexpected end of input|ChunkLoadError|Loading chunk/i.test(msg) &&
         !sessionStorage.getItem("__chunk_reload__")
       ) {
         sessionStorage.setItem("__chunk_reload__", "1");

@@ -151,7 +151,11 @@ const Admin = () => {
         // Wait for the session to hydrate after a hard reload. supabase.auth
         // restores from localStorage asynchronously; calling getUser() too
         // early can return null and bounce the admin to /auth or /app.
-        let session = (await supabase.auth.getSession()).data.session;
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+        ]);
+        let session = sessionResult ? sessionResult.data.session : null;
         if (!session) {
           session = await new Promise((resolve) => {
             const timeout = setTimeout(() => {

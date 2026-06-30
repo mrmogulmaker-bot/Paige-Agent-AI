@@ -102,6 +102,7 @@ function installFetchInterceptor() {
 export function GlobalAuthSessionManager() {
   const queryClient = useQueryClient();
   const lastEventRef = useRef<string | null>(null);
+  const forcedLogoutHandledRef = useRef(false);
 
   useEffect(() => {
     registerSignOutQueryClient(queryClient);
@@ -144,6 +145,55 @@ export function GlobalAuthSessionManager() {
       registerSignOutQueryClient(null);
     };
   }, [queryClient]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkForcedLogout = async () => {
+      if (forcedLogoutHandledRef.current || cancelled) return;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user?.id || cancelled) return;
+
+        const { data } = await supabase
+          .from("audit_logs")
+          .select("id, created_at")
+          .eq("user_id", session.user.id)
+          .eq("entity", "auth_session")
+          .eq("action", "emergency_force_signout")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!data || cancelled) return;
+
+        const auditAt = data.created_at ? new Date(data.created_at).getTime() : 0;
+        const lastSignInAt = session.user.last_sign_in_at
+          ? new Date(session.user.last_sign_in_at).getTime()
+          : 0;
+        // Only clear sessions that were already active when the emergency
+        // sign-out was written. A fresh login after the audit row must remain
+        // valid, otherwise the user would be kicked out again forever.
+        if (lastSignInAt && auditAt && auditAt <= lastSignInAt) return;
+        if (!lastSignInAt && auditAt && Date.now() - auditAt > 10 * 60 * 1000) return;
+
+        // Server-side sessions were revoked out-of-band; clear this tab too so
+        // the user is not trapped in a stale authenticated loading loop.
+        forcedLogoutHandledRef.current = true;
+        toast.error("Your session was reset — please sign in again.");
+        await performSignOut({ redirectTo: "/auth", scope: "local" });
+      } catch {
+        // Non-blocking: ordinary auth/session handling still applies.
+      }
+    };
+
+    void checkForcedLogout();
+    const id = window.setInterval(checkForcedLogout, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   return null;
 }

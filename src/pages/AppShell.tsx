@@ -64,7 +64,7 @@ const AppShell = () => {
   const location = useLocation();
   const { target: impersonationTarget, isImpersonating } = useImpersonation();
   const effectiveUserId = impersonationTarget?.targetUserId ?? user?.id;
-  const { factors } = useCreditFactors(effectiveUserId);
+  const { factors } = useCreditFactors(effectiveUserId ?? null, { enabled: !!effectiveUserId });
   const { showWarning, staySignedIn } = useSessionTimeout();
 
   // Show context panel on non-root /app routes
@@ -121,8 +121,13 @@ const AppShell = () => {
       }
     );
 
-    supabase.auth.getSession()
-      .then(({ data: { session: currentSession } }) => {
+    Promise.race<Awaited<ReturnType<typeof supabase.auth.getSession>> | null>([
+      supabase.auth.getSession(),
+      new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 5000)),
+    ])
+      .then((result) => {
+        if (!result) return;
+        const currentSession = result.data.session;
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
         markSettled();
@@ -143,6 +148,7 @@ const AppShell = () => {
       if (!settled) {
         console.warn("[AppShell] auth hydration timed out after 5s — releasing loading gate");
         setIsLoading(false);
+        navigate("/auth", { replace: true });
       }
     }, 5000);
 
@@ -238,7 +244,13 @@ const AppShell = () => {
 
   // In dev mode, create a mock user object
   const activeUser = user || (DEV_MODE ? { id: 'dev-user', email: 'dev@paigeagent.ai' } as User : null);
-  if (!activeUser) return null;
+  if (!activeUser) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">Redirecting to sign in…</div>
+      </div>
+    );
+  }
 
   // When staff are viewing-as-client, route client-scoped data through the
   // impersonated user's id while keeping `activeUser` as the authenticated
