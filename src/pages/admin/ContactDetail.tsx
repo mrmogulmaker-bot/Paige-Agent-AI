@@ -19,6 +19,8 @@ import { FundingReadinessLens } from "@/components/funding-lens/FundingReadiness
 import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog";
 import { QuickLogMenu } from "@/components/admin/contacts/QuickLogMenu";
 import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
+import { ContactCampaignAttribution } from "@/components/admin/contacts/ContactCampaignAttribution";
+
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { useUserRoles } from "@/hooks/useUserRoles";
