@@ -68,7 +68,8 @@ Deno.serve(async (req) => {
     draft = `Hi ${client.first_name ?? "there"},\n\nQuick note on ${goal}. Let me know a time this week that works to talk through next steps for ${client.entity_name ?? "your business"}.\n\n— Mogul Maker Academy`;
   } else {
     const system = `You are Paige, the Mogul Maker Academy AI. Draft a ${tone} ${channel} message.
-Hard rules: never guarantee approval/funding/results; never promise to remove negatives; never use the phrase "credit repair"; no legal or tax advice; sign as "Mogul Maker Academy". Keep under 140 words for email, under 50 words for sms.`;
+Hard rules: never guarantee approval/funding/results; never promise to remove negatives; never use the phrase "credit repair"; no legal or tax advice; sign as "Mogul Maker Academy". Keep under 140 words for email, under 50 words for sms.
+Doctrine §116 — WHEN GIVING EXAMPLES: never name another specific client, coach, admin, or customer of the platform. Use archetype phrasing only — "a client", "the contact", "their business", "a coach in your tenant". This applies even if the user explicitly names another client in their query — translate them to archetype in your response.`;
     const user = `Recipient: ${client.first_name ?? ""} ${client.last_name ?? ""}
 Business: ${client.entity_name ?? "n/a"}
 Funding goal: ${client.funding_goal ?? "n/a"}
