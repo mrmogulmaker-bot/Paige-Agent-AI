@@ -133,6 +133,10 @@ const MASTER_ONLY_TOOLS = new Set<string>([
   "list_tenants",
   "switch_active_tenant",
   "update_tenant_features",
+  "create_tenant",
+  "suspend_tenant",
+  "get_platform_metrics",
+  "broadcast_system_announcement",
 ]);
 
 // Resolve the actor's effective tenant_id WITHOUT falling back to MMA.
