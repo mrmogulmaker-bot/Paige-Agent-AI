@@ -102,6 +102,9 @@ export default function MembersAdmin() {
   // Confirm revoke access (SOFT — strips staff roles only)
   const [revokeTarget, setRevokeTarget] = useState<MemberRow | null>(null);
 
+  // Profile drawer
+  const [profileTarget, setProfileTarget] = useState<MemberRow | null>(null);
+
   const loadAll = async () => {
     setLoading(true);
     try {
