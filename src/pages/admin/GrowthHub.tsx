@@ -34,7 +34,16 @@ const FORM_TEMPLATES = [
 ];
 const PROVIDERS = ["webflow","framer","clickfunnels","gohighlevel","typeform","jotform","custom"];
 
-export default function GrowthHub() {
+interface GrowthHubProps {
+  /**
+   * When true, GrowthHub is rendered inside another page (CampaignsHub) that
+   * already provides the outer heading and tab list. We hide our own chrome
+   * and just render the active tab's content.
+   */
+  embedded?: boolean;
+}
+
+export default function GrowthHub({ embedded = false }: GrowthHubProps) {
   const { activeTenantId, activeTenant } = useTenantContext();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "pages";
@@ -71,12 +80,15 @@ export default function GrowthHub() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Growth OS</h1>
-        <p className="text-muted-foreground text-sm">Landing pages, funnels, and forms — all wired into your contacts, pipeline, and Paige workflows.</p>
-      </div>
+      {!embedded && (
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Growth OS</h1>
+          <p className="text-muted-foreground text-sm">Landing pages, funnels, and forms — all wired into your contacts, pipeline, and Paige workflows.</p>
+        </div>
+      )}
 
       <Tabs value={tab} onValueChange={(v) => setParams({ tab: v })}>
+        {embedded ? null : null}
         <TabsList>
           <TabsTrigger value="pages"><LayoutGrid className="w-4 h-4 mr-1.5" />Pages</TabsTrigger>
           <TabsTrigger value="funnels"><GitBranch className="w-4 h-4 mr-1.5" />Funnels</TabsTrigger>
