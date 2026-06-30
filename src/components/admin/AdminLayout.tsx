@@ -100,6 +100,8 @@ const hubs: Hub[] = [
       { label: "Paige Skills", href: "/admin/skills", icon: Bot },
       { label: "Integrations", href: "/admin/integrations", icon: Plug },
       { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
+      { label: "Tenant Knowledge", href: "/admin/tenant-knowledge", icon: Brain },
+      { label: "Network Insights", href: "/admin/network-kb", icon: BookOpen },
       { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
     ],
     // Orphan tool routes that conceptually live under Automation.
@@ -109,6 +111,8 @@ const hubs: Hub[] = [
       "/admin/skills",
       "/admin/knowledge",
       "/admin/knowledge-base",
+      "/admin/tenant-knowledge",
+      "/admin/network-kb",
       "/admin/signatures",
       "/admin/social",
       "/admin/notifications",
