@@ -109,6 +109,7 @@ const BusinessInfrastructureAssessment = lazyWithReload(() => import("./componen
 const ProfileSettings = lazyWithReload(() => import("./components/dashboard/ProfileSettings").then(m => ({ default: m.ProfileSettings })));
 const AffiliateTracking = lazyWithReload(() => import("./components/dashboard/AffiliateTracking").then(m => ({ default: m.AffiliateTracking })));
 const Support = lazyWithReload(() => import("./pages/Support"));
+const MyAgreements = lazyWithReload(() => import("./pages/MyAgreements"));
 const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
 const WorkspaceApprovals = lazyWithReload(() => import("./pages/workspace/WorkspaceApprovals"));
 
@@ -174,6 +175,7 @@ const App = () => (
               <Route path="financial-profile" element={<PageSuspense><FinancialProfile /></PageSuspense>} />
               <Route path="support" element={<PageSuspense><Support /></PageSuspense>} />
               <Route path="settings" element={<PageSuspense><ProfileSettings /></PageSuspense>} />
+              <Route path="agreements" element={<PageSuspense><MyAgreements /></PageSuspense>} />
               <Route path="affiliate" element={<PageSuspense><AffiliateTracking /></PageSuspense>} />
               <Route path="approvals" element={<PageSuspense><ClientApprovals /></PageSuspense>} />
             </Route>

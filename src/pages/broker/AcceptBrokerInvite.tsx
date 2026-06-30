@@ -17,6 +17,7 @@ import { Loader2, ShieldCheck, AlertCircle, ArrowLeft } from "lucide-react";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import paigeLogo from "@/assets/paige-logo-transparent.png";
 import { trackEvent } from "@/hooks/useAnalytics";
+import { recordAcceptances } from "@/lib/legal/useLegalDocuments";
 
 interface InviteRow {
   id: string;
@@ -178,6 +179,32 @@ const AcceptBrokerInvite = () => {
         });
       } catch (_) {}
 
+      // 4b. Record Workforce Acknowledgment + Terms acceptances (audit trail).
+      try {
+        const { data: reqDocs } = await supabase
+          .from("legal_documents")
+          .select("slug, version")
+          .in("slug", ["workforce-acknowledgment", "terms", "privacy", "esign", "ai-disclaimer"])
+          .eq("is_current", true);
+        if (reqDocs && reqDocs.length) {
+          await recordAcceptances(
+            authUserId,
+            reqDocs.map((d: any) => ({
+              slug: d.slug,
+              version: d.version,
+              context: {
+                source: "broker_team_member_accept",
+                broker_id: invite.broker_id,
+                team_member_id: invite.id,
+                role: invite.role,
+              },
+            }))
+          );
+        }
+      } catch (e) {
+        console.warn("[AcceptBrokerInvite] legal acceptance write failed", e);
+      }
+
       // Analytics
       void trackEvent("broker_team_member_accepted", "engagement", {
         broker_id: invite.broker_id,
@@ -312,8 +339,16 @@ const AcceptBrokerInvite = () => {
                   onCheckedChange={(v) => setAgreed(!!v)}
                 />
                 <Label htmlFor="terms" className="text-xs leading-relaxed text-muted-foreground">
-                  I agree to PaigeAgent's Terms and acknowledge that my activity in this workspace is
-                  visible to {invite.business_name}.
+                  I agree to PaigeAgent's{" "}
+                  <Link to="/legal/terms" target="_blank" className="text-primary hover:underline">Terms</Link>,{" "}
+                  <Link to="/legal/privacy" target="_blank" className="text-primary hover:underline">Privacy Policy</Link>,{" "}
+                  <Link to="/legal/esign" target="_blank" className="text-primary hover:underline">E-Sign Consent</Link>, and the{" "}
+                  <Link to="/legal/workforce-acknowledgment" target="_blank" className="text-primary hover:underline">
+                    Workforce Confidentiality &amp; GLBA Safeguards Acknowledgment
+                  </Link>
+                  . I understand that my activity in {invite.business_name}'s workspace
+                  is visible to {invite.business_name} and that I will handle nonpublic
+                  personal information under FCRA and GLBA standards.
                 </Label>
               </div>
               <Button type="submit" className="w-full" disabled={submitting}>
