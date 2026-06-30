@@ -142,6 +142,7 @@ const moreNavItems: MoreItem[] = [
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
   { label: "Brokers", href: "/admin/brokers", icon: Briefcase, adminOnly: true },
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench, adminOnly: true },
+  { label: "Security Canary", href: "/admin/security", icon: ShieldCheck, adminOnly: true },
   { label: "Settings", href: "/admin/settings", icon: Settings, adminOnly: true },
 ];
 
