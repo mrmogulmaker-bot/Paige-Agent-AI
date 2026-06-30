@@ -22,6 +22,12 @@ import { recordAcceptances } from "@/lib/legal/useLegalDocuments";
 import { supabase } from "@/integrations/supabase/client";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { trackEvent } from "@/hooks/useAnalytics";
+import {
+  CommunicationsConsent,
+  EMPTY_COMMS_CONSENT,
+  type CommsConsentState,
+} from "@/components/legal/CommunicationsConsent";
+import { recordCommsConsent } from "@/lib/legal/recordCommsConsent";
 
 const BROKER_AGREEMENT_SLUG = "broker-agreement";
 
