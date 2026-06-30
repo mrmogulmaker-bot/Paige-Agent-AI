@@ -13045,6 +13045,7 @@ export type Database = {
         Args: { _user_id: string }
         Returns: undefined
       }
+      fire_team_event: { Args: { payload: Json }; Returns: undefined }
       get_analytics_daily_summary: {
         Args: { _end?: string; _start?: string }
         Returns: {
