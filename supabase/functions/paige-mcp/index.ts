@@ -1496,6 +1496,61 @@ mcp.tool("create_contact", {
   },
 });
 
+mcp.tool("bulk_delete_contacts", {
+  description:
+    "Permanently delete up to 100 contacts (clients rows) in a single call. Scoped to the caller's tenant — contacts in other tenants are silently skipped. Returns per-id status. Use with care: this hard-deletes the client row and cascades to dependent CRM data per the schema's FK rules. For non-destructive removal, prefer archiving via `update_lifecycle_stage` to `client_churned` or `client_alumni`. Pass `confirm: true` to execute; without it the tool returns a dry-run preview.",
+  inputSchema: z.object({
+    contact_ids: z.array(z.string()).min(1).max(100),
+    confirm: z.boolean().optional().describe("Must be true to actually delete. Defaults to false → dry-run preview."),
+  }),
+  handler: async ({ contact_ids, confirm }) => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+
+    // Resolve which ids actually belong to caller's tenant.
+    const { data: rows, error: rErr } = await admin
+      .from("clients")
+      .select("id, tenant_id, first_name, last_name, email")
+      .in("id", contact_ids);
+    if (rErr) return err(rErr.message);
+
+    const eligible = (rows ?? []).filter((r) => r.tenant_id === tenant_id);
+    const eligibleIds = eligible.map((r) => r.id as string);
+    const skipped = contact_ids.filter((id) => !eligibleIds.includes(id));
+
+    if (!confirm) {
+      return ok({
+        dry_run: true,
+        would_delete: eligible,
+        would_delete_count: eligible.length,
+        skipped_not_in_tenant: skipped,
+        next: "Re-call with `confirm: true` to permanently delete.",
+      });
+    }
+
+    if (eligibleIds.length === 0) {
+      return ok({ deleted: [], deleted_count: 0, skipped_not_in_tenant: skipped });
+    }
+
+    const { data: deleted, error: dErr } = await admin
+      .from("clients")
+      .delete()
+      .in("id", eligibleIds)
+      .select("id");
+    if (dErr) return err(dErr.message);
+
+    const deletedIds = (deleted ?? []).map((r) => r.id as string);
+    await audit("bulk_delete_contacts", "client", null, {
+      tenant_id, count: deletedIds.length, ids: deletedIds, skipped_count: skipped.length,
+    });
+    return ok({
+      deleted: deletedIds,
+      deleted_count: deletedIds.length,
+      skipped_not_in_tenant: skipped,
+    });
+  },
+});
+
 mcp.tool("update_lifecycle_stage", {
   description:
     "Update a contact's lifecycle stage per Doctrine §111 (new_lead, qualified, nurturing, hot_lead, negotiating, won, client_active, client_paused, client_churned, client_funded, client_alumni).",
@@ -3485,6 +3540,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_email_templates: "admin.read", upsert_email_template: "admin.write", send_btf_template_email: "btf.write",
   // Batch #1 (Doctrine §119)
   create_contact: "crm.write", update_lifecycle_stage: "crm.write",
+  bulk_delete_contacts: "crm.write",
   start_btf_onboarding: "btf.write", resend_btf_invite: "btf.write",
   list_signed_agreements: "btf.read", list_intake_submissions: "btf.read",
   list_payment_authorizations: "btf.read",
