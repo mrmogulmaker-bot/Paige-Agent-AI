@@ -4102,6 +4102,19 @@ const TOOL_SCOPE: Record<string, Scope> = {
   bulk_send_template_email: "crm.write",
   list_journey_stages: "crm.read",
   advance_contact_journey_stage: "crm.write",
+  // Self-scoped (end-user / client tier) — never touch another user's data.
+  me_whoami: "self.read",
+  me_get_profile: "self.read",
+  me_update_profile: "self.write",
+  me_list_businesses: "self.read",
+  me_update_business: "self.write",
+  me_create_business: "self.write",
+  me_log_progress_update: "self.write",
+  me_send_message_to_coach: "self.write",
+  me_list_messages: "self.read",
+  me_list_tasks: "self.read",
+  me_get_phase_progress: "self.read",
+  me_search_lender_products: "self.read",
 };
 
 const DISCOVERY_RESOURCE = {
