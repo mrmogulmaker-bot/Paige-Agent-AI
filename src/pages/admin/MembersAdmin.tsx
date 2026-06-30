@@ -593,56 +593,11 @@ export default function MembersAdmin() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader><CardTitle>Pending invitations ({invites.length})</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Delivery</TableHead>
-                  <TableHead>Sent</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead className="w-32"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invites.length === 0 && (
-                  <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">No pending invitations.</TableCell></TableRow>
-                )}
-                {invites.map(inv => (
-                  <TableRow key={inv.id}>
-                    <TableCell>
-                      <div>{inv.email}</div>
-                      {inv.last_error && (
-                        <div className="text-xs text-destructive truncate max-w-sm" title={inv.last_error}>
-                          {inv.last_error}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell><Badge variant="outline" className="capitalize">{inv.role.replace("_", " ")}</Badge></TableCell>
-                    <TableCell>{renderInviteStatus(inv)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{new Date(inv.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{new Date(inv.expires_at).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 justify-end">
-                        <Button variant="outline" size="sm" onClick={() => handleResendInvite(inv)}>
-                          <Mail className="w-3.5 h-3.5 mr-1" /> Resend
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleRevokeInvite(inv.id)}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <MemberProfileDrawer
+        member={profileTarget}
+        open={!!profileTarget}
+        onOpenChange={(o) => { if (!o) setProfileTarget(null); }}
+      />
 
       <InviteMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} onInvited={loadAll} />
 
