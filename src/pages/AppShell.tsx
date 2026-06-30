@@ -239,7 +239,7 @@ const AppShell = () => {
 
 
 
-  if (isLoading) {
+  if (isLoading || redirectingStaff) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
