@@ -2937,7 +2937,7 @@ mcp.tool("list_skills", {
   handler: async ({ query, risk_level, status }) => {
     let q = admin
       .from("paige_skills")
-      .select("id, slug, name, description, risk_level, status, mutating, external_send, tools, steps, run_count, last_run_at, require_admin_confirm_first_n")
+      .select("id, slug, name, description, risk_level, status, mutating, allowed_tools, steps, run_count, require_admin_confirm_first_n")
       .order("name", { ascending: true })
       .limit(100);
     q = q.eq("status", status ?? "active");
@@ -2945,7 +2945,13 @@ mcp.tool("list_skills", {
     if (query) q = q.or(`slug.ilike.%${query}%,name.ilike.%${query}%,description.ilike.%${query}%`);
     const { data, error } = await q;
     if (error) return err(error.message);
-    return ok({ items: data ?? [], count: (data ?? []).length });
+    // Compute external_send inline from risk_level until column is added.
+    const items = (data ?? []).map((s: Record<string, unknown>) => ({
+      ...s,
+      tools: s.allowed_tools,
+      external_send: s.risk_level === "high",
+    }));
+    return ok({ items, count: items.length });
   },
 });
 
@@ -2964,7 +2970,7 @@ mcp.tool("run_skill", {
     if (dry_run) {
       const { data: skill, error } = await admin
         .from("paige_skills")
-        .select("slug, name, description, risk_level, status, mutating, external_send, tools, steps, require_admin_confirm_first_n, run_count")
+        .select("slug, name, description, risk_level, status, mutating, allowed_tools, steps, require_admin_confirm_first_n, run_count")
         .eq("slug", slug)
         .maybeSingle();
       if (error) return err(error.message);
@@ -2973,7 +2979,8 @@ mcp.tool("run_skill", {
       const willGate = (skill.require_admin_confirm_first_n ?? 0) > 0
         && (skill.run_count ?? 0) < skill.require_admin_confirm_first_n
         && actor.kind !== "platform";
-      return ok({ dry_run: true, skill, resolved_inputs: inputs, would_gate_on_confirm: willGate });
+      const skillOut = { ...skill, tools: skill.allowed_tools, external_send: skill.risk_level === "high" };
+      return ok({ dry_run: true, skill: skillOut, resolved_inputs: inputs, would_gate_on_confirm: willGate });
     }
     const r = await fetch(`${SUPABASE_URL}/functions/v1/skill-runner`, {
       method: "POST",
@@ -3027,9 +3034,18 @@ mcp.tool("verify_business", {
 });
 
 // ---------- Sub-Agent Factory (Section 18.5) — Paige proposes new sub-agents ----------
+// Doctrine §124 amendment: soft runtime has NO MCP tool access. Detect tool-call
+// patterns in the system_prompt and refuse soft proposals that would hallucinate.
+const SOFT_TOOL_CALL_PATTERNS = [
+  /\b(call|invoke|use|run|execute|query|fetch|delegate(?:\s+to)?)\s+(?:the\s+)?(?:list_|run_|get_|verify_|search_|create_|update_|delete_|advance_|bulk_|broadcast_|send_|propose_|tool_)[a-z_]+/i,
+  /\b(?:list_|run_|get_|verify_|search_|create_|update_|delete_|advance_|bulk_|broadcast_|send_|propose_|tool_)[a-z_]+\s*\(/,
+  /\b(?:MCP|tool[_\s]?invoke|tool[_\s]?search|tool[_\s]?registry)\b/i,
+  /\bcall\s+(?:any|the|its?)\s+tools?\b/i,
+];
+
 mcp.tool("propose_subagent", {
   description:
-    "Propose a new sub-agent. SOFT proposals (runtime='soft') ship live instantly — prompt-only, runs on the AI Gateway, may not access protected financial/PII tables. HARD proposals (runtime='local' or 'langgraph') route to the Approvals Hub for admin sign-off because they require new edge function code. Use when the user requests an analysis pattern that doesn't fit any existing sub-agent (call list_subagents first to check). Provide a clear `rationale` — admins will read it.",
+    "Propose a new sub-agent. SOFT proposals (runtime='soft') ship live instantly but have NO MCP tool access at runtime — they are pure prompt-only transformation/reasoning over the inputs given in the prompt. If your agent needs to fetch data, query tables, call list_*/run_*/get_*/verify_*/send_* tools, or delegate to other agents, it MUST be runtime='local' or 'langgraph' (these route to the Approvals Hub for admin sign-off because they require new edge function code). Soft agents that reference tool calls in their system_prompt will be rejected. Use when no existing sub-agent fits (call list_subagents first). Provide a clear `rationale` — admins read it.",
   inputSchema: z.object({
     slug: z.string().describe("kebab-case, e.g. 'churn-risk-scout'. Must be unique."),
     name: z.string(),
@@ -3037,7 +3053,7 @@ mcp.tool("propose_subagent", {
     description: z.string().describe("What the agent does (≥20 chars)."),
     rationale: z.string().describe("Why this agent is needed (≥20 chars). Admins read this."),
     runtime: z.enum(["soft","local","langgraph"]).default("soft"),
-    system_prompt: z.string().describe("The agent's system prompt (≥50 chars). Be specific about persona, constraints, output format."),
+    system_prompt: z.string().describe("The agent's system prompt (≥50 chars). For soft runtime: pure reasoning only, no tool references. For local/langgraph: may describe tool usage."),
     triggers: z.array(z.string()).optional().describe("Keyword triggers e.g. ['churn', 'retention risk']"),
     data_scopes: z.array(z.string()).optional().describe("Tables the agent reads. Soft agents may NOT include protected scopes (credit/banking/etc)."),
     input_schema: z.record(z.string(), z.unknown()).optional(),
@@ -3045,6 +3061,23 @@ mcp.tool("propose_subagent", {
     config: z.record(z.string(), z.unknown()).optional().describe("Optional config, e.g. {model: 'google/gemini-2.5-pro'}"),
   }),
   handler: async (args) => {
+    // Guardrail: soft agents cannot call tools. Scan the prompt before forwarding.
+    if (args.runtime === "soft") {
+      const hit = SOFT_TOOL_CALL_PATTERNS.find((re) => re.test(args.system_prompt));
+      if (hit) {
+        await audit("propose_subagent", "subagent_proposal", args.slug, {
+          runtime: args.runtime,
+          status: 400,
+          rejected_reason: "soft_runtime_tool_call_detected",
+          pattern: hit.toString(),
+        });
+        return err(
+          `Soft runtime has NO tool access at runtime — your system_prompt references tool calls (matched: ${hit}). ` +
+          `Either (a) re-propose with runtime='local' so the agent gets real tool access via an edge function, ` +
+          `or (b) rewrite the system_prompt as pure reasoning/transformation over the inputs you pass in.`,
+        );
+      }
+    }
     const r = await fetch(`${SUPABASE_URL}/functions/v1/subagent-forge`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY },
