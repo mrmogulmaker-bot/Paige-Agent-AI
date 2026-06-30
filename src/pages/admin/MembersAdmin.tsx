@@ -197,6 +197,26 @@ export default function MembersAdmin() {
 
   useEffect(() => { loadAll(); }, []);
 
+  // Realtime: refresh on any change to profiles, roles, or invitations.
+  useEffect(() => {
+    let scheduled: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => {
+      if (scheduled) return;
+      scheduled = setTimeout(() => { scheduled = null; loadAll(); }, 350);
+    };
+    const channel = supabase
+      .channel("members-admin-sync")
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_roles" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "invitations" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "affiliate_profiles" }, refresh)
+      .subscribe();
+    return () => {
+      if (scheduled) clearTimeout(scheduled);
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // ---- Filtering ---------------------------------------------------------
   // Default: only platform staff. Non-staff (clients, leads, no-role auth
   // users) live in Leads/Contacts. Admin can opt in to see them here.
