@@ -42,10 +42,11 @@ export function useThreeFundabilityScores(
       negatives: Array<{ date: string | null; itemType: string | null; isActive: boolean; bureau: string | null }>;
       bankingRelationships: any[];
     }> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const __uid = await getEffectiveUserId();
+      if (!__uid) {
         return { profile: null, personalReportCount: 0, business: null, hasBusinessCreditDataPoint: false, negatives: [], bankingRelationships: [] };
       }
+      const user = { id: __uid } as { id: string };
 
       const bizQuery = businessId
         ? supabase
