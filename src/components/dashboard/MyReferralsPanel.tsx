@@ -106,7 +106,14 @@ export default function MyReferralsPanel() {
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setLastSyncAt(new Date());
+          if (reloadTick > 0) {
+            setJustSynced(true);
+            setTimeout(() => setJustSynced(false), 1500);
+          }
+        }
       }
     }
     void load();
