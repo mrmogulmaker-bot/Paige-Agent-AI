@@ -1793,6 +1793,7 @@ Open with: "Before we get into your questions I want to flag a few things in you
 === END ACCOUNT MANAGEMENT & CLEANUP RULES ===
 ${relevantKnowledge}
 ${ragContext}
+${tenantKbContext}
 
 === RAG KNOWLEDGE BASE RULE ===
 When the RELEVANT KNOWLEDGE BASE block above contains documents, reference them naturally to support your recommendations. Use phrasing like:
