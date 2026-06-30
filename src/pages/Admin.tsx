@@ -28,6 +28,13 @@ import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
 import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
 import { toast } from "sonner";
+import { RoleGate } from "@/components/auth/RoleGate";
+
+/** Wraps a route element so it's only visible to admins (or platform owner). */
+const AdminOnly = ({ children }: { children: React.ReactNode }) => (
+  <RoleGate allow={["admin"]}>{children}</RoleGate>
+);
+
 
 // Lazy-load admin sub-pages
 const ClientManagementDashboard = lazy(() => import("@/components/dashboard/ClientManagementDashboard").then(m => ({ default: m.ClientManagementDashboard })));
@@ -268,9 +275,11 @@ const Admin = () => {
           </Suspense>
         } />
         <Route path="maintenance" element={
-          <Suspense fallback={<SuspenseFallback />}>
-            <DataMaintenancePanel />
-          </Suspense>
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <DataMaintenancePanel />
+            </Suspense>
+          </AdminOnly>
         } />
         <Route path="affiliates" element={
           <Suspense fallback={<SuspenseFallback />}>
@@ -278,9 +287,11 @@ const Admin = () => {
           </Suspense>
         } />
         <Route path="knowledge-base" element={
-          <Suspense fallback={<SuspenseFallback />}>
-            <KnowledgeBaseAdmin />
-          </Suspense>
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <KnowledgeBaseAdmin />
+            </Suspense>
+          </AdminOnly>
         } />
         <Route path="communications" element={
           <Suspense fallback={<SuspenseFallback />}>
@@ -288,9 +299,11 @@ const Admin = () => {
           </Suspense>
         } />
         <Route path="brokers" element={
-          <Suspense fallback={<SuspenseFallback />}>
-            {userRole === "admin" ? <BrokersAdmin /> : <div className="p-6 text-muted-foreground">Admin only.</div>}
-          </Suspense>
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <BrokersAdmin />
+            </Suspense>
+          </AdminOnly>
         } />
         <Route path="support" element={
           <Suspense fallback={<SuspenseFallback />}>
@@ -298,14 +311,18 @@ const Admin = () => {
           </Suspense>
         } />
         <Route path="settings" element={
-          <Suspense fallback={<SuspenseFallback />}>
-            <AdminSettingsHub />
-          </Suspense>
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <AdminSettingsHub />
+            </Suspense>
+          </AdminOnly>
         } />
         <Route path="settings/pipelines" element={
-          <Suspense fallback={<SuspenseFallback />}>
-            <PipelineSettings />
-          </Suspense>
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <PipelineSettings />
+            </Suspense>
+          </AdminOnly>
         } />
         <Route path="workflows" element={
           <Suspense fallback={<SuspenseFallback />}><WorkflowsList /></Suspense>
@@ -331,92 +348,89 @@ const Admin = () => {
         <Route path="approvals/:id" element={
           <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
         } />
-        <Route path="approvals/:id" element={
-          <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
-        } />
         <Route path="integrations" element={
-          <Suspense fallback={<SuspenseFallback />}><IntegrationsHub /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><IntegrationsHub /></Suspense></AdminOnly>
         } />
         <Route path="integrations/n8n" element={
-          <Suspense fallback={<SuspenseFallback />}><N8nIntegrationConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><N8nIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="integrations/subscriptions" element={
-          <Suspense fallback={<SuspenseFallback />}><SubscriptionsRevenue /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><SubscriptionsRevenue /></Suspense></AdminOnly>
         } />
         <Route path="integrations/ghl" element={
-          <Suspense fallback={<SuspenseFallback />}><GhlIntegrationConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><GhlIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="integrations/zapier" element={
-          <Suspense fallback={<SuspenseFallback />}><ZapierIntegrationConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><ZapierIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="integrations/telegram" element={
-          <Suspense fallback={<SuspenseFallback />}><TelegramIntegrationConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><TelegramIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="integrations/gmail" element={
-          <Suspense fallback={<SuspenseFallback />}><GmailIntegrationConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><GmailIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="integrations/ai-activity" element={
-          <Suspense fallback={<SuspenseFallback />}><AiActivity /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><AiActivity /></Suspense></AdminOnly>
         } />
         <Route path="integrations/docusign" element={
-          <Suspense fallback={<SuspenseFallback />}><DocuSignConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><DocuSignConfig /></Suspense></AdminOnly>
         } />
         <Route path="signatures" element={
-          <Suspense fallback={<SuspenseFallback />}><SignaturesAdmin /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><SignaturesAdmin /></Suspense></AdminOnly>
         } />
         <Route path="integrations/cal" element={
-          <Suspense fallback={<SuspenseFallback />}><CalIntegrationConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><CalIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="bookings" element={
           <Suspense fallback={<SuspenseFallback />}><BookingsAdmin /></Suspense>
         } />
         <Route path="integrations/meta" element={
-          <Suspense fallback={<SuspenseFallback />}><MetaIntegrationConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><MetaIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="integrations/meta-pixel" element={
-          <Suspense fallback={<SuspenseFallback />}><MetaPixelConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><MetaPixelConfig /></Suspense></AdminOnly>
         } />
         <Route path="social" element={
-          <Suspense fallback={<SuspenseFallback />}><SocialAdmin /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><SocialAdmin /></Suspense></AdminOnly>
         } />
         <Route path="integrations/apollo" element={
-          <Suspense fallback={<SuspenseFallback />}><ApolloIntegrationConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><ApolloIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="leads/enrichment" element={
           <Suspense fallback={<SuspenseFallback />}><LeadsEnrichment /></Suspense>
         } />
         <Route path="observability/usage" element={
-          <Suspense fallback={<SuspenseFallback />}><UsageAnalytics /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><UsageAnalytics /></Suspense></AdminOnly>
         } />
         <Route path="observability/errors" element={
-          <Suspense fallback={<SuspenseFallback />}><ErrorTracking /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><ErrorTracking /></Suspense></AdminOnly>
         } />
         <Route path="integrations/nav" element={
-          <Suspense fallback={<SuspenseFallback />}><NavIntegrationConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><NavIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="business-credit" element={
-          <Suspense fallback={<SuspenseFallback />}><BusinessCreditAdmin /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><BusinessCreditAdmin /></Suspense></AdminOnly>
         } />
         <Route path="integrations/smartcredit" element={
-          <Suspense fallback={<SuspenseFallback />}><SmartCreditIntegrationConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><SmartCreditIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="owner-credit" element={
-          <Suspense fallback={<SuspenseFallback />}><OwnerCreditAdmin /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><OwnerCreditAdmin /></Suspense></AdminOnly>
         } />
         <Route path="integrations/plaid" element={
-          <Suspense fallback={<SuspenseFallback />}><PlaidIntegrationConfig /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><PlaidIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="banking" element={
-          <Suspense fallback={<SuspenseFallback />}><BankingAdmin /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><BankingAdmin /></Suspense></AdminOnly>
         } />
         <Route path="members" element={
-          <Suspense fallback={<SuspenseFallback />}><MembersAdmin /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><MembersAdmin /></Suspense></AdminOnly>
         } />
         <Route path="funding-lens" element={
           <Suspense fallback={<SuspenseFallback />}><FundingLensHub /></Suspense>
         } />
         <Route path="platform/tenants" element={
-          <Suspense fallback={<SuspenseFallback />}><PlatformTenants /></Suspense>
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><PlatformTenants /></Suspense></AdminOnly>
         } />
       </Routes>
 

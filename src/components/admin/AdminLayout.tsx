@@ -98,13 +98,16 @@ const hubs: Hub[] = [
 ];
 
 // Tools that don't belong to a daily-use hub — tucked into "More".
-const moreNavItems: HubChild[] = [
+// `adminOnly` items are hidden from coaches in the toolbar to match the
+// route-level RoleGate enforcement in Admin.tsx.
+type MoreItem = HubChild & { adminOnly?: boolean };
+const moreNavItems: MoreItem[] = [
   { label: "Coaches", href: "/admin/coaches", icon: UserCog },
-  { label: "Members & Roles", href: "/admin/members", icon: UserCog },
+  { label: "Members & Roles", href: "/admin/members", icon: UserCog, adminOnly: true },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
-  { label: "Brokers", href: "/admin/brokers", icon: Briefcase },
-  { label: "Maintenance", href: "/admin/maintenance", icon: Wrench },
-  { label: "Settings", href: "/admin/settings", icon: Settings },
+  { label: "Brokers", href: "/admin/brokers", icon: Briefcase, adminOnly: true },
+  { label: "Maintenance", href: "/admin/maintenance", icon: Wrench, adminOnly: true },
+  { label: "Settings", href: "/admin/settings", icon: Settings, adminOnly: true },
 ];
 
 const adminNavItems = [
@@ -128,6 +131,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const { items: pendingApprovals } = usePendingApprovals({ scope: "all" });
   const pendingCount = pendingApprovals.length;
+  const visibleMore = moreNavItems.filter((i) => !i.adminOnly || userRole === "admin");
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -301,7 +305,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             <DropdownMenuTrigger asChild>
               <button
                 className={`flex items-center gap-1.5 px-3 h-11 text-sm whitespace-nowrap transition-colors ${
-                  moreNavItems.some((i) => isActive(i.href))
+                  visibleMore.some((i) => isActive(i.href))
                     ? "text-accent font-medium"
                     : "text-primary-foreground/70 hover:text-primary-foreground"
                 }`}
@@ -314,7 +318,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuLabel>Workspace tools</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {moreNavItems.map((item) => (
+              {visibleMore.map((item) => (
                 <DropdownMenuItem
                   key={item.href}
                   onClick={() => navigate(item.href)}
@@ -384,7 +388,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
                 More
               </div>
-              {moreNavItems.map((item) => (
+              {visibleMore.map((item) => (
                 <Link
                   key={item.href}
                   to={item.href}
