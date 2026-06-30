@@ -15,6 +15,7 @@ import { trackEvent } from "@/hooks/useAnalytics";
 import { supabase as sbForCount } from "@/integrations/supabase/client";
 import { CreditReportConsentDialog } from "@/components/credit/CreditReportConsentDialog";
 import { SecurityBadge } from "@/components/security/SecurityBadge";
+import { recordAcceptances } from "@/lib/legal/useLegalDocuments";
 
 interface CreditReportUploaderProps {
   lastAnalyzed: string | null;
@@ -73,6 +74,25 @@ export function CreditReportUploader({ lastAnalyzed, lastBureau, onRefresh, isRe
             credit_report_consent_timestamp: new Date().toISOString(),
           })
           .eq("user_id", user.id);
+
+        // Also write to the versioned legal_acceptances audit trail for the
+        // current Consumer Credit Data Authorization document. This is the
+        // FCRA §604(a)(2) written-instructions record.
+        try {
+          const { data: doc } = await supabase
+            .from("legal_documents")
+            .select("slug,version")
+            .eq("slug", "credit-authorization")
+            .eq("is_current", true)
+            .maybeSingle();
+          if (doc) {
+            await recordAcceptances(user.id, [{
+              slug: doc.slug,
+              version: doc.version,
+              context: { source: "credit_report_upload", trigger: "consumer_upload_modal" },
+            }]);
+          }
+        } catch { /* non-blocking audit-trail write */ }
       }
       setConsentOpen(false);
       if (pendingFile) {
