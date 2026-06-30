@@ -215,7 +215,7 @@ Deno.serve(async (req) => {
 
     const { data: agent, error } = await supabase
       .from("paige_subagents")
-      .select("slug,name,runtime,edge_function,langgraph_graph,enabled")
+      .select("slug,name,runtime,edge_function,langgraph_graph,enabled,system_prompt,config")
       .eq("slug", payload.slug)
       .maybeSingle();
     if (error) throw error;
@@ -234,14 +234,16 @@ Deno.serve(async (req) => {
 
     let result: { status: number; body: unknown };
     if (agent.runtime === "local") {
-      if (!agent.edge_function) {
-        return fail(`Sub-agent ${agent.slug} has no edge_function configured`, 500);
-      }
+      if (!agent.edge_function) return fail(`Sub-agent ${agent.slug} has no edge_function configured`, 500);
       result = await invokeLocal(agent.edge_function, payload.input ?? {}, ctx);
+    } else if (agent.runtime === "soft") {
+      result = await invokeSoft(
+        { slug: agent.slug, name: agent.name, system_prompt: agent.system_prompt, config: agent.config },
+        payload.input ?? {},
+        ctx,
+      );
     } else {
-      if (!agent.langgraph_graph) {
-        return fail(`Sub-agent ${agent.slug} has no langgraph_graph configured`, 500);
-      }
+      if (!agent.langgraph_graph) return fail(`Sub-agent ${agent.slug} has no langgraph_graph configured`, 500);
       result = await dispatchLangGraph(agent.langgraph_graph, payload.input ?? {}, ctx);
     }
 
