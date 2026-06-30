@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getEffectiveUserId, getScopedUserId } from "@/lib/scopedUser";
 
 /**
  * Live-computed BUILD score.
@@ -24,10 +25,11 @@ import { supabase } from "@/integrations/supabase/client";
  */
 export function useBuildScore() {
   return useQuery({
-    queryKey: ["build-score"],
+    queryKey: ["build-score", getScopedUserId() ?? "self"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      const uid = await getEffectiveUserId();
+      if (!uid) throw new Error("Not authenticated");
+      const user = { id: uid };
 
       // Pull all source rows in parallel.
       const [

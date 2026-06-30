@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getEffectiveUserId } from "@/lib/scopedUser";
+import { useScopedUserId } from "@/hooks/useScopedUserId";
 
 export interface Notification {
   id: string;
@@ -21,14 +23,17 @@ export const useNotifications = () => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
+  const scopedId = useScopedUserId();
+
   const fetchNotifications = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const uid = await getEffectiveUserId();
+      if (!uid) return;
 
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
+        .eq("user_id", uid)
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -70,8 +75,8 @@ export const useNotifications = () => {
 
   const markAllAsRead = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const uid = await getEffectiveUserId();
+      if (!uid) return;
 
       const { error } = await supabase
         .from("notifications")
@@ -79,7 +84,7 @@ export const useNotifications = () => {
           is_read: true, 
           read_at: new Date().toISOString() 
         })
-        .eq("user_id", user.id)
+        .eq("user_id", uid)
         .eq("is_read", false);
 
       if (error) throw error;
@@ -118,44 +123,33 @@ export const useNotifications = () => {
 
   useEffect(() => {
     fetchNotifications();
+    if (!scopedId) return;
 
-    const setupRealtimeSubscription = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) return;
+    const channel = supabase
+      .channel(`notifications-${scopedId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${scopedId}`,
+        },
+        (payload) => {
+          const newNotification = payload.new as Notification;
+          setNotifications(prev => [newNotification, ...prev]);
+          setUnreadCount(prev => prev + 1);
+          toast({
+            title: newNotification.title,
+            description: newNotification.message,
+          });
+        },
+      )
+      .subscribe();
 
-      // Subscribe to real-time notifications
-      const channel = supabase
-        .channel("notifications")
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
-            const newNotification = payload.new as Notification;
-            setNotifications(prev => [newNotification, ...prev]);
-            setUnreadCount(prev => prev + 1);
-
-            // Show toast for new notification
-            toast({
-              title: newNotification.title,
-              description: newNotification.message,
-            });
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    };
-
-    setupRealtimeSubscription();
-  }, []);
+    return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopedId]);
 
   return {
     notifications,

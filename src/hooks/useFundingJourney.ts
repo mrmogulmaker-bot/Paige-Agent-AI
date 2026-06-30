@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getEffectiveUserId } from "@/lib/scopedUser";
 import type { FundingJourneyApplication, FundingJourneyStatus } from "@/lib/fundingJourney";
 
 export interface FundingJourneySummary {
@@ -26,8 +27,8 @@ export function useFundingJourney(targetUserId?: string | null) {
   return useQuery({
     queryKey: ["funding-journey", targetUserId ?? "self"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const uid = targetUserId || user?.id;
+      const __uid = await getEffectiveUserId();
+      const uid = targetUserId || __uid;
       if (!uid) return { applications: [] as FundingJourneyApplication[], summary: emptySummary() };
 
       const { data, error } = await supabase

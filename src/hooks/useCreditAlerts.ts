@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getEffectiveUserId } from "@/lib/scopedUser";
 
 export interface CreditAlert {
   id: string;
@@ -168,6 +169,5 @@ export function useCreditAlerts(options: UseCreditAlertsOptions = {}) {
 }
 
 async function getCurrentUserId(): Promise<string | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.id || null;
+  return await getEffectiveUserId();
 }

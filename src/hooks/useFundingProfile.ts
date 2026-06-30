@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getEffectiveUserId } from "@/lib/scopedUser";
 import { countUniqueNegativeAccounts } from "@/lib/deduplicateNegatives";
 
 export interface BusinessInfraData {
@@ -143,8 +144,9 @@ export function useFundingProfile(): FundingProfileData {
   const { data, isLoading } = useQuery({
     queryKey: ["funding-profile-complete"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      const __uid = await getEffectiveUserId();
+      if (!__uid) throw new Error("Not authenticated");
+      const user = { id: __uid } as { id: string };
       const uid = user.id;
 
       const [

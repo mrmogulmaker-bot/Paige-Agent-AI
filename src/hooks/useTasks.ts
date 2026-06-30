@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getEffectiveUserId } from "@/lib/scopedUser";
 import { useToast } from "@/hooks/use-toast";
 import type { TaskMetadata } from "@/lib/taskSchema";
 import { validatePersonalCreditTask } from "@/lib/taskKeywordFilter";
@@ -43,8 +44,9 @@ export const useTasks = (options: UseTasksOptions = {}) => {
 
   const fetchTasks = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const __uid = await getEffectiveUserId();
+      if (!__uid) return;
+      const user = { id: __uid } as { id: string };
       setCurrentUserId(user.id);
 
       let query = supabase
@@ -73,8 +75,9 @@ export const useTasks = (options: UseTasksOptions = {}) => {
 
   const createTask = async (taskData: Partial<Task>, isBusinessMode: boolean = false) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      const __uid = await getEffectiveUserId();
+      if (!__uid) throw new Error("Not authenticated");
+      const user = { id: __uid } as { id: string };
 
       if (isBusinessMode) {
         // Business Credit Task validation
@@ -277,8 +280,9 @@ export const useTasks = (options: UseTasksOptions = {}) => {
 
   const generateAccelTasks = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      const __uid = await getEffectiveUserId();
+      if (!__uid) throw new Error("Not authenticated");
+      const user = { id: __uid } as { id: string };
 
       // Check if tasks already exist
       const { data: existingTasks } = await supabase
@@ -342,8 +346,9 @@ export const useTasks = (options: UseTasksOptions = {}) => {
 
   const generateBuildTasks = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      const __uid = await getEffectiveUserId();
+      if (!__uid) throw new Error("Not authenticated");
+      const user = { id: __uid } as { id: string };
 
       // Check if tasks already exist
       const { data: existingTasks } = await supabase
@@ -435,8 +440,9 @@ export const useTasks = (options: UseTasksOptions = {}) => {
     taskData: Partial<Task> & { user_id?: string }
   ) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      const __uid = await getEffectiveUserId();
+      if (!__uid) throw new Error("Not authenticated");
+      const user = { id: __uid } as { id: string };
 
       const { data, error } = await supabase
         .from("tasks")
