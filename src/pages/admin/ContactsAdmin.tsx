@@ -101,6 +101,7 @@ export default function ContactsAdmin() {
   const [editTarget, setEditTarget] = useState<ClientRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ClientRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [alsoDeleteAuth, setAlsoDeleteAuth] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const { isAdmin } = useUserRoles();
 
@@ -240,8 +241,17 @@ export default function ContactsAdmin() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await deleteContact(deleteTarget.id);
-      toast.success("Contact deleted");
+      // If the contact has a portal login and admin opted in, nuke the auth user too.
+      if (alsoDeleteAuth && deleteTarget.linked_user_id) {
+        const { data, error } = await supabase.functions.invoke("admin-delete-user", {
+          body: { user_id: deleteTarget.linked_user_id, keep_contact: false },
+        });
+        if (error) throw error;
+        if ((data as any)?.error) throw new Error((data as any).error);
+      } else {
+        await deleteContact(deleteTarget.id);
+      }
+      toast.success(alsoDeleteAuth ? "Contact + platform account deleted" : "Contact deleted");
       setClients((prev) => prev.filter((c) => c.id !== deleteTarget.id));
       setSelected((prev) => {
         const next = new Set(prev);
@@ -249,6 +259,7 @@ export default function ContactsAdmin() {
         return next;
       });
       setDeleteTarget(null);
+      setAlsoDeleteAuth(false);
     } catch (e: any) {
       toast.error(e?.message || "Delete failed");
     } finally {
@@ -531,7 +542,7 @@ export default function ContactsAdmin() {
           }}
         />
 
-        <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && !deleting && setDeleteTarget(null)}>
+        <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v && !deleting) { setDeleteTarget(null); setAlsoDeleteAuth(false); } }}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
@@ -539,10 +550,25 @@ export default function ContactsAdmin() {
               </AlertDialogTitle>
               <AlertDialogDescription>
                 This permanently removes the contact and their CRM history — deals, activities, notes,
-                documents, and coach assignments. Any linked portal user account is left intact.
-                This action cannot be undone.
+                documents, and coach assignments. This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            {deleteTarget?.linked_user_id && (
+              <label className="flex items-start gap-2 text-sm bg-destructive/5 border border-destructive/30 rounded p-3 -mt-1">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={alsoDeleteAuth}
+                  onChange={(e) => setAlsoDeleteAuth(e.target.checked)}
+                  disabled={deleting}
+                />
+                <span>
+                  <strong>Also delete the platform login account.</strong> Removes their auth user,
+                  roles, subscriptions, and consumer access. Use this when the person should no
+                  longer exist on the platform at all.
+                </span>
+              </label>
+            )}
             <AlertDialogFooter>
               <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
               <AlertDialogAction
