@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, ShieldCheck } from "lucide-react";
+import { safeRedirectOr } from "@/lib/auth/safeRedirect";
 import "./workspace/workspace-theme.css";
 
 type InviteType = "btf_client" | "team_member";
@@ -102,7 +103,7 @@ export default function AcceptInvitePage() {
       if (signInErr) {
         throw new Error(`Account activated, but sign-in failed: ${signInErr.message}`);
       }
-      navigate(data.redirectTo ?? "/app", { replace: true });
+      navigate(safeRedirectOr(data.redirectTo, "/app"), { replace: true });
     } catch (e: any) {
       setError(e?.message ?? "Activation failed");
       setSubmitting(false);

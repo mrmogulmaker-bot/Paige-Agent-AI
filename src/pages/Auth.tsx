@@ -16,6 +16,7 @@ import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
+import { isSafeRedirectPath } from "@/lib/auth/safeRedirect";
 import { useRequiredSignupDocs, recordAcceptances } from "@/lib/legal/useLegalDocuments";
 
 const authSchema = z.object({
@@ -52,9 +53,9 @@ const Auth = () => {
     clearClientViewOverride();
 
     // Honor ?next= for invite acceptance flows (e.g. /join/:token).
-    // Only same-origin relative paths are allowed.
+    // Strict allowlist guard mitigates open-redirect / XSS-via-redirect.
     const nextParam = searchParams.get("next");
-    if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
+    if (nextParam && isSafeRedirectPath(nextParam)) {
       navigate(nextParam, { replace: true });
       return;
     }
