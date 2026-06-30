@@ -797,9 +797,11 @@ mcp.tool("list_approval_comments", {
 
 // ---------- BTF Workspace ----------
 mcp.tool("list_btf_clients", {
-  description: "List Build-to-Fund clients with current phase + last activity. Filter by phase if needed.",
+  description:
+    "List Build-to-Fund clients with current phase + last activity. NOTE: this reads `btf_workspace_settings` — only clients with a BTF workspace row appear here. If empty, the contact may exist in `clients` but has no BTF workspace yet — use `list_contacts` / `search_contacts` instead, or call `create_contact` to add them. Valid phase enum values: 'build', 'stack', 'fund', 'complete'.",
   inputSchema: z.object({
-    phase: z.string().optional().describe("e.g. 'intake', 'build', 'underwriting', 'funding', 'graduated'"),
+    phase: z.enum(["build", "stack", "fund", "complete"]).optional()
+      .describe("BTF phase: build | stack | fund | complete"),
     limit: z.number().int().optional(),
   }),
   handler: async (args) => {
@@ -812,9 +814,10 @@ mcp.tool("list_btf_clients", {
     if (args.phase) q = q.eq("current_phase", args.phase);
     const { data, error } = await q;
     if (error) return err(error.message);
-    return ok({ items: data ?? [] });
+    return ok({ items: data ?? [], hint: (data?.length ?? 0) === 0 ? "No BTF workspaces found. Try `list_contacts` / `search_contacts` for the full client/lead roster, or `create_contact` to add a new one." : undefined });
   },
 });
+
 
 mcp.tool("get_btf_workspace", {
   description: "Fetch the BTF workspace_settings + phase summary for one client.",
