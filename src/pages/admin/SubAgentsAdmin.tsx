@@ -24,6 +24,27 @@ interface InvocationRow {
   error: string | null;
 }
 
+interface ProposalRow {
+  id: string;
+  proposed_slug: string;
+  proposed_name: string;
+  domain: string;
+  description: string;
+  rationale: string;
+  runtime: "soft" | "local" | "langgraph";
+  status: string;
+  proposed_by_agent: string | null;
+  created_at: string;
+  review_notes: string | null;
+}
+
+interface QuotaRow {
+  quota_date: string;
+  proposals_count: number;
+  soft_shipped: number;
+  hard_shipped: number;
+}
+
 export default function SubAgentsAdmin() {
   const { agents, loading, refresh } = useSubAgents();
   const { invoke } = usePaigeOrchestrator();
