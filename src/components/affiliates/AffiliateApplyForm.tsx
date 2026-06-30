@@ -18,8 +18,12 @@ import {
   submitAffiliateApplication,
   type RequestedTierKey,
 } from "@/lib/affiliates/applications";
+import { recordAcceptances } from "@/lib/legal/useLegalDocuments";
+import { supabase } from "@/integrations/supabase/client";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { trackEvent } from "@/hooks/useAnalytics";
+
+const BROKER_AGREEMENT_SLUG = "broker-agreement";
 
 interface Props {
   /** If the applicant is signed in, pass their auth user id so admin can match later. */
@@ -66,6 +70,7 @@ export default function AffiliateApplyForm({
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [autoApproved, setAutoApproved] = useState(false);
+  const [agreementAccepted, setAgreementAccepted] = useState(false);
 
   const [form, setForm] = useState({
     full_name: defaultName,
@@ -94,15 +99,35 @@ export default function AffiliateApplyForm({
       });
       return;
     }
+    if (!agreementAccepted) {
+      toast({
+        title: "Agreement required",
+        description: "Please accept the Broker / Affiliate Producer Agreement before submitting.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSubmitting(true);
     try {
       const tierKey = (form.selected_tier || requestedTier) as RequestedTierKey;
-      // Bundle persona + hear-about into audience_description for storage
-      // without requiring a schema change.
+      // Resolve the live broker-agreement version so it ends up in the
+      // application audit trail even before the broker has a user account.
+      const { data: agreementDoc } = await supabase
+        .from("legal_documents")
+        .select("slug,version")
+        .eq("slug", BROKER_AGREEMENT_SLUG)
+        .eq("is_current", true)
+        .maybeSingle();
+
+      // Bundle persona + hear-about + agreement attestation into audience_description
+      // for storage without requiring a schema change.
       const audienceWithMeta = [
         form.persona ? `Persona: ${form.persona}` : "",
         form.hear_about ? `Heard via: ${form.hear_about}` : "",
         form.audience_description.trim(),
+        agreementDoc
+          ? `Broker Agreement accepted: ${agreementDoc.slug} v${agreementDoc.version} @ ${new Date().toISOString()}`
+          : "",
       ]
         .filter(Boolean)
         .join("\n");
