@@ -1551,6 +1551,117 @@ mcp.tool("bulk_delete_contacts", {
   },
 });
 
+mcp.tool("list_contact_businesses", {
+  description:
+    "List all businesses associated with a contact. Returns the contact's primary_business_id (if any) plus every businesses row owned by the contact's linked_user_id. Use before calling `link_contact_to_business` when the contact has multiple entities so you can show the user a picker.",
+  inputSchema: z.object({
+    contact_id: z.string(),
+  }),
+  handler: async ({ contact_id }) => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+
+    const { data: contact, error: cErr } = await admin
+      .from("clients")
+      .select("id, tenant_id, first_name, last_name, entity_name, linked_user_id, primary_business_id")
+      .eq("id", contact_id)
+      .maybeSingle();
+    if (cErr) return err(cErr.message);
+    if (!contact || contact.tenant_id !== tenant_id) return err("contact_not_found");
+
+    let businesses: any[] = [];
+    if (contact.linked_user_id) {
+      const { data: bz, error: bErr } = await admin
+        .from("businesses")
+        .select("id, legal_name, dba_name, entity_type, is_primary, is_active, created_at")
+        .eq("owner_user_id", contact.linked_user_id)
+        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: true });
+      if (bErr) return err(bErr.message);
+      businesses = bz ?? [];
+    }
+
+    return ok({
+      contact: {
+        id: contact.id,
+        name: `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim(),
+        entity_name_freetext: contact.entity_name,
+        linked_user_id: contact.linked_user_id,
+        primary_business_id: contact.primary_business_id,
+      },
+      businesses,
+      business_count: businesses.length,
+      note: contact.linked_user_id
+        ? null
+        : "Contact has no linked_user_id (CRM-only). New businesses created via auto-stub will be owned by the contact's creator.",
+    });
+  },
+});
+
+mcp.tool("link_contact_to_business", {
+  description:
+    "Wire a contact to a specific business record as their primary business. Use this for multi-entity edge cases (one contact owns several businesses, or co-founders sharing one business) where the auto-stub picked the wrong default. The business must belong to the caller's tenant via shared ownership. Returns the updated contact + business pair.",
+  inputSchema: z.object({
+    contact_id: z.string(),
+    business_id: z.string().nullable().describe("Pass null to clear the link."),
+  }),
+  handler: async ({ contact_id, business_id }) => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+
+    const { data: contact, error: cErr } = await admin
+      .from("clients")
+      .select("id, tenant_id, linked_user_id, primary_business_id")
+      .eq("id", contact_id)
+      .maybeSingle();
+    if (cErr) return err(cErr.message);
+    if (!contact || contact.tenant_id !== tenant_id) return err("contact_not_found");
+
+    if (business_id) {
+      const { data: biz, error: bErr } = await admin
+        .from("businesses")
+        .select("id, owner_user_id, legal_name")
+        .eq("id", business_id)
+        .maybeSingle();
+      if (bErr) return err(bErr.message);
+      if (!biz) return err("business_not_found");
+      // Ownership sanity: business owner must match the contact's linked_user_id,
+      // OR the business owner must be a member of the same tenant (covers
+      // CRM-only contacts whose business is owned by their coach/creator).
+      if (contact.linked_user_id && biz.owner_user_id !== contact.linked_user_id) {
+        const { data: ownerMember } = await admin
+          .from("tenant_members")
+          .select("user_id")
+          .eq("tenant_id", tenant_id)
+          .eq("user_id", biz.owner_user_id)
+          .maybeSingle();
+        if (!ownerMember) return err("business_owner_not_in_tenant");
+      }
+    }
+
+    const { error: uErr } = await admin
+      .from("clients")
+      .update({ primary_business_id: business_id, updated_at: new Date().toISOString() })
+      .eq("id", contact_id);
+    if (uErr) return err(uErr.message);
+
+    await audit("link_contact_to_business", "client", contact_id, {
+      tenant_id,
+      previous_business_id: contact.primary_business_id,
+      new_business_id: business_id,
+    });
+
+    return ok({
+      contact_id,
+      primary_business_id: business_id,
+      previous_business_id: contact.primary_business_id,
+      cleared: business_id === null,
+    });
+  },
+});
+
+
+
 mcp.tool("update_lifecycle_stage", {
   description:
     "Update a contact's lifecycle stage per Doctrine §111 (new_lead, qualified, nurturing, hot_lead, negotiating, won, client_active, client_paused, client_churned, client_funded, client_alumni).",
