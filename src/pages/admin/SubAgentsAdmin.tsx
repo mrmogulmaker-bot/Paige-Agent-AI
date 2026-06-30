@@ -52,6 +52,15 @@ export default function SubAgentsAdmin() {
   const [testingSlug, setTestingSlug] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<unknown>(null);
   const [invocations, setInvocations] = useState<InvocationRow[]>([]);
+  const [proposals, setProposals] = useState<ProposalRow[]>([]);
+  const [quota, setQuota] = useState<QuotaRow | null>(null);
+  const [forgeOpen, setForgeOpen] = useState(false);
+  const [forgeBusy, setForgeBusy] = useState(false);
+  const [forge, setForge] = useState({
+    slug: "", name: "", domain: "ops", description: "", rationale: "",
+    runtime: "soft" as "soft" | "local" | "langgraph",
+    system_prompt: "", triggers: "",
+  });
 
   const loadInvocations = async () => {
     const { data } = await supabase
@@ -62,23 +71,68 @@ export default function SubAgentsAdmin() {
     setInvocations((data ?? []) as InvocationRow[]);
   };
 
+  const loadProposals = async () => {
+    const { data: r } = await supabase.functions.invoke("subagent-forge", {
+      body: { action: "list" },
+    });
+    setProposals((r?.proposals ?? []) as ProposalRow[]);
+    setQuota((r?.quota ?? null) as QuotaRow | null);
+  };
+
+  useEffect(() => { loadProposals(); }, []);
+
+  const submitForge = async () => {
+    if (!forge.slug || !forge.name || !forge.system_prompt || !forge.rationale) {
+      toast.error("slug, name, rationale, and system_prompt are required");
+      return;
+    }
+    setForgeBusy(true);
+    const { data, error } = await supabase.functions.invoke("subagent-forge", {
+      body: {
+        action: "propose",
+        ...forge,
+        triggers: forge.triggers.split(",").map(s => s.trim()).filter(Boolean),
+      },
+    });
+    setForgeBusy(false);
+    if (error || !data?.ok) {
+      toast.error(error?.message ?? data?.error ?? "Proposal failed");
+      return;
+    }
+    toast.success(forge.runtime === "soft" ? "Soft sub-agent is live" : "Hard proposal routed to Approvals");
+    setForgeOpen(false);
+    setForge({ slug: "", name: "", domain: "ops", description: "", rationale: "", runtime: "soft", system_prompt: "", triggers: "" });
+    refresh();
+    loadProposals();
+  };
+
+  const approveProposal = async (id: string) => {
+    const { data, error } = await supabase.functions.invoke("subagent-forge", {
+      body: { action: "approve", proposal_id: id },
+    });
+    if (error || !data?.ok) toast.error(error?.message ?? data?.error ?? "Approve failed");
+    else { toast.success("Sub-agent is live"); refresh(); loadProposals(); }
+  };
+
+  const rejectProposal = async (id: string) => {
+    const { data, error } = await supabase.functions.invoke("subagent-forge", {
+      body: { action: "reject", proposal_id: id, notes: "Rejected from admin console" },
+    });
+    if (error || !data?.ok) toast.error(error?.message ?? data?.error ?? "Reject failed");
+    else { toast.success("Proposal rejected"); loadProposals(); }
+  };
+
   const toggleEnabled = async (slug: string, enabled: boolean) => {
     const { error } = await supabase
       .from("paige_subagents")
       .update({ enabled })
       .eq("slug", slug);
     if (error) toast.error(error.message);
-    else {
-      toast.success(`${slug} ${enabled ? "enabled" : "disabled"}`);
-      refresh();
-    }
+    else { toast.success(`${slug} ${enabled ? "enabled" : "disabled"}`); refresh(); }
   };
 
   const runTest = async (slug: string) => {
-    if (!testContactId) {
-      toast.error("Provide a Contact/Client ID to test against");
-      return;
-    }
+    if (!testContactId) { toast.error("Provide a Contact/Client ID to test against"); return; }
     setTestingSlug(slug);
     setLastResult(null);
     const result = await invoke(slug, { contact_id: testContactId }, { contact_id: testContactId });
@@ -89,10 +143,11 @@ export default function SubAgentsAdmin() {
     loadInvocations();
   };
 
-  const runtimeIcon = (r: SubAgent["runtime"]) =>
-    r === "local" ? <Cpu className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />;
-
   type SubAgent = (typeof agents)[number];
+  const runtimeIcon = (r: SubAgent["runtime"]) =>
+    r === "local" ? <Cpu className="h-3.5 w-3.5" /> :
+    r === "soft" ? <Sparkles className="h-3.5 w-3.5" /> :
+    <Cloud className="h-3.5 w-3.5" />;
 
   return (
     <div className="p-6 space-y-6">
