@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
+import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
