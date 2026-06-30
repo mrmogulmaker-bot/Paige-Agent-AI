@@ -14385,6 +14385,7 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      email_queue_dispatch: { Args: never; Returns: undefined }
       enforce_doctrine_120: { Args: never; Returns: Json }
       enforce_subagent_doctrine_116: {
         Args: never
