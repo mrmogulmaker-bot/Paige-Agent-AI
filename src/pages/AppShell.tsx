@@ -20,6 +20,7 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 import { trackEvent } from "@/hooks/useAnalytics";
+import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 
 // Map /app sub-routes to canonical feature names emitted as `feature_visit`.
 function routeToFeatureName(pathname: string): string | null {
