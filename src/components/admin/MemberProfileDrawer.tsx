@@ -3,7 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Crown, ShieldCheck, ShieldOff, Mail, Calendar, Clock, Users, FileText } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Crown, ShieldCheck, ShieldOff, Mail, Calendar, Clock, Users, FileText, Pencil, Save, X } from "lucide-react";
+import { toast } from "sonner";
 
 export interface MemberProfile {
   user_id: string;
@@ -21,21 +26,41 @@ interface Props {
   member: MemberProfile | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialEdit?: boolean;
+  onSaved?: () => void;
 }
 
-interface Extras {
-  phone?: string | null;
-  avatar_url?: string | null;
-  assignedClientsCount?: number;
-  invitesSentCount?: number;
-  tenantNames?: string[];
+interface ProfileFields {
+  full_name: string;
+  phone: string;
+  work_email: string;
+  business_name: string;
+  website_url: string;
+  address: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  coach_bio: string;
+  staff_notes: string;
+  avatar_url: string;
 }
+
+const EMPTY: ProfileFields = {
+  full_name: "", phone: "", work_email: "", business_name: "", website_url: "",
+  address: "", city: "", state: "", postal_code: "", coach_bio: "", staff_notes: "", avatar_url: "",
+};
 
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : "—");
 
-export function MemberProfileDrawer({ member, open, onOpenChange }: Props) {
-  const [extras, setExtras] = useState<Extras>({});
+export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = false, onSaved }: Props) {
+  const [fields, setFields] = useState<ProfileFields>(EMPTY);
+  const [original, setOriginal] = useState<ProfileFields>(EMPTY);
+  const [extras, setExtras] = useState<{ assignedClientsCount?: number; invitesSentCount?: number; tenantNames?: string[] }>({});
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(initialEdit);
+
+  useEffect(() => { setEditing(initialEdit); }, [initialEdit, member?.user_id]);
 
   useEffect(() => {
     if (!open || !member) return;
@@ -44,76 +69,112 @@ export function MemberProfileDrawer({ member, open, onOpenChange }: Props) {
       setLoading(true);
       try {
         const [{ data: prof }, clientsRes, invitesRes, tenantRes] = await Promise.all([
-          supabase.from("profiles").select("phone, avatar_url").eq("user_id", member.user_id).maybeSingle(),
+          supabase.from("profiles")
+            .select("full_name, phone, work_email, business_name, website_url, address, city, state, postal_code, coach_bio, staff_notes, avatar_url")
+            .eq("user_id", member.user_id).maybeSingle(),
           supabase.from("clients").select("id", { count: "exact", head: true }).eq("assigned_coach_user_id", member.user_id),
           supabase.from("invitations").select("id", { count: "exact", head: true }).eq("invited_by", member.user_id),
           supabase.from("tenant_members").select("tenants(name)").eq("user_id", member.user_id),
         ]);
         if (cancelled) return;
+        const next: ProfileFields = {
+          full_name: (prof as any)?.full_name ?? member.full_name ?? "",
+          phone: (prof as any)?.phone ?? "",
+          work_email: (prof as any)?.work_email ?? "",
+          business_name: (prof as any)?.business_name ?? "",
+          website_url: (prof as any)?.website_url ?? "",
+          address: (prof as any)?.address ?? "",
+          city: (prof as any)?.city ?? "",
+          state: (prof as any)?.state ?? "",
+          postal_code: (prof as any)?.postal_code ?? "",
+          coach_bio: (prof as any)?.coach_bio ?? "",
+          staff_notes: (prof as any)?.staff_notes ?? "",
+          avatar_url: (prof as any)?.avatar_url ?? "",
+        };
+        setFields(next);
+        setOriginal(next);
         setExtras({
-          phone: (prof as any)?.phone ?? null,
-          avatar_url: (prof as any)?.avatar_url ?? null,
           assignedClientsCount: clientsRes.count ?? 0,
           invitesSentCount: invitesRes.count ?? 0,
-          tenantNames: (tenantRes.data ?? [])
-            .map((r: any) => r.tenants?.name)
-            .filter(Boolean),
+          tenantNames: (tenantRes.data ?? []).map((r: any) => r.tenants?.name).filter(Boolean),
         });
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [open, member]);
 
   if (!member) return null;
-  const initials = (member.full_name || member.email || "?")
+  const initials = (fields.full_name || member.email || "?")
     .split(/\s+/).map(s => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+
+  const set = <K extends keyof ProfileFields>(k: K, v: ProfileFields[K]) => setFields(f => ({ ...f, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload: any = { user_id: member.user_id, ...fields, updated_at: new Date().toISOString() };
+      const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
+      if (error) throw error;
+      toast.success("Profile saved");
+      setOriginal(fields);
+      setEditing(false);
+      onSaved?.();
+    } catch (e: any) {
+      toast.error("Failed to save profile", { description: e?.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => { setFields(original); setEditing(false); };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-base font-semibold overflow-hidden">
-              {extras.avatar_url
-                ? <img src={extras.avatar_url} alt="" className="w-full h-full object-cover" />
+              {fields.avatar_url
+                ? <img src={fields.avatar_url} alt="" className="w-full h-full object-cover" />
                 : initials}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 {member.is_owner && <Crown className="w-4 h-4 text-yellow-500" />}
-                <span className="truncate">{member.full_name || member.email || "Unnamed"}</span>
+                <span className="truncate">{fields.full_name || member.email || "Unnamed"}</span>
               </div>
-              {member.full_name && (
-                <SheetDescription className="text-xs truncate">{member.email}</SheetDescription>
-              )}
+              <SheetDescription className="text-xs truncate">{member.email}</SheetDescription>
             </div>
+            {!editing ? (
+              <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit
+              </Button>
+            ) : (
+              <div className="flex gap-1">
+                <Button size="sm" variant="ghost" onClick={handleCancel} disabled={saving}>
+                  <X className="w-4 h-4" />
+                </Button>
+                <Button size="sm" onClick={handleSave} disabled={saving}>
+                  <Save className="w-3.5 h-3.5 mr-1.5" /> {saving ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            )}
           </SheetTitle>
         </SheetHeader>
 
         <div className="space-y-5 mt-6 text-sm">
-          {/* Status */}
           <div>
             {member.suspended_at ? (
-              <Badge variant="destructive" className="gap-1">
-                <ShieldOff className="w-3 h-3" /> Suspended
-              </Badge>
+              <Badge variant="destructive" className="gap-1"><ShieldOff className="w-3 h-3" /> Suspended</Badge>
             ) : (
-              <Badge variant="secondary" className="gap-1">
-                <ShieldCheck className="w-3 h-3" /> Active
-              </Badge>
-            )}
-            {member.suspended_reason && (
-              <p className="text-xs text-muted-foreground mt-2">Reason: {member.suspended_reason}</p>
+              <Badge variant="secondary" className="gap-1"><ShieldCheck className="w-3 h-3" /> Active</Badge>
             )}
           </div>
 
           <Separator />
 
-          {/* Roles */}
           <div>
             <div className="text-xs uppercase text-muted-foreground mb-2">Roles</div>
             <div className="flex flex-wrap gap-1">
@@ -121,55 +182,94 @@ export function MemberProfileDrawer({ member, open, onOpenChange }: Props) {
               {member.roles.map(r => (
                 <Badge key={r} variant="outline" className="capitalize">{r.replace("_", " ")}</Badge>
               ))}
-              {member.roles.length === 0 && !member.is_owner && (
-                <Badge variant="outline" className="text-muted-foreground">Lead / no role</Badge>
-              )}
             </div>
           </div>
 
           <Separator />
 
-          {/* Contact */}
-          <div className="space-y-2">
-            <div className="text-xs uppercase text-muted-foreground">Contact</div>
-            <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-muted-foreground" /> {member.email || "—"}</div>
-            <div className="flex items-center gap-2">
-              <span className="w-4 h-4 text-muted-foreground text-center text-xs">☎</span>
-              {extras.phone || <span className="text-muted-foreground">No phone on file</span>}
+          {/* Personal */}
+          <div className="space-y-3">
+            <div className="text-xs uppercase text-muted-foreground">Personal</div>
+            <Field label="Full name" value={fields.full_name} editing={editing} onChange={v => set("full_name", v)} />
+            <Field label="Phone" value={fields.phone} editing={editing} onChange={v => set("phone", v)} placeholder="+1 555 555 5555" />
+            <Field label="Work email" value={fields.work_email} editing={editing} onChange={v => set("work_email", v)} placeholder="work@company.com" />
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Mail className="w-3.5 h-3.5" /> Login email: <span className="text-foreground">{member.email || "—"}</span>
             </div>
           </div>
 
           <Separator />
 
-          {/* Activity */}
+          {/* Business */}
+          <div className="space-y-3">
+            <div className="text-xs uppercase text-muted-foreground">Business</div>
+            <Field label="Business name" value={fields.business_name} editing={editing} onChange={v => set("business_name", v)} placeholder="e.g. Acme Capital Partners" />
+            <Field label="Website" value={fields.website_url} editing={editing} onChange={v => set("website_url", v)} placeholder="https://" />
+          </div>
+
+          <Separator />
+
+          {/* Address */}
+          <div className="space-y-3">
+            <div className="text-xs uppercase text-muted-foreground">Address</div>
+            <Field label="Street" value={fields.address} editing={editing} onChange={v => set("address", v)} />
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="City" value={fields.city} editing={editing} onChange={v => set("city", v)} />
+              <Field label="State" value={fields.state} editing={editing} onChange={v => set("state", v)} />
+            </div>
+            <Field label="Postal code" value={fields.postal_code} editing={editing} onChange={v => set("postal_code", v)} />
+          </div>
+
+          <Separator />
+
+          {/* Bio / notes */}
+          <div className="space-y-3">
+            <div className="text-xs uppercase text-muted-foreground">Bio & internal notes</div>
+            <div className="space-y-1">
+              <Label className="text-xs">Public bio (shown to clients for coaches/brokers)</Label>
+              {editing
+                ? <Textarea rows={3} value={fields.coach_bio} onChange={e => set("coach_bio", e.target.value)} />
+                : <p className="text-sm whitespace-pre-wrap text-muted-foreground">{fields.coach_bio || "—"}</p>}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Internal notes (staff only)</Label>
+              {editing
+                ? <Textarea rows={3} value={fields.staff_notes} onChange={e => set("staff_notes", e.target.value)} />
+                : <p className="text-sm whitespace-pre-wrap text-muted-foreground">{fields.staff_notes || "—"}</p>}
+            </div>
+          </div>
+
+          <Separator />
+
           <div className="space-y-2">
             <div className="text-xs uppercase text-muted-foreground">Activity</div>
             <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-muted-foreground" /> Joined {fmt(member.created_at)}</div>
             <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-muted-foreground" /> Last sign-in {member.last_sign_in_at ? fmt(member.last_sign_in_at) : "Never"}</div>
-          </div>
-
-          <Separator />
-
-          {/* Footprint */}
-          <div className="space-y-2">
-            <div className="text-xs uppercase text-muted-foreground">Footprint</div>
-            <div className="flex items-center gap-2"><Users className="w-4 h-4 text-muted-foreground" /> {loading ? "…" : extras.assignedClientsCount ?? 0} assigned client{(extras.assignedClientsCount ?? 0) === 1 ? "" : "s"}</div>
-            <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-muted-foreground" /> {loading ? "…" : extras.invitesSentCount ?? 0} invitation{(extras.invitesSentCount ?? 0) === 1 ? "" : "s"} sent</div>
+            <div className="flex items-center gap-2"><Users className="w-4 h-4 text-muted-foreground" /> {loading ? "…" : extras.assignedClientsCount ?? 0} assigned clients</div>
+            <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-muted-foreground" /> {loading ? "…" : extras.invitesSentCount ?? 0} invitations sent</div>
             {extras.tenantNames && extras.tenantNames.length > 0 && (
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">Workspaces</div>
-                <div className="flex flex-wrap gap-1">
-                  {extras.tenantNames.map(n => <Badge key={n} variant="secondary">{n}</Badge>)}
-                </div>
+              <div className="flex flex-wrap gap-1 pt-1">
+                {extras.tenantNames.map(n => <Badge key={n} variant="secondary">{n}</Badge>)}
               </div>
             )}
           </div>
 
-          <Separator />
-
-          <div className="text-[11px] text-muted-foreground">User ID: <code className="text-xs">{member.user_id}</code></div>
+          <div className="text-[11px] text-muted-foreground pt-2">User ID: <code className="text-xs">{member.user_id}</code></div>
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function Field({
+  label, value, editing, onChange, placeholder,
+}: { label: string; value: string; editing: boolean; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      {editing
+        ? <Input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
+        : <div className="text-sm">{value || <span className="text-muted-foreground">—</span>}</div>}
+    </div>
   );
 }

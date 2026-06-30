@@ -29,7 +29,7 @@ import { MemberProfileDrawer } from "@/components/admin/MemberProfileDrawer";
 // ---- Role taxonomy ---------------------------------------------------------
 // A "staff role" = anything that grants platform/workspace authority.
 // Clients (and no-role auth users) belong in Leads/Contacts, NOT here.
-const STAFF_ROLES = ["admin", "coach", "sales_rep", "broker", "broker_team_member", "cs_rep", "finance", "viewer", "moderator", "owner", "super_admin"] as const;
+const STAFF_ROLES = ["admin", "coach", "sales_rep", "broker", "broker_team_member", "affiliate", "cs_rep", "finance", "viewer", "moderator", "owner", "super_admin"] as const;
 const STAFF_ROLE_SET = new Set<string>(STAFF_ROLES);
 const isStaffRow = (m: { roles: string[]; is_owner: boolean }) =>
   m.is_owner || m.roles.some((r) => STAFF_ROLE_SET.has(r));
