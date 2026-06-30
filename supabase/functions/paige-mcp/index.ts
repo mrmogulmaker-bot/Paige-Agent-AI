@@ -2976,19 +2976,40 @@ mcp.tool("list_subagents", {
 
 mcp.tool("delegate_to_subagent", {
   description:
-    "Delegate a task to one of Paige's specialized sub-agents. Call `list_subagents` first to resolve the correct `slug`. Pass a sub-agent-specific `input` object (e.g. {client_id} for fundability/compliance; {query} for market_research; {lender_name} for financial_research). Returns the sub-agent's structured findings. Every invocation is logged in paige_subagent_invocations for audit + UI surfacing.",
+    "Delegate a task to one of Paige's specialized sub-agents. Call `list_subagents` first to resolve the correct `slug`. Pass a sub-agent-specific `input` object (e.g. {contact_id} for fundability/compliance/intake; {query} for market_research; {lender_name} for financial_research). If the contact doesn't exist yet, call `create_contact` first to get a `contact_id`. Returns the sub-agent's structured findings. Every invocation is logged in paige_subagent_invocations for audit + UI surfacing.",
   inputSchema: z.object({
     slug: z.string().describe("Sub-agent slug from list_subagents (e.g. 'fundability-diagnostician')."),
-    input: z.record(z.any()).optional().describe("Sub-agent-specific arguments."),
+    // Accept object OR JSON-string (some MCP clients stringify nested objects). Coerced server-side.
+    input: z.union([z.record(z.any()), z.string()]).optional()
+      .describe("Sub-agent-specific arguments as an object. JSON string also accepted and parsed."),
     contact_id: z.string().optional().describe("Optional client UUID for context + logging."),
     conversation_id: z.string().optional().describe("Optional Paige conversation ID for thread linking."),
   }),
   handler: async ({ slug, input, contact_id, conversation_id }) => {
+    let parsedInput: Record<string, unknown> = {};
+    if (typeof input === "string") {
+      const trimmed = input.trim();
+      if (trimmed) {
+        try {
+          const j = JSON.parse(trimmed);
+          if (j && typeof j === "object" && !Array.isArray(j)) parsedInput = j as Record<string, unknown>;
+          else return err(`input must be an object or JSON-string of an object; got ${Array.isArray(j) ? "array" : typeof j}`);
+        } catch (_e) {
+          return err("input was a string but not valid JSON. Pass an object like {\"contact_id\":\"...\"} or a JSON string of one.");
+        }
+      }
+    } else if (input && typeof input === "object") {
+      parsedInput = input as Record<string, unknown>;
+    }
+    // Auto-promote top-level contact_id into input if sub-agent expects it there
+    if (contact_id && !parsedInput.contact_id && !parsedInput.client_id) {
+      parsedInput.contact_id = contact_id;
+    }
     const actor = currentActor();
     const r = await callOrchestrator({
       action: "tool_invoke",
       slug,
-      input: input ?? {},
+      input: parsedInput,
       context: { contact_id, conversation_id, user_id: actor.user_id ?? undefined },
     });
     await audit("delegate_to_subagent", "subagent", slug, { contact_id: contact_id ?? null, status: r.status });
@@ -2996,6 +3017,7 @@ mcp.tool("delegate_to_subagent", {
     return ok(r.body);
   },
 });
+
 
 mcp.tool("get_subagent_history", {
   description:
