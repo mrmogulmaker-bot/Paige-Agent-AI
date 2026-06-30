@@ -23,6 +23,10 @@ import { ContactCampaignAttribution } from "@/components/admin/contacts/ContactC
 import { BusinessVerificationCard } from "@/components/admin/contacts/BusinessVerificationCard";
 import { BusinessTabPanel } from "@/components/admin/contacts/BusinessTabPanel";
 import { ContactCommsPanel } from "@/components/admin/contacts/ContactCommsPanel";
+import { ContactNotesPanel } from "@/components/admin/contacts/ContactNotesPanel";
+import { ContactFilesPanel } from "@/components/admin/contacts/ContactFilesPanel";
+import { ContactTasksPanel } from "@/components/admin/contacts/ContactTasksPanel";
+import { ContactPortalPanel } from "@/components/admin/contacts/ContactPortalPanel";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
