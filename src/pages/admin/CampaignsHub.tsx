@@ -7,11 +7,13 @@ import { lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Megaphone, LayoutGrid, GitBranch, FileText, Inbox, Plug } from "lucide-react";
+import { CampaignsOverviewStats } from "@/components/admin/campaigns/CampaignsOverviewStats";
 
 const CampaignsOverview = lazy(() => import("@/pages/admin/CampaignsAdmin"));
 const GrowthHub = lazy(() => import("@/pages/admin/GrowthHub"));
 
 const GROWTH_TABS = new Set(["pages", "funnels", "forms", "submissions", "integrations"]);
+
 
 export default function CampaignsHub() {
   const [params, setParams] = useSearchParams();
