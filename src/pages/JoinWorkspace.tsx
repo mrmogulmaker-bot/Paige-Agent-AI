@@ -16,6 +16,11 @@ import { Loader2, ShieldCheck, ShieldAlert } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { ContextualConsentDialog } from "@/components/legal/ContextualConsentDialog";
+
+const STAFF_ROLES = new Set([
+  "admin","owner","super_admin","moderator","coach","sales_rep","broker","cs_rep","finance","viewer"
+]);
 
 interface PeekRow {
   tenant_id: string;
@@ -35,6 +40,15 @@ export default function JoinWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
+  const [userId, setUserId] = useState<string | undefined>(undefined);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [consentDone, setConsentDone] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id));
+  }, []);
+
+  const isStaffInvite = !!info && STAFF_ROLES.has(info.default_role);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +80,14 @@ export default function JoinWorkspace() {
       if (!auth.user) {
         const next = encodeURIComponent(`/join/${token}`);
         navigate(`/auth?next=${next}`);
+        return;
+      }
+      // For staff invitations, capture the Workforce Confidentiality & GLBA
+      // Safeguards Acknowledgment BEFORE granting access.
+      if (isStaffInvite && !consentDone) {
+        setUserId(auth.user.id);
+        setConsentOpen(true);
+        setAccepting(false);
         return;
       }
       const { error: e } = await supabase.rpc("accept_tenant_invite", { _token: token });
@@ -150,6 +172,19 @@ export default function JoinWorkspace() {
           )}
         </CardContent>
       </Card>
+      <ContextualConsentDialog
+        open={consentOpen}
+        onOpenChange={setConsentOpen}
+        userId={userId}
+        slug="workforce-acknowledgment"
+        actionLabel="Acknowledge and join workspace"
+        context={{ tenant_id: info?.tenant_id, role: info?.default_role, source: "join_workspace" }}
+        onAccepted={() => {
+          setConsentDone(true);
+          // re-invoke accept now that consent is recorded
+          setTimeout(() => void accept(), 50);
+        }}
+      />
     </div>
   );
 }

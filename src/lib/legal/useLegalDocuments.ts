@@ -11,7 +11,7 @@ export type LegalDoc = {
   title: string;
   summary: string | null;
   body_md: string;
-  audience: "all" | "tenant_owner" | "contextual";
+  audience: "all" | "tenant_owner" | "contextual" | "broker" | "workforce" | "business-principal";
   required_at_signup: boolean;
   effective_date: string;
   is_current: boolean;
