@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.get_workspace_brand() FROM PUBLIC, anon;
