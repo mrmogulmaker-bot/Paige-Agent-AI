@@ -18,6 +18,7 @@ import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
 import { extractEntityDiagram } from "@/lib/entityDiagram";
+import { RootCauseCard, extractRootCauseAnalysis } from "@/components/chat/RootCauseCard";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
