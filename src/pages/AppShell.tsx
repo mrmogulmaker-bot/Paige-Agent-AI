@@ -166,12 +166,19 @@ const AppShell = () => {
   const activeUser = user || (DEV_MODE ? { id: 'dev-user', email: 'dev@paigeagent.ai' } as User : null);
   if (!activeUser) return null;
 
+  // When staff are viewing-as-client, route client-scoped data through the
+  // impersonated user's id while keeping `activeUser` as the authenticated
+  // session for auth-only concerns (consents, chat actor identity).
+  const scopedUser = isImpersonating && effectiveUserId
+    ? ({ ...activeUser, id: effectiveUserId } as User)
+    : activeUser;
+
   // Mobile layout: full-screen chat with bottom nav
   if (isMobile) {
     return (
       <>
-        <RequiredConsentsGate userId={activeUser.id} />
-        <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
+        {!isImpersonating && <RequiredConsentsGate userId={activeUser.id} />}
+        {!isImpersonating && <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />}
         <AdminViewBanner />
         <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
         <PushNotificationPrompt />
@@ -179,10 +186,10 @@ const AppShell = () => {
           <AppNav user={activeUser} />
           <div className="flex-1 overflow-hidden">
             {location.pathname === "/app" ? (
-              <PaigeChat user={activeUser} session={session} />
+              <PaigeChat user={scopedUser} session={session} />
             ) : (
               <div className="h-full overflow-y-auto scroll-touch p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
-                <Outlet context={{ user: activeUser, session }} />
+                <Outlet context={{ user: scopedUser, session }} />
               </div>
             )}
           </div>
@@ -195,8 +202,8 @@ const AppShell = () => {
   // Desktop layout: resizable panels
   return (
     <>
-      <RequiredConsentsGate userId={activeUser.id} />
-      <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
+      {!isImpersonating && <RequiredConsentsGate userId={activeUser.id} />}
+      {!isImpersonating && <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />}
       <AdminViewBanner />
       <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
       <PushNotificationPrompt />
@@ -204,15 +211,15 @@ const AppShell = () => {
         <AppNav user={activeUser} />
         <ResizablePanelGroup direction="horizontal" className="flex-1">
           <ResizablePanel defaultSize={40} minSize={30} maxSize={60}>
-            <PaigeChat user={activeUser} session={session} />
+            <PaigeChat user={scopedUser} session={session} />
           </ResizablePanel>
           <ResizableHandle withHandle />
           <ResizablePanel defaultSize={60}>
             <div className="h-full overflow-y-auto p-6">
               {location.pathname === "/app" ? (
-                <AppDashboardHome factors={factors} userId={activeUser.id} />
+                <AppDashboardHome factors={factors} userId={scopedUser.id} />
               ) : (
-                <Outlet context={{ user: activeUser, session }} />
+                <Outlet context={{ user: scopedUser, session }} />
               )}
             </div>
           </ResizablePanel>
