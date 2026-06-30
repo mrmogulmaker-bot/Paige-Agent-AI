@@ -4018,6 +4018,9 @@ const SUPPORTED_SCOPES = [
   "btf.read", "btf.write",
   "admin.read", "admin.write", "admin.delete",
   "platform.read", "platform.write",
+  // End-user (client) tier — narrow, self-scoped only. Every self.* tool
+  // resolves the caller to their own clients row before reading/writing.
+  "self.read", "self.write", "self.chat",
 ] as const;
 type Scope = (typeof SUPPORTED_SCOPES)[number];
 
