@@ -12,17 +12,22 @@ import {
 } from "@/components/ui/select";
 import {
   Search, Plus, Download, Users, Briefcase, Sparkles, Tag, Pencil, BanIcon,
-  Star, Filter,
+  Star, Filter, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  LIFECYCLE_STAGES, lifecycleMeta, contactsToCSV, downloadCSV,
+  LIFECYCLE_STAGES, lifecycleMeta, contactsToCSV, downloadCSV, deleteContact,
 } from "@/lib/contacts";
 import { formatMoney } from "@/lib/pipelines";
 import { NewContactDialog } from "@/components/admin/contacts/NewContactDialog";
 import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog";
 import { BulkActionsBar } from "@/components/admin/contacts/BulkActionsBar";
 import { formatDistanceToNow, format } from "date-fns";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useUserRoles } from "@/hooks/useUserRoles";
 
 type ClientRow = {
   id: string;
