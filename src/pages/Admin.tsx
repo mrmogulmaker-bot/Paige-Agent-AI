@@ -155,13 +155,13 @@ const Admin = () => {
         if (!session) {
           session = await new Promise((resolve) => {
             const timeout = setTimeout(() => {
-              sub.subscription.unsubscribe();
+              sub.data.subscription.unsubscribe();
               resolve(null);
             }, 4000);
             const sub = supabase.auth.onAuthStateChange((_e, s) => {
               if (s) {
                 clearTimeout(timeout);
-                sub.subscription.unsubscribe();
+                sub.data.subscription.unsubscribe();
                 resolve(s);
               }
             });
