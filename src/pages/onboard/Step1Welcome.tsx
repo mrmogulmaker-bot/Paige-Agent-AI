@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { OnboardClient } from "./useOnboardingClient";
 import { advanceOnboardingStage } from "./useOnboardingClient";
