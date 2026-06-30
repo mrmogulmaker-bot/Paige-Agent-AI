@@ -304,7 +304,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             <DropdownMenuTrigger asChild>
               <button
                 className={`flex items-center gap-1.5 px-3 h-11 text-sm whitespace-nowrap transition-colors ${
-                  moreNavItems.some((i) => isActive(i.href))
+                  visibleMore.some((i) => isActive(i.href))
                     ? "text-accent font-medium"
                     : "text-primary-foreground/70 hover:text-primary-foreground"
                 }`}
@@ -317,7 +317,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuLabel>Workspace tools</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {moreNavItems.map((item) => (
+              {visibleMore.map((item) => (
                 <DropdownMenuItem
                   key={item.href}
                   onClick={() => navigate(item.href)}
