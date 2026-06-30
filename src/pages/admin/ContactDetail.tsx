@@ -9,11 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
   MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
-  CreditCard, User, Landmark, TrendingUp, Send, Pencil, ClipboardCheck,
+  CreditCard, User, Landmark, TrendingUp, Send, Pencil, ClipboardCheck, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { LIFECYCLE_STAGES, lifecycleMeta } from "@/lib/contacts";
+import { LIFECYCLE_STAGES, lifecycleMeta, deleteContact } from "@/lib/contacts";
 import { ContactDealsSection } from "@/components/admin/contacts/ContactDealsSection";
 import { FundingReadinessLens } from "@/components/funding-lens/FundingReadinessLens";
 import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog";
@@ -22,6 +22,10 @@ import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
 import { ContactCampaignAttribution } from "@/components/admin/contacts/ContactCampaignAttribution";
 import { BusinessVerificationCard } from "@/components/admin/contacts/BusinessVerificationCard";
 import { BusinessTabPanel } from "@/components/admin/contacts/BusinessTabPanel";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
@@ -62,6 +66,8 @@ export default function ContactDetail() {
   const [businesses, setBusinesses] = useState<Array<{ id: string; legal_name: string | null; dba: string | null; entity_type: string | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { items: contactApprovals } = usePendingApprovals({ contactId: id });
   const { isAdmin } = useUserRoles();
 
@@ -235,6 +241,16 @@ export default function ContactDetail() {
         {!client.linked_user_id && (
           <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/internal/${client.id}`)}>
             <ExternalLink className="h-4 w-4 mr-1" /> Internal Record
+          </Button>
+        )}
+        {isAdmin && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDeleteOpen(true)}
+            className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4 mr-1" /> Delete
           </Button>
         )}
       </div>
@@ -488,6 +504,41 @@ export default function ContactDetail() {
           setEditOpen(false);
         }}
       />
+
+      <AlertDialog open={deleteOpen} onOpenChange={(v) => !deleting && setDeleteOpen(v)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {fullName || "this contact"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the contact along with their CRM history — deals,
+              activities, notes, documents, and coach assignments. Any linked portal user
+              account is left intact. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!client) return;
+                setDeleting(true);
+                try {
+                  await deleteContact(client.id);
+                  toast.success("Contact deleted");
+                  navigate("/admin/contacts");
+                } catch (err: any) {
+                  toast.error(err?.message || "Delete failed");
+                  setDeleting(false);
+                }
+              }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting…" : "Delete contact"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

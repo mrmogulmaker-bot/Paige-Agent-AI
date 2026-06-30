@@ -12,17 +12,22 @@ import {
 } from "@/components/ui/select";
 import {
   Search, Plus, Download, Users, Briefcase, Sparkles, Tag, Pencil, BanIcon,
-  Star, Filter,
+  Star, Filter, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  LIFECYCLE_STAGES, lifecycleMeta, contactsToCSV, downloadCSV,
+  LIFECYCLE_STAGES, lifecycleMeta, contactsToCSV, downloadCSV, deleteContact,
 } from "@/lib/contacts";
 import { formatMoney } from "@/lib/pipelines";
 import { NewContactDialog } from "@/components/admin/contacts/NewContactDialog";
 import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog";
 import { BulkActionsBar } from "@/components/admin/contacts/BulkActionsBar";
 import { formatDistanceToNow, format } from "date-fns";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useUserRoles } from "@/hooks/useUserRoles";
 
 type ClientRow = {
   id: string;
@@ -94,7 +99,10 @@ export default function ContactsAdmin() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [editTarget, setEditTarget] = useState<ClientRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ClientRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
+  const { isAdmin } = useUserRoles();
 
   // URL-synced filters
   const search = searchParams.get("q") || "";
@@ -226,6 +234,26 @@ export default function ContactsAdmin() {
   const toggleSelectAll = () => {
     if (selected.size === filtered.length) setSelected(new Set());
     else setSelected(new Set(filtered.map((c) => c.id)));
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteContact(deleteTarget.id);
+      toast.success("Contact deleted");
+      setClients((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(deleteTarget.id);
+        return next;
+      });
+      setDeleteTarget(null);
+    } catch (e: any) {
+      toast.error(e?.message || "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -447,6 +475,22 @@ export default function ContactsAdmin() {
                           <Button variant="ghost" size="icon" onClick={() => setEditTarget(c)} aria-label="Edit contact">
                             <Pencil className="h-4 w-4" />
                           </Button>
+                          {isAdmin && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setDeleteTarget(c)}
+                                  aria-label="Delete contact"
+                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Delete contact (admin)</TooltipContent>
+                            </Tooltip>
+                          )}
                           <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/contacts/${c.id}`)}>
                             Open
                           </Button>
@@ -486,6 +530,31 @@ export default function ContactsAdmin() {
             setEditTarget(null);
           }}
         />
+
+        <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && !deleting && setDeleteTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Delete {deleteTarget ? `${deleteTarget.first_name} ${deleteTarget.last_name}`.trim() || deleteTarget.email || "this contact" : "contact"}?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This permanently removes the contact and their CRM history — deals, activities, notes,
+                documents, and coach assignments. Any linked portal user account is left intact.
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => { e.preventDefault(); confirmDelete(); }}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? "Deleting…" : "Delete contact"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </TooltipProvider>
   );
