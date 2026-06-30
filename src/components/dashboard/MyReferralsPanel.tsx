@@ -51,6 +51,8 @@ export default function MyReferralsPanel() {
   const [copied, setCopied] = useState(false);
 
   const [reloadTick, setReloadTick] = useState(0);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [justSynced, setJustSynced] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,7 +65,10 @@ export default function MyReferralsPanel() {
       if (scheduled) return;
       scheduled = setTimeout(() => {
         scheduled = null;
-        if (!cancelled) setReloadTick((t) => t + 1);
+        if (!cancelled) {
+          toast("Referrals updated", { description: "Synced new activity." });
+          setReloadTick((t) => t + 1);
+        }
       }, 400);
     };
 
