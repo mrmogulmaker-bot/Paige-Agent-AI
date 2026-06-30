@@ -4903,6 +4903,45 @@ export type Database = {
           },
         ]
       }
+      doctrine_120_canonical_enums: {
+        Row: {
+          canonical_values: string[]
+          constraint_name: string
+          constraint_schema: string
+          constraint_table: string
+          created_at: string
+          domain: string
+          id: string
+          mcp_tool_name: string | null
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          canonical_values: string[]
+          constraint_name: string
+          constraint_schema?: string
+          constraint_table: string
+          created_at?: string
+          domain: string
+          id?: string
+          mcp_tool_name?: string | null
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          canonical_values?: string[]
+          constraint_name?: string
+          constraint_schema?: string
+          constraint_table?: string
+          created_at?: string
+          domain?: string
+          id?: string
+          mcp_tool_name?: string | null
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       documents: {
         Row: {
           bucket_name: string
@@ -14334,6 +14373,7 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      enforce_doctrine_120: { Args: never; Returns: Json }
       enforce_subagent_doctrine_116: {
         Args: never
         Returns: {
