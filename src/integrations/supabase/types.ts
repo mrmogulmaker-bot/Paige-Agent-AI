@@ -10082,6 +10082,7 @@ export type Database = {
           created_by: string
           created_by_user_id: string | null
           description: string | null
+          external_send: boolean | null
           id: string
           input_schema: Json
           metadata: Json
@@ -10106,6 +10107,7 @@ export type Database = {
           created_by?: string
           created_by_user_id?: string | null
           description?: string | null
+          external_send?: boolean | null
           id?: string
           input_schema?: Json
           metadata?: Json
@@ -10130,6 +10132,7 @@ export type Database = {
           created_by?: string
           created_by_user_id?: string | null
           description?: string | null
+          external_send?: boolean | null
           id?: string
           input_schema?: Json
           metadata?: Json
@@ -14025,6 +14028,14 @@ export type Database = {
         Returns: Json
       }
       resolve_client_id_by_email: { Args: { _email: string }; Returns: string }
+      revoke_platform_access: { Args: { _user_id: string }; Returns: undefined }
+      scan_soft_subagents_for_tool_refs: {
+        Args: never
+        Returns: {
+          out_pattern: string
+          out_slug: string
+        }[]
+      }
       set_journey_stage: {
         Args: {
           _contact_id: string
