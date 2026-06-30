@@ -6,18 +6,20 @@ export interface SubAgent {
   name: string;
   domain: string;
   description: string;
-  runtime: "local" | "langgraph";
+  runtime: "local" | "langgraph" | "soft";
   triggers: string[];
   display_order: number;
   enabled?: boolean;
   edge_function?: string | null;
   langgraph_graph?: string | null;
+  auto_generated?: boolean;
+  system_prompt?: string | null;
 }
 
 export interface OrchestratorInvokeResult {
   ok: boolean;
   subagent?: string;
-  runtime?: "local" | "langgraph";
+  runtime?: "local" | "langgraph" | "soft";
   latency_ms?: number;
   result?: unknown;
   error?: string;
@@ -68,7 +70,7 @@ export function useSubAgents() {
     setLoading(true);
     const { data, error } = await supabase
       .from("paige_subagents")
-      .select("slug,name,domain,description,runtime,triggers,display_order,enabled,edge_function,langgraph_graph")
+      .select("slug,name,domain,description,runtime,triggers,display_order,enabled,edge_function,langgraph_graph,auto_generated,system_prompt")
       .order("display_order");
     if (error) setError(error.message);
     else setAgents((data ?? []) as SubAgent[]);

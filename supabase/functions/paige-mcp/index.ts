@@ -2847,6 +2847,76 @@ mcp.tool("get_subagent_history", {
   },
 });
 
+// ---------- Sub-Agent Factory (Section 18.5) — Paige proposes new sub-agents ----------
+mcp.tool("propose_subagent", {
+  description:
+    "Propose a new sub-agent. SOFT proposals (runtime='soft') ship live instantly — prompt-only, runs on the AI Gateway, may not access protected financial/PII tables. HARD proposals (runtime='local' or 'langgraph') route to the Approvals Hub for admin sign-off because they require new edge function code. Use when the user requests an analysis pattern that doesn't fit any existing sub-agent (call list_subagents first to check). Provide a clear `rationale` — admins will read it.",
+  inputSchema: z.object({
+    slug: z.string().describe("kebab-case, e.g. 'churn-risk-scout'. Must be unique."),
+    name: z.string(),
+    domain: z.enum(["fundability","compliance","credit","funding","research","outreach","intake","sales","coaching","ops","support","marketing","analytics","automation"]),
+    description: z.string().describe("What the agent does (≥20 chars)."),
+    rationale: z.string().describe("Why this agent is needed (≥20 chars). Admins read this."),
+    runtime: z.enum(["soft","local","langgraph"]).default("soft"),
+    system_prompt: z.string().describe("The agent's system prompt (≥50 chars). Be specific about persona, constraints, output format."),
+    triggers: z.array(z.string()).optional().describe("Keyword triggers e.g. ['churn', 'retention risk']"),
+    data_scopes: z.array(z.string()).optional().describe("Tables the agent reads. Soft agents may NOT include protected scopes (credit/banking/etc)."),
+    input_schema: z.record(z.string(), z.unknown()).optional(),
+    output_schema: z.record(z.string(), z.unknown()).optional(),
+    config: z.record(z.string(), z.unknown()).optional().describe("Optional config, e.g. {model: 'google/gemini-2.5-pro'}"),
+  }),
+  handler: async (args) => {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/subagent-forge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY },
+      body: JSON.stringify({ action: "propose", ...args, proposed_by_agent: "paige-mcp" }),
+    });
+    const body = await r.json().catch(() => ({}));
+    await audit("propose_subagent", "subagent_proposal", args.slug, { runtime: args.runtime, status: r.status });
+    if (r.status >= 300) return err(typeof body === "object" ? JSON.stringify(body) : String(body));
+    return ok(body);
+  },
+});
+
+mcp.tool("list_subagent_proposals", {
+  description: "List recent sub-agent proposals (proposed, approved, rejected, live, failed). Includes today's quota usage.",
+  inputSchema: z.object({
+    status: z.enum(["proposed","approved","rejected","generated","live","failed"]).optional(),
+  }),
+  handler: async ({ status }) => {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/subagent-forge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY },
+      body: JSON.stringify({ action: "list", status }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (r.status >= 300) return err(typeof body === "object" ? JSON.stringify(body) : String(body));
+    return ok(body);
+  },
+});
+
+mcp.tool("approve_subagent_proposal", {
+  description: "Admin only. Approve a hard sub-agent proposal and ship it live.",
+  inputSchema: z.object({ proposal_id: z.string() }),
+  handler: async ({ proposal_id }, ctx) => {
+    const userId = (ctx as { userId?: string })?.userId;
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/subagent-forge`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY,
+        "X-Acting-User": userId ?? "",
+      },
+      body: JSON.stringify({ action: "approve", proposal_id }),
+    });
+    const body = await r.json().catch(() => ({}));
+    await audit("approve_subagent_proposal", "subagent_proposal", proposal_id, { status: r.status });
+    if (r.status >= 300) return err(typeof body === "object" ? JSON.stringify(body) : String(body));
+    return ok(body);
+  },
+});
+
+
 // ---------- HTTP transport + bearer auth ----------
 const app = new Hono();
 const transport = new StreamableHttpTransport();
@@ -2913,6 +2983,10 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_subagents: "crm.read",
   delegate_to_subagent: "workflows.run",
   get_subagent_history: "crm.read",
+  // Sub-Agent Factory (Section 18.5)
+  propose_subagent: "admin.write",
+  list_subagent_proposals: "admin.read",
+  approve_subagent_proposal: "admin.write",
 };
 
 const DISCOVERY_RESOURCE = {
