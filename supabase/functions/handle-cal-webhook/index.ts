@@ -35,11 +35,10 @@ Deno.serve(async (req) => {
 
   const raw = await req.text();
   const secret = Deno.env.get("CAL_WEBHOOK_SECRET");
-  if (secret) {
-    const sig = req.headers.get("x-cal-signature-256");
-    const ok = await verifyHmacSha256Hex(secret, raw, sig);
-    if (!ok) return jsonResponse({ error: "invalid_signature" }, 401);
-  }
+  if (!secret) return jsonResponse({ error: "webhook_not_configured" }, 500);
+  const sig = req.headers.get("x-cal-signature-256");
+  const ok = await verifyHmacSha256Hex(secret, raw, sig);
+  if (!ok) return jsonResponse({ error: "invalid_signature" }, 401);
 
   let payload: any;
   try { payload = JSON.parse(raw); } catch { return jsonResponse({ error: "invalid_json" }, 400); }

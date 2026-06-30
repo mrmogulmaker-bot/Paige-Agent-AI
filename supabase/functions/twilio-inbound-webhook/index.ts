@@ -5,7 +5,27 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-twilio-signature',
+}
+
+async function verifyTwilio(req: Request, rawBody: string): Promise<boolean> {
+  const token = Deno.env.get('TWILIO_AUTH_TOKEN')
+  if (!token) {
+    console.error('[twilio-inbound-webhook] TWILIO_AUTH_TOKEN missing — rejecting')
+    return false
+  }
+  const sig = req.headers.get('x-twilio-signature')
+  if (!sig) return false
+  const url = req.url
+  const params = new URLSearchParams(rawBody)
+  const sorted = [...params.entries()].sort(([a], [b]) => a.localeCompare(b))
+  const concatenated = url + sorted.map(([k, v]) => k + v).join('')
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(token), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign'],
+  )
+  const buf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(concatenated))
+  const computed = btoa(String.fromCharCode(...new Uint8Array(buf)))
+  return computed === sig
 }
 
 const STOP_KEYWORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT']
@@ -34,6 +54,10 @@ Deno.serve(async (req) => {
 
   // Twilio sends application/x-www-form-urlencoded
   const formText = await req.text()
+  const validSig = await verifyTwilio(req, formText)
+  if (!validSig) {
+    return new Response('invalid_signature', { status: 403, headers: corsHeaders })
+  }
   const params = new URLSearchParams(formText)
   const fromPhone = params.get('From') ?? ''
   const bodyRaw = (params.get('Body') ?? '').trim().toUpperCase()

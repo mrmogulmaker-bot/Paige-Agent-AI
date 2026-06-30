@@ -66,11 +66,13 @@ Deno.serve(async (req) => {
 
     let contactId: string | null = null;
     if (email) {
-      // Upsert contact by email within tenant
+      // Upsert contact by email — scoped to this source's tenant to prevent
+      // cross-tenant contact linkage when the same email exists in another tenant.
       const { data: existing } = await supabase
         .from("clients")
         .select("id")
         .eq("email", email)
+        .eq("tenant_id", source.tenant_id)
         .maybeSingle();
       if (existing?.id) {
         contactId = existing.id;
@@ -86,6 +88,7 @@ Deno.serve(async (req) => {
             lifecycle_stage: "lead",
             status: "active",
             created_by: source.created_by,
+            tenant_id: source.tenant_id,
           })
           .select("id")
           .single();
