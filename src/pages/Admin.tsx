@@ -311,7 +311,7 @@ const Admin = () => {
           <Suspense fallback={<SuspenseFallback />}><WorkflowsList /></Suspense>
         } />
         <Route path="campaigns" element={
-          <Suspense fallback={<SuspenseFallback />}><CampaignsAdmin /></Suspense>
+          <Suspense fallback={<SuspenseFallback />}><CampaignsHub /></Suspense>
         } />
         <Route path="workflows/runs" element={
           <Suspense fallback={<SuspenseFallback />}><WorkflowRuns /></Suspense>
