@@ -3354,7 +3354,7 @@ mcp.tool("create_tenant", {
                 source: "create_tenant_mcp",
                 tenant_id: data.id,
                 tenant_slug: data.slug,
-                actor_user_id: actor.user_id ?? null,
+                actor_user_id: currentActor().user_id ?? null,
               },
             })),
           );
