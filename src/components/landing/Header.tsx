@@ -6,6 +6,7 @@ import paigeLogo from "@/assets/paige-logo-mark.png";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
+import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
