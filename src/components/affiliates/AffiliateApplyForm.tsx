@@ -387,6 +387,14 @@ export default function AffiliateApplyForm({
         </span>
       </label>
 
+      <CommunicationsConsent
+        value={commsConsent}
+        onChange={setCommsConsent}
+        showSms={!!form.phone}
+      />
+
+
+
       <Button
         type="submit"
         disabled={submitting}
