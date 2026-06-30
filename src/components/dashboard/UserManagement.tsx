@@ -54,6 +54,7 @@ interface User {
   full_name: string | null;
   roles: string[];
   created_at: string;
+  last_sign_in_at: string | null;
 }
 
 interface Invitation {
@@ -84,7 +85,7 @@ export const UserManagement = () => {
       email: u.email,
       full_name: u.full_name,
       created_at: u.created_at,
-      last_sign_in_at: null,
+      last_sign_in_at: u.last_sign_in_at,
       suspended_at: null,
       suspended_reason: null,
       roles: u.roles.filter((r) => r !== "user"),
