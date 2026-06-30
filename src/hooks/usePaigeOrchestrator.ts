@@ -19,7 +19,7 @@ export interface SubAgent {
 export interface OrchestratorInvokeResult {
   ok: boolean;
   subagent?: string;
-  runtime?: "local" | "langgraph";
+  runtime?: "local" | "langgraph" | "soft";
   latency_ms?: number;
   result?: unknown;
   error?: string;
