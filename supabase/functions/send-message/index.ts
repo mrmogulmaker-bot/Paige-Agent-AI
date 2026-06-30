@@ -70,7 +70,23 @@ Deno.serve(async (req) => {
     if (body.channel === "email") {
       const resendKey = Deno.env.get("RESEND_API_KEY");
       if (!resendKey) throw new Error("RESEND_API_KEY missing");
-      fromAddress = config?.default_from_email || "support@paigeagent.ai";
+
+      // Resolve tenant-aware sender. Look up contact's tenant when provided.
+      let tenantId: string | null = null;
+      if (body.contact_id) {
+        const { data: contactRow } = await admin
+          .from("clients")
+          .select("tenant_id")
+          .eq("id", body.contact_id)
+          .maybeSingle();
+        tenantId = contactRow?.tenant_id ?? null;
+      }
+      const { data: sender } = await admin.rpc("get_tenant_sender", { _tenant_id: tenantId });
+      const senderRow = Array.isArray(sender) ? sender[0] : sender;
+      const senderName = senderRow?.from_name || "Paige Agent";
+      const senderEmail = senderRow?.from_email || config?.default_from_email || "no-reply@paigeagent.ai";
+      fromAddress = `${senderName} <${senderEmail}>`;
+
       const headers: Record<string, string> = {};
       if (body.in_reply_to) headers["In-Reply-To"] = body.in_reply_to;
       const res = await fetch("https://api.resend.com/emails", {
