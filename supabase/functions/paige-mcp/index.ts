@@ -2766,6 +2766,87 @@ async function applyProposal(proposal_id: string): Promise<{ ok: boolean; applie
   return { ok: true, applied };
 }
 
+// ---------- Pass 5: Orchestrator bridge (Section 18) ----------
+// Exposes Paige's sub-agent roster to external MCP clients (Claude Desktop, ChatGPT, voice).
+// Routes through `paige-orchestrator` which honors the tool-deferral pattern + logs every invocation.
+const ORCHESTRATOR_URL = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/paige-orchestrator`;
+
+async function callOrchestrator(body: Record<string, unknown>) {
+  const resp = await fetch(ORCHESTRATOR_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      apikey: SERVICE_ROLE_KEY,
+      "X-Orchestrator-Call": "paige-mcp",
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await resp.text();
+  try { return { status: resp.status, body: JSON.parse(text) }; }
+  catch { return { status: resp.status, body: { raw: text } }; }
+}
+
+mcp.tool("list_subagents", {
+  description:
+    "List Paige's specialized sub-agents (Fundability Diagnostician, Legal & Compliance Reviewer, Business Credit Strategist, Funding Path Architect, Data Consistency Auditor, Market Research, Financial Research, Content Drafter, Intake Concierge, Sales Pipeline, Coach Copilot). Use this before `delegate_to_subagent` to discover the right slug + input schema. Optional `query` keyword + `domain` filter (fundability / compliance / credit / funding / research / outreach / intake / sales / coaching).",
+  inputSchema: z.object({
+    query: z.string().optional().describe("Keyword match across name, description, triggers."),
+    domain: z.string().optional().describe("Filter by domain (partial match)."),
+  }),
+  handler: async ({ query, domain }) => {
+    const r = await callOrchestrator({ action: "tool_search", query, domain });
+    if (r.status >= 300) return err(`orchestrator_error_${r.status}`);
+    return ok(r.body);
+  },
+});
+
+mcp.tool("delegate_to_subagent", {
+  description:
+    "Delegate a task to one of Paige's specialized sub-agents. Call `list_subagents` first to resolve the correct `slug`. Pass a sub-agent-specific `input` object (e.g. {client_id} for fundability/compliance; {query} for market_research; {lender_name} for financial_research). Returns the sub-agent's structured findings. Every invocation is logged in paige_subagent_invocations for audit + UI surfacing.",
+  inputSchema: z.object({
+    slug: z.string().describe("Sub-agent slug from list_subagents (e.g. 'fundability-diagnostician')."),
+    input: z.record(z.any()).optional().describe("Sub-agent-specific arguments."),
+    contact_id: z.string().optional().describe("Optional client UUID for context + logging."),
+    conversation_id: z.string().optional().describe("Optional Paige conversation ID for thread linking."),
+  }),
+  handler: async ({ slug, input, contact_id, conversation_id }) => {
+    const actor = currentActor();
+    const r = await callOrchestrator({
+      action: "tool_invoke",
+      slug,
+      input: input ?? {},
+      context: { contact_id, conversation_id, user_id: actor.user_id ?? undefined },
+    });
+    await audit("delegate_to_subagent", "subagent", slug, { contact_id: contact_id ?? null, status: r.status });
+    if (r.status >= 300) return err(typeof r.body === "object" ? JSON.stringify(r.body) : String(r.body));
+    return ok(r.body);
+  },
+});
+
+mcp.tool("get_subagent_history", {
+  description:
+    "Read recent sub-agent invocation history (status, latency, output) for audit + debugging. Filter by `slug` or `contact_id`.",
+  inputSchema: z.object({
+    slug: z.string().optional(),
+    contact_id: z.string().optional(),
+    limit: z.number().int().optional().describe("1–50, default 20."),
+  }),
+  handler: async ({ slug, contact_id, limit }) => {
+    const max = Math.min(Math.max(limit ?? 20, 1), 50);
+    let q = admin
+      .from("paige_subagent_invocations")
+      .select("id, subagent_slug, contact_id, conversation_id, status, latency_ms, error, created_at")
+      .order("created_at", { ascending: false })
+      .limit(max);
+    if (slug) q = q.eq("subagent_slug", slug);
+    if (contact_id) q = q.eq("contact_id", contact_id);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [], count: (data ?? []).length });
+  },
+});
+
 // ---------- HTTP transport + bearer auth ----------
 const app = new Hono();
 const transport = new StreamableHttpTransport();
