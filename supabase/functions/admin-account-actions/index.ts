@@ -119,7 +119,6 @@ Deno.serve(async (req) => {
         .update({
           onboarding_completed: false,
           intake_completed: false,
-          welcome_seen: false,
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user_id);
