@@ -128,7 +128,9 @@ export const UserManagement = () => {
         roles: userRoles.length > 0 ? userRoles : ["user"],
         created_at: user.created_at,
       };
-    });
+    })
+    // Staff-only view. Clients/leads (bare "user" role or no role) live in Contacts.
+    .filter((u) => isStaffUser(u.roles));
 
     setUsers(usersWithRoles);
   };
