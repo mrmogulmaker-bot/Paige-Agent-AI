@@ -93,19 +93,23 @@ Deno.serve(async (req) => {
         findings.push({ severity: "blocker", message: "Service agreement not signed — required before this action." });
       }
 
-      // Consent check for data-sensitive actions
+      // Consent check for data-sensitive actions (latest event per consent_type wins)
       if (["credit_dispute", "lender_outreach", "data_share"].includes(actionType) && client.linked_user_id) {
         const { data: consents } = await supabase
-          .from("privacy_consents")
-          .select("consent_type,granted,revoked_at")
+          .from("consent_events")
+          .select("consent_type,granted,created_at")
           .eq("user_id", client.linked_user_id)
-          .is("revoked_at", null);
-        const granted = (consents ?? []).filter((c) => c.granted).map((c) => c.consent_type);
+          .order("created_at", { ascending: false })
+          .limit(50);
+        const latest = new Map<string, boolean>();
+        for (const c of consents ?? []) {
+          if (!latest.has(c.consent_type as string)) latest.set(c.consent_type as string, Boolean(c.granted));
+        }
         const need =
           actionType === "credit_dispute" ? "credit_data_use" :
           actionType === "lender_outreach" ? "lender_sharing" :
           "data_processing";
-        if (!granted.includes(need)) {
+        if (!latest.get(need)) {
           findings.push({
             severity: "blocker",
             message: `Active consent of type '${need}' not on file. Capture consent before proceeding.`,
