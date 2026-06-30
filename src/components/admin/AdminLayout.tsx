@@ -24,48 +24,93 @@ import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
-// Pipedrive-style: primary CRM verbs live in the top bar.
-const crmNavItems = [
+// 7-hub top bar. Each hub has a primary route and optional sub-routes
+// surfaced via a dropdown so power users can jump deep with one click.
+// Every sub-route still has its own page — this is grouping, not consolidation.
+type HubChild = { label: string; href: string; icon: any };
+type Hub = { label: string; href: string; icon: any; children?: HubChild[] };
+
+const hubs: Hub[] = [
   { label: "Dashboard", href: "/admin", icon: BarChart3 },
-  { label: "Contacts", href: "/admin/contacts", icon: Contact },
-  { label: "Pipeline", href: "/admin/pipeline", icon: KanbanSquare },
-  { label: "Communications", href: "/admin/communications", icon: Inbox },
-  { label: "Tasks", href: "/admin/tasks", icon: CheckSquare },
-  { label: "Approvals", href: "/admin/approvals", icon: ClipboardCheck },
-  { label: "Workflows", href: "/admin/workflows", icon: Workflow },
+  {
+    label: "Contacts",
+    href: "/admin/contacts",
+    icon: Contact,
+    children: [
+      { label: "All Contacts", href: "/admin/contacts", icon: Contact },
+      { label: "Lead Enrichment", href: "/admin/leads/enrichment", icon: Contact },
+      { label: "Client Files (Legacy)", href: "/admin/clients", icon: Users },
+    ],
+  },
+  {
+    label: "Pipeline",
+    href: "/admin/pipeline",
+    icon: KanbanSquare,
+    children: [
+      { label: "Deal Pipeline", href: "/admin/pipeline", icon: KanbanSquare },
+      { label: "Funding Journey", href: "/admin/funding-pipeline", icon: Briefcase },
+      { label: "Funding Portfolio", href: "/admin/funding", icon: DollarSign },
+      { label: "Funding Readiness Lens", href: "/admin/funding-lens", icon: TrendingUp },
+    ],
+  },
+  {
+    label: "Inbox",
+    href: "/admin/communications",
+    icon: Inbox,
+    children: [
+      { label: "Conversations", href: "/admin/communications", icon: Inbox },
+      { label: "Bookings", href: "/admin/bookings", icon: BarChart3 },
+      { label: "Support", href: "/admin/support", icon: LifeBuoy },
+    ],
+  },
+  {
+    label: "Tasks & Approvals",
+    href: "/admin/tasks",
+    icon: CheckSquare,
+    children: [
+      { label: "Tasks", href: "/admin/tasks", icon: CheckSquare },
+      { label: "Approvals", href: "/admin/approvals", icon: ClipboardCheck },
+    ],
+  },
   { label: "Campaigns", href: "/admin/campaigns", icon: Rocket },
-  { label: "Coaches", href: "/admin/coaches", icon: UserCog },
-  { label: "Reports", href: "/admin/analytics", icon: TrendingUp },
+  {
+    label: "Automation",
+    href: "/admin/workflows",
+    icon: Workflow,
+    children: [
+      { label: "Workflows", href: "/admin/workflows", icon: Workflow },
+      { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
+      { label: "Integrations", href: "/admin/integrations", icon: Plug },
+      { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
+      { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
+    ],
+  },
+  {
+    label: "Insights",
+    href: "/admin/analytics",
+    icon: TrendingUp,
+    children: [
+      { label: "Reports", href: "/admin/analytics", icon: TrendingUp },
+      { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
+      { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
+    ],
+  },
 ];
 
-// Secondary workspace tools — tucked into a "More" menu to keep the bar clean.
-const workspaceNavItems = [
+// Tools that don't belong to a daily-use hub — tucked into "More".
+const moreNavItems: HubChild[] = [
+  { label: "Coaches", href: "/admin/coaches", icon: UserCog },
   { label: "Members & Roles", href: "/admin/members", icon: UserCog },
-  { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
-  { label: "Client Files (Legacy)", href: "/admin/clients", icon: Users },
-  { label: "Funding Portfolio", href: "/admin/funding", icon: DollarSign },
-  { label: "Funding Journey", href: "/admin/funding-pipeline", icon: Briefcase },
-  { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
-  { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
   { label: "Brokers", href: "/admin/brokers", icon: Briefcase },
-  { label: "Funding Readiness Lens", href: "/admin/funding-lens", icon: TrendingUp },
-  { label: "Bookings", href: "/admin/bookings", icon: BarChart3 },
-  // Social content calendar hidden by default (paige_config.meta_ads_features_enabled).
-  // Meta Pixel + CAPI config lives at /admin/integrations/meta-pixel via the Integrations hub.
-  { label: "Lead Enrichment", href: "/admin/leads/enrichment", icon: Contact },
-
-
-  { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
-  { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
-  { label: "Support", href: "/admin/support", icon: LifeBuoy },
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench },
-  { label: "Integrations", href: "/admin/integrations", icon: Plug },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
-
-const adminNavItems = [...crmNavItems, ...workspaceNavItems];
+const adminNavItems = [
+  ...hubs.flatMap((h) => [{ label: h.label, href: h.href, icon: h.icon }, ...(h.children ?? [])]),
+  ...moreNavItems,
+];
 
 interface AdminLayoutProps {
   children: React.ReactNode;
