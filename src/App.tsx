@@ -175,6 +175,7 @@ const App = () => (
               <Route path="financial-profile" element={<PageSuspense><FinancialProfile /></PageSuspense>} />
               <Route path="support" element={<PageSuspense><Support /></PageSuspense>} />
               <Route path="settings" element={<PageSuspense><ProfileSettings /></PageSuspense>} />
+              <Route path="agreements" element={<PageSuspense><MyAgreements /></PageSuspense>} />
               <Route path="affiliate" element={<PageSuspense><AffiliateTracking /></PageSuspense>} />
               <Route path="approvals" element={<PageSuspense><ClientApprovals /></PageSuspense>} />
             </Route>
