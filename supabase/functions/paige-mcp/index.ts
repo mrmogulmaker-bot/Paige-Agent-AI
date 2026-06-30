@@ -3978,7 +3978,7 @@ mcp.tool("me_search_lender_products", {
   handler: async ({ query, product_type, min_amount, limit }) => {
     const lim = Math.min(Math.max(limit ?? 25, 1), 50);
     let q = admin.from("lender_products")
-      .select("id, lender_name, product_name, product_type, min_amount, max_amount, apr_min, apr_max, requirements")
+      .select("id, lender_name, product_name, product_type, min_amount, max_amount")
       .limit(lim);
     if (query) q = q.or(`lender_name.ilike.%${query}%,product_name.ilike.%${query}%`);
     if (product_type) q = q.eq("product_type", product_type);
