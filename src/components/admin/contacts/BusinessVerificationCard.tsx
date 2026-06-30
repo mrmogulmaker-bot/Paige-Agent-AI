@@ -62,24 +62,45 @@ export function BusinessVerificationCard({ businessId }: { businessId: string })
     load();
   };
 
+  const ageMs = run?.created_at ? Date.now() - new Date(run.created_at).getTime() : null;
+  const ageDays = ageMs !== null ? Math.floor(ageMs / 86400000) : null;
+  const isStale = ageDays !== null && ageDays > 30;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-emerald-500" /> Business Verification</CardTitle>
-        <Button size="sm" variant="outline" onClick={runNow} disabled={running} className="gap-1">
-          <RefreshCw className={`h-3 w-3 ${running ? "animate-spin" : ""}`} /> Re-verify
+        <Button
+          size="sm"
+          variant={isStale || !run ? "default" : "outline"}
+          onClick={runNow}
+          disabled={running}
+          className="gap-1"
+        >
+          <RefreshCw className={`h-3 w-3 ${running ? "animate-spin" : ""}`} />
+          {isStale ? "Verify Now" : run ? "Re-verify" : "Verify Now"}
         </Button>
       </CardHeader>
       <CardContent className="space-y-3">
         {!run ? (
-          <p className="text-sm text-muted-foreground">No verification yet. Click Re-verify to scrape SoS, OpenCorporates, SEC, and other public sources.</p>
+          <p className="text-sm text-muted-foreground">No verification yet. Click Verify Now to scrape SoS, OpenCorporates, SEC, and other public sources.</p>
         ) : (
           <>
             <div className="flex items-center gap-3">
               <div className="text-3xl font-bold">{run.composite_score ?? "—"}<span className="text-base text-muted-foreground">/100</span></div>
               <Badge variant={run.status === "succeeded" ? "default" : run.status === "partial" ? "secondary" : "destructive"}>{run.status}</Badge>
               <span className="text-xs text-muted-foreground">{new Date(run.created_at).toLocaleString()}</span>
+              {isStale && (
+                <Badge variant="outline" className="border-amber-500/60 text-amber-700 dark:text-amber-400">
+                  Stale · {ageDays}d
+                </Badge>
+              )}
             </div>
+            {isStale && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 p-2 text-xs text-amber-800 dark:text-amber-300">
+                Last verification is {ageDays} days old. Re-run for fresh registry + public-record data.
+              </div>
+            )}
             {run.mismatches?.length > 0 && (
               <div className="rounded-md border border-amber-500/40 bg-amber-50 dark:bg-amber-950/20 p-2 text-sm">
                 <div className="flex items-center gap-2 font-medium text-amber-700"><AlertTriangle className="h-4 w-4" /> Mismatches detected</div>
