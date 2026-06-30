@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, ExternalLink, Loader2 } from "lucide-react";
+import { Bell, CheckCheck, ChevronDown, ExternalLink, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,8 +31,22 @@ export function AdminBridgeBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notif[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const unread = items.filter((n) => !n.read_at).length;
+
+  function toggleExpanded(id: string, n?: Notif) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+        if (n && !n.read_at) markRead(id);
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -153,46 +167,72 @@ export function AdminBridgeBell() {
             </div>
           ) : (
             <ul className="divide-y">
-              {items.map((n) => (
-                <li
-                  key={n.id}
-                  className={`px-5 py-3 ${n.read_at ? "opacity-70" : "bg-accent/5"}`}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Badge className={`${severityStyles[n.severity]} shrink-0`}>{n.severity}</Badge>
-                      <h4 className="font-medium text-sm leading-tight truncate">{n.title}</h4>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
-                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                    </span>
-                  </div>
-                  {n.body && (
-                    <p className="text-xs text-muted-foreground whitespace-pre-wrap mb-2">{n.body}</p>
-                  )}
-                  <div className="flex items-center gap-3 text-xs">
-                    {n.source_workflow_key && (
-                      <span className="text-muted-foreground">from {n.source_workflow_key}</span>
+              {items.map((n) => {
+                const isOpen = expanded.has(n.id);
+                return (
+                  <li
+                    key={n.id}
+                    className={`${n.read_at ? "opacity-70" : "bg-accent/5"}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(n.id, n)}
+                      className="w-full text-left px-5 py-3 hover:bg-accent/10 transition-colors"
+                      aria-expanded={isOpen}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <Badge className={`${severityStyles[n.severity]} shrink-0`}>{n.severity}</Badge>
+                          <h4 className={`font-medium text-sm leading-tight flex-1 ${isOpen ? "" : "truncate"}`}>
+                            {n.title}
+                          </h4>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                            {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                          </span>
+                          <ChevronDown
+                            className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`}
+                          />
+                        </div>
+                      </div>
+                      {n.body && !isOpen && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">{n.body}</p>
+                      )}
+                    </button>
+                    {isOpen && (
+                      <div className="px-5 pb-4 -mt-1">
+                        {n.body && (
+                          <div className="text-xs text-foreground/90 whitespace-pre-wrap break-words rounded-md bg-muted/40 border p-3 mb-2 max-h-[60vh] overflow-auto">
+                            {n.body}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-3 text-xs flex-wrap">
+                          {n.source_workflow_key && (
+                            <span className="text-muted-foreground">from {n.source_workflow_key}</span>
+                          )}
+                          {n.link_to && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openLink(n); }}
+                              className="inline-flex items-center gap-1 text-primary hover:underline"
+                            >
+                              Open in page <ExternalLink className="w-3 h-3" />
+                            </button>
+                          )}
+                          {!n.read_at && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); markRead(n.id); }}
+                              className="ml-auto text-primary hover:underline"
+                            >
+                              Mark read
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     )}
-                    {n.link_to && (
-                      <button
-                        onClick={() => openLink(n)}
-                        className="inline-flex items-center gap-1 text-primary hover:underline"
-                      >
-                        Open <ExternalLink className="w-3 h-3" />
-                      </button>
-                    )}
-                    {!n.read_at && (
-                      <button
-                        onClick={() => markRead(n.id)}
-                        className="ml-auto text-primary hover:underline"
-                      >
-                        Mark read
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </ScrollArea>
