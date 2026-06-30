@@ -22,6 +22,10 @@ import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
 import { ContactCampaignAttribution } from "@/components/admin/contacts/ContactCampaignAttribution";
 import { BusinessVerificationCard } from "@/components/admin/contacts/BusinessVerificationCard";
 import { BusinessTabPanel } from "@/components/admin/contacts/BusinessTabPanel";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
