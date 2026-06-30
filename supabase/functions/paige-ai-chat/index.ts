@@ -3846,6 +3846,32 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
               content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
             });
           }
+        } else if (tc.function.name === "list_subagents" || tc.function.name === "delegate_to_subagent") {
+          // Section 18: Orchestrator delegation. Role gate to admin/coach only.
+          try {
+            const { data: roleRows } = await supabase
+              .from("user_roles").select("role").eq("user_id", user.id);
+            const roles = (roleRows || []).map((r: any) => r.role);
+            if (!(roles.includes("admin") || roles.includes("coach"))) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Sub-agent delegation is restricted to admins and coaches." }) });
+              continue;
+            }
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const orchestratorUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/paige-orchestrator`;
+            const body = tc.function.name === "list_subagents"
+              ? { action: "tool_search", query: args.query, domain: args.domain }
+              : { action: "tool_invoke", slug: args.slug, input: args.input ?? {}, context: { contact_id: args.contact_id, user_id: user.id } };
+            const r = await fetch(orchestratorUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseServiceKey}`, apikey: supabaseServiceKey },
+              body: JSON.stringify(body),
+            });
+            const text = await r.text();
+            let payload: any; try { payload = JSON.parse(text); } catch { payload = { raw: text }; }
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(payload) });
+          } catch (e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "orchestrator_error" }) });
+          }
         }
       }
 
