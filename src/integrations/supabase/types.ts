@@ -12390,6 +12390,33 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_product_mappings: {
+        Row: {
+          created_at: string
+          environment: string
+          is_active: boolean
+          plan_slug: string
+          stripe_product_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          environment?: string
+          is_active?: boolean
+          plan_slug: string
+          stripe_product_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          environment?: string
+          is_active?: boolean
+          plan_slug?: string
+          stripe_product_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       subscription_plans: {
         Row: {
           ai_chat_limit: number | null
@@ -14499,6 +14526,7 @@ export type Database = {
           parent_business_id: string
         }[]
       }
+      get_my_ssn_last_4: { Args: never; Returns: string }
       get_outstanding_consents: {
         Args: { _user_id: string }
         Returns: {
