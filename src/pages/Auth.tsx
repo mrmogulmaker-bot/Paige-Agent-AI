@@ -16,6 +16,7 @@ import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
+import { useRequiredSignupDocs, recordAcceptances } from "@/lib/legal/useLegalDocuments";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -34,9 +35,10 @@ const Auth = () => {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [consentPrivacy, setConsentPrivacy] = useState(false);
+  const [consentAgreements, setConsentAgreements] = useState(false);
   const [consentDataUsage, setConsentDataUsage] = useState(false);
   const [consentMarketing, setConsentMarketing] = useState(false);
+  const { docs: requiredDocs } = useRequiredSignupDocs();
   const navigate = useNavigate();
   const { toast } = useToast();
 
