@@ -21,7 +21,7 @@ const lazy = <T extends React.ComponentType<any>>(factory: () => Promise<{ defau
       throw err;
     }
   });
-import { useNavigate, Routes, Route, useParams } from "react-router-dom";
+import { useNavigate, Routes, Route, useParams, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -61,6 +61,7 @@ const TasksAdmin = lazy(() => import("@/pages/admin/TasksAdmin"));
 const SubAgentsAdmin = lazy(() => import("@/pages/admin/SubAgentsAdmin"));
 const WorkflowsList = lazy(() => import("@/pages/admin/WorkflowsList"));
 const CampaignsAdmin = lazy(() => import("@/pages/admin/CampaignsAdmin"));
+const CampaignsHub = lazy(() => import("@/pages/admin/CampaignsHub"));
 const WorkflowDetail = lazy(() => import("@/pages/admin/WorkflowDetail"));
 const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
 const WorkflowRunDetail = lazy(() => import("@/pages/admin/WorkflowRunDetail"));
@@ -228,9 +229,8 @@ const Admin = () => {
         <Route path="coaches" element={
           <Suspense fallback={<SuspenseFallback />}><CoachesAdmin /></Suspense>
         } />
-        <Route path="growth" element={
-          <Suspense fallback={<SuspenseFallback />}><GrowthHub /></Suspense>
-        } />
+        <Route path="growth" element={<Navigate to="/admin/campaigns?tab=pages" replace />} />
+        <Route path="growth/*" element={<Navigate to="/admin/campaigns?tab=pages" replace />} />
         <Route path="sub-agents" element={
           <Suspense fallback={<SuspenseFallback />}><SubAgentsAdmin /></Suspense>
         } />
@@ -311,7 +311,7 @@ const Admin = () => {
           <Suspense fallback={<SuspenseFallback />}><WorkflowsList /></Suspense>
         } />
         <Route path="campaigns" element={
-          <Suspense fallback={<SuspenseFallback />}><CampaignsAdmin /></Suspense>
+          <Suspense fallback={<SuspenseFallback />}><CampaignsHub /></Suspense>
         } />
         <Route path="workflows/runs" element={
           <Suspense fallback={<SuspenseFallback />}><WorkflowRuns /></Suspense>
