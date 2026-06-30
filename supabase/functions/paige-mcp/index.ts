@@ -1480,6 +1480,15 @@ mcp.tool("create_contact", {
   }),
   handler: async (args) => {
     const tenant_id = await resolveTenantId(args.tenant_id ?? null);
+    // Resolve created_by: prefer the calling user, else fall back to the
+    // tenant owner so MCP/platform callers don't trip the NOT NULL constraint.
+    let createdBy: string | null = actor.user_id ?? null;
+    if (!createdBy && tenant_id) {
+      const { data: t } = await admin
+        .from("tenants").select("owner_user_id").eq("id", tenant_id).maybeSingle();
+      createdBy = t?.owner_user_id ?? null;
+    }
+    if (!createdBy) return err("Could not resolve a created_by user for this contact (no caller user_id and no tenant owner).");
     const row: Record<string, unknown> = {
       first_name: args.first_name,
       last_name: args.last_name ?? null,
@@ -1491,11 +1500,12 @@ mcp.tool("create_contact", {
       status: "active",
       current_notes: args.notes ?? null,
       tenant_id,
+      created_by: createdBy,
     };
     const { data, error } = await admin.from("clients").insert(row).select("id, created_at").single();
     if (error) return err(error.message);
     await audit("create_contact", "client", data.id, { email: args.email ?? null, tenant_id });
-    return ok({ ok: true, contact_id: data.id, created_at: data.created_at, tenant_id });
+    return ok({ ok: true, contact_id: data.id, created_at: data.created_at, tenant_id, created_by: createdBy });
   },
 });
 
