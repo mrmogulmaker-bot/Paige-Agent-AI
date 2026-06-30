@@ -342,6 +342,29 @@ export function ContactPortalPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={confirmSignout} onOpenChange={setConfirmSignout}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <LogIn className="h-4 w-4 rotate-180" />
+              Force sign out this client?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This immediately invalidates every active session for this client across every device and browser. They'll need to sign in again. Use this when a customer reports they're stuck and can't sign out themselves. Their account, roles, and data are not touched.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy === "signout"}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); runAccountAction("signout_all"); }}
+              disabled={busy === "signout"}
+            >
+              {busy === "signout" ? "Signing out…" : "Force sign out"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
