@@ -30,12 +30,14 @@ type Template = {
 };
 
 function applyMerge(str: string, contact: Contact, coachName: string): string {
-  return str
-    .replaceAll("{{first_name}}", contact.first_name || "")
-    .replaceAll("{{last_name}}", contact.last_name || "")
-    .replaceAll("{{full_name}}", `${contact.first_name || ""} ${contact.last_name || ""}`.trim())
-    .replaceAll("{{entity_name}}", contact.entity_name || "")
-    .replaceAll("{{coach_name}}", coachName || "Your Coach");
+  const m: Record<string, string> = {
+    "{{first_name}}": contact.first_name || "",
+    "{{last_name}}": contact.last_name || "",
+    "{{full_name}}": `${contact.first_name || ""} ${contact.last_name || ""}`.trim(),
+    "{{entity_name}}": contact.entity_name || "",
+    "{{coach_name}}": coachName || "Your Coach",
+  };
+  return str.replace(/\{\{(first_name|last_name|full_name|entity_name|coach_name)\}\}/g, (k) => m[k] ?? "");
 }
 
 export function ContactCommsPanel({ contact, history }: { contact: Contact; history: any[] }) {
