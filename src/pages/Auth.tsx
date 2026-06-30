@@ -81,7 +81,10 @@ const Auth = () => {
       /* non-blocking */
     }
 
-    const target = await resolveLandingRoute(userId);
+    const target = await Promise.race<string>([
+      resolveLandingRoute(userId),
+      new Promise<string>((resolve) => setTimeout(() => resolve("/app"), 4000)),
+    ]);
     navigate(target, { replace: true });
   };
 

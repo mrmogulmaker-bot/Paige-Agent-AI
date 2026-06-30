@@ -7,8 +7,9 @@ import { supabase } from "@/integrations/supabase/client";
  * original behavior. When staff are viewing-as-client, `AppShell` passes the
  * impersonated user's id so the dashboard renders that client's data.
  */
-export function useCreditFactors(userId?: string) {
+export function useCreditFactors(userId?: string | null, options: { enabled?: boolean } = {}) {
   const queryClient = useQueryClient();
+  const enabled = options.enabled ?? true;
 
   const resolveUserId = async (): Promise<string | null> => {
     if (userId) return userId;
@@ -18,6 +19,7 @@ export function useCreditFactors(userId?: string) {
 
   const { data: factors, isLoading } = useQuery({
     queryKey: ["credit-factors", userId ?? "self"],
+    enabled,
     queryFn: async () => {
       const uid = await resolveUserId();
       if (!uid) return null;
@@ -34,6 +36,7 @@ export function useCreditFactors(userId?: string) {
 
   const { data: history } = useQuery({
     queryKey: ["credit-factors-history", userId ?? "self"],
+    enabled,
     queryFn: async () => {
       const uid = await resolveUserId();
       if (!uid) return [];
