@@ -322,6 +322,13 @@ const Admin = () => {
             </Suspense>
           </AdminOnly>
         } />
+        <Route path="legal" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <LegalAdmin />
+            </Suspense>
+          </AdminOnly>
+        } />
         <Route path="communications" element={
           <Suspense fallback={<SuspenseFallback />}>
             <CommunicationsAdmin />
