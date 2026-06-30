@@ -155,22 +155,27 @@ Deno.serve(async (req) => {
     const valid = requested.filter((s: string) => SUPPORTED_SCOPES.has(s));
     if (valid.length === 0) return json({ error: "invalid_scope" }, 400);
 
-    // Optionally elevate scopes for admin/owner users so the consent screen reflects
-    // the permissions they will actually receive.
+    // Optionally elevate scopes based on the user's tier so the consent screen
+    // reflects the permissions they will actually receive.
     let granted = valid;
-    let elevated: "owner" | "admin" | null = null;
+    let tier: Tier = null;
+    let tenantName: string | null = null;
     const user = await tryGetUser(authHeader);
     if (user) {
       const result = await computeGrantedScopes(user.id, user.email ?? null, valid);
       granted = result.granted;
-      elevated = result.elevated;
+      tier = result.tier;
+      tenantName = result.tenantName;
     }
 
     return json({
       client: { id: client.client_id, name: client.client_name, uri: client.client_uri },
       scopes: granted,
       requested_scopes: valid,
-      elevated,
+      tier,
+      tenant_name: tenantName,
+      // Back-compat for older McpAuthorize bundles still reading `elevated`.
+      elevated: tier === "platform_owner" ? "owner" : tier === "tenant_owner" ? "owner" : tier === "tenant_admin" ? "admin" : null,
       redirect_uri,
     });
   }
