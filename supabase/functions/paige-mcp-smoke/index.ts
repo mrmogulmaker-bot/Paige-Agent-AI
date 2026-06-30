@@ -18,6 +18,15 @@ async function call(body: unknown) {
   return { status: res.status, headers: Object.fromEntries(res.headers), body: text };
 }
 
+function parseMcpPayload(rawBody: string | undefined) {
+  if (!rawBody) return null;
+  const line = rawBody.split("\n").find((part) => part.startsWith("data: "));
+  const jsonText = line ? line.slice(6) : rawBody;
+  const envelope = JSON.parse(jsonText);
+  const text = envelope?.result?.content?.[0]?.text;
+  return text ? JSON.parse(text) : null;
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const init = await call({
@@ -48,9 +57,7 @@ Deno.serve(async (req) => {
     });
 
     try {
-      const body = JSON.parse((create_contact as { body?: string }).body ?? "{}");
-      const text = body?.result?.content?.[0]?.text;
-      const payload = text ? JSON.parse(text) : null;
+      const payload = parseMcpPayload((create_contact as { body?: string }).body);
       if (payload?.contact_id) {
         cleanup = await call({
           jsonrpc: "2.0",
