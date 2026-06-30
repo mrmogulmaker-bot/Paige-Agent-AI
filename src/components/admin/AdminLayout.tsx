@@ -98,13 +98,16 @@ const hubs: Hub[] = [
 ];
 
 // Tools that don't belong to a daily-use hub — tucked into "More".
-const moreNavItems: HubChild[] = [
+// `adminOnly` items are hidden from coaches in the toolbar to match the
+// route-level RoleGate enforcement in Admin.tsx.
+type MoreItem = HubChild & { adminOnly?: boolean };
+const moreNavItems: MoreItem[] = [
   { label: "Coaches", href: "/admin/coaches", icon: UserCog },
-  { label: "Members & Roles", href: "/admin/members", icon: UserCog },
+  { label: "Members & Roles", href: "/admin/members", icon: UserCog, adminOnly: true },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
-  { label: "Brokers", href: "/admin/brokers", icon: Briefcase },
-  { label: "Maintenance", href: "/admin/maintenance", icon: Wrench },
-  { label: "Settings", href: "/admin/settings", icon: Settings },
+  { label: "Brokers", href: "/admin/brokers", icon: Briefcase, adminOnly: true },
+  { label: "Maintenance", href: "/admin/maintenance", icon: Wrench, adminOnly: true },
+  { label: "Settings", href: "/admin/settings", icon: Settings, adminOnly: true },
 ];
 
 const adminNavItems = [
