@@ -13686,6 +13686,10 @@ export type Database = {
         Args: { _assignment_role: string; _client: string }
         Returns: boolean
       }
+      coach_can_access_user: {
+        Args: { _coach: string; _user: string }
+        Returns: boolean
+      }
       compute_contact_readiness: {
         Args: { _contact_id: string }
         Returns: number
