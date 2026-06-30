@@ -14474,6 +14474,20 @@ export type Database = {
         Args: { _assignment_role: string; _client: string }
         Returns: boolean
       }
+      client_onboarding_status: {
+        Args: { p_contact_id: string }
+        Returns: {
+          agreement_signed_at: string
+          contact_id: string
+          intake_submitted_at: string
+          invite_accepted_at: string
+          linked_user_id: string
+          password_set_at: string
+          ready: boolean
+          stage: string
+        }[]
+      }
+      client_view_ready: { Args: { p_contact_id: string }; Returns: boolean }
       coach_can_access_user: {
         Args: { _coach: string; _user: string }
         Returns: boolean

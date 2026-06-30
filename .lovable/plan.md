@@ -1,70 +1,86 @@
 ## Goal
 
-One canonical client experience (the `/app` workspace in your screenshot). Three audiences, one surface:
+A contact's Client View only exists once they have **(1) accepted invite + set password**, **(2) signed the agreement**, and **(3) completed intake (stage = `completed`)**. Until then, neither the client nor any staff member can open it — staff see an onboarding-status panel instead. Every tile inside the view binds to that client's real records with proper empty states.
 
-1. **Clients** → only ever see `/app/*`. No `/admin`, no `/broker`, no escape hatches.
-2. **Tenant staff** (admin, coach, sales_rep, cs_rep, owner) → can open any contact in their tenant *as that client* and see the exact same view the client sees, scoped to that client's data.
-3. **Platform owner / super_admin** → same impersonation, across every tenant.
+## Canonical readiness definition
 
-## What exists today
+A single source of truth, used by RPC + UI + impersonation:
 
-- `/app` already renders the client workspace.
-- `AdminLayout` has a "Switch to Client View" button — but it just opens `/app` as the admin's *own* account. It does not load a specific client's data.
-- `AdminViewBanner` only shows the generic "you're viewing the client experience" pill.
-- `RoleGate` blocks clients from `/admin/*` but does not lock them to `/app/*`.
-- No impersonation context exists in the app — every hook reads from `auth.uid()`.
+```text
+client_view_ready =
+  clients.linked_user_id IS NOT NULL
+  AND clients.agreement_signed_at IS NOT NULL
+  AND clients.onboarding_stage = 'completed'
+```
 
-## Architecture
+The same boolean drives: client self-access to `/app`, the Impersonate button's enabled state, and the contact-profile status panel.
 
-Add a single **ImpersonationContext** that wraps `/app`. When a staff member enters via "View as client", we:
+## Changes
 
-1. Store the target `contact_id` + `linked_user_id` in `sessionStorage` (`paige_impersonating_contact`) and React context.
-2. Render `/app` exactly as it is today, but every data hook that currently uses `user.id` now reads `effectiveUserId` from the context (falls back to `user.id` when not impersonating).
-3. Stamp every Supabase mutation made during impersonation with `acting_as_user_id` in the existing audit-log trail so the client can see what staff did on their behalf.
-4. Banner at the top: `Viewing as Tashia Anderson — [Exit]`. Replaces the current generic banner during impersonation.
+### 1. Database (single migration)
 
-The staff member stays authenticated as themselves; RLS still applies. We rely on the existing `can_access_contact()` + `coach_can_access_user()` security-definer helpers so staff can only impersonate clients they're already authorized to see.
+- New SQL helper `public.client_view_ready(p_contact_id uuid) RETURNS boolean` — SECURITY DEFINER, returns the three-gate check above.
+- New helper `public.client_onboarding_status(p_contact_id uuid)` returning a row with: `invite_accepted_at`, `password_set_at` (from `auth.users.last_sign_in_at`/`encrypted_password` non-null proxy), `agreement_signed_at`, `agreement_template_slug`, `intake_submitted_at` (= `onboarding_completed_at`), `stage`, `ready` boolean. Used by the staff status panel.
+- Update `public.start_client_impersonation(p_contact_id)` to additionally `RAISE EXCEPTION 'client has not completed onboarding'` when `client_view_ready` is false. Owner override is **not** added per your decision.
+- Grants: EXECUTE to `authenticated` on both helpers.
 
-## Database
+### 2. Client-side route guard (`/app`)
 
-Single migration:
+`src/pages/AppShell.tsx`: when the signed-in user is a client (has `client` role / linked `clients` row), call a small `useClientViewReady()` hook. If not ready → `navigate(resolveLandingRoute(...))` which already routes to the correct `/onboard/<stage>`. The existing `resolveLandingRoute` already does this — we just make sure `/app` never renders for an un-ready client (today it briefly can if they deep-link).
 
-- `public.start_client_impersonation(p_contact_id uuid)` SECURITY DEFINER → verifies caller via `can_access_contact`, returns `{ contact_id, linked_user_id, client_name }`. Writes `audit_logs` row (`event = 'impersonation.start'`).
-- `public.end_client_impersonation(p_contact_id uuid)` → audit `'impersonation.end'`.
-- View `public.v_my_impersonatable_clients` filtered by `can_access_contact` so the picker UI only shows clients the staff member can act on.
+### 3. Impersonate button (`src/components/admin/ImpersonateClientButton.tsx`)
 
-## Frontend changes
+- Replace the `linkedUserId`-only disabled check with a `ready` prop sourced from `client_onboarding_status`.
+- Disabled tooltip becomes specific: "Client hasn't completed onboarding (agreement pending)" / "(intake pending)" / "(hasn't accepted invite)".
+- On click, server still re-checks via the updated RPC (defense in depth).
 
-1. **New** `src/contexts/ImpersonationContext.tsx` — `{ targetUserId, targetContactId, targetName, isImpersonating, start(contactId), stop() }`. Persists in sessionStorage.
-2. **New** `src/components/admin/ImpersonateClientButton.tsx` — added to `ContactDetail` header and to each row of `/admin/contacts`. Calls `start_client_impersonation` RPC → navigates to `/app?stay=1`.
-3. **Rewrite** `src/components/admin/AdminViewBanner.tsx` — when impersonating shows `Viewing as {name} · Exit`; when staff just chose "preview client view" (no target) keeps today's pill.
-4. **Patch** `src/pages/AppShell.tsx` — wrap `/app` tree in `ImpersonationProvider`, pass `effectiveUser = { id: targetUserId ?? user.id, ... }` to `PaigeChat`, `Outlet context`, `AppDashboardHome`, and `useCreditFactors`.
-5. **Patch** the handful of client hooks that read `auth.getUser()` directly (`useCreditFactors`, `useClientGoals`, `useFundingMatches`, `useContactSelfProfile`) to accept an explicit `userId` arg sourced from the context.
-6. **Lock clients to /app**:
-   - `App.tsx` route guard: if the signed-in user only has the `client` role, redirect any `/admin*`, `/broker*`, `/workspace*` hit back to `/app`.
-   - Hide the "Admin" pill in `AppNav` when the user has no staff role (today it shows for everyone in the screenshot).
-   - `resolveLandingRoute` already routes clients to `/app`; we add a hard redirect in `App.tsx` for safety.
-7. **Admin Contacts list** — add a "View as client" action in the row menu next to "Open contact". For contacts without a `linked_user_id`, the button is disabled with tooltip "Client hasn't accepted their invite yet".
+### 4. New staff panel: `ClientOnboardingStatusPanel.tsx`
 
-## What staff CAN do while impersonating
+Lives on `ContactDetail` (above or replacing the current Portal panel header). Shows a 3-step checklist with timestamps, derived from `client_onboarding_status`:
 
-Read everything the client can read, send chat messages to Paige *as themselves* (we will not spoof the client's identity in chat — Paige sees `acting_as = staff_id`), trigger client-side actions like "Run Credit Analysis". All writes are audit-logged with both `user_id` (client) and `acting_as_user_id` (staff).
+```text
+[✓] Invite accepted          Jun 28, 2026 9:14am
+[✓] Agreement signed         v2.1 · Jun 29, 2026 10:02am
+[ ] Intake submitted         Pending — last activity 2h ago
+```
 
-## What staff CANNOT do
+Plus quick actions already wired in `ContactPortalPanel`: Resend invite · Send password reset · Force sign out. The `<ImpersonateClientButton />` sits here with the new gated state.
 
-- Change the client's password.
-- Sign the client's legal agreements.
-- Access another tenant's clients (RLS).
-- Stay impersonating across tab close (sessionStorage clears).
+### 5. Client View tiles — real data + empty states
 
-## Out of scope for this pass
+Audit the tiles rendered under `/app` (workspace home, credit, funding, documents, messages, next steps). Each tile:
 
-- Mobile-specific banner restyle (the existing mobile banner still works).
-- A dedicated "impersonation history" admin report (audit_logs already captures it; can surface later).
+- Reads from its real table scoped to `effective_user_id` (impersonation-aware hooks already exist).
+- If the query returns zero rows, render an `<EmptyTile />` with: icon, one-line explanation, single primary CTA pointing at the action that produces the data (e.g. "Upload your first credit report"). No seeded/sample copy.
+- A shared `src/components/client/EmptyTile.tsx` keeps the look consistent.
 
-## Validation
+Tiles in scope for this pass: Goals, Credit Snapshot, Funding Readiness, Documents, Messages, Next Steps, Recent Activity. (If a tile is already data-backed, we just add/normalize the empty state.)
 
-After the migration runs and code lands I'll:
-1. Open `/admin/contacts`, click "View as" on Tashia → land on `/app` with her data, banner shows her name.
-2. Sign in as a pure-client account → confirm `/admin` redirects to `/app` and the Admin pill is hidden.
-3. Confirm `audit_logs` shows `impersonation.start` and `impersonation.end` rows.
+### 6. Realtime
+
+`clients` is already in the realtime publication. The status panel + Impersonate button subscribe to `clients:id=eq.<contactId>` so the checklist + button enable instantly the moment the client finishes intake — no refresh needed.
+
+## Out of scope
+
+- No change to onboarding flow itself (already shipped).
+- No owner override / preview mode (per your decision).
+- No changes to broker or admin dashboards.
+
+## Files touched
+
+- `supabase/migrations/<new>.sql` — helpers + updated impersonation RPC
+- `src/components/admin/ImpersonateClientButton.tsx`
+- `src/components/admin/contacts/ContactPortalPanel.tsx` (mount status panel, pass `ready` to button)
+- `src/components/admin/contacts/ClientOnboardingStatusPanel.tsx` (new)
+- `src/hooks/useClientOnboardingStatus.ts` (new)
+- `src/pages/AppShell.tsx` (hard guard for un-ready clients)
+- `src/components/client/EmptyTile.tsx` (new)
+- Tile components under `src/components/client/**` and `src/pages/app/**` — empty-state wiring only
+
+## Verification
+
+1. Create a fresh test contact, send invite → confirm staff status panel shows `[ ] [ ] [ ]` and Impersonate is disabled with the right tooltip.
+2. Accept invite → first box ticks live (realtime).
+3. Sign agreement → second box ticks; Impersonate still disabled (intake pending).
+4. Complete intake → third box ticks; Impersonate enables; clicking opens `/app` scoped to that client with real data + empty-state CTAs where records don't exist.
+5. Try calling `start_client_impersonation` directly via SQL for an un-ready contact → expect "client has not completed onboarding" error.
