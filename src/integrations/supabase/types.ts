@@ -3270,6 +3270,75 @@ export type Database = {
         }
         Relationships: []
       }
+      communications_consents: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          document_slug: string
+          document_version: number
+          email: string | null
+          email_marketing: boolean
+          email_transactional: boolean
+          id: string
+          ip_address: string | null
+          phone: string | null
+          sms_marketing: boolean
+          sms_transactional: boolean
+          source: string
+          tenant_id: string | null
+          updated_at: string
+          user_agent: string | null
+          user_id: string | null
+          voice_marketing: boolean
+          withdrawn_at: string | null
+          withdrawn_reason: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          document_slug?: string
+          document_version?: number
+          email?: string | null
+          email_marketing?: boolean
+          email_transactional?: boolean
+          id?: string
+          ip_address?: string | null
+          phone?: string | null
+          sms_marketing?: boolean
+          sms_transactional?: boolean
+          source: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+          voice_marketing?: boolean
+          withdrawn_at?: string | null
+          withdrawn_reason?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          document_slug?: string
+          document_version?: number
+          email?: string | null
+          email_marketing?: boolean
+          email_transactional?: boolean
+          id?: string
+          ip_address?: string | null
+          phone?: string | null
+          sms_marketing?: boolean
+          sms_transactional?: boolean
+          source?: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+          voice_marketing?: boolean
+          withdrawn_at?: string | null
+          withdrawn_reason?: string | null
+        }
+        Relationships: []
+      }
       compliance_checkpoints: {
         Row: {
           api_endpoint: string | null
@@ -14662,11 +14731,19 @@ export type Database = {
         Args: { _roles: string[]; _user_id: string }
         Returns: boolean
       }
+      has_email_marketing_consent: {
+        Args: { _email: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      has_sms_consent: {
+        Args: { _marketing?: boolean; _phone: string }
         Returns: boolean
       }
       has_tenant_role: {
@@ -14788,6 +14865,22 @@ export type Database = {
       reassign_coach_clients: {
         Args: { _from_coach: string; _to_coach: string }
         Returns: number
+      }
+      record_communications_consent: {
+        Args: {
+          p_contact_id?: string
+          p_email: string
+          p_email_marketing?: boolean
+          p_ip_address?: string
+          p_phone?: string
+          p_sms_marketing?: boolean
+          p_sms_transactional?: boolean
+          p_source?: string
+          p_tenant_id?: string
+          p_user_agent?: string
+          p_voice_marketing?: boolean
+        }
+        Returns: string
       }
       refresh_analytics_views: { Args: never; Returns: undefined }
       reject_affiliate_application: {
