@@ -259,12 +259,17 @@ export default function SubAgentsAdmin() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1">
-                      <CardTitle className="text-base flex items-center gap-2">
+                      <CardTitle className="text-base flex items-center gap-2 flex-wrap">
                         {a.name}
                         <Badge variant="outline" className="text-xs gap-1">
                           {runtimeIcon(a.runtime)} {a.runtime}
                         </Badge>
                         <Badge variant="secondary" className="text-xs">{a.domain}</Badge>
+                        {a.auto_generated ? (
+                          <Badge className="text-[10px] bg-amber-100 text-amber-900 hover:bg-amber-100 border-amber-200">
+                            <Sparkles className="h-3 w-3 mr-1" /> Auto-generated
+                          </Badge>
+                        ) : null}
                       </CardTitle>
                       <CardDescription className="text-sm">{a.description}</CardDescription>
                     </div>
@@ -287,6 +292,8 @@ export default function SubAgentsAdmin() {
                     <span>
                       {a.runtime === "local"
                         ? <>Edge: <code>{a.edge_function ?? "(unset)"}</code></>
+                        : a.runtime === "soft"
+                        ? <>Soft (prompt-only)</>
                         : <>LangGraph: <code>{a.langgraph_graph ?? "(unset)"}</code></>}
                     </span>
                   </div>
