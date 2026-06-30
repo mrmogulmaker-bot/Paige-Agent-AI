@@ -6,6 +6,7 @@ import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { GrowthBlock, GrowthPageTheme } from "@/lib/growth";
 import { GrowthFormEmbed } from "@/pages/public/GrowthFormRenderer";
+import DOMPurify from "dompurify";
 
 interface PageRow {
   id: string;
@@ -124,8 +125,13 @@ function BlockRenderer({ block, accent, tenantId }: { block: GrowthBlock; accent
           <a href={block.cta_href} className="inline-block px-8 py-3 font-semibold rounded" style={{ background: accent, color: "#0b1220" }}>{block.cta_label}</a>
         </section>
       );
-    case "rich_text":
-      return <section className="px-6 md:px-12 py-12 max-w-3xl mx-auto prose prose-invert" dangerouslySetInnerHTML={{ __html: block.html }} />;
+    case "rich_text": {
+      const safeHtml = DOMPurify.sanitize(block.html ?? "", {
+        FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
+        FORBID_ATTR: ["onerror", "onload", "onclick", "onmouseover", "onfocus", "onblur", "onchange", "onsubmit"],
+      });
+      return <section className="px-6 md:px-12 py-12 max-w-3xl mx-auto prose prose-invert" dangerouslySetInnerHTML={{ __html: safeHtml }} />;
+    }
     case "embedded_form":
       return (
         <section id="apply" className="px-6 md:px-12 py-16 max-w-3xl mx-auto">
