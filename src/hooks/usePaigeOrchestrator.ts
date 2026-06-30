@@ -6,12 +6,14 @@ export interface SubAgent {
   name: string;
   domain: string;
   description: string;
-  runtime: "local" | "langgraph";
+  runtime: "local" | "langgraph" | "soft";
   triggers: string[];
   display_order: number;
   enabled?: boolean;
   edge_function?: string | null;
   langgraph_graph?: string | null;
+  auto_generated?: boolean;
+  system_prompt?: string | null;
 }
 
 export interface OrchestratorInvokeResult {
