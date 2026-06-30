@@ -7,9 +7,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
-// White-label rule (per WorkspaceLayout): the product name "Paige" must never
-// appear inside /workspace/*. We refer to the AI as "your AI assistant" and
-// brand the connector around Mogul Maker Academy.
+// White-label rule: the product name "Paige" never appears inside /workspace/*.
+// Hybrid branding: when the tenant has filled their legal profile and the
+// "white_label_ai_connect" toggle is on, we show their brand name + logo.
+// Otherwise we fall back to a neutral "AI Assistant" label. A "Powered by
+// Paige Agent AI" footer is always shown for legal clarity.
 
 const MCP_ENDPOINT = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-mcp`;
 
@@ -24,6 +26,14 @@ type Token = {
   created_at: string;
 };
 
+type Brand = {
+  tenant_name: string | null;
+  white_label_ai_connect: boolean;
+  brand_display_name: string | null;
+  brand_logo_url: string | null;
+  legal_business_name: string | null;
+};
+
 const SELF_SCOPE_COPY: Record<string, string> = {
   "self.read": "View your own profile, businesses, tasks, and BTF progress",
   "self.write": "Update your own profile, log progress, message your coach",
@@ -34,18 +44,32 @@ export function WorkspaceConnectPanel() {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [brand, setBrand] = useState<Brand | null>(null);
+
+  const brandName =
+    brand && brand.white_label_ai_connect
+      ? brand.brand_display_name ||
+        brand.legal_business_name ||
+        brand.tenant_name ||
+        ""
+      : "";
+  const showBrand = brandName.length > 0;
 
   async function load() {
     setLoading(true);
-    // RLS on paige_mcp_oauth_tokens already scopes to auth.uid() = user_id,
-    // so this only returns the calling user's own sessions.
-    const { data, error } = await supabase
-      .from("paige_mcp_oauth_tokens")
-      .select("id, client_id, client_name_cache, scopes, access_expires_at, revoked_at, last_used_at, created_at")
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (error) toast.error(error.message);
-    setTokens((data ?? []) as Token[]);
+    const [tokensRes, brandRes] = await Promise.all([
+      // RLS on paige_mcp_oauth_tokens already scopes to auth.uid() = user_id.
+      supabase
+        .from("paige_mcp_oauth_tokens")
+        .select("id, client_id, client_name_cache, scopes, access_expires_at, revoked_at, last_used_at, created_at")
+        .order("created_at", { ascending: false })
+        .limit(50),
+      supabase.rpc("get_workspace_brand" as never),
+    ]);
+    if (tokensRes.error) toast.error(tokensRes.error.message);
+    setTokens((tokensRes.data ?? []) as Token[]);
+    const row = Array.isArray(brandRes.data) ? brandRes.data[0] : null;
+    setBrand((row as Brand) ?? null);
     setLoading(false);
   }
 
