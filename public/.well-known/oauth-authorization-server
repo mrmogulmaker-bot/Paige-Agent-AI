@@ -8,5 +8,5 @@
   "grant_types_supported": ["authorization_code", "refresh_token"],
   "code_challenge_methods_supported": ["S256"],
   "token_endpoint_auth_methods_supported": ["none"],
-  "scopes_supported": ["crm.read", "crm.write", "crm.delete", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write", "admin.delete"]
+  "scopes_supported": ["crm.read", "crm.write", "crm.delete", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write", "admin.delete", "platform.read", "platform.write"]
 }
