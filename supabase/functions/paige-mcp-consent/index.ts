@@ -17,18 +17,35 @@ const SUPPORTED_SCOPES = new Set([
   "workflows.run",
   "btf.read", "btf.write",
   "admin.read", "admin.write", "admin.delete",
+  "platform.read", "platform.write",
 ]);
 
-// Scopes granted to any admin automatically (read+write across all surfaces, no destructive deletes).
-const ADMIN_AUTOGRANT = [
-  "crm.read", "crm.write",
+// Tenant Admin grant — operator power inside their tenant. Includes bulk
+// delete (crm.delete) because admins must be able to run the business.
+// Excludes admin.delete (permanent role removal, member suspension) and
+// platform.* (cross-tenant / infra).
+const TENANT_ADMIN_AUTOGRANT = [
+  "crm.read", "crm.write", "crm.delete",
   "workflows.run",
   "btf.read", "btf.write",
   "admin.read", "admin.write",
 ];
 
-// Platform owner additionally gets destructive delete scopes.
-const OWNER_AUTOGRANT = [...ADMIN_AUTOGRANT, "crm.delete", "admin.delete"];
+// Tenant Owner grant — everything an admin has PLUS permanent destructive
+// actions inside their tenant (remove coach role, suspend members, etc).
+// Still excludes platform.* — they cannot touch other tenants or platform infra.
+const TENANT_OWNER_AUTOGRANT = [
+  ...TENANT_ADMIN_AUTOGRANT,
+  "admin.delete",
+];
+
+// Platform Owner grant — full god mode. Cross-tenant ops, sub-agent forge,
+// MCP client registry, workflow registry, doctrine sweeps. Hardcoded to the
+// single platform owner in app_settings_owner.
+const PLATFORM_OWNER_AUTOGRANT = [
+  ...TENANT_OWNER_AUTOGRANT,
+  "platform.read", "platform.write",
+];
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
