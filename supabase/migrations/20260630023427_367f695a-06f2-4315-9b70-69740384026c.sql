@@ -1,0 +1,2 @@
+ALTER TABLE public.paige_skills ADD COLUMN IF NOT EXISTS mutating boolean GENERATED ALWAYS AS (risk_level IN ('mutating','external_send')) STORED;
+CREATE INDEX IF NOT EXISTS paige_skills_mutating_idx ON public.paige_skills (mutating);

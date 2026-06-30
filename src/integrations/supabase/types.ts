@@ -9922,6 +9922,7 @@ export type Database = {
           id: string
           input_schema: Json
           metadata: Json
+          mutating: boolean | null
           name: string
           require_admin_confirm_first_n: number
           risk_level: string
@@ -9945,6 +9946,7 @@ export type Database = {
           id?: string
           input_schema?: Json
           metadata?: Json
+          mutating?: boolean | null
           name: string
           require_admin_confirm_first_n?: number
           risk_level?: string
@@ -9968,6 +9970,7 @@ export type Database = {
           id?: string
           input_schema?: Json
           metadata?: Json
+          mutating?: boolean | null
           name?: string
           require_admin_confirm_first_n?: number
           risk_level?: string
