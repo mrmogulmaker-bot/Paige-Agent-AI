@@ -5807,6 +5807,428 @@ export type Database = {
         }
         Relationships: []
       }
+      growth_external_sources: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          field_map_json: Json
+          id: string
+          label: string
+          last_seen_at: string | null
+          provider: string
+          target_form_id: string | null
+          tenant_id: string
+          updated_at: string
+          webhook_token: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          field_map_json?: Json
+          id?: string
+          label: string
+          last_seen_at?: string | null
+          provider: string
+          target_form_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          webhook_token?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          field_map_json?: Json
+          id?: string
+          label?: string
+          last_seen_at?: string | null
+          provider?: string
+          target_form_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          webhook_token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_external_sources_target_form_id_fkey"
+            columns: ["target_form_id"]
+            isOneToOne: false
+            referencedRelation: "growth_forms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_external_sources_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      growth_form_submissions: {
+        Row: {
+          consent_json: Json
+          contact_id: string | null
+          created_at: string
+          deal_id: string | null
+          external_source_id: string | null
+          form_id: string
+          funnel_session_id: string | null
+          id: string
+          ip: string | null
+          payload_json: Json
+          processed: boolean
+          processed_at: string | null
+          referrer: string | null
+          source: string
+          tenant_id: string
+          user_agent: string | null
+          utm_json: Json
+        }
+        Insert: {
+          consent_json?: Json
+          contact_id?: string | null
+          created_at?: string
+          deal_id?: string | null
+          external_source_id?: string | null
+          form_id: string
+          funnel_session_id?: string | null
+          id?: string
+          ip?: string | null
+          payload_json?: Json
+          processed?: boolean
+          processed_at?: string | null
+          referrer?: string | null
+          source?: string
+          tenant_id: string
+          user_agent?: string | null
+          utm_json?: Json
+        }
+        Update: {
+          consent_json?: Json
+          contact_id?: string | null
+          created_at?: string
+          deal_id?: string | null
+          external_source_id?: string | null
+          form_id?: string
+          funnel_session_id?: string | null
+          id?: string
+          ip?: string | null
+          payload_json?: Json
+          processed?: boolean
+          processed_at?: string | null
+          referrer?: string | null
+          source?: string
+          tenant_id?: string
+          user_agent?: string | null
+          utm_json?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_form_submissions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_form_submissions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "growth_form_submissions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "growth_form_submissions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_form_submissions_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "growth_forms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_form_submissions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      growth_forms: {
+        Row: {
+          auto_create_contact: boolean
+          auto_create_deal: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          notify_user_ids: string[]
+          pipeline_id: string | null
+          schema_json: Json
+          slug: string
+          stage_id: string | null
+          status: string
+          success_action_json: Json
+          template_key: string | null
+          tenant_id: string
+          updated_at: string
+          workflow_slug: string | null
+        }
+        Insert: {
+          auto_create_contact?: boolean
+          auto_create_deal?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          notify_user_ids?: string[]
+          pipeline_id?: string | null
+          schema_json?: Json
+          slug: string
+          stage_id?: string | null
+          status?: string
+          success_action_json?: Json
+          template_key?: string | null
+          tenant_id: string
+          updated_at?: string
+          workflow_slug?: string | null
+        }
+        Update: {
+          auto_create_contact?: boolean
+          auto_create_deal?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          notify_user_ids?: string[]
+          pipeline_id?: string | null
+          schema_json?: Json
+          slug?: string
+          stage_id?: string | null
+          status?: string
+          success_action_json?: Json
+          template_key?: string | null
+          tenant_id?: string
+          updated_at?: string
+          workflow_slug?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_forms_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      growth_funnel_steps: {
+        Row: {
+          config_json: Json
+          created_at: string
+          form_id: string | null
+          funnel_id: string
+          id: string
+          order_index: number
+          page_id: string | null
+          step_type: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          config_json?: Json
+          created_at?: string
+          form_id?: string | null
+          funnel_id: string
+          id?: string
+          order_index?: number
+          page_id?: string | null
+          step_type: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          config_json?: Json
+          created_at?: string
+          form_id?: string | null
+          funnel_id?: string
+          id?: string
+          order_index?: number
+          page_id?: string | null
+          step_type?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_funnel_steps_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "growth_forms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_funnel_steps_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "growth_funnels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_funnel_steps_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "growth_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_funnel_steps_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      growth_funnels: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          entry_page_id: string | null
+          goal: string | null
+          id: string
+          name: string
+          slug: string
+          status: string
+          success_page_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          entry_page_id?: string | null
+          goal?: string | null
+          id?: string
+          name: string
+          slug: string
+          status?: string
+          success_page_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          entry_page_id?: string | null
+          goal?: string | null
+          id?: string
+          name?: string
+          slug?: string
+          status?: string
+          success_page_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_funnels_entry_page_id_fkey"
+            columns: ["entry_page_id"]
+            isOneToOne: false
+            referencedRelation: "growth_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_funnels_success_page_id_fkey"
+            columns: ["success_page_id"]
+            isOneToOne: false
+            referencedRelation: "growth_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_funnels_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      growth_pages: {
+        Row: {
+          blocks_json: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          og_image_url: string | null
+          published_at: string | null
+          seo_json: Json
+          slug: string
+          status: string
+          template_key: string | null
+          tenant_id: string
+          theme_json: Json
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          blocks_json?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          og_image_url?: string | null
+          published_at?: string | null
+          seo_json?: Json
+          slug: string
+          status?: string
+          template_key?: string | null
+          tenant_id: string
+          theme_json?: Json
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          blocks_json?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          og_image_url?: string | null
+          published_at?: string | null
+          seo_json?: Json
+          slug?: string
+          status?: string
+          template_key?: string | null
+          tenant_id?: string
+          theme_json?: Json
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_pages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invitations: {
         Row: {
           accepted_at: string | null
