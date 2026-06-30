@@ -112,6 +112,7 @@ const Support = lazyWithReload(() => import("./pages/Support"));
 const MyAgreements = lazyWithReload(() => import("./pages/MyAgreements"));
 const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
 const WorkspaceApprovals = lazyWithReload(() => import("./pages/workspace/WorkspaceApprovals"));
+const WorkspaceConnect = lazyWithReload(() => import("./pages/workspace/WorkspaceConnect"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
