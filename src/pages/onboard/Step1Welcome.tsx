@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { OnboardClient } from "./useOnboardingClient";
 import { advanceOnboardingStage } from "./useOnboardingClient";
@@ -22,11 +24,19 @@ function ProgressHeader({ stepIndex, title, subtitle }: { stepIndex: number; tit
 export default function Step1Welcome() {
   const { client, refresh } = useOutletContext<Ctx>();
   const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
 
   const begin = async () => {
-    await advanceOnboardingStage(client.id, "signing_agreement");
-    await refresh();
-    navigate("/onboard/agreement");
+    setBusy(true);
+    try {
+      const { error } = await advanceOnboardingStage(client.id, "signing_agreement");
+      if (error) throw error;
+      await refresh();
+      navigate("/onboard/agreement");
+    } catch (e: any) {
+      toast.error(e?.message || "Couldn't start onboarding — please refresh and try again.");
+      setBusy(false);
+    }
   };
 
   return (
@@ -58,7 +68,7 @@ export default function Step1Welcome() {
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={begin}>Begin onboarding</Button>
+          <Button onClick={begin} disabled={busy}>{busy ? "Starting…" : "Begin onboarding"}</Button>
         </div>
       </div>
     </>

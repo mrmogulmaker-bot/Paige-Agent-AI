@@ -14326,6 +14326,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      client_advance_onboarding_stage: {
+        Args: { p_payload?: Json; p_to_stage: string }
+        Returns: {
+          client_id: string
+          onboarding_stage: string
+          updated_at: string
+        }[]
+      }
       client_has_role_assigned: {
         Args: { _assignment_role: string; _client: string }
         Returns: boolean
