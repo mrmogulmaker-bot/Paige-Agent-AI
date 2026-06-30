@@ -483,6 +483,7 @@ const Admin = () => {
       </Routes>
 
     </AdminLayout>
+    </AdminLoaderBoundary>
   );
 };
 
