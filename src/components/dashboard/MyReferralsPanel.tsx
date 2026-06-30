@@ -25,6 +25,8 @@ import {
   Coins,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client"; // ADJUST-IF-NEEDED
+import { LiveSyncIndicator } from "@/components/ui/LiveSyncIndicator";
+import { toast } from "sonner";
 import {
   fetchMyAffiliateStats,
   fetchMyRecentConversions,
