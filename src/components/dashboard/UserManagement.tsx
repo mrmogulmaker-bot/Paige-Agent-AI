@@ -27,6 +27,7 @@ import { MemberProfileDrawer, type MemberProfile } from "@/components/admin/Memb
 // only granted through DB bootstrap, never through this dropdown.
 const ASSIGNABLE_ROLES = [
   "admin",
+  "developer",
   "coach",
   "moderator",
   "sales_rep",
@@ -42,7 +43,7 @@ type AssignableRole = typeof ASSIGNABLE_ROLES[number];
 // "user", or no role at all) is a client/lead and belongs in Contacts — NOT
 // in Team & Roles. Keep this list in sync with src/pages/admin/MembersAdmin.tsx.
 const STAFF_ROLES = new Set<string>([
-  "admin", "coach", "sales_rep", "broker", "broker_team_member", "affiliate",
+  "admin", "developer", "coach", "sales_rep", "broker", "broker_team_member", "affiliate",
   "cs_rep", "finance", "viewer", "moderator", "owner", "super_admin",
 ]);
 const isStaffUser = (roles: string[]) => roles.some((r) => STAFF_ROLES.has(r));
