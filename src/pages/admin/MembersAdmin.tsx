@@ -540,6 +540,9 @@ export default function MembersAdmin() {
                         <DropdownMenuContent align="end" className="w-56">
                           <DropdownMenuLabel>Manage user</DropdownMenuLabel>
                           <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setProfileTarget(m)}>
+                            <UserCog className="w-4 h-4 mr-2" /> View profile
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { setAddRoleTarget(m); setNewRole("coach"); }}>
                             <UserCog className="w-4 h-4 mr-2" /> Add role
                           </DropdownMenuItem>
