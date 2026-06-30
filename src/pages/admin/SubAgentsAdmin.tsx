@@ -157,17 +157,93 @@ export default function SubAgentsAdmin() {
             <Bot className="h-6 w-6 text-primary" /> Paige Sub-Agent Console
           </h1>
           <p className="text-sm text-muted-foreground max-w-2xl mt-1">
-            Specialist agents Paige delegates work to. Local agents run as Edge Functions;
-            LangGraph agents dispatch through <code className="text-xs">paige-bridge</code>.
-            Keeps Paige&apos;s context light and answers consistent.
+            Specialist agents Paige delegates work to. <strong>Soft</strong> agents are prompt-only and Paige can ship them autonomously.
+            <strong> Hard</strong> agents (local edge functions, LangGraph) require admin approval.
           </p>
+          {quota ? (
+            <p className="text-xs text-muted-foreground mt-2">
+              Today: {quota.proposals_count}/10 proposals · {quota.soft_shipped} soft shipped · {quota.hard_shipped} hard shipped
+            </p>
+          ) : null}
         </div>
-        <Button variant="outline" size="sm" onClick={refresh}>Refresh</Button>
+        <div className="flex gap-2">
+          <Dialog open={forgeOpen} onOpenChange={setForgeOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-2"><Wand2 className="h-4 w-4" /> Forge Sub-Agent</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Forge a New Sub-Agent</DialogTitle>
+                <DialogDescription>
+                  Soft agents ship live immediately. Hard agents (local / LangGraph) route to Approvals for admin sign-off because they require new code.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-1">
+                  <label className="text-xs font-medium">Slug</label>
+                  <Input value={forge.slug} onChange={(e) => setForge({ ...forge, slug: e.target.value.toLowerCase() })} placeholder="churn-risk-scout" className="font-mono text-xs" />
+                </div>
+                <div className="col-span-1">
+                  <label className="text-xs font-medium">Name</label>
+                  <Input value={forge.name} onChange={(e) => setForge({ ...forge, name: e.target.value })} placeholder="Churn Risk Scout" />
+                </div>
+                <div className="col-span-1">
+                  <label className="text-xs font-medium">Domain</label>
+                  <Select value={forge.domain} onValueChange={(v) => setForge({ ...forge, domain: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["fundability","compliance","credit","funding","research","outreach","intake","sales","coaching","ops","support","marketing","analytics","automation"].map(d => (
+                        <SelectItem key={d} value={d}>{d}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-1">
+                  <label className="text-xs font-medium">Runtime</label>
+                  <Select value={forge.runtime} onValueChange={(v) => setForge({ ...forge, runtime: v as "soft" | "local" | "langgraph" })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="soft">Soft (ships instantly)</SelectItem>
+                      <SelectItem value="local">Local edge function (needs approval)</SelectItem>
+                      <SelectItem value="langgraph">LangGraph (needs approval)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-medium">Description (≥20 chars)</label>
+                  <Input value={forge.description} onChange={(e) => setForge({ ...forge, description: e.target.value })} />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-medium">Why this agent? (≥20 chars — admins read this)</label>
+                  <Textarea value={forge.rationale} onChange={(e) => setForge({ ...forge, rationale: e.target.value })} rows={2} />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-medium">System Prompt (≥50 chars)</label>
+                  <Textarea value={forge.system_prompt} onChange={(e) => setForge({ ...forge, system_prompt: e.target.value })} rows={6} placeholder="You are a Churn Risk Scout. Given a client's recent activity, identify churn signals..." />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-xs font-medium">Triggers (comma-separated)</label>
+                  <Input value={forge.triggers} onChange={(e) => setForge({ ...forge, triggers: e.target.value })} placeholder="churn, at risk, silent client" />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setForgeOpen(false)}>Cancel</Button>
+                <Button onClick={submitForge} disabled={forgeBusy}>{forgeBusy ? "Forging…" : "Submit"}</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button variant="outline" size="sm" onClick={() => { refresh(); loadProposals(); }}>Refresh</Button>
+        </div>
       </header>
 
       <Tabs defaultValue="registry" className="w-full">
         <TabsList>
           <TabsTrigger value="registry">Registry</TabsTrigger>
+          <TabsTrigger value="proposals" onClick={loadProposals}>
+            Proposals {proposals.filter(p => p.status === "proposed").length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 text-[10px]">{proposals.filter(p => p.status === "proposed").length}</Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="test">Test Console</TabsTrigger>
           <TabsTrigger value="activity" onClick={loadInvocations}>Activity</TabsTrigger>
         </TabsList>
