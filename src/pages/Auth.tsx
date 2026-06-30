@@ -15,6 +15,7 @@ import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthInd
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
 import { trackEvent } from "@/hooks/useAnalytics";
+import { resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
