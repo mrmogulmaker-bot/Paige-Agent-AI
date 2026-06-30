@@ -49,11 +49,13 @@ export default function CampaignsHub() {
           <TabsTrigger value="integrations"><Plug className="w-4 h-4 mr-1.5" />External Builders</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="mt-4">
+        <TabsContent value="overview" className="mt-4 space-y-4">
+          <CampaignsOverviewStats />
           <Suspense fallback={<div className="text-sm text-muted-foreground">Loading campaigns…</div>}>
             <CampaignsOverview />
           </Suspense>
         </TabsContent>
+
 
         {/* Growth tabs share GrowthHub's existing UI, which reads the same ?tab= param. */}
         {isGrowth && (
