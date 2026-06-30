@@ -3959,7 +3959,7 @@ mcp.tool("me_get_phase_progress", {
     if (!me) return err("no_linked_client_record");
     const { data, error } = await admin
       .from("btf_phase_items")
-      .select("id, phase, item_key, label, status, completed_at, sort_order")
+      .select("id, phase, item_key, title, status, completed_at, sort_order")
       .eq("client_id", me.id)
       .order("sort_order", { ascending: true });
     if (error) return err(error.message);
