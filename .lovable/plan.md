@@ -1,149 +1,140 @@
-# Growth OS Phase 1 — Pages, Funnels, Forms
 
-Build Paige's own **Pages & Funnels** engine (modeled after the two `vibepreview` BTF pages you shared), with the option for any tenant to use an **external builder** (Webflow / Framer / ClickFunnels / GHL / Vibe) and still pipe leads into Paige.
+# Paige Skills + Business Verification + Browser Use
 
-Then **map the two exact BTF pages** as the seeded Mogul Maker Academy funnel for the BUILD-to-FUND offer.
-
----
-
-## 1. New navigation surface
-
-Under the "More" menu in `AdminLayout.tsx`, add a **Growth** group:
-
-- `/admin/growth/pages`     → Landing Pages (sales / VSL / about)
-- `/admin/growth/funnels`   → Funnels (ordered step sequences)
-- `/admin/growth/forms`     → Forms (questionnaires / intake / opt-ins)
-- `/admin/growth/submissions` → Unified inbox of every form submission
-- `/admin/growth/integrations` → External builders (Webflow, Framer, GHL, ClickFunnels, Typeform, custom webhook)
-
-Communications stays as-is (sends + SMS + email logs). Growth is the **lead capture + conversion** layer that *feeds* Communications + Contacts + Pipeline.
+Three new capability layers, all wired to the existing sub-agent + MCP + RLS patterns. Autonomous skill creation enabled (per your call), with a kill-switch and full audit log so nothing runs silently.
 
 ---
 
-## 2. Schema (multi-tenant, RLS-scoped)
+## Layer 1 — Paige Skills Registry
 
-```text
-growth_pages              (id, tenant_id, slug, title, status, theme_json,
-                            blocks_json, seo_json, og_image_url, published_at)
-growth_funnels            (id, tenant_id, slug, name, status, goal,
-                            entry_page_id, success_page_id)
-growth_funnel_steps       (id, funnel_id, order_index, page_id, form_id,
-                            step_type: page|form|payment|booking|thankyou)
-growth_forms              (id, tenant_id, slug, name, schema_json,
-                            success_action_json, notify_user_ids[],
-                            auto_create_contact bool, auto_create_deal bool,
-                            pipeline_id, stage_id)
-growth_form_submissions   (id, form_id, tenant_id, contact_id,
-                            payload_json, utm_json, referrer, ip, ua,
-                            consent_json, created_at)
-growth_external_sources   (id, tenant_id, provider, label, webhook_token,
-                            field_map_json, last_seen_at)
-```
+A reusable "skill" = a named recipe Paige (or any sub-agent) can execute. Different from sub-agents: skills are *composable steps*, sub-agents are *roles*.
 
-All tables: `tenant_id` + RLS scoped via existing `current_user_tenant_id()` helper. `GRANT SELECT,INSERT,UPDATE,DELETE … TO authenticated; GRANT ALL … TO service_role`.
+**New tables**
+- `paige_skills` — id, slug, name, description, trigger_phrases[], input_schema (jsonb), steps (jsonb), allowed_tools[], risk_level (`read_only` | `draft` | `mutating` | `external_send`), status (`active` | `draft` | `disabled`), created_by (`system` | `paige` | `<admin_id>`), version, success_rate, run_count
+- `paige_skill_runs` — id, skill_id, contact_id?, invoker, inputs, steps_log (jsonb), outputs, status, duration_ms, error
+- `paige_skill_proposals` — Paige's self-drafted skills awaiting auto-publish or admin review
 
-Public read on `growth_pages` only for `status='published'` (anon allowed) so the rendered page works without a session.
+**Autonomous self-creation flow**
+1. Paige drafts skill → writes to `paige_skill_proposals`
+2. Auto-publish rules:
+   - `read_only` + `draft` → publish immediately
+   - `mutating` + `external_send` → publish immediately *but* first 3 runs require admin one-click confirm (safety rail even in fully autonomous mode — non-negotiable for FCRA/GLBA exposure)
+3. Every proposal + run logged to `paige_audit_log`
+4. Admin kill-switch at `/admin/skills` → disable any skill instantly
 
----
+**Seeded skills (v1)**
+1. **`draft_and_email_document`** — Generate doc (proposal, summary, action plan) via Lovable AI → render PDF → email via Resend → log to `communication_log`
+2. **`verify_business_sos`** — Calls the Verification Agent below
+3. **`build_game_plan`** — Pulls client context + KB + recent web research → produces step-by-step roadmap → saves to `client_memory` + offers to email
+4. **`research_to_concept_brief`** — Firecrawl topic → synthesize → output structured concept brief (problem / approach / risks / next steps)
 
-## 3. Renderers (public)
-
-- `/p/:tenantSlug/:pageSlug` — server-rendered landing page from `blocks_json` (Hero, Bullets, Phase Cards, FAQ, Testimonial, CTA, EmbeddedForm).
-- `/f/:tenantSlug/:funnelSlug/:stepIndex?` — funnel runner that steps through pages/forms in order, persists `funnel_session_id` cookie, fires UTM + analytics events.
-- `/form/:formId` — standalone hosted form (white-labeled per tenant theme).
-
-Block library mirrors the two reference pages: **Hero with overlay**, **Pull quote**, **Phase card row**, **Everything-inside grid**, **Apply CTA**, **3-step progress form**, **Field sections** (Personal / Business / Funding Profile).
+**UI**
+- `/admin/skills` — list, enable/disable, view runs, review proposals, test-fire
+- Surface in Paige chat: `/skills` slash menu + auto-suggest when trigger phrases match
+- MCP exposure: `list_skills`, `run_skill`, `get_skill_run` tools added to `paige-mcp`
 
 ---
 
-## 4. Form builder
+## Layer 2 — Business Verification Agent
 
-Two creation paths, no rebuilds in between:
+New sub-agent `business-verifier`. Auto-runs on client/business creation; also callable as a skill.
 
-1. **Template library** — seed with: BTF Application (3-step), Discovery Call Intake, Lead Magnet Opt-in, Coach Application, Affiliate Application, Funding Pre-Qual.
-2. **Paige-generated** — admin types "Build me a 2-step intake for SaaS founders applying for an MCA" → Paige writes `schema_json` via the AI Gateway → admin reviews → saves.
+**Sources (free, ship today via Firecrawl)**
+- 50-state Secretary of State portals (state-by-state URL map)
+- OpenCorporates
+- SEC EDGAR
+- SAM.gov entity registration
+- IRS EIN exempt org lookup
+- USPTO trademark
+- BBB
+- Google Business Profile (public page scrape)
+- USPS address validation (free tier)
+- FDIC BankFind (already integrated)
 
-Schema is a thin JSON spec (sections → fields with `type | label | required | options | validation | maps_to`). `maps_to` lets a field auto-write to `contacts.email`, `businesses.legal_name`, `clients.fico_score`, etc. — same ingestion guardrails as `paige_ingestion_proposals` for sensitive fields (SSN, FICO).
+**Pluggable adapter pattern (paid sources)**
+`supabase/functions/_shared/businessVerifyAdapters/` with one file per source:
+- `dnb.ts` — D&B Direct+ stub (requires `DNB_API_KEY` + `DNB_API_SECRET`)
+- `lexisnexis.ts` — LexisNexis Risk Business InstantID stub (requires `LEXISNEXIS_*` + GLBA permissible-purpose config)
+- `transunion.ts` — TU Business stub
+- `array.ts` — Array stub
 
-Submissions flow:
-`submit → growth_form_submissions → upsert contact → optional create deal in pipeline → fire notifications → trigger workflow (paige_workflow_registry) if mapped`.
+Each adapter exports a uniform `verify(business): Promise<VerificationResult>`. Returns `{ available: false, reason: 'credentials_not_configured' }` until you add the secret — then it auto-activates. Zero code changes when keys land.
 
----
+**Output**
+- `business_verifications` table: per-source results, mismatches, confidence score, raw payloads
+- **Verification Score** (0–100) surfaced on `ContactDetail` + `FundingLensHub`
+- Mismatch flags (e.g. "SoS principal address differs from client-submitted address") → auto-create approval task
 
-## 5. External builder bridge
-
-For tenants that prefer Webflow / Framer / ClickFunnels / GHL / Typeform / Vibe / custom HTML:
-
-- One-click create an `growth_external_sources` row → generates a signed webhook URL `https://…/functions/v1/growth-inbound/<token>`.
-- Per-source **field map** UI: drag incoming JSON keys onto Paige fields.
-- Same downstream pipeline: contact upsert → deal → notify → workflow.
-- Embeddable `<script src="…/embed.js" data-form="…">` for hosting a Paige form *inside* an externally built page.
-
-This is the answer to "tenants want a different platform" — we don't fight it, we ingest it cleanly.
-
----
-
-## 6. MCP exposure (Paige can build pages by voice)
-
-Add tools to `paige-mcp` (admin.write scope):
-
-- `list_pages`, `get_page`, `create_page_from_template`, `publish_page`
-- `list_forms`, `create_form`, `get_form_submissions`
-- `list_funnels`, `create_funnel`, `attach_step`
-- `register_external_source`
-
-So Claude Desktop / ChatGPT can say *"Paige, spin up a BTF discovery funnel with a 2-step form and route submissions into the BTF pipeline stage 'New Lead'"* and it materializes.
+**Trigger**
+- Database trigger on `businesses` insert → fires `business-verifier` edge function
+- Manual re-run button on contact detail
 
 ---
 
-## 7. Seed: map the two BTF pages to the MMA tenant
+## Layer 3 — Browser Use (Browserbase)
 
-After the engine ships, run a seed migration scoped to the Mogul Maker Academy tenant:
+For authenticated portals + JS-heavy pages where Firecrawl alone won't cut it.
 
-- `growth_pages`: `btf-sales` (mirrors `build-to-fund.vibepreview.com` — Hero, 3 Phase Cards, Package Grid, CTA).
-- `growth_forms`: `btf-application` (mirrors the 3-step onboarding form — Personal Info / Business Entity / Funding Profile, with `maps_to` wired to `contacts` + `businesses` + `clients`).
-- `growth_funnels`: `btf-program` with steps: `btf-sales` → `btf-application` → success/thank-you → triggers existing `invite-btf-client` edge function on completion.
+**Provider**: Browserbase (cleanest Playwright-compatible API, pay-per-session). You'll need to sign up and I'll request `BROWSERBASE_API_KEY` + `BROWSERBASE_PROJECT_ID` via add_secret.
 
-Public URLs once live:
-- `portal.mogulmakeracademy.com/p/mma/btf-sales`
-- `portal.mogulmakeracademy.com/f/mma/btf-program`
+**New edge function**: `browser-use`
+- Accepts: `{ goal, start_url, steps[], credentials_ref? }`
+- Spins up Browserbase session → runs Playwright steps → returns screenshots + extracted data + session replay URL
+- Credentials never logged; pulled from secrets by name only
+- All sessions logged to `browser_use_sessions` with cost tracking
 
-These can later move to a custom subdomain via the existing tenant-storefront pattern.
+**Initial use cases wired**
+- SoS lookups behind CAPTCHAs (CA, NY, TX have them)
+- Nav.com business credit pulls (when you add the institutional account)
+- SmartCredit.com consumer pulls (when you add the institutional account)
+- Bank portal balance verification (future)
 
----
-
-## 8. Build order (this turn + next)
-
-**This turn** — foundation:
-1. Migration: all 6 `growth_*` tables + RLS + grants.
-2. `growth-inbound` edge function (token-validated, contact upsert, deal create).
-3. Admin shell pages (`/admin/growth/*`) wired into `AdminLayout` "More" menu, with list + empty states + "Create" flows for Forms and Pages.
-4. Public renderers `/p/:tenant/:slug` and `/form/:id` reading `blocks_json` / `schema_json`.
-5. Seed BTF sales page + BTF 3-step form for the MMA tenant.
-
-**Next turn** — depth:
-6. Funnel runner + step orchestration.
-7. Paige-generated forms via AI Gateway (`generate_form` action).
-8. MCP tools.
-9. External source mapper UI + `embed.js`.
-10. Submissions inbox + analytics (visits, conversion %).
+**Cost guardrails**
+- Per-tenant monthly session cap (default 200) in `paige_config`
+- Auto-disable + admin alert when cap hit
+- Skill-level cost estimate shown before run for any skill that invokes Browser Use
 
 ---
 
-## Notes on pricing
+## Files I'll create / change
 
-Once Forms + Pages + Funnels + Workflows + Approvals + MCP all ship, the platform is unambiguously above GHL/HubSpot Pro tier in capability. Recommend repricing alongside the next turn:
+**Migrations**
+- `paige_skills`, `paige_skill_runs`, `paige_skill_proposals`, `business_verifications`, `browser_use_sessions` (with GRANTs + RLS per project doctrine)
+- Trigger on `businesses` insert → enqueue verification
 
-- **Make It** — keep low (lead-gen for the platform)
-- **Manage It** — $197/mo (was $44) — Pages + Forms + Funnels + Pipelines + Workflows
-- **Multiply It** — $497/mo (was $29 typo'd tier) — adds MCP, Sub-Agent Factory, multi-tenant white-label, unlimited Paige sub-agents
+**Edge functions**
+- `supabase/functions/skill-runner/index.ts`
+- `supabase/functions/skill-forge/index.ts` (Paige's self-drafting)
+- `supabase/functions/business-verifier/index.ts`
+- `supabase/functions/browser-use/index.ts`
+- `supabase/functions/_shared/businessVerifyAdapters/{dnb,lexisnexis,transunion,array,sos,opencorporates}.ts`
+- Extend `paige-mcp` with 6 new tools
 
-Pricing change is a separate approval — flagging here, not shipping it in this build.
+**Frontend**
+- `/admin/skills` — `SkillsHub.tsx`, `SkillDetail.tsx`, `SkillProposalReview.tsx`
+- `BusinessVerificationCard.tsx` on `ContactDetail`
+- Slash-menu integration in existing Paige chat surfaces
+
+**Secrets requested**
+- `BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID` (when you're ready)
+- D&B / LexisNexis / TU keys stay un-added; adapters detect absence and stay inert
 
 ---
 
-## Out of scope (intentionally)
+## Out of scope (intentional)
+- No real D&B/LexisNexis/TU calls until you have contracts — only adapter scaffolding
+- No Computer Use (Anthropic) — Browserbase covers the same ground cheaper for our use cases
+- No browser automation against client banking portals beyond Nav/SmartCredit (compliance scope creep)
 
-- A full visual drag-and-drop page editor (v1 uses block JSON + a structured form, plus "duplicate template" — enough to ship; visual editor is a v2 investment).
-- A/B testing (v2).
-- Server-side analytics dashboards beyond submission counts (v2).
+---
+
+## Order of build (single turn)
+1. Migrations (all 5 tables + trigger + GRANTs)
+2. Adapter scaffolding + business-verifier edge function
+3. skill-runner + skill-forge edge functions
+4. browser-use edge function (inert until Browserbase key added)
+5. MCP tool additions
+6. `/admin/skills` UI + ContactDetail verification card
+7. Seed 4 starter skills
+
+Then I'll ask for Browserbase credentials so Layer 3 goes live.

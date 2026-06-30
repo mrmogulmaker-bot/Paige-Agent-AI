@@ -914,6 +914,102 @@ export type Database = {
           },
         ]
       }
+      browser_use_sessions: {
+        Row: {
+          completed_at: string | null
+          cost_cents: number
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          goal: string
+          id: string
+          invoker_kind: string
+          invoker_user_id: string | null
+          related_business_id: string | null
+          related_contact_id: string | null
+          result: Json
+          screenshots: string[]
+          session_replay_url: string | null
+          start_url: string | null
+          status: string
+          steps: Json
+        }
+        Insert: {
+          completed_at?: string | null
+          cost_cents?: number
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          goal: string
+          id?: string
+          invoker_kind?: string
+          invoker_user_id?: string | null
+          related_business_id?: string | null
+          related_contact_id?: string | null
+          result?: Json
+          screenshots?: string[]
+          session_replay_url?: string | null
+          start_url?: string | null
+          status?: string
+          steps?: Json
+        }
+        Update: {
+          completed_at?: string | null
+          cost_cents?: number
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          goal?: string
+          id?: string
+          invoker_kind?: string
+          invoker_user_id?: string | null
+          related_business_id?: string | null
+          related_contact_id?: string | null
+          result?: Json
+          screenshots?: string[]
+          session_replay_url?: string | null
+          start_url?: string | null
+          status?: string
+          steps?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "browser_use_sessions_related_business_id_fkey"
+            columns: ["related_business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "browser_use_sessions_related_contact_id_fkey"
+            columns: ["related_contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "browser_use_sessions_related_contact_id_fkey"
+            columns: ["related_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "browser_use_sessions_related_contact_id_fkey"
+            columns: ["related_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "browser_use_sessions_related_contact_id_fkey"
+            columns: ["related_contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       btf_document_requests: {
         Row: {
           approved_at: string | null
@@ -2026,6 +2122,153 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_verification_runs: {
+        Row: {
+          business_id: string | null
+          completed_at: string | null
+          composite_score: number | null
+          contact_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          mismatches: Json
+          status: string
+          summary: Json
+          triggered_by: string
+          triggered_by_user_id: string | null
+        }
+        Insert: {
+          business_id?: string | null
+          completed_at?: string | null
+          composite_score?: number | null
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          mismatches?: Json
+          status?: string
+          summary?: Json
+          triggered_by?: string
+          triggered_by_user_id?: string | null
+        }
+        Update: {
+          business_id?: string | null
+          completed_at?: string | null
+          composite_score?: number | null
+          contact_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          mismatches?: Json
+          status?: string
+          summary?: Json
+          triggered_by?: string
+          triggered_by_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_verification_runs_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_verification_runs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_verification_runs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "business_verification_runs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "business_verification_runs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_verifications: {
+        Row: {
+          business_id: string | null
+          confidence: number | null
+          created_at: string
+          error: string | null
+          id: string
+          matched_fields: string[]
+          mismatched_fields: string[]
+          normalized: Json
+          raw_payload: Json
+          run_id: string
+          source: string
+          source_kind: string
+          source_url: string | null
+          status: string
+        }
+        Insert: {
+          business_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          matched_fields?: string[]
+          mismatched_fields?: string[]
+          normalized?: Json
+          raw_payload?: Json
+          run_id: string
+          source: string
+          source_kind?: string
+          source_url?: string | null
+          status?: string
+        }
+        Update: {
+          business_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          matched_fields?: string[]
+          mismatched_fields?: string[]
+          normalized?: Json
+          raw_payload?: Json
+          run_id?: string
+          source?: string
+          source_kind?: string
+          source_url?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_verifications_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_verifications_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "business_verification_runs"
             referencedColumns: ["id"]
           },
         ]
@@ -9505,6 +9748,239 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      paige_skill_proposals: {
+        Row: {
+          allowed_tools: string[]
+          category: string
+          created_at: string
+          decided_at: string | null
+          description: string | null
+          id: string
+          input_schema: Json
+          proposed_name: string
+          proposed_slug: string
+          published_skill_id: string | null
+          rationale: string | null
+          reviewer_notes: string | null
+          reviewer_user_id: string | null
+          risk_level: string
+          source_pattern: Json
+          status: string
+          steps: Json
+          trigger_phrases: string[]
+        }
+        Insert: {
+          allowed_tools?: string[]
+          category?: string
+          created_at?: string
+          decided_at?: string | null
+          description?: string | null
+          id?: string
+          input_schema?: Json
+          proposed_name: string
+          proposed_slug: string
+          published_skill_id?: string | null
+          rationale?: string | null
+          reviewer_notes?: string | null
+          reviewer_user_id?: string | null
+          risk_level?: string
+          source_pattern?: Json
+          status?: string
+          steps?: Json
+          trigger_phrases?: string[]
+        }
+        Update: {
+          allowed_tools?: string[]
+          category?: string
+          created_at?: string
+          decided_at?: string | null
+          description?: string | null
+          id?: string
+          input_schema?: Json
+          proposed_name?: string
+          proposed_slug?: string
+          published_skill_id?: string | null
+          rationale?: string | null
+          reviewer_notes?: string | null
+          reviewer_user_id?: string | null
+          risk_level?: string
+          source_pattern?: Json
+          status?: string
+          steps?: Json
+          trigger_phrases?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_skill_proposals_published_skill_id_fkey"
+            columns: ["published_skill_id"]
+            isOneToOne: false
+            referencedRelation: "paige_skills"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_skill_runs: {
+        Row: {
+          completed_at: string | null
+          contact_id: string | null
+          cost_cents: number
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          id: string
+          inputs: Json
+          invoker_kind: string
+          invoker_user_id: string | null
+          outputs: Json
+          skill_id: string
+          skill_slug: string
+          status: string
+          steps_log: Json
+        }
+        Insert: {
+          completed_at?: string | null
+          contact_id?: string | null
+          cost_cents?: number
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          inputs?: Json
+          invoker_kind?: string
+          invoker_user_id?: string | null
+          outputs?: Json
+          skill_id: string
+          skill_slug: string
+          status?: string
+          steps_log?: Json
+        }
+        Update: {
+          completed_at?: string | null
+          contact_id?: string | null
+          cost_cents?: number
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          inputs?: Json
+          invoker_kind?: string
+          invoker_user_id?: string | null
+          outputs?: Json
+          skill_id?: string
+          skill_slug?: string
+          status?: string
+          steps_log?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_skill_runs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_skill_runs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_skill_runs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_skill_runs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_skill_runs_skill_id_fkey"
+            columns: ["skill_id"]
+            isOneToOne: false
+            referencedRelation: "paige_skills"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_skills: {
+        Row: {
+          allowed_tools: string[]
+          category: string
+          cost_estimate_cents: number
+          created_at: string
+          created_by: string
+          created_by_user_id: string | null
+          description: string | null
+          id: string
+          input_schema: Json
+          metadata: Json
+          name: string
+          require_admin_confirm_first_n: number
+          risk_level: string
+          run_count: number
+          slug: string
+          status: string
+          steps: Json
+          success_count: number
+          trigger_phrases: string[]
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          allowed_tools?: string[]
+          category?: string
+          cost_estimate_cents?: number
+          created_at?: string
+          created_by?: string
+          created_by_user_id?: string | null
+          description?: string | null
+          id?: string
+          input_schema?: Json
+          metadata?: Json
+          name: string
+          require_admin_confirm_first_n?: number
+          risk_level?: string
+          run_count?: number
+          slug: string
+          status?: string
+          steps?: Json
+          success_count?: number
+          trigger_phrases?: string[]
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          allowed_tools?: string[]
+          category?: string
+          cost_estimate_cents?: number
+          created_at?: string
+          created_by?: string
+          created_by_user_id?: string | null
+          description?: string | null
+          id?: string
+          input_schema?: Json
+          metadata?: Json
+          name?: string
+          require_admin_confirm_first_n?: number
+          risk_level?: string
+          run_count?: number
+          slug?: string
+          status?: string
+          steps?: Json
+          success_count?: number
+          trigger_phrases?: string[]
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
       }
       paige_sla_alert_log: {
         Row: {
