@@ -3729,7 +3729,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Batch #4 — Master Admin (MMA-only via MASTER_ONLY_TOOLS)
   list_tenants: "admin.read",
   create_tenant: "admin.write",
-  suspend_tenant: "admin.write",
+  suspend_tenant: "admin.delete",
   update_tenant_features: "admin.write",
   get_platform_metrics: "admin.read",
   broadcast_system_announcement: "admin.write",
