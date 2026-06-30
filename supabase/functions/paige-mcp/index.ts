@@ -4163,7 +4163,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Email templates
   list_email_templates: "admin.read", upsert_email_template: "admin.write", send_btf_template_email: "btf.write",
   // Batch #1
-  create_contact: "crm.write", update_lifecycle_stage: "crm.write",
+  create_contact: "crm.write", update_contact: "crm.write", update_lifecycle_stage: "crm.write",
   bulk_delete_contacts: "crm.delete",
   list_contact_businesses: "crm.read",
   link_contact_to_business: "crm.write",
