@@ -5161,6 +5161,7 @@ export type Database = {
           created_at: string
           email: string
           id: string
+          token: string | null
           token_hash: string
           used_at: string | null
         }
@@ -5168,6 +5169,7 @@ export type Database = {
           created_at?: string
           email: string
           id?: string
+          token?: string | null
           token_hash: string
           used_at?: string | null
         }
@@ -5175,6 +5177,7 @@ export type Database = {
           created_at?: string
           email?: string
           id?: string
+          token?: string | null
           token_hash?: string
           used_at?: string | null
         }
