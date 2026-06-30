@@ -84,6 +84,9 @@ export function AdminSettingsHub() {
           <TabsTrigger value="pipes" className="gap-2">
             <Radio className="w-4 h-4" /> Platform Pipes
           </TabsTrigger>
+          <TabsTrigger value="email-domains" className="gap-2">
+            <Globe className="w-4 h-4" /> Email Domains
+          </TabsTrigger>
           <TabsTrigger value="comms" className="gap-2">
             <Bell className="w-4 h-4" /> Notifications
           </TabsTrigger>
