@@ -1,66 +1,91 @@
-# Reverse-Engineer-Problem Agent
+# Multi-Tenant Knowledge Base + Central Telemetry
 
-A specialist sub-agent that takes a client's stated problem, picks the right decomposition framework, and returns a structured root-cause map tied to Paige's existing skills/workflows. Paige core auto-delegates when she detects a problem statement.
+Three-tier RAG architecture: each tenant owns a private KB, inherits the Mogul global canon, and can optionally contribute docs back. Central telemetry collects **metadata only** — never document content — so MMA gets product intelligence without becoming the data custodian for tenant-private material.
 
-## 1. The sub-agent: `paige-problem-reverse-engineer`
+## Tiers
 
-- **Runtime:** `local` (per Doctrine §124 — needs MCP tool access to look up contact context, journey stage, recent communications, and existing skills).
-- **Stored in:** `paige_subagents` table, status `active`, owned by MMA tenant.
-- **Model:** `google/gemini-3-flash-preview`.
-- **Allowed MCP tools:** `get_contact`, `list_communication_log`, `list_journey_stages`, `list_skills`, `list_workflow_runs`. Read-only. No mutations.
-- **stopWhen:** `stepCountIs(50)`.
+```text
+┌─────────────────────────────────────────────┐
+│  Tier 1: GLOBAL CANON (Mogul-authored)      │  ← existing knowledge_base table
+│  Inherited by every tenant, read-only       │
+└─────────────────────────────────────────────┘
+                    │
+        ┌───────────┴───────────┐
+        ▼                       ▼
+┌──────────────────┐   ┌──────────────────┐
+│ Tier 2: TENANT A │   │ Tier 2: TENANT B │   ← new tenant_knowledge_docs
+│  Private KB      │   │  Private KB      │     (RLS tenant-scoped)
+│  RLS isolated    │   │  RLS isolated    │
+└──────────────────┘   └──────────────────┘
+        │                       │
+        │ (opt-in "Contribute   │
+        │  to Network" flag)    │
+        ▼                       ▼
+┌─────────────────────────────────────────────┐
+│  Tier 3: NETWORK CANDIDATES                 │  ← review queue, admin promotes
+│  Shared docs awaiting Mogul review          │     into Tier 1
+└─────────────────────────────────────────────┘
 
-### Hybrid framework picker (built into system prompt)
-
-Agent classifies the problem first, then applies the matching framework:
-
-| Problem signal | Framework | Why |
-|---|---|---|
-| Single recurring failure ("X keeps happening") | **5-Whys** | Linear causal chain |
-| Multi-factor / "everything is broken" | **Fishbone (Ishikawa)** | Categorizes into People / Process / Tools / Money / Time / External |
-| Strategic / opportunity-shaped ("how do I grow X") | **MECE tree** | Mutually exclusive, collectively exhaustive branches |
-| Funding/credit blocker | **Fishbone, Money branch first** | Domain-specific lens |
-| Unclear / mixed | **Fishbone → escalate** to 5-Whys on the heaviest branch |
-
-### Output contract (structured)
-
-```json
-{
-  "framework_used": "5-whys | fishbone | mece",
-  "problem_restated": "...",
-  "root_causes": [{ "cause": "...", "evidence": "...", "confidence": 0.0-1.0 }],
-  "recommended_actions": [
-    { "action": "...", "paige_skill_or_workflow": "skill_name|null", "owner": "client|coach|paige", "priority": "now|soon|later" }
-  ],
-  "open_questions": ["..."],
-  "escalate_to_human": false
-}
+        ── parallel, metadata-only ──
+┌─────────────────────────────────────────────┐
+│  CENTRAL TELEMETRY (kb_telemetry_*)         │  ← MMA-only, zero doc content
+│  Query patterns, gaps, coverage, feedback   │
+└─────────────────────────────────────────────┘
 ```
 
-## 2. Paige core auto-delegation
+## What changes
 
-Add a lightweight intent detector to the main Paige chat edge function (already streams via AI SDK). Two-layer:
+### 1. New tables (migration)
 
-1. **Cheap regex pre-filter** on user message: `/\b(problem|stuck|can.?t|won.?t|keeps|broken|failing|why (is|isn.?t|won.?t|can.?t)|help me figure out|not working)\b/i`.
-2. **Model-side tool exposure:** register `delegate_to_problem_reverse_engineer` as a tool on Paige core. When the regex matches OR the model decides, it calls the sub-agent and streams the structured result back inline as a collapsible "Root-Cause Analysis" card.
+- **`tenant_knowledge_docs`** — per-tenant source docs
+  - `tenant_id`, `title`, `content`, `summary`, `category`, `tags[]`
+  - `source` (upload | url | paste | sync)
+  - `share_to_network` boolean (opt-in contribution flag)
+  - `network_review_status` (none | pending | approved | rejected)
+  - `created_by`, timestamps
+- **`tenant_knowledge_chunks`** — embedded chunks (RAG retrieval)
+  - `tenant_id`, `doc_id`, `chunk_index`, `content`, `embedding vector(3072)`, `token_count`
+  - HNSW index on embedding (cosine)
+- **`kb_query_telemetry`** — every Paige KB retrieval, metadata only
+  - `tenant_id`, `query_hash` (sha256, not raw text), `query_intent_tags[]`, `result_count`, `top_similarity`, `had_global_match`, `had_tenant_match`, `feedback` (helpful | not_helpful | null), `created_at`
+- **`kb_coverage_signal`** — daily roll-up per tenant
+  - `tenant_id`, `topic_cluster`, `doc_count`, `query_count`, `unanswered_count`, `date`
 
-User experience: feels like Paige is thinking more carefully when you describe a problem — no extra clicks.
+All four scoped with RLS: tenants see only their own rows; platform owner sees aggregate views.
 
-## 3. Implementation order
+### 2. Embedding pipeline (edge function)
 
-1. Migration: insert the sub-agent row into `paige_subagents` (system prompt + allowed_tools + framework rules baked in).
-2. Edge function: extend `paige-mcp` with `invoke_problem_reverse_engineer` tool (wraps the sub-agent runtime).
-3. Paige core chat function: add regex pre-filter + `delegate_to_problem_reverse_engineer` tool registration.
-4. UI: add a `RootCauseCard` component that renders the structured output (framework badge, cause list, action checklist).
-5. Audit: every invocation logged to `paige_subagent_invocations` (table already exists).
+- `kb-ingest-doc` — chunks doc (~1000 chars, 150 overlap), embeds via `google/gemini-embedding-001` (3072-dim), inserts chunks scoped to `tenant_id`.
+- `kb-search` — embeds query, retrieves top-K from **(global_canon ∪ tenant_chunks)**, logs metadata-only telemetry row, returns merged ranked results to Paige.
+- `kb-promote-to-network` — admin-only; moves an approved tenant doc into `knowledge_base` (global canon) with attribution.
 
-## 4. Files touched
+### 3. UI
 
-- `supabase/functions/paige-mcp/index.ts` — add `invoke_problem_reverse_engineer` tool + scope entry.
-- `supabase/functions/<paige-chat>/index.ts` — add intent detector + delegation tool. (Will confirm exact filename on implementation.)
-- `src/components/chat/RootCauseCard.tsx` — new component.
-- One migration — seed the sub-agent row.
+- **Tenant admin → Knowledge Base** (new page under `/admin/knowledge`): upload, paste URL/text, manage own docs, toggle "Contribute to Network" per doc, see retrieval stats for their own corpus.
+- **Platform owner → Network Insights** (new page under `/admin/network-kb`): aggregate dashboards — top queries across tenants, coverage gaps, pending contributions queue, promote/reject controls.
 
-## 5. Open question
+### 4. Paige integration
 
-Should the Root-Cause card be **auto-expanded** in chat (visible immediately, more in-your-face) or **collapsed by default** with a one-line summary the user clicks to expand (cleaner)? Default I'd ship: collapsed with summary line — but tell me which you want.
+- `paige-ai-chat` retrieval call switches from current single-source RAG to merged tenant+global lookup. Telemetry write is fire-and-forget.
+
+## Compliance posture
+
+- Tenant doc content **never** leaves the tenant boundary unless `share_to_network=true` AND admin approval.
+- Telemetry stores `query_hash` + intent tags only — no raw queries, no doc text, no PII.
+- Updates `@security-memory` documenting the boundary.
+
+## Out of scope this pass
+
+- Per-doc ACLs inside a tenant (everyone in the tenant sees all tenant docs for v1).
+- File uploads beyond text/markdown/PDF (image OCR comes later).
+- Re-embedding existing `rag_documents` (different table, different purpose — left as-is).
+- Tenant-to-tenant sharing (always routes through Tier 3 review).
+
+## Build order
+
+1. Migration: 4 tables + RLS + GRANTs + indexes.
+2. Edge functions: `kb-ingest-doc`, `kb-search`, `kb-promote-to-network`.
+3. Tenant KB admin UI.
+4. Wire `paige-ai-chat` to merged retrieval.
+5. Network Insights dashboard for platform owner.
+6. Security memory update.
