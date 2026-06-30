@@ -11,15 +11,34 @@ import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [routing, setRouting] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => setUser(session?.user ?? null)
     );
     return () => subscription.unsubscribe();
   }, []);
+
+  const goToDashboard = async () => {
+    if (!user || routing) return;
+    setRouting(true);
+    // Don't let a slow/erroring RPC strand the user on the landing page.
+    // Race the resolver against a 4s timeout and fall back to /app, which
+    // itself re-resolves the correct destination via AppShell.
+    const route = await Promise.race<string>([
+      resolveLandingRoute(user.id).catch((e) => {
+        console.error("[Header] resolveLandingRoute failed:", e);
+        return "/app";
+      }),
+      new Promise<string>((resolve) => setTimeout(() => resolve("/app"), 4000)),
+    ]);
+    setRouting(false);
+    navigate(route);
+  };
+
 
   const navLinks = [
     { label: "How It Works", href: "#how-paige-works" },
