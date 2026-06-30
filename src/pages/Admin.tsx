@@ -57,6 +57,7 @@ const TenantKnowledgeAdmin = lazy(() => import("@/pages/admin/TenantKnowledgeAdm
 const NetworkKbInsights = lazy(() => import("@/pages/admin/NetworkKbInsights"));
 const SecurityCanaryAdmin = lazy(() => import("@/pages/admin/SecurityCanaryAdmin"));
 const LegalAdmin = lazy(() => import("@/pages/admin/LegalAdmin"));
+const AgreementsAdmin = lazy(() => import("@/pages/admin/AgreementsAdmin"));
 const AILearningOverview = lazy(() => import("@/components/admin/AILearningOverview").then(m => ({ default: m.AILearningOverview })));
 const CommunicationsAdmin = lazy(() => import("@/pages/admin/CommunicationsAdmin"));
 const BrokersAdmin = lazy(() => import("@/pages/admin/BrokersAdmin"));
@@ -326,6 +327,13 @@ const Admin = () => {
           <AdminOnly>
             <Suspense fallback={<SuspenseFallback />}>
               <LegalAdmin />
+            </Suspense>
+          </AdminOnly>
+        } />
+        <Route path="agreements" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <AgreementsAdmin />
             </Suspense>
           </AdminOnly>
         } />

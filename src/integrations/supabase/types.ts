@@ -282,6 +282,57 @@ export type Database = {
           },
         ]
       }
+      agreement_templates: {
+        Row: {
+          body_markdown: string
+          category: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          is_forkable: boolean
+          layer: string
+          merge_fields: Json
+          required_at_signup: boolean
+          slug: string
+          title: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          body_markdown: string
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_forkable?: boolean
+          layer: string
+          merge_fields?: Json
+          required_at_signup?: boolean
+          slug: string
+          title: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          body_markdown?: string
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_forkable?: boolean
+          layer?: string
+          merge_fields?: Json
+          required_at_signup?: boolean
+          slug?: string
+          title?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
       analytics_events: {
         Row: {
           created_at: string
@@ -11232,6 +11283,54 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_legal_profile: {
+        Row: {
+          created_at: string
+          entity_type: string | null
+          governing_law_state: string
+          id: string
+          legal_entity_name: string
+          product_name: string
+          registered_address: string | null
+          singleton: boolean
+          state_of_formation: string | null
+          support_email: string
+          support_phone: string | null
+          updated_at: string
+          website_url: string
+        }
+        Insert: {
+          created_at?: string
+          entity_type?: string | null
+          governing_law_state?: string
+          id?: string
+          legal_entity_name?: string
+          product_name?: string
+          registered_address?: string | null
+          singleton?: boolean
+          state_of_formation?: string | null
+          support_email?: string
+          support_phone?: string | null
+          updated_at?: string
+          website_url?: string
+        }
+        Update: {
+          created_at?: string
+          entity_type?: string | null
+          governing_law_state?: string
+          id?: string
+          legal_entity_name?: string
+          product_name?: string
+          registered_address?: string | null
+          singleton?: boolean
+          state_of_formation?: string | null
+          support_email?: string
+          support_phone?: string | null
+          updated_at?: string
+          website_url?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           active_tenant_id: string | null
@@ -12503,6 +12602,75 @@ export type Database = {
           },
         ]
       }
+      tenant_agreement_versions: {
+        Row: {
+          base_template_id: string | null
+          body_markdown: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          rendered_sha256: string | null
+          source_mode: string
+          template_slug: string
+          tenant_id: string
+          title: string
+          updated_at: string
+          uploaded_file_mime: string | null
+          uploaded_file_path: string | null
+          version: number
+        }
+        Insert: {
+          base_template_id?: string | null
+          body_markdown?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          rendered_sha256?: string | null
+          source_mode: string
+          template_slug: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+          uploaded_file_mime?: string | null
+          uploaded_file_path?: string | null
+          version?: number
+        }
+        Update: {
+          base_template_id?: string | null
+          body_markdown?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          rendered_sha256?: string | null
+          source_mode?: string
+          template_slug?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+          uploaded_file_mime?: string | null
+          uploaded_file_path?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_agreement_versions_base_template_id_fkey"
+            columns: ["base_template_id"]
+            isOneToOne: false
+            referencedRelation: "agreement_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_agreement_versions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_email_domains: {
         Row: {
           created_at: string
@@ -12739,6 +12907,71 @@ export type Database = {
             foreignKeyName: "tenant_knowledge_docs_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_legal_profile: {
+        Row: {
+          created_at: string
+          dba_name: string | null
+          ein_last_4: string | null
+          entity_type: string | null
+          governing_law_state: string | null
+          id: string
+          legal_business_name: string
+          logo_url: string | null
+          registered_address: string | null
+          signatory_name: string | null
+          signatory_title: string | null
+          state_of_formation: string | null
+          support_email: string | null
+          support_phone: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dba_name?: string | null
+          ein_last_4?: string | null
+          entity_type?: string | null
+          governing_law_state?: string | null
+          id?: string
+          legal_business_name: string
+          logo_url?: string | null
+          registered_address?: string | null
+          signatory_name?: string | null
+          signatory_title?: string | null
+          state_of_formation?: string | null
+          support_email?: string | null
+          support_phone?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dba_name?: string | null
+          ein_last_4?: string | null
+          entity_type?: string | null
+          governing_law_state?: string | null
+          id?: string
+          legal_business_name?: string
+          logo_url?: string | null
+          registered_address?: string | null
+          signatory_name?: string | null
+          signatory_title?: string | null
+          state_of_formation?: string | null
+          support_email?: string | null
+          support_phone?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_legal_profile_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },

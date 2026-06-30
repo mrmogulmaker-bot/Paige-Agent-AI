@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -144,6 +144,7 @@ const moreNavItems: MoreItem[] = [
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench, adminOnly: true },
   { label: "Security Canary", href: "/admin/security", icon: ShieldCheck, adminOnly: true },
   { label: "Legal Documents", href: "/admin/legal", icon: ShieldCheck, adminOnly: true },
+  { label: "Agreements", href: "/admin/agreements", icon: FileSignature, adminOnly: true },
   { label: "Settings", href: "/admin/settings", icon: Settings, adminOnly: true },
 ];
 
