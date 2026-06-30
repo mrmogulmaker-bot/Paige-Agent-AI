@@ -282,9 +282,8 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>Switch workspace</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSwitchToClientView}>
-                  <Eye className="w-4 h-4 mr-2" /> Client view
-                </DropdownMenuItem>
+                {/* Generic "Client view" removed — client view is only
+                    accessible per-client via Impersonate from a contact's portal. */}
                 {canAccessBrokerWorkspace && (
                   <DropdownMenuItem onClick={() => navigate("/broker/app")}>
                     <Building2 className="w-4 h-4 mr-2" /> Broker workspace
