@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store } from "lucide-react";
+import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe } from "lucide-react";
 import { Link } from "react-router-dom";
 import { UserManagement } from "@/components/dashboard/UserManagement";
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
 import { McpSessionsPanel } from "@/components/dashboard/admin/McpSessionsPanel";
 import { WorkspaceSettingsPanel } from "@/components/admin/WorkspaceSettingsPanel";
 import { StorefrontPanel } from "@/components/admin/StorefrontPanel";
+import { EmailDomainsPanel } from "@/components/admin/EmailDomainsPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
