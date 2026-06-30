@@ -154,23 +154,23 @@ export function ThreeBureauReport() {
 
           <CategoryRow 
             label="Name" 
-            values={["ANTONIO DANIEL", "ANTONIO DANIEL", "ANTONIO DANIEL"]} 
+            values={["SAMPLE CLIENT", "SAMPLE CLIENT", "SAMPLE CLIENT"]} 
           />
           <CategoryRow 
             label="Also Known As" 
-            values={["ANTONIO M DANIEL", "ANTONIO DANIEL", "ANTONIO DANIEL"]} 
+            values={["SAMPLE C CLIENT", "SAMPLE CLIENT", "SAMPLE CLIENT"]} 
           />
           <CategoryRow 
             label="Date of Birth" 
-            values={["1986", "1986", "1986"]} 
+            values={["19XX", "19XX", "19XX"]} 
           />
           <CategoryRow 
             label="Current Address" 
-            values={["13606 SANTA ROSA DR", "13606 SANTA ROSA DR", "13606 SANTA ROSA"]} 
+            values={["123 SAMPLE ST", "123 SAMPLE ST", "123 SAMPLE"]} 
           />
           <CategoryRow 
             label="Credit Report Date" 
-            values={["10/3/2025", "10/3/2025", "10/3/2025"]} 
+            values={["--/--/----", "--/--/----", "--/--/----"]} 
           />
         </div>
       </Card>
