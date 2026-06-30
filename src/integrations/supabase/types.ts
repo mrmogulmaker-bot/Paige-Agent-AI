@@ -13744,6 +13744,14 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      enforce_subagent_doctrine_124: {
+        Args: never
+        Returns: {
+          out_action: string
+          out_pattern: string
+          out_slug: string
+        }[]
+      }
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
