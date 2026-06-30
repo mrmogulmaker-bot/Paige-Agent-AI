@@ -154,15 +154,15 @@ Deno.serve(async (req) => {
       const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
       await sb.from("paige_subagent_invocations").insert({
         subagent_slug: "problem_reverse_engineer",
-        invoker_user_id: context?.user_id ?? null,
+        invoked_by: context?.user_id ?? null,
         contact_id: input.contact_id ?? null,
         input,
-        output_summary: {
+        output: {
           framework_used: parsed.framework_used,
           root_cause_count: parsed.root_causes?.length ?? 0,
           action_count: parsed.recommended_actions?.length ?? 0,
         },
-        status: "success",
+        status: "succeeded",
       });
     } catch { /* non-blocking */ }
 
