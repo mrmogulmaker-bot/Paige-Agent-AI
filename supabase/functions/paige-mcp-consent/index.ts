@@ -17,18 +17,35 @@ const SUPPORTED_SCOPES = new Set([
   "workflows.run",
   "btf.read", "btf.write",
   "admin.read", "admin.write", "admin.delete",
+  "platform.read", "platform.write",
 ]);
 
-// Scopes granted to any admin automatically (read+write across all surfaces, no destructive deletes).
-const ADMIN_AUTOGRANT = [
-  "crm.read", "crm.write",
+// Tenant Admin grant — operator power inside their tenant. Includes bulk
+// delete (crm.delete) because admins must be able to run the business.
+// Excludes admin.delete (permanent role removal, member suspension) and
+// platform.* (cross-tenant / infra).
+const TENANT_ADMIN_AUTOGRANT = [
+  "crm.read", "crm.write", "crm.delete",
   "workflows.run",
   "btf.read", "btf.write",
   "admin.read", "admin.write",
 ];
 
-// Platform owner additionally gets destructive delete scopes.
-const OWNER_AUTOGRANT = [...ADMIN_AUTOGRANT, "crm.delete", "admin.delete"];
+// Tenant Owner grant — everything an admin has PLUS permanent destructive
+// actions inside their tenant (remove coach role, suspend members, etc).
+// Still excludes platform.* — they cannot touch other tenants or platform infra.
+const TENANT_OWNER_AUTOGRANT = [
+  ...TENANT_ADMIN_AUTOGRANT,
+  "admin.delete",
+];
+
+// Platform Owner grant — full god mode. Cross-tenant ops, sub-agent forge,
+// MCP client registry, workflow registry, doctrine sweeps. Hardcoded to the
+// single platform owner in app_settings_owner.
+const PLATFORM_OWNER_AUTOGRANT = [
+  ...TENANT_OWNER_AUTOGRANT,
+  "platform.read", "platform.write",
+];
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -61,30 +78,60 @@ async function tryGetUser(authHeader: string) {
   return data.user ?? null;
 }
 
-async function computeGrantedScopes(userId: string, userEmail: string | null, requested: string[]) {
-  // Owner check
-  let isOwner = false;
-  const { data: ownerRow } = await admin.from("app_settings_owner").select("owner_email").limit(1).maybeSingle();
-  if (ownerRow?.owner_email && userEmail && ownerRow.owner_email.toLowerCase() === userEmail.toLowerCase()) {
-    isOwner = true;
-  }
-  // Admin check
-  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: userId, _role: "admin" });
+type Tier = "platform_owner" | "tenant_owner" | "tenant_admin" | null;
 
+async function computeGrantedScopes(userId: string, userEmail: string | null, requested: string[]) {
   const base = requested.filter((s) => SUPPORTED_SCOPES.has(s));
   let granted: string[] = base;
-  let elevated: "owner" | "admin" | null = null;
+  let tier: Tier = null;
+  let tenantName: string | null = null;
 
-  if (isOwner) {
-    granted = Array.from(new Set([...base, ...OWNER_AUTOGRANT]));
-    elevated = "owner";
-  } else if (isAdmin) {
-    // Admins get the full admin set, but never auto-grant destructive deletes.
-    const adminGrant = [...base.filter((s) => !s.endsWith(".delete")), ...ADMIN_AUTOGRANT];
-    granted = Array.from(new Set(adminGrant));
-    elevated = "admin";
+  // 1. Platform Owner — hardcoded global god account (app_settings_owner).
+  const { data: ownerRow } = await admin
+    .from("app_settings_owner").select("owner_email").limit(1).maybeSingle();
+  const isPlatformOwner = !!(ownerRow?.owner_email && userEmail &&
+    ownerRow.owner_email.toLowerCase() === userEmail.toLowerCase());
+
+  if (isPlatformOwner) {
+    granted = Array.from(new Set([...base, ...PLATFORM_OWNER_AUTOGRANT]));
+    tier = "platform_owner";
+    return { granted, tier, tenantName };
   }
-  return { granted, elevated };
+
+  // 2. Tenant context — pick the user's primary tenant + their role inside it.
+  const { data: tenantCtx } = await admin
+    .rpc("get_user_primary_tenant", { _user_id: userId }) as any;
+  const ctx = Array.isArray(tenantCtx) ? tenantCtx[0] : tenantCtx;
+  if (!ctx?.tenant_id) {
+    return { granted: base, tier: null, tenantName: null };
+  }
+  tenantName = ctx.tenant_name ?? null;
+
+  // 3. Tenant Owner — full operator power inside their tenant, incl. destructive
+  //    role removal. No platform.* scopes.
+  if (ctx.member_role === "owner") {
+    granted = Array.from(new Set([...base, ...TENANT_OWNER_AUTOGRANT]));
+    tier = "tenant_owner";
+    return { granted, tier, tenantName };
+  }
+
+  // 4. Tenant Admin — full operator power (incl. bulk delete) but cannot
+  //    permanently remove roles or touch platform infra.
+  if (ctx.member_role === "admin") {
+    const adminGrant = [
+      // Strip platform.* and admin.delete from explicit requests; admin-tier
+      // can never auto-grant or be auto-granted those.
+      ...base.filter((s) => !s.startsWith("platform.") && s !== "admin.delete"),
+      ...TENANT_ADMIN_AUTOGRANT,
+    ];
+    granted = Array.from(new Set(adminGrant));
+    tier = "tenant_admin";
+    return { granted, tier, tenantName };
+  }
+
+  // 5. Anyone else (coach, client) — only the scopes they explicitly requested
+  //    that they're already entitled to via RLS. No auto-elevation.
+  return { granted: base, tier: null, tenantName };
 }
 
 Deno.serve(async (req) => {
@@ -108,22 +155,27 @@ Deno.serve(async (req) => {
     const valid = requested.filter((s: string) => SUPPORTED_SCOPES.has(s));
     if (valid.length === 0) return json({ error: "invalid_scope" }, 400);
 
-    // Optionally elevate scopes for admin/owner users so the consent screen reflects
-    // the permissions they will actually receive.
+    // Optionally elevate scopes based on the user's tier so the consent screen
+    // reflects the permissions they will actually receive.
     let granted = valid;
-    let elevated: "owner" | "admin" | null = null;
+    let tier: Tier = null;
+    let tenantName: string | null = null;
     const user = await tryGetUser(authHeader);
     if (user) {
       const result = await computeGrantedScopes(user.id, user.email ?? null, valid);
       granted = result.granted;
-      elevated = result.elevated;
+      tier = result.tier;
+      tenantName = result.tenantName;
     }
 
     return json({
       client: { id: client.client_id, name: client.client_name, uri: client.client_uri },
       scopes: granted,
       requested_scopes: valid,
-      elevated,
+      tier,
+      tenant_name: tenantName,
+      // Back-compat for older McpAuthorize bundles still reading `elevated`.
+      elevated: tier === "platform_owner" ? "owner" : tier === "tenant_owner" ? "owner" : tier === "tenant_admin" ? "admin" : null,
       redirect_uri,
     });
   }

@@ -13933,6 +13933,14 @@ export type Database = {
         }[]
       }
       get_user_business_limit: { Args: { _user_id: string }; Returns: number }
+      get_user_primary_tenant: {
+        Args: { _user_id: string }
+        Returns: {
+          member_role: string
+          tenant_id: string
+          tenant_name: string
+        }[]
+      }
       has_any_role: {
         Args: { _roles: string[]; _user_id: string }
         Returns: boolean
@@ -13942,6 +13950,10 @@ export type Database = {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      has_tenant_role: {
+        Args: { _role: string; _tenant_id: string; _user_id: string }
         Returns: boolean
       }
       is_admin: { Args: { p_user_id: string }; Returns: boolean }
@@ -13959,6 +13971,10 @@ export type Database = {
       is_staff: { Args: { _user_id: string }; Returns: boolean }
       is_tenant_admin: { Args: { _tenant: string }; Returns: boolean }
       is_tenant_member: { Args: { _tenant: string }; Returns: boolean }
+      is_tenant_owner: {
+        Args: { _tenant_id?: string; _user_id: string }
+        Returns: boolean
+      }
       match_paige_memory: {
         Args: {
           _match_threshold?: number

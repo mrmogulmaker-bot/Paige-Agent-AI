@@ -3663,10 +3663,24 @@ app.options("/*", (c) => c.body(null, 204, CORS));
 // ---------- Phase 3: OAuth 2.1 + Dynamic Client Registration ----------
 const PUBLIC_ORIGIN = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/paige-mcp`;
 const APP_ORIGIN = Deno.env.get("PAIGE_APP_ORIGIN") ?? "https://paigeagent.ai";
-const SUPPORTED_SCOPES = ["crm.read", "crm.write", "crm.delete", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write", "admin.delete"] as const;
+// Scope tiers (least → most privileged):
+//   Tenant Admin  → crm.* + workflows.run + btf.* + admin.read/write (incl. bulk delete with audit)
+//   Tenant Owner  → all of the above + admin.delete (remove coach role, suspend members) + tenant billing/integrations
+//   Platform Owner → all of the above + platform.* (cross-tenant ops, doctrine, sub-agent forge, MCP registry)
+const SUPPORTED_SCOPES = [
+  "crm.read", "crm.write", "crm.delete",
+  "workflows.run",
+  "btf.read", "btf.write",
+  "admin.read", "admin.write", "admin.delete",
+  "platform.read", "platform.write",
+] as const;
 type Scope = (typeof SUPPORTED_SCOPES)[number];
 
-// Tool → required scope. Read tools need .read; mutating tools need .write (or .run for workflows).
+// Tool → required scope.
+//   *.read / *.write   → Tenant Admin grant (operator-tier work inside their tenant)
+//   crm.delete         → Tenant Admin grant (bulk delete with audit + dry-run, per owner directive)
+//   admin.delete       → Tenant Owner only (permanent role removal, member suspension)
+//   platform.*         → Platform Owner only (cross-tenant, doctrine, sub-agent forge, infra)
 const TOOL_SCOPE: Record<string, Scope> = {
   // CRM
   search_contacts: "crm.read", get_contact: "crm.read",
@@ -3682,12 +3696,12 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // BTF
   list_btf_clients: "btf.read", get_btf_workspace: "btf.read", list_btf_phase_items: "btf.read",
   update_btf_phase_item: "btf.write", list_btf_document_requests: "btf.read", send_btf_message: "btf.write",
-  // Admin
+  // Admin (operator)
   list_team_members: "admin.read", assign_coach: "admin.write", create_team_invitation: "admin.write",
   list_unassigned_queue: "admin.read", list_admin_notifications: "admin.read", create_admin_notification: "admin.write",
   // Email templates
   list_email_templates: "admin.read", upsert_email_template: "admin.write", send_btf_template_email: "btf.write",
-  // Batch #1 (Doctrine §119)
+  // Batch #1
   create_contact: "crm.write", update_lifecycle_stage: "crm.write",
   bulk_delete_contacts: "crm.delete",
   list_contact_businesses: "crm.read",
@@ -3696,44 +3710,41 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_signed_agreements: "btf.read", list_intake_submissions: "btf.read",
   list_payment_authorizations: "btf.read",
   resolve_sender_identity: "admin.read",
-  // Batch #2 (Doctrine §119) — observability + comms + invoicing
+  // Batch #2 — observability + comms + invoicing
   list_workflow_runs: "crm.read",
   cancel_workflow_run: "workflows.run",
-  register_workflow: "admin.write",
+  register_workflow: "platform.write", // touches workflow registry infra
   send_transactional_email: "crm.write",
   send_sms: "crm.write",
   create_invoice: "crm.write",
   send_invoice: "crm.write",
   // Coach Ops
   list_coaches: "admin.read",
-  add_coach_role: "admin.write",
-  remove_coach_role: "admin.delete",
+  add_coach_role: "admin.write",         // Tenant Admin can add
+  remove_coach_role: "admin.delete",     // Tenant Owner only (permanent role removal)
   update_coach_profile: "admin.write",
   bulk_assign_clients_to_coach: "admin.write",
   get_coach_performance: "admin.read",
-  // Pass 5: Orchestrator / sub-agents
+  // Sub-agents — runtime use vs. forge
   list_subagents: "crm.read",
   delegate_to_subagent: "workflows.run",
   get_subagent_history: "crm.read",
-  // Sub-Agent Factory (Section 18.5)
-  propose_subagent: "admin.write",
-  list_subagent_proposals: "admin.read",
-  propose_subagent: "admin.write",
-  list_subagent_proposals: "admin.read",
-  approve_subagent_proposal: "admin.write",
-  // Skills Registry (Doctrine §119)
+  propose_subagent: "platform.write",          // sub-agent forge = infra
+  list_subagent_proposals: "platform.read",
+  approve_subagent_proposal: "platform.write",
+  // Skills Registry
   list_skills: "crm.read",
   run_skill: "workflows.run",
   get_skill_run: "crm.read",
   verify_business: "crm.write",
-  // Batch #4 — Master Admin (MMA-only via MASTER_ONLY_TOOLS)
-  list_tenants: "admin.read",
-  create_tenant: "admin.write",
-  suspend_tenant: "admin.delete",
-  update_tenant_features: "admin.write",
-  get_platform_metrics: "admin.read",
-  broadcast_system_announcement: "admin.write",
-  // Batch #5 — Tenant Admin + Comms
+  // Batch #4 — Cross-tenant master admin (Platform Owner only)
+  list_tenants: "platform.read",
+  create_tenant: "platform.write",
+  suspend_tenant: "platform.write",
+  update_tenant_features: "platform.write",
+  get_platform_metrics: "platform.read",
+  broadcast_system_announcement: "platform.write",
+  // Batch #5 — Tenant Admin + Comms (operator-tier inside own tenant)
   update_tenant_branding: "admin.write",
   list_email_domains: "admin.read",
   add_email_domain: "admin.write",
