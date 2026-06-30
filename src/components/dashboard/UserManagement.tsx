@@ -91,6 +91,8 @@ export const UserManagement = () => {
     });
     setProfileOpen(true);
   };
+
+  const deleteUser = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
