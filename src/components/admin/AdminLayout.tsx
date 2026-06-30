@@ -206,9 +206,8 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
   return (
     <div className="min-h-dvh flex flex-col bg-background overflow-x-hidden">
-      {/* Impersonation banner — also shown inside /admin so staff get a visual
-          cue if they navigate back here while still viewing-as a client. */}
-      <AdminViewBanner />
+      {/* Banner intentionally omitted on /admin — it's redundant when already on
+          the admin dashboard. AppShell still renders it inside the client view. */}
       {/* Top bar — Pipedrive-style horizontal CRM nav */}
       <header className="sticky top-0 z-40 bg-primary text-primary-foreground border-b border-sidebar-border">
         {/* Row 1: brand + utilities */}
