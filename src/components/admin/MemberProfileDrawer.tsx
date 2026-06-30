@@ -59,6 +59,9 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(initialEdit);
+  const [actionPending, setActionPending] = useState<string | null>(null);
+  const [confirmWipe, setConfirmWipe] = useState(false);
+  const [confirmSignout, setConfirmSignout] = useState(false);
 
   useEffect(() => { setEditing(initialEdit); }, [initialEdit, member?.user_id]);
 
