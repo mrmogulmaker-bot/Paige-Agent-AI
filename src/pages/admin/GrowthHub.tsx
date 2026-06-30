@@ -13,13 +13,15 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { FileText, LayoutGrid, GitBranch, Inbox, Plug, Copy, ExternalLink, Plus } from "lucide-react";
+import { FileText, LayoutGrid, GitBranch, Inbox, Plug, Copy, ExternalLink, Plus, UserPlus, Check, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 type Page = { id: string; slug: string; title: string; status: string; updated_at: string };
 type Form = { id: string; slug: string; name: string; status: string; updated_at: string };
 type Funnel = { id: string; slug: string; name: string; status: string; updated_at: string };
-type Submission = { id: string; form_id: string; created_at: string; payload_json: any; source: string };
+type Submission = { id: string; form_id: string; created_at: string; payload_json: any; source: string; contact_id: string | null };
 type ExternalSource = { id: string; provider: string; label: string; webhook_token: string; active: boolean; last_seen_at: string | null };
+
 
 const PAGE_TEMPLATES = [
   { key: "btf-sales", label: "BUILD-to-FUND Sales Page", description: "Premium dark sales page with 3 phase cards + apply CTA." },
@@ -63,7 +65,7 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
         supabase.from("growth_pages").select("id,slug,title,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
         supabase.from("growth_forms").select("id,slug,name,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
         supabase.from("growth_funnels").select("id,slug,name,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
-        supabase.from("growth_form_submissions").select("id,form_id,created_at,payload_json,source").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).limit(50),
+        supabase.from("growth_form_submissions").select("id,form_id,created_at,payload_json,source,contact_id").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).limit(50),
         supabase.from("growth_external_sources").select("id,provider,label,webhook_token,active,last_seen_at").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }),
       ]);
       setPages((p.data ?? []) as Page[]);
@@ -201,19 +203,19 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
           ) : (
             <div className="space-y-2">
               {subs.map((s) => (
-                <Card key={s.id}>
-                  <CardContent className="p-3 text-xs">
-                    <div className="flex items-center justify-between mb-1">
-                      <Badge variant="outline" className="text-[10px]">{s.source}</Badge>
-                      <span className="text-muted-foreground">{new Date(s.created_at).toLocaleString()}</span>
-                    </div>
-                    <pre className="whitespace-pre-wrap break-words text-muted-foreground bg-muted/40 p-2 rounded">{JSON.stringify(s.payload_json, null, 2)}</pre>
-                  </CardContent>
-                </Card>
+                <SubmissionRow
+                  key={s.id}
+                  sub={s}
+                  tenantId={activeTenantId}
+                  onConverted={(contactId) => {
+                    setSubs((prev) => prev.map((x) => x.id === s.id ? { ...x, contact_id: contactId } : x));
+                  }}
+                />
               ))}
             </div>
           )}
         </TabsContent>
+
 
         <TabsContent value="integrations" className="space-y-4 mt-4">
           <SectionHeader title="External Builders" cta={
@@ -572,3 +574,108 @@ function formTemplateSchema(template: string): any {
     { key: "timeline", label: "Funding timeline", type: "select", options: ["Immediate","30 days","60-90 days","Just exploring"] },
   ]}]};
 }
+
+/**
+ * Submission card with one-click "Send to Contact" — upserts a `clients`
+ * row from the submission payload (by email) and links it back so the
+ * submission becomes visible on that contact's record.
+ */
+function SubmissionRow({
+  sub,
+  tenantId,
+  onConverted,
+}: {
+  sub: Submission;
+  tenantId: string | null;
+  onConverted: (contactId: string) => void;
+}) {
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const payload = (sub.payload_json ?? {}) as Record<string, any>;
+  const email = String(payload.email ?? "").trim().toLowerCase() || null;
+  const firstName = String(payload.first_name ?? payload.firstName ?? "").trim() || null;
+  const lastName = String(payload.last_name ?? payload.lastName ?? "").trim() || null;
+  const phone = String(payload.phone ?? "").trim() || null;
+  const entity = String(payload.business_name ?? payload.entity_name ?? "").trim() || null;
+
+  const sendToContact = async () => {
+    if (!tenantId) return toast.error("No active tenant");
+    if (!email) return toast.error("Submission has no email — can't create contact");
+    setBusy(true);
+    try {
+      const { data: existing } = await supabase
+        .from("clients")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .ilike("email", email)
+        .maybeSingle();
+
+      let contactId = existing?.id as string | undefined;
+      if (!contactId) {
+        const { data: inserted, error: insErr } = await supabase
+          .from("clients")
+          .insert({
+            tenant_id: tenantId,
+            first_name: firstName ?? "Unknown",
+            last_name: lastName ?? "",
+            email,
+            phone,
+            entity_name: entity,
+            source: "growth_form",
+            status: "lead",
+          } as any)
+          .select("id")
+          .single();
+        if (insErr) throw insErr;
+        contactId = inserted.id;
+      }
+
+      const { error: linkErr } = await supabase
+        .from("growth_form_submissions")
+        .update({ contact_id: contactId, processed: true, processed_at: new Date().toISOString() })
+        .eq("id", sub.id);
+      if (linkErr) throw linkErr;
+
+      toast.success(existing ? "Linked to existing contact" : "Contact created");
+      onConverted(contactId!);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to send to contact");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardContent className="p-3 text-xs space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-[10px]">{sub.source}</Badge>
+            {sub.contact_id && (
+              <Badge variant="secondary" className="text-[10px]">
+                <Check className="w-3 h-3 mr-1" /> Linked
+              </Badge>
+            )}
+            <span className="text-muted-foreground">{new Date(sub.created_at).toLocaleString()}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {sub.contact_id ? (
+              <Button size="sm" variant="ghost" onClick={() => navigate(`/admin/contacts/${sub.contact_id}`)}>
+                <ExternalLink className="w-3 h-3 mr-1" /> Open contact
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={sendToContact} disabled={busy || !email}>
+                {busy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <UserPlus className="w-3 h-3 mr-1" />}
+                Send to Contact
+              </Button>
+            )}
+          </div>
+        </div>
+        <pre className="whitespace-pre-wrap break-words text-muted-foreground bg-muted/40 p-2 rounded">
+          {JSON.stringify(sub.payload_json, null, 2)}
+        </pre>
+      </CardContent>
+    </Card>
+  );
+}
+

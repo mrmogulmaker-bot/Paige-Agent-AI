@@ -7,11 +7,13 @@ import { lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Megaphone, LayoutGrid, GitBranch, FileText, Inbox, Plug } from "lucide-react";
+import { CampaignsOverviewStats } from "@/components/admin/campaigns/CampaignsOverviewStats";
 
 const CampaignsOverview = lazy(() => import("@/pages/admin/CampaignsAdmin"));
 const GrowthHub = lazy(() => import("@/pages/admin/GrowthHub"));
 
 const GROWTH_TABS = new Set(["pages", "funnels", "forms", "submissions", "integrations"]);
+
 
 export default function CampaignsHub() {
   const [params, setParams] = useSearchParams();
@@ -47,11 +49,13 @@ export default function CampaignsHub() {
           <TabsTrigger value="integrations"><Plug className="w-4 h-4 mr-1.5" />External Builders</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="mt-4">
+        <TabsContent value="overview" className="mt-4 space-y-4">
+          <CampaignsOverviewStats />
           <Suspense fallback={<div className="text-sm text-muted-foreground">Loading campaigns…</div>}>
             <CampaignsOverview />
           </Suspense>
         </TabsContent>
+
 
         {/* Growth tabs share GrowthHub's existing UI, which reads the same ?tab= param. */}
         {isGrowth && (

@@ -19,9 +19,13 @@ import { FundingReadinessLens } from "@/components/funding-lens/FundingReadiness
 import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog";
 import { QuickLogMenu } from "@/components/admin/contacts/QuickLogMenu";
 import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
+import { ContactCampaignAttribution } from "@/components/admin/contacts/ContactCampaignAttribution";
+
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { CATEGORY_LABEL, RISK_COLOR, type ApprovalCategory } from "@/lib/approvals";
+
 
 type Client = {
   id: string;
@@ -56,6 +60,8 @@ export default function ContactDetail() {
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const { items: contactApprovals } = usePendingApprovals({ contactId: id });
+  const { isAdmin } = useUserRoles();
+
 
   useEffect(() => { if (id) load(id); }, [id]);
 
@@ -202,7 +208,7 @@ export default function ContactDetail() {
         <Button variant="outline" size="sm" onClick={() => navigate(`/admin/contacts/${client.id}/journey`)}>
           <Activity className="h-4 w-4 mr-1" /> Member Journey
         </Button>
-        {btfEnabled && (
+        {btfEnabled && isAdmin && (
           <>
             <Button variant="outline" size="sm" onClick={sendBtfInvite}>
               <Send className="h-4 w-4 mr-1" /> Resend BTF Invite
@@ -214,6 +220,7 @@ export default function ContactDetail() {
             )}
           </>
         )}
+
         {client.linked_user_id && (
           <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/user/${client.linked_user_id}`)}>
             <ExternalLink className="h-4 w-4 mr-1" /> Full Client File
@@ -227,6 +234,8 @@ export default function ContactDetail() {
       </div>
 
       <DuplicatesBanner contactId={client.id} email={client.email} phone={client.phone} />
+      <ContactCampaignAttribution contactId={client.id} />
+
 
 
 
