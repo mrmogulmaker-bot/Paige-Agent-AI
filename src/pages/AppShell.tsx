@@ -103,11 +103,17 @@ const AppShell = () => {
   useEffect(() => {
     if (DEV_MODE) return;
 
+    let settled = false;
+    const markSettled = () => {
+      settled = true;
+      setIsLoading(false);
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, nextSession) => {
         setSession(nextSession);
         setUser(nextSession?.user ?? null);
-        setIsLoading(false);
+        markSettled();
 
         if (!nextSession) {
           navigate("/auth", { replace: true });
@@ -115,18 +121,37 @@ const AppShell = () => {
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-      setSession(currentSession);
-      setUser(currentSession?.user ?? null);
-      setIsLoading(false);
+    supabase.auth.getSession()
+      .then(({ data: { session: currentSession } }) => {
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+        markSettled();
 
-      if (!currentSession) {
-        navigate("/auth", { replace: true });
+        if (!currentSession) {
+          navigate("/auth", { replace: true });
+        }
+      })
+      .catch((err) => {
+        console.error("[AppShell] getSession failed:", err);
+        markSettled();
+      });
+
+    // Safety net: if neither getSession nor onAuthStateChange has resolved
+    // in 5s (network stall, paused tab, stale lock), clear the loading gate
+    // so the user can act instead of staring at "Loading..." forever.
+    const timeoutId = window.setTimeout(() => {
+      if (!settled) {
+        console.warn("[AppShell] auth hydration timed out after 5s — releasing loading gate");
+        setIsLoading(false);
       }
-    });
+    }, 5000);
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      window.clearTimeout(timeoutId);
+    };
   }, [navigate]);
+
 
   // Module-level scope so non-React data hooks (useTasks, useBuildScore,
   // useNotifications, etc.) honor "View as Client" without per-call plumbing.
