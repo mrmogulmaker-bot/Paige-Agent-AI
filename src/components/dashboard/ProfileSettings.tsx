@@ -124,7 +124,7 @@ export const ProfileSettings = () => {
   const [naics, setNaics] = useState("");
 
   useEffect(() => {
-    loadProfileData();
+    loadProfileData().then(() => markSynced(false));
   }, []);
 
   // Realtime: pull in profile + business edits made elsewhere (admin drawer,
@@ -141,7 +141,7 @@ export const ProfileSettings = () => {
         scheduled = null;
         if (cancelled) return;
         if (isEditingPersonal || isEditingSSN || isEditingDOB) return;
-        loadProfileData();
+        loadProfileData().then(() => markSynced(true));
       }, 400);
     };
 
