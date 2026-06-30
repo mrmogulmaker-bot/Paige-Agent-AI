@@ -143,6 +143,29 @@ export function ContactPortalPanel({
     }
   };
 
+  const runAccountAction = async (action: "signout_all" | "password_reset") => {
+    if (!localLinkedUserId) return;
+    const key = action === "signout_all" ? "signout" : "reset";
+    setBusy(key);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-account-actions", {
+        body: { action, user_id: localLinkedUserId },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(
+        action === "signout_all"
+          ? "Client signed out of all devices"
+          : "Password reset email sent",
+      );
+      if (action === "signout_all") setConfirmSignout(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Action failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const latestInvite = invites[0];
   const inviteStatus = latestInvite
     ? latestInvite.used_at ? "accepted"
