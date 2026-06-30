@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -34,6 +34,7 @@ const crmNavItems = [
   { label: "Approvals", href: "/admin/approvals", icon: ClipboardCheck },
   { label: "Workflows", href: "/admin/workflows", icon: Workflow },
   { label: "Campaigns", href: "/admin/campaigns", icon: Workflow },
+  { label: "Growth", href: "/admin/growth", icon: Rocket },
   { label: "Coaches", href: "/admin/coaches", icon: UserCog },
   { label: "Reports", href: "/admin/analytics", icon: TrendingUp },
 ];
