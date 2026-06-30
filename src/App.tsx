@@ -217,6 +217,7 @@ const App = () => (
               <Route path="tasks" element={<PageSuspense><WorkspaceTasks /></PageSuspense>} />
               <Route path="funding-readiness" element={<PageSuspense><WorkspaceFundingReadiness /></PageSuspense>} />
               <Route path="approvals" element={<PageSuspense><WorkspaceApprovals /></PageSuspense>} />
+              <Route path="connect" element={<PageSuspense><WorkspaceConnect /></PageSuspense>} />
             </Route>
 
             {/* BTF Onboarding Wizard — admin-triggered, magic-link entry */}
