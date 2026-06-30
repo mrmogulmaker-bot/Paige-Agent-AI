@@ -2897,6 +2897,7 @@ export type Database = {
           onboarding_stage: string | null
           onboarding_started_at: string | null
           phone: string | null
+          primary_business_id: string | null
           primary_offer: string | null
           source: string | null
           state: string | null
@@ -2942,6 +2943,7 @@ export type Database = {
           onboarding_stage?: string | null
           onboarding_started_at?: string | null
           phone?: string | null
+          primary_business_id?: string | null
           primary_offer?: string | null
           source?: string | null
           state?: string | null
@@ -2987,6 +2989,7 @@ export type Database = {
           onboarding_stage?: string | null
           onboarding_started_at?: string | null
           phone?: string | null
+          primary_business_id?: string | null
           primary_offer?: string | null
           source?: string | null
           state?: string | null
@@ -3006,6 +3009,13 @@ export type Database = {
             columns: ["journey_stage_id"]
             isOneToOne: false
             referencedRelation: "paige_journey_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_primary_business_id_fkey"
+            columns: ["primary_business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
             referencedColumns: ["id"]
           },
           {
