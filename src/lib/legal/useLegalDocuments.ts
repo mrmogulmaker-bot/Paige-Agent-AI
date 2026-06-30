@@ -114,7 +114,7 @@ export async function recordAcceptances(
     document_slug: it.slug,
     document_version: it.version,
     user_agent: userAgent,
-    context: it.context ?? {},
+    context: (it.context ?? {}) as any,
   }));
   const { error } = await supabase.from("legal_acceptances").insert(rows);
   return { error };
