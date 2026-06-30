@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/resizable";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
+import { RequiredConsentsGate } from "@/components/legal/RequiredConsentsGate";
 
 // Map /app sub-routes to canonical feature names emitted as `feature_visit`.
 function routeToFeatureName(pathname: string): string | null {
@@ -165,6 +166,7 @@ const AppShell = () => {
   if (isMobile) {
     return (
       <>
+        <RequiredConsentsGate userId={activeUser.id} />
         <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
         <AdminViewBanner />
         <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
