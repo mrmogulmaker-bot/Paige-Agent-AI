@@ -98,14 +98,26 @@ export function WorkspaceConnectPanel() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="w-4 h-4" /> Connect your AI assistant
+            {showBrand && brand?.brand_logo_url ? (
+              <img
+                src={brand.brand_logo_url}
+                alt={brandName}
+                className="w-5 h-5 rounded object-contain"
+              />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
+            {showBrand
+              ? `Connect your AI assistant to ${brandName}`
+              : "Connect your AI assistant"}
           </CardTitle>
           <CardDescription>
-            Plug your AI assistant (Claude, ChatGPT, Cursor, etc.) into your
-            Build to Fund workspace using the Model Context Protocol. Once
-            connected, you can talk to your assistant from anywhere and it can
-            update <strong>your own profile</strong>, log progress, search
-            lender products, and message your coach — all scoped to{" "}
+            Plug your AI assistant (Claude, ChatGPT, Cursor, etc.) into
+            {showBrand ? ` your ${brandName} workspace` : " your workspace"}{" "}
+            using the Model Context Protocol. Once connected, you can talk to
+            your assistant from anywhere and it can update{" "}
+            <strong>your own profile</strong>, log progress, search lender
+            products, and message your coach — all scoped to{" "}
             <strong>your account only</strong>.
           </CardDescription>
         </CardHeader>
