@@ -394,54 +394,15 @@ export default function ContactDetail() {
         </TabsContent>
 
         <TabsContent value="tasks">
-          <Card><CardContent className="p-4">
-            {tasks.length === 0 ? <EmptyMsg msg="No tasks for this contact." /> : (
-              <div className="space-y-2">
-                {tasks.map((t: any) => (
-                  <div key={t.id} className="flex items-start justify-between text-sm border border-border rounded p-3">
-                    <div>
-                      <div className="font-medium">{t.title}</div>
-                      {t.description && <div className="text-muted-foreground">{t.description}</div>}
-                    </div>
-                    <Badge variant="outline" className="capitalize shrink-0 ml-2">{t.status}</Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent></Card>
+          <ContactTasksPanel contactId={client.id} linkedUserId={client.linked_user_id} />
         </TabsContent>
 
         <TabsContent value="notes">
-          <Card><CardContent className="p-4">
-            {notes.length === 0 ? <EmptyMsg msg="No saved memory yet — Paige will write here as she learns." /> : (
-              <div className="space-y-2">
-                {notes.map((n: any) => (
-                  <div key={n.id} className="text-sm border border-border rounded p-3">
-                    <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{n.memory_type}</div>
-                    <div>{n.content}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent></Card>
+          <ContactNotesPanel contactId={client.id} tenantId={(client as any).tenant_id ?? null} />
         </TabsContent>
 
         <TabsContent value="files">
-          <Card><CardContent className="p-4">
-            {files.length === 0 ? <EmptyMsg msg="No documents uploaded." /> : (
-              <div className="space-y-2">
-                {files.map((f: any) => (
-                  <div key={f.id} className="flex items-center justify-between text-sm border border-border rounded p-3">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="truncate">{f.file_name}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground shrink-0 ml-2">{f.document_type || "file"}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent></Card>
+          <ContactFilesPanel contactId={client.id} tenantId={(client as any).tenant_id ?? null} />
         </TabsContent>
 
         <TabsContent value="business">
@@ -453,6 +414,15 @@ export default function ContactDetail() {
         </TabsContent>
 
         <TabsContent value="funding-lens"><FundingReadinessLens contactId={client.id} mode="admin" /></TabsContent>
+
+        <TabsContent value="portal">
+          <ContactPortalPanel
+            contactId={client.id}
+            email={client.email}
+            linkedUserId={client.linked_user_id}
+          />
+        </TabsContent>
+
 
         <TabsContent value="approvals">
           <Card><CardContent className="p-4">
