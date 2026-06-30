@@ -89,6 +89,7 @@ export default function PublicSignup() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [commsConsent, setCommsConsent] = useState<CommsConsentState>(EMPTY_COMMS_CONSENT);
 
   const [step, setStep] = useState(0);
   const [data, setData] = useState<WizardData>(() => {
