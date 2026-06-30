@@ -19,6 +19,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle, Link2, Unlink, LogOut, ShieldAlert, Bell, ShieldOff } from "lucide-react";
+import { LiveSyncIndicator } from "@/components/ui/LiveSyncIndicator";
 import { DataPrivacyPanel } from "@/components/dashboard/DataPrivacyPanel";
 import { NotificationsSettings } from "@/components/dashboard/NotificationsSettings";
 import { lovable } from "@/integrations/lovable/index";
@@ -84,6 +85,18 @@ export const ProfileSettings = () => {
   const { toast } = useToast();
   const { mode, setMode, isCoachOrAdmin } = useDashboardMode();
 
+  // Realtime sync indicator state
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [justSynced, setJustSynced] = useState(false);
+  const markSynced = (fromRealtime: boolean) => {
+    setLastSyncAt(new Date());
+    if (fromRealtime) {
+      setJustSynced(true);
+      setTimeout(() => setJustSynced(false), 1500);
+      toast({ title: "Profile updated", description: "Synced from another session." });
+    }
+  };
+
   // Personal Info
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -111,7 +124,7 @@ export const ProfileSettings = () => {
   const [naics, setNaics] = useState("");
 
   useEffect(() => {
-    loadProfileData();
+    loadProfileData().then(() => markSynced(false));
   }, []);
 
   // Realtime: pull in profile + business edits made elsewhere (admin drawer,
@@ -128,7 +141,7 @@ export const ProfileSettings = () => {
         scheduled = null;
         if (cancelled) return;
         if (isEditingPersonal || isEditingSSN || isEditingDOB) return;
-        loadProfileData();
+        loadProfileData().then(() => markSynced(true));
       }, 400);
     };
 
@@ -370,9 +383,12 @@ export const ProfileSettings = () => {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-4xl font-bold mb-2">Profile Settings</h1>
-        <p className="text-muted-foreground">Manage your personal and business information</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-4xl font-bold mb-2">Profile Settings</h1>
+          <p className="text-muted-foreground">Manage your personal and business information</p>
+        </div>
+        <LiveSyncIndicator lastUpdatedAt={lastSyncAt} justUpdated={justSynced} className="mt-2" />
       </div>
 
       <Tabs defaultValue="personal" className="w-full">

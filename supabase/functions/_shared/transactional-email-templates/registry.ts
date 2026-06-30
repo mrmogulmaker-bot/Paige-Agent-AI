@@ -38,6 +38,7 @@ import { template as brokerTeamInvitation } from './broker-team-invitation.tsx'
 import { template as betaLaunchWelcome } from './beta-launch-welcome.tsx'
 import { template as btfWelcomeInvite } from './btf-welcome-invite.tsx'
 import { template as approvalNotification } from './approval-notification.tsx'
+import { template as securityCanaryRegression } from './security-canary-regression.tsx'
 
 export const TEMPLATES: Record<string, TemplateEntry> = {
   'role-invitation': roleInvitation,
@@ -69,4 +70,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'beta-launch-welcome': betaLaunchWelcome,
   'btf-welcome-invite': btfWelcomeInvite,
   'approval-notification': approvalNotification,
+  'security-canary-regression': securityCanaryRegression,
 }

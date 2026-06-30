@@ -25,6 +25,8 @@ import {
   Coins,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client"; // ADJUST-IF-NEEDED
+import { LiveSyncIndicator } from "@/components/ui/LiveSyncIndicator";
+import { toast } from "sonner";
 import {
   fetchMyAffiliateStats,
   fetchMyRecentConversions,
@@ -49,6 +51,8 @@ export default function MyReferralsPanel() {
   const [copied, setCopied] = useState(false);
 
   const [reloadTick, setReloadTick] = useState(0);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [justSynced, setJustSynced] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +65,10 @@ export default function MyReferralsPanel() {
       if (scheduled) return;
       scheduled = setTimeout(() => {
         scheduled = null;
-        if (!cancelled) setReloadTick((t) => t + 1);
+        if (!cancelled) {
+          toast("Referrals updated", { description: "Synced new activity." });
+          setReloadTick((t) => t + 1);
+        }
       }, 400);
     };
 
@@ -99,7 +106,14 @@ export default function MyReferralsPanel() {
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setLastSyncAt(new Date());
+          if (reloadTick > 0) {
+            setJustSynced(true);
+            setTimeout(() => setJustSynced(false), 1500);
+          }
+        }
       }
     }
     void load();
@@ -187,7 +201,10 @@ export default function MyReferralsPanel() {
             {stats.tier_name} · {formatPercent(stats.commission_rate)} commission
           </p>
         </div>
-        <Badge className="bg-[#1a2840] text-white">{stats.referral_code}</Badge>
+        <div className="flex flex-col items-end gap-1.5">
+          <Badge className="bg-[#1a2840] text-white">{stats.referral_code}</Badge>
+          <LiveSyncIndicator lastUpdatedAt={lastSyncAt} justUpdated={justSynced} />
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="flex flex-col gap-2 md:flex-row">
