@@ -66,6 +66,8 @@ export default function ContactDetail() {
   const [businesses, setBusinesses] = useState<Array<{ id: string; legal_name: string | null; dba: string | null; entity_type: string | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { items: contactApprovals } = usePendingApprovals({ contactId: id });
   const { isAdmin } = useUserRoles();
 
