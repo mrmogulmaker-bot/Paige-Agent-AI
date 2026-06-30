@@ -17,7 +17,7 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const admin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify caller is admin
+    // Verify caller
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No authorization header");
 
@@ -25,74 +25,95 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: { user: caller }, error: authErr } = await admin.auth.getUser(token);
     if (authErr || !caller) throw new Error("Unauthorized");
 
-    const { data: callerRole } = await admin
+    // Accept admin OR super_admin (super_admin is the platform owner tier)
+    const { data: callerRoles } = await admin
       .from("user_roles")
       .select("role")
-      .eq("user_id", caller.id)
-      .eq("role", "admin")
-      .single();
+      .eq("user_id", caller.id);
 
-    if (!callerRole) throw new Error("Admin privileges required");
+    const roleSet = new Set((callerRoles ?? []).map((r: any) => r.role));
+    const isSuperAdmin = roleSet.has("super_admin");
+    if (!isSuperAdmin && !roleSet.has("admin")) {
+      throw new Error("Admin privileges required");
+    }
 
-    // Accept both `user_id` (snake) and `userId` (camel) — clients drifted.
     const body = await req.json();
     const user_id: string | undefined = body?.user_id ?? body?.userId;
+    const keepContact: boolean = body?.keep_contact !== false; // default: keep clients row
     if (!user_id || typeof user_id !== "string") throw new Error("Missing user_id");
 
-    // Prevent self-deletion
     if (user_id === caller.id) throw new Error("Cannot delete your own account");
 
-    // Check if target is the platform owner
+    // Protect platform owner
     const { data: ownerRow } = await admin
       .from("app_settings_owner")
       .select("owner_email")
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (ownerRow) {
       const { data: targetUser } = await admin.auth.admin.getUserById(user_id);
-      if (targetUser?.user?.email === ownerRow.owner_email) {
+      if (targetUser?.user?.email && ownerRow.owner_email &&
+          targetUser.user.email.toLowerCase() === ownerRow.owner_email.toLowerCase()) {
         throw new Error("Cannot delete the platform owner");
       }
     }
 
-    // Clean up related data in order
-    const cleanups = [
-      admin.from("user_roles").delete().eq("user_id", user_id),
-      admin.from("profiles").delete().eq("user_id", user_id),
-      admin.from("user_subscriptions").delete().eq("user_id", user_id),
-      admin.from("user_usage").delete().eq("user_id", user_id),
-      admin.from("chat_messages").delete().eq("user_id", user_id),
-      admin.from("credit_accounts").delete().eq("user_id", user_id),
-      admin.from("credit_negative_items").delete().eq("user_id", user_id),
-      admin.from("credit_inquiries").delete().eq("user_id", user_id),
-      admin.from("disputes").delete().eq("user_id", user_id),
-      admin.from("dispute_letters").delete().eq("user_id", user_id),
-      admin.from("dispute_outcomes").delete().eq("user_id", user_id),
-      admin.from("credit_factor_scores").delete().eq("user_id", user_id),
-      admin.from("credit_report_personal_info").delete().eq("user_id", user_id),
-      admin.from("tasks").delete().eq("user_id", user_id),
-      admin.from("documents").delete().eq("user_id", user_id),
-      admin.from("consent_events").delete().eq("user_id", user_id),
+    const errors: Array<{ step: string; error: string }> = [];
+    const track = async (step: string, p: Promise<any>) => {
+      try {
+        const { error } = await p;
+        if (error) errors.push({ step, error: error.message });
+      } catch (e: any) {
+        errors.push({ step, error: e?.message || String(e) });
+      }
+    };
+
+    // Unlink relationships first (preserves business records owned by the user
+    // in CRM form). If keepContact=true the clients row survives, just unlinked.
+    if (keepContact) {
+      await track("unlink clients.linked_user_id",
+        admin.from("clients").update({ linked_user_id: null }).eq("linked_user_id", user_id));
+    } else {
+      await track("delete clients",
+        admin.from("clients").delete().eq("linked_user_id", user_id));
+    }
+    await track("unlink coach assignments",
+      admin.from("clients").update({ assigned_coach_user_id: null }).eq("assigned_coach_user_id", user_id));
+
+    // Per-user owned rows we want to remove
+    const owned = [
+      "user_roles", "profiles", "user_subscriptions", "user_usage",
+      "chat_messages", "credit_accounts", "credit_negative_items",
+      "credit_inquiries", "disputes", "dispute_letters", "dispute_outcomes",
+      "credit_factor_scores", "credit_report_personal_info",
+      "credit_report_uploads", "credit_alerts", "credit_predictions",
+      "credit_utilization_snapshots", "tasks", "documents", "consent_events",
+      "notifications", "notification_preferences", "push_subscriptions",
+      "push_notification_preferences", "push_notification_log",
+      "legal_acceptances", "client_goals", "client_memory", "client_notes",
+      "communication_preferences", "tenant_members", "coach_clients",
+      "broker_profiles", "broker_team_members", "affiliate_profiles",
     ];
+    for (const t of owned) {
+      await track(`delete ${t}`, admin.from(t).delete().eq("user_id", user_id));
+    }
 
-    await Promise.allSettled(cleanups);
-
-    // Delete the auth user
+    // Delete auth user
     const { error: deleteErr } = await admin.auth.admin.deleteUser(user_id);
-    if (deleteErr) throw deleteErr;
+    if (deleteErr) throw new Error(`Auth delete failed: ${deleteErr.message}. Cleanup errors: ${JSON.stringify(errors)}`);
 
-    // Audit log
+    // Audit
     await admin.from("audit_logs").insert({
       user_id: caller.id,
       entity: "user",
       action: "admin_delete_user",
       entity_id: user_id,
-      data: { deleted_by: caller.id },
+      data: { deleted_by: caller.id, keep_contact: keepContact, cleanup_errors: errors },
     });
 
     return new Response(
-      JSON.stringify({ success: true }),
+      JSON.stringify({ success: true, cleanup_errors: errors }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error: any) {
