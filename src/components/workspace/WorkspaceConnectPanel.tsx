@@ -68,7 +68,8 @@ export function WorkspaceConnectPanel() {
     ]);
     if (tokensRes.error) toast.error(tokensRes.error.message);
     setTokens((tokensRes.data ?? []) as Token[]);
-    const row = Array.isArray(brandRes.data) ? brandRes.data[0] : null;
+    const brandData = brandRes.data as unknown as Brand[] | null;
+    const row = Array.isArray(brandData) && brandData.length > 0 ? brandData[0] : null;
     setBrand((row as Brand) ?? null);
     setLoading(false);
   }
