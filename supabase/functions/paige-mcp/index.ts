@@ -1482,6 +1482,7 @@ mcp.tool("create_contact", {
     const tenant_id = await resolveTenantId(args.tenant_id ?? null);
     // Resolve created_by: prefer the calling user, else fall back to the
     // tenant owner so MCP/platform callers don't trip the NOT NULL constraint.
+    const actor = currentActor();
     let createdBy: string | null = actor.user_id ?? null;
     if (!createdBy && tenant_id) {
       const { data: t } = await admin
