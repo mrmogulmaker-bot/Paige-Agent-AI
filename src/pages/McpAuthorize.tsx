@@ -9,11 +9,13 @@ import { Loader2, ShieldCheck, ShieldAlert } from "lucide-react";
 const SCOPE_LABELS: Record<string, { title: string; detail: string }> = {
   "crm.read": { title: "Read CRM data", detail: "View contacts, deals, and tasks." },
   "crm.write": { title: "Edit CRM data", detail: "Update contacts, move deals, create tasks and notes." },
+  "crm.delete": { title: "Delete CRM records", detail: "Bulk-delete contacts and remove tasks. Owner-only." },
   "workflows.run": { title: "Run workflows", detail: "Trigger automations and decide pending approvals." },
   "btf.read": { title: "Read BTF workspaces", detail: "View client phase progress and documents." },
   "btf.write": { title: "Update BTF workspaces", detail: "Mark phase items complete, send client messages." },
   "admin.read": { title: "Read admin data", detail: "View team members, queues, and admin notifications." },
   "admin.write": { title: "Make admin changes", detail: "Assign coaches, send team invitations, post notifications." },
+  "admin.delete": { title: "Destructive admin actions", detail: "Suspend tenants, remove coach roles. Owner-only." },
 };
 
 export default function McpAuthorize() {
