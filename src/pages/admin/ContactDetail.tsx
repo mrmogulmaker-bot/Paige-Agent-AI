@@ -83,16 +83,18 @@ export default function ContactDetail() {
       }
 
       if (c.linked_user_id) {
-        const [actRes, taskRes, noteRes, fileRes] = await Promise.all([
+        const [actRes, taskRes, noteRes, fileRes, bizRes] = await Promise.all([
           supabase.from("communication_log").select("*").eq("user_id", c.linked_user_id).order("created_at", { ascending: false }).limit(50),
           supabase.from("tasks").select("*").eq("user_id", c.linked_user_id).order("created_at", { ascending: false }).limit(50),
           supabase.from("client_memory").select("*").eq("client_user_id", c.linked_user_id).eq("is_active", true).order("created_at", { ascending: false }).limit(50),
           supabase.from("documents").select("*").eq("user_id", c.linked_user_id).order("uploaded_at", { ascending: false }).limit(50),
+          supabase.from("businesses").select("id, legal_name, dba, entity_type").eq("owner_user_id", c.linked_user_id).order("created_at", { ascending: false }),
         ]);
         setActivity(actRes.data || []);
         setTasks(taskRes.data || []);
         setNotes(noteRes.data || []);
         setFiles(fileRes.data || []);
+        setBusinesses((bizRes.data as any) || []);
       } else {
         const [noteRes, fileRes] = await Promise.all([
           supabase.from("client_memory").select("*").eq("client_id", clientId).eq("is_active", true).order("created_at", { ascending: false }).limit(50),
@@ -100,6 +102,7 @@ export default function ContactDetail() {
         ]);
         setNotes(noteRes.data || []);
         setFiles(fileRes.data || []);
+        setBusinesses([]);
       }
     } catch (e: any) {
       toast.error(e.message || "Failed to load contact");
