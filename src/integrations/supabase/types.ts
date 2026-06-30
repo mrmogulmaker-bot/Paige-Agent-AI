@@ -14256,6 +14256,10 @@ export type Database = {
         Args: { _client_ids: string[]; _coach: string }
         Returns: Json
       }
+      admin_force_signout_user: {
+        Args: { target_user: string }
+        Returns: number
+      }
       admin_meta_capi_token_is_set: { Args: never; Returns: boolean }
       admin_remove_coach_role: { Args: { _user_id: string }; Returns: Json }
       admin_set_meta_capi_token: {
