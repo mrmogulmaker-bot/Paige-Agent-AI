@@ -66,7 +66,7 @@ export function EditContactDialog({
         entity_name: form.entity_name?.trim() || null,
         title: form.title?.trim() || null,
         funding_goal: form.funding_goal ?? null,
-        lifecycle_stage: form.lifecycle_stage || "lead",
+        lifecycle_stage: form.lifecycle_stage || "new_lead",
         source: form.source || null,
         tags: form.tags || [],
         do_not_contact: !!form.do_not_contact,
@@ -136,7 +136,7 @@ export function EditContactDialog({
             </div>
             <div>
               <Label>Lifecycle stage</Label>
-              <Select value={form.lifecycle_stage || "lead"} onValueChange={(v) => set("lifecycle_stage", v)}>
+              <Select value={form.lifecycle_stage || "new_lead"} onValueChange={(v) => set("lifecycle_stage", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {LIFECYCLE_STAGES.map((s) => (

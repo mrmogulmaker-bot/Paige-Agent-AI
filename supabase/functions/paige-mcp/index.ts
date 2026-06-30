@@ -1464,9 +1464,14 @@ async function resolveTenantId(explicit?: string | null): Promise<string | null>
 }
 
 // ---------- Contacts (extended) ----------
+const DOCTRINE_111_LIFECYCLE_STAGES = [
+  "new_lead", "qualified", "nurturing", "hot_lead", "negotiating",
+  "won", "client_active", "client_paused", "client_churned", "client_funded", "client_alumni",
+] as const;
+
 mcp.tool("create_contact", {
   description:
-    "Create a new contact (clients row) in the caller's tenant. Returns the new contact_id. Tenant is auto-resolved from the caller (user's active tenant, or MMA for platform callers).",
+    "Create a new contact (clients row) in the caller's tenant. Returns the new contact_id. Tenant is auto-resolved from the caller (user's active tenant, or MMA for platform callers). Lifecycle stage follows Doctrine §111: new_lead, qualified, nurturing, hot_lead, negotiating, won, client_active, client_paused, client_churned, client_funded, client_alumni.",
   inputSchema: z.object({
     first_name: z.string(),
     last_name: z.string().optional(),
@@ -1474,7 +1479,7 @@ mcp.tool("create_contact", {
     phone: z.string().optional(),
     entity_name: z.string().optional(),
     source: z.string().optional(),
-    lifecycle_stage: z.string().optional().describe("Default 'new_lead'."),
+    lifecycle_stage: z.enum(DOCTRINE_111_LIFECYCLE_STAGES).optional().describe("Default 'new_lead'."),
     notes: z.string().optional().describe("Seeded into current_notes."),
     tenant_id: z.string().optional().describe("Override the auto-resolved tenant_id (platform-only)."),
   }),
@@ -1681,10 +1686,7 @@ mcp.tool("update_lifecycle_stage", {
     "Update a contact's lifecycle stage per Doctrine §111 (new_lead, qualified, nurturing, hot_lead, negotiating, won, client_active, client_paused, client_churned, client_funded, client_alumni).",
   inputSchema: z.object({
     contact_id: z.string(),
-    new_stage: z.enum([
-      "new_lead", "qualified", "nurturing", "hot_lead", "negotiating",
-      "won", "client_active", "client_paused", "client_churned", "client_funded", "client_alumni",
-    ]),
+    new_stage: z.enum(DOCTRINE_111_LIFECYCLE_STAGES),
     reason: z.string().optional(),
   }),
   handler: async ({ contact_id, new_stage, reason }) => {

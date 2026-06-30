@@ -84,7 +84,7 @@ const SEGMENTS: Segment[] = [
   { id: "dnc", label: "DNC", description: "Do Not Contact",
     match: (c) => !!c.do_not_contact },
   { id: "churned", label: "Churned", description: "Churned lifecycle",
-    match: (c) => c.lifecycle_stage === "churned" },
+    match: (c) => c.lifecycle_stage === "client_churned" },
 ];
 
 export default function ContactsAdmin() {
@@ -163,7 +163,7 @@ export default function ContactsAdmin() {
   }, [clients]);
 
   const filtered = useMemo(() => clients.filter((c) => {
-    if (lifecycle !== "all" && (c.lifecycle_stage || "lead") !== lifecycle) return false;
+    if (lifecycle !== "all" && (c.lifecycle_stage || "new_lead") !== lifecycle) return false;
     if (coachFilter === "unassigned" && c.assigned_coach_user_id) return false;
     if (coachFilter !== "all" && coachFilter !== "unassigned" && c.assigned_coach_user_id !== coachFilter) return false;
     if (tagFilter !== "all" && !(c.tags || []).includes(tagFilter)) return false;
@@ -182,8 +182,8 @@ export default function ContactsAdmin() {
   const stats = useMemo(() => {
     const totalOpenDeals = Object.values(rollup).reduce((a, r) => a + (r.open_deals || 0), 0);
     const totalOpenValue = Object.values(rollup).reduce((a, r) => a + (r.open_value_cents || 0), 0);
-    const customers = clients.filter((c) => c.lifecycle_stage === "customer").length;
-    const leads = clients.filter((c) => ["lead", "mql", "sql"].includes(c.lifecycle_stage)).length;
+    const customers = clients.filter((c) => c.lifecycle_stage === "client_active").length;
+    const leads = clients.filter((c) => ["new_lead", "qualified", "nurturing", "hot_lead"].includes(c.lifecycle_stage)).length;
     return { totalOpenDeals, totalOpenValue, customers, leads };
   }, [clients, rollup]);
 
@@ -413,7 +413,7 @@ export default function ContactsAdmin() {
                           </button>
                         </td>
                         <td className="px-4 py-3">
-                          <Select value={c.lifecycle_stage || "lead"} onValueChange={(v) => updateLifecycle(c.id, v)}>
+                          <Select value={c.lifecycle_stage || "new_lead"} onValueChange={(v) => updateLifecycle(c.id, v)}>
                             <SelectTrigger className="h-8 w-[150px] border-0 bg-transparent p-0 focus:ring-0">
                               <Badge variant="outline" className={`${meta.color} border-transparent`}>
                                 {meta.label}

@@ -281,7 +281,7 @@ export default function ContactDetail() {
           <CardHeader className="pb-2"><CardTitle className="text-sm">Lifecycle Stage</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             <Badge variant="outline" className={`${lcMeta.color} border-transparent`}>{lcMeta.label}</Badge>
-            <Select value={client.lifecycle_stage || "lead"} onValueChange={updateLifecycle}>
+            <Select value={client.lifecycle_stage || "new_lead"} onValueChange={updateLifecycle}>
               <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {LIFECYCLE_STAGES.map((s) => (

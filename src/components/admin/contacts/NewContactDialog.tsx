@@ -25,7 +25,7 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
   const [phone, setPhone] = useState("");
   const [entityName, setEntityName] = useState("");
   const [title, setTitle] = useState("");
-  const [lifecycleStage, setLifecycleStage] = useState("lead");
+  const [lifecycleStage, setLifecycleStage] = useState("new_lead");
   const [source, setSource] = useState<string>("manual");
   const [coachId, setCoachId] = useState<string>("unassigned");
   const [primaryOffer, setPrimaryOffer] = useState<string>("none");
@@ -39,7 +39,7 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
   useEffect(() => {
     if (!open) return;
     setFirstName(""); setLastName(""); setEmail(""); setPhone("");
-    setEntityName(""); setTitle(""); setLifecycleStage("lead");
+    setEntityName(""); setTitle(""); setLifecycleStage("new_lead");
     setSource("manual"); setCoachId("unassigned");
     setPrimaryOffer("none"); setOfferCustom("");
     setTagsRaw(""); setNotes("");

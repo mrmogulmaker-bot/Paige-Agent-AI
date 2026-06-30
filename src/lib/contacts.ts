@@ -4,18 +4,21 @@
 // in React, or call `offerLabel` for legacy fallback rendering only.
 
 export type LifecycleStage =
-  | "lead" | "mql" | "sql" | "opportunity"
-  | "customer" | "evangelist" | "churned" | "archived";
+  | "new_lead" | "qualified" | "nurturing" | "hot_lead" | "negotiating"
+  | "won" | "client_active" | "client_paused" | "client_churned" | "client_funded" | "client_alumni";
 
 export const LIFECYCLE_STAGES: { value: LifecycleStage; label: string; color: string }[] = [
-  { value: "lead",        label: "Lead",        color: "bg-slate-500/15 text-slate-700 dark:text-slate-300" },
-  { value: "mql",         label: "MQL",         color: "bg-sky-500/15 text-sky-700 dark:text-sky-300" },
-  { value: "sql",         label: "SQL",         color: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300" },
-  { value: "opportunity", label: "Opportunity", color: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
-  { value: "customer",    label: "Customer",    color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
-  { value: "evangelist",  label: "Evangelist",  color: "bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300" },
-  { value: "churned",     label: "Churned",     color: "bg-red-500/15 text-red-700 dark:text-red-300" },
-  { value: "archived",    label: "Archived",    color: "bg-muted text-muted-foreground" },
+  { value: "new_lead",       label: "New Lead",       color: "bg-slate-500/15 text-slate-700 dark:text-slate-300" },
+  { value: "qualified",      label: "Qualified",      color: "bg-sky-500/15 text-sky-700 dark:text-sky-300" },
+  { value: "nurturing",      label: "Nurturing",      color: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300" },
+  { value: "hot_lead",       label: "Hot Lead",       color: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300" },
+  { value: "negotiating",    label: "Negotiating",    color: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
+  { value: "won",            label: "Won",            color: "bg-lime-500/15 text-lime-700 dark:text-lime-300" },
+  { value: "client_active",  label: "Active Client",  color: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
+  { value: "client_paused",  label: "Paused Client",  color: "bg-orange-500/15 text-orange-700 dark:text-orange-300" },
+  { value: "client_churned", label: "Churned Client", color: "bg-red-500/15 text-red-700 dark:text-red-300" },
+  { value: "client_funded",  label: "Funded Client",  color: "bg-teal-500/15 text-teal-700 dark:text-teal-300" },
+  { value: "client_alumni",  label: "Alumni Client",  color: "bg-muted text-muted-foreground" },
 ];
 
 export const CONTACT_SOURCES = [
@@ -38,7 +41,7 @@ export function offerLabel(value: string | null | undefined): string | null {
 
 export function lifecycleMeta(stage: string | null | undefined) {
   return LIFECYCLE_STAGES.find((s) => s.value === stage) ||
-    { value: stage || "lead", label: stage || "Lead", color: "bg-muted text-muted-foreground" };
+    { value: stage || "new_lead", label: stage || "New Lead", color: "bg-muted text-muted-foreground" };
 }
 
 export function contactsToCSV(rows: Record<string, unknown>[]): string {
