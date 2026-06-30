@@ -61,6 +61,7 @@ const TasksAdmin = lazy(() => import("@/pages/admin/TasksAdmin"));
 const SubAgentsAdmin = lazy(() => import("@/pages/admin/SubAgentsAdmin"));
 const WorkflowsList = lazy(() => import("@/pages/admin/WorkflowsList"));
 const CampaignsAdmin = lazy(() => import("@/pages/admin/CampaignsAdmin"));
+const CampaignsHub = lazy(() => import("@/pages/admin/CampaignsHub"));
 const WorkflowDetail = lazy(() => import("@/pages/admin/WorkflowDetail"));
 const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
 const WorkflowRunDetail = lazy(() => import("@/pages/admin/WorkflowRunDetail"));
