@@ -79,13 +79,43 @@ export function ContactPortalPanel({
     setBusy("invite");
     try {
       const { data, error } = await supabase.functions.invoke("invite-btf-client", {
-        body: { client_id: contactId, email, created_via: "admin_ui" },
+        body: {
+          paige_client_id: contactId,
+          contact_email: email,
+        },
       });
       if (error) throw error;
-      toast.success("Paige access invite sent");
+      if (data && (data as any).ok === false) {
+        throw new Error((data as any).error || "Invite failed");
+      }
+      toast.success(
+        (data as any)?.email_sent === false
+          ? "Invite created — email delivery pending"
+          : "Paige access invite sent",
+      );
       await load();
     } catch (e: any) {
       toast.error(e.message || "Invite failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const cancelPendingInvites = async () => {
+    setBusy("revoke");
+    try {
+      const nowIso = new Date().toISOString();
+      const { error } = await supabase
+        .from("btf_workspace_invites")
+        .update({ expires_at: nowIso })
+        .eq("client_id", contactId)
+        .is("used_at", null)
+        .gt("expires_at", nowIso);
+      if (error) throw error;
+      toast.success("Pending invite canceled");
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || "Could not cancel invite");
     } finally {
       setBusy(null);
     }
@@ -155,6 +185,8 @@ export function ContactPortalPanel({
                   sendInvite();
                 } else if (hasAccess) {
                   setConfirmRevoke(true);
+                } else if (inviteStatus === "pending") {
+                  cancelPendingInvites();
                 }
               }}
               aria-label="Toggle Paige AI platform access"
