@@ -1,6 +1,9 @@
 // Helper for the in-app /mcp/authorize consent screen.
-// Action "lookup": returns client info + validated request params (no auth required — public client metadata).
-// Action "approve": requires the user's Supabase JWT, mints an authz code, returns the redirect URL.
+// Action "lookup": returns client info + validated request params. If a Supabase session is
+//   present and the user is an admin (or platform owner), the requested scopes are elevated
+//   to the full admin scope set automatically. Destructive `*.delete` scopes are owner-only.
+// Action "approve": requires the user's Supabase JWT, mints an authz code with the elevated
+//   scopes, returns the redirect URL.
 // Action "deny":    requires the user's JWT, returns the error redirect URL.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -10,8 +13,22 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const SUPPORTED_SCOPES = new Set([
-  "crm.read", "crm.write", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write",
+  "crm.read", "crm.write", "crm.delete",
+  "workflows.run",
+  "btf.read", "btf.write",
+  "admin.read", "admin.write", "admin.delete",
 ]);
+
+// Scopes granted to any admin automatically (read+write across all surfaces, no destructive deletes).
+const ADMIN_AUTOGRANT = [
+  "crm.read", "crm.write",
+  "workflows.run",
+  "btf.read", "btf.write",
+  "admin.read", "admin.write",
+];
+
+// Platform owner additionally gets destructive delete scopes.
+const OWNER_AUTOGRANT = [...ADMIN_AUTOGRANT, "crm.delete", "admin.delete"];
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -34,11 +51,48 @@ async function sha256Hex(s: string) {
   return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+async function tryGetUser(authHeader: string) {
+  if (!authHeader) return null;
+  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false },
+  });
+  const { data } = await userClient.auth.getUser();
+  return data.user ?? null;
+}
+
+async function computeGrantedScopes(userId: string, userEmail: string | null, requested: string[]) {
+  // Owner check
+  let isOwner = false;
+  const { data: ownerRow } = await admin.from("app_settings_owner").select("owner_email").limit(1).maybeSingle();
+  if (ownerRow?.owner_email && userEmail && ownerRow.owner_email.toLowerCase() === userEmail.toLowerCase()) {
+    isOwner = true;
+  }
+  // Admin check
+  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: userId, _role: "admin" });
+
+  const base = requested.filter((s) => SUPPORTED_SCOPES.has(s));
+  let granted: string[] = base;
+  let elevated: "owner" | "admin" | null = null;
+
+  if (isOwner) {
+    granted = Array.from(new Set([...base, ...OWNER_AUTOGRANT]));
+    elevated = "owner";
+  } else if (isAdmin) {
+    // Admins get the full admin set, but never auto-grant destructive deletes.
+    const adminGrant = [...base.filter((s) => !s.endsWith(".delete")), ...ADMIN_AUTOGRANT];
+    granted = Array.from(new Set(adminGrant));
+    elevated = "admin";
+  }
+  return { granted, elevated };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   const body = await req.json().catch(() => ({} as any));
   const action = body.action;
+  const authHeader = req.headers.get("authorization") ?? "";
 
   if (action === "lookup") {
     const { client_id, redirect_uri, scope, code_challenge, code_challenge_method } = body;
@@ -53,21 +107,29 @@ Deno.serve(async (req) => {
     const requested = String(scope ?? "crm.read").split(/\s+/).filter(Boolean);
     const valid = requested.filter((s: string) => SUPPORTED_SCOPES.has(s));
     if (valid.length === 0) return json({ error: "invalid_scope" }, 400);
+
+    // Optionally elevate scopes for admin/owner users so the consent screen reflects
+    // the permissions they will actually receive.
+    let granted = valid;
+    let elevated: "owner" | "admin" | null = null;
+    const user = await tryGetUser(authHeader);
+    if (user) {
+      const result = await computeGrantedScopes(user.id, user.email ?? null, valid);
+      granted = result.granted;
+      elevated = result.elevated;
+    }
+
     return json({
       client: { id: client.client_id, name: client.client_name, uri: client.client_uri },
-      scopes: valid,
+      scopes: granted,
+      requested_scopes: valid,
+      elevated,
       redirect_uri,
     });
   }
 
   // approve / deny both need the user's session.
-  const authHeader = req.headers.get("authorization") ?? "";
-  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false },
-  });
-  const { data: userRes } = await userClient.auth.getUser();
-  const user = userRes.user;
+  const user = await tryGetUser(authHeader);
   if (!user) return json({ error: "unauthenticated" }, 401);
 
   const { client_id, redirect_uri, scope, code_challenge, state } = body;
@@ -84,13 +146,16 @@ Deno.serve(async (req) => {
     const { data: client } = await admin
       .from("paige_mcp_oauth_clients").select("redirect_uris").eq("client_id", client_id).maybeSingle();
     if (!client || !client.redirect_uris.includes(redirect_uri)) return json({ error: "invalid_redirect_uri" }, 400);
-    const scopes = String(scope ?? "crm.read").split(/\s+/).filter((s) => SUPPORTED_SCOPES.has(s));
-    if (scopes.length === 0) return json({ error: "invalid_scope" }, 400);
+    const requested = String(scope ?? "crm.read").split(/\s+/).filter((s) => SUPPORTED_SCOPES.has(s));
+    if (requested.length === 0) return json({ error: "invalid_scope" }, 400);
+
+    const { granted } = await computeGrantedScopes(user.id, user.email ?? null, requested);
+    if (granted.length === 0) return json({ error: "invalid_scope" }, 400);
 
     const code = randToken(32);
     const code_hash = await sha256Hex(code);
     await admin.from("paige_mcp_oauth_codes").insert({
-      code_hash, client_id, user_id: user.id, redirect_uri, scopes,
+      code_hash, client_id, user_id: user.id, redirect_uri, scopes: granted,
       code_challenge, code_challenge_method: "S256",
       expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     });

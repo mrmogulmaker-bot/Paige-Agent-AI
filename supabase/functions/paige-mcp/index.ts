@@ -3663,7 +3663,7 @@ app.options("/*", (c) => c.body(null, 204, CORS));
 // ---------- Phase 3: OAuth 2.1 + Dynamic Client Registration ----------
 const PUBLIC_ORIGIN = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/paige-mcp`;
 const APP_ORIGIN = Deno.env.get("PAIGE_APP_ORIGIN") ?? "https://paigeagent.ai";
-const SUPPORTED_SCOPES = ["crm.read", "crm.write", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write"] as const;
+const SUPPORTED_SCOPES = ["crm.read", "crm.write", "crm.delete", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write", "admin.delete"] as const;
 type Scope = (typeof SUPPORTED_SCOPES)[number];
 
 // Tool → required scope. Read tools need .read; mutating tools need .write (or .run for workflows).
@@ -3673,7 +3673,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   update_contact_stage: "crm.write", add_contact_note: "crm.write",
   list_deals: "crm.read", move_deal_stage: "crm.write", create_deal: "crm.write",
   list_tasks: "crm.read", create_task: "crm.write", update_task: "crm.write",
-  complete_task: "crm.write", reopen_task: "crm.write", delete_task: "crm.write",
+  complete_task: "crm.write", reopen_task: "crm.write", delete_task: "crm.delete",
   // Workflows
   list_workflows: "crm.read", run_workflow: "workflows.run", get_workflow_run: "crm.read",
   list_pending_approvals: "crm.read", decide_pending_approval: "workflows.run",
@@ -3689,7 +3689,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_email_templates: "admin.read", upsert_email_template: "admin.write", send_btf_template_email: "btf.write",
   // Batch #1 (Doctrine §119)
   create_contact: "crm.write", update_lifecycle_stage: "crm.write",
-  bulk_delete_contacts: "crm.write",
+  bulk_delete_contacts: "crm.delete",
   list_contact_businesses: "crm.read",
   link_contact_to_business: "crm.write",
   start_btf_onboarding: "btf.write", resend_btf_invite: "btf.write",
@@ -3707,7 +3707,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Coach Ops
   list_coaches: "admin.read",
   add_coach_role: "admin.write",
-  remove_coach_role: "admin.write",
+  remove_coach_role: "admin.delete",
   update_coach_profile: "admin.write",
   bulk_assign_clients_to_coach: "admin.write",
   get_coach_performance: "admin.read",
@@ -3729,7 +3729,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Batch #4 — Master Admin (MMA-only via MASTER_ONLY_TOOLS)
   list_tenants: "admin.read",
   create_tenant: "admin.write",
-  suspend_tenant: "admin.write",
+  suspend_tenant: "admin.delete",
   update_tenant_features: "admin.write",
   get_platform_metrics: "admin.read",
   broadcast_system_announcement: "admin.write",
