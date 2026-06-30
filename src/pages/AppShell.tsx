@@ -128,6 +128,34 @@ const AppShell = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  // Module-level scope so non-React data hooks (useTasks, useBuildScore,
+  // useNotifications, etc.) honor "View as Client" without per-call plumbing.
+  // Also invalidates every cached query when scope flips so the dashboard
+  // immediately rebinds to the impersonated user's data.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const next = isImpersonating ? (effectiveUserId ?? null) : null;
+    setScopedUserId(next);
+    queryClient.invalidateQueries();
+    return () => { setScopedUserId(null); };
+  }, [isImpersonating, effectiveUserId, queryClient]);
+
+  // Realtime: a client should see staff-driven onboarding stage advances
+  // (or rollbacks) without refreshing. Listens only on the signed-in user's
+  // own row to avoid cross-tenant noise.
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel(`clients-self-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "clients", filter: `linked_user_id=eq.${user.id}` },
+        () => { queryClient.invalidateQueries(); },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, queryClient]);
+
   // Role-based landing redirect: admins/coaches → /admin, brokers → /broker/app,
   // BTF workspace clients → /workspace. Honors ?stay=1 (or the
   // paige_stay_in_client_view sessionStorage flag set by AdminLayout's
