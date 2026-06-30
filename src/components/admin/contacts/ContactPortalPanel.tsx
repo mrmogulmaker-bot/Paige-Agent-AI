@@ -57,8 +57,9 @@ export function ContactPortalPanel({
 }) {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
-  const [busy, setBusy] = useState<"invite" | "revoke" | "agreement" | null>(null);
+  const [busy, setBusy] = useState<"invite" | "revoke" | "agreement" | "signout" | "reset" | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
+  const [confirmSignout, setConfirmSignout] = useState(false);
   const [localLinkedUserId, setLocalLinkedUserId] = useState<string | null>(linkedUserId);
 
   useEffect(() => { setLocalLinkedUserId(linkedUserId); }, [linkedUserId]);
@@ -142,6 +143,29 @@ export function ContactPortalPanel({
     }
   };
 
+  const runAccountAction = async (action: "signout_all" | "password_reset") => {
+    if (!localLinkedUserId) return;
+    const key = action === "signout_all" ? "signout" : "reset";
+    setBusy(key);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-account-actions", {
+        body: { action, user_id: localLinkedUserId },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(
+        action === "signout_all"
+          ? "Client signed out of all devices"
+          : "Password reset email sent",
+      );
+      if (action === "signout_all") setConfirmSignout(false);
+    } catch (e: any) {
+      toast.error(e?.message || "Action failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const latestInvite = invites[0];
   const inviteStatus = latestInvite
     ? latestInvite.used_at ? "accepted"
@@ -194,8 +218,30 @@ export function ContactPortalPanel({
           </div>
 
           {hasAccess ? (
-            <div className="text-xs text-muted-foreground">
-              This client signed in and is connected to their workspace. Toggle off to revoke their login while keeping CRM history intact.
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground">
+                This client signed in and is connected to their workspace. Use the controls below if they're stuck or need help.
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setConfirmSignout(true)}
+                  disabled={busy !== null}
+                >
+                  <LogIn className="h-3.5 w-3.5 mr-2 rotate-180" />
+                  {busy === "signout" ? "Signing out…" : "Force sign out"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => runAccountAction("password_reset")}
+                  disabled={busy !== null || !email}
+                >
+                  <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                  {busy === "reset" ? "Sending…" : "Send password reset"}
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -292,6 +338,29 @@ export function ContactPortalPanel({
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {busy === "revoke" ? "Revoking…" : "Revoke access"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmSignout} onOpenChange={setConfirmSignout}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <LogIn className="h-4 w-4 rotate-180" />
+              Force sign out this client?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This immediately invalidates every active session for this client across every device and browser. They'll need to sign in again. Use this when a customer reports they're stuck and can't sign out themselves. Their account, roles, and data are not touched.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy === "signout"}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); runAccountAction("signout_all"); }}
+              disabled={busy === "signout"}
+            >
+              {busy === "signout" ? "Signing out…" : "Force sign out"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
