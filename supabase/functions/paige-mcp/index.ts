@@ -2847,6 +2847,126 @@ mcp.tool("get_subagent_history", {
   },
 });
 
+// ---------- Paige Skills Registry (Doctrine §119 Conversational Control Plane) ----------
+// Accept either a JSON object or a JSON-encoded string (workaround for MCP clients
+// — incl. Claude Desktop / some SDKs — that send `{}`-shaped args as strings).
+const jsonObjectOrString = z
+  .union([z.record(z.any()), z.string()])
+  .optional()
+  .transform((v) => {
+    if (v === undefined || v === null) return {};
+    if (typeof v === "string") {
+      const s = v.trim();
+      if (!s) return {};
+      try {
+        const parsed = JSON.parse(s);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+      } catch { /* fall through */ }
+      return {};
+    }
+    return v;
+  });
+
+mcp.tool("list_skills", {
+  description:
+    "List Paige's executable skills (reusable recipes like `verify_business_sos`, `draft_and_email_document`, `build_game_plan`, `research_to_concept_brief`). Filter by `query` (matches slug/name/description), `risk_level` (low/medium/high), or `status` (defaults to `active`). Returns each skill's slug, name, description, risk_level, steps summary, and required tools — call `run_skill` to execute.",
+  inputSchema: z.object({
+    query: z.string().optional(),
+    risk_level: z.enum(["low", "medium", "high"]).optional(),
+    status: z.enum(["active", "draft", "disabled", "archived"]).optional().describe("Defaults to 'active'."),
+  }),
+  handler: async ({ query, risk_level, status }) => {
+    let q = admin
+      .from("paige_skills")
+      .select("id, slug, name, description, risk_level, status, mutating, external_send, tools, steps, run_count, last_run_at, require_admin_confirm_first_n")
+      .order("name", { ascending: true })
+      .limit(100);
+    q = q.eq("status", status ?? "active");
+    if (risk_level) q = q.eq("risk_level", risk_level);
+    if (query) q = q.or(`slug.ilike.%${query}%,name.ilike.%${query}%,description.ilike.%${query}%`);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [], count: (data ?? []).length });
+  },
+});
+
+mcp.tool("run_skill", {
+  description:
+    "Execute a Paige skill by slug. Pass `inputs` as a JSON object (or JSON-encoded string) matching the skill's expected shape — e.g. `verify_business_sos` takes `{ business_id }`, `draft_and_email_document` takes `{ contact_id, doc_type, ... }`. Set `dry_run: true` to validate without firing. Mutating + external-send skills require admin confirmation on their first N runs (returns `awaiting_confirm`). Returns `{ run_id, status, outputs }`. Poll with `get_skill_run` for long-running runs.",
+  inputSchema: z.object({
+    slug: z.string().describe("Skill slug from list_skills."),
+    inputs: jsonObjectOrString.describe("Skill-specific arguments (object or JSON string)."),
+    contact_id: z.string().optional(),
+    dry_run: z.boolean().optional().describe("Validate spec + inputs without running."),
+    confirm_token: z.string().optional().describe("Admin confirmation token for gated first-N runs."),
+  }),
+  handler: async ({ slug, inputs, contact_id, dry_run, confirm_token }) => {
+    const actor = currentActor();
+    if (dry_run) {
+      const { data: skill, error } = await admin
+        .from("paige_skills")
+        .select("slug, name, description, risk_level, status, mutating, external_send, tools, steps, require_admin_confirm_first_n, run_count")
+        .eq("slug", slug)
+        .maybeSingle();
+      if (error) return err(error.message);
+      if (!skill) return err(`Unknown skill: ${slug}`);
+      if (skill.status !== "active") return err(`Skill is ${skill.status}`);
+      const willGate = (skill.require_admin_confirm_first_n ?? 0) > 0
+        && (skill.run_count ?? 0) < skill.require_admin_confirm_first_n
+        && actor.kind !== "platform";
+      return ok({ dry_run: true, skill, resolved_inputs: inputs, would_gate_on_confirm: willGate });
+    }
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/skill-runner`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY },
+      body: JSON.stringify({
+        skill_slug: slug,
+        inputs: inputs ?? {},
+        contact_id: contact_id ?? null,
+        invoker_kind: "mcp",
+        invoker_user_id: actor.user_id ?? null,
+        confirm_token,
+      }),
+    });
+    const body = await r.json().catch(() => ({}));
+    await audit("run_skill", "skill", slug, { contact_id: contact_id ?? null, status: r.status, run_id: (body as { run_id?: string })?.run_id ?? null });
+    if (r.status >= 300) return err(typeof body === "object" ? JSON.stringify(body) : String(body));
+    return ok(body);
+  },
+});
+
+mcp.tool("get_skill_run", {
+  description: "Fetch a single skill run by id, including status, inputs, outputs, steps log, and any error. Use this to poll runs returned by `run_skill`.",
+  inputSchema: z.object({ run_id: z.string() }),
+  handler: async ({ run_id }) => {
+    const { data, error } = await admin
+      .from("paige_skill_runs")
+      .select("id, skill_id, skill_slug, contact_id, invoker_kind, invoker_user_id, inputs, outputs, status, error, steps, latency_ms, created_at, completed_at")
+      .eq("id", run_id)
+      .maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("run not found");
+    return ok(data);
+  },
+});
+
+mcp.tool("verify_business", {
+  description:
+    "Run business verification for a `business_id` — scrapes Secretary of State portals (10 states), OpenCorporates, and SEC EDGAR via the `business-verifier` agent and writes a `business_verifications` record with a composite_score 0–100 + per-source mismatch flags. Paid adapters (D&B, LexisNexis, TransUnion, Array) auto-activate when their secrets land. Convenience wrapper around the verification sub-agent.",
+  inputSchema: z.object({ business_id: z.string() }),
+  handler: async ({ business_id }) => {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/business-verifier`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY },
+      body: JSON.stringify({ business_id, triggered_by: "mcp" }),
+    });
+    const body = await r.json().catch(() => ({}));
+    await audit("verify_business", "business", business_id, { status: r.status, composite_score: (body as { composite_score?: number })?.composite_score ?? null });
+    if (r.status >= 300) return err(typeof body === "object" ? JSON.stringify(body) : String(body));
+    return ok(body);
+  },
+});
+
 // ---------- Sub-Agent Factory (Section 18.5) — Paige proposes new sub-agents ----------
 mcp.tool("propose_subagent", {
   description:
