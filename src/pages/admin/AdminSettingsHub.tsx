@@ -141,6 +141,7 @@ export function AdminSettingsHub() {
 
         <TabsContent value="email-domains" className="space-y-4">
           <EmailDomainsPanel />
+          <EmailTemplatesPanel />
         </TabsContent>
 
         <TabsContent value="comms" className="space-y-4">
