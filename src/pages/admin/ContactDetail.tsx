@@ -22,6 +22,7 @@ import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
 import { ContactCampaignAttribution } from "@/components/admin/contacts/ContactCampaignAttribution";
 import { BusinessVerificationCard } from "@/components/admin/contacts/BusinessVerificationCard";
 import { BusinessTabPanel } from "@/components/admin/contacts/BusinessTabPanel";
+import { ContactCommsPanel } from "@/components/admin/contacts/ContactCommsPanel";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -372,22 +373,18 @@ export default function ContactDetail() {
         </TabsContent>
 
         <TabsContent value="comms">
-          <Card><CardContent className="p-4">
-            {activity.length === 0 ? <EmptyMsg msg="No communications logged." /> : (
-              <div className="space-y-2">
-                {activity.map((m: any) => (
-                  <div key={m.id} className="border border-border rounded p-3 text-sm">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium capitalize">{m.channel} · {m.message_type}</span>
-                      <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(m.created_at), { addSuffix: true })}</span>
-                    </div>
-                    {m.subject && <div className="text-muted-foreground">{m.subject}</div>}
-                    {m.preview && <div className="text-muted-foreground/80 mt-1">{m.preview}</div>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent></Card>
+          <ContactCommsPanel
+            contact={{
+              id: client.id,
+              first_name: client.first_name,
+              last_name: client.last_name,
+              email: client.email,
+              phone: client.phone,
+              linked_user_id: client.linked_user_id,
+              entity_name: client.entity_name,
+            }}
+            history={activity}
+          />
         </TabsContent>
 
         <TabsContent value="tasks">
