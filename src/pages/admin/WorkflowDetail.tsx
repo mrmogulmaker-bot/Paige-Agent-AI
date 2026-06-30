@@ -33,7 +33,7 @@ export default function WorkflowDetail() {
     (async () => {
       const { data: reg } = await supabase
         .from("paige_workflow_registry")
-        .select("*")
+        .select("id, key, label, description, category, provider, parameters_schema, requires_approval, is_active, needs_n8n_link, sort_order")
         .eq("key", key)
         .maybeSingle();
       setRegistry(reg);
