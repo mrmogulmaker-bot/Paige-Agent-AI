@@ -234,6 +234,8 @@ export default function ContactDetail() {
       </div>
 
       <DuplicatesBanner contactId={client.id} email={client.email} phone={client.phone} />
+      <ContactCampaignAttribution contactId={client.id} />
+
 
 
 
