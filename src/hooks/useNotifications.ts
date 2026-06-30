@@ -75,8 +75,8 @@ export const useNotifications = () => {
 
   const markAllAsRead = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const uid = await getEffectiveUserId();
+      if (!uid) return;
 
       const { error } = await supabase
         .from("notifications")
@@ -84,7 +84,7 @@ export const useNotifications = () => {
           is_read: true, 
           read_at: new Date().toISOString() 
         })
-        .eq("user_id", user.id)
+        .eq("user_id", uid)
         .eq("is_read", false);
 
       if (error) throw error;
