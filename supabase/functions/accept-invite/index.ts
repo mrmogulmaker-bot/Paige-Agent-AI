@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
         alreadyUsed,
         // White-label: never expose "Paige" branding to BTF clients
         brand: { name: "Mogul Maker Academy", program: "Build to Fund" },
-        redirectTo: "/workspace/intake",
+        redirectTo: "/onboard/welcome",
       });
     }
 
@@ -170,11 +170,27 @@ Deno.serve(async (req) => {
         if (uErr) return json(500, { ok: false, error: `Password set failed: ${uErr.message}` });
       }
 
-      // Link client row to auth user
+      // Grant the 'client' role so RoleGate(['client']) admits them to /workspace
+      // after onboarding completes. Idempotent via (user_id, role) unique constraint.
       await admin
+        .from("user_roles")
+        .upsert(
+          { user_id: authUser.id, role: "client" },
+          { onConflict: "user_id,role", ignoreDuplicates: true },
+        );
+
+      // Link client row + ensure onboarding_stage so OnboardLayout routes them
+      // into Step 1 (Welcome → Agreement → Payment → Intake → Documents → Complete).
+      const clientPatch: Record<string, unknown> = { linked_user_id: authUser.id };
+      const { data: existingClient } = await admin
         .from("clients")
-        .update({ linked_user_id: authUser.id })
-        .eq("id", btf.client_id);
+        .select("onboarding_stage")
+        .eq("id", btf.client_id)
+        .maybeSingle();
+      if (!existingClient?.onboarding_stage) {
+        clientPatch.onboarding_stage = "invited";
+      }
+      await admin.from("clients").update(clientPatch).eq("id", btf.client_id);
 
       // Mark invite consumed
       await admin
@@ -194,7 +210,10 @@ Deno.serve(async (req) => {
         ok: true,
         type: "btf_client",
         email: btf.email,
-        redirectTo: "/workspace/intake",
+        // Route the freshly-activated client into the onboarding sequence
+        // (welcome → agreement → payment → intake → documents → complete).
+        // OnboardLayout reads clients.onboarding_stage and lands them on the right step.
+        redirectTo: "/onboard/welcome",
       });
     }
   }
