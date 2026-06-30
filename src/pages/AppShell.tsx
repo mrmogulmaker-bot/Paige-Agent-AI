@@ -22,6 +22,7 @@ import {
 import { trackEvent } from "@/hooks/useAnalytics";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 import { RequiredConsentsGate } from "@/components/legal/RequiredConsentsGate";
+import { useImpersonation } from "@/contexts/ImpersonationContext";
 
 // Map /app sub-routes to canonical feature names emitted as `feature_visit`.
 function routeToFeatureName(pathname: string): string | null {
@@ -59,7 +60,9 @@ const AppShell = () => {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const location = useLocation();
-  const { factors } = useCreditFactors();
+  const { target: impersonationTarget, isImpersonating } = useImpersonation();
+  const effectiveUserId = impersonationTarget?.targetUserId ?? user?.id;
+  const { factors } = useCreditFactors(effectiveUserId);
   const { showWarning, staySignedIn } = useSessionTimeout();
 
   // Show context panel on non-root /app routes
