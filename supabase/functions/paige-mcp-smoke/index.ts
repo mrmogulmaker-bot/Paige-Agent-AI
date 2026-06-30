@@ -18,13 +18,56 @@ async function call(body: unknown) {
   return { status: res.status, headers: Object.fromEntries(res.headers), body: text };
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const url = new URL(req.url);
   const init = await call({
     jsonrpc: "2.0", id: 1, method: "initialize",
     params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "smoke", version: "0" } },
   });
   const list = await call({ jsonrpc: "2.0", id: 2, method: "tools/list" });
-  return new Response(JSON.stringify({ has_key: KEY.length > 0, url: URL_, init, list }, null, 2), {
+
+  let create_contact: unknown = null;
+  let cleanup: unknown = null;
+  if (url.searchParams.get("create_contact") === "1") {
+    const firstName = url.searchParams.get("first_name") || "Schema";
+    const lastName = url.searchParams.get("last_name") || "Smoke";
+    create_contact = await call({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: {
+        name: "create_contact",
+        arguments: {
+          first_name: firstName,
+          last_name: lastName,
+          lifecycle_stage: url.searchParams.get("lifecycle_stage") || "client_active",
+          source: "mcp_smoke",
+          notes: "Temporary Doctrine §120 smoke test row; safe to remove.",
+        },
+      },
+    });
+
+    try {
+      const body = JSON.parse((create_contact as { body?: string }).body ?? "{}");
+      const text = body?.result?.content?.[0]?.text;
+      const payload = text ? JSON.parse(text) : null;
+      if (payload?.contact_id) {
+        cleanup = await call({
+          jsonrpc: "2.0",
+          id: 4,
+          method: "tools/call",
+          params: {
+            name: "bulk_delete_contacts",
+            arguments: { ids: [payload.contact_id], confirm: true, reason: "Doctrine §120 smoke cleanup" },
+          },
+        });
+      }
+    } catch (e) {
+      cleanup = { parse_error: (e as Error).message };
+    }
+  }
+
+  return new Response(JSON.stringify({ has_key: KEY.length > 0, url: URL_, init, list, create_contact, cleanup }, null, 2), {
     headers: { "content-type": "application/json" },
   });
 });
