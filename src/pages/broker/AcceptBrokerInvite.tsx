@@ -339,8 +339,16 @@ const AcceptBrokerInvite = () => {
                   onCheckedChange={(v) => setAgreed(!!v)}
                 />
                 <Label htmlFor="terms" className="text-xs leading-relaxed text-muted-foreground">
-                  I agree to PaigeAgent's Terms and acknowledge that my activity in this workspace is
-                  visible to {invite.business_name}.
+                  I agree to PaigeAgent's{" "}
+                  <Link to="/legal/terms" target="_blank" className="text-primary hover:underline">Terms</Link>,{" "}
+                  <Link to="/legal/privacy" target="_blank" className="text-primary hover:underline">Privacy Policy</Link>,{" "}
+                  <Link to="/legal/esign" target="_blank" className="text-primary hover:underline">E-Sign Consent</Link>, and the{" "}
+                  <Link to="/legal/workforce-acknowledgment" target="_blank" className="text-primary hover:underline">
+                    Workforce Confidentiality &amp; GLBA Safeguards Acknowledgment
+                  </Link>
+                  . I understand that my activity in {invite.business_name}'s workspace
+                  is visible to {invite.business_name} and that I will handle nonpublic
+                  personal information under FCRA and GLBA standards.
                 </Label>
               </div>
               <Button type="submit" className="w-full" disabled={submitting}>
