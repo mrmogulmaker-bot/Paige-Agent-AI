@@ -98,25 +98,17 @@ Deno.serve(async (req) => {
       result.action_link = data?.properties?.action_link ?? null;
       // The auth-email-hook will deliver the actual email; we just minted the link.
     } else if (action === "signout_all") {
-      // supabase-js admin.signOut expects a JWT, not a user_id. Use the
-      // admin REST endpoint to invalidate every session for the user.
-      const resp = await fetch(
-        `${SUPABASE_URL}/auth/v1/admin/users/${user_id}/logout?scope=global`,
-        {
-          method: "POST",
-          headers: {
-            apikey: SERVICE_KEY,
-            Authorization: `Bearer ${SERVICE_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: "{}",
-        },
+      // supabase-js admin.signOut needs a JWT, and this GoTrue build does
+      // not expose POST /admin/users/:id/logout (returns 404). Use the
+      // SECURITY DEFINER RPC that deletes auth.sessions + refresh_tokens
+      // for the target user — works on every Supabase version.
+      const { data: removed, error: rpcErr } = await admin.rpc(
+        "admin_force_signout_user",
+        { target_user: user_id },
       );
-      if (!resp.ok && resp.status !== 204) {
-        const txt = await resp.text().catch(() => "");
-        throw new Error(`signout failed: ${resp.status} ${txt}`);
-      }
+      if (rpcErr) throw new Error(`signout failed: ${rpcErr.message}`);
       result.signed_out = true;
+      result.sessions_removed = removed ?? 0;
 
       // In-app notification for the affected user.
       await admin.from("notifications").insert({
