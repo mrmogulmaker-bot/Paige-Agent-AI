@@ -39,12 +39,12 @@ export function BusinessVerificationCard({ businessId }: { businessId: string })
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    setRun(latest as Run | null);
+    setRun((latest as unknown as Run) ?? null);
     if (latest) {
       const { data: r } = await supabase
         .from("business_verifications")
         .select("*")
-        .eq("run_id", (latest as Run).id);
+        .eq("run_id", (latest as { id: string }).id);
       setRows((r ?? []) as VerifyRow[]);
     }
   };
