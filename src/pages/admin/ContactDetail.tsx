@@ -328,6 +328,7 @@ export default function ContactDetail() {
           <TabsTrigger value="files"><FileText className="h-4 w-4 mr-1" /> Files</TabsTrigger>
           <TabsTrigger value="business"><Building2 className="h-4 w-4 mr-1" /> Business</TabsTrigger>
           <TabsTrigger value="funding-lens"><TrendingUp className="h-4 w-4 mr-1" /> Funding Readiness</TabsTrigger>
+          <TabsTrigger value="portal"><User className="h-4 w-4 mr-1" /> Portal & Agreements</TabsTrigger>
           <TabsTrigger value="approvals">
             <ClipboardCheck className="h-4 w-4 mr-1" /> Approvals
             {contactApprovals.length > 0 && (
@@ -337,6 +338,7 @@ export default function ContactDetail() {
             )}
           </TabsTrigger>
         </TabsList>
+
 
         <TabsContent value="deals">
 
