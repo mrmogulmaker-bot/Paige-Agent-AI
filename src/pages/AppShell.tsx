@@ -209,14 +209,22 @@ const AppShell = () => {
 
     let cancelled = false;
     (async () => {
-      const target = await resolveLandingRoute(user.id);
-      if (cancelled) return;
-      if (target !== "/app") {
-        navigate(target, { replace: true });
+      try {
+        const target = await Promise.race<string>([
+          resolveLandingRoute(user.id),
+          new Promise<string>((resolve) => setTimeout(() => resolve("/app"), 4000)),
+        ]);
+        if (cancelled) return;
+        if (target !== "/app") {
+          navigate(target, { replace: true });
+        }
+      } catch (err) {
+        console.error("[AppShell] resolveLandingRoute failed:", err);
       }
     })();
     return () => { cancelled = true; };
   }, [user?.id, location.pathname, location.search, navigate, isImpersonating]);
+
 
 
 
