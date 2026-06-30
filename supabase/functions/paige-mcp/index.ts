@@ -2909,6 +2909,10 @@ const TOOL_SCOPE: Record<string, Scope> = {
   update_coach_profile: "admin.write",
   bulk_assign_clients_to_coach: "admin.write",
   get_coach_performance: "admin.read",
+  // Pass 5: Orchestrator / sub-agents
+  list_subagents: "crm.read",
+  delegate_to_subagent: "workflows.run",
+  get_subagent_history: "crm.read",
 };
 
 const DISCOVERY_RESOURCE = {
