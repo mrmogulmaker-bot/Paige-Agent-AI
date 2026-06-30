@@ -263,6 +263,43 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── Record Broker Producer Agreement acceptance (audit trail) ─
+    // Stitches the anonymous affiliate_application stamp (if any) into a
+    // user-bound legal_acceptances row keyed on the live agreement version.
+    try {
+      const { data: docRow } = await supabase
+        .from('legal_documents')
+        .select('version')
+        .eq('slug', 'broker-agreement')
+        .eq('is_current', true)
+        .maybeSingle()
+      const liveVersion = (docRow as any)?.version
+      if (liveVersion) {
+        const { data: priorApp } = await supabase
+          .from('affiliate_applications')
+          .select('id, audience_description, created_at')
+          .eq('email', email)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        await supabase.from('legal_acceptances').insert({
+          user_id: matchedUserId,
+          document_slug: 'broker-agreement',
+          document_version: liveVersion,
+          context: {
+            source: 'broker-auto-approve',
+            broker_id: broker.id,
+            referral_code: code || null,
+            stitched_from_application_id: (priorApp as any)?.id ?? null,
+            stitched_from_application_at: (priorApp as any)?.created_at ?? null,
+          },
+        })
+        log('Recorded broker-agreement acceptance', { v: liveVersion })
+      }
+    } catch (err) {
+      log('Failed to record broker-agreement acceptance', { error: String(err) })
+    }
+
     const code = broker.referral_code || ''
     const signupClientLink = code ? `https://paigeagent.ai/auth?broker=${code}` : ''
     const clientSignupLink = signupClientLink
