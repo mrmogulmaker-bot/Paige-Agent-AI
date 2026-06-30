@@ -102,6 +102,7 @@ function installFetchInterceptor() {
 export function GlobalAuthSessionManager() {
   const queryClient = useQueryClient();
   const lastEventRef = useRef<string | null>(null);
+  const forcedLogoutHandledRef = useRef(false);
 
   useEffect(() => {
     registerSignOutQueryClient(queryClient);
@@ -144,6 +145,45 @@ export function GlobalAuthSessionManager() {
       registerSignOutQueryClient(null);
     };
   }, [queryClient]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkForcedLogout = async () => {
+      if (forcedLogoutHandledRef.current || cancelled) return;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user?.id || cancelled) return;
+
+        const { data } = await supabase
+          .from("audit_logs")
+          .select("id, created_at")
+          .eq("user_id", session.user.id)
+          .eq("entity", "auth_session")
+          .eq("action", "emergency_force_signout")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!data || cancelled) return;
+
+        // Server-side sessions were revoked out-of-band; clear this tab too so
+        // the user is not trapped in a stale authenticated loading loop.
+        forcedLogoutHandledRef.current = true;
+        toast.error("Your session was reset — please sign in again.");
+        await performSignOut({ redirectTo: "/auth", scope: "local" });
+      } catch {
+        // Non-blocking: ordinary auth/session handling still applies.
+      }
+    };
+
+    void checkForcedLogout();
+    const id = window.setInterval(checkForcedLogout, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   return null;
 }
