@@ -185,6 +185,8 @@ export function ContactPortalPanel({
                   sendInvite();
                 } else if (hasAccess) {
                   setConfirmRevoke(true);
+                } else if (inviteStatus === "pending") {
+                  cancelPendingInvites();
                 }
               }}
               aria-label="Toggle Paige AI platform access"
