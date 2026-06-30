@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
           method: "tools/call",
           params: {
             name: "bulk_delete_contacts",
-            arguments: { ids: [payload.contact_id], confirm: true, reason: "Doctrine §120 smoke cleanup" },
+            arguments: { contact_ids: [payload.contact_id], confirm: true },
           },
         });
       }
