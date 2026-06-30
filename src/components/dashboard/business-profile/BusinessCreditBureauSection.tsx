@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useBuildScore } from "@/hooks/useBuildScore";
 import { useBuildScoreRefresh } from "@/hooks/useBuildScoreRefresh";
+import { ContextualConsentDialog } from "@/components/legal/ContextualConsentDialog";
 
 interface BusinessCreditBureauSectionProps {
   businessId: string;
@@ -29,6 +30,9 @@ export function BusinessCreditBureauSection({ businessId, userId, onCompletionCh
   const { data: buildScore } = useBuildScore();
   const { invalidate: invalidateBuildScore } = useBuildScoreRefresh();
   const [uploading, setUploading] = useState<string | null>(null);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [consentDone, setConsentDone] = useState(false);
+  const pendingBureauRef = useRef<string | null>(null);
 
   const bureaus: BureauInfo[] = [
     {
@@ -72,7 +76,7 @@ export function BusinessCreditBureauSection({ businessId, userId, onCompletionCh
     return "text-destructive";
   };
 
-  const handleUploadReport = async (bureauName: string) => {
+  const openFilePicker = async (bureauName: string) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".pdf";
@@ -130,6 +134,18 @@ export function BusinessCreditBureauSection({ businessId, userId, onCompletionCh
     input.click();
   };
 
+  // Business credit reports routinely contain the business principal's SSN
+  // and other consumer-bureau data. The operator/tenant uploading them must
+  // attest to GLBA §314.4 + FCRA §1681q purpose before the picker opens.
+  const handleUploadReport = (bureauName: string) => {
+    pendingBureauRef.current = bureauName;
+    if (!consentDone) {
+      setConsentOpen(true);
+      return;
+    }
+    void openFilePicker(bureauName);
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -181,6 +197,20 @@ export function BusinessCreditBureauSection({ businessId, userId, onCompletionCh
           <strong>Phase 2 Preview:</strong> Direct bureau API integration is planned for Phase 2. For now, upload business credit reports manually to sync scores. When bureau scores are uploaded and synced, the BUILD ladder automatically updates its bureau verification status.
         </AlertDescription>
       </Alert>
+
+      <ContextualConsentDialog
+        open={consentOpen}
+        onOpenChange={setConsentOpen}
+        userId={userId}
+        slug="glba-principal-notice"
+        actionLabel="Attest and continue to upload"
+        context={{ business_id: businessId, source: "business_credit_upload" }}
+        onAccepted={() => {
+          setConsentDone(true);
+          const b = pendingBureauRef.current;
+          if (b) void openFilePicker(b);
+        }}
+      />
     </div>
   );
 }
