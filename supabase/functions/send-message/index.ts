@@ -213,7 +213,9 @@ Deno.serve(async (req) => {
       error: errorText,
     }),
     {
-      status: status === "sent" ? 200 : 502,
+      // Always 200 so the client surfaces our structured { status, error } payload
+      // instead of getting a generic "Edge Function returned non-2xx" error.
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     },
   );
