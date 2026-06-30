@@ -28,7 +28,14 @@ import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 // surfaced via a dropdown so power users can jump deep with one click.
 // Every sub-route still has its own page — this is grouping, not consolidation.
 type HubChild = { label: string; href: string; icon: any };
-type Hub = { label: string; href: string; icon: any; children?: HubChild[] };
+type Hub = {
+  label: string;
+  href: string;
+  icon: any;
+  children?: HubChild[];
+  /** Extra path prefixes that should also highlight this hub. */
+  aliases?: string[];
+};
 
 const hubs: Hub[] = [
   { label: "Dashboard", href: "/admin", icon: BarChart3 },
@@ -41,6 +48,7 @@ const hubs: Hub[] = [
       { label: "Lead Enrichment", href: "/admin/leads/enrichment", icon: Contact },
       { label: "Client Files (Legacy)", href: "/admin/clients", icon: Users },
     ],
+    aliases: ["/admin/leads", "/admin/clients"],
   },
   {
     label: "Pipeline",
@@ -52,6 +60,7 @@ const hubs: Hub[] = [
       { label: "Funding Portfolio", href: "/admin/funding", icon: DollarSign },
       { label: "Funding Readiness Lens", href: "/admin/funding-lens", icon: TrendingUp },
     ],
+    aliases: ["/admin/funding", "/admin/funding-pipeline", "/admin/funding-lens"],
   },
   {
     label: "Inbox",
@@ -62,6 +71,7 @@ const hubs: Hub[] = [
       { label: "Bookings", href: "/admin/bookings", icon: BarChart3 },
       { label: "Support", href: "/admin/support", icon: LifeBuoy },
     ],
+    aliases: ["/admin/bookings", "/admin/support"],
   },
   {
     label: "Tasks & Approvals",
@@ -71,8 +81,14 @@ const hubs: Hub[] = [
       { label: "Tasks", href: "/admin/tasks", icon: CheckSquare },
       { label: "Approvals", href: "/admin/approvals", icon: ClipboardCheck },
     ],
+    aliases: ["/admin/approvals"],
   },
-  { label: "Campaigns", href: "/admin/campaigns", icon: Rocket },
+  {
+    label: "Campaigns",
+    href: "/admin/campaigns",
+    icon: Rocket,
+    aliases: ["/admin/growth"],
+  },
   {
     label: "Automation",
     href: "/admin/workflows",
@@ -84,6 +100,16 @@ const hubs: Hub[] = [
       { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
       { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
     ],
+    // Orphan tool routes that conceptually live under Automation.
+    aliases: [
+      "/admin/integrations",
+      "/admin/sub-agents",
+      "/admin/knowledge",
+      "/admin/knowledge-base",
+      "/admin/signatures",
+      "/admin/social",
+      "/admin/notifications",
+    ],
   },
   {
     label: "Insights",
@@ -94,8 +120,10 @@ const hubs: Hub[] = [
       { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
       { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
     ],
+    aliases: ["/admin/observability"],
   },
 ];
+
 
 // Tools that don't belong to a daily-use hub — tucked into "More".
 // `adminOnly` items are hidden from coaches in the toolbar to match the
