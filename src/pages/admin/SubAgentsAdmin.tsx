@@ -303,6 +303,50 @@ export default function SubAgentsAdmin() {
           )}
         </TabsContent>
 
+        <TabsContent value="proposals" className="space-y-3 mt-4">
+          {proposals.length === 0 ? (
+            <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">
+              No proposals yet. Use <strong>Forge Sub-Agent</strong> or let Paige propose one autonomously via the MCP <code>propose_subagent</code> tool.
+            </CardContent></Card>
+          ) : proposals.map((p) => (
+            <Card key={p.id}>
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <CardTitle className="text-base flex items-center gap-2 flex-wrap">
+                      {p.proposed_name}
+                      <code className="text-xs text-muted-foreground">{p.proposed_slug}</code>
+                      <Badge variant="outline" className="text-xs">{p.runtime}</Badge>
+                      <Badge variant="secondary" className="text-xs">{p.domain}</Badge>
+                      {p.status === "proposed" ? <Badge className="text-[10px] bg-amber-100 text-amber-900 border-amber-200 hover:bg-amber-100"><ShieldAlert className="h-3 w-3 mr-1" /> Awaiting approval</Badge>
+                        : p.status === "approved" || p.status === "shipped" ? <Badge className="text-[10px] bg-emerald-100 text-emerald-900 border-emerald-200 hover:bg-emerald-100"><CheckCircle2 className="h-3 w-3 mr-1" /> {p.status}</Badge>
+                        : <Badge className="text-[10px] bg-rose-100 text-rose-900 border-rose-200 hover:bg-rose-100"><XCircle className="h-3 w-3 mr-1" /> {p.status}</Badge>}
+                    </CardTitle>
+                    <CardDescription className="text-sm">{p.description}</CardDescription>
+                  </div>
+                  {p.status === "proposed" ? (
+                    <div className="flex gap-2 shrink-0">
+                      <Button size="sm" variant="outline" onClick={() => rejectProposal(p.id)}>Reject</Button>
+                      <Button size="sm" onClick={() => approveProposal(p.id)}>Approve & Ship</Button>
+                    </div>
+                  ) : null}
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-2">
+                <div className="text-xs"><span className="text-muted-foreground">Rationale: </span>{p.rationale}</div>
+                {p.proposed_by_agent ? (
+                  <div className="text-xs text-muted-foreground">Proposed by <code>{p.proposed_by_agent}</code> · {new Date(p.created_at).toLocaleString()}</div>
+                ) : (
+                  <div className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleString()}</div>
+                )}
+                {p.review_notes ? <div className="text-xs text-rose-700">Notes: {p.review_notes}</div> : null}
+              </CardContent>
+            </Card>
+          ))}
+        </TabsContent>
+
+
+
         <TabsContent value="test" className="space-y-4 mt-4">
           <Card>
             <CardHeader>
