@@ -3277,6 +3277,36 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
               parameters: { type: "object", properties: {} }
             }
           },
+          {
+            type: "function",
+            function: {
+              name: "list_subagents",
+              description: "Discover Paige's specialized sub-agents (Fundability Diagnostician, Legal & Compliance Reviewer, Business Credit Strategist, Funding Path Architect, Data Consistency Auditor, Market Research, Financial Research, Content Drafter, Intake Concierge, Sales Pipeline, Coach Copilot). Use this FIRST when the user asks for deep analysis, audits, research, or anything beyond simple data lookups — then call delegate_to_subagent with the matching slug.",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: { type: "string", description: "Keyword(s) to match against agent name/description/triggers." },
+                  domain: { type: "string", description: "Filter by domain (fundability / compliance / credit / funding / research / outreach / intake / sales / coaching)." }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "delegate_to_subagent",
+              description: "Delegate the heavy lift to a specialized sub-agent. Resolve the slug via list_subagents first. Pass agent-specific input (e.g. {client_id} for fundability/compliance; {query} for market_research; {lender_name} for financial_research). The sub-agent runs its own logic (often Firecrawl + AI Gateway + database joins) and returns structured findings you can summarize for the user.",
+              parameters: {
+                type: "object",
+                properties: {
+                  slug: { type: "string", description: "Sub-agent slug from list_subagents." },
+                  input: { type: "object", description: "Sub-agent-specific arguments." },
+                  contact_id: { type: "string", description: "Optional client UUID for context." }
+                },
+                required: ["slug"]
+              }
+            }
+          },
         ],
         tool_choice: "auto",
         stream: true,
@@ -3815,6 +3845,32 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
               role: "tool",
               content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
             });
+          }
+        } else if (tc.function.name === "list_subagents" || tc.function.name === "delegate_to_subagent") {
+          // Section 18: Orchestrator delegation. Role gate to admin/coach only.
+          try {
+            const { data: roleRows } = await supabase
+              .from("user_roles").select("role").eq("user_id", user.id);
+            const roles = (roleRows || []).map((r: any) => r.role);
+            if (!(roles.includes("admin") || roles.includes("coach"))) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Sub-agent delegation is restricted to admins and coaches." }) });
+              continue;
+            }
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const orchestratorUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/paige-orchestrator`;
+            const body = tc.function.name === "list_subagents"
+              ? { action: "tool_search", query: args.query, domain: args.domain }
+              : { action: "tool_invoke", slug: args.slug, input: args.input ?? {}, context: { contact_id: args.contact_id, user_id: user.id } };
+            const r = await fetch(orchestratorUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseServiceKey}`, apikey: supabaseServiceKey },
+              body: JSON.stringify(body),
+            });
+            const text = await r.text();
+            let payload: any; try { payload = JSON.parse(text); } catch { payload = { raw: text }; }
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(payload) });
+          } catch (e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "orchestrator_error" }) });
           }
         }
       }
