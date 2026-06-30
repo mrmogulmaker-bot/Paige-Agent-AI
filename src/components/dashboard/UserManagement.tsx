@@ -493,6 +493,14 @@ export const UserManagement = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <MemberProfileDrawer
+        member={profileTarget}
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+        initialEdit
+        onSaved={() => fetchUsers()}
+      />
     </div>
   );
 };
