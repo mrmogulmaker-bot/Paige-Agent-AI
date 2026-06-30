@@ -266,10 +266,14 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         {/* Row 2: 7-hub primary nav (desktop) */}
         <div className="hidden md:flex items-center gap-1 px-3 md:px-6 h-11 overflow-x-auto scrollbar-none border-t border-sidebar-border/60">
           {hubs.map((hub) => {
-            const hubActive = isActive(hub.href) || (hub.children?.some((c) => isActive(c.href)) ?? false);
+            const hubActive =
+              isActive(hub.href) ||
+              (hub.children?.some((c) => isActive(c.href)) ?? false) ||
+              (hub.aliases?.some((a) => isActive(a)) ?? false);
             const showBadge =
               (hub.href === "/admin/tasks" || hub.children?.some((c) => c.href === "/admin/approvals")) &&
               pendingCount > 0;
+
 
             const pill = (
               <div
