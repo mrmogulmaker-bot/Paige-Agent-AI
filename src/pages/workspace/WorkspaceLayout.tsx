@@ -3,7 +3,10 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { supabase } from "@/integrations/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { RoleGate } from "@/components/auth/RoleGate";
+import { ShieldAlert } from "lucide-react";
 import "./workspace-theme.css";
+
 
 /**
  * White-labeled shell for the Build to Fund Client Workspace.
