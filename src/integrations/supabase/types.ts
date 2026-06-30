@@ -2601,6 +2601,87 @@ export type Database = {
         }
         Relationships: []
       }
+      client_files: {
+        Row: {
+          contact_id: string
+          created_at: string
+          description: string | null
+          id: string
+          mime_type: string | null
+          original_filename: string
+          size_bytes: number | null
+          storage_path: string
+          tenant_id: string | null
+          updated_at: string
+          uploaded_by_user_id: string
+          visibility: Database["public"]["Enums"]["client_file_visibility"]
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          mime_type?: string | null
+          original_filename: string
+          size_bytes?: number | null
+          storage_path: string
+          tenant_id?: string | null
+          updated_at?: string
+          uploaded_by_user_id: string
+          visibility?: Database["public"]["Enums"]["client_file_visibility"]
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          mime_type?: string | null
+          original_filename?: string
+          size_bytes?: number | null
+          storage_path?: string
+          tenant_id?: string | null
+          updated_at?: string
+          uploaded_by_user_id?: string
+          visibility?: Database["public"]["Enums"]["client_file_visibility"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_files_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_files_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "client_files_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "client_files_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_files_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_goals: {
         Row: {
           created_at: string
@@ -2707,6 +2788,78 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_notes: {
+        Row: {
+          author_user_id: string
+          body: string
+          contact_id: string
+          created_at: string
+          id: string
+          pinned: boolean
+          tags: string[]
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          author_user_id: string
+          body: string
+          contact_id: string
+          created_at?: string
+          id?: string
+          pinned?: boolean
+          tags?: string[]
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author_user_id?: string
+          body?: string
+          contact_id?: string
+          created_at?: string
+          id?: string
+          pinned?: boolean
+          tags?: string[]
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_notes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_notes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "client_notes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "client_notes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_notes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -13950,6 +14103,7 @@ export type Database = {
         | "parent"
         | "subsidiary"
         | "standalone"
+      client_file_visibility: "internal" | "shared" | "client_upload"
       consent_type:
         | "credit_report_access"
         | "croa_rights"
@@ -14232,6 +14386,7 @@ export const Constants = {
         "subsidiary",
         "standalone",
       ],
+      client_file_visibility: ["internal", "shared", "client_upload"],
       consent_type: [
         "credit_report_access",
         "croa_rights",
