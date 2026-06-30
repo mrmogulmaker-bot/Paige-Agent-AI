@@ -143,6 +143,7 @@ const moreNavItems: MoreItem[] = [
   { label: "Brokers", href: "/admin/brokers", icon: Briefcase, adminOnly: true },
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench, adminOnly: true },
   { label: "Security Canary", href: "/admin/security", icon: ShieldCheck, adminOnly: true },
+  { label: "Legal Documents", href: "/admin/legal", icon: ShieldCheck, adminOnly: true },
   { label: "Settings", href: "/admin/settings", icon: Settings, adminOnly: true },
 ];
 
