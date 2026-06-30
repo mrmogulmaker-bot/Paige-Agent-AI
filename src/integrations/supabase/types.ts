@@ -12115,6 +12115,62 @@ export type Database = {
           },
         ]
       }
+      tenant_email_domains: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          dns_records: Json
+          domain: string
+          from_email_local: string
+          from_name: string
+          id: string
+          is_default: boolean
+          resend_domain_id: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          verified_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          dns_records?: Json
+          domain: string
+          from_email_local?: string
+          from_name: string
+          id?: string
+          is_default?: boolean
+          resend_domain_id?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          verified_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          dns_records?: Json
+          domain?: string
+          from_email_local?: string
+          from_name?: string
+          id?: string
+          is_default?: boolean
+          resend_domain_id?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_email_domains_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_invite_tokens: {
         Row: {
           created_at: string
@@ -13678,6 +13734,14 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      get_tenant_sender: {
+        Args: { _tenant_id: string }
+        Returns: {
+          from_email: string
+          from_name: string
+          source: string
+        }[]
       }
       get_user_business_limit: { Args: { _user_id: string }; Returns: number }
       has_any_role: {
