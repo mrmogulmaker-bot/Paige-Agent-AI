@@ -71,12 +71,15 @@ export function useOnboardingClient() {
 }
 
 export async function advanceOnboardingStage(
-  clientId: string,
+  _clientId: string,
   toStage: string,
   extraPatch: Record<string, unknown> = {},
 ) {
-  return supabase
-    .from("clients")
-    .update({ onboarding_stage: toStage, updated_at: new Date().toISOString(), ...extraPatch })
-    .eq("id", clientId);
+  // Direct UPDATE on public.clients is blocked for linked clients by RLS, so
+  // we go through the SECURITY DEFINER RPC which validates ownership, enforces
+  // forward-only transitions, and writes an audit row admins can watch live.
+  return supabase.rpc("client_advance_onboarding_stage", {
+    p_to_stage: toStage,
+    p_payload: extraPatch as never,
+  });
 }
