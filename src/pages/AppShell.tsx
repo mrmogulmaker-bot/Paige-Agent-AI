@@ -191,6 +191,7 @@ const AppShell = () => {
   // Desktop layout: resizable panels
   return (
     <>
+      <RequiredConsentsGate userId={activeUser.id} />
       <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
       <AdminViewBanner />
       <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
