@@ -53,6 +53,8 @@ const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenan
 const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
 const MyReferralsPanel = lazy(() => import("@/components/dashboard/MyReferralsPanel"));
 const KnowledgeBaseAdmin = lazy(() => import("@/pages/admin/KnowledgeBaseAdmin"));
+const TenantKnowledgeAdmin = lazy(() => import("@/pages/admin/TenantKnowledgeAdmin"));
+const NetworkKbInsights = lazy(() => import("@/pages/admin/NetworkKbInsights"));
 const AILearningOverview = lazy(() => import("@/components/admin/AILearningOverview").then(m => ({ default: m.AILearningOverview })));
 const CommunicationsAdmin = lazy(() => import("@/pages/admin/CommunicationsAdmin"));
 const BrokersAdmin = lazy(() => import("@/pages/admin/BrokersAdmin"));
