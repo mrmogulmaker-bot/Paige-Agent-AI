@@ -24,6 +24,7 @@ import { MoreHorizontal, UserPlus, Mail, ShieldOff, ShieldCheck, LogOut, Trash2,
 import { toast } from "sonner";
 import { InviteMemberDialog } from "@/components/admin/InviteMemberDialog";
 import { ReassignCoachDialog } from "@/components/admin/ReassignCoachDialog";
+import { MemberProfileDrawer } from "@/components/admin/MemberProfileDrawer";
 
 // ---- Role taxonomy ---------------------------------------------------------
 // A "staff role" = anything that grants platform/workspace authority.
@@ -100,6 +101,9 @@ export default function MembersAdmin() {
 
   // Confirm revoke access (SOFT — strips staff roles only)
   const [revokeTarget, setRevokeTarget] = useState<MemberRow | null>(null);
+
+  // Profile drawer
+  const [profileTarget, setProfileTarget] = useState<MemberRow | null>(null);
 
   const loadAll = async () => {
     setLoading(true);
@@ -362,11 +366,75 @@ export default function MembersAdmin() {
           <p className="text-muted-foreground text-sm mt-1">
             Platform staff only — admins, coaches, sales reps, brokers, finance, viewers. Clients and leads live in Contacts.
           </p>
+          {invites.length > 0 && (
+            <a href="#pending-invitations" className="inline-flex items-center gap-1.5 mt-2 text-xs font-medium text-primary hover:underline">
+              <Mail className="w-3.5 h-3.5" /> {invites.length} pending invitation{invites.length === 1 ? "" : "s"} — jump to list
+            </a>
+          )}
         </div>
         <Button onClick={() => setInviteOpen(true)}>
           <UserPlus className="w-4 h-4 mr-2" /> Invite or promote
         </Button>
       </div>
+
+      {/* Pending invitations — placed first so admins always see outstanding sends */}
+      <Card id="pending-invitations">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Mail className="w-4 h-4" /> Pending invitations ({invites.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Delivery</TableHead>
+                  <TableHead>Sent</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead className="w-32"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading && (
+                  <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">Loading…</TableCell></TableRow>
+                )}
+                {!loading && invites.length === 0 && (
+                  <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">No pending invitations.</TableCell></TableRow>
+                )}
+                {!loading && invites.map(inv => (
+                  <TableRow key={inv.id}>
+                    <TableCell>
+                      <div>{inv.email}</div>
+                      {inv.last_error && (
+                        <div className="text-xs text-destructive truncate max-w-sm" title={inv.last_error}>
+                          {inv.last_error}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell><Badge variant="outline" className="capitalize">{inv.role.replace("_", " ")}</Badge></TableCell>
+                    <TableCell>{renderInviteStatus(inv)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{new Date(inv.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{new Date(inv.expires_at).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1 justify-end">
+                        <Button variant="outline" size="sm" onClick={() => handleResendInvite(inv)}>
+                          <Mail className="w-3.5 h-3.5 mr-1" /> Resend
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleRevokeInvite(inv.id)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Role filter chips */}
       <div className="flex flex-wrap gap-2">
@@ -427,13 +495,17 @@ export default function MembersAdmin() {
                   return (
                   <TableRow key={m.user_id} className={!isStaff ? "opacity-70" : ""}>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex items-center gap-2 text-left hover:underline focus:outline-none focus:underline"
+                        onClick={() => setProfileTarget(m)}
+                      >
                         {m.is_owner && <Crown className="w-4 h-4 text-yellow-500" />}
                         <div>
                           <div className="font-medium">{m.full_name || m.email || "—"}</div>
                           {m.full_name && <div className="text-xs text-muted-foreground">{m.email}</div>}
                         </div>
-                      </div>
+                      </button>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
@@ -468,6 +540,9 @@ export default function MembersAdmin() {
                         <DropdownMenuContent align="end" className="w-56">
                           <DropdownMenuLabel>Manage user</DropdownMenuLabel>
                           <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setProfileTarget(m)}>
+                            <UserCog className="w-4 h-4 mr-2" /> View profile
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { setAddRoleTarget(m); setNewRole("coach"); }}>
                             <UserCog className="w-4 h-4 mr-2" /> Add role
                           </DropdownMenuItem>
@@ -518,56 +593,11 @@ export default function MembersAdmin() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader><CardTitle>Pending invitations ({invites.length})</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Delivery</TableHead>
-                  <TableHead>Sent</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead className="w-32"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invites.length === 0 && (
-                  <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">No pending invitations.</TableCell></TableRow>
-                )}
-                {invites.map(inv => (
-                  <TableRow key={inv.id}>
-                    <TableCell>
-                      <div>{inv.email}</div>
-                      {inv.last_error && (
-                        <div className="text-xs text-destructive truncate max-w-sm" title={inv.last_error}>
-                          {inv.last_error}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell><Badge variant="outline" className="capitalize">{inv.role.replace("_", " ")}</Badge></TableCell>
-                    <TableCell>{renderInviteStatus(inv)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{new Date(inv.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{new Date(inv.expires_at).toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 justify-end">
-                        <Button variant="outline" size="sm" onClick={() => handleResendInvite(inv)}>
-                          <Mail className="w-3.5 h-3.5 mr-1" /> Resend
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleRevokeInvite(inv.id)}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <MemberProfileDrawer
+        member={profileTarget}
+        open={!!profileTarget}
+        onOpenChange={(o) => { if (!o) setProfileTarget(null); }}
+      />
 
       <InviteMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} onInvited={loadAll} />
 
