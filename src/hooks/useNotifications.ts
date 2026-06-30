@@ -123,44 +123,33 @@ export const useNotifications = () => {
 
   useEffect(() => {
     fetchNotifications();
+    if (!scopedId) return;
 
-    const setupRealtimeSubscription = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) return;
+    const channel = supabase
+      .channel(`notifications-${scopedId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${scopedId}`,
+        },
+        (payload) => {
+          const newNotification = payload.new as Notification;
+          setNotifications(prev => [newNotification, ...prev]);
+          setUnreadCount(prev => prev + 1);
+          toast({
+            title: newNotification.title,
+            description: newNotification.message,
+          });
+        },
+      )
+      .subscribe();
 
-      // Subscribe to real-time notifications
-      const channel = supabase
-        .channel("notifications")
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${user.id}`,
-          },
-          (payload) => {
-            const newNotification = payload.new as Notification;
-            setNotifications(prev => [newNotification, ...prev]);
-            setUnreadCount(prev => prev + 1);
-
-            // Show toast for new notification
-            toast({
-              title: newNotification.title,
-              description: newNotification.message,
-            });
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    };
-
-    setupRealtimeSubscription();
-  }, []);
+    return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopedId]);
 
   return {
     notifications,
