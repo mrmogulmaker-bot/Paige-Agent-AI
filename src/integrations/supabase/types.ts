@@ -4972,6 +4972,42 @@ export type Database = {
           },
         ]
       }
+      doctrine_120_canonical_columns: {
+        Row: {
+          canonical_columns: string[]
+          created_at: string
+          domain: string
+          id: string
+          mcp_tool_name: string | null
+          notes: string | null
+          table_name: string
+          table_schema: string
+          updated_at: string
+        }
+        Insert: {
+          canonical_columns: string[]
+          created_at?: string
+          domain: string
+          id?: string
+          mcp_tool_name?: string | null
+          notes?: string | null
+          table_name: string
+          table_schema?: string
+          updated_at?: string
+        }
+        Update: {
+          canonical_columns?: string[]
+          created_at?: string
+          domain?: string
+          id?: string
+          mcp_tool_name?: string | null
+          notes?: string | null
+          table_name?: string
+          table_schema?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       doctrine_120_canonical_enums: {
         Row: {
           canonical_values: string[]
@@ -14496,6 +14532,8 @@ export type Database = {
         Returns: undefined
       }
       enforce_doctrine_120: { Args: never; Returns: Json }
+      enforce_doctrine_120_columns: { Args: never; Returns: Json }
+      enforce_doctrine_120_full: { Args: never; Returns: Json }
       enforce_subagent_doctrine_116: {
         Args: never
         Returns: {
