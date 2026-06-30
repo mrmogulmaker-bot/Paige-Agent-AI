@@ -19,6 +19,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHead } from "@/components/seo/PageHead";
+import {
+  CommunicationsConsent,
+  EMPTY_COMMS_CONSENT,
+  type CommsConsentState,
+} from "@/components/legal/CommunicationsConsent";
+import { recordCommsConsent } from "@/lib/legal/recordCommsConsent";
 
 type WizardData = {
   full_legal_name: string;
@@ -83,6 +89,7 @@ export default function PublicSignup() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [commsConsent, setCommsConsent] = useState<CommsConsentState>(EMPTY_COMMS_CONSENT);
 
   const [step, setStep] = useState(0);
   const [data, setData] = useState<WizardData>(() => {
@@ -149,6 +156,9 @@ export default function PublicSignup() {
         });
         if (error) throw error;
         if (fullName) setData((d) => ({ ...d, full_legal_name: d.full_legal_name || fullName }));
+        // Log communications consent immediately (auth.uid may or may not be set yet
+        // depending on email confirmation; RPC handles both).
+        await recordCommsConsent({ email, source: "public_signup", consent: commsConsent });
         const { data: sess } = await supabase.auth.getSession();
         if (sess.session?.user) {
           setPhase("wizard");
@@ -272,6 +282,15 @@ export default function PublicSignup() {
                 <Label>Password</Label>
                 <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" />
               </div>
+
+              {authMode === "signup" && (
+                <CommunicationsConsent
+                  value={commsConsent}
+                  onChange={setCommsConsent}
+                  showSms={false}
+                />
+              )}
+
               <Button onClick={handleEmailAuth} disabled={authBusy || !email || !password} className="w-full h-11">
                 {authBusy ? "Working…" : authMode === "signup" ? "Create account & continue" : "Sign in & continue"}
               </Button>
