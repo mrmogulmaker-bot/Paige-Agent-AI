@@ -236,6 +236,26 @@ export default function ContactsAdmin() {
     else setSelected(new Set(filtered.map((c) => c.id)));
   };
 
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteContact(deleteTarget.id);
+      toast.success("Contact deleted");
+      setClients((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(deleteTarget.id);
+        return next;
+      });
+      setDeleteTarget(null);
+    } catch (e: any) {
+      toast.error(e?.message || "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <TooltipProvider delayDuration={250}>
       <div className="space-y-4 pb-24">
