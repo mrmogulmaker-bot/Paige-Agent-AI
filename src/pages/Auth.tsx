@@ -94,7 +94,11 @@ const Auth = () => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
-          redirectByRole(session.user.id);
+          // Supabase warns against awaiting/querying Supabase from inside the
+          // auth callback; defer role resolution so login cannot deadlock.
+          window.setTimeout(() => {
+            void redirectByRole(session.user.id);
+          }, 0);
         }
       }
     );
@@ -103,7 +107,7 @@ const Auth = () => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        redirectByRole(session.user.id);
+        void redirectByRole(session.user.id);
       }
     });
 

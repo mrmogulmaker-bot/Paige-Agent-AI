@@ -70,7 +70,11 @@ export function useUserRoles(): UserRolesState {
     supabase.auth.getUser().then(({ data }) => load(data.user?.id ?? null));
 
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-      load(session?.user?.id ?? null);
+      // Do not run Supabase queries directly inside the auth callback; doing so
+      // can deadlock session hydration and leave routes stuck on "Loading…".
+      window.setTimeout(() => {
+        void load(session?.user?.id ?? null);
+      }, 0);
     });
 
     return () => {
