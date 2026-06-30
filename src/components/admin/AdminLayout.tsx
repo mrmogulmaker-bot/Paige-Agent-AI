@@ -388,7 +388,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
                 More
               </div>
-              {moreNavItems.map((item) => (
+              {visibleMore.map((item) => (
                 <Link
                   key={item.href}
                   to={item.href}
