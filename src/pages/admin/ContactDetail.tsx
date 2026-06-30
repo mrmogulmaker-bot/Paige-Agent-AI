@@ -21,6 +21,7 @@ import { QuickLogMenu } from "@/components/admin/contacts/QuickLogMenu";
 import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
 import { ContactCampaignAttribution } from "@/components/admin/contacts/ContactCampaignAttribution";
 import { BusinessVerificationCard } from "@/components/admin/contacts/BusinessVerificationCard";
+import { BusinessTabPanel } from "@/components/admin/contacts/BusinessTabPanel";
 
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
