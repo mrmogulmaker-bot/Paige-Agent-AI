@@ -289,7 +289,7 @@ Deno.serve(async (req) => {
           context: {
             source: 'broker-auto-approve',
             broker_id: broker.id,
-            referral_code: code || null,
+            referral_code: broker.referral_code || null,
             stitched_from_application_id: (priorApp as any)?.id ?? null,
             stitched_from_application_at: (priorApp as any)?.created_at ?? null,
           },
