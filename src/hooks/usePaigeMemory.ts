@@ -1,5 +1,6 @@
 import { useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getEffectiveUserId } from "@/lib/scopedUser";
 
 interface DocumentSummary {
   fileName: string;
@@ -72,8 +73,9 @@ export function usePaigeMemory() {
     if (messages.length < 3) return; // Not enough conversation to summarize
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      const __uid = await getEffectiveUserId();
+      if (!__uid) return null;
+      const session = { user: { id: __uid } } as any;
 
       await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,

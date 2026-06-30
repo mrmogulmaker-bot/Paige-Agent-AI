@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getEffectiveUserId } from "@/lib/scopedUser";
 import { useCreditFactors } from "./useCreditFactors";
 import {
   computeAllFundabilityScores,

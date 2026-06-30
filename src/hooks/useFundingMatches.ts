@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getEffectiveUserId } from "@/lib/scopedUser";
 
 export function useFundingMatches() {
   const queryClient = useQueryClient();
@@ -7,8 +8,9 @@ export function useFundingMatches() {
   const { data: matches, isLoading } = useQuery({
     queryKey: ["funding-matches"],
     queryFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return [];
+      const __uid = await getEffectiveUserId();
+      if (!__uid) return null;
+      const session = { user: { id: __uid } } as any;
 
       const { data, error } = await supabase
         .from("user_funding_matches")
@@ -23,8 +25,9 @@ export function useFundingMatches() {
 
   const runMatch = useMutation({
     mutationFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
+      const __uid = await getEffectiveUserId();
+      if (!__uid) throw new Error("Not authenticated");
+      const session = { user: { id: __uid } } as any;
 
       const response = await supabase.functions.invoke("match-funding-products", {
         headers: { Authorization: `Bearer ${session.access_token}` },
@@ -51,8 +54,9 @@ export function useFundingProjections() {
   const { data: projections, isLoading } = useQuery({
     queryKey: ["funding-projections"],
     queryFn: async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return [];
+      const __uid = await getEffectiveUserId();
+      if (!__uid) return null;
+      const session = { user: { id: __uid } } as any;
 
       const { data, error } = await supabase
         .from("funding_projections")
@@ -68,8 +72,9 @@ export function useFundingProjections() {
 
   const createProjection = useMutation({
     mutationFn: async ({ scenario_name, scenario_params }: { scenario_name: string; scenario_params: any }) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Not authenticated");
+      const __uid = await getEffectiveUserId();
+      if (!__uid) throw new Error("Not authenticated");
+      const session = { user: { id: __uid } } as any;
 
       const response = await supabase.functions.invoke("generate-funding-projection", {
         headers: { Authorization: `Bearer ${session.access_token}` },
