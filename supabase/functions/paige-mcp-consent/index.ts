@@ -87,7 +87,7 @@ async function tryGetUser(authHeader: string) {
   return data.user ?? null;
 }
 
-type Tier = "platform_owner" | "tenant_owner" | "tenant_admin" | null;
+type Tier = "platform_owner" | "tenant_owner" | "tenant_admin" | "client" | null;
 
 async function computeGrantedScopes(userId: string, userEmail: string | null, requested: string[]) {
   const base = requested.filter((s) => SUPPORTED_SCOPES.has(s));
@@ -111,35 +111,49 @@ async function computeGrantedScopes(userId: string, userEmail: string | null, re
   const { data: tenantCtx } = await admin
     .rpc("get_user_primary_tenant", { _user_id: userId }) as any;
   const ctx = Array.isArray(tenantCtx) ? tenantCtx[0] : tenantCtx;
-  if (!ctx?.tenant_id) {
-    return { granted: base, tier: null, tenantName: null };
-  }
-  tenantName = ctx.tenant_name ?? null;
+  if (ctx?.tenant_id) {
+    tenantName = ctx.tenant_name ?? null;
 
-  // 3. Tenant Owner — full operator power inside their tenant, incl. destructive
-  //    role removal. No platform.* scopes.
-  if (ctx.member_role === "owner") {
-    granted = Array.from(new Set([...base, ...TENANT_OWNER_AUTOGRANT]));
-    tier = "tenant_owner";
+    // 3. Tenant Owner — full operator power inside their tenant, incl. destructive
+    //    role removal. No platform.* scopes.
+    if (ctx.member_role === "owner") {
+      granted = Array.from(new Set([...base, ...TENANT_OWNER_AUTOGRANT]));
+      tier = "tenant_owner";
+      return { granted, tier, tenantName };
+    }
+
+    // 4. Tenant Admin — full operator power (incl. bulk delete) but cannot
+    //    permanently remove roles or touch platform infra.
+    if (ctx.member_role === "admin") {
+      const adminGrant = [
+        // Strip platform.* and admin.delete from explicit requests; admin-tier
+        // can never auto-grant or be auto-granted those.
+        ...base.filter((s) => !s.startsWith("platform.") && s !== "admin.delete"),
+        ...TENANT_ADMIN_AUTOGRANT,
+      ];
+      granted = Array.from(new Set(adminGrant));
+      tier = "tenant_admin";
+      return { granted, tier, tenantName };
+    }
+  }
+
+  // 5. Client (end-user) — a row exists in `clients` linking this auth user
+  //    to a workspace. Grant only the self-scoped scopes. Strip every
+  //    operator/admin/platform scope they may have requested.
+  const { data: clientRow } = await admin
+    .from("clients")
+    .select("id")
+    .eq("linked_user_id", userId)
+    .maybeSingle();
+  if (clientRow?.id) {
+    const safeBase = base.filter((s) => s.startsWith("self."));
+    granted = Array.from(new Set([...safeBase, ...CLIENT_AUTOGRANT]));
+    tier = "client";
     return { granted, tier, tenantName };
   }
 
-  // 4. Tenant Admin — full operator power (incl. bulk delete) but cannot
-  //    permanently remove roles or touch platform infra.
-  if (ctx.member_role === "admin") {
-    const adminGrant = [
-      // Strip platform.* and admin.delete from explicit requests; admin-tier
-      // can never auto-grant or be auto-granted those.
-      ...base.filter((s) => !s.startsWith("platform.") && s !== "admin.delete"),
-      ...TENANT_ADMIN_AUTOGRANT,
-    ];
-    granted = Array.from(new Set(adminGrant));
-    tier = "tenant_admin";
-    return { granted, tier, tenantName };
-  }
-
-  // 5. Anyone else (coach, client) — only the scopes they explicitly requested
-  //    that they're already entitled to via RLS. No auto-elevation.
+  // 6. Anyone else (coach, broker, unlinked user) — only the scopes they
+  //    explicitly requested that they're already entitled to via RLS.
   return { granted: base, tier: null, tenantName };
 }
 
