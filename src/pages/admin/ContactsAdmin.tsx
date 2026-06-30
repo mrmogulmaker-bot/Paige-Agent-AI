@@ -542,7 +542,7 @@ export default function ContactsAdmin() {
           }}
         />
 
-        <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && !deleting && setDeleteTarget(null)}>
+        <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v && !deleting) { setDeleteTarget(null); setAlsoDeleteAuth(false); } }}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
