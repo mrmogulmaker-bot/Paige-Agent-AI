@@ -79,6 +79,7 @@ export default function McpAuthorize() {
         const data = await callConsent("lookup", session.access_token);
         setClient(data.client);
         setScopes(data.scopes);
+        setElevated(data.elevated ?? null);
         setStatus("ready");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error");
