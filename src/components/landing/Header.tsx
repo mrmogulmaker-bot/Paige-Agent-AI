@@ -59,7 +59,7 @@ export function Header() {
             {user ? (
               <>
                 <NotificationBell />
-                <Button onClick={() => navigate("/app")}>Go to Dashboard</Button>
+                <Button onClick={async () => navigate(await resolveLandingRoute(user.id))}>Go to Dashboard</Button>
               </>
             ) : (
               <>
