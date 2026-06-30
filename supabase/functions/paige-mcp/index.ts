@@ -3335,6 +3335,35 @@ mcp.tool("create_tenant", {
     const { data, error } = await admin.from("tenants").insert(payload).select("*").single();
     if (error) return err(error.message);
     await audit("create_tenant", "tenant", data.id, { slug: data.slug });
+
+    // Record Tenant MSA + DPA + AUP acceptances for the named owner (audit trail).
+    if (args.owner_user_id) {
+      try {
+        const { data: docs } = await admin
+          .from("legal_documents")
+          .select("slug, version")
+          .in("slug", ["tenant-msa", "dpa", "aup"])
+          .eq("is_current", true);
+        if (docs && docs.length) {
+          await admin.from("legal_acceptances").insert(
+            docs.map((d: any) => ({
+              user_id: args.owner_user_id,
+              document_slug: d.slug,
+              document_version: d.version,
+              context: {
+                source: "create_tenant_mcp",
+                tenant_id: data.id,
+                tenant_slug: data.slug,
+                actor_user_id: actor.user_id ?? null,
+              },
+            })),
+          );
+        }
+      } catch (e) {
+        console.warn("[create_tenant] tenant-msa/dpa/aup acceptance write failed", e);
+      }
+    }
+
     return ok({ tenant: data });
   },
 });
