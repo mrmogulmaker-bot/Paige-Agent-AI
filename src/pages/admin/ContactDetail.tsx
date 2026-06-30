@@ -28,6 +28,7 @@ import { ContactNotesPanel } from "@/components/admin/contacts/ContactNotesPanel
 import { ContactFilesPanel } from "@/components/admin/contacts/ContactFilesPanel";
 import { ContactTasksPanel } from "@/components/admin/contacts/ContactTasksPanel";
 import { ContactPortalPanel } from "@/components/admin/contacts/ContactPortalPanel";
+import { ImpersonateClientButton } from "@/components/admin/ImpersonateClientButton";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -240,9 +241,12 @@ export default function ContactDetail() {
         )}
 
         {client.linked_user_id && (
-          <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/user/${client.linked_user_id}`)}>
-            <ExternalLink className="h-4 w-4 mr-1" /> Full Client File
-          </Button>
+          <>
+            <ImpersonateClientButton contactId={client.id} linkedUserId={client.linked_user_id} />
+            <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/user/${client.linked_user_id}`)}>
+              <ExternalLink className="h-4 w-4 mr-1" /> Full Client File
+            </Button>
+          </>
         )}
         {!client.linked_user_id && (
           <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/internal/${client.id}`)}>
