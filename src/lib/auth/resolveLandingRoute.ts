@@ -17,13 +17,14 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase
         .from("clients")
-        .select("id")
+        .select("id, onboarding_stage")
         .eq("linked_user_id", userId)
         .maybeSingle(),
     ]);
 
     const roles = (rolesRes.data || []).map((r: any) => r.role as string);
 
+    // Staff routes take priority — but only for genuine staff roles.
     if (roles.includes("admin") || roles.includes("coach")) {
       return "/admin";
     }
@@ -31,6 +32,10 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
       return "/broker/app";
     }
     if (clientRes.data?.id) {
+      // Invited clients land in the onboarding sequence until they finish it.
+      // Once `onboarding_stage = 'completed'`, they go straight to the workspace.
+      const stage = clientRes.data.onboarding_stage;
+      if (stage && stage !== "completed") return "/onboard/welcome";
       return "/workspace";
     }
     return "/app";
