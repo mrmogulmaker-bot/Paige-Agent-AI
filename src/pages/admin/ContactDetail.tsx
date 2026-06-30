@@ -206,7 +206,7 @@ export default function ContactDetail() {
         <Button variant="outline" size="sm" onClick={() => navigate(`/admin/contacts/${client.id}/journey`)}>
           <Activity className="h-4 w-4 mr-1" /> Member Journey
         </Button>
-        {btfEnabled && (
+        {btfEnabled && isAdmin && (
           <>
             <Button variant="outline" size="sm" onClick={sendBtfInvite}>
               <Send className="h-4 w-4 mr-1" /> Resend BTF Invite
@@ -218,6 +218,7 @@ export default function ContactDetail() {
             )}
           </>
         )}
+
         {client.linked_user_id && (
           <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/user/${client.linked_user_id}`)}>
             <ExternalLink className="h-4 w-4 mr-1" /> Full Client File
