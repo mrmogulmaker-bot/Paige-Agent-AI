@@ -70,7 +70,7 @@ export function useSubAgents() {
     setLoading(true);
     const { data, error } = await supabase
       .from("paige_subagents")
-      .select("slug,name,domain,description,runtime,triggers,display_order,enabled,edge_function,langgraph_graph")
+      .select("slug,name,domain,description,runtime,triggers,display_order,enabled,edge_function,langgraph_graph,auto_generated,system_prompt")
       .order("display_order");
     if (error) setError(error.message);
     else setAgents((data ?? []) as SubAgent[]);
