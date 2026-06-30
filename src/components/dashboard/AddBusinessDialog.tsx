@@ -42,6 +42,8 @@ interface AddBusinessDialogProps {
   onOpenChange: (open: boolean) => void;
   parentBusinessId?: string | null;
   onSuccess: () => void;
+  /** Admin override: create the business on behalf of this user id instead of the logged-in user. */
+  ownerUserId?: string | null;
 }
 
 export function AddBusinessDialog({
@@ -49,6 +51,7 @@ export function AddBusinessDialog({
   onOpenChange,
   parentBusinessId,
   onSuccess,
+  ownerUserId,
 }: AddBusinessDialogProps) {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -72,9 +75,10 @@ export function AddBusinessDialog({
       if (!user) throw new Error("Not authenticated");
 
       const organizationalLevel = parentBusinessId ? 1 : 0;
+      const targetOwnerId = ownerUserId || user.id;
 
       const insertData: any = {
-        owner_user_id: user.id,
+        owner_user_id: targetOwnerId,
         legal_name: values.legal_name,
         business_type: values.business_type,
         ein: values.ein || null,
