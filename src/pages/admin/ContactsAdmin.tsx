@@ -101,6 +101,7 @@ export default function ContactsAdmin() {
   const [editTarget, setEditTarget] = useState<ClientRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ClientRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [alsoDeleteAuth, setAlsoDeleteAuth] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const { isAdmin } = useUserRoles();
 
