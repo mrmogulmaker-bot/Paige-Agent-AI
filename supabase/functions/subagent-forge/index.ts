@@ -69,6 +69,27 @@ async function bumpQuota(field: "proposals_count" | "soft_shipped" | "hard_shipp
     .upsert({ quota_date: today, ...next }, { onConflict: "quota_date" });
 }
 
+// Doctrine §116 enforcement: scan proposed system_prompt for hardcoded
+// real-person names ("First Last") and business-suffix patterns.
+const SAFE_NAME_ALLOWLIST = new Set([
+  "Mogul Maker", "Maker Academy", "Mogul Academy",
+  "Paige Agent", "Lovable Cloud", "Lovable AI",
+  "First Last", "John Doe", "Jane Doe",
+  "United States", "New York", "Los Angeles",
+]);
+const BUSINESS_SUFFIX_RE = /\b[A-Z][A-Za-z0-9&'-]+(?:\s+[A-Z][A-Za-z0-9&'-]+)*\s+(LLC|Inc|Corp|Corporation|Capital|Group|Holdings|Partners|Ventures|Bank|Financial)\b/;
+const FIRST_LAST_RE = /\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b/g;
+
+function scanDoctrine116(prompt: string): string | null {
+  const biz = prompt.match(BUSINESS_SUFFIX_RE);
+  if (biz) return `business-name pattern: "${biz[0]}"`;
+  const matches = prompt.match(FIRST_LAST_RE) ?? [];
+  for (const m of matches) {
+    if (!SAFE_NAME_ALLOWLIST.has(m)) return `first+last name pattern: "${m}"`;
+  }
+  return null;
+}
+
 function validateProposal(p: Record<string, unknown>) {
   const errors: string[] = [];
   const slug = String(p.slug ?? "").toLowerCase();
@@ -89,6 +110,17 @@ function validateProposal(p: Record<string, unknown>) {
       if (PROTECTED_SCOPES.has(s)) errors.push(`soft agents may not access protected scope: ${s}`);
     }
   }
+
+  if (p.system_prompt) {
+    const hit = scanDoctrine116(String(p.system_prompt));
+    if (hit) {
+      errors.push(
+        `Doctrine §116: sub-agent prompts must use archetype phrasing only. ` +
+        `Replace named individuals with 'a client', 'the contact', 'their business'. Matched ${hit}.`,
+      );
+    }
+  }
+
   return { slug, runtime, errors };
 }
 

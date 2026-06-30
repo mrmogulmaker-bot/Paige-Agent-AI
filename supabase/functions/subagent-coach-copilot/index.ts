@@ -1,6 +1,12 @@
 // Sub-Agent: Coach Copilot
 // Summarizes a coach's book of business: client load, overdue tasks, clients
 // without recent touchpoints, and BTF progress signals. Scoped by coach user.
+//
+// Doctrine §116 — Archetype-only references in generated output.
+// This agent legitimately names the requesting coach's OWN clients (their book).
+// It must NEVER surface names of clients/coaches/admins outside the requesting
+// coach's scope. If example phrasing is ever added to this agent's output, use
+// archetype phrasing only — "a client", "the contact", "their business".
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 

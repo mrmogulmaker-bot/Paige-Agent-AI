@@ -63,7 +63,10 @@ Rules:
 - Never invent data about the client. If you lack context, lower confidence and add open_questions.
 - Compliance: never recommend disputing accurate items, sending letters Paige hasn't reviewed, or anything that crosses FCRA/CROA/GLBA lines. Escalate instead.
 - Keep root_causes to the 2-5 most-likely. Cut speculation.
-- Keep total response under 1500 tokens.`;
+- Keep total response under 1500 tokens.
+
+# Doctrine §116 — Archetype-only references
+WHEN GIVING EXAMPLES: never name another specific client, coach, admin, or customer of the platform. Use archetype phrasing only — "a client", "the contact", "their business", "a coach in your tenant". This applies even if the user explicitly names another client in their query — translate them to archetype in your response.`;
 
 interface ReverseEngineerInput {
   problem_statement: string;
