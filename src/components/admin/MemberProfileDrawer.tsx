@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Crown, ShieldCheck, ShieldOff, Mail, Calendar, Clock, Users, FileText, Pencil, Save, X } from "lucide-react";
+import { Crown, ShieldCheck, ShieldOff, Mail, Calendar, Clock, Users, FileText, Pencil, Save, X, KeyRound, LogOut, Send, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 
 export interface MemberProfile {
@@ -59,6 +59,9 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(initialEdit);
+  const [actionPending, setActionPending] = useState<string | null>(null);
+  const [confirmWipe, setConfirmWipe] = useState(false);
+  const [confirmSignout, setConfirmSignout] = useState(false);
 
   useEffect(() => { setEditing(initialEdit); }, [initialEdit, member?.user_id]);
 
@@ -129,6 +132,25 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
   };
 
   const handleCancel = () => { setFields(original); setEditing(false); };
+
+  const runAction = async (action: "password_reset" | "signout_all" | "resend_invite" | "wipe_onboarding", successMsg: string) => {
+    if (!member) return;
+    setActionPending(action);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-account-actions", {
+        body: { action, user_id: member.user_id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(successMsg);
+    } catch (e: any) {
+      toast.error("Action failed", { description: e?.message });
+    } finally {
+      setActionPending(null);
+      setConfirmWipe(false);
+      setConfirmSignout(false);
+    }
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -253,6 +275,74 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
               </div>
             )}
           </div>
+
+          <Separator />
+
+          {/* Account actions — admin reset toolkit */}
+          <div className="space-y-3">
+            <div className="text-xs uppercase text-muted-foreground">Reset account</div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline" size="sm" className="justify-start"
+                disabled={!!actionPending || !member.email}
+                onClick={() => runAction("password_reset", "Password reset link sent")}
+              >
+                <KeyRound className="w-3.5 h-3.5 mr-1.5" />
+                {actionPending === "password_reset" ? "Sending…" : "Send password reset"}
+              </Button>
+              <Button
+                variant="outline" size="sm" className="justify-start"
+                disabled={!!actionPending || !member.email}
+                onClick={() => runAction("resend_invite", "Magic-link invite sent")}
+              >
+                <Send className="w-3.5 h-3.5 mr-1.5" />
+                {actionPending === "resend_invite" ? "Sending…" : "Resend invite"}
+              </Button>
+              <Button
+                variant="outline" size="sm" className="justify-start"
+                disabled={!!actionPending}
+                onClick={() => setConfirmSignout(true)}
+              >
+                <LogOut className="w-3.5 h-3.5 mr-1.5" />
+                Force sign-out
+              </Button>
+              <Button
+                variant="outline" size="sm" className="justify-start"
+                disabled={!!actionPending}
+                onClick={() => setConfirmWipe(true)}
+              >
+                <RefreshCcw className="w-3.5 h-3.5 mr-1.5" />
+                Wipe onboarding
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Reset actions never touch credit data, businesses, or CRM history. Use Delete to remove an account.
+            </p>
+          </div>
+
+          {confirmSignout && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
+              <p className="text-sm">Sign this user out of every device immediately?</p>
+              <div className="flex gap-2 justify-end">
+                <Button size="sm" variant="ghost" onClick={() => setConfirmSignout(false)} disabled={!!actionPending}>Cancel</Button>
+                <Button size="sm" onClick={() => runAction("signout_all", "Signed out of all sessions")} disabled={!!actionPending}>
+                  {actionPending === "signout_all" ? "Working…" : "Sign out everywhere"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {confirmWipe && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
+              <p className="text-sm">Reset this user's onboarding, intake, and consent flags? They'll re-run the welcome flow on next login.</p>
+              <div className="flex gap-2 justify-end">
+                <Button size="sm" variant="ghost" onClick={() => setConfirmWipe(false)} disabled={!!actionPending}>Cancel</Button>
+                <Button size="sm" onClick={() => runAction("wipe_onboarding", "Onboarding reset")} disabled={!!actionPending}>
+                  {actionPending === "wipe_onboarding" ? "Working…" : "Wipe onboarding"}
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="text-[11px] text-muted-foreground pt-2">User ID: <code className="text-xs">{member.user_id}</code></div>
         </div>

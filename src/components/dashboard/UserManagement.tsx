@@ -27,6 +27,7 @@ import { MemberProfileDrawer, type MemberProfile } from "@/components/admin/Memb
 // only granted through DB bootstrap, never through this dropdown.
 const ASSIGNABLE_ROLES = [
   "admin",
+  "developer",
   "coach",
   "moderator",
   "sales_rep",
@@ -42,7 +43,7 @@ type AssignableRole = typeof ASSIGNABLE_ROLES[number];
 // "user", or no role at all) is a client/lead and belongs in Contacts — NOT
 // in Team & Roles. Keep this list in sync with src/pages/admin/MembersAdmin.tsx.
 const STAFF_ROLES = new Set<string>([
-  "admin", "coach", "sales_rep", "broker", "broker_team_member", "affiliate",
+  "admin", "developer", "coach", "sales_rep", "broker", "broker_team_member", "affiliate",
   "cs_rep", "finance", "viewer", "moderator", "owner", "super_admin",
 ]);
 const isStaffUser = (roles: string[]) => roles.some((r) => STAFF_ROLES.has(r));
@@ -53,6 +54,7 @@ interface User {
   full_name: string | null;
   roles: string[];
   created_at: string;
+  last_sign_in_at: string | null;
 }
 
 interface Invitation {
@@ -83,7 +85,7 @@ export const UserManagement = () => {
       email: u.email,
       full_name: u.full_name,
       created_at: u.created_at,
-      last_sign_in_at: null,
+      last_sign_in_at: u.last_sign_in_at,
       suspended_at: null,
       suspended_reason: null,
       roles: u.roles.filter((r) => r !== "user"),
@@ -143,6 +145,7 @@ export const UserManagement = () => {
       id: string;
       email: string | null;
       created_at: string;
+      last_sign_in_at: string | null;
     }>;
 
     const { data: rolesData, error: rolesError } = await supabase
@@ -161,6 +164,7 @@ export const UserManagement = () => {
         full_name: profile?.full_name || null,
         roles: userRoles.length > 0 ? userRoles : ["user"],
         created_at: user.created_at,
+        last_sign_in_at: user.last_sign_in_at,
       };
     })
     // Staff-only view. Clients/leads (bare "user" role or no role) live in Contacts.
