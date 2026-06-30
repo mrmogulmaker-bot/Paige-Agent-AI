@@ -11376,6 +11376,7 @@ export type Database = {
           address: string | null
           avatar_url: string | null
           biggest_obstacle: string | null
+          business_name: string | null
           city: string | null
           coach_accepting_clients: boolean
           coach_bio: string | null
@@ -11442,6 +11443,7 @@ export type Database = {
           score_model: string | null
           ssn_encrypted: string | null
           ssn_last_4: string | null
+          staff_notes: string | null
           state: string | null
           stripe_customer_id: string | null
           suspended_at: string | null
@@ -11450,12 +11452,15 @@ export type Database = {
           total_liquid_assets_range: string | null
           updated_at: string | null
           user_id: string
+          website_url: string | null
+          work_email: string | null
         }
         Insert: {
           active_tenant_id?: string | null
           address?: string | null
           avatar_url?: string | null
           biggest_obstacle?: string | null
+          business_name?: string | null
           city?: string | null
           coach_accepting_clients?: boolean
           coach_bio?: string | null
@@ -11522,6 +11527,7 @@ export type Database = {
           score_model?: string | null
           ssn_encrypted?: string | null
           ssn_last_4?: string | null
+          staff_notes?: string | null
           state?: string | null
           stripe_customer_id?: string | null
           suspended_at?: string | null
@@ -11530,12 +11536,15 @@ export type Database = {
           total_liquid_assets_range?: string | null
           updated_at?: string | null
           user_id: string
+          website_url?: string | null
+          work_email?: string | null
         }
         Update: {
           active_tenant_id?: string | null
           address?: string | null
           avatar_url?: string | null
           biggest_obstacle?: string | null
+          business_name?: string | null
           city?: string | null
           coach_accepting_clients?: boolean
           coach_bio?: string | null
@@ -11602,6 +11611,7 @@ export type Database = {
           score_model?: string | null
           ssn_encrypted?: string | null
           ssn_last_4?: string | null
+          staff_notes?: string | null
           state?: string | null
           stripe_customer_id?: string | null
           suspended_at?: string | null
@@ -11610,6 +11620,8 @@ export type Database = {
           total_liquid_assets_range?: string | null
           updated_at?: string | null
           user_id?: string
+          website_url?: string | null
+          work_email?: string | null
         }
         Relationships: [
           {
@@ -14482,6 +14494,7 @@ export type Database = {
           address: string | null
           avatar_url: string | null
           biggest_obstacle: string | null
+          business_name: string | null
           city: string | null
           coach_accepting_clients: boolean
           coach_bio: string | null
@@ -14548,6 +14561,7 @@ export type Database = {
           score_model: string | null
           ssn_encrypted: string | null
           ssn_last_4: string | null
+          staff_notes: string | null
           state: string | null
           stripe_customer_id: string | null
           suspended_at: string | null
@@ -14556,6 +14570,8 @@ export type Database = {
           total_liquid_assets_range: string | null
           updated_at: string | null
           user_id: string
+          website_url: string | null
+          work_email: string | null
         }[]
         SetofOptions: {
           from: "*"
