@@ -3707,7 +3707,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Coach Ops
   list_coaches: "admin.read",
   add_coach_role: "admin.write",
-  remove_coach_role: "admin.write",
+  remove_coach_role: "admin.delete",
   update_coach_profile: "admin.write",
   bulk_assign_clients_to_coach: "admin.write",
   get_coach_performance: "admin.read",
