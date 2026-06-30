@@ -34,7 +34,9 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (!callerRole) throw new Error("Admin privileges required");
 
-    const { user_id } = await req.json();
+    // Accept both `user_id` (snake) and `userId` (camel) — clients drifted.
+    const body = await req.json();
+    const user_id: string | undefined = body?.user_id ?? body?.userId;
     if (!user_id || typeof user_id !== "string") throw new Error("Missing user_id");
 
     // Prevent self-deletion
