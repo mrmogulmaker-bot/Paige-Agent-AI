@@ -243,6 +243,16 @@ export default function ContactDetail() {
             <ExternalLink className="h-4 w-4 mr-1" /> Internal Record
           </Button>
         )}
+        {isAdmin && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setDeleteOpen(true)}
+            className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4 mr-1" /> Delete
+          </Button>
+        )}
       </div>
 
       <DuplicatesBanner contactId={client.id} email={client.email} phone={client.phone} />
