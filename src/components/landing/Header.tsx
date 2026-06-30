@@ -78,7 +78,7 @@ export function Header() {
             {user ? (
               <>
                 <NotificationBell />
-                <Button onClick={async () => navigate(await resolveLandingRoute(user.id))}>Go to Dashboard</Button>
+                <Button onClick={goToDashboard} disabled={routing}>Go to Dashboard</Button>
               </>
             ) : (
               <>
@@ -127,7 +127,7 @@ export function Header() {
             )}
             <div className="px-3 pt-4 space-y-2">
               {user ? (
-                <Button className="w-full" onClick={async () => navigate(await resolveLandingRoute(user.id))}>
+                <Button className="w-full" onClick={goToDashboard} disabled={routing}>
                   Go to Dashboard
                 </Button>
               ) : (
