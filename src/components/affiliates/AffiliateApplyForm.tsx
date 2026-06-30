@@ -151,6 +151,19 @@ export default function AffiliateApplyForm({
         user_id: userId ?? null,
       });
 
+      // Record communications consent (non-blocking).
+      void recordCommsConsent({
+        email: form.email,
+        phone: form.phone || null,
+        source: "affiliate_apply",
+        consent: commsConsent,
+      });
+        audience_description: audienceWithMeta,
+        why_join: form.why_join,
+        requested_tier_key: tierKey,
+        user_id: userId ?? null,
+      });
+
       // If the applicant is signed in, also write the versioned legal_acceptance
       // row immediately. Anonymous applicants get their acceptance recorded by
       // broker-auto-approve once their user account is created.
