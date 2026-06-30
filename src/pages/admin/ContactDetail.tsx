@@ -428,21 +428,8 @@ export default function ContactDetail() {
         <TabsContent value="business">
           {!client.linked_user_id ? (
             <Card><CardContent className="p-4"><EmptyMsg msg="Link this contact to a user account to manage businesses + run verifications." /></CardContent></Card>
-          ) : businesses.length === 0 ? (
-            <Card><CardContent className="p-4"><EmptyMsg msg="No businesses on file for this contact yet." /></CardContent></Card>
           ) : (
-            <div className="space-y-4">
-              {businesses.map((b) => (
-                <div key={b.id} className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Building2 className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">{b.legal_name || b.dba || "Unnamed business"}</span>
-                    {b.entity_type && <Badge variant="outline" className="text-[10px]">{b.entity_type}</Badge>}
-                  </div>
-                  <BusinessVerificationCard businessId={b.id} />
-                </div>
-              ))}
-            </div>
+            <BusinessTabPanel linkedUserId={client.linked_user_id} businesses={businesses} />
           )}
         </TabsContent>
 
