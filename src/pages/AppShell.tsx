@@ -23,6 +23,8 @@ import { trackEvent } from "@/hooks/useAnalytics";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 import { RequiredConsentsGate } from "@/components/legal/RequiredConsentsGate";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
+import { setScopedUserId } from "@/lib/scopedUser";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Map /app sub-routes to canonical feature names emitted as `feature_visit`.
 function routeToFeatureName(pathname: string): string | null {
