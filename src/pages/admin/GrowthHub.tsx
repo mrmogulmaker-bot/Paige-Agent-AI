@@ -203,19 +203,19 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
           ) : (
             <div className="space-y-2">
               {subs.map((s) => (
-                <Card key={s.id}>
-                  <CardContent className="p-3 text-xs">
-                    <div className="flex items-center justify-between mb-1">
-                      <Badge variant="outline" className="text-[10px]">{s.source}</Badge>
-                      <span className="text-muted-foreground">{new Date(s.created_at).toLocaleString()}</span>
-                    </div>
-                    <pre className="whitespace-pre-wrap break-words text-muted-foreground bg-muted/40 p-2 rounded">{JSON.stringify(s.payload_json, null, 2)}</pre>
-                  </CardContent>
-                </Card>
+                <SubmissionRow
+                  key={s.id}
+                  sub={s}
+                  tenantId={activeTenantId}
+                  onConverted={(contactId) => {
+                    setSubs((prev) => prev.map((x) => x.id === s.id ? { ...x, contact_id: contactId } : x));
+                  }}
+                />
               ))}
             </div>
           )}
         </TabsContent>
+
 
         <TabsContent value="integrations" className="space-y-4 mt-4">
           <SectionHeader title="External Builders" cta={
