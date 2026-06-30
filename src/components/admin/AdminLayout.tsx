@@ -231,31 +231,69 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           </div>
         </div>
 
-        {/* Row 2: primary nav (desktop) */}
+        {/* Row 2: 7-hub primary nav (desktop) */}
         <div className="hidden md:flex items-center gap-1 px-3 md:px-6 h-11 overflow-x-auto scrollbar-none border-t border-sidebar-border/60">
-          {crmNavItems.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.href}
-                to={item.href}
+          {hubs.map((hub) => {
+            const hubActive = isActive(hub.href) || (hub.children?.some((c) => isActive(c.href)) ?? false);
+            const showBadge =
+              (hub.href === "/admin/tasks" || hub.children?.some((c) => c.href === "/admin/approvals")) &&
+              pendingCount > 0;
+
+            const pill = (
+              <div
                 className={`relative flex items-center gap-2 px-3 h-11 text-sm whitespace-nowrap transition-colors ${
-                  active
+                  hubActive
                     ? "text-accent font-medium"
                     : "text-primary-foreground/70 hover:text-primary-foreground"
                 }`}
               >
-                <item.icon className="w-4 h-4" />
-                <span>{item.label}</span>
-                {item.href === "/admin/approvals" && pendingCount > 0 && (
+                <hub.icon className="w-4 h-4" />
+                <span>{hub.label}</span>
+                {showBadge && (
                   <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] bg-accent text-accent-foreground">
                     {pendingCount > 99 ? "99+" : pendingCount}
                   </Badge>
                 )}
-                {active && (
+                {hub.children && <ChevronDown className="w-3.5 h-3.5 opacity-70" />}
+                {hubActive && (
                   <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-t-full" />
                 )}
-              </Link>
+              </div>
+            );
+
+            if (!hub.children) {
+              return (
+                <Link key={hub.href} to={hub.href}>
+                  {pill}
+                </Link>
+              );
+            }
+
+            return (
+              <DropdownMenu key={hub.href}>
+                <DropdownMenuTrigger asChild>
+                  <button type="button">{pill}</button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuLabel>{hub.label}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {hub.children.map((c) => (
+                    <DropdownMenuItem
+                      key={c.href}
+                      onClick={() => navigate(c.href)}
+                      className={isActive(c.href) ? "bg-muted" : ""}
+                    >
+                      <c.icon className="w-4 h-4 mr-2" />
+                      {c.label}
+                      {c.href === "/admin/approvals" && pendingCount > 0 && (
+                        <Badge variant="secondary" className="ml-auto h-4 min-w-4 px-1 text-[10px] bg-accent text-accent-foreground">
+                          {pendingCount > 99 ? "99+" : pendingCount}
+                        </Badge>
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             );
           })}
 
@@ -263,7 +301,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             <DropdownMenuTrigger asChild>
               <button
                 className={`flex items-center gap-1.5 px-3 h-11 text-sm whitespace-nowrap transition-colors ${
-                  workspaceNavItems.some((i) => isActive(i.href))
+                  moreNavItems.some((i) => isActive(i.href))
                     ? "text-accent font-medium"
                     : "text-primary-foreground/70 hover:text-primary-foreground"
                 }`}
@@ -276,7 +314,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuLabel>Workspace tools</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {workspaceNavItems.map((item) => (
+              {moreNavItems.map((item) => (
                 <DropdownMenuItem
                   key={item.href}
                   onClick={() => navigate(item.href)}
