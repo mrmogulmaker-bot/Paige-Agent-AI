@@ -85,6 +85,18 @@ export const ProfileSettings = () => {
   const { toast } = useToast();
   const { mode, setMode, isCoachOrAdmin } = useDashboardMode();
 
+  // Realtime sync indicator state
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [justSynced, setJustSynced] = useState(false);
+  const markSynced = (fromRealtime: boolean) => {
+    setLastSyncAt(new Date());
+    if (fromRealtime) {
+      setJustSynced(true);
+      setTimeout(() => setJustSynced(false), 1500);
+      toast({ title: "Profile updated", description: "Synced from another session." });
+    }
+  };
+
   // Personal Info
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
