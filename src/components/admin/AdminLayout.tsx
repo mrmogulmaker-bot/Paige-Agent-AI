@@ -19,6 +19,7 @@ import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
+import { useRoleLens } from "@/contexts/RoleLensContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
@@ -154,6 +155,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { setMode } = useDashboardMode();
+  const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
   const { isPlatformOwner } = useTenantContext();
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
@@ -161,7 +163,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const { items: pendingApprovals } = usePendingApprovals({ scope: "all" });
   const pendingCount = pendingApprovals.length;
-  const visibleMore = moreNavItems.filter((i) => !i.adminOnly || userRole === "admin");
+  // When a multi-hat user picks the Coach lens, treat the UI as coach-scoped
+  // even if their real role is admin. Real permissions still come from RLS.
+  const effectiveRole: "admin" | "coach" =
+    userRole === "admin" && canSwitch && lens === "coach" ? "coach" : userRole;
+  const visibleMore = moreNavItems.filter((i) => !i.adminOnly || effectiveRole === "admin");
 
   useEffect(() => {
     setMobileNavOpen(false);
