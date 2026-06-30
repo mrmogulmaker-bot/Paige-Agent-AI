@@ -19,6 +19,7 @@ import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
+import { useRoleLens } from "@/contexts/RoleLensContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
@@ -154,6 +155,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { setMode } = useDashboardMode();
+  const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
   const { isPlatformOwner } = useTenantContext();
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
@@ -161,7 +163,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const { items: pendingApprovals } = usePendingApprovals({ scope: "all" });
   const pendingCount = pendingApprovals.length;
-  const visibleMore = moreNavItems.filter((i) => !i.adminOnly || userRole === "admin");
+  // When a multi-hat user picks the Coach lens, treat the UI as coach-scoped
+  // even if their real role is admin. Real permissions still come from RLS.
+  const effectiveRole: "admin" | "coach" =
+    userRole === "admin" && canSwitch && lens === "coach" ? "coach" : userRole;
+  const visibleMore = moreNavItems.filter((i) => !i.adminOnly || effectiveRole === "admin");
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -199,12 +205,37 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           <Link to="/admin" className="flex items-center gap-2 min-w-0">
             <img src={paigeLogoTransparent} alt="PaigeAgent" className="h-8 w-8 object-contain flex-shrink-0" />
             <span className="font-bold text-sm tracking-tight truncate">PaigeAgent Admin</span>
-            <Badge
-              variant="outline"
-              className="hidden sm:inline-flex ml-2 text-[10px] font-medium capitalize border-accent/40 text-accent bg-transparent"
-            >
-              {userRole}
-            </Badge>
+            {canSwitch ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="hidden sm:inline-flex ml-2 items-center gap-1 rounded-full border border-accent/40 bg-transparent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent hover:bg-accent/10 transition-colors"
+                    aria-label="Switch role lens"
+                  >
+                    {lens} lens
+                    <ChevronDown className="w-3 h-3 opacity-70" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-52">
+                  <DropdownMenuLabel>View as</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setLens("admin")} className={lens === "admin" ? "bg-muted" : ""}>
+                    <UserCog className="w-4 h-4 mr-2" /> Admin lens
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setLens("coach")} className={lens === "coach" ? "bg-muted" : ""}>
+                    <Users className="w-4 h-4 mr-2" /> Coach lens
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Badge
+                variant="outline"
+                className="hidden sm:inline-flex ml-2 text-[10px] font-medium capitalize border-accent/40 text-accent bg-transparent"
+              >
+                {userRole}
+              </Badge>
+            )}
           </Link>
 
           {/* Mobile: current section + menu trigger */}
