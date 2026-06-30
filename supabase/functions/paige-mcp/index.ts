@@ -1471,22 +1471,45 @@ const DOCTRINE_111_LIFECYCLE_STAGES = [
 
 mcp.tool("create_contact", {
   description:
-    "Create a new contact (clients row) in the caller's tenant. Returns the new contact_id. Tenant is auto-resolved from the caller (user's active tenant, or MMA for platform callers). Lifecycle stage follows Doctrine §111: new_lead, qualified, nurturing, hot_lead, negotiating, won, client_active, client_paused, client_churned, client_funded, client_alumni.",
+    "Create a new contact (clients row) in the caller's tenant. Returns the new contact_id. Tenant is auto-resolved from the caller (user's active tenant, or MMA for platform callers). All optional fields map 1:1 to the underlying clients columns so Claude/ChatGPT can populate everything a human form would. Lifecycle stage follows Doctrine §111: new_lead, qualified, nurturing, hot_lead, negotiating, won, client_active, client_paused, client_churned, client_funded, client_alumni.",
   inputSchema: z.object({
+    // identity
     first_name: z.string(),
     last_name: z.string().optional(),
     email: z.string().optional(),
     phone: z.string().optional(),
+    title: z.string().optional(),
+    // business
     entity_name: z.string().optional(),
+    entity_type: z.string().optional(),
+    website: z.string().optional(),
+    linkedin_url: z.string().optional(),
+    funding_goal: z.number().optional(),
+    monthly_revenue: z.number().optional(),
+    // address
+    street_address: z.string().optional(),
+    city: z.string().optional(),
+    state: z.string().optional(),
+    zip_code: z.string().optional(),
+    // lifecycle / CRM
     source: z.string().optional(),
     lifecycle_stage: z.enum(DOCTRINE_111_LIFECYCLE_STAGES).optional().describe("Default 'new_lead'."),
+    tier: z.string().optional().describe("e.g. standard | premium | vip."),
+    primary_offer: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    lead_score: z.number().int().optional(),
+    do_not_contact: z.boolean().optional(),
+    // ownership
+    assigned_coach_user_id: z.string().optional(),
+    lead_owner_user_id: z.string().optional(),
+    cs_primary_user_id: z.string().optional(),
+    // notes
     notes: z.string().optional().describe("Seeded into current_notes."),
+    // tenant override
     tenant_id: z.string().optional().describe("Override the auto-resolved tenant_id (platform-only)."),
   }),
   handler: async (args) => {
     const tenant_id = await resolveTenantId(args.tenant_id ?? null);
-    // Resolve created_by: prefer the calling user, else fall back to the
-    // tenant owner so MCP/platform callers don't trip the NOT NULL constraint.
     const actor = currentActor();
     let createdBy: string | null = actor.user_id ?? null;
     if (!createdBy && tenant_id) {
@@ -1500,9 +1523,27 @@ mcp.tool("create_contact", {
       last_name: args.last_name ?? null,
       email: args.email ?? null,
       phone: args.phone ?? null,
+      title: args.title ?? null,
       entity_name: args.entity_name ?? null,
+      entity_type: args.entity_type ?? null,
+      website: args.website ?? null,
+      linkedin_url: args.linkedin_url ?? null,
+      funding_goal: args.funding_goal ?? null,
+      monthly_revenue: args.monthly_revenue ?? null,
+      street_address: args.street_address ?? null,
+      city: args.city ?? null,
+      state: args.state ?? null,
+      zip_code: args.zip_code ?? null,
       source: args.source ?? "mcp",
       lifecycle_stage: args.lifecycle_stage ?? "new_lead",
+      tier: args.tier ?? null,
+      primary_offer: args.primary_offer ?? null,
+      tags: args.tags ?? [],
+      lead_score: args.lead_score ?? 0,
+      do_not_contact: args.do_not_contact ?? false,
+      assigned_coach_user_id: args.assigned_coach_user_id ?? null,
+      lead_owner_user_id: args.lead_owner_user_id ?? null,
+      cs_primary_user_id: args.cs_primary_user_id ?? null,
       status: "active",
       current_notes: args.notes ?? null,
       tenant_id,
@@ -1514,6 +1555,75 @@ mcp.tool("create_contact", {
     return ok({ ok: true, contact_id: data.id, created_at: data.created_at, tenant_id, created_by: createdBy });
   },
 });
+
+mcp.tool("update_contact", {
+  description:
+    "Update any combination of fields on an existing contact (clients row). Only fields you pass are updated; omit a field to leave it unchanged. Scoped to caller's tenant. For lifecycle moves prefer `update_lifecycle_stage` (it writes a transition audit). For notes prefer `add_contact_note` (it appends instead of replacing).",
+  inputSchema: z.object({
+    contact_id: z.string(),
+    // identity
+    first_name: z.string().optional(),
+    last_name: z.string().optional(),
+    email: z.string().nullable().optional(),
+    phone: z.string().nullable().optional(),
+    title: z.string().nullable().optional(),
+    // business
+    entity_name: z.string().nullable().optional(),
+    entity_type: z.string().nullable().optional(),
+    website: z.string().nullable().optional(),
+    linkedin_url: z.string().nullable().optional(),
+    funding_goal: z.number().nullable().optional(),
+    monthly_revenue: z.number().nullable().optional(),
+    // address
+    street_address: z.string().nullable().optional(),
+    city: z.string().nullable().optional(),
+    state: z.string().nullable().optional(),
+    zip_code: z.string().nullable().optional(),
+    // CRM
+    source: z.string().nullable().optional(),
+    lifecycle_stage: z.enum(DOCTRINE_111_LIFECYCLE_STAGES).optional(),
+    tier: z.string().nullable().optional(),
+    primary_offer: z.string().nullable().optional(),
+    tags: z.array(z.string()).optional(),
+    lead_score: z.number().int().optional(),
+    do_not_contact: z.boolean().optional(),
+    status: z.enum(["active", "inactive", "archived"]).optional(),
+    // ownership
+    assigned_coach_user_id: z.string().nullable().optional(),
+    lead_owner_user_id: z.string().nullable().optional(),
+    cs_primary_user_id: z.string().nullable().optional(),
+    primary_business_id: z.string().nullable().optional(),
+    // notes (REPLACES current_notes — use add_contact_note to append)
+    current_notes: z.string().nullable().optional(),
+  }),
+  handler: async (args) => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+    const { contact_id, ...rest } = args;
+
+    // Tenant scope check
+    const { data: existing, error: exErr } = await admin
+      .from("clients").select("id, tenant_id").eq("id", contact_id).maybeSingle();
+    if (exErr) return err(exErr.message);
+    if (!existing) return err("contact_not_found");
+    if (existing.tenant_id !== tenant_id) return err("contact_not_in_tenant");
+
+    // Strip undefined so we only patch what was passed.
+    const patch: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(rest)) {
+      if (v !== undefined) patch[k] = v;
+    }
+    if (Object.keys(patch).length === 0) {
+      return ok({ ok: true, contact_id, updated_fields: [], note: "no fields supplied" });
+    }
+
+    const { error: uErr } = await admin.from("clients").update(patch).eq("id", contact_id);
+    if (uErr) return err(uErr.message);
+    await audit("update_contact", "client", contact_id, { fields: Object.keys(patch) });
+    return ok({ ok: true, contact_id, updated_fields: Object.keys(patch) });
+  },
+});
+
 
 mcp.tool("bulk_delete_contacts", {
   description:
@@ -4053,7 +4163,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Email templates
   list_email_templates: "admin.read", upsert_email_template: "admin.write", send_btf_template_email: "btf.write",
   // Batch #1
-  create_contact: "crm.write", update_lifecycle_stage: "crm.write",
+  create_contact: "crm.write", update_contact: "crm.write", update_lifecycle_stage: "crm.write",
   bulk_delete_contacts: "crm.delete",
   list_contact_businesses: "crm.read",
   link_contact_to_business: "crm.write",
