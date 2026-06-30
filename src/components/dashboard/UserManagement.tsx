@@ -117,6 +117,27 @@ export const UserManagement = () => {
     fetchData();
   }, []);
 
+  // Realtime: keep the staff/roles list in sync across admins.
+  useEffect(() => {
+    let scheduled: ReturnType<typeof setTimeout> | null = null;
+    const refreshUsers = () => {
+      if (scheduled) return;
+      scheduled = setTimeout(() => { scheduled = null; fetchUsers(); }, 350);
+    };
+    const refreshInvites = () => fetchInvitations();
+    const channel = supabase
+      .channel("user-management-sync")
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, refreshUsers)
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_roles" }, refreshUsers)
+      .on("postgres_changes", { event: "*", schema: "public", table: "invitations" }, refreshInvites)
+      .on("postgres_changes", { event: "*", schema: "public", table: "affiliate_profiles" }, refreshUsers)
+      .subscribe();
+    return () => {
+      if (scheduled) clearTimeout(scheduled);
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const fetchData = async () => {
     try {
       await Promise.all([fetchUsers(), fetchInvitations()]);
