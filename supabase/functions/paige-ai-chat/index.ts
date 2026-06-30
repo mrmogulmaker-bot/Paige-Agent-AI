@@ -1193,6 +1193,74 @@ JSON:`;
       console.warn("[paige] RAG retrieval failed:", ragErr);
     }
 
+    // ===== Tenant Knowledge Base (3-tier: tenant private ∪ global canon) =====
+    // Uses the new multi-tenant KB. Resolves the caller's tenant, runs the
+    // hybrid match_tenant_knowledge RPC, and logs metadata-only telemetry
+    // (hashed query, no raw text or content leaves the tenant boundary).
+    let tenantKbContext = "";
+    try {
+      if (lastUserMessage && lastUserMessage.content?.trim()) {
+        const { data: membership } = await supabase
+          .from("tenant_members")
+          .select("tenant_id")
+          .eq("user_id", user.id)
+          .limit(1)
+          .maybeSingle();
+        const tenantId = (membership as any)?.tenant_id ?? null;
+
+        const tkQuery = lastUserMessage.content.trim();
+        // Reuse the embedding from the rag block when available, else compute.
+        const tkEmbedding = await embedText(tkQuery);
+        if (tkEmbedding) {
+          const { data: tkRows, error: tkErr } = await supabase.rpc(
+            "match_tenant_knowledge",
+            {
+              p_query_embedding: tkEmbedding as any,
+              p_tenant_id: tenantId,
+              p_match_count: 5,
+              p_min_similarity: 0.7,
+            },
+          );
+          if (tkErr) {
+            console.warn("[paige] match_tenant_knowledge error:", tkErr.message);
+          } else if (Array.isArray(tkRows) && tkRows.length > 0) {
+            const blocks = tkRows.map((r: any) => {
+              const tier = r.source === "tenant" ? "TENANT" : "GLOBAL";
+              return `[${tier}] ${r.title}\n${(r.content || "").slice(0, 600)}\n---`;
+            }).join("\n");
+            tenantKbContext = `\n\n=== TENANT KNOWLEDGE ===\nPrivate tenant docs and global canon, ranked by semantic relevance. Use to ground your answer; never quote verbatim.\n\n${blocks}\n=== END TENANT KNOWLEDGE ===\n`;
+
+            // Metadata-only telemetry. Hash the query — never persist raw text.
+            try {
+              const hashBuf = await crypto.subtle.digest(
+                "SHA-256",
+                new TextEncoder().encode(tkQuery),
+              );
+              const queryHash = Array.from(new Uint8Array(hashBuf))
+                .map((b) => b.toString(16).padStart(2, "0")).join("");
+              const sims = tkRows.map((r: any) => Number(r.similarity) || 0);
+              const topSim = sims.length ? Math.max(...sims) : 0;
+              await supabase.from("kb_query_telemetry").insert({
+                tenant_id: tenantId,
+                user_id: user.id,
+                query_hash: queryHash,
+                query_intent_tags: [],
+                result_count: tkRows.length,
+                top_similarity: topSim,
+                had_tenant_match: tkRows.some((r: any) => r.source === "tenant"),
+                had_global_match: tkRows.some((r: any) => r.source === "global"),
+                source: "paige-ai-chat",
+              });
+            } catch (telErr) {
+              console.warn("[paige] kb telemetry log failed:", telErr);
+            }
+          }
+        }
+      }
+    } catch (tkErr) {
+      console.warn("[paige] tenant KB retrieval failed:", tkErr);
+    }
+
     // Use the client's local clock when provided so greetings + time-of-day
     // language match what the user sees on their phone — not the server's UTC.
     let dateTimeString: string;
@@ -1725,6 +1793,7 @@ Open with: "Before we get into your questions I want to flag a few things in you
 === END ACCOUNT MANAGEMENT & CLEANUP RULES ===
 ${relevantKnowledge}
 ${ragContext}
+${tenantKbContext}
 
 === RAG KNOWLEDGE BASE RULE ===
 When the RELEVANT KNOWLEDGE BASE block above contains documents, reference them naturally to support your recommendations. Use phrasing like:
