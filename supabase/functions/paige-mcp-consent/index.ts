@@ -18,7 +18,16 @@ const SUPPORTED_SCOPES = new Set([
   "btf.read", "btf.write",
   "admin.read", "admin.write", "admin.delete",
   "platform.read", "platform.write",
+  // Self-scoped scopes for end-user (client) connections. These NEVER grant
+  // access to anyone else's data — every self.* tool resolves the calling
+  // user back to their own `clients` row and scopes reads/writes accordingly.
+  "self.read", "self.write", "self.chat",
 ]);
+
+// Client (end-user) grant — narrow, self-scoped only. Lets the user chat
+// with Paige, view + update their own profile/business, log progress, and
+// message their coach. NEVER includes crm/admin/platform/btf-wide scopes.
+const CLIENT_AUTOGRANT = ["self.read", "self.write", "self.chat"];
 
 // Tenant Admin grant — operator power inside their tenant. Includes bulk
 // delete (crm.delete) because admins must be able to run the business.
