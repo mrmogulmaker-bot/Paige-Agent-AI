@@ -495,13 +495,17 @@ export default function MembersAdmin() {
                   return (
                   <TableRow key={m.user_id} className={!isStaff ? "opacity-70" : ""}>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex items-center gap-2 text-left hover:underline focus:outline-none focus:underline"
+                        onClick={() => setProfileTarget(m)}
+                      >
                         {m.is_owner && <Crown className="w-4 h-4 text-yellow-500" />}
                         <div>
                           <div className="font-medium">{m.full_name || m.email || "—"}</div>
                           {m.full_name && <div className="text-xs text-muted-foreground">{m.email}</div>}
                         </div>
-                      </div>
+                      </button>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
