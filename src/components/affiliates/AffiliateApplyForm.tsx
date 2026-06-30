@@ -158,11 +158,6 @@ export default function AffiliateApplyForm({
         source: "affiliate_apply",
         consent: commsConsent,
       });
-        audience_description: audienceWithMeta,
-        why_join: form.why_join,
-        requested_tier_key: tierKey,
-        user_id: userId ?? null,
-      });
 
       // If the applicant is signed in, also write the versioned legal_acceptance
       // row immediately. Anonymous applicants get their acceptance recorded by
