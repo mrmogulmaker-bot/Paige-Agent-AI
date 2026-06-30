@@ -149,6 +149,13 @@ export default function McpAuthorize() {
           <p className="mt-2 text-sm text-muted-foreground">
             This application is requesting the following permissions on your Paige account.
           </p>
+          {elevated && (
+            <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 p-2 text-xs text-muted-foreground">
+              {elevated === "owner"
+                ? "Platform owner detected — full scope set granted, including destructive deletes."
+                : "Admin detected — scopes auto-elevated to the full admin set. Destructive deletes remain owner-only."}
+            </div>
+          )}
         </div>
         <div className="space-y-2">
           {scopes.map((s) => (
