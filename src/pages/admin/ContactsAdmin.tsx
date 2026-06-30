@@ -99,7 +99,10 @@ export default function ContactsAdmin() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [editTarget, setEditTarget] = useState<ClientRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ClientRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
+  const { isAdmin } = useUserRoles();
 
   // URL-synced filters
   const search = searchParams.get("q") || "";
