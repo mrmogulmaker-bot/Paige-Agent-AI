@@ -133,6 +133,25 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
 
   const handleCancel = () => { setFields(original); setEditing(false); };
 
+  const runAction = async (action: "password_reset" | "signout_all" | "resend_invite" | "wipe_onboarding", successMsg: string) => {
+    if (!member) return;
+    setActionPending(action);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-account-actions", {
+        body: { action, user_id: member.user_id },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(successMsg);
+    } catch (e: any) {
+      toast.error("Action failed", { description: e?.message });
+    } finally {
+      setActionPending(null);
+      setConfirmWipe(false);
+      setConfirmSignout(false);
+    }
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
