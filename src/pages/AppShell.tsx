@@ -130,19 +130,27 @@ const AppShell = () => {
 
   // Module-level scope so non-React data hooks (useTasks, useBuildScore,
   // useNotifications, etc.) honor "View as Client" without per-call plumbing.
-  // Also invalidates every cached query when scope flips so the dashboard
-  // immediately rebinds to the impersonated user's data.
+  // Only invalidate scoped queries (those that include scopedUserId in their
+  // keys) when the impersonation target actually changes — invalidating ALL
+  // queries on every shell mount caused a refetch storm and slow rendering.
   const queryClient = useQueryClient();
+  const prevScopeRef = useRef<string | null>(null);
   useEffect(() => {
     const next = isImpersonating ? (effectiveUserId ?? null) : null;
     setScopedUserId(next);
-    queryClient.invalidateQueries();
+    if (prevScopeRef.current !== next) {
+      prevScopeRef.current = next;
+      queryClient.invalidateQueries({ predicate: (q) =>
+        Array.isArray(q.queryKey) && q.queryKey.includes("scoped")
+      });
+    }
     return () => { setScopedUserId(null); };
   }, [isImpersonating, effectiveUserId, queryClient]);
 
   // Realtime: a client should see staff-driven onboarding stage advances
   // (or rollbacks) without refreshing. Listens only on the signed-in user's
-  // own row to avoid cross-tenant noise.
+  // own row and only invalidates client-scoped queries to avoid nuking the
+  // entire cache on every row update.
   useEffect(() => {
     if (!user?.id) return;
     const channel = supabase
@@ -150,7 +158,10 @@ const AppShell = () => {
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "clients", filter: `linked_user_id=eq.${user.id}` },
-        () => { queryClient.invalidateQueries(); },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["clients"] });
+          queryClient.invalidateQueries({ queryKey: ["onboarding"] });
+        },
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
