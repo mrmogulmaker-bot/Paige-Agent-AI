@@ -63,7 +63,8 @@ export function EmailTemplatesPanel() {
       return toast.error("Name (or subject) and body are required");
     }
     const payload = { ...editing, template_key: key };
-    const { error } = await supabase.from("email_templates").upsert(payload, { onConflict: "template_key" });
+    const payload: any = { ...editing, template_key: key, product_scope: (editing as any).product_scope ?? "general" };
+    const { error } = await supabase.from("email_templates").upsert([payload], { onConflict: "template_key" });
     if (error) return toast.error(error.message);
     toast.success("Template saved");
     setOpen(false);
