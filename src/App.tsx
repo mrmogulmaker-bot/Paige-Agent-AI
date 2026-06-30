@@ -247,6 +247,7 @@ const App = () => (
           </Routes>
           <FloatingChatbot />
         </BrowserRouter>
+        </RoleLensProvider>
         </DashboardModeProvider>
         </BusinessProvider>
       </SubscriptionProvider>
