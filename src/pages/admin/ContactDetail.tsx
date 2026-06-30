@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { LIFECYCLE_STAGES, lifecycleMeta } from "@/lib/contacts";
+import { LIFECYCLE_STAGES, lifecycleMeta, deleteContact } from "@/lib/contacts";
 import { ContactDealsSection } from "@/components/admin/contacts/ContactDealsSection";
 import { FundingReadinessLens } from "@/components/funding-lens/FundingReadinessLens";
 import { EditContactDialog } from "@/components/admin/contacts/EditContactDialog";
