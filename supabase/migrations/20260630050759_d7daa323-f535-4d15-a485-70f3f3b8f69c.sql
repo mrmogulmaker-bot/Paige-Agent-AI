@@ -1,0 +1,1 @@
+ALTER TABLE public.email_unsubscribe_tokens ADD COLUMN IF NOT EXISTS token text;
