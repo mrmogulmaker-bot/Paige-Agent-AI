@@ -13,13 +13,15 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { FileText, LayoutGrid, GitBranch, Inbox, Plug, Copy, ExternalLink, Plus } from "lucide-react";
+import { FileText, LayoutGrid, GitBranch, Inbox, Plug, Copy, ExternalLink, Plus, UserPlus, Check, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 type Page = { id: string; slug: string; title: string; status: string; updated_at: string };
 type Form = { id: string; slug: string; name: string; status: string; updated_at: string };
 type Funnel = { id: string; slug: string; name: string; status: string; updated_at: string };
-type Submission = { id: string; form_id: string; created_at: string; payload_json: any; source: string };
+type Submission = { id: string; form_id: string; created_at: string; payload_json: any; source: string; contact_id: string | null };
 type ExternalSource = { id: string; provider: string; label: string; webhook_token: string; active: boolean; last_seen_at: string | null };
+
 
 const PAGE_TEMPLATES = [
   { key: "btf-sales", label: "BUILD-to-FUND Sales Page", description: "Premium dark sales page with 3 phase cards + apply CTA." },
