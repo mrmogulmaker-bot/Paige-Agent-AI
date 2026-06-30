@@ -102,7 +102,7 @@ serve(async (req) => {
       stripeSubscriptionId = subscription.id;
       subscriptionEnd = new Date(subscription.current_period_end * 1000).toISOString();
       const productId = subscription.items.data[0].price.product as string;
-      planSlug = PRODUCT_TO_PLAN[productId as keyof typeof PRODUCT_TO_PLAN] || "free";
+      planSlug = await lookupPlanSlug(supabaseClient, productId);
       
       logStep("Active subscription found", { 
         subscriptionId: subscription.id, 
