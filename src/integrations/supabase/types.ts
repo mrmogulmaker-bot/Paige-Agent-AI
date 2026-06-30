@@ -14407,6 +14407,14 @@ export type Database = {
         Args: { payload: Json; queue_name: string }
         Returns: number
       }
+      ensure_client_role_self_heal: {
+        Args: never
+        Returns: {
+          client_id: string
+          healed: boolean
+          onboarding_stage: string
+        }[]
+      }
       ensure_owner_admin: { Args: never; Returns: undefined }
       factory_reset_delete_dispute_related: {
         Args: { _user_id: string }
