@@ -78,30 +78,60 @@ async function tryGetUser(authHeader: string) {
   return data.user ?? null;
 }
 
-async function computeGrantedScopes(userId: string, userEmail: string | null, requested: string[]) {
-  // Owner check
-  let isOwner = false;
-  const { data: ownerRow } = await admin.from("app_settings_owner").select("owner_email").limit(1).maybeSingle();
-  if (ownerRow?.owner_email && userEmail && ownerRow.owner_email.toLowerCase() === userEmail.toLowerCase()) {
-    isOwner = true;
-  }
-  // Admin check
-  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: userId, _role: "admin" });
+type Tier = "platform_owner" | "tenant_owner" | "tenant_admin" | null;
 
+async function computeGrantedScopes(userId: string, userEmail: string | null, requested: string[]) {
   const base = requested.filter((s) => SUPPORTED_SCOPES.has(s));
   let granted: string[] = base;
-  let elevated: "owner" | "admin" | null = null;
+  let tier: Tier = null;
+  let tenantName: string | null = null;
 
-  if (isOwner) {
-    granted = Array.from(new Set([...base, ...OWNER_AUTOGRANT]));
-    elevated = "owner";
-  } else if (isAdmin) {
-    // Admins get the full admin set, but never auto-grant destructive deletes.
-    const adminGrant = [...base.filter((s) => !s.endsWith(".delete")), ...ADMIN_AUTOGRANT];
-    granted = Array.from(new Set(adminGrant));
-    elevated = "admin";
+  // 1. Platform Owner — hardcoded global god account (app_settings_owner).
+  const { data: ownerRow } = await admin
+    .from("app_settings_owner").select("owner_email").limit(1).maybeSingle();
+  const isPlatformOwner = !!(ownerRow?.owner_email && userEmail &&
+    ownerRow.owner_email.toLowerCase() === userEmail.toLowerCase());
+
+  if (isPlatformOwner) {
+    granted = Array.from(new Set([...base, ...PLATFORM_OWNER_AUTOGRANT]));
+    tier = "platform_owner";
+    return { granted, tier, tenantName };
   }
-  return { granted, elevated };
+
+  // 2. Tenant context — pick the user's primary tenant + their role inside it.
+  const { data: tenantCtx } = await admin
+    .rpc("get_user_primary_tenant", { _user_id: userId }) as any;
+  const ctx = Array.isArray(tenantCtx) ? tenantCtx[0] : tenantCtx;
+  if (!ctx?.tenant_id) {
+    return { granted: base, tier: null, tenantName: null };
+  }
+  tenantName = ctx.tenant_name ?? null;
+
+  // 3. Tenant Owner — full operator power inside their tenant, incl. destructive
+  //    role removal. No platform.* scopes.
+  if (ctx.member_role === "owner") {
+    granted = Array.from(new Set([...base, ...TENANT_OWNER_AUTOGRANT]));
+    tier = "tenant_owner";
+    return { granted, tier, tenantName };
+  }
+
+  // 4. Tenant Admin — full operator power (incl. bulk delete) but cannot
+  //    permanently remove roles or touch platform infra.
+  if (ctx.member_role === "admin") {
+    const adminGrant = [
+      // Strip platform.* and admin.delete from explicit requests; admin-tier
+      // can never auto-grant or be auto-granted those.
+      ...base.filter((s) => !s.startsWith("platform.") && s !== "admin.delete"),
+      ...TENANT_ADMIN_AUTOGRANT,
+    ];
+    granted = Array.from(new Set(adminGrant));
+    tier = "tenant_admin";
+    return { granted, tier, tenantName };
+  }
+
+  // 5. Anyone else (coach, client) — only the scopes they explicitly requested
+  //    that they're already entitled to via RLS. No auto-elevation.
+  return { granted: base, tier: null, tenantName };
 }
 
 Deno.serve(async (req) => {
