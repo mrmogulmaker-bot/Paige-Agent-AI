@@ -299,6 +299,20 @@ const Admin = () => {
             </Suspense>
           </AdminOnly>
         } />
+        <Route path="tenant-knowledge" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <TenantKnowledgeAdmin />
+            </Suspense>
+          </AdminOnly>
+        } />
+        <Route path="network-kb" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <NetworkKbInsights />
+            </Suspense>
+          </AdminOnly>
+        } />
         <Route path="communications" element={
           <Suspense fallback={<SuspenseFallback />}>
             <CommunicationsAdmin />
