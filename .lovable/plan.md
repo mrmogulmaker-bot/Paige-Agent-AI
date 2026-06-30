@@ -1,72 +1,70 @@
-# Platform Agreements & Signup Consent
+## Goal
 
-Right now users can sign up with zero acknowledgment of any terms. Given the compliance posture (FCRA/CROA/GLBA, credit data, AI advisory output, multi-tenant operators, Stripe billing), that's a real exposure. Here's what to ship.
+One canonical client experience (the `/app` workspace in your screenshot). Three audiences, one surface:
 
-## 1. Legal Documents (drafted by legal sub-agent, reviewed by you)
+1. **Clients** → only ever see `/app/*`. No `/admin`, no `/broker`, no escape hatches.
+2. **Tenant staff** (admin, coach, sales_rep, cs_rep, owner) → can open any contact in their tenant *as that client* and see the exact same view the client sees, scoped to that client's data.
+3. **Platform owner / super_admin** → same impersonation, across every tenant.
 
-Six documents, all versioned, all stored in-app at stable routes:
+## What exists today
 
-| Doc | Route | Who signs |
-|---|---|---|
-| **Terms of Service** | `/legal/terms` | Every user |
-| **Privacy Policy** (GLBA-aligned) | `/legal/privacy` | Every user |
-| **E-Sign Consent (ESIGN/UETA)** | `/legal/esign` | Every user |
-| **AI Advisory Disclaimer** (not legal/financial/credit-repair advice; CROA §1679b safe harbor) | `/legal/ai-disclaimer` | Every user |
-| **Credit Data Authorization** (FCRA §604 permissible purpose, soft-pull consent) | `/legal/credit-authorization` | Triggered when user first connects credit/uploads report |
-| **Tenant/Operator MSA + DPA** | `/legal/tenant-msa`, `/legal/dpa` | Tenant owners only, on first tenant creation |
+- `/app` already renders the client workspace.
+- `AdminLayout` has a "Switch to Client View" button — but it just opens `/app` as the admin's *own* account. It does not load a specific client's data.
+- `AdminViewBanner` only shows the generic "you're viewing the client experience" pill.
+- `RoleGate` blocks clients from `/admin/*` but does not lock them to `/app/*`.
+- No impersonation context exists in the app — every hook reads from `auth.uid()`.
 
-Drafts will use archetype phrasing (§116), Antonio Cook / Mogul Maker Academy as the legal entity, GA jurisdiction, plus the standard FCRA/CROA/GLBA carve-outs ("we are not a credit repair organization", "no guarantees of credit outcomes", etc.). **These are AI-drafted starting points — you should have an attorney review before going live, especially the CROA and DPA sections.**
+## Architecture
 
-## 2. Database
+Add a single **ImpersonationContext** that wraps `/app`. When a staff member enters via "View as client", we:
 
-```
-legal_documents (slug, version, title, body_md, effective_date, is_current)
-legal_acceptances (user_id, document_slug, document_version, accepted_at, ip, user_agent, context)
-```
+1. Store the target `contact_id` + `linked_user_id` in `sessionStorage` (`paige_impersonating_contact`) and React context.
+2. Render `/app` exactly as it is today, but every data hook that currently uses `user.id` now reads `effectiveUserId` from the context (falls back to `user.id` when not impersonating).
+3. Stamp every Supabase mutation made during impersonation with `acting_as_user_id` in the existing audit-log trail so the client can see what staff did on their behalf.
+4. Banner at the top: `Viewing as Tashia Anderson — [Exit]`. Replaces the current generic banner during impersonation.
 
-- `legal_acceptances` is append-only — every accept writes a new row (audit trail).
-- RLS: users see their own acceptances; admins see all.
-- `legal_documents` readable by anon (public pages); writable by platform owner only.
+The staff member stays authenticated as themselves; RLS still applies. We rely on the existing `can_access_contact()` + `coach_can_access_user()` security-definer helpers so staff can only impersonate clients they're already authorized to see.
 
-## 3. Signup flow changes
+## Database
 
-- Add a single **required** checkbox to the signup form: *"I agree to the Terms of Service, Privacy Policy, E-Sign Consent, and AI Advisory Disclaimer"* with each phrase as a link opening the doc in a side drawer.
-- Submit blocked until checked.
-- On successful signup, write 4 rows to `legal_acceptances` (terms, privacy, esign, ai-disclaimer) with current versions, captured IP + UA.
+Single migration:
 
-## 4. Re-consent on version bumps
+- `public.start_client_impersonation(p_contact_id uuid)` SECURITY DEFINER → verifies caller via `can_access_contact`, returns `{ contact_id, linked_user_id, client_name }`. Writes `audit_logs` row (`event = 'impersonation.start'`).
+- `public.end_client_impersonation(p_contact_id uuid)` → audit `'impersonation.end'`.
+- View `public.v_my_impersonatable_clients` filtered by `can_access_contact` so the picker UI only shows clients the staff member can act on.
 
-- `AppShell` checks on mount: if `current_version > latest accepted version` for any required doc, show a blocking **"Updated terms"** modal with diff summary + Accept button. No accept = can't use the app.
-- Pulled into a `useRequiredConsents()` hook so it's testable.
+## Frontend changes
 
-## 5. Contextual consents
+1. **New** `src/contexts/ImpersonationContext.tsx` — `{ targetUserId, targetContactId, targetName, isImpersonating, start(contactId), stop() }`. Persists in sessionStorage.
+2. **New** `src/components/admin/ImpersonateClientButton.tsx` — added to `ContactDetail` header and to each row of `/admin/contacts`. Calls `start_client_impersonation` RPC → navigates to `/app?stay=1`.
+3. **Rewrite** `src/components/admin/AdminViewBanner.tsx` — when impersonating shows `Viewing as {name} · Exit`; when staff just chose "preview client view" (no target) keeps today's pill.
+4. **Patch** `src/pages/AppShell.tsx` — wrap `/app` tree in `ImpersonationProvider`, pass `effectiveUser = { id: targetUserId ?? user.id, ... }` to `PaigeChat`, `Outlet context`, `AppDashboardHome`, and `useCreditFactors`.
+5. **Patch** the handful of client hooks that read `auth.getUser()` directly (`useCreditFactors`, `useClientGoals`, `useFundingMatches`, `useContactSelfProfile`) to accept an explicit `userId` arg sourced from the context.
+6. **Lock clients to /app**:
+   - `App.tsx` route guard: if the signed-in user only has the `client` role, redirect any `/admin*`, `/broker*`, `/workspace*` hit back to `/app`.
+   - Hide the "Admin" pill in `AppNav` when the user has no staff role (today it shows for everyone in the screenshot).
+   - `resolveLandingRoute` already routes clients to `/app`; we add a hard redirect in `App.tsx` for safety.
+7. **Admin Contacts list** — add a "View as client" action in the row menu next to "Open contact". For contacts without a `linked_user_id`, the button is disabled with tooltip "Client hasn't accepted their invite yet".
 
-- **Credit Data Authorization** modal fires the first time a user uploads a credit report, connects a credit monitor, or runs a fundability scan. Blocks the action until accepted.
-- **Tenant MSA + DPA** modal fires the first time a user creates a tenant (becomes Tenant Owner). Blocks tenant creation until accepted.
+## What staff CAN do while impersonating
 
-## 6. Admin surfaces
+Read everything the client can read, send chat messages to Paige *as themselves* (we will not spoof the client's identity in chat — Paige sees `acting_as = staff_id`), trigger client-side actions like "Run Credit Analysis". All writes are audit-logged with both `user_id` (client) and `acting_as_user_id` (staff).
 
-- `/admin/legal` — list documents, see current version, publish a new version (creates new row, marks old `is_current=false`, triggers re-consent sweep).
-- Member profile drawer gains a **Consents** tab showing every acceptance with timestamp + IP for audit/dispute defense.
+## What staff CANNOT do
 
-## 7. Footer + account
-
-- Site footer: links to Terms, Privacy, AI Disclaimer.
-- Account settings: "Your agreements" section showing accepted docs + dates, with download-as-PDF.
+- Change the client's password.
+- Sign the client's legal agreements.
+- Access another tenant's clients (RLS).
+- Stay impersonating across tab close (sessionStorage clears).
 
 ## Out of scope for this pass
-- Cookie banner / GDPR cookie consent (separate concern; flag for later if you want EU traffic).
-- Click-through SOC 2 / HIPAA BAA (not applicable yet).
-- Per-jurisdiction variants (US-only for now).
 
-## What I'll do after you approve
-1. Spawn the legal sub-agent to draft all 6 documents in parallel.
-2. Migration: `legal_documents` + `legal_acceptances` with RLS + GRANTs, seed v1 of each doc.
-3. Build `/legal/*` public pages + `LegalDocViewer`.
-4. Patch signup form (`Auth.tsx` or equivalent) with the required checkbox + acceptance writes.
-5. Build `useRequiredConsents()` + `UpdatedTermsModal`, mount in `AppShell`.
-6. Wire contextual modals for credit auth + tenant MSA.
-7. Build `/admin/legal` page + Consents tab in member drawer.
-8. Add footer links + account settings section.
+- Mobile-specific banner restyle (the existing mobile banner still works).
+- A dedicated "impersonation history" admin report (audit_logs already captures it; can surface later).
 
-Approve and I'll ship it end-to-end.
+## Validation
+
+After the migration runs and code lands I'll:
+1. Open `/admin/contacts`, click "View as" on Tashia → land on `/app` with her data, banner shows her name.
+2. Sign in as a pure-client account → confirm `/admin` redirects to `/app` and the Admin pill is hidden.
+3. Confirm `audit_logs` shows `impersonation.start` and `impersonation.end` rows.
