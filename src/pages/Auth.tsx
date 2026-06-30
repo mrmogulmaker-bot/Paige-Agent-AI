@@ -132,7 +132,7 @@ const Auth = () => {
         }
         toast({ title: "Welcome back!", description: "You've successfully logged in." });
       } else {
-        if (!consentPrivacy || !consentDataUsage) {
+        if (!consentAgreements || !consentDataUsage) {
           toast({
             title: "Consent required",
             description: "Please confirm both required consent checkboxes to create your account.",
@@ -149,10 +149,11 @@ const Auth = () => {
           fullName,
           redirectTo: `${window.location.origin}/app`,
           extraData: {
-            consent_privacy_policy: true,
+            consent_agreements: true,
             consent_data_usage: true,
             consent_marketing: consentMarketing,
             consent_timestamp: consentTimestamp,
+            accepted_doc_versions: requiredDocs.map((d) => ({ slug: d.slug, version: d.version })),
           },
         });
 
@@ -174,6 +175,7 @@ const Auth = () => {
 
         // Persist consent on the profile (non-blocking)
         if (signUpData?.user?.id) {
+          const userId = signUpData.user.id;
           supabase
             .from("profiles")
             .update({
@@ -182,10 +184,22 @@ const Auth = () => {
               consent_marketing: consentMarketing,
               consent_timestamp: consentTimestamp,
             })
-            .eq("user_id", signUpData.user.id)
+            .eq("user_id", userId)
             .then(({ error: pErr }) => {
               if (pErr) console.warn("Consent persist failed:", pErr);
             });
+
+          // Append-only audit row per required document.
+          if (requiredDocs.length) {
+            recordAcceptances(
+              userId,
+              requiredDocs.map((d) => ({
+                slug: d.slug,
+                version: d.version,
+                context: { source: "signup", marketing_opt_in: consentMarketing },
+              }))
+            ).catch((err) => console.warn("Acceptance log failed:", err));
+          }
         }
 
         // Send welcome email
