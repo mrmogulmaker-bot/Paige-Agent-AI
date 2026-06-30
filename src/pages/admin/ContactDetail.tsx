@@ -21,7 +21,9 @@ import { QuickLogMenu } from "@/components/admin/contacts/QuickLogMenu";
 import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
+import { useUserRoles } from "@/hooks/useUserRoles";
 import { CATEGORY_LABEL, RISK_COLOR, type ApprovalCategory } from "@/lib/approvals";
+
 
 type Client = {
   id: string;
