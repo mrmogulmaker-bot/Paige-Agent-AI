@@ -383,9 +383,12 @@ export const ProfileSettings = () => {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-4xl font-bold mb-2">Profile Settings</h1>
-        <p className="text-muted-foreground">Manage your personal and business information</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-4xl font-bold mb-2">Profile Settings</h1>
+          <p className="text-muted-foreground">Manage your personal and business information</p>
+        </div>
+        <LiveSyncIndicator lastUpdatedAt={lastSyncAt} justUpdated={justSynced} className="mt-2" />
       </div>
 
       <Tabs defaultValue="personal" className="w-full">
