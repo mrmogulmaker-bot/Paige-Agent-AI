@@ -98,9 +98,54 @@ Deno.serve(async (req) => {
       result.action_link = data?.properties?.action_link ?? null;
       // The auth-email-hook will deliver the actual email; we just minted the link.
     } else if (action === "signout_all") {
-      const { error } = await admin.auth.admin.signOut(user_id, "global");
-      if (error) throw error;
+      // supabase-js admin.signOut expects a JWT, not a user_id. Use the
+      // admin REST endpoint to invalidate every session for the user.
+      const resp = await fetch(
+        `${SUPABASE_URL}/auth/v1/admin/users/${user_id}/logout?scope=global`,
+        {
+          method: "POST",
+          headers: {
+            apikey: SERVICE_KEY,
+            Authorization: `Bearer ${SERVICE_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: "{}",
+        },
+      );
+      if (!resp.ok && resp.status !== 204) {
+        const txt = await resp.text().catch(() => "");
+        throw new Error(`signout failed: ${resp.status} ${txt}`);
+      }
       result.signed_out = true;
+
+      // In-app notification for the affected user.
+      await admin.from("notifications").insert({
+        user_id,
+        type: "security",
+        title: "You were signed out by an administrator",
+        message: `Your active sessions were ended by ${caller.email ?? "an admin"} on ${new Date().toUTCString()}. If this wasn't expected, contact support.`,
+        link: "/auth",
+      }).then(({ error }) => { if (error) result.notification_error = error.message; });
+
+      // Best-effort email notification (queued via send-transactional-email
+      // if the template exists; ignore failure so the sign-out still wins).
+      if (targetEmail) {
+        try {
+          await admin.functions.invoke("send-transactional-email", {
+            body: {
+              templateName: "security-signed-out",
+              recipientEmail: targetEmail,
+              idempotencyKey: `signout-${user_id}-${Date.now()}`,
+              templateData: {
+                actor_email: caller.email ?? "an administrator",
+                signed_out_at: new Date().toISOString(),
+              },
+            },
+          });
+        } catch (mailErr: any) {
+          result.email_error = mailErr?.message ?? String(mailErr);
+        }
+      }
     } else if (action === "resend_invite") {
       const redirectTo = (body?.redirect_to as string) || `${new URL(req.url).origin}/`;
       // Use magic link to cover both never-accepted invites and lost links.
