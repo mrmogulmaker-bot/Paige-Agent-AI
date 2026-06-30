@@ -134,6 +134,57 @@ Deno.serve(async (req) => {
       source_workflow_key: "security_canary_regression",
       scope: "admin",
     });
+
+    // Notify the admin email list. Pull every user whose role is owner /
+    // super_admin / admin and resolve their email from profiles.
+    try {
+      const { data: roleRows } = await admin
+        .from("user_roles")
+        .select("user_id")
+        .in("role", ["owner", "super_admin", "admin"]);
+      const userIds = [...new Set((roleRows ?? []).map((r: any) => r.user_id).filter(Boolean))];
+      if (userIds.length > 0) {
+        const { data: profileRows } = await admin
+          .from("profiles")
+          .select("user_id, email, full_name")
+          .in("user_id", userIds);
+        const recipients = (profileRows ?? []).filter((p: any) => p?.email);
+        const runAt = new Date().toISOString();
+        const emailRegressions = regressions.map((r) => ({
+          target: r.target,
+          leaked_columns: r.leaked_columns,
+          http_status: r.http_status,
+        }));
+        await Promise.allSettled(
+          recipients.map((p: any) =>
+            fetch(`${SUPABASE_URL}/functions/v1/send-transactional-email`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${SERVICE_KEY}`,
+              },
+              body: JSON.stringify({
+                templateName: "security-canary-regression",
+                recipientEmail: p.email,
+                recipientUserId: p.user_id,
+                idempotencyKey: `canary-${runAt}-${p.user_id}`,
+                purpose: "transactional",
+                templateData: {
+                  recipientName: p.full_name?.split(" ")?.[0] ?? null,
+                  runAt,
+                  regressions: emailRegressions,
+                  reviewUrl: "https://paigeagent.ai/admin/security",
+                },
+              }),
+            }).catch((e) => console.error("canary_email_send_failed", p.email, e)),
+          ),
+        );
+      } else {
+        console.warn("canary: no admin recipients found for regression email");
+      }
+    } catch (e) {
+      console.error("canary_email_dispatch_failed", e);
+    }
   }
 
   return new Response(
