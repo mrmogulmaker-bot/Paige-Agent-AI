@@ -145,6 +145,7 @@ export const UserManagement = () => {
       id: string;
       email: string | null;
       created_at: string;
+      last_sign_in_at: string | null;
     }>;
 
     const { data: rolesData, error: rolesError } = await supabase
@@ -163,6 +164,7 @@ export const UserManagement = () => {
         full_name: profile?.full_name || null,
         roles: userRoles.length > 0 ? userRoles : ["user"],
         created_at: user.created_at,
+        last_sign_in_at: user.last_sign_in_at,
       };
     })
     // Staff-only view. Clients/leads (bare "user" role or no role) live in Contacts.
