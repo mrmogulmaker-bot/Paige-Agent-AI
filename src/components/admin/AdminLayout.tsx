@@ -480,12 +480,8 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
 
               <div className="mt-2 pt-2 border-t border-sidebar-border space-y-1">
-                <button
-                  onClick={handleSwitchToClientView}
-                  className="flex items-center gap-3 w-full px-3 py-2.5 rounded-md text-sm text-primary-foreground/80 hover:bg-sidebar-accent/50"
-                >
-                  <Eye className="w-4 h-4" /> Switch to Client View
-                </button>
+                {/* Generic "Switch to Client View" removed — use Impersonate
+                    from a specific contact's portal panel instead. */}
                 {canAccessBrokerWorkspace && (
                   <button
                     onClick={() => { setMobileNavOpen(false); navigate("/broker/app"); }}
