@@ -386,6 +386,14 @@ export const UserManagement = () => {
                       <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() => openProfile(user)}
+                        title="Edit profile"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="text-destructive hover:text-destructive hover:bg-destructive/10"
                         onClick={() => setDeleteTarget(user)}
                         title="Delete user"
