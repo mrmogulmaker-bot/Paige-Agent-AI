@@ -3037,6 +3037,407 @@ mcp.tool("approve_subagent_proposal", {
 });
 
 
+// ============================================================
+// Batch #4 — Master Admin (MMA-only, gated via MASTER_ONLY_TOOLS)
+// ============================================================
+
+mcp.tool("list_tenants", {
+  description:
+    "Master-admin only. List every tenant on the platform with status, seat/customer caps, owner, and Stripe linkage. Filter by `status` (trial/active/past_due/suspended/canceled) or `query` (matches name/slug).",
+  inputSchema: z.object({
+    status: z.string().optional(),
+    query: z.string().optional(),
+    limit: z.number().int().optional(),
+  }),
+  handler: async ({ status, query, limit }) => {
+    const max = Math.min(Math.max(limit ?? 50, 1), 200);
+    let q = admin
+      .from("tenants")
+      .select("id, name, slug, status, owner_user_id, seat_limit, customer_limit, storefront_enabled, plan_offer, stripe_customer_id, stripe_subscription_id, trial_ends_at, created_at, updated_at")
+      .order("created_at", { ascending: false })
+      .limit(max);
+    if (status) q = q.eq("status", status as any);
+    if (query) q = q.or(`name.ilike.%${query}%,slug.ilike.%${query}%`);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [], count: (data ?? []).length });
+  },
+});
+
+mcp.tool("create_tenant", {
+  description:
+    "Master-admin only. Provision a new tenant (white-label workspace). Requires unique `slug` + display `name`. Optionally set `owner_user_id`, `plan_offer`, `seat_limit`, `customer_limit`, and a starting `status` (defaults to 'trial'). Returns the new tenant row.",
+  inputSchema: z.object({
+    name: z.string(),
+    slug: z.string().describe("URL-safe identifier, e.g. 'acme-credit-coaches'"),
+    owner_user_id: z.string().optional(),
+    plan_offer: z.string().optional(),
+    seat_limit: z.number().int().optional(),
+    customer_limit: z.number().int().optional(),
+    status: z.enum(["trial", "active", "past_due", "suspended", "canceled"]).optional(),
+    brand: z.record(z.any()).optional(),
+    features: z.record(z.any()).optional(),
+  }),
+  handler: async (args) => {
+    const payload: Record<string, unknown> = {
+      name: args.name, slug: args.slug.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+      status: args.status ?? "trial",
+    };
+    if (args.owner_user_id) payload.owner_user_id = args.owner_user_id;
+    if (args.plan_offer) payload.plan_offer = args.plan_offer;
+    if (typeof args.seat_limit === "number") payload.seat_limit = args.seat_limit;
+    if (typeof args.customer_limit === "number") payload.customer_limit = args.customer_limit;
+    if (args.brand) payload.brand = args.brand;
+    if (args.features) payload.features = args.features;
+    const { data, error } = await admin.from("tenants").insert(payload).select("*").single();
+    if (error) return err(error.message);
+    await audit("create_tenant", "tenant", data.id, { slug: data.slug });
+    return ok({ tenant: data });
+  },
+});
+
+mcp.tool("suspend_tenant", {
+  description:
+    "Master-admin only. Set a tenant's `status` (e.g. 'suspended' to freeze access, 'active' to restore, 'canceled' to retire). Records an audit entry.",
+  inputSchema: z.object({
+    tenant_id: z.string(),
+    status: z.enum(["trial", "active", "past_due", "suspended", "canceled"]),
+    reason: z.string().optional(),
+  }),
+  handler: async ({ tenant_id, status, reason }) => {
+    const { data, error } = await admin
+      .from("tenants").update({ status: status as any }).eq("id", tenant_id)
+      .select("id, slug, status").single();
+    if (error) return err(error.message);
+    await audit("suspend_tenant", "tenant", tenant_id, { status, reason: reason ?? null });
+    return ok({ tenant: data });
+  },
+});
+
+mcp.tool("update_tenant_features", {
+  description:
+    "Master-admin only. Shallow-merge `features` (jsonb) and optional `brand` (jsonb) on a tenant. Use for feature flags, plan add-ons, and white-label branding tweaks. Existing keys are preserved unless overwritten.",
+  inputSchema: z.object({
+    tenant_id: z.string(),
+    features: z.record(z.any()).optional(),
+    brand: z.record(z.any()).optional(),
+  }),
+  handler: async ({ tenant_id, features, brand }) => {
+    const { data: cur, error: e1 } = await admin
+      .from("tenants").select("features, brand").eq("id", tenant_id).maybeSingle();
+    if (e1) return err(e1.message);
+    if (!cur) return err("tenant_not_found");
+    const nextFeatures = { ...((cur.features as any) ?? {}), ...(features ?? {}) };
+    const nextBrand = { ...((cur.brand as any) ?? {}), ...(brand ?? {}) };
+    const { data, error } = await admin
+      .from("tenants")
+      .update({ features: nextFeatures, brand: nextBrand })
+      .eq("id", tenant_id)
+      .select("id, slug, features, brand").single();
+    if (error) return err(error.message);
+    await audit("update_tenant_features", "tenant", tenant_id, { keys: Object.keys(features ?? {}) });
+    return ok({ tenant: data });
+  },
+});
+
+mcp.tool("get_platform_metrics", {
+  description:
+    "Master-admin only. Returns rolled-up platform health: tenant counts by status, total users, total contacts, BTF active clients, workflow runs in the last 7d, and pending approvals.",
+  inputSchema: z.object({}).optional() as any,
+  handler: async () => {
+    const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const [tenants, contacts, profiles, btf, runs7d, pending] = await Promise.all([
+      admin.from("tenants").select("status", { count: "exact" }),
+      admin.from("clients").select("id", { count: "exact", head: true }),
+      admin.from("profiles").select("user_id", { count: "exact", head: true }),
+      admin.from("clients").select("id", { count: "exact", head: true }).eq("tier", "btf"),
+      admin.from("paige_workflow_runs").select("id", { count: "exact", head: true }).gte("created_at", since7d),
+      admin.from("paige_pending_approvals").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    ]);
+    const tenantStatus: Record<string, number> = {};
+    for (const row of tenants.data ?? []) {
+      const s = String((row as any).status);
+      tenantStatus[s] = (tenantStatus[s] ?? 0) + 1;
+    }
+    return ok({
+      tenants_total: tenants.count ?? 0,
+      tenants_by_status: tenantStatus,
+      users_total: profiles.count ?? 0,
+      contacts_total: contacts.count ?? 0,
+      btf_clients: btf.count ?? 0,
+      workflow_runs_7d: runs7d.count ?? 0,
+      pending_approvals: pending.count ?? 0,
+      generated_at: new Date().toISOString(),
+    });
+  },
+});
+
+mcp.tool("broadcast_system_announcement", {
+  description:
+    "Master-admin only. Push a system-wide announcement into every admin's notification inbox (paige_admin_notifications, scope='all'). Use for maintenance windows, new feature drops, compliance alerts.",
+  inputSchema: z.object({
+    title: z.string(),
+    body: z.string().optional(),
+    severity: z.enum(["info", "warning", "critical"]).optional(),
+    link_to: z.string().optional(),
+  }),
+  handler: async ({ title, body, severity, link_to }) => {
+    const { data, error } = await admin.from("paige_admin_notifications").insert({
+      title, body: body ?? null, severity: severity ?? "info", scope: "all",
+      link_to: link_to ?? null, source_workflow_key: "mcp.broadcast_system_announcement",
+    }).select("id").single();
+    if (error) return err(error.message);
+    await audit("broadcast_system_announcement", "notification", data.id, { title, severity });
+    return ok({ notification_id: data.id });
+  },
+});
+
+// ============================================================
+// Batch #5 — Tenant Admin + Comms (9 tools, tenant-scoped)
+// ============================================================
+
+mcp.tool("update_tenant_branding", {
+  description:
+    "Update the caller's tenant display name and brand jsonb (logo_url, primary_color, accent_color, etc.). Only writes the keys you pass; brand is shallow-merged. Admins/owners only.",
+  inputSchema: z.object({
+    name: z.string().optional(),
+    brand: z.record(z.any()).optional().describe("Partial brand object — merged into existing brand."),
+  }),
+  handler: async ({ name, brand }) => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+    const { data: cur } = await admin.from("tenants").select("brand").eq("id", tenant_id).maybeSingle();
+    const nextBrand = { ...(((cur as any)?.brand as any) ?? {}), ...(brand ?? {}) };
+    const patch: Record<string, unknown> = { brand: nextBrand };
+    if (name) patch.name = name;
+    const { data, error } = await admin.from("tenants").update(patch).eq("id", tenant_id)
+      .select("id, name, brand").single();
+    if (error) return err(error.message);
+    await audit("update_tenant_branding", "tenant", tenant_id, { keys: Object.keys(brand ?? {}) });
+    return ok({ tenant: data });
+  },
+});
+
+mcp.tool("list_email_domains", {
+  description:
+    "List the caller tenant's verified + pending sending domains (tenant_email_domains). Shows DNS status, default sender, and Resend domain ID.",
+  inputSchema: z.object({}).optional() as any,
+  handler: async () => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+    const { data, error } = await admin
+      .from("tenant_email_domains")
+      .select("id, domain, from_name, from_email_local, status, is_default, verified_at, resend_domain_id, dns_records, created_at")
+      .eq("tenant_id", tenant_id)
+      .order("is_default", { ascending: false });
+    if (error) return err(error.message);
+    return ok({ items: data ?? [], count: (data ?? []).length });
+  },
+});
+
+mcp.tool("add_email_domain", {
+  description:
+    "Register a new sending domain for the caller's tenant. Returns the DNS records that must be added to verify. Default `from_email_local` is 'hello'.",
+  inputSchema: z.object({
+    domain: z.string().describe("Apex or subdomain, e.g. 'notify.acmecredit.com'."),
+    from_name: z.string(),
+    from_email_local: z.string().optional(),
+    is_default: z.boolean().optional(),
+  }),
+  handler: async ({ domain, from_name, from_email_local, is_default }) => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+    const actor = currentActor();
+    if (is_default) {
+      await admin.from("tenant_email_domains").update({ is_default: false }).eq("tenant_id", tenant_id);
+    }
+    const { data, error } = await admin.from("tenant_email_domains").insert({
+      tenant_id, domain: domain.toLowerCase(), from_name,
+      from_email_local: from_email_local ?? "hello",
+      is_default: !!is_default, status: "pending",
+      created_by_user_id: actor.user_id,
+    }).select("*").single();
+    if (error) return err(error.message);
+    await audit("add_email_domain", "email_domain", data.id, { domain });
+    return ok({ email_domain: data, next_steps: "Add the DNS records returned in `dns_records` (or visit /admin/settings/email) and then call set_default_email_domain or wait for verification." });
+  },
+});
+
+mcp.tool("set_default_email_domain", {
+  description:
+    "Pick which verified domain is the default sender for the caller's tenant. Unsets the prior default in the same transaction.",
+  inputSchema: z.object({ domain_id: z.string() }),
+  handler: async ({ domain_id }) => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+    const { data: target } = await admin.from("tenant_email_domains")
+      .select("id, tenant_id, status").eq("id", domain_id).maybeSingle();
+    if (!target || target.tenant_id !== tenant_id) return err("domain_not_found");
+    await admin.from("tenant_email_domains").update({ is_default: false }).eq("tenant_id", tenant_id);
+    const { data, error } = await admin.from("tenant_email_domains")
+      .update({ is_default: true }).eq("id", domain_id).select("*").single();
+    if (error) return err(error.message);
+    await audit("set_default_email_domain", "email_domain", domain_id, {});
+    return ok({ email_domain: data });
+  },
+});
+
+mcp.tool("list_email_send_log", {
+  description:
+    "Read recent email sends for the caller's tenant. Filter by `contact_id`, `status` (sent/failed/queued), or `template_key`. Returns up to `limit` rows newest first.",
+  inputSchema: z.object({
+    contact_id: z.string().optional(),
+    status: z.string().optional(),
+    template_key: z.string().optional(),
+    limit: z.number().int().optional(),
+  }),
+  handler: async ({ contact_id, status, template_key, limit }) => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+    const max = Math.min(Math.max(limit ?? 50, 1), 200);
+    let q = admin.from("email_send_log").select("*")
+      .eq("tenant_id", tenant_id)
+      .order("created_at", { ascending: false })
+      .limit(max);
+    if (contact_id) q = q.eq("contact_id", contact_id);
+    if (status) q = q.eq("status", status);
+    if (template_key) q = q.eq("template_key", template_key);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [], count: (data ?? []).length });
+  },
+});
+
+mcp.tool("list_communication_log", {
+  description:
+    "Read recent comms touchpoints (email, sms, voice) for a specific user_id from communication_log. Use this to give Paige a 360 view before drafting outreach.",
+  inputSchema: z.object({
+    user_id: z.string(),
+    channel: z.enum(["email", "sms", "voice"]).optional(),
+    limit: z.number().int().optional(),
+  }),
+  handler: async ({ user_id, channel, limit }) => {
+    const max = Math.min(Math.max(limit ?? 50, 1), 200);
+    let q = admin.from("communication_log").select("*")
+      .eq("user_id", user_id)
+      .order("created_at", { ascending: false })
+      .limit(max);
+    if (channel) q = q.eq("channel", channel);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [], count: (data ?? []).length });
+  },
+});
+
+mcp.tool("bulk_send_template_email", {
+  description:
+    "Send the same email template to multiple contacts (max 100 per call). Renders each via `email_templates` + per-contact `template_variables` overrides, sends via Resend with the tenant's default sender, and logs each result to email_send_log. Returns per-contact status. Use sparingly — for true broadcasts prefer a workflow.",
+  inputSchema: z.object({
+    contact_ids: z.array(z.string()).min(1).max(100),
+    template_key: z.string(),
+    shared_variables: z.record(z.any()).optional().describe("Variables applied to every send."),
+    per_contact_variables: z.record(z.record(z.any())).optional().describe("Override variables keyed by contact_id."),
+  }),
+  handler: async ({ contact_ids, template_key, shared_variables, per_contact_variables }) => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+    if (!RESEND_API_KEY) return err("resend_not_configured");
+
+    const { data: tpl, error: tErr } = await admin.from("email_templates")
+      .select("subject, body_html, body_text").eq("key", template_key).maybeSingle();
+    if (tErr) return err(tErr.message);
+    if (!tpl) return err("template_not_found");
+
+    const { data: idn } = await admin.rpc("tenant_sender_identity", { _tenant_id: tenant_id });
+    const fromAddress = (idn as any)?.from_address as string | undefined;
+    const fromName = (idn as any)?.from_name as string | undefined;
+    if (!fromAddress) return err("from_address_not_resolved");
+    const fromHeader = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
+
+    const { data: contacts, error: cErr } = await admin.from("clients")
+      .select("id, email, first_name, last_name, entity_name").in("id", contact_ids);
+    if (cErr) return err(cErr.message);
+
+    const interp = (s: string, vars: Record<string, unknown>) =>
+      s.replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_, k) => String(vars[k] ?? ""));
+
+    const results: Array<Record<string, unknown>> = [];
+    for (const ct of contacts ?? []) {
+      if (!ct.email) { results.push({ contact_id: ct.id, status: "skipped", reason: "no_email" }); continue; }
+      const vars = {
+        first_name: ct.first_name, last_name: ct.last_name, entity_name: ct.entity_name,
+        ...(shared_variables ?? {}),
+        ...((per_contact_variables ?? {})[ct.id] ?? {}),
+      } as Record<string, unknown>;
+      const subject = interp(tpl.subject ?? "", vars);
+      const html = interp(tpl.body_html ?? "", vars);
+      const text = interp(tpl.body_text ?? "", vars);
+      const send_id = crypto.randomUUID();
+      let status: "sent" | "failed" = "sent";
+      let providerId: string | null = null;
+      let errorMsg: string | null = null;
+      try {
+        const r = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+          body: JSON.stringify({ from: fromHeader, to: [ct.email], subject, html, text: text || undefined, headers: { "X-Paige-Send-Id": send_id } }),
+        });
+        const j = await r.json().catch(() => ({} as any));
+        if (!r.ok) { status = "failed"; errorMsg = (j as any)?.message ?? `resend_${r.status}`; }
+        else providerId = (j as any)?.id ?? null;
+      } catch (e) {
+        status = "failed"; errorMsg = (e as Error).message.slice(0, 300);
+      }
+      try {
+        await admin.from("email_send_log").insert({
+          id: send_id, tenant_id, contact_id: ct.id, recipient_email: ct.email,
+          from_address: fromAddress, subject, template_key, status,
+          provider_message_id: providerId, error_message: errorMsg,
+        });
+      } catch { /* non-fatal */ }
+      results.push({ contact_id: ct.id, send_id, status, provider_message_id: providerId, error: errorMsg });
+    }
+    await audit("bulk_send_template_email", "email_template", template_key, { count: results.length, tenant_id });
+    const summary = results.reduce((acc: Record<string, number>, r) => {
+      const s = String(r.status); acc[s] = (acc[s] ?? 0) + 1; return acc;
+    }, {});
+    return ok({ template_key, summary, results });
+  },
+});
+
+mcp.tool("list_journey_stages", {
+  description:
+    "List the canonical Paige journey stages (slug, label, display_order, color) used by the 6-stage client journey tracker. Reference these slugs when calling `advance_contact_journey_stage`.",
+  inputSchema: z.object({}).optional() as any,
+  handler: async () => {
+    const { data, error } = await admin.from("paige_journey_stages")
+      .select("slug, label, display_order, color_hex, description")
+      .order("display_order", { ascending: true });
+    if (error) return err(error.message);
+    return ok({ items: data ?? [], count: (data ?? []).length });
+  },
+});
+
+mcp.tool("advance_contact_journey_stage", {
+  description:
+    "Move a contact to a new journey stage (slug from `list_journey_stages`). Records a transition row (paige_journey_stage_transitions) with optional `source_event` (e.g. 'mcp.paige', 'agreement_signed', 'workflow.btf_kickoff').",
+  inputSchema: z.object({
+    contact_id: z.string(),
+    stage_slug: z.string(),
+    source_event: z.string().optional(),
+  }),
+  handler: async ({ contact_id, stage_slug, source_event }) => {
+    const { data, error } = await admin.rpc("set_journey_stage", {
+      _contact_id: contact_id,
+      _stage_slug: stage_slug,
+      _source_event: source_event ?? "mcp.paige",
+    });
+    if (error) return err(error.message);
+    await audit("advance_contact_journey_stage", "contact", contact_id, { stage_slug, source_event: source_event ?? null });
+    return ok({ result: data });
+  },
+});
+
 // ---------- HTTP transport + bearer auth ----------
 const app = new Hono();
 const transport = new StreamableHttpTransport();
