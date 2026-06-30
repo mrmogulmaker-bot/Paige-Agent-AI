@@ -550,10 +550,25 @@ export default function ContactsAdmin() {
               </AlertDialogTitle>
               <AlertDialogDescription>
                 This permanently removes the contact and their CRM history — deals, activities, notes,
-                documents, and coach assignments. Any linked portal user account is left intact.
-                This action cannot be undone.
+                documents, and coach assignments. This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            {deleteTarget?.linked_user_id && (
+              <label className="flex items-start gap-2 text-sm bg-destructive/5 border border-destructive/30 rounded p-3 -mt-1">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={alsoDeleteAuth}
+                  onChange={(e) => setAlsoDeleteAuth(e.target.checked)}
+                  disabled={deleting}
+                />
+                <span>
+                  <strong>Also delete the platform login account.</strong> Removes their auth user,
+                  roles, subscriptions, and consumer access. Use this when the person should no
+                  longer exist on the platform at all.
+                </span>
+              </label>
+            )}
             <AlertDialogFooter>
               <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
               <AlertDialogAction
