@@ -12043,6 +12043,42 @@ export type Database = {
         }
         Relationships: []
       }
+      security_canary_runs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          http_status: number | null
+          id: string
+          leaked_columns: string[]
+          probe_name: string
+          sample_payload: Json | null
+          status: string
+          target: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          http_status?: number | null
+          id?: string
+          leaked_columns?: string[]
+          probe_name: string
+          sample_payload?: Json | null
+          status: string
+          target: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          http_status?: number | null
+          id?: string
+          leaked_columns?: string[]
+          probe_name?: string
+          sample_payload?: Json | null
+          status?: string
+          target?: string
+        }
+        Relationships: []
+      }
       sms_verifications: {
         Row: {
           attempts: number
