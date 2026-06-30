@@ -24,11 +24,19 @@ function ProgressHeader({ stepIndex, title, subtitle }: { stepIndex: number; tit
 export default function Step1Welcome() {
   const { client, refresh } = useOutletContext<Ctx>();
   const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
 
   const begin = async () => {
-    await advanceOnboardingStage(client.id, "signing_agreement");
-    await refresh();
-    navigate("/onboard/agreement");
+    setBusy(true);
+    try {
+      const { error } = await advanceOnboardingStage(client.id, "signing_agreement");
+      if (error) throw error;
+      await refresh();
+      navigate("/onboard/agreement");
+    } catch (e: any) {
+      toast.error(e?.message || "Couldn't start onboarding — please refresh and try again.");
+      setBusy(false);
+    }
   };
 
   return (
