@@ -24,6 +24,7 @@ import { MoreHorizontal, UserPlus, Mail, ShieldOff, ShieldCheck, LogOut, Trash2,
 import { toast } from "sonner";
 import { InviteMemberDialog } from "@/components/admin/InviteMemberDialog";
 import { ReassignCoachDialog } from "@/components/admin/ReassignCoachDialog";
+import { MemberProfileDrawer } from "@/components/admin/MemberProfileDrawer";
 
 // ---- Role taxonomy ---------------------------------------------------------
 // A "staff role" = anything that grants platform/workspace authority.
