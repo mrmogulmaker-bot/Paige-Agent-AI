@@ -229,6 +229,9 @@ const App = () => (
               <Route path="intake" element={<PageSuspense><OnboardStep4 /></PageSuspense>} />
               <Route path="documents" element={<PageSuspense><OnboardStep5 /></PageSuspense>} />
               <Route path="complete" element={<PageSuspense><OnboardStep6 /></PageSuspense>} />
+              {/* Deep-link self-heal: any unknown /onboard/* path renders the
+                  layout so it can normalize the URL to the current stage. */}
+              <Route path="*" element={<PageSuspense><OnboardStep1 /></PageSuspense>} />
             </Route>
 
             {/* Broker workspace (signed-in brokers) */}
