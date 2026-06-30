@@ -3673,7 +3673,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   update_contact_stage: "crm.write", add_contact_note: "crm.write",
   list_deals: "crm.read", move_deal_stage: "crm.write", create_deal: "crm.write",
   list_tasks: "crm.read", create_task: "crm.write", update_task: "crm.write",
-  complete_task: "crm.write", reopen_task: "crm.write", delete_task: "crm.write",
+  complete_task: "crm.write", reopen_task: "crm.write", delete_task: "crm.delete",
   // Workflows
   list_workflows: "crm.read", run_workflow: "workflows.run", get_workflow_run: "crm.read",
   list_pending_approvals: "crm.read", decide_pending_approval: "workflows.run",
