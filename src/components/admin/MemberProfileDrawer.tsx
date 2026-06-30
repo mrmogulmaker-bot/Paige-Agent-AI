@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Crown, ShieldCheck, ShieldOff, Mail, Calendar, Clock, Users, FileText, Pencil, Save, X, KeyRound, LogOut, Send, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
+import { callAdminAccountAction } from "@/lib/functions/adminAccountActions";
 
 export interface MemberProfile {
   user_id: string;
@@ -137,10 +138,7 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
     if (!member) return;
     setActionPending(action);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-account-actions", {
-        body: { action, user_id: member.user_id },
-      });
-      if (error) throw error;
+      const data = await callAdminAccountAction(action, member.user_id);
       if ((data as any)?.error) throw new Error((data as any).error);
       toast.success(successMsg);
     } catch (e: any) {

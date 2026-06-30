@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
         type: "security",
         title: "You were signed out by an administrator",
         message: `Your active sessions were ended by ${caller.email ?? "an admin"} on ${new Date().toUTCString()}. If this wasn't expected, contact support.`,
-        link: "/auth",
+        action_url: "/auth",
       });
       if (notifErr) {
         result.notification_error = notifErr.message;

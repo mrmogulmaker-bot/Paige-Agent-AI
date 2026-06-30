@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { callAdminAccountAction } from "@/lib/functions/adminAccountActions";
 
 type Invite = {
   id: string;
@@ -148,10 +149,7 @@ export function ContactPortalPanel({
     const key = action === "signout_all" ? "signout" : "reset";
     setBusy(key);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-account-actions", {
-        body: { action, user_id: localLinkedUserId },
-      });
-      if (error) throw error;
+      const data = await callAdminAccountAction(action, localLinkedUserId);
       if ((data as any)?.error) throw new Error((data as any).error);
       toast.success(
         action === "signout_all"
