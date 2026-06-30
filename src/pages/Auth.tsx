@@ -52,9 +52,9 @@ const Auth = () => {
     clearClientViewOverride();
 
     // Honor ?next= for invite acceptance flows (e.g. /join/:token).
-    // Only same-origin relative paths are allowed.
+    // Strict allowlist guard mitigates open-redirect / XSS-via-redirect.
     const nextParam = searchParams.get("next");
-    if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
+    if (nextParam && isSafeRedirectPath(nextParam)) {
       navigate(nextParam, { replace: true });
       return;
     }
