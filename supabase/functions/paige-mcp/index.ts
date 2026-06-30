@@ -4368,10 +4368,34 @@ app.all("/*", async (c) => {
   const res = await actorStore.run(actor, () => httpHandler(c.req.raw));
 
   // Doctrine §118: filter master-only tools out of tools/list for non-MMA callers.
+  // Additionally, for user-tier callers, hide any tool whose required scope
+  // isn't in their granted scopes — this is what makes the client tier feel
+  // like a curated MCP (they only see me_* tools, not the full operator set).
+  const isUser = actor.kind === "user";
+  const scopeSet = new Set(actor.scopes);
+  const filterTool = (name: string): boolean => {
+    if (!name) return true;
+    if (isUser) {
+      const req = TOOL_SCOPE[name];
+      if (!req || !scopeSet.has(req)) return false;
+    }
+    return !MASTER_ONLY_TOOLS.has(name) || (await_callerTenant_eq_mma_placeholder = true);
+  };
   if (method === "POST" && peekedBody?.method === "tools/list") {
     try {
       const callerTenant = await actorStore.run(actor, () => actorTenantId());
-      if (callerTenant !== MMA_TENANT_ID) {
+      const isMma = callerTenant === MMA_TENANT_ID;
+      const keep = (t: any): boolean => {
+        const name = t?.name;
+        if (!name) return true;
+        if (isUser) {
+          const req = TOOL_SCOPE[name];
+          if (!req || !scopeSet.has(req)) return false;
+        }
+        if (!isMma && MASTER_ONLY_TOOLS.has(name)) return false;
+        return true;
+      };
+      if (true) {
         const cloned = res.clone();
         const text = await cloned.text();
         // Handle both plain JSON and SSE event-stream responses from mcp-lite.
