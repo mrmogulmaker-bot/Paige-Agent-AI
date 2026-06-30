@@ -229,9 +229,8 @@ const Admin = () => {
         <Route path="coaches" element={
           <Suspense fallback={<SuspenseFallback />}><CoachesAdmin /></Suspense>
         } />
-        <Route path="growth" element={
-          <Suspense fallback={<SuspenseFallback />}><GrowthHub /></Suspense>
-        } />
+        <Route path="growth" element={<Navigate to="/admin/campaigns?tab=pages" replace />} />
+        <Route path="growth/*" element={<Navigate to="/admin/campaigns?tab=pages" replace />} />
         <Route path="sub-agents" element={
           <Suspense fallback={<SuspenseFallback />}><SubAgentsAdmin /></Suspense>
         } />
