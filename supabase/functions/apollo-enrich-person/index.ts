@@ -8,7 +8,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
 
-  const isInternal = req.headers.get("x-internal-trigger") === "clients_auto_enrich";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const isInternal = serviceKey.length > 0 && authHeader === `Bearer ${serviceKey}`;
   if (!isInternal) {
     const guard = await requireAdmin(req);
     if (!guard.ok) return guard.response;
