@@ -167,6 +167,16 @@ export function GlobalAuthSessionManager() {
 
         if (!data || cancelled) return;
 
+        const auditAt = data.created_at ? new Date(data.created_at).getTime() : 0;
+        const lastSignInAt = session.user.last_sign_in_at
+          ? new Date(session.user.last_sign_in_at).getTime()
+          : 0;
+        // Only clear sessions that were already active when the emergency
+        // sign-out was written. A fresh login after the audit row must remain
+        // valid, otherwise the user would be kicked out again forever.
+        if (lastSignInAt && auditAt && auditAt <= lastSignInAt) return;
+        if (!lastSignInAt && auditAt && Date.now() - auditAt > 10 * 60 * 1000) return;
+
         // Server-side sessions were revoked out-of-band; clear this tab too so
         // the user is not trapped in a stale authenticated loading loop.
         forcedLogoutHandledRef.current = true;
