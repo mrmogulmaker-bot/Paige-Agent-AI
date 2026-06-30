@@ -68,7 +68,7 @@ export const UserManagement = () => {
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"admin" | "moderator" | "user">("user");
+  const [inviteRole, setInviteRole] = useState<AssignableRole>("coach");
   const [sending, setSending] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
