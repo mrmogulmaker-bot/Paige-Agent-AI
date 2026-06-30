@@ -75,6 +75,10 @@ type TenantLegalProfile = {
   governing_law_state: string | null;
   signatory_name: string | null;
   signatory_title: string | null;
+  // White-label AI Connect (workspace MCP) branding
+  white_label_ai_connect: boolean;
+  brand_display_name: string | null;
+  brand_logo_url: string | null;
 };
 
 const EMPTY_PROFILE = (tenant_id: string): TenantLegalProfile => ({
@@ -90,6 +94,9 @@ const EMPTY_PROFILE = (tenant_id: string): TenantLegalProfile => ({
   governing_law_state: "",
   signatory_name: "",
   signatory_title: "",
+  white_label_ai_connect: true,
+  brand_display_name: "",
+  brand_logo_url: "",
 });
 
 const AgreementsAdmin = () => {
