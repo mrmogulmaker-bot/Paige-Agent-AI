@@ -75,6 +75,10 @@ type TenantLegalProfile = {
   governing_law_state: string | null;
   signatory_name: string | null;
   signatory_title: string | null;
+  // White-label AI Connect (workspace MCP) branding
+  white_label_ai_connect: boolean;
+  brand_display_name: string | null;
+  brand_logo_url: string | null;
 };
 
 const EMPTY_PROFILE = (tenant_id: string): TenantLegalProfile => ({
@@ -90,6 +94,9 @@ const EMPTY_PROFILE = (tenant_id: string): TenantLegalProfile => ({
   governing_law_state: "",
   signatory_name: "",
   signatory_title: "",
+  white_label_ai_connect: true,
+  brand_display_name: "",
+  brand_logo_url: "",
 });
 
 const AgreementsAdmin = () => {
@@ -404,6 +411,46 @@ const AgreementsAdmin = () => {
                 onChange={(v) => setProfile({ ...profile, signatory_title: v })}
                 placeholder="Founder / CEO"
               />
+
+              {/* White-label AI Connect (client workspace MCP) */}
+              <div className="md:col-span-2 border-t pt-4 mt-2">
+                <div className="text-sm font-semibold mb-1">
+                  Client AI Connect branding
+                </div>
+                <p className="text-xs opacity-70 mb-3">
+                  Controls how the "Connect AI" page appears to your clients
+                  inside their workspace. When white-label is on, your brand
+                  name and logo replace the generic "AI Assistant" label.
+                  A small "Powered by Paige Agent AI" footer always remains
+                  for legal clarity.
+                </p>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={profile.white_label_ai_connect}
+                    onChange={(e) =>
+                      setProfile({
+                        ...profile,
+                        white_label_ai_connect: e.target.checked,
+                      })
+                    }
+                  />
+                  White-label the client AI connection screen
+                </label>
+              </div>
+              <Field
+                label="Brand display name (optional override)"
+                value={profile.brand_display_name ?? ""}
+                onChange={(v) => setProfile({ ...profile, brand_display_name: v })}
+                placeholder="Falls back to legal business name"
+              />
+              <Field
+                label="Brand logo URL (optional)"
+                value={profile.brand_logo_url ?? ""}
+                onChange={(v) => setProfile({ ...profile, brand_logo_url: v })}
+                placeholder="https://…/logo.png"
+              />
+
               <div className="md:col-span-2 flex justify-end">
                 <Button onClick={saveProfile} disabled={saving} className="gap-2">
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}

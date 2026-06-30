@@ -12914,6 +12914,8 @@ export type Database = {
       }
       tenant_legal_profile: {
         Row: {
+          brand_display_name: string | null
+          brand_logo_url: string | null
           created_at: string
           dba_name: string | null
           ein_last_4: string | null
@@ -12930,8 +12932,11 @@ export type Database = {
           support_phone: string | null
           tenant_id: string
           updated_at: string
+          white_label_ai_connect: boolean
         }
         Insert: {
+          brand_display_name?: string | null
+          brand_logo_url?: string | null
           created_at?: string
           dba_name?: string | null
           ein_last_4?: string | null
@@ -12948,8 +12953,11 @@ export type Database = {
           support_phone?: string | null
           tenant_id: string
           updated_at?: string
+          white_label_ai_connect?: boolean
         }
         Update: {
+          brand_display_name?: string | null
+          brand_logo_url?: string | null
           created_at?: string
           dba_name?: string | null
           ein_last_4?: string | null
@@ -12966,6 +12974,7 @@ export type Database = {
           support_phone?: string | null
           tenant_id?: string
           updated_at?: string
+          white_label_ai_connect?: boolean
         }
         Relationships: [
           {
@@ -14530,6 +14539,17 @@ export type Database = {
           member_role: string
           tenant_id: string
           tenant_name: string
+        }[]
+      }
+      get_workspace_brand: {
+        Args: never
+        Returns: {
+          brand_display_name: string
+          brand_logo_url: string
+          legal_business_name: string
+          tenant_id: string
+          tenant_name: string
+          white_label_ai_connect: boolean
         }[]
       }
       has_any_role: {
