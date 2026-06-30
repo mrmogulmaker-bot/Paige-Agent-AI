@@ -347,6 +347,31 @@ export default function AffiliateApplyForm({
         />
       </div>
 
+      <label className="flex items-start gap-2 text-sm cursor-pointer rounded border border-[#d4a574]/30 bg-[#d4a574]/5 p-3">
+        <input
+          type="checkbox"
+          checked={agreementAccepted}
+          onChange={(e) => setAgreementAccepted(e.target.checked)}
+          disabled={submitting}
+          className="mt-0.5"
+          required
+        />
+        <span>
+          I have read and agree to the{" "}
+          <a
+            href="/legal/broker-agreement"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium underline text-[#1a2840]"
+          >
+            Broker / Affiliate Producer Agreement
+          </a>
+          , including the independent-contractor terms, RESPA flow-down, anti-poach,
+          and W-9 requirements. I understand commissions are paid only on qualifying
+          subscriptions per the agreement.
+        </span>
+      </label>
+
       <Button
         type="submit"
         disabled={submitting}
