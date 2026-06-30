@@ -453,18 +453,108 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
   // On mobile: hide on /app (PaigeChat is full-screen there) and on non-app pages (auth, landing, etc.)
   const hideChatbot = isMobile && (location.pathname === "/app" || !location.pathname.startsWith("/app"));
 
+  // --- Draggable floating button + tuck-to-edge "pocket" mode ---
+  // Persisted across reloads so the user's chosen spot sticks.
+  const POS_KEY = "paige-fab-pos-v1";
+  const POCKET_KEY = "paige-fab-pocket-v1";
+  const [fabPos, setFabPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const raw = localStorage.getItem(POS_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+  const [pocketed, setPocketed] = useState<boolean>(() => {
+    try { return localStorage.getItem(POCKET_KEY) === "1"; } catch { return false; }
+  });
+  const dragStateRef = useRef<{ startX: number; startY: number; origX: number; origY: number; moved: boolean } | null>(null);
+
+  const clampPos = (x: number, y: number, size = 56) => {
+    const pad = 8;
+    const maxX = window.innerWidth - size - pad;
+    const maxY = window.innerHeight - size - pad;
+    return { x: Math.max(pad, Math.min(maxX, x)), y: Math.max(pad, Math.min(maxY, y)) };
+  };
+
+  const onFabPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const target = e.currentTarget;
+    const rect = target.getBoundingClientRect();
+    dragStateRef.current = {
+      startX: e.clientX, startY: e.clientY,
+      origX: rect.left, origY: rect.top, moved: false,
+    };
+    target.setPointerCapture(e.pointerId);
+  };
+  const onFabPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const ds = dragStateRef.current;
+    if (!ds) return;
+    const dx = e.clientX - ds.startX;
+    const dy = e.clientY - ds.startY;
+    if (!ds.moved && Math.hypot(dx, dy) < 5) return;
+    ds.moved = true;
+    const next = clampPos(ds.origX + dx, ds.origY + dy);
+    setFabPos(next);
+  };
+  const onFabPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const ds = dragStateRef.current;
+    dragStateRef.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+    if (ds?.moved && fabPos) {
+      try { localStorage.setItem(POS_KEY, JSON.stringify(fabPos)); } catch {}
+      return; // treat as drag, not click
+    }
+    // treat as click → open
+    setIsOpen(true);
+  };
+
+  const togglePocket = () => {
+    setPocketed((p) => {
+      const next = !p;
+      try { localStorage.setItem(POCKET_KEY, next ? "1" : "0"); } catch {}
+      return next;
+    });
+  };
+
+  const fabStyle: React.CSSProperties = fabPos
+    ? { left: fabPos.x, top: fabPos.y, right: "auto", bottom: "auto" }
+    : {};
+
   const chatContent = (
     <>
-      {!isOpen && !hideChatbot && (
-        <Button
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-glow z-[9999]"
-          variant="gold"
-          size="icon"
-        >
-          <MessageCircle className="h-6 w-6" />
-        </Button>
+      {!isOpen && !hideChatbot && !pocketed && (
+        <div className="fixed z-[9999]" style={fabPos ? fabStyle : { right: 24, bottom: 24 }}>
+          <Button
+            onPointerDown={onFabPointerDown}
+            onPointerMove={onFabPointerMove}
+            onPointerUp={onFabPointerUp}
+            className="h-14 w-14 rounded-full shadow-glow touch-none cursor-grab active:cursor-grabbing"
+            variant="gold"
+            size="icon"
+            title="Drag to move • Click to open"
+          >
+            <MessageCircle className="h-6 w-6" />
+          </Button>
+          <button
+            onClick={togglePocket}
+            className="absolute -top-2 -left-2 h-6 w-6 rounded-full bg-background border border-border shadow flex items-center justify-center text-muted-foreground hover:text-foreground"
+            title="Tuck to side"
+            aria-label="Tuck Paige to side"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
+
+      {!isOpen && !hideChatbot && pocketed && (
+        <button
+          onClick={togglePocket}
+          className="fixed right-0 top-1/2 -translate-y-1/2 z-[9999] h-16 w-6 rounded-l-md bg-primary text-primary-foreground shadow-glow flex items-center justify-center hover:w-7 transition-all"
+          title="Bring Paige back"
+          aria-label="Restore Paige chat"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+      )}
+
 
       {isOpen && !hideChatbot && (
         <Card
