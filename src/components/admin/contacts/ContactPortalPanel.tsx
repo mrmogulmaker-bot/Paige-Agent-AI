@@ -57,8 +57,9 @@ export function ContactPortalPanel({
 }) {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
-  const [busy, setBusy] = useState<"invite" | "revoke" | "agreement" | null>(null);
+  const [busy, setBusy] = useState<"invite" | "revoke" | "agreement" | "signout" | "reset" | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
+  const [confirmSignout, setConfirmSignout] = useState(false);
   const [localLinkedUserId, setLocalLinkedUserId] = useState<string | null>(linkedUserId);
 
   useEffect(() => { setLocalLinkedUserId(linkedUserId); }, [linkedUserId]);
