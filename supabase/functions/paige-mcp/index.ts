@@ -4367,24 +4367,17 @@ app.all("/*", async (c) => {
 
   const res = await actorStore.run(actor, () => httpHandler(c.req.raw));
 
-  // Doctrine §118: filter master-only tools out of tools/list for non-MMA callers.
-  // Additionally, for user-tier callers, hide any tool whose required scope
-  // isn't in their granted scopes — this is what makes the client tier feel
-  // like a curated MCP (they only see me_* tools, not the full operator set).
-  const isUser = actor.kind === "user";
-  const scopeSet = new Set(actor.scopes);
-  const filterTool = (name: string): boolean => {
-    if (!name) return true;
-    if (isUser) {
-      const req = TOOL_SCOPE[name];
-      if (!req || !scopeSet.has(req)) return false;
-    }
-    return !MASTER_ONLY_TOOLS.has(name) || (await_callerTenant_eq_mma_placeholder = true);
-  };
+  // Doctrine §118 + client-tier curation: filter master-only tools out of
+  // tools/list for non-MMA callers, AND for user-tier callers strip any tool
+  // whose required scope isn't in their granted scopes. This is what makes
+  // the client tier feel like a curated MCP — they only see me_* tools, not
+  // the full operator set.
   if (method === "POST" && peekedBody?.method === "tools/list") {
     try {
       const callerTenant = await actorStore.run(actor, () => actorTenantId());
       const isMma = callerTenant === MMA_TENANT_ID;
+      const isUser = actor.kind === "user";
+      const scopeSet = new Set(actor.scopes);
       const keep = (t: any): boolean => {
         const name = t?.name;
         if (!name) return true;
@@ -4395,48 +4388,41 @@ app.all("/*", async (c) => {
         if (!isMma && MASTER_ONLY_TOOLS.has(name)) return false;
         return true;
       };
-      if (true) {
-        const cloned = res.clone();
-        const text = await cloned.text();
-        // Handle both plain JSON and SSE event-stream responses from mcp-lite.
-        const ct = res.headers.get("content-type") ?? "";
-        if (ct.includes("application/json")) {
-          const body = JSON.parse(text);
-          if (Array.isArray(body?.result?.tools)) {
-            body.result.tools = body.result.tools.filter(
-              (t: any) => !MASTER_ONLY_TOOLS.has(t?.name),
-            );
-          }
-          const filtered = new Response(JSON.stringify(body), {
-            status: res.status,
-            headers: res.headers,
-          });
-          for (const [k, v] of Object.entries(CORS)) filtered.headers.set(k, v);
-          return filtered;
-        } else if (ct.includes("text/event-stream")) {
-          // SSE frames like: "data: {...}\n\n". Rewrite each JSON payload.
-          const rewritten = text.replace(/^data: (\{.*\})$/gm, (_m, json) => {
-            try {
-              const body = JSON.parse(json);
-              if (Array.isArray(body?.result?.tools)) {
-                body.result.tools = body.result.tools.filter(
-                  (t: any) => !MASTER_ONLY_TOOLS.has(t?.name),
-                );
-              }
-              return `data: ${JSON.stringify(body)}`;
-            } catch {
-              return `data: ${json}`;
-            }
-          });
-          const filtered = new Response(rewritten, { status: res.status, headers: res.headers });
-          for (const [k, v] of Object.entries(CORS)) filtered.headers.set(k, v);
-          return filtered;
+      const cloned = res.clone();
+      const text = await cloned.text();
+      const ct = res.headers.get("content-type") ?? "";
+      if (ct.includes("application/json")) {
+        const body = JSON.parse(text);
+        if (Array.isArray(body?.result?.tools)) {
+          body.result.tools = body.result.tools.filter(keep);
         }
+        const filtered = new Response(JSON.stringify(body), {
+          status: res.status,
+          headers: res.headers,
+        });
+        for (const [k, v] of Object.entries(CORS)) filtered.headers.set(k, v);
+        return filtered;
+      } else if (ct.includes("text/event-stream")) {
+        const rewritten = text.replace(/^data: (\{.*\})$/gm, (_m, json) => {
+          try {
+            const body = JSON.parse(json);
+            if (Array.isArray(body?.result?.tools)) {
+              body.result.tools = body.result.tools.filter(keep);
+            }
+            return `data: ${JSON.stringify(body)}`;
+          } catch {
+            return `data: ${json}`;
+          }
+        });
+        const filtered = new Response(rewritten, { status: res.status, headers: res.headers });
+        for (const [k, v] of Object.entries(CORS)) filtered.headers.set(k, v);
+        return filtered;
       }
     } catch (e) {
       console.error("[paige-mcp] tools/list filter failed", (e as Error).message);
     }
   }
+
 
   for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
   return res;
