@@ -182,7 +182,7 @@ export const UserManagement = () => {
       toast.success(`Invitation sent to ${inviteEmail}`);
       setInviteOpen(false);
       setInviteEmail("");
-      setInviteRole("user");
+      setInviteRole("coach");
       fetchInvitations();
     } catch (error: any) {
       console.error("Error sending invitation:", error);
@@ -192,32 +192,44 @@ export const UserManagement = () => {
     }
   };
 
-  const updateUserRole = async (userId: string, newRole: "admin" | "moderator" | "user" | "coach" | "affiliate") => {
+  // Additive: grant an additional role without wiping existing ones. This is
+  // what lets the Mr. Mogul Maker account hold admin + coach simultaneously.
+  const addUserRole = async (userId: string, newRole: AssignableRole) => {
     try {
       const currentRoles = users.find((u) => u.id === userId)?.roles || [];
-      
-      // Remove all current roles
-      if (currentRoles.length > 0) {
-        const { error: deleteError } = await supabase
-          .from("user_roles")
-          .delete()
-          .eq("user_id", userId);
-        
-        if (deleteError) throw deleteError;
+      if (currentRoles.includes(newRole)) {
+        toast.info(`Already has ${newRole}`);
+        return;
       }
-
-      // Add new role
-      const { error: insertError } = await supabase
+      const { error } = await supabase
         .from("user_roles")
-        .insert([{ user_id: userId, role: newRole }]);
-
-      if (insertError) throw insertError;
-
-      toast.success("User role updated");
+        .insert([{ user_id: userId, role: newRole as any }]);
+      if (error) throw error;
+      toast.success(`Granted ${newRole}`);
       fetchUsers();
     } catch (error: any) {
-      console.error("Error updating role:", error);
-      toast.error("Failed to update role");
+      console.error("Error granting role:", error);
+      toast.error("Failed to grant role", { description: error?.message });
+    }
+  };
+
+  const removeUserRole = async (userId: string, role: string) => {
+    if (role === "owner" || role === "super_admin") {
+      toast.error(`${role} is protected and cannot be removed from this screen`);
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from("user_roles")
+        .delete()
+        .eq("user_id", userId)
+        .eq("role", role as any);
+      if (error) throw error;
+      toast.success(`Removed ${role}`);
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Error removing role:", error);
+      toast.error("Failed to remove role", { description: error?.message });
     }
   };
 
