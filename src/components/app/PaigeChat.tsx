@@ -18,6 +18,7 @@ import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
 import { extractEntityDiagram } from "@/lib/entityDiagram";
+import { RootCauseCard, extractRootCauseAnalysis } from "@/components/chat/RootCauseCard";
 import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -812,12 +813,16 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
               {message.documentFileName && <DocumentMessageBubble fileName={message.documentFileName} />}
               {message.content && (
                 message.role === "assistant" ? (() => {
-                  const { before, diagram, after } = extractEntityDiagram(message.content);
+                  // Two-stage extraction: root-cause card first, then entity diagram in remainder.
+                  const rc = extractRootCauseAnalysis(message.content);
+                  const remainder = rc.analysis ? `${rc.before}\n\n${rc.after}`.trim() : message.content;
+                  const { before, diagram, after } = extractEntityDiagram(remainder);
                   return (
                     <>
                       {before && <MarkdownMessage content={before} />}
                       {diagram && <EntityDiagramCard data={diagram} />}
                       {after && <MarkdownMessage content={after} />}
+                      {rc.analysis && <RootCauseCard data={rc.analysis} />}
                     </>
                   );
                 })() : (

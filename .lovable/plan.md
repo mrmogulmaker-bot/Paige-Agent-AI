@@ -1,140 +1,66 @@
+# Reverse-Engineer-Problem Agent
 
-# Paige Skills + Business Verification + Browser Use
+A specialist sub-agent that takes a client's stated problem, picks the right decomposition framework, and returns a structured root-cause map tied to Paige's existing skills/workflows. Paige core auto-delegates when she detects a problem statement.
 
-Three new capability layers, all wired to the existing sub-agent + MCP + RLS patterns. Autonomous skill creation enabled (per your call), with a kill-switch and full audit log so nothing runs silently.
+## 1. The sub-agent: `paige-problem-reverse-engineer`
 
----
+- **Runtime:** `local` (per Doctrine §124 — needs MCP tool access to look up contact context, journey stage, recent communications, and existing skills).
+- **Stored in:** `paige_subagents` table, status `active`, owned by MMA tenant.
+- **Model:** `google/gemini-3-flash-preview`.
+- **Allowed MCP tools:** `get_contact`, `list_communication_log`, `list_journey_stages`, `list_skills`, `list_workflow_runs`. Read-only. No mutations.
+- **stopWhen:** `stepCountIs(50)`.
 
-## Layer 1 — Paige Skills Registry
+### Hybrid framework picker (built into system prompt)
 
-A reusable "skill" = a named recipe Paige (or any sub-agent) can execute. Different from sub-agents: skills are *composable steps*, sub-agents are *roles*.
+Agent classifies the problem first, then applies the matching framework:
 
-**New tables**
-- `paige_skills` — id, slug, name, description, trigger_phrases[], input_schema (jsonb), steps (jsonb), allowed_tools[], risk_level (`read_only` | `draft` | `mutating` | `external_send`), status (`active` | `draft` | `disabled`), created_by (`system` | `paige` | `<admin_id>`), version, success_rate, run_count
-- `paige_skill_runs` — id, skill_id, contact_id?, invoker, inputs, steps_log (jsonb), outputs, status, duration_ms, error
-- `paige_skill_proposals` — Paige's self-drafted skills awaiting auto-publish or admin review
+| Problem signal | Framework | Why |
+|---|---|---|
+| Single recurring failure ("X keeps happening") | **5-Whys** | Linear causal chain |
+| Multi-factor / "everything is broken" | **Fishbone (Ishikawa)** | Categorizes into People / Process / Tools / Money / Time / External |
+| Strategic / opportunity-shaped ("how do I grow X") | **MECE tree** | Mutually exclusive, collectively exhaustive branches |
+| Funding/credit blocker | **Fishbone, Money branch first** | Domain-specific lens |
+| Unclear / mixed | **Fishbone → escalate** to 5-Whys on the heaviest branch |
 
-**Autonomous self-creation flow**
-1. Paige drafts skill → writes to `paige_skill_proposals`
-2. Auto-publish rules:
-   - `read_only` + `draft` → publish immediately
-   - `mutating` + `external_send` → publish immediately *but* first 3 runs require admin one-click confirm (safety rail even in fully autonomous mode — non-negotiable for FCRA/GLBA exposure)
-3. Every proposal + run logged to `paige_audit_log`
-4. Admin kill-switch at `/admin/skills` → disable any skill instantly
+### Output contract (structured)
 
-**Seeded skills (v1)**
-1. **`draft_and_email_document`** — Generate doc (proposal, summary, action plan) via Lovable AI → render PDF → email via Resend → log to `communication_log`
-2. **`verify_business_sos`** — Calls the Verification Agent below
-3. **`build_game_plan`** — Pulls client context + KB + recent web research → produces step-by-step roadmap → saves to `client_memory` + offers to email
-4. **`research_to_concept_brief`** — Firecrawl topic → synthesize → output structured concept brief (problem / approach / risks / next steps)
+```json
+{
+  "framework_used": "5-whys | fishbone | mece",
+  "problem_restated": "...",
+  "root_causes": [{ "cause": "...", "evidence": "...", "confidence": 0.0-1.0 }],
+  "recommended_actions": [
+    { "action": "...", "paige_skill_or_workflow": "skill_name|null", "owner": "client|coach|paige", "priority": "now|soon|later" }
+  ],
+  "open_questions": ["..."],
+  "escalate_to_human": false
+}
+```
 
-**UI**
-- `/admin/skills` — list, enable/disable, view runs, review proposals, test-fire
-- Surface in Paige chat: `/skills` slash menu + auto-suggest when trigger phrases match
-- MCP exposure: `list_skills`, `run_skill`, `get_skill_run` tools added to `paige-mcp`
+## 2. Paige core auto-delegation
 
----
+Add a lightweight intent detector to the main Paige chat edge function (already streams via AI SDK). Two-layer:
 
-## Layer 2 — Business Verification Agent
+1. **Cheap regex pre-filter** on user message: `/\b(problem|stuck|can.?t|won.?t|keeps|broken|failing|why (is|isn.?t|won.?t|can.?t)|help me figure out|not working)\b/i`.
+2. **Model-side tool exposure:** register `delegate_to_problem_reverse_engineer` as a tool on Paige core. When the regex matches OR the model decides, it calls the sub-agent and streams the structured result back inline as a collapsible "Root-Cause Analysis" card.
 
-New sub-agent `business-verifier`. Auto-runs on client/business creation; also callable as a skill.
+User experience: feels like Paige is thinking more carefully when you describe a problem — no extra clicks.
 
-**Sources (free, ship today via Firecrawl)**
-- 50-state Secretary of State portals (state-by-state URL map)
-- OpenCorporates
-- SEC EDGAR
-- SAM.gov entity registration
-- IRS EIN exempt org lookup
-- USPTO trademark
-- BBB
-- Google Business Profile (public page scrape)
-- USPS address validation (free tier)
-- FDIC BankFind (already integrated)
+## 3. Implementation order
 
-**Pluggable adapter pattern (paid sources)**
-`supabase/functions/_shared/businessVerifyAdapters/` with one file per source:
-- `dnb.ts` — D&B Direct+ stub (requires `DNB_API_KEY` + `DNB_API_SECRET`)
-- `lexisnexis.ts` — LexisNexis Risk Business InstantID stub (requires `LEXISNEXIS_*` + GLBA permissible-purpose config)
-- `transunion.ts` — TU Business stub
-- `array.ts` — Array stub
+1. Migration: insert the sub-agent row into `paige_subagents` (system prompt + allowed_tools + framework rules baked in).
+2. Edge function: extend `paige-mcp` with `invoke_problem_reverse_engineer` tool (wraps the sub-agent runtime).
+3. Paige core chat function: add regex pre-filter + `delegate_to_problem_reverse_engineer` tool registration.
+4. UI: add a `RootCauseCard` component that renders the structured output (framework badge, cause list, action checklist).
+5. Audit: every invocation logged to `paige_subagent_invocations` (table already exists).
 
-Each adapter exports a uniform `verify(business): Promise<VerificationResult>`. Returns `{ available: false, reason: 'credentials_not_configured' }` until you add the secret — then it auto-activates. Zero code changes when keys land.
+## 4. Files touched
 
-**Output**
-- `business_verifications` table: per-source results, mismatches, confidence score, raw payloads
-- **Verification Score** (0–100) surfaced on `ContactDetail` + `FundingLensHub`
-- Mismatch flags (e.g. "SoS principal address differs from client-submitted address") → auto-create approval task
+- `supabase/functions/paige-mcp/index.ts` — add `invoke_problem_reverse_engineer` tool + scope entry.
+- `supabase/functions/<paige-chat>/index.ts` — add intent detector + delegation tool. (Will confirm exact filename on implementation.)
+- `src/components/chat/RootCauseCard.tsx` — new component.
+- One migration — seed the sub-agent row.
 
-**Trigger**
-- Database trigger on `businesses` insert → fires `business-verifier` edge function
-- Manual re-run button on contact detail
+## 5. Open question
 
----
-
-## Layer 3 — Browser Use (Browserbase)
-
-For authenticated portals + JS-heavy pages where Firecrawl alone won't cut it.
-
-**Provider**: Browserbase (cleanest Playwright-compatible API, pay-per-session). You'll need to sign up and I'll request `BROWSERBASE_API_KEY` + `BROWSERBASE_PROJECT_ID` via add_secret.
-
-**New edge function**: `browser-use`
-- Accepts: `{ goal, start_url, steps[], credentials_ref? }`
-- Spins up Browserbase session → runs Playwright steps → returns screenshots + extracted data + session replay URL
-- Credentials never logged; pulled from secrets by name only
-- All sessions logged to `browser_use_sessions` with cost tracking
-
-**Initial use cases wired**
-- SoS lookups behind CAPTCHAs (CA, NY, TX have them)
-- Nav.com business credit pulls (when you add the institutional account)
-- SmartCredit.com consumer pulls (when you add the institutional account)
-- Bank portal balance verification (future)
-
-**Cost guardrails**
-- Per-tenant monthly session cap (default 200) in `paige_config`
-- Auto-disable + admin alert when cap hit
-- Skill-level cost estimate shown before run for any skill that invokes Browser Use
-
----
-
-## Files I'll create / change
-
-**Migrations**
-- `paige_skills`, `paige_skill_runs`, `paige_skill_proposals`, `business_verifications`, `browser_use_sessions` (with GRANTs + RLS per project doctrine)
-- Trigger on `businesses` insert → enqueue verification
-
-**Edge functions**
-- `supabase/functions/skill-runner/index.ts`
-- `supabase/functions/skill-forge/index.ts` (Paige's self-drafting)
-- `supabase/functions/business-verifier/index.ts`
-- `supabase/functions/browser-use/index.ts`
-- `supabase/functions/_shared/businessVerifyAdapters/{dnb,lexisnexis,transunion,array,sos,opencorporates}.ts`
-- Extend `paige-mcp` with 6 new tools
-
-**Frontend**
-- `/admin/skills` — `SkillsHub.tsx`, `SkillDetail.tsx`, `SkillProposalReview.tsx`
-- `BusinessVerificationCard.tsx` on `ContactDetail`
-- Slash-menu integration in existing Paige chat surfaces
-
-**Secrets requested**
-- `BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID` (when you're ready)
-- D&B / LexisNexis / TU keys stay un-added; adapters detect absence and stay inert
-
----
-
-## Out of scope (intentional)
-- No real D&B/LexisNexis/TU calls until you have contracts — only adapter scaffolding
-- No Computer Use (Anthropic) — Browserbase covers the same ground cheaper for our use cases
-- No browser automation against client banking portals beyond Nav/SmartCredit (compliance scope creep)
-
----
-
-## Order of build (single turn)
-1. Migrations (all 5 tables + trigger + GRANTs)
-2. Adapter scaffolding + business-verifier edge function
-3. skill-runner + skill-forge edge functions
-4. browser-use edge function (inert until Browserbase key added)
-5. MCP tool additions
-6. `/admin/skills` UI + ContactDetail verification card
-7. Seed 4 starter skills
-
-Then I'll ask for Browserbase credentials so Layer 3 goes live.
+Should the Root-Cause card be **auto-expanded** in chat (visible immediately, more in-your-face) or **collapsed by default** with a one-line summary the user clicks to expand (cleaner)? Default I'd ship: collapsed with summary line — but tell me which you want.
