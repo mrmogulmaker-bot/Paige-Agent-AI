@@ -218,8 +218,30 @@ export function ContactPortalPanel({
           </div>
 
           {hasAccess ? (
-            <div className="text-xs text-muted-foreground">
-              This client signed in and is connected to their workspace. Toggle off to revoke their login while keeping CRM history intact.
+            <div className="space-y-2">
+              <div className="text-xs text-muted-foreground">
+                This client signed in and is connected to their workspace. Use the controls below if they're stuck or need help.
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setConfirmSignout(true)}
+                  disabled={busy !== null}
+                >
+                  <LogIn className="h-3.5 w-3.5 mr-2 rotate-180" />
+                  {busy === "signout" ? "Signing out…" : "Force sign out"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => runAccountAction("password_reset")}
+                  disabled={busy !== null || !email}
+                >
+                  <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                  {busy === "reset" ? "Sending…" : "Send password reset"}
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="flex items-center gap-2">
