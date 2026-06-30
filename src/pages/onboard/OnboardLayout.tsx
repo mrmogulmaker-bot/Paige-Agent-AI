@@ -1,7 +1,17 @@
 import { useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useOnboardingClient } from "./useOnboardingClient";
+import { supabase } from "@/integrations/supabase/client";
 import "./onboard-theme.css";
+
+const STAGE_ORDER = [
+  "invited",
+  "signing_agreement",
+  "accepting_payment",
+  "completing_intake",
+  "uploading_docs",
+  "completed",
+] as const;
 
 const STEP_TO_PATH: Record<string, string> = {
   invited: "/onboard/welcome",
@@ -12,19 +22,87 @@ const STEP_TO_PATH: Record<string, string> = {
   completed: "/onboard/complete",
 };
 
+const PATH_TO_STAGE: Record<string, string> = Object.fromEntries(
+  Object.entries(STEP_TO_PATH).map(([s, p]) => [p, s]),
+);
+
+// Legacy / alias paths from older emails and earlier builds. Map them onto the
+// canonical step so deep links from prior invites still resolve cleanly.
+const LEGACY_PATH_ALIASES: Record<string, string> = {
+  "/onboard": "/onboard/welcome",
+  "/onboard/start": "/onboard/welcome",
+  "/onboard/begin": "/onboard/welcome",
+  "/onboard/sign": "/onboard/agreement",
+  "/onboard/contract": "/onboard/agreement",
+  "/onboard/terms": "/onboard/agreement",
+  "/onboard/pay": "/onboard/payment",
+  "/onboard/checkout": "/onboard/payment",
+  "/onboard/billing": "/onboard/payment",
+  "/onboard/form": "/onboard/intake",
+  "/onboard/questionnaire": "/onboard/intake",
+  "/onboard/profile": "/onboard/intake",
+  "/onboard/upload": "/onboard/documents",
+  "/onboard/docs": "/onboard/documents",
+  "/onboard/files": "/onboard/documents",
+  "/onboard/done": "/onboard/complete",
+  "/onboard/finish": "/onboard/complete",
+  "/onboard/success": "/onboard/complete",
+};
+
 export default function OnboardLayout() {
   const { loading, error, client, userEmail, refresh } = useOnboardingClient();
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Self-heal deep links: any /onboard/* hit with a known client gets
+  // normalized to the right step.
+  //   1. Legacy alias (/onboard/sign → /onboard/agreement)
+  //   2. Bare or unknown /onboard path → canonical step for current stage
+  //   3. URL is AHEAD of the user's actual stage → push back to current step
+  //      (URLs BEHIND the current stage are allowed for review).
   useEffect(() => {
     if (loading || !client) return;
-    const expected = STEP_TO_PATH[client.onboarding_stage ?? "invited"] ?? "/onboard/welcome";
-    // Only redirect if user is on the bare /onboard or stepping out of order.
-    if (location.pathname === "/onboard" || location.pathname === "/onboard/") {
-      navigate(expected, { replace: true });
+    const path = (location.pathname.replace(/\/+$/, "") || "/onboard");
+
+    const aliasTarget = LEGACY_PATH_ALIASES[path];
+    if (aliasTarget && aliasTarget !== path) {
+      navigate(aliasTarget + location.search + location.hash, { replace: true });
+      return;
     }
-  }, [loading, client, location.pathname, navigate]);
+
+    const stage = client.onboarding_stage ?? "invited";
+    const expected = STEP_TO_PATH[stage] ?? "/onboard/welcome";
+    const currentStage = PATH_TO_STAGE[path];
+
+    if (path === "/onboard" || (path.startsWith("/onboard/") && !currentStage)) {
+      navigate(expected + location.search + location.hash, { replace: true });
+      return;
+    }
+
+    if (currentStage) {
+      const urlIdx = STAGE_ORDER.indexOf(currentStage as (typeof STAGE_ORDER)[number]);
+      const stageIdx = STAGE_ORDER.indexOf(stage as (typeof STAGE_ORDER)[number]);
+      if (urlIdx > stageIdx && expected !== path) {
+        navigate(expected + location.search + location.hash, { replace: true });
+      }
+    }
+  }, [loading, client, location.pathname, location.search, location.hash, navigate]);
+
+  // If we land on /onboard with an authed session but no client record yet,
+  // trigger the server-side self-heal RPC once. Covers legacy invites where
+  // the client role / linked_user_id wasn't backfilled.
+  useEffect(() => {
+    if (loading || error !== "no_client_record") return;
+    (async () => {
+      try {
+        const { data: healed } = await supabase.rpc("ensure_client_role_self_heal");
+        const row = Array.isArray(healed) ? healed[0] : healed;
+        if (row?.healed) refresh();
+      } catch {
+        /* ignore — UI will keep showing the no_client_record card */
+      }
+    })();
+  }, [loading, error, refresh]);
 
   if (loading) {
     return (
