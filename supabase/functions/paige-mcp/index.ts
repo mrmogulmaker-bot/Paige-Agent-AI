@@ -2917,6 +2917,7 @@ mcp.tool("approve_subagent_proposal", {
 });
 
 
+// ---------- HTTP transport + bearer auth ----------
 const app = new Hono();
 const transport = new StreamableHttpTransport();
 const httpHandler = transport.bind(mcp);
