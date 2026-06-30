@@ -358,10 +358,33 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               </button>
             </div>
             <div className="p-2">
-              <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
-                CRM
+              {hubs.map((hub) => (
+                <div key={hub.href}>
+                  <div className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
+                    {hub.label}
+                  </div>
+                  {(hub.children ?? [{ label: hub.label, href: hub.href, icon: hub.icon }]).map((item) => (
+                    <Link
+                      key={item.href}
+                      to={item.href}
+                      onClick={() => setMobileNavOpen(false)}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm ${
+                        isActive(item.href)
+                          ? "bg-sidebar-accent text-accent font-medium"
+                          : "text-primary-foreground/70 hover:bg-sidebar-accent/50"
+                      }`}
+                    >
+                      <item.icon className="w-4 h-4" />
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              ))}
+
+              <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
+                More
               </div>
-              {crmNavItems.map((item) => (
+              {moreNavItems.map((item) => (
                 <Link
                   key={item.href}
                   to={item.href}
@@ -377,24 +400,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                 </Link>
               ))}
 
-              <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
-                Workspace
-              </div>
-              {workspaceNavItems.map((item) => (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  onClick={() => setMobileNavOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm ${
-                    isActive(item.href)
-                      ? "bg-sidebar-accent text-accent font-medium"
-                      : "text-primary-foreground/70 hover:bg-sidebar-accent/50"
-                  }`}
-                >
-                  <item.icon className="w-4 h-4" />
-                  {item.label}
-                </Link>
-              ))}
 
               <div className="mt-2 pt-2 border-t border-sidebar-border space-y-1">
                 <button
