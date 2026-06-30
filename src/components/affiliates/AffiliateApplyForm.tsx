@@ -77,6 +77,7 @@ export default function AffiliateApplyForm({
   const [done, setDone] = useState(false);
   const [autoApproved, setAutoApproved] = useState(false);
   const [agreementAccepted, setAgreementAccepted] = useState(false);
+  const [commsConsent, setCommsConsent] = useState<CommsConsentState>(EMPTY_COMMS_CONSENT);
 
   const [form, setForm] = useState({
     full_name: defaultName,
