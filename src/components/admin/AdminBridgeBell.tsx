@@ -167,21 +167,6 @@ export function AdminBridgeBell() {
             </div>
           ) : (
             <ul className="divide-y">
-              {items.map((n) => (
-                <li
-                  key={n.id}
-                  className={`px-5 py-3 ${n.read_at ? "opacity-70" : "bg-accent/5"}`}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Badge className={`${severityStyles[n.severity]} shrink-0`}>{n.severity}</Badge>
-                      <h4 className="font-medium text-sm leading-tight truncate">{n.title}</h4>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
-                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                    </span>
-                  </div>
-            <ul className="divide-y">
               {items.map((n) => {
                 const isOpen = expanded.has(n.id);
                 return (
