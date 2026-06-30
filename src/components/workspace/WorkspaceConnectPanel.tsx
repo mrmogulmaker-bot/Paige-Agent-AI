@@ -253,6 +253,12 @@ export function WorkspaceConnectPanel() {
           )}
         </CardContent>
       </Card>
+
+      {/* Legal-clarity footer: always shown, regardless of white-label state. */}
+      <p className="text-[10px] opacity-50 text-center">
+        Powered by Paige Agent AI · Your AI assistant connects directly to
+        your workspace; the platform never sees your conversations.
+      </p>
     </div>
   );
 }
