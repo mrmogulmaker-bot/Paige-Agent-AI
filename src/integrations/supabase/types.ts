@@ -14385,6 +14385,7 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      email_queue_dispatch: { Args: never; Returns: undefined }
       enforce_doctrine_120: { Args: never; Returns: Json }
       enforce_subagent_doctrine_116: {
         Args: never
@@ -14405,6 +14406,14 @@ export type Database = {
       enqueue_email: {
         Args: { payload: Json; queue_name: string }
         Returns: number
+      }
+      ensure_client_role_self_heal: {
+        Args: never
+        Returns: {
+          client_id: string
+          healed: boolean
+          onboarding_stage: string
+        }[]
       }
       ensure_owner_admin: { Args: never; Returns: undefined }
       factory_reset_delete_dispute_related: {

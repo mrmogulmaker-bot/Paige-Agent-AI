@@ -1,14 +1,28 @@
 import { supabase } from "@/integrations/supabase/client";
 
+const STAGE_TO_PATH: Record<string, string> = {
+  invited: "/onboard/welcome",
+  signing_agreement: "/onboard/agreement",
+  accepting_payment: "/onboard/payment",
+  completing_intake: "/onboard/intake",
+  uploading_docs: "/onboard/documents",
+  completed: "/onboard/complete",
+};
+
 /**
  * Canonical post-login landing route for a given user, based on their roles
  * and client linkage. Used by Auth.tsx, the landing header "Go to Dashboard"
  * button, and AppShell's `/app` redirect so every entry point agrees.
  *
+ * Self-healing: if the signed-in user is linked to a `clients` row but is
+ * missing the `client` role (legacy invites that activated before role grant
+ * was added), call `ensure_client_role_self_heal()` to backfill the role and
+ * onboarding stage so the workspace + onboarding gates accept them.
+ *
  * Priority:
  *   1. admin / coach   → /admin
  *   2. broker / broker_team_member → /broker/app
- *   3. linked client (clients.linked_user_id = user.id) → /workspace
+ *   3. linked client (clients.linked_user_id = user.id) → /onboard/<stage> or /workspace
  *   4. fallback → /app
  */
 export async function resolveLandingRoute(userId: string): Promise<string> {
@@ -22,7 +36,7 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
         .maybeSingle(),
     ]);
 
-    const roles = (rolesRes.data || []).map((r: any) => r.role as string);
+    let roles = (rolesRes.data || []).map((r: any) => r.role as string);
 
     // Staff routes take priority — but only for genuine staff roles.
     if (roles.includes("admin") || roles.includes("coach")) {
@@ -31,11 +45,28 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     if (roles.includes("broker") || roles.includes("broker_team_member")) {
       return "/broker/app";
     }
-    if (clientRes.data?.id) {
-      // Invited clients land in the onboarding sequence until they finish it.
-      // Once `onboarding_stage = 'completed'`, they go straight to the workspace.
-      const stage = clientRes.data.onboarding_stage;
-      if (stage && stage !== "completed") return "/onboard/welcome";
+
+    let clientRow = clientRes.data;
+
+    // Self-heal: linked client without the `client` role, or with a missing
+    // onboarding stage. Backfills both via SECURITY DEFINER RPC.
+    if (clientRow?.id && (!roles.includes("client") || !clientRow.onboarding_stage)) {
+      const { data: healed } = await supabase.rpc("ensure_client_role_self_heal");
+      const row = Array.isArray(healed) ? healed[0] : healed;
+      if (row?.healed) {
+        roles = [...roles, "client"];
+        clientRow = {
+          id: row.client_id ?? clientRow.id,
+          onboarding_stage: row.onboarding_stage ?? clientRow.onboarding_stage ?? "invited",
+        };
+      }
+    }
+
+    if (clientRow?.id) {
+      const stage = clientRow.onboarding_stage ?? "invited";
+      if (stage !== "completed") {
+        return STAGE_TO_PATH[stage] ?? "/onboard/welcome";
+      }
       return "/workspace";
     }
     return "/app";
