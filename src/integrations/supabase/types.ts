@@ -9188,6 +9188,36 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_subagent_factory_quota: {
+        Row: {
+          created_at: string
+          hard_shipped: number
+          id: string
+          proposals_count: number
+          quota_date: string
+          soft_shipped: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          hard_shipped?: number
+          id?: string
+          proposals_count?: number
+          quota_date?: string
+          soft_shipped?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          hard_shipped?: number
+          id?: string
+          proposals_count?: number
+          quota_date?: string
+          soft_shipped?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       paige_subagent_invocations: {
         Row: {
           contact_id: string | null
@@ -9233,9 +9263,103 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_subagent_proposals: {
+        Row: {
+          approval_id: string | null
+          config: Json
+          created_at: string
+          data_scopes: string[]
+          description: string
+          domain: string
+          error: string | null
+          id: string
+          input_schema: Json
+          output_schema: Json
+          proposed_by: string | null
+          proposed_by_agent: string | null
+          proposed_name: string
+          proposed_slug: string
+          rationale: string
+          resulting_subagent_id: string | null
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          runtime: string
+          status: string
+          system_prompt: string
+          triggers: string[]
+          updated_at: string
+        }
+        Insert: {
+          approval_id?: string | null
+          config?: Json
+          created_at?: string
+          data_scopes?: string[]
+          description: string
+          domain: string
+          error?: string | null
+          id?: string
+          input_schema?: Json
+          output_schema?: Json
+          proposed_by?: string | null
+          proposed_by_agent?: string | null
+          proposed_name: string
+          proposed_slug: string
+          rationale: string
+          resulting_subagent_id?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          runtime: string
+          status?: string
+          system_prompt: string
+          triggers?: string[]
+          updated_at?: string
+        }
+        Update: {
+          approval_id?: string | null
+          config?: Json
+          created_at?: string
+          data_scopes?: string[]
+          description?: string
+          domain?: string
+          error?: string | null
+          id?: string
+          input_schema?: Json
+          output_schema?: Json
+          proposed_by?: string | null
+          proposed_by_agent?: string | null
+          proposed_name?: string
+          proposed_slug?: string
+          rationale?: string
+          resulting_subagent_id?: string | null
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          runtime?: string
+          status?: string
+          system_prompt?: string
+          triggers?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_subagent_proposals_resulting_subagent_id_fkey"
+            columns: ["resulting_subagent_id"]
+            isOneToOne: false
+            referencedRelation: "paige_subagents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paige_subagents: {
         Row: {
+          auto_disabled_reason: string | null
+          auto_generated: boolean
+          config: Json
           created_at: string
+          created_by: string | null
+          daily_invocation_cap: number | null
           description: string
           display_order: number
           domain: string
@@ -9244,16 +9368,23 @@ export type Database = {
           id: string
           input_schema: Json
           langgraph_graph: string | null
+          monthly_token_cap: number | null
           name: string
           output_schema: Json
           requires_role: string[]
           runtime: string
           slug: string
+          system_prompt: string | null
           triggers: string[]
           updated_at: string
         }
         Insert: {
+          auto_disabled_reason?: string | null
+          auto_generated?: boolean
+          config?: Json
           created_at?: string
+          created_by?: string | null
+          daily_invocation_cap?: number | null
           description: string
           display_order?: number
           domain: string
@@ -9262,16 +9393,23 @@ export type Database = {
           id?: string
           input_schema?: Json
           langgraph_graph?: string | null
+          monthly_token_cap?: number | null
           name: string
           output_schema?: Json
           requires_role?: string[]
           runtime: string
           slug: string
+          system_prompt?: string | null
           triggers?: string[]
           updated_at?: string
         }
         Update: {
+          auto_disabled_reason?: string | null
+          auto_generated?: boolean
+          config?: Json
           created_at?: string
+          created_by?: string | null
+          daily_invocation_cap?: number | null
           description?: string
           display_order?: number
           domain?: string
@@ -9280,11 +9418,13 @@ export type Database = {
           id?: string
           input_schema?: Json
           langgraph_graph?: string | null
+          monthly_token_cap?: number | null
           name?: string
           output_schema?: Json
           requires_role?: string[]
           runtime?: string
           slug?: string
+          system_prompt?: string | null
           triggers?: string[]
           updated_at?: string
         }
