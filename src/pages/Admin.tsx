@@ -21,7 +21,7 @@ const lazy = <T extends React.ComponentType<any>>(factory: () => Promise<{ defau
       throw err;
     }
   });
-import { useNavigate, Routes, Route, useParams } from "react-router-dom";
+import { useNavigate, Routes, Route, useParams, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminLayout } from "@/components/admin/AdminLayout";
