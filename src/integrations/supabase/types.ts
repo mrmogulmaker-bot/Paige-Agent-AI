@@ -6818,6 +6818,101 @@ export type Database = {
         }
         Relationships: []
       }
+      legal_acceptances: {
+        Row: {
+          accepted_at: string
+          context: Json
+          created_at: string
+          document_id: string | null
+          document_slug: string
+          document_version: number
+          id: string
+          ip_address: string | null
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string
+          context?: Json
+          created_at?: string
+          document_id?: string | null
+          document_slug: string
+          document_version: number
+          id?: string
+          ip_address?: string | null
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string
+          context?: Json
+          created_at?: string
+          document_id?: string | null
+          document_slug?: string
+          document_version?: number
+          id?: string
+          ip_address?: string | null
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "legal_acceptances_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "legal_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      legal_documents: {
+        Row: {
+          audience: string
+          body_md: string
+          created_at: string
+          created_by: string | null
+          effective_date: string
+          id: string
+          is_current: boolean
+          required_at_signup: boolean
+          slug: string
+          summary: string | null
+          title: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          audience?: string
+          body_md: string
+          created_at?: string
+          created_by?: string | null
+          effective_date?: string
+          id?: string
+          is_current?: boolean
+          required_at_signup?: boolean
+          slug: string
+          summary?: string | null
+          title: string
+          updated_at?: string
+          version: number
+        }
+        Update: {
+          audience?: string
+          body_md?: string
+          created_at?: string
+          created_by?: string | null
+          effective_date?: string
+          id?: string
+          is_current?: boolean
+          required_at_signup?: boolean
+          slug?: string
+          summary?: string | null
+          title?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
       lender_bureau_preferences: {
         Row: {
           application_url: string | null
@@ -14086,6 +14181,16 @@ export type Database = {
           legal_name: string
           organizational_level: number
           parent_business_id: string
+        }[]
+      }
+      get_outstanding_consents: {
+        Args: { _user_id: string }
+        Returns: {
+          effective_date: string
+          slug: string
+          summary: string
+          title: string
+          version: number
         }[]
       }
       get_profile_with_pii_log: {

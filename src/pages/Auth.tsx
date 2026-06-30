@@ -16,6 +16,7 @@ import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
+import { useRequiredSignupDocs, recordAcceptances } from "@/lib/legal/useLegalDocuments";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -34,9 +35,10 @@ const Auth = () => {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [consentPrivacy, setConsentPrivacy] = useState(false);
+  const [consentAgreements, setConsentAgreements] = useState(false);
   const [consentDataUsage, setConsentDataUsage] = useState(false);
   const [consentMarketing, setConsentMarketing] = useState(false);
+  const { docs: requiredDocs } = useRequiredSignupDocs();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -130,7 +132,7 @@ const Auth = () => {
         }
         toast({ title: "Welcome back!", description: "You've successfully logged in." });
       } else {
-        if (!consentPrivacy || !consentDataUsage) {
+        if (!consentAgreements || !consentDataUsage) {
           toast({
             title: "Consent required",
             description: "Please confirm both required consent checkboxes to create your account.",
@@ -147,10 +149,11 @@ const Auth = () => {
           fullName,
           redirectTo: `${window.location.origin}/app`,
           extraData: {
-            consent_privacy_policy: true,
+            consent_agreements: true,
             consent_data_usage: true,
             consent_marketing: consentMarketing,
             consent_timestamp: consentTimestamp,
+            accepted_doc_versions: requiredDocs.map((d) => ({ slug: d.slug, version: d.version })),
           },
         });
 
@@ -172,6 +175,7 @@ const Auth = () => {
 
         // Persist consent on the profile (non-blocking)
         if (signUpData?.user?.id) {
+          const userId = signUpData.user.id;
           supabase
             .from("profiles")
             .update({
@@ -180,10 +184,22 @@ const Auth = () => {
               consent_marketing: consentMarketing,
               consent_timestamp: consentTimestamp,
             })
-            .eq("user_id", signUpData.user.id)
+            .eq("user_id", userId)
             .then(({ error: pErr }) => {
               if (pErr) console.warn("Consent persist failed:", pErr);
             });
+
+          // Append-only audit row per required document.
+          if (requiredDocs.length) {
+            recordAcceptances(
+              userId,
+              requiredDocs.map((d) => ({
+                slug: d.slug,
+                version: d.version,
+                context: { source: "signup", marketing_opt_in: consentMarketing },
+              }))
+            ).catch((err) => console.warn("Acceptance log failed:", err));
+          }
         }
 
         // Send welcome email
@@ -458,23 +474,29 @@ const Auth = () => {
                 <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
                   <label className="flex items-start gap-2.5 cursor-pointer">
                     <Checkbox
-                      checked={consentPrivacy}
-                      onCheckedChange={(v) => setConsentPrivacy(!!v)}
+                      checked={consentAgreements}
+                      onCheckedChange={(v) => setConsentAgreements(!!v)}
                       className="mt-0.5"
                       aria-required
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
                       I have read and agree to the PaigeAgent{" "}
-                      <Link to="/privacy" target="_blank" className="underline text-accent hover:opacity-80">
-                        Privacy Policy
-                      </Link>{" "}
-                      and{" "}
-                      <Link to="/terms" target="_blank" className="underline text-accent hover:opacity-80">
+                      <Link to="/legal/terms" target="_blank" className="underline text-accent hover:opacity-80">
                         Terms of Service
                       </Link>
-                      . I understand that PaigeAgent will collect my financial data including credit
-                      information to provide fundability scoring and financial coaching services.{" "}
-                      <span className="text-destructive">*</span>
+                      ,{" "}
+                      <Link to="/legal/privacy" target="_blank" className="underline text-accent hover:opacity-80">
+                        Privacy Policy
+                      </Link>
+                      ,{" "}
+                      <Link to="/legal/esign" target="_blank" className="underline text-accent hover:opacity-80">
+                        E-Sign Consent
+                      </Link>
+                      , and{" "}
+                      <Link to="/legal/ai-disclaimer" target="_blank" className="underline text-accent hover:opacity-80">
+                        AI Advisory Disclaimer
+                      </Link>
+                      .{" "}<span className="text-destructive">*</span>
                     </span>
                   </label>
 
@@ -514,7 +536,7 @@ const Auth = () => {
                     ? "bg-primary hover:bg-primary-light text-primary-foreground shadow-md hover:shadow-lg"
                     : "bg-gradient-gold text-primary shadow-glow hover:shadow-glow-lg hover:scale-[1.01]"
                 }`}
-                disabled={isLoading || (!isLogin && (!consentPrivacy || !consentDataUsage))}
+                disabled={isLoading || (!isLogin && (!consentAgreements || !consentDataUsage))}
               >
                 {isLoading ? (
                   <>

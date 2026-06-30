@@ -1,91 +1,72 @@
-# Multi-Tenant Knowledge Base + Central Telemetry
+# Platform Agreements & Signup Consent
 
-Three-tier RAG architecture: each tenant owns a private KB, inherits the Mogul global canon, and can optionally contribute docs back. Central telemetry collects **metadata only** — never document content — so MMA gets product intelligence without becoming the data custodian for tenant-private material.
+Right now users can sign up with zero acknowledgment of any terms. Given the compliance posture (FCRA/CROA/GLBA, credit data, AI advisory output, multi-tenant operators, Stripe billing), that's a real exposure. Here's what to ship.
 
-## Tiers
+## 1. Legal Documents (drafted by legal sub-agent, reviewed by you)
 
-```text
-┌─────────────────────────────────────────────┐
-│  Tier 1: GLOBAL CANON (Mogul-authored)      │  ← existing knowledge_base table
-│  Inherited by every tenant, read-only       │
-└─────────────────────────────────────────────┘
-                    │
-        ┌───────────┴───────────┐
-        ▼                       ▼
-┌──────────────────┐   ┌──────────────────┐
-│ Tier 2: TENANT A │   │ Tier 2: TENANT B │   ← new tenant_knowledge_docs
-│  Private KB      │   │  Private KB      │     (RLS tenant-scoped)
-│  RLS isolated    │   │  RLS isolated    │
-└──────────────────┘   └──────────────────┘
-        │                       │
-        │ (opt-in "Contribute   │
-        │  to Network" flag)    │
-        ▼                       ▼
-┌─────────────────────────────────────────────┐
-│  Tier 3: NETWORK CANDIDATES                 │  ← review queue, admin promotes
-│  Shared docs awaiting Mogul review          │     into Tier 1
-└─────────────────────────────────────────────┘
+Six documents, all versioned, all stored in-app at stable routes:
 
-        ── parallel, metadata-only ──
-┌─────────────────────────────────────────────┐
-│  CENTRAL TELEMETRY (kb_telemetry_*)         │  ← MMA-only, zero doc content
-│  Query patterns, gaps, coverage, feedback   │
-└─────────────────────────────────────────────┘
+| Doc | Route | Who signs |
+|---|---|---|
+| **Terms of Service** | `/legal/terms` | Every user |
+| **Privacy Policy** (GLBA-aligned) | `/legal/privacy` | Every user |
+| **E-Sign Consent (ESIGN/UETA)** | `/legal/esign` | Every user |
+| **AI Advisory Disclaimer** (not legal/financial/credit-repair advice; CROA §1679b safe harbor) | `/legal/ai-disclaimer` | Every user |
+| **Credit Data Authorization** (FCRA §604 permissible purpose, soft-pull consent) | `/legal/credit-authorization` | Triggered when user first connects credit/uploads report |
+| **Tenant/Operator MSA + DPA** | `/legal/tenant-msa`, `/legal/dpa` | Tenant owners only, on first tenant creation |
+
+Drafts will use archetype phrasing (§116), Antonio Cook / Mogul Maker Academy as the legal entity, GA jurisdiction, plus the standard FCRA/CROA/GLBA carve-outs ("we are not a credit repair organization", "no guarantees of credit outcomes", etc.). **These are AI-drafted starting points — you should have an attorney review before going live, especially the CROA and DPA sections.**
+
+## 2. Database
+
+```
+legal_documents (slug, version, title, body_md, effective_date, is_current)
+legal_acceptances (user_id, document_slug, document_version, accepted_at, ip, user_agent, context)
 ```
 
-## What changes
+- `legal_acceptances` is append-only — every accept writes a new row (audit trail).
+- RLS: users see their own acceptances; admins see all.
+- `legal_documents` readable by anon (public pages); writable by platform owner only.
 
-### 1. New tables (migration)
+## 3. Signup flow changes
 
-- **`tenant_knowledge_docs`** — per-tenant source docs
-  - `tenant_id`, `title`, `content`, `summary`, `category`, `tags[]`
-  - `source` (upload | url | paste | sync)
-  - `share_to_network` boolean (opt-in contribution flag)
-  - `network_review_status` (none | pending | approved | rejected)
-  - `created_by`, timestamps
-- **`tenant_knowledge_chunks`** — embedded chunks (RAG retrieval)
-  - `tenant_id`, `doc_id`, `chunk_index`, `content`, `embedding vector(3072)`, `token_count`
-  - HNSW index on embedding (cosine)
-- **`kb_query_telemetry`** — every Paige KB retrieval, metadata only
-  - `tenant_id`, `query_hash` (sha256, not raw text), `query_intent_tags[]`, `result_count`, `top_similarity`, `had_global_match`, `had_tenant_match`, `feedback` (helpful | not_helpful | null), `created_at`
-- **`kb_coverage_signal`** — daily roll-up per tenant
-  - `tenant_id`, `topic_cluster`, `doc_count`, `query_count`, `unanswered_count`, `date`
+- Add a single **required** checkbox to the signup form: *"I agree to the Terms of Service, Privacy Policy, E-Sign Consent, and AI Advisory Disclaimer"* with each phrase as a link opening the doc in a side drawer.
+- Submit blocked until checked.
+- On successful signup, write 4 rows to `legal_acceptances` (terms, privacy, esign, ai-disclaimer) with current versions, captured IP + UA.
 
-All four scoped with RLS: tenants see only their own rows; platform owner sees aggregate views.
+## 4. Re-consent on version bumps
 
-### 2. Embedding pipeline (edge function)
+- `AppShell` checks on mount: if `current_version > latest accepted version` for any required doc, show a blocking **"Updated terms"** modal with diff summary + Accept button. No accept = can't use the app.
+- Pulled into a `useRequiredConsents()` hook so it's testable.
 
-- `kb-ingest-doc` — chunks doc (~1000 chars, 150 overlap), embeds via `google/gemini-embedding-001` (3072-dim), inserts chunks scoped to `tenant_id`.
-- `kb-search` — embeds query, retrieves top-K from **(global_canon ∪ tenant_chunks)**, logs metadata-only telemetry row, returns merged ranked results to Paige.
-- `kb-promote-to-network` — admin-only; moves an approved tenant doc into `knowledge_base` (global canon) with attribution.
+## 5. Contextual consents
 
-### 3. UI
+- **Credit Data Authorization** modal fires the first time a user uploads a credit report, connects a credit monitor, or runs a fundability scan. Blocks the action until accepted.
+- **Tenant MSA + DPA** modal fires the first time a user creates a tenant (becomes Tenant Owner). Blocks tenant creation until accepted.
 
-- **Tenant admin → Knowledge Base** (new page under `/admin/knowledge`): upload, paste URL/text, manage own docs, toggle "Contribute to Network" per doc, see retrieval stats for their own corpus.
-- **Platform owner → Network Insights** (new page under `/admin/network-kb`): aggregate dashboards — top queries across tenants, coverage gaps, pending contributions queue, promote/reject controls.
+## 6. Admin surfaces
 
-### 4. Paige integration
+- `/admin/legal` — list documents, see current version, publish a new version (creates new row, marks old `is_current=false`, triggers re-consent sweep).
+- Member profile drawer gains a **Consents** tab showing every acceptance with timestamp + IP for audit/dispute defense.
 
-- `paige-ai-chat` retrieval call switches from current single-source RAG to merged tenant+global lookup. Telemetry write is fire-and-forget.
+## 7. Footer + account
 
-## Compliance posture
+- Site footer: links to Terms, Privacy, AI Disclaimer.
+- Account settings: "Your agreements" section showing accepted docs + dates, with download-as-PDF.
 
-- Tenant doc content **never** leaves the tenant boundary unless `share_to_network=true` AND admin approval.
-- Telemetry stores `query_hash` + intent tags only — no raw queries, no doc text, no PII.
-- Updates `@security-memory` documenting the boundary.
+## Out of scope for this pass
+- Cookie banner / GDPR cookie consent (separate concern; flag for later if you want EU traffic).
+- Click-through SOC 2 / HIPAA BAA (not applicable yet).
+- Per-jurisdiction variants (US-only for now).
 
-## Out of scope this pass
+## What I'll do after you approve
+1. Spawn the legal sub-agent to draft all 6 documents in parallel.
+2. Migration: `legal_documents` + `legal_acceptances` with RLS + GRANTs, seed v1 of each doc.
+3. Build `/legal/*` public pages + `LegalDocViewer`.
+4. Patch signup form (`Auth.tsx` or equivalent) with the required checkbox + acceptance writes.
+5. Build `useRequiredConsents()` + `UpdatedTermsModal`, mount in `AppShell`.
+6. Wire contextual modals for credit auth + tenant MSA.
+7. Build `/admin/legal` page + Consents tab in member drawer.
+8. Add footer links + account settings section.
 
-- Per-doc ACLs inside a tenant (everyone in the tenant sees all tenant docs for v1).
-- File uploads beyond text/markdown/PDF (image OCR comes later).
-- Re-embedding existing `rag_documents` (different table, different purpose — left as-is).
-- Tenant-to-tenant sharing (always routes through Tier 3 review).
-
-## Build order
-
-1. Migration: 4 tables + RLS + GRANTs + indexes.
-2. Edge functions: `kb-ingest-doc`, `kb-search`, `kb-promote-to-network`.
-3. Tenant KB admin UI.
-4. Wire `paige-ai-chat` to merged retrieval.
-5. Network Insights dashboard for platform owner.
-6. Security memory update.
+Approve and I'll ship it end-to-end.

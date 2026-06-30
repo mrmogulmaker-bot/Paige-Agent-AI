@@ -16,8 +16,10 @@ const footerLinks = {
     { name: "Broker Program", href: "/broker" },
   ],
   legal: [
-    { name: "Privacy", href: "/privacy" },
-    { name: "Terms", href: "/terms" },
+    { name: "Terms of Service", href: "/legal/terms" },
+    { name: "Privacy Policy", href: "/legal/privacy" },
+    { name: "E-Sign Consent", href: "/legal/esign" },
+    { name: "AI Disclaimer", href: "/legal/ai-disclaimer" },
   ],
 };
 
