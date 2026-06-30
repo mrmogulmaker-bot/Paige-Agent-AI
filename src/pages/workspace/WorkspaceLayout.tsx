@@ -108,8 +108,28 @@ export default function WorkspaceLayout() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8">
-        <Outlet />
+        {/*
+          Gate the workspace shell to clients (and admins/owners previewing).
+          Coaches and brokers get a friendly restricted panel instead of a
+          half-rendered client view if they navigate here directly.
+        */}
+        <RoleGate
+          allow={["client"]}
+          fallback={
+            <div className="max-w-md mx-auto mt-12 rounded-lg border p-6 text-center" style={{ borderColor: "var(--mma-line)", background: "rgba(255,255,255,0.6)" }}>
+              <ShieldAlert className="w-8 h-8 mx-auto mb-3" style={{ color: "var(--mma-gold)" }} />
+              <h2 className="text-lg font-semibold mb-1">Member workspace</h2>
+              <p className="text-sm opacity-80">
+                This area is reserved for enrolled clients. If you're on the team,
+                head back to your staff dashboard.
+              </p>
+            </div>
+          }
+        >
+          <Outlet />
+        </RoleGate>
       </main>
+
 
       <footer className="border-t mt-12" style={{ borderColor: "var(--mma-line)" }}>
         <div className="max-w-6xl mx-auto px-6 py-6 text-xs text-center" style={{ color: "rgba(8,20,40,0.6)" }}>
