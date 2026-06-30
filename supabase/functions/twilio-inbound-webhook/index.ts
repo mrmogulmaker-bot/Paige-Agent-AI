@@ -54,6 +54,10 @@ Deno.serve(async (req) => {
 
   // Twilio sends application/x-www-form-urlencoded
   const formText = await req.text()
+  const validSig = await verifyTwilio(req, formText)
+  if (!validSig) {
+    return new Response('invalid_signature', { status: 403, headers: corsHeaders })
+  }
   const params = new URLSearchParams(formText)
   const fromPhone = params.get('From') ?? ''
   const bodyRaw = (params.get('Body') ?? '').trim().toUpperCase()
