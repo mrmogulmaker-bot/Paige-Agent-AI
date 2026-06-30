@@ -409,7 +409,10 @@ export default function ContactDetail() {
           {!client.linked_user_id ? (
             <Card><CardContent className="p-4"><EmptyMsg msg="Link this contact to a user account to manage businesses + run verifications." /></CardContent></Card>
           ) : (
-            <BusinessTabPanel linkedUserId={client.linked_user_id} businesses={businesses} />
+            <div className="space-y-4">
+              <ClientOrgChartPanel linkedUserId={client.linked_user_id} />
+              <BusinessTabPanel linkedUserId={client.linked_user_id} businesses={businesses} />
+            </div>
           )}
         </TabsContent>
 
