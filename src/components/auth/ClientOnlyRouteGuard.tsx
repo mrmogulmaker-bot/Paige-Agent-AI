@@ -63,7 +63,11 @@ export function ClientOnlyRouteGuard() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       if (!session) { setIsClientOnly(false); return; }
-      void loadRoles(session.user.id);
+      // Keep Supabase queries out of the auth callback itself. Running them
+      // synchronously here can deadlock session hydration on reload/sign-in.
+      window.setTimeout(() => {
+        void loadRoles(session.user.id);
+      }, 0);
     });
     return () => subscription.unsubscribe();
   }, []);
