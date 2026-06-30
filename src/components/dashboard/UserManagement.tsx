@@ -19,7 +19,22 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { UserPlus, Shield, Users as UsersIcon, Trash2 } from "lucide-react";
+import { UserPlus, Shield, Users as UsersIcon, Trash2, X } from "lucide-react";
+
+// Assignable staff roles surfaced in the Members & Roles UI. Keep this in
+// sync with STAFF_ROLES below; "owner" / "super_admin" are protected and
+// only granted through DB bootstrap, never through this dropdown.
+const ASSIGNABLE_ROLES = [
+  "admin",
+  "coach",
+  "moderator",
+  "sales_rep",
+  "broker",
+  "cs_rep",
+  "finance",
+  "viewer",
+] as const;
+type AssignableRole = typeof ASSIGNABLE_ROLES[number];
 
 // A "staff role" grants platform/workspace authority. Anything else (bare
 // "user", or no role at all) is a client/lead and belongs in Contacts — NOT
