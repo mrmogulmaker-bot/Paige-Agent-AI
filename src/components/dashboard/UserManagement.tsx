@@ -19,7 +19,22 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { UserPlus, Shield, Users as UsersIcon, Trash2 } from "lucide-react";
+import { UserPlus, Shield, Users as UsersIcon, Trash2, X } from "lucide-react";
+
+// Assignable staff roles surfaced in the Members & Roles UI. Keep this in
+// sync with STAFF_ROLES below; "owner" / "super_admin" are protected and
+// only granted through DB bootstrap, never through this dropdown.
+const ASSIGNABLE_ROLES = [
+  "admin",
+  "coach",
+  "moderator",
+  "sales_rep",
+  "broker",
+  "cs_rep",
+  "finance",
+  "viewer",
+] as const;
+type AssignableRole = typeof ASSIGNABLE_ROLES[number];
 
 // A "staff role" grants platform/workspace authority. Anything else (bare
 // "user", or no role at all) is a client/lead and belongs in Contacts — NOT
@@ -53,7 +68,7 @@ export const UserManagement = () => {
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"admin" | "moderator" | "user">("user");
+  const [inviteRole, setInviteRole] = useState<AssignableRole>("coach");
   const [sending, setSending] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -167,7 +182,7 @@ export const UserManagement = () => {
       toast.success(`Invitation sent to ${inviteEmail}`);
       setInviteOpen(false);
       setInviteEmail("");
-      setInviteRole("user");
+      setInviteRole("coach");
       fetchInvitations();
     } catch (error: any) {
       console.error("Error sending invitation:", error);
@@ -177,32 +192,44 @@ export const UserManagement = () => {
     }
   };
 
-  const updateUserRole = async (userId: string, newRole: "admin" | "moderator" | "user" | "coach" | "affiliate") => {
+  // Additive: grant an additional role without wiping existing ones. This is
+  // what lets the Mr. Mogul Maker account hold admin + coach simultaneously.
+  const addUserRole = async (userId: string, newRole: AssignableRole) => {
     try {
       const currentRoles = users.find((u) => u.id === userId)?.roles || [];
-      
-      // Remove all current roles
-      if (currentRoles.length > 0) {
-        const { error: deleteError } = await supabase
-          .from("user_roles")
-          .delete()
-          .eq("user_id", userId);
-        
-        if (deleteError) throw deleteError;
+      if (currentRoles.includes(newRole)) {
+        toast.info(`Already has ${newRole}`);
+        return;
       }
-
-      // Add new role
-      const { error: insertError } = await supabase
+      const { error } = await supabase
         .from("user_roles")
-        .insert([{ user_id: userId, role: newRole }]);
-
-      if (insertError) throw insertError;
-
-      toast.success("User role updated");
+        .insert([{ user_id: userId, role: newRole as any }]);
+      if (error) throw error;
+      toast.success(`Granted ${newRole}`);
       fetchUsers();
     } catch (error: any) {
-      console.error("Error updating role:", error);
-      toast.error("Failed to update role");
+      console.error("Error granting role:", error);
+      toast.error("Failed to grant role", { description: error?.message });
+    }
+  };
+
+  const removeUserRole = async (userId: string, role: string) => {
+    if (role === "owner" || role === "super_admin") {
+      toast.error(`${role} is protected and cannot be removed from this screen`);
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from("user_roles")
+        .delete()
+        .eq("user_id", userId)
+        .eq("role", role as any);
+      if (error) throw error;
+      toast.success(`Removed ${role}`);
+      fetchUsers();
+    } catch (error: any) {
+      console.error("Error removing role:", error);
+      toast.error("Failed to remove role", { description: error?.message });
     }
   };
 
@@ -262,14 +289,14 @@ export const UserManagement = () => {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="role">Role</Label>
-                  <Select value={inviteRole} onValueChange={(value: any) => setInviteRole(value)}>
+                  <Select value={inviteRole} onValueChange={(value: AssignableRole) => setInviteRole(value)}>
                     <SelectTrigger id="role">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="user">User</SelectItem>
-                      <SelectItem value="moderator">Moderator</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
+                      {ASSIGNABLE_ROLES.map((r) => (
+                        <SelectItem key={r} value={r}>{r}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -286,21 +313,37 @@ export const UserManagement = () => {
               <TableRow>
                 <TableHead>Email</TableHead>
                 <TableHead>Name</TableHead>
-                <TableHead>Role</TableHead>
+                <TableHead>Roles</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {users.map((user) => {
+                const protectedRole = (r: string) => r === "owner" || r === "super_admin";
+                return (
                 <TableRow key={user.id}>
                   <TableCell className="font-medium">{user.email}</TableCell>
                   <TableCell>{user.full_name || "-"}</TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 flex-wrap">
                       {user.roles.map((role) => (
-                        <Badge key={role} variant={role === "admin" ? "default" : "secondary"}>
+                        <Badge
+                          key={role}
+                          variant={role === "admin" || role === "owner" || role === "super_admin" ? "default" : "secondary"}
+                          className="flex items-center gap-1"
+                        >
                           {role}
+                          {!protectedRole(role) && role !== "user" && (
+                            <button
+                              onClick={() => removeUserRole(user.id, role)}
+                              className="ml-0.5 rounded-full hover:bg-foreground/10 p-0.5"
+                              title={`Remove ${role}`}
+                              aria-label={`Remove ${role}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
                         </Badge>
                       ))}
                     </div>
@@ -309,16 +352,16 @@ export const UserManagement = () => {
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Select
-                        defaultValue={user.roles[0] || "user"}
-                        onValueChange={(value: "admin" | "moderator" | "user" | "coach" | "affiliate") => updateUserRole(user.id, value)}
+                        value=""
+                        onValueChange={(value: AssignableRole) => addUserRole(user.id, value)}
                       >
-                        <SelectTrigger className="w-[130px]">
-                          <SelectValue />
+                        <SelectTrigger className="w-[150px]">
+                          <SelectValue placeholder="+ Add role" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="user">User</SelectItem>
-                          <SelectItem value="moderator">Moderator</SelectItem>
-                          <SelectItem value="admin">Admin</SelectItem>
+                          {ASSIGNABLE_ROLES.filter((r) => !user.roles.includes(r)).map((r) => (
+                            <SelectItem key={r} value={r}>{r}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <Button
@@ -333,7 +376,8 @@ export const UserManagement = () => {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
