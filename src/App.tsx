@@ -46,6 +46,9 @@ const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQuali
 const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
 const JoinWorkspace = lazyWithReload(() => import("./pages/JoinWorkspace"));
 const TenantStorefront = lazyWithReload(() => import("./pages/public/TenantStorefront"));
+const GrowthPageRenderer = lazyWithReload(() => import("./pages/public/GrowthPageRenderer"));
+const GrowthFormRenderer = lazyWithReload(() => import("./pages/public/GrowthFormRenderer"));
+const GrowthFunnelRenderer = lazyWithReload(() => import("./pages/public/GrowthFunnelRenderer"));
 import NotFound from "./pages/NotFound";
 
 // Everything else is lazy-loaded for a smaller initial bundle
@@ -189,6 +192,11 @@ const App = () => (
 
             {/* Public tenant storefront */}
             <Route path="/store/:slug" element={<PageSuspense><TenantStorefront /></PageSuspense>} />
+
+            {/* Growth OS public surfaces — landing pages, hosted forms, funnels */}
+            <Route path="/p/:tenantSlug/:pageSlug" element={<PageSuspense><GrowthPageRenderer /></PageSuspense>} />
+            <Route path="/f/:tenantSlug/:funnelSlug" element={<PageSuspense><GrowthFunnelRenderer /></PageSuspense>} />
+            <Route path="/form/:id" element={<PageSuspense><GrowthFormRenderer /></PageSuspense>} />
 
             {/* BTF Client Workspace (white-labeled — Mogul Maker Academy) */}
             <Route path="/workspace/accept-invite" element={<PageSuspense><WorkspaceAcceptInvite /></PageSuspense>} />

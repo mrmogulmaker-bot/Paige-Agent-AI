@@ -95,6 +95,7 @@ const PlaidIntegrationConfig = lazy(() => import("@/pages/admin/PlaidIntegration
 const BankingAdmin = lazy(() => import("@/pages/admin/BankingAdmin"));
 const MembersAdmin = lazy(() => import("@/pages/admin/MembersAdmin"));
 const FundingLensHub = lazy(() => import("@/pages/admin/FundingLensHub"));
+const GrowthHub = lazy(() => import("@/pages/admin/GrowthHub"));
 
 
 
@@ -226,6 +227,9 @@ const Admin = () => {
         } />
         <Route path="coaches" element={
           <Suspense fallback={<SuspenseFallback />}><CoachesAdmin /></Suspense>
+        } />
+        <Route path="growth" element={
+          <Suspense fallback={<SuspenseFallback />}><GrowthHub /></Suspense>
         } />
         <Route path="sub-agents" element={
           <Suspense fallback={<SuspenseFallback />}><SubAgentsAdmin /></Suspense>
