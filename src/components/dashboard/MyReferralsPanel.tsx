@@ -48,8 +48,22 @@ export default function MyReferralsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const [reloadTick, setReloadTick] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
+    let userId: string | null = null;
+    let affiliateId: string | null = null;
+    let scheduled: ReturnType<typeof setTimeout> | null = null;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const bump = () => {
+      if (scheduled) return;
+      scheduled = setTimeout(() => {
+        scheduled = null;
+        if (!cancelled) setReloadTick((t) => t + 1);
+      }, 400);
+    };
 
     async function load() {
       setLoading(true);
@@ -57,7 +71,7 @@ export default function MyReferralsPanel() {
       try {
         const { data: userRes, error: authErr } = await supabase.auth.getUser();
         if (authErr) throw authErr;
-        const userId = userRes.user?.id;
+        userId = userRes.user?.id ?? null;
         if (!userId) {
           if (!cancelled) setStats(null);
           return;
@@ -65,10 +79,23 @@ export default function MyReferralsPanel() {
         const s = await fetchMyAffiliateStats(userId);
         if (cancelled) return;
         setStats(s);
+        affiliateId = s?.affiliate_id ?? null;
         if (s) {
           const c = await fetchMyRecentConversions(s.affiliate_id, 10);
           if (!cancelled) setRecent(c);
         }
+
+        // (Re)bind realtime subscriptions scoped to this user/affiliate row.
+        if (channel) supabase.removeChannel(channel);
+        const ch = supabase.channel(`my-referrals-${userId}`);
+        ch.on("postgres_changes", { event: "*", schema: "public", table: "affiliate_profiles", filter: `user_id=eq.${userId}` }, bump);
+        ch.on("postgres_changes", { event: "*", schema: "public", table: "referral_codes", filter: `user_id=eq.${userId}` }, bump);
+        if (affiliateId) {
+          ch.on("postgres_changes", { event: "*", schema: "public", table: "referral_conversions", filter: `affiliate_id=eq.${affiliateId}` }, bump);
+          ch.on("postgres_changes", { event: "*", schema: "public", table: "commission_payments", filter: `affiliate_id=eq.${affiliateId}` }, bump);
+        }
+        ch.subscribe();
+        channel = ch;
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -78,8 +105,10 @@ export default function MyReferralsPanel() {
     void load();
     return () => {
       cancelled = true;
+      if (scheduled) clearTimeout(scheduled);
+      if (channel) supabase.removeChannel(channel);
     };
-  }, []);
+  }, [reloadTick]);
 
   if (loading) {
     return (

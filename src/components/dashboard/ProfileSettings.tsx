@@ -114,6 +114,41 @@ export const ProfileSettings = () => {
     loadProfileData();
   }, []);
 
+  // Realtime: pull in profile + business edits made elsewhere (admin drawer,
+  // other devices) without requiring a page refresh. Skips reload while the
+  // user is actively editing to avoid clobbering in-flight form changes.
+  useEffect(() => {
+    let cancelled = false;
+    let scheduled: ReturnType<typeof setTimeout> | null = null;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    const schedule = () => {
+      if (scheduled) return;
+      scheduled = setTimeout(() => {
+        scheduled = null;
+        if (cancelled) return;
+        if (isEditingPersonal || isEditingSSN || isEditingDOB) return;
+        loadProfileData();
+      }, 400);
+    };
+
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      channel = supabase
+        .channel(`profile-self-${user.id}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `user_id=eq.${user.id}` }, schedule)
+        .on("postgres_changes", { event: "*", schema: "public", table: "businesses", filter: `owner_user_id=eq.${user.id}` }, schedule)
+        .subscribe();
+    })();
+
+    return () => {
+      cancelled = true;
+      if (scheduled) clearTimeout(scheduled);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [isEditingPersonal, isEditingSSN, isEditingDOB]);
+
   const loadProfileData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
