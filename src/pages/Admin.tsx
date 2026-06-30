@@ -28,6 +28,13 @@ import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
 import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
 import { toast } from "sonner";
+import { RoleGate } from "@/components/auth/RoleGate";
+
+/** Wraps a route element so it's only visible to admins (or platform owner). */
+const AdminOnly = ({ children }: { children: React.ReactNode }) => (
+  <RoleGate allow={["admin"]}>{children}</RoleGate>
+);
+
 
 // Lazy-load admin sub-pages
 const ClientManagementDashboard = lazy(() => import("@/components/dashboard/ClientManagementDashboard").then(m => ({ default: m.ClientManagementDashboard })));
