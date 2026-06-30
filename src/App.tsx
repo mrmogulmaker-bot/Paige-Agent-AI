@@ -33,6 +33,7 @@ import { FloatingChatbot } from "./components/FloatingChatbot";
 import { MetaPixel } from "./components/seo/MetaPixel";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { DashboardModeProvider } from "./contexts/DashboardModeContext";
+import { RoleLensProvider } from "./contexts/RoleLensContext";
 import { BusinessProvider } from "./contexts/BusinessContext";
 import { useReferralTracking } from "./hooks/useReferralTracking";
 import { GlobalAuthSessionManager } from "./lib/auth/GlobalAuthSessionManager";
@@ -141,6 +142,7 @@ const App = () => (
       <SubscriptionProvider>
         <BusinessProvider>
         <DashboardModeProvider>
+        <RoleLensProvider>
         <Toaster />
         <Sonner />
         <BrowserRouter>
