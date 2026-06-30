@@ -31,8 +31,22 @@ export function AdminBridgeBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notif[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const unread = items.filter((n) => !n.read_at).length;
+
+  function toggleExpanded(id: string, n?: Notif) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+        if (n && !n.read_at) markRead(id);
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     let mounted = true;
