@@ -504,6 +504,41 @@ export default function ContactDetail() {
           setEditOpen(false);
         }}
       />
+
+      <AlertDialog open={deleteOpen} onOpenChange={(v) => !deleting && setDeleteOpen(v)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {fullName || "this contact"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the contact along with their CRM history — deals,
+              activities, notes, documents, and coach assignments. Any linked portal user
+              account is left intact. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault();
+                if (!client) return;
+                setDeleting(true);
+                try {
+                  await deleteContact(client.id);
+                  toast.success("Contact deleted");
+                  navigate("/admin/contacts");
+                } catch (err: any) {
+                  toast.error(err?.message || "Delete failed");
+                  setDeleting(false);
+                }
+              }}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting…" : "Delete contact"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
