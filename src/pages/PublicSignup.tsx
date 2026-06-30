@@ -282,6 +282,15 @@ export default function PublicSignup() {
                 <Label>Password</Label>
                 <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" />
               </div>
+
+              {authMode === "signup" && (
+                <CommunicationsConsent
+                  value={commsConsent}
+                  onChange={setCommsConsent}
+                  showSms={false}
+                />
+              )}
+
               <Button onClick={handleEmailAuth} disabled={authBusy || !email || !password} className="w-full h-11">
                 {authBusy ? "Working…" : authMode === "signup" ? "Create account & continue" : "Sign in & continue"}
               </Button>
