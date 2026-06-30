@@ -19,6 +19,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle, Link2, Unlink, LogOut, ShieldAlert, Bell, ShieldOff } from "lucide-react";
+import { LiveSyncIndicator } from "@/components/ui/LiveSyncIndicator";
 import { DataPrivacyPanel } from "@/components/dashboard/DataPrivacyPanel";
 import { NotificationsSettings } from "@/components/dashboard/NotificationsSettings";
 import { lovable } from "@/integrations/lovable/index";
