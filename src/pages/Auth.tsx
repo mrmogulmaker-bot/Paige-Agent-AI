@@ -16,6 +16,7 @@ import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
+import { isSafeRedirectPath } from "@/lib/auth/safeRedirect";
 import { useRequiredSignupDocs, recordAcceptances } from "@/lib/legal/useLegalDocuments";
 
 const authSchema = z.object({
