@@ -18,6 +18,9 @@ const SCOPE_LABELS: Record<string, { title: string; detail: string }> = {
   "admin.delete": { title: "Destructive tenant admin", detail: "Remove coach roles and suspend members. Tenant Owner only." },
   "platform.read": { title: "Read platform data", detail: "Cross-tenant metrics and infrastructure state. Platform Owner only." },
   "platform.write": { title: "Platform infrastructure", detail: "Create/suspend tenants, register workflows, manage sub-agents. Platform Owner only." },
+  "self.read": { title: "Read your own profile", detail: "View your client profile, businesses, tasks, BTF phase progress, and message history. Cannot read anyone else's data." },
+  "self.write": { title: "Update your own data", detail: "Edit your profile, manage your businesses, log progress updates, and message your coach. Cannot modify anyone else's data." },
+  "self.chat": { title: "Chat with Paige", detail: "Have conversational sessions with Paige Agent AI scoped to your own workspace." },
 };
 
 const TIER_LABEL: Record<string, { label: string; note: string }> = {
@@ -33,6 +36,10 @@ const TIER_LABEL: Record<string, { label: string; note: string }> = {
     label: "Tenant Admin",
     note: "Full operator power inside your tenant, including bulk delete with audit. Permanent role removal and platform infrastructure remain owner-only.",
   },
+  client: {
+    label: "Workspace Member",
+    note: "Self-scoped only — you can read and update your own profile, businesses, tasks, and BTF progress, and message your coach. You cannot see or modify any other user's data.",
+  },
 };
 
 export default function McpAuthorize() {
@@ -42,7 +49,7 @@ export default function McpAuthorize() {
   const [error, setError] = useState<string | null>(null);
   const [client, setClient] = useState<{ id: string; name: string; uri: string | null } | null>(null);
   const [scopes, setScopes] = useState<string[]>([]);
-  const [tier, setTier] = useState<"platform_owner" | "tenant_owner" | "tenant_admin" | null>(null);
+  const [tier, setTier] = useState<"platform_owner" | "tenant_owner" | "tenant_admin" | "client" | null>(null);
   const [tenantName, setTenantName] = useState<string | null>(null);
 
   const req = useMemo(() => ({

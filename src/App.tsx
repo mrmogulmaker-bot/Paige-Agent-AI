@@ -112,6 +112,7 @@ const Support = lazyWithReload(() => import("./pages/Support"));
 const MyAgreements = lazyWithReload(() => import("./pages/MyAgreements"));
 const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
 const WorkspaceApprovals = lazyWithReload(() => import("./pages/workspace/WorkspaceApprovals"));
+const WorkspaceConnect = lazyWithReload(() => import("./pages/workspace/WorkspaceConnect"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -216,6 +217,7 @@ const App = () => (
               <Route path="tasks" element={<PageSuspense><WorkspaceTasks /></PageSuspense>} />
               <Route path="funding-readiness" element={<PageSuspense><WorkspaceFundingReadiness /></PageSuspense>} />
               <Route path="approvals" element={<PageSuspense><WorkspaceApprovals /></PageSuspense>} />
+              <Route path="connect" element={<PageSuspense><WorkspaceConnect /></PageSuspense>} />
             </Route>
 
             {/* BTF Onboarding Wizard — admin-triggered, magic-link entry */}
