@@ -17,6 +17,7 @@ import { Loader2, ShieldCheck, AlertCircle, ArrowLeft } from "lucide-react";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import paigeLogo from "@/assets/paige-logo-transparent.png";
 import { trackEvent } from "@/hooks/useAnalytics";
+import { recordAcceptances } from "@/lib/legal/useLegalDocuments";
 
 interface InviteRow {
   id: string;
