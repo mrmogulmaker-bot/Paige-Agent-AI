@@ -15,6 +15,7 @@ import { McpSessionsPanel } from "@/components/dashboard/admin/McpSessionsPanel"
 import { WorkspaceSettingsPanel } from "@/components/admin/WorkspaceSettingsPanel";
 import { StorefrontPanel } from "@/components/admin/StorefrontPanel";
 import { EmailDomainsPanel } from "@/components/admin/EmailDomainsPanel";
+import { EmailTemplatesPanel } from "@/components/admin/settings/EmailTemplatesPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -141,6 +142,7 @@ export function AdminSettingsHub() {
 
         <TabsContent value="email-domains" className="space-y-4">
           <EmailDomainsPanel />
+          <EmailTemplatesPanel />
         </TabsContent>
 
         <TabsContent value="comms" className="space-y-4">
