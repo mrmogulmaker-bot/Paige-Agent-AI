@@ -3106,7 +3106,14 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Sub-Agent Factory (Section 18.5)
   propose_subagent: "admin.write",
   list_subagent_proposals: "admin.read",
+  propose_subagent: "admin.write",
+  list_subagent_proposals: "admin.read",
   approve_subagent_proposal: "admin.write",
+  // Skills Registry (Doctrine §119)
+  list_skills: "crm.read",
+  run_skill: "workflows.run",
+  get_skill_run: "crm.read",
+  verify_business: "crm.write",
 };
 
 const DISCOVERY_RESOURCE = {
