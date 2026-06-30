@@ -144,42 +144,73 @@ const Admin = () => {
   });
 
   useEffect(() => {
-    checkAdminAccess();
-  }, []);
+    let cancelled = false;
 
-  const checkAdminAccess = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        navigate("/auth");
-        return;
+    const run = async () => {
+      try {
+        // Wait for the session to hydrate after a hard reload. supabase.auth
+        // restores from localStorage asynchronously; calling getUser() too
+        // early can return null and bounce the admin to /auth or /app.
+        let session = (await supabase.auth.getSession()).data.session;
+        if (!session) {
+          session = await new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+              sub.data.subscription.unsubscribe();
+              resolve(null);
+            }, 4000);
+            const sub = supabase.auth.onAuthStateChange((_e, s) => {
+              if (s) {
+                clearTimeout(timeout);
+                sub.data.subscription.unsubscribe();
+                resolve(s);
+              }
+            });
+          });
+        }
+        if (cancelled) return;
+
+        const user = session?.user;
+        if (!user) {
+          navigate("/auth", { replace: true });
+          return;
+        }
+
+        const { data: roles } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id);
+
+        const roleList = (roles || []).map((r: any) => r.role);
+        const isAdmin = roleList.includes("admin");
+        const isCoach = roleList.includes("coach");
+
+        if (!isAdmin && !isCoach) {
+          toast.error("Access denied. Admin or coach privileges required.");
+          navigate("/app", { replace: true });
+          return;
+        }
+
+        setUserRole(isAdmin ? "admin" : "coach");
+        // Don't fail the whole page if a stats query errors — render the
+        // workspace anyway so the user is never bounced off /admin.
+        fetchStats().catch((e) => console.error("[Admin] fetchStats:", e));
+      } catch (error) {
+        console.error("Admin access check error:", error);
+        // Stay on /admin and let the boundary surface the failure rather
+        // than silently redirecting to /app.
+      } finally {
+        if (!cancelled) setLoading(false);
       }
+    };
 
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id);
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
-      const roleList = (roles || []).map((r: any) => r.role);
-      const isAdmin = roleList.includes("admin");
-      const isCoach = roleList.includes("coach");
+  const checkAdminAccess = async () => {};
 
-      if (!isAdmin && !isCoach) {
-        toast.error("Access denied. Admin or coach privileges required.");
-        navigate("/app");
-        return;
-      }
-
-      setUserRole(isAdmin ? "admin" : "coach");
-      await fetchStats();
-    } catch (error) {
-      console.error("Admin access check error:", error);
-      navigate("/app");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchStats = async () => {
     try {
