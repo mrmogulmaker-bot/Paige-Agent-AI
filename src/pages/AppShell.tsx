@@ -202,6 +202,7 @@ const AppShell = () => {
   // BTF workspace clients → /workspace. Honors ?stay=1 (or the
   // paige_stay_in_client_view sessionStorage flag set by AdminLayout's
   // "preview as client" toggle) so internal users can opt into the client view.
+  const [redirectingStaff, setRedirectingStaff] = useState(false);
   useEffect(() => {
     if (!user) return;
     if (location.pathname !== "/app") return;
@@ -214,6 +215,7 @@ const AppShell = () => {
     } catch {}
 
     let cancelled = false;
+    setRedirectingStaff(true);
     (async () => {
       try {
         const target = await Promise.race<string>([
@@ -223,9 +225,12 @@ const AppShell = () => {
         if (cancelled) return;
         if (target !== "/app") {
           navigate(target, { replace: true });
+        } else {
+          setRedirectingStaff(false);
         }
       } catch (err) {
         console.error("[AppShell] resolveLandingRoute failed:", err);
+        if (!cancelled) setRedirectingStaff(false);
       }
     })();
     return () => { cancelled = true; };
@@ -234,7 +239,7 @@ const AppShell = () => {
 
 
 
-  if (isLoading) {
+  if (isLoading || redirectingStaff) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
