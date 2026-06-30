@@ -168,11 +168,13 @@ export default function McpAuthorize() {
           <p className="mt-2 text-sm text-muted-foreground">
             This application is requesting the following permissions on your Paige account.
           </p>
-          {elevated && (
+          {tier && (
             <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 p-2 text-xs text-muted-foreground">
-              {elevated === "owner"
-                ? "Platform owner detected — full scope set granted, including destructive deletes."
-                : "Admin detected — scopes auto-elevated to the full admin set. Destructive deletes remain owner-only."}
+              <div className="font-medium text-foreground">
+                {TIER_LABEL[tier]?.label ?? tier}
+                {tenantName && tier !== "platform_owner" ? ` · ${tenantName}` : ""}
+              </div>
+              <div className="mt-1">{TIER_LABEL[tier]?.note}</div>
             </div>
           )}
         </div>
