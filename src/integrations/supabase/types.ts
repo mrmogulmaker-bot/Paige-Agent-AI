@@ -14837,6 +14837,7 @@ export type Database = {
         | "finance"
         | "viewer"
         | "client"
+        | "developer"
       btf_doc_status: "pending" | "uploaded" | "approved" | "rejected"
       btf_item_status: "pending" | "in_progress" | "complete"
       btf_phase: "build" | "stack" | "fund" | "complete"
@@ -15118,6 +15119,7 @@ export const Constants = {
         "finance",
         "viewer",
         "client",
+        "developer",
       ],
       btf_doc_status: ["pending", "uploaded", "approved", "rejected"],
       btf_item_status: ["pending", "in_progress", "complete"],
