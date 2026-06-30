@@ -70,4 +70,5 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'beta-launch-welcome': betaLaunchWelcome,
   'btf-welcome-invite': btfWelcomeInvite,
   'approval-notification': approvalNotification,
+  'security-canary-regression': securityCanaryRegression,
 }
