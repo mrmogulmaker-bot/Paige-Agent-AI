@@ -29,6 +29,7 @@ import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
 import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
 import { toast } from "sonner";
 import { RoleGate } from "@/components/auth/RoleGate";
+import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
 
 /** Wraps a route element so it's only visible to admins (or platform owner). */
 const AdminOnly = ({ children }: { children: React.ReactNode }) => (
@@ -211,13 +212,16 @@ const Admin = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="animate-pulse text-muted-foreground">Loading admin workspace...</div>
-      </div>
+      <AdminLoaderBoundary loading>
+        <div className="flex items-center justify-center min-h-screen bg-background">
+          <div className="animate-pulse text-muted-foreground">Loading admin workspace...</div>
+        </div>
+      </AdminLoaderBoundary>
     );
   }
 
   return (
+    <AdminLoaderBoundary>
     <AdminLayout userRole={userRole}>
       <Routes>
         <Route index element={<AdminOverview stats={stats} />} />
@@ -479,6 +483,7 @@ const Admin = () => {
       </Routes>
 
     </AdminLayout>
+    </AdminLoaderBoundary>
   );
 };
 
