@@ -28,6 +28,7 @@ import { ContactNotesPanel } from "@/components/admin/contacts/ContactNotesPanel
 import { ContactFilesPanel } from "@/components/admin/contacts/ContactFilesPanel";
 import { ContactTasksPanel } from "@/components/admin/contacts/ContactTasksPanel";
 import { ContactPortalPanel } from "@/components/admin/contacts/ContactPortalPanel";
+import { ClientOnboardingStatusPanel } from "@/components/admin/contacts/ClientOnboardingStatusPanel";
 import { ImpersonateClientButton } from "@/components/admin/ImpersonateClientButton";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -240,13 +241,11 @@ export default function ContactDetail() {
           </>
         )}
 
+        <ImpersonateClientButton contactId={client.id} linkedUserId={client.linked_user_id} />
         {client.linked_user_id && (
-          <>
-            <ImpersonateClientButton contactId={client.id} linkedUserId={client.linked_user_id} />
-            <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/user/${client.linked_user_id}`)}>
-              <ExternalLink className="h-4 w-4 mr-1" /> Full Client File
-            </Button>
-          </>
+          <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/user/${client.linked_user_id}`)}>
+            <ExternalLink className="h-4 w-4 mr-1" /> Full Client File
+          </Button>
         )}
         {!client.linked_user_id && (
           <Button variant="outline" size="sm" onClick={() => navigate(`/admin/clients/internal/${client.id}`)}>
@@ -424,11 +423,14 @@ export default function ContactDetail() {
         <TabsContent value="funding-lens"><FundingReadinessLens contactId={client.id} mode="admin" /></TabsContent>
 
         <TabsContent value="portal">
-          <ContactPortalPanel
-            contactId={client.id}
-            email={client.email}
-            linkedUserId={client.linked_user_id}
-          />
+          <div className="space-y-4">
+            <ClientOnboardingStatusPanel contactId={client.id} />
+            <ContactPortalPanel
+              contactId={client.id}
+              email={client.email}
+              linkedUserId={client.linked_user_id}
+            />
+          </div>
         </TabsContent>
 
 
