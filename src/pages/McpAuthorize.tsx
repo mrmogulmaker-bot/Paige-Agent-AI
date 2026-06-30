@@ -25,6 +25,7 @@ export default function McpAuthorize() {
   const [error, setError] = useState<string | null>(null);
   const [client, setClient] = useState<{ id: string; name: string; uri: string | null } | null>(null);
   const [scopes, setScopes] = useState<string[]>([]);
+  const [elevated, setElevated] = useState<"owner" | "admin" | null>(null);
 
   const req = useMemo(() => ({
     client_id: params.get("client_id") ?? "",
