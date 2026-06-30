@@ -121,12 +121,13 @@ const AppShell = () => {
       }
     );
 
-    Promise.race([
+    Promise.race<Awaited<ReturnType<typeof supabase.auth.getSession>> | null>([
       supabase.auth.getSession(),
       new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 5000)),
     ])
-      .then(({ data: { session: currentSession } }) => {
-        if (!arguments[0]) return;
+      .then((result) => {
+        if (!result) return;
+        const currentSession = result.data.session;
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
         markSettled();
