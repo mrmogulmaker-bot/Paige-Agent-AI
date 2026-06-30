@@ -3056,11 +3056,10 @@ mcp.tool("list_skills", {
     if (query) q = q.or(`slug.ilike.%${query}%,name.ilike.%${query}%,description.ilike.%${query}%`);
     const { data, error } = await q;
     if (error) return err(error.message);
-    // Compute external_send inline from risk_level until column is added.
     const items = (data ?? []).map((s: Record<string, unknown>) => ({
       ...s,
       tools: s.allowed_tools,
-      external_send: s.risk_level === "high",
+      external_send: s.risk_level === "external_send",
     }));
     return ok({ items, count: items.length });
   },
@@ -3090,7 +3089,7 @@ mcp.tool("run_skill", {
       const willGate = (skill.require_admin_confirm_first_n ?? 0) > 0
         && (skill.run_count ?? 0) < skill.require_admin_confirm_first_n
         && actor.kind !== "platform";
-      const skillOut = { ...skill, tools: skill.allowed_tools, external_send: skill.risk_level === "high" };
+      const skillOut = { ...skill, tools: skill.allowed_tools, external_send: skill.risk_level === "external_send" };
       return ok({ dry_run: true, skill: skillOut, resolved_inputs: inputs, would_gate_on_confirm: willGate });
     }
     const r = await fetch(`${SUPABASE_URL}/functions/v1/skill-runner`, {
@@ -3172,6 +3171,12 @@ mcp.tool("propose_subagent", {
     config: z.record(z.string(), z.unknown()).optional().describe("Optional config, e.g. {model: 'google/gemini-2.5-pro'}"),
   }),
   handler: async (args) => {
+    // Enforce kebab-case slugs (§F3) — reject underscores at proposal time.
+    if (!/^[a-z][a-z0-9-]{2,40}$/.test(args.slug)) {
+      return err(
+        `Slug must be kebab-case matching ^[a-z][a-z0-9-]{2,40}$ (lowercase letters, digits, and hyphens only — no underscores). Got: ${args.slug}`,
+      );
+    }
     // Guardrail: soft agents cannot call tools. Scan the prompt before forwarding.
     if (args.runtime === "soft") {
       const hit = SOFT_TOOL_CALL_PATTERNS.find((re) => re.test(args.system_prompt));

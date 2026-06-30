@@ -260,6 +260,22 @@ Deno.serve(async (req) => {
   // If a tenantId is provided, look up the tenant's sender identity so each
   // tenant's invites/notifications show their own name in the From header.
   // Explicit fromOverride / replyToOverride always win.
+  //
+  // SENDER-DOMAIN ALIGNMENT GUARD: the Lovable Email API rejects sends whose
+  // From-address domain does not align with the verified sender_domain. A
+  // tenant override pointing at an unregistered domain (e.g. portal.mogulmakeracademy.com
+  // while sender_domain is notify.paigeagent.ai) used to silently fail with
+  // sender_domain_mismatch. We now validate alignment and fall back to the
+  // safe default rather than enqueue a doomed send.
+  const SENDER_ROOT = SENDER_DOMAIN.split('.').slice(-2).join('.') // notify.paigeagent.ai -> paigeagent.ai
+  const fromAddressAligns = (addr: string): boolean => {
+    const m = addr.match(/<([^>]+)>|([^\s]+@[^\s]+)/)
+    const email = (m?.[1] ?? m?.[2] ?? addr).trim()
+    const domain = email.split('@')[1]?.toLowerCase() ?? ''
+    if (!domain) return false
+    return domain === SENDER_DOMAIN || domain === SENDER_ROOT || domain.endsWith('.' + SENDER_ROOT)
+  }
+
   let resolvedFrom = `${SITE_NAME} <noreply@${FROM_DOMAIN}>`
   let resolvedReplyTo: string | null = null
   if (tenantId) {
@@ -270,11 +286,20 @@ Deno.serve(async (req) => {
       | { from_name?: string; from_address?: string; reply_to?: string }
       | null
     if (sender?.from_name && sender?.from_address) {
-      resolvedFrom = `${sender.from_name} <${sender.from_address}>`
-      resolvedReplyTo = sender.reply_to ?? null
+      const candidate = `${sender.from_name} <${sender.from_address}>`
+      if (fromAddressAligns(candidate)) {
+        resolvedFrom = candidate
+        resolvedReplyTo = sender.reply_to ?? null
+      } else {
+        console.warn('tenant_sender_identity from-address does not align with sender_domain — using default', {
+          tenant_id: tenantId,
+          tenant_from: sender.from_address,
+          sender_domain: SENDER_DOMAIN,
+        })
+      }
     }
   }
-  if (fromOverride) resolvedFrom = fromOverride
+  if (fromOverride && fromAddressAligns(fromOverride)) resolvedFrom = fromOverride
   if (replyToOverride) resolvedReplyTo = replyToOverride
 
   // 6. Enqueue the pre-rendered email for async processing by the dispatcher.
