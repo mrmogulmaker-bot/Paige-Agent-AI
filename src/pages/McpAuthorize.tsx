@@ -49,7 +49,7 @@ export default function McpAuthorize() {
   const [error, setError] = useState<string | null>(null);
   const [client, setClient] = useState<{ id: string; name: string; uri: string | null } | null>(null);
   const [scopes, setScopes] = useState<string[]>([]);
-  const [tier, setTier] = useState<"platform_owner" | "tenant_owner" | "tenant_admin" | null>(null);
+  const [tier, setTier] = useState<"platform_owner" | "tenant_owner" | "tenant_admin" | "client" | null>(null);
   const [tenantName, setTenantName] = useState<string | null>(null);
 
   const req = useMemo(() => ({
