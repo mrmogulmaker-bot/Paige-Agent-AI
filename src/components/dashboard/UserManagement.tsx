@@ -19,7 +19,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { UserPlus, Shield, Users as UsersIcon, Trash2, X } from "lucide-react";
+import { UserPlus, Shield, Users as UsersIcon, Trash2, X, Pencil } from "lucide-react";
+import { MemberProfileDrawer, type MemberProfile } from "@/components/admin/MemberProfileDrawer";
 
 // Assignable staff roles surfaced in the Members & Roles UI. Keep this in
 // sync with STAFF_ROLES below; "owner" / "super_admin" are protected and
@@ -30,6 +31,7 @@ const ASSIGNABLE_ROLES = [
   "moderator",
   "sales_rep",
   "broker",
+  "affiliate",
   "cs_rep",
   "finance",
   "viewer",
@@ -40,7 +42,7 @@ type AssignableRole = typeof ASSIGNABLE_ROLES[number];
 // "user", or no role at all) is a client/lead and belongs in Contacts — NOT
 // in Team & Roles. Keep this list in sync with src/pages/admin/MembersAdmin.tsx.
 const STAFF_ROLES = new Set<string>([
-  "admin", "coach", "sales_rep", "broker", "broker_team_member",
+  "admin", "coach", "sales_rep", "broker", "broker_team_member", "affiliate",
   "cs_rep", "finance", "viewer", "moderator", "owner", "super_admin",
 ]);
 const isStaffUser = (roles: string[]) => roles.some((r) => STAFF_ROLES.has(r));
