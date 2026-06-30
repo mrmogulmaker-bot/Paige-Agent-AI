@@ -133,6 +133,7 @@ const AppShell = () => {
   useEffect(() => {
     if (!user) return;
     if (location.pathname !== "/app") return;
+    if (isImpersonating) return; // staff actively viewing as a client
     const params = new URLSearchParams(location.search);
     if (params.get("stay") === "1") return;
     try {
@@ -149,7 +150,7 @@ const AppShell = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [user?.id, location.pathname, location.search, navigate]);
+  }, [user?.id, location.pathname, location.search, navigate, isImpersonating]);
 
 
 
