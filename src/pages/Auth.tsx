@@ -15,6 +15,7 @@ import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthInd
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
 import { trackEvent } from "@/hooks/useAnalytics";
+import { resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -44,23 +45,26 @@ const Auth = () => {
   }, [searchParams]);
 
   const redirectByRole = async (userId: string) => {
+    // Always clear any "preview as client" override on a fresh login so role
+    // redirects aren't suppressed by a stale flag from a previous session.
+    clearClientViewOverride();
+
     // Honor ?next= for invite acceptance flows (e.g. /join/:token).
     // Only same-origin relative paths are allowed.
     const nextParam = searchParams.get("next");
     if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
-      navigate(nextParam);
+      navigate(nextParam, { replace: true });
       return;
     }
+
+    // broker_team_member needs the active_broker_id side-effect before routing.
     try {
       const { data: roles } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", userId);
       const roleList = (roles || []).map((r: any) => r.role);
-      if (roleList.includes("admin") || roleList.includes("coach")) {
-        navigate("/admin");
-      } else if (roleList.includes("broker_team_member")) {
-        // Team members route into their parent broker's workspace.
+      if (roleList.includes("broker_team_member")) {
         try {
           const { data: tm } = await supabase.rpc("get_broker_team_member", {
             _auth_user_id: userId,
@@ -70,15 +74,13 @@ const Auth = () => {
         } catch {
           /* non-blocking */
         }
-        navigate("/broker/app");
-      } else if (roleList.includes("broker")) {
-        navigate("/broker/app");
-      } else {
-        navigate("/app");
       }
     } catch {
-      navigate("/app");
+      /* non-blocking */
     }
+
+    const target = await resolveLandingRoute(userId);
+    navigate(target, { replace: true });
   };
 
   useEffect(() => {
