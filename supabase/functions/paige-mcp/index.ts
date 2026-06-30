@@ -3710,6 +3710,287 @@ mcp.tool("advance_contact_journey_stage", {
   },
 });
 
+// ============================================================================
+// SELF-SCOPED TOOLS — end-user (client) MCP surface.
+//
+// Every tool below resolves the calling user back to their own `clients` row
+// (linked_user_id = actor.user_id) before reading or writing anything. There
+// is no path here to read another user's data — even if a client somehow
+// requested crm.* scopes, the OAuth consent flow (paige-mcp-consent) strips
+// them and only ever grants self.read / self.write / self.chat for the client
+// tier. This is the same MCP server as admins use, just gated.
+// ============================================================================
+
+async function actorClient(): Promise<{ id: string; tenant_id: string | null; owner_user_id: string | null } | null> {
+  const a = currentActor();
+  if (!a.user_id) return null;
+  const { data } = await admin
+    .from("clients")
+    .select("id, tenant_id, linked_user_id")
+    .eq("linked_user_id", a.user_id)
+    .maybeSingle();
+  if (!data?.id) return null;
+  return { id: data.id, tenant_id: (data as any).tenant_id ?? null, owner_user_id: a.user_id };
+}
+
+mcp.tool("me_whoami", {
+  description: "Return the current end-user's identity, linked client_id, tenant, and granted MCP scopes. Always call this first to confirm you're acting on the right account.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const a = currentActor();
+    const me = await actorClient();
+    return ok({
+      user_id: a.user_id,
+      scopes: a.scopes,
+      linked_client_id: me?.id ?? null,
+      tenant_id: me?.tenant_id ?? null,
+    });
+  },
+});
+
+mcp.tool("me_get_profile", {
+  description: "Get the calling user's own client profile (name, email, phone, lifecycle stage, funding goal, notes). Reads only the row linked to the caller via clients.linked_user_id.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const me = await actorClient();
+    if (!me) return err("no_linked_client_record");
+    const { data, error } = await admin.from("clients").select("*").eq("id", me.id).maybeSingle();
+    if (error) return err(error.message);
+    return ok({ profile: data });
+  },
+});
+
+mcp.tool("me_update_profile", {
+  description: "Update the calling user's own client profile. Only safe self-editable fields are allowed: first_name, last_name, phone, entity_name, current_notes, funding_goal_amount. Cannot change lifecycle_stage, assigned coach, tier, or status.",
+  inputSchema: z.object({
+    first_name: z.string().optional(),
+    last_name: z.string().optional(),
+    phone: z.string().optional(),
+    entity_name: z.string().optional().describe("Their company / business name."),
+    current_notes: z.string().optional().describe("Free-form notes the user wants Paige to remember."),
+    funding_goal_amount: z.number().optional(),
+  }),
+  handler: async (patch) => {
+    const me = await actorClient();
+    if (!me) return err("no_linked_client_record");
+    const ALLOWED = ["first_name","last_name","phone","entity_name","current_notes","funding_goal_amount"];
+    const clean: Record<string, unknown> = {};
+    for (const k of ALLOWED) if ((patch as any)[k] !== undefined) clean[k] = (patch as any)[k];
+    if (Object.keys(clean).length === 0) return err("no_updatable_fields");
+    const { error } = await admin.from("clients").update(clean).eq("id", me.id);
+    if (error) return err(error.message);
+    await audit("me_update_profile", "contact", me.id, { fields: Object.keys(clean) });
+    return ok({ updated: true, fields: Object.keys(clean) });
+  },
+});
+
+mcp.tool("me_list_businesses", {
+  description: "List the businesses owned by the calling user (businesses.owner_user_id = caller). Returns legal name, DBA, EIN status, entity type, formation status.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const a = currentActor();
+    if (!a.user_id) return err("unauthenticated");
+    const { data, error } = await admin
+      .from("businesses")
+      .select("id, legal_name, dba, entity_type, state_of_formation, ein, naics, revenue_band, formation_status, website, business_email, is_primary, is_active")
+      .eq("owner_user_id", a.user_id)
+      .order("is_primary", { ascending: false });
+    if (error) return err(error.message);
+    return ok({ items: data ?? [], count: (data ?? []).length });
+  },
+});
+
+mcp.tool("me_update_business", {
+  description: "Update one of the calling user's own businesses. Server verifies businesses.owner_user_id matches the caller before writing. Safe self-editable fields only: legal_name, dba, website, business_email, business_phone, naics, revenue_band, entity_type, state_of_formation.",
+  inputSchema: z.object({
+    business_id: z.string().describe("businesses.id (uuid) owned by the caller."),
+    legal_name: z.string().optional(),
+    dba: z.string().optional(),
+    website: z.string().optional(),
+    business_email: z.string().optional(),
+    business_phone: z.string().optional(),
+    naics: z.string().optional(),
+    revenue_band: z.string().optional(),
+    entity_type: z.string().optional(),
+    state_of_formation: z.string().optional(),
+  }),
+  handler: async ({ business_id, ...patch }) => {
+    const a = currentActor();
+    if (!a.user_id) return err("unauthenticated");
+    const { data: row } = await admin.from("businesses").select("owner_user_id").eq("id", business_id).maybeSingle();
+    if (!row) return err("business_not_found");
+    if (row.owner_user_id !== a.user_id) return err("not_owner");
+    const clean: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(patch)) if (v !== undefined) clean[k] = v;
+    if (Object.keys(clean).length === 0) return err("no_updatable_fields");
+    const { error } = await admin.from("businesses").update(clean).eq("id", business_id);
+    if (error) return err(error.message);
+    await audit("me_update_business", "business", business_id, { fields: Object.keys(clean) });
+    return ok({ updated: true, fields: Object.keys(clean) });
+  },
+});
+
+mcp.tool("me_create_business", {
+  description: "Create a new business owned by the calling user. Use this when the user tells Paige about a new entity they're forming or want to register on the platform.",
+  inputSchema: z.object({
+    legal_name: z.string(),
+    dba: z.string().optional(),
+    entity_type: z.string().optional(),
+    state_of_formation: z.string().optional(),
+    website: z.string().optional(),
+    business_email: z.string().optional(),
+    business_phone: z.string().optional(),
+    is_primary: z.boolean().optional(),
+  }),
+  handler: async (input) => {
+    const a = currentActor();
+    if (!a.user_id) return err("unauthenticated");
+    const me = await actorClient();
+    const row: Record<string, unknown> = {
+      owner_user_id: a.user_id,
+      legal_name: input.legal_name,
+      dba: input.dba ?? null,
+      entity_type: input.entity_type ?? null,
+      state_of_formation: input.state_of_formation ?? null,
+      website: input.website ?? null,
+      business_email: input.business_email ?? null,
+      business_phone: input.business_phone ?? null,
+      is_primary: input.is_primary ?? false,
+      is_active: true,
+    };
+    const { data, error } = await admin.from("businesses").insert(row).select("id").single();
+    if (error) return err(error.message);
+    await audit("me_create_business", "business", data.id, { client_id: me?.id ?? null });
+    return ok({ business_id: data.id });
+  },
+});
+
+mcp.tool("me_log_progress_update", {
+  description: "Log a progress update from the user to their coach / workspace. Appends to the user's current_notes timeline AND sends an in-workspace message so the coach sees it. Use when the user tells Paige what they accomplished, blockers, or status changes.",
+  inputSchema: z.object({
+    update: z.string().describe("Free-form progress note from the user."),
+  }),
+  handler: async ({ update }) => {
+    const a = currentActor();
+    const me = await actorClient();
+    if (!me || !a.user_id) return err("no_linked_client_record");
+    const stamp = new Date().toISOString();
+    const line = `[${stamp}] (self) ${update}`;
+    const { data: cur } = await admin.from("clients").select("current_notes").eq("id", me.id).maybeSingle();
+    const next = [cur?.current_notes ?? "", line].filter(Boolean).join("\n\n");
+    await admin.from("clients").update({ current_notes: next }).eq("id", me.id);
+    await admin.from("btf_messages").insert({
+      client_id: me.id,
+      sender_type: "client",
+      sender_id: a.user_id,
+      body: update,
+    });
+    await audit("me_log_progress_update", "contact", me.id, { length: update.length });
+    return ok({ logged: true });
+  },
+});
+
+mcp.tool("me_send_message_to_coach", {
+  description: "Send a message to the calling user's assigned coach in the BTF workspace thread. The coach receives it in their inbox.",
+  inputSchema: z.object({
+    body: z.string(),
+  }),
+  handler: async ({ body }) => {
+    const a = currentActor();
+    const me = await actorClient();
+    if (!me || !a.user_id) return err("no_linked_client_record");
+    const { data, error } = await admin.from("btf_messages").insert({
+      client_id: me.id,
+      sender_type: "client",
+      sender_id: a.user_id,
+      body,
+    }).select("id").single();
+    if (error) return err(error.message);
+    await audit("me_send_message_to_coach", "contact", me.id, { message_id: data.id });
+    return ok({ message_id: data.id });
+  },
+});
+
+mcp.tool("me_list_messages", {
+  description: "List recent messages in the calling user's BTF workspace thread (both their own messages and replies from their coach).",
+  inputSchema: z.object({ limit: z.number().int().optional() }),
+  handler: async ({ limit }) => {
+    const me = await actorClient();
+    if (!me) return err("no_linked_client_record");
+    const lim = Math.min(Math.max(limit ?? 30, 1), 100);
+    const { data, error } = await admin
+      .from("btf_messages")
+      .select("id, sender_type, body, created_at, read_at")
+      .eq("client_id", me.id)
+      .order("created_at", { ascending: false })
+      .limit(lim);
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("me_list_tasks", {
+  description: "List tasks assigned to or created for the calling user (tasks where user_id = caller). Optionally filter by status.",
+  inputSchema: z.object({
+    status: z.string().optional().describe("e.g. 'open', 'completed'"),
+    limit: z.number().int().optional(),
+  }),
+  handler: async ({ status, limit }) => {
+    const a = currentActor();
+    if (!a.user_id) return err("unauthenticated");
+    const lim = Math.min(Math.max(limit ?? 50, 1), 100);
+    let q = admin.from("tasks")
+      .select("id, title, description, status, due_date, created_at")
+      .eq("user_id", a.user_id)
+      .order("created_at", { ascending: false })
+      .limit(lim);
+    if (status) q = q.eq("status", status);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("me_get_phase_progress", {
+  description: "Get the calling user's BTF (Build · Tradelines · Funding) journey progress: which phase items are completed, in progress, or pending.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const me = await actorClient();
+    if (!me) return err("no_linked_client_record");
+    const { data, error } = await admin
+      .from("btf_phase_items")
+      .select("id, phase, item_key, label, status, completed_at, sort_order")
+      .eq("client_id", me.id)
+      .order("sort_order", { ascending: true });
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("me_search_lender_products", {
+  description: "Search the lender product catalog (public marketplace). Returns lender name, product type, min/max amount, rate range, requirements. Use when the user asks what funding options they qualify for or wants to research products.",
+  inputSchema: z.object({
+    query: z.string().optional().describe("Free-text search across product name / lender name."),
+    product_type: z.string().optional().describe("e.g. 'business_credit_card', 'term_loan', 'line_of_credit'."),
+    min_amount: z.number().optional(),
+    limit: z.number().int().optional(),
+  }),
+  handler: async ({ query, product_type, min_amount, limit }) => {
+    const lim = Math.min(Math.max(limit ?? 25, 1), 50);
+    let q = admin.from("lender_products")
+      .select("id, lender_name, product_name, product_type, min_amount, max_amount, apr_min, apr_max, requirements")
+      .limit(lim);
+    if (query) q = q.or(`lender_name.ilike.%${query}%,product_name.ilike.%${query}%`);
+    if (product_type) q = q.eq("product_type", product_type);
+    if (min_amount !== undefined) q = q.gte("max_amount", min_amount);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [], count: (data ?? []).length });
+  },
+});
+
+
+
 // ---------- HTTP transport + bearer auth ----------
 const app = new Hono();
 const transport = new StreamableHttpTransport();
