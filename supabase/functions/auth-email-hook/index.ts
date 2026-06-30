@@ -17,12 +17,12 @@ const corsHeaders = {
 }
 
 const EMAIL_SUBJECTS: Record<string, string> = {
-  signup: 'Verify your email — Paige Agent AI',
-  invite: "You've been invited to Paige Agent AI",
-  magiclink: 'Your login link — Paige Agent AI',
-  recovery: 'Reset your password — Paige Agent AI',
-  email_change: 'Confirm your email change — Paige Agent AI',
-  reauthentication: 'Your verification code — Paige Agent AI',
+  signup: 'Confirm your email',
+  invite: "You've been invited",
+  magiclink: 'Your login link',
+  recovery: 'Reset your password',
+  email_change: 'Confirm your new email',
+  reauthentication: 'Your verification code',
 }
 
 // Template mapping
@@ -36,17 +36,17 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 }
 
 // Configuration
-const SITE_NAME = "Paige Agent AI"
-const SENDER_DOMAIN = "notify.paigeagent.ai"
-const ROOT_DOMAIN = "paigeagent.ai"
-const FROM_DOMAIN = "paigeagent.ai"
+const SITE_NAME = "paige-agent-ai"
+const SENDER_DOMAIN = "notify.mail.mogulmakeracademy.com"
+const ROOT_DOMAIN = "mail.mogulmakeracademy.com"
+const FROM_DOMAIN = "mail.mogulmakeracademy.com" // Domain shown in From address (may be root or sender subdomain)
 
 // Sample data for preview mode ONLY (not used in actual email sending).
 // URLs are baked in at scaffold time from the project's real data.
 // The sample email uses a fixed placeholder (RFC 6761 .test TLD) so the Go backend
 // can always find-and-replace it with the actual recipient when sending test emails,
 // even if the project's domain has changed since the template was scaffolded.
-const SAMPLE_PROJECT_URL = "https://paigeagent.ai"
+const SAMPLE_PROJECT_URL = "https://paige-agent-ai.lovable.app"
 const SAMPLE_EMAIL = "user@example.test"
 const SAMPLE_DATA: Record<string, object> = {
   signup: {
@@ -70,6 +70,7 @@ const SAMPLE_DATA: Record<string, object> = {
   },
   email_change: {
     siteName: SITE_NAME,
+    oldEmail: SAMPLE_EMAIL,
     email: SAMPLE_EMAIL,
     newEmail: SAMPLE_EMAIL,
     confirmationUrl: SAMPLE_PROJECT_URL,
@@ -225,6 +226,7 @@ async function handleWebhook(req: Request): Promise<Response> {
     confirmationUrl: payload.data.url,
     token: payload.data.token,
     email: payload.data.email,
+    oldEmail: payload.data.old_email,
     newEmail: payload.data.new_email,
   }
 
