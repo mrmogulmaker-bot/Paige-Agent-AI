@@ -14391,6 +14391,10 @@ export type Database = {
         Returns: boolean
       }
       email_queue_dispatch: { Args: never; Returns: undefined }
+      end_client_impersonation: {
+        Args: { p_contact_id: string }
+        Returns: undefined
+      }
       enforce_doctrine_120: { Args: never; Returns: Json }
       enforce_subagent_doctrine_116: {
         Args: never
@@ -14774,6 +14778,14 @@ export type Database = {
           _stage_slug: string
         }
         Returns: Json
+      }
+      start_client_impersonation: {
+        Args: { p_contact_id: string }
+        Returns: {
+          client_name: string
+          contact_id: string
+          linked_user_id: string
+        }[]
       }
       suspend_user: {
         Args: { _reason: string; _user_id: string }
