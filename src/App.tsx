@@ -35,6 +35,8 @@ import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { DashboardModeProvider } from "./contexts/DashboardModeContext";
 import { RoleLensProvider } from "./contexts/RoleLensContext";
 import { BusinessProvider } from "./contexts/BusinessContext";
+import { ImpersonationProvider } from "./contexts/ImpersonationContext";
+import { ClientOnlyRouteGuard } from "./components/auth/ClientOnlyRouteGuard";
 import { useReferralTracking } from "./hooks/useReferralTracking";
 import { GlobalAuthSessionManager } from "./lib/auth/GlobalAuthSessionManager";
 import { usePageView } from "./hooks/useAnalytics";
@@ -146,11 +148,13 @@ const App = () => (
         <BusinessProvider>
         <DashboardModeProvider>
         <RoleLensProvider>
+        <ImpersonationProvider>
         <Toaster />
         <Sonner />
         <BrowserRouter>
           <AppInner />
           <MetaPixel />
+          <ClientOnlyRouteGuard />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
