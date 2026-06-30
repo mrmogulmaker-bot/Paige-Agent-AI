@@ -3277,6 +3277,36 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
               parameters: { type: "object", properties: {} }
             }
           },
+          {
+            type: "function",
+            function: {
+              name: "list_subagents",
+              description: "Discover Paige's specialized sub-agents (Fundability Diagnostician, Legal & Compliance Reviewer, Business Credit Strategist, Funding Path Architect, Data Consistency Auditor, Market Research, Financial Research, Content Drafter, Intake Concierge, Sales Pipeline, Coach Copilot). Use this FIRST when the user asks for deep analysis, audits, research, or anything beyond simple data lookups — then call delegate_to_subagent with the matching slug.",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: { type: "string", description: "Keyword(s) to match against agent name/description/triggers." },
+                  domain: { type: "string", description: "Filter by domain (fundability / compliance / credit / funding / research / outreach / intake / sales / coaching)." }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "delegate_to_subagent",
+              description: "Delegate the heavy lift to a specialized sub-agent. Resolve the slug via list_subagents first. Pass agent-specific input (e.g. {client_id} for fundability/compliance; {query} for market_research; {lender_name} for financial_research). The sub-agent runs its own logic (often Firecrawl + AI Gateway + database joins) and returns structured findings you can summarize for the user.",
+              parameters: {
+                type: "object",
+                properties: {
+                  slug: { type: "string", description: "Sub-agent slug from list_subagents." },
+                  input: { type: "object", description: "Sub-agent-specific arguments." },
+                  contact_id: { type: "string", description: "Optional client UUID for context." }
+                },
+                required: ["slug"]
+              }
+            }
+          },
         ],
         tool_choice: "auto",
         stream: true,
