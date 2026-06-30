@@ -2983,6 +2983,10 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_subagents: "crm.read",
   delegate_to_subagent: "workflows.run",
   get_subagent_history: "crm.read",
+  // Sub-Agent Factory (Section 18.5)
+  propose_subagent: "admin.write",
+  list_subagent_proposals: "admin.read",
+  approve_subagent_proposal: "admin.write",
 };
 
 const DISCOVERY_RESOURCE = {
