@@ -1,230 +1,262 @@
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ArrowRight, TrendingUp, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 /**
- * Hero — "Your Personal AI Funding Advisor"
- * Right column = floating data visualization (animated 3-bureau credit gauge
- * + lender match cards) instead of a static chat mock.
+ * Hero — Operator Command Center direction.
+ *
+ * B2B-first positioning: Paige is the operating system for coaching academies,
+ * broker shops, and credit consultancies. Brand palette locked to black + gold
+ * + white. Right column is a live "engine console" — not a consumer credit gauge.
  */
 export function HeroSection() {
   const navigate = useNavigate();
-
-  // Animated score that ticks up on mount (premium "alive" feel)
-  const targets = { exp: 712, tu: 698, eq: 705 };
-  const [scores, setScores] = useState({ exp: 0, tu: 0, eq: 0 });
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    const start = performance.now();
-    const duration = 1600;
-    let raf = 0;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      const ease = 1 - Math.pow(1 - t, 3);
-      setScores({
-        exp: Math.round(targets.exp * ease),
-        tu: Math.round(targets.tu * ease),
-        eq: Math.round(targets.eq * ease),
-      });
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const id = setInterval(() => setTick((t) => t + 1), 1400);
+    return () => clearInterval(id);
   }, []);
 
-  const bureaus = [
-    { name: "Experian", short: "EXP", value: scores.exp, target: targets.exp, color: "from-accent to-gold" },
-    { name: "TransUnion", short: "TU", value: scores.tu, target: targets.tu, color: "from-gold to-accent" },
-    { name: "Equifax", short: "EQ", value: scores.eq, target: targets.eq, color: "from-accent to-gold-dark" },
+  const feed = [
+    { t: "14:02:11", label: "New tenant lead · Brokerage_NYC", tone: "gold" },
+    { t: "14:02:12", label: "Auto-underwriting complete", tone: "muted" },
+    { t: "14:02:15", label: "Syncing to academy dashboard", tone: "gold" },
+    { t: "14:02:19", label: "Lender match · 87% confidence", tone: "muted" },
   ];
 
   return (
-    <section className="relative overflow-hidden py-20 lg:py-28">
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-accent/5 to-background -z-20" />
-      <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-        <div className="absolute top-20 right-1/4 w-72 h-72 bg-accent/10 rounded-full blur-3xl animate-float" />
-        <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-gold/10 rounded-full blur-3xl animate-float-slow" />
-        {/* Soft animated gold pulse behind the headline */}
-        <div className="absolute top-1/3 left-1/3 w-[40rem] h-[40rem] -translate-x-1/2 -translate-y-1/2 bg-gold/10 rounded-full blur-3xl animate-pulse" />
+    <section className="relative overflow-hidden bg-primary py-20 lg:py-28">
+      {/* Background atmospherics — gold glows, no blue */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-24 -left-24 w-[28rem] h-[28rem] bg-gold/10 rounded-full blur-[120px]" />
+        <div className="absolute -bottom-24 -right-24 w-[32rem] h-[32rem] bg-gold/[0.07] rounded-full blur-[140px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,hsl(var(--gold)/0.06),transparent_60%)]" />
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           {/* Left — copy */}
-          <div className="space-y-7 animate-fade-in">
-            <Badge className="bg-gold/10 text-gold-dark border-gold/20">
-              <Sparkles className="w-3 h-3 mr-1.5" />
-              The Entrepreneurial Operating System
-            </Badge>
+          <div className="space-y-8 animate-fade-in">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
+              <span className="flex h-2 w-2 rounded-full bg-gold animate-pulse" />
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">
+                The Operating System for Funding
+              </span>
+            </div>
 
-            <h1 className="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]">
-              Built for Entrepreneurs Who{" "}
-              <span className="text-accent">Move Differently.</span>
+            <h1 className="text-5xl lg:text-7xl font-bold text-white leading-[1.05] tracking-tight">
+              The Operating System for{" "}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-gold to-gold-dark">
+                Scale.
+              </span>
             </h1>
 
-            <p className="text-2xl text-foreground/90 font-medium leading-snug">
-              Your AI-powered business growth infrastructure.
+            <p className="text-xl text-white/70 leading-relaxed max-w-xl">
+              Paige is the autonomous intelligence layer for coaching
+              academies, broker shops, and credit consultancies. White-label
+              the workspace, automate underwriting, and run your entire client
+              roster from one engine.
             </p>
 
-            <p className="text-lg text-muted-foreground leading-relaxed max-w-lg">
-              More than an assistant. Paige is an intelligent ecosystem — a 24/7
-              advisor, strategist, and operator that turns your credit,
-              capital, and execution into one connected growth engine. Guidance.
-              Strategy. Execution. Scale.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-wrap gap-4 pt-2">
               <Button
                 size="lg"
-                className="bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold"
+                className="bg-gold text-primary hover:bg-gold-dark font-bold shadow-glow-lg hover:scale-105 transition-all"
                 onClick={() => navigate("/auth?mode=signup")}
               >
-                Enter the Ecosystem
+                Start Your Workspace
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <Button
                 size="lg"
                 variant="outline"
-                className="hover:scale-105 transition-all duration-300"
-                onClick={() => {
+                className="bg-transparent text-white border-white/15 hover:bg-white/5 hover:text-white"
+                onClick={() =>
                   document
                     .getElementById("how-paige-works")
-                    ?.scrollIntoView({ behavior: "smooth" });
-                }}
+                    ?.scrollIntoView({ behavior: "smooth" })
+                }
               >
                 See How It Works
               </Button>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              7-day trial · No card required · Built for serious operators
+            <div className="pt-8 flex items-center gap-8 border-t border-white/10">
+              <div>
+                <div className="text-2xl font-bold text-white tabular-nums">
+                  $1.2B+
+                </div>
+                <div className="text-xs text-white/50 uppercase tracking-widest">
+                  Volume Modeled
+                </div>
+              </div>
+              <div className="w-px h-10 bg-white/10" />
+              <div>
+                <div className="text-2xl font-bold text-white tabular-nums">
+                  18
+                </div>
+                <div className="text-xs text-white/50 uppercase tracking-widest">
+                  Sub-Agents Live
+                </div>
+              </div>
+              <div className="w-px h-10 bg-white/10 hidden sm:block" />
+              <div className="hidden sm:block">
+                <div className="text-2xl font-bold text-white tabular-nums">
+                  3-Bureau
+                </div>
+                <div className="text-xs text-white/50 uppercase tracking-widest">
+                  Intelligence
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-white/40 pt-2">
+              Brought to you by Mogul Maker Academy ·{" "}
+              <span className="text-gold/70">From Borrower to Banker</span>
             </p>
           </div>
 
-          {/* Right — animated data viz */}
-          <div className="relative animate-fade-in" style={{ animationDelay: "0.2s" }}>
-            {/* Floating card 1 — 3-bureau intelligence */}
-            <div className="relative bg-card border border-border rounded-2xl shadow-card overflow-hidden">
-              <div className="px-5 py-4 border-b border-border flex items-center gap-3 bg-primary/5">
-                <div className="w-9 h-9 rounded-full bg-gradient-gold flex items-center justify-center">
-                  <TrendingUp className="w-4 h-4 text-primary" />
+          {/* Right — engine console */}
+          <div
+            className="relative animate-fade-in"
+            style={{ animationDelay: "0.15s" }}
+          >
+            <div className="relative z-10 bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-3xl p-7 shadow-2xl">
+              {/* Console chrome */}
+              <div className="flex items-center justify-between mb-7">
+                <div className="flex gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-white/10" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-white/10" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-white/10" />
                 </div>
-                <div>
-                  <div className="font-bold text-sm text-foreground">
-                    Three-Bureau Intelligence
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    Updated 2 minutes ago · Live
-                  </div>
-                </div>
-                <div className="ml-auto flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-fundability-excellent animate-pulse" />
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                    Synced
-                  </span>
+                <div className="text-[10px] text-white/40 font-mono tracking-tight uppercase">
+                  paige_os // core_engine
                 </div>
               </div>
 
-              {/* Bureau gauges */}
-              <div className="p-5 space-y-4">
-                {bureaus.map((b, i) => {
-                  const pct = Math.min(100, (b.value / 850) * 100);
+              {/* KPI grid */}
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                <div className="p-4 rounded-2xl bg-gold/[0.06] border border-gold/20">
+                  <div className="text-[10px] text-gold font-bold uppercase tracking-widest mb-1">
+                    Underwriting
+                  </div>
+                  <div className="text-2xl font-bold text-white tabular-nums">
+                    98.4%
+                  </div>
+                  <div className="mt-2 w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-gold to-gold-dark w-[98%] shadow-[0_0_12px_hsl(var(--gold)/0.5)]" />
+                  </div>
+                </div>
+                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                  <div className="text-[10px] text-white/50 font-bold uppercase tracking-widest mb-1">
+                    Roster Active
+                  </div>
+                  <div className="text-2xl font-bold text-white tabular-nums">
+                    1,402
+                  </div>
+                  <div className="flex gap-1 mt-2 items-end h-4">
+                    {[40, 60, 45, 80, 55, 70, 90].map((h, i) => (
+                      <div
+                        key={i}
+                        className="w-1 bg-gold/40 rounded-full"
+                        style={{ height: `${h}%` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Brain viz */}
+              <div className="relative h-40 w-full bg-black/40 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden mb-5">
+                <svg
+                  className="absolute inset-0 w-full h-full opacity-30"
+                  viewBox="0 0 400 160"
+                  preserveAspectRatio="none"
+                >
+                  <path
+                    d="M0 80 Q 100 30, 200 80 T 400 80"
+                    fill="none"
+                    stroke="hsl(var(--gold))"
+                    strokeWidth="1"
+                  />
+                  <path
+                    d="M0 100 Q 150 10, 300 100 T 400 100"
+                    fill="none"
+                    stroke="hsl(var(--gold))"
+                    strokeWidth="0.6"
+                    opacity="0.6"
+                  />
+                </svg>
+                <div className="z-10 text-center">
+                  <div className="w-14 h-14 rounded-full bg-gold/15 flex items-center justify-center border border-gold/30 mb-2 mx-auto">
+                    <div className="w-7 h-7 rounded-full bg-gold shadow-[0_0_24px_hsl(var(--gold)/0.7)] animate-pulse" />
+                  </div>
+                  <div className="text-[10px] font-mono text-gold/90 uppercase tracking-widest">
+                    System Analysis Active
+                  </div>
+                </div>
+              </div>
+
+              {/* Console feed */}
+              <div className="p-4 rounded-xl bg-black/60 border border-white/5 font-mono text-[10px] space-y-1.5">
+                {feed.map((row, i) => {
+                  const visible = i <= (tick % feed.length);
                   return (
-                    <div key={b.name} className="space-y-1.5">
-                      <div className="flex items-baseline justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold tracking-widest text-muted-foreground">
-                            {b.short}
-                          </span>
-                          <span className="text-xs font-semibold text-foreground">
-                            {b.name}
-                          </span>
-                        </div>
-                        <div className="font-bold text-lg text-foreground tabular-nums">
-                          {b.value}
-                        </div>
-                      </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className={`h-full bg-gradient-to-r ${b.color} rounded-full transition-all duration-1000`}
-                          style={{
-                            width: `${pct}%`,
-                            transitionDelay: `${i * 120}ms`,
-                          }}
-                        />
-                      </div>
+                    <div
+                      key={i}
+                      className={`flex justify-between gap-3 transition-opacity ${
+                        visible ? "opacity-100" : "opacity-30"
+                      }`}
+                    >
+                      <span
+                        className={
+                          row.tone === "gold"
+                            ? "text-gold"
+                            : "text-white/40"
+                        }
+                      >
+                        &gt; {row.t}
+                      </span>
+                      <span
+                        className={
+                          row.tone === "gold"
+                            ? "text-white/90"
+                            : "text-white/50"
+                        }
+                      >
+                        {row.label}
+                      </span>
                     </div>
                   );
                 })}
-
-                <div className="pt-3 mt-3 border-t border-border grid grid-cols-3 gap-3">
-                  <div className="text-center">
-                    <div className="text-xl font-bold text-accent tabular-nums">
-                      87
-                    </div>
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                      Readiness
-                    </div>
-                  </div>
-                  <div className="text-center border-x border-border">
-                    <div className="text-xl font-bold text-foreground tabular-nums">
-                      $185K
-                    </div>
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                      Pre-Qual
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xl font-bold text-fundability-excellent tabular-nums">
-                      14
-                    </div>
-                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                      Lenders
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
-            {/* Floating card 2 — lender match (offset) */}
-            <div
-              className="hidden sm:block absolute -bottom-8 -left-6 bg-card border border-accent/30 rounded-xl shadow-glow p-4 w-64 animate-float-slow"
-              style={{ animationDelay: "0.4s" }}
-            >
-              <div className="flex items-center gap-2 mb-2">
+            {/* Floating status — API health */}
+            <div className="hidden sm:flex absolute -right-6 top-1/4 bg-card/90 backdrop-blur-md border border-white/10 p-3 rounded-xl shadow-2xl z-20 items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-fundability-excellent/10 flex items-center justify-center">
                 <div className="w-2 h-2 rounded-full bg-fundability-excellent animate-pulse" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-fundability-excellent">
-                  Match Found
-                </span>
               </div>
-              <div className="text-sm font-bold text-foreground">
-                SBA 7(a) — Live Oak Bank
-              </div>
-              <div className="text-[11px] text-muted-foreground mt-0.5">
-                Pulls Experian · 87% match
-              </div>
-              <div className="mt-2 text-xs font-semibold text-accent">
-                Up to $135,000
+              <div>
+                <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                  API Health
+                </div>
+                <div className="text-xs text-white font-bold">99.9% Uptime</div>
               </div>
             </div>
 
-            {/* Floating card 3 — rate (offset) */}
-            <div
-              className="hidden sm:block absolute -top-6 -right-4 bg-card border border-gold/30 rounded-xl shadow-glow p-3 w-48 animate-float"
-              style={{ animationDelay: "0.6s" }}
-            >
-              <div className="text-[10px] font-bold uppercase tracking-widest text-gold-dark">
-                Live Prime Rate
+            {/* Floating status — queue */}
+            <div className="hidden sm:flex absolute -left-8 bottom-1/4 bg-card/90 backdrop-blur-md border border-white/10 p-3 rounded-xl shadow-2xl z-20 items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gold/15 flex items-center justify-center">
+                <div className="w-3 h-3 rounded-sm bg-gold rotate-45" />
               </div>
-              <div className="text-xl font-bold text-foreground mt-0.5 tabular-nums">
-                7.50%
-              </div>
-              <div className="text-[10px] text-muted-foreground">
-                Federal Reserve · Today
+              <div>
+                <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                  Queue
+                </div>
+                <div className="text-xs text-white font-bold">842 Tasks</div>
               </div>
             </div>
           </div>
