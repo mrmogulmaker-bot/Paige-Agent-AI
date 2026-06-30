@@ -6,6 +6,7 @@ import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { GrowthBlock, GrowthPageTheme } from "@/lib/growth";
 import { GrowthFormEmbed } from "@/pages/public/GrowthFormRenderer";
+import DOMPurify from "dompurify";
 
 interface PageRow {
   id: string;
