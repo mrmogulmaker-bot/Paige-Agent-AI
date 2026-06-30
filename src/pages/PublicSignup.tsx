@@ -156,6 +156,9 @@ export default function PublicSignup() {
         });
         if (error) throw error;
         if (fullName) setData((d) => ({ ...d, full_legal_name: d.full_legal_name || fullName }));
+        // Log communications consent immediately (auth.uid may or may not be set yet
+        // depending on email confirmation; RPC handles both).
+        await recordCommsConsent({ email, source: "public_signup", consent: commsConsent });
         const { data: sess } = await supabase.auth.getSession();
         if (sess.session?.user) {
           setPhase("wizard");
