@@ -25,11 +25,10 @@ Deno.serve(async (req) => {
 
   const raw = await req.text();
   const appSecret = Deno.env.get("META_APP_SECRET");
-  if (appSecret) {
-    const sig = req.headers.get("x-hub-signature-256");
-    const ok = await verifyHmacSha256Hex(appSecret, raw, sig);
-    if (!ok) return jsonResponse({ error: "invalid_signature" }, 401);
-  }
+  if (!appSecret) return jsonResponse({ error: "webhook_not_configured" }, 500);
+  const sig = req.headers.get("x-hub-signature-256");
+  const ok = await verifyHmacSha256Hex(appSecret, raw, sig);
+  if (!ok) return jsonResponse({ error: "invalid_signature" }, 401);
 
   let payload: any;
   try { payload = JSON.parse(raw); } catch { return jsonResponse({ error: "invalid_json" }, 400); }
