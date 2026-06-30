@@ -19,6 +19,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHead } from "@/components/seo/PageHead";
+import {
+  CommunicationsConsent,
+  EMPTY_COMMS_CONSENT,
+  type CommsConsentState,
+} from "@/components/legal/CommunicationsConsent";
+import { recordCommsConsent } from "@/lib/legal/recordCommsConsent";
 
 type WizardData = {
   full_legal_name: string;
