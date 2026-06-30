@@ -3663,7 +3663,7 @@ app.options("/*", (c) => c.body(null, 204, CORS));
 // ---------- Phase 3: OAuth 2.1 + Dynamic Client Registration ----------
 const PUBLIC_ORIGIN = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/paige-mcp`;
 const APP_ORIGIN = Deno.env.get("PAIGE_APP_ORIGIN") ?? "https://paigeagent.ai";
-const SUPPORTED_SCOPES = ["crm.read", "crm.write", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write"] as const;
+const SUPPORTED_SCOPES = ["crm.read", "crm.write", "crm.delete", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write", "admin.delete"] as const;
 type Scope = (typeof SUPPORTED_SCOPES)[number];
 
 // Tool → required scope. Read tools need .read; mutating tools need .write (or .run for workflows).
