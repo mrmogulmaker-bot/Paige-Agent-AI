@@ -21,6 +21,15 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { UserPlus, Shield, Users as UsersIcon, Trash2 } from "lucide-react";
 
+// A "staff role" grants platform/workspace authority. Anything else (bare
+// "user", or no role at all) is a client/lead and belongs in Contacts — NOT
+// in Team & Roles. Keep this list in sync with src/pages/admin/MembersAdmin.tsx.
+const STAFF_ROLES = new Set<string>([
+  "admin", "coach", "sales_rep", "broker", "broker_team_member",
+  "cs_rep", "finance", "viewer", "moderator", "owner", "super_admin",
+]);
+const isStaffUser = (roles: string[]) => roles.some((r) => STAFF_ROLES.has(r));
+
 interface User {
   id: string;
   email: string;
@@ -119,7 +128,9 @@ export const UserManagement = () => {
         roles: userRoles.length > 0 ? userRoles : ["user"],
         created_at: user.created_at,
       };
-    });
+    })
+    // Staff-only view. Clients/leads (bare "user" role or no role) live in Contacts.
+    .filter((u) => isStaffUser(u.roles));
 
     setUsers(usersWithRoles);
   };
