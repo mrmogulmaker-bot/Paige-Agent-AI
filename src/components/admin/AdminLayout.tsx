@@ -131,6 +131,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const { items: pendingApprovals } = usePendingApprovals({ scope: "all" });
   const pendingCount = pendingApprovals.length;
+  const visibleMore = moreNavItems.filter((i) => !i.adminOnly || userRole === "admin");
 
   useEffect(() => {
     setMobileNavOpen(false);
