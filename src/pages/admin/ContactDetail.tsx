@@ -22,6 +22,7 @@ import { DuplicatesBanner } from "@/components/admin/contacts/DuplicatesBanner";
 import { ContactCampaignAttribution } from "@/components/admin/contacts/ContactCampaignAttribution";
 import { BusinessVerificationCard } from "@/components/admin/contacts/BusinessVerificationCard";
 import { BusinessTabPanel } from "@/components/admin/contacts/BusinessTabPanel";
+import { ClientOrgChartPanel } from "@/components/admin/contacts/ClientOrgChartPanel";
 import { ContactCommsPanel } from "@/components/admin/contacts/ContactCommsPanel";
 import { ContactNotesPanel } from "@/components/admin/contacts/ContactNotesPanel";
 import { ContactFilesPanel } from "@/components/admin/contacts/ContactFilesPanel";
@@ -409,7 +410,10 @@ export default function ContactDetail() {
           {!client.linked_user_id ? (
             <Card><CardContent className="p-4"><EmptyMsg msg="Link this contact to a user account to manage businesses + run verifications." /></CardContent></Card>
           ) : (
-            <BusinessTabPanel linkedUserId={client.linked_user_id} businesses={businesses} />
+            <div className="space-y-4">
+              <ClientOrgChartPanel linkedUserId={client.linked_user_id} />
+              <BusinessTabPanel linkedUserId={client.linked_user_id} businesses={businesses} />
+            </div>
           )}
         </TabsContent>
 
