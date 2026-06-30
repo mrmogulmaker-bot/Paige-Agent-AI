@@ -3685,6 +3685,8 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Batch #1 (Doctrine §119)
   create_contact: "crm.write", update_lifecycle_stage: "crm.write",
   bulk_delete_contacts: "crm.write",
+  list_contact_businesses: "crm.read",
+  link_contact_to_business: "crm.write",
   start_btf_onboarding: "btf.write", resend_btf_invite: "btf.write",
   list_signed_agreements: "btf.read", list_intake_submissions: "btf.read",
   list_payment_authorizations: "btf.read",
