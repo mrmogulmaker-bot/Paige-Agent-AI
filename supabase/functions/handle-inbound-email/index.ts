@@ -17,34 +17,34 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin = createClient(supabaseUrl, serviceKey);
 
-  // Resend uses Svix signing. If RESEND_WEBHOOK_SECRET is set, verify; otherwise log a warning
-  // and accept (so the wiring can be tested before the secret is provisioned).
+  // Resend uses Svix signing. Require RESEND_WEBHOOK_SECRET; fail closed if missing.
   const secret = Deno.env.get("RESEND_WEBHOOK_SECRET");
   const rawBody = await req.text();
-  if (secret) {
-    try {
-      const svixId = req.headers.get("svix-id") ?? "";
-      const svixTs = req.headers.get("svix-timestamp") ?? "";
-      const svixSig = req.headers.get("svix-signature") ?? "";
-      const signedContent = `${svixId}.${svixTs}.${rawBody}`;
-      const secretBytes = secret.startsWith("whsec_")
-        ? Uint8Array.from(atob(secret.slice(6)), (c) => c.charCodeAt(0))
-        : new TextEncoder().encode(secret);
-      const key = await crypto.subtle.importKey(
-        "raw", secretBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
-      );
-      const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedContent));
-      const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-      const passed = svixSig.split(" ").some((s) => s.split(",")[1] === sigB64);
-      if (!passed) {
-        console.warn("[handle-inbound-email] svix_signature_invalid");
-        return new Response("invalid_signature", { status: 401 });
-      }
-    } catch (e) {
-      console.error("[handle-inbound-email] signature_check_error", (e as Error).message);
+  if (!secret) {
+    console.error("[handle-inbound-email] RESEND_WEBHOOK_SECRET not configured");
+    return new Response("webhook_not_configured", { status: 500 });
+  }
+  try {
+    const svixId = req.headers.get("svix-id") ?? "";
+    const svixTs = req.headers.get("svix-timestamp") ?? "";
+    const svixSig = req.headers.get("svix-signature") ?? "";
+    const signedContent = `${svixId}.${svixTs}.${rawBody}`;
+    const secretBytes = secret.startsWith("whsec_")
+      ? Uint8Array.from(atob(secret.slice(6)), (c) => c.charCodeAt(0))
+      : new TextEncoder().encode(secret);
+    const key = await crypto.subtle.importKey(
+      "raw", secretBytes, { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+    );
+    const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedContent));
+    const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+    const passed = svixSig.split(" ").some((s) => s.split(",")[1] === sigB64);
+    if (!passed) {
+      console.warn("[handle-inbound-email] svix_signature_invalid");
+      return new Response("invalid_signature", { status: 401 });
     }
-  } else {
-    console.warn("[handle-inbound-email] RESEND_WEBHOOK_SECRET not set — accepting unsigned");
+  } catch (e) {
+    console.error("[handle-inbound-email] signature_check_error", (e as Error).message);
+    return new Response("invalid_signature", { status: 401 });
   }
 
   let evt: any;
