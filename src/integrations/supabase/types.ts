@@ -8658,7 +8658,6 @@ export type Database = {
           id: number
           langsmith_project: string | null
           meta_ads_features_enabled: boolean
-          meta_capi_access_token: string | null
           meta_capi_test_event_code: string | null
           meta_default_page_id: string | null
           meta_pixel_id: string | null
@@ -8695,7 +8694,6 @@ export type Database = {
           id?: number
           langsmith_project?: string | null
           meta_ads_features_enabled?: boolean
-          meta_capi_access_token?: string | null
           meta_capi_test_event_code?: string | null
           meta_default_page_id?: string | null
           meta_pixel_id?: string | null
@@ -8732,7 +8730,6 @@ export type Database = {
           id?: number
           langsmith_project?: string | null
           meta_ads_features_enabled?: boolean
-          meta_capi_access_token?: string | null
           meta_capi_test_event_code?: string | null
           meta_default_page_id?: string | null
           meta_pixel_id?: string | null
