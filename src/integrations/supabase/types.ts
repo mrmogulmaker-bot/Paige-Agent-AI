@@ -6691,6 +6691,94 @@ export type Database = {
           },
         ]
       }
+      kb_coverage_signal: {
+        Row: {
+          date: string
+          doc_count: number
+          id: string
+          query_count: number
+          tenant_id: string | null
+          topic_cluster: string
+          unanswered_count: number
+        }
+        Insert: {
+          date?: string
+          doc_count?: number
+          id?: string
+          query_count?: number
+          tenant_id?: string | null
+          topic_cluster: string
+          unanswered_count?: number
+        }
+        Update: {
+          date?: string
+          doc_count?: number
+          id?: string
+          query_count?: number
+          tenant_id?: string | null
+          topic_cluster?: string
+          unanswered_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kb_coverage_signal_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kb_query_telemetry: {
+        Row: {
+          created_at: string
+          feedback: string | null
+          had_global_match: boolean
+          had_tenant_match: boolean
+          id: string
+          query_hash: string
+          query_intent_tags: string[] | null
+          query_length: number | null
+          result_count: number
+          tenant_id: string | null
+          top_similarity: number | null
+        }
+        Insert: {
+          created_at?: string
+          feedback?: string | null
+          had_global_match?: boolean
+          had_tenant_match?: boolean
+          id?: string
+          query_hash: string
+          query_intent_tags?: string[] | null
+          query_length?: number | null
+          result_count?: number
+          tenant_id?: string | null
+          top_similarity?: number | null
+        }
+        Update: {
+          created_at?: string
+          feedback?: string | null
+          had_global_match?: boolean
+          had_tenant_match?: boolean
+          id?: string
+          query_hash?: string
+          query_intent_tags?: string[] | null
+          query_length?: number | null
+          result_count?: number
+          tenant_id?: string | null
+          top_similarity?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kb_query_telemetry_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_base: {
         Row: {
           category: Database["public"]["Enums"]["knowledge_category"]
@@ -12396,6 +12484,135 @@ export type Database = {
           },
         ]
       }
+      tenant_knowledge_chunks: {
+        Row: {
+          chunk_index: number
+          content: string
+          created_at: string
+          doc_id: string
+          embedding: string | null
+          id: string
+          tenant_id: string
+          token_count: number | null
+        }
+        Insert: {
+          chunk_index: number
+          content: string
+          created_at?: string
+          doc_id: string
+          embedding?: string | null
+          id?: string
+          tenant_id: string
+          token_count?: number | null
+        }
+        Update: {
+          chunk_index?: number
+          content?: string
+          created_at?: string
+          doc_id?: string
+          embedding?: string | null
+          id?: string
+          tenant_id?: string
+          token_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_knowledge_chunks_doc_id_fkey"
+            columns: ["doc_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_knowledge_docs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_knowledge_chunks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_knowledge_docs: {
+        Row: {
+          category: string | null
+          chunk_count: number
+          content: string
+          created_at: string
+          created_by: string
+          id: string
+          network_review_status: string
+          network_reviewed_at: string | null
+          network_reviewed_by: string | null
+          promoted_to_canon_id: string | null
+          share_to_network: boolean
+          source: string
+          source_url: string | null
+          summary: string | null
+          tags: string[] | null
+          tenant_id: string
+          title: string
+          token_count: number | null
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          chunk_count?: number
+          content: string
+          created_at?: string
+          created_by: string
+          id?: string
+          network_review_status?: string
+          network_reviewed_at?: string | null
+          network_reviewed_by?: string | null
+          promoted_to_canon_id?: string | null
+          share_to_network?: boolean
+          source?: string
+          source_url?: string | null
+          summary?: string | null
+          tags?: string[] | null
+          tenant_id: string
+          title: string
+          token_count?: number | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          chunk_count?: number
+          content?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          network_review_status?: string
+          network_reviewed_at?: string | null
+          network_reviewed_by?: string | null
+          promoted_to_canon_id?: string | null
+          share_to_network?: boolean
+          source?: string
+          source_url?: string | null
+          summary?: string | null
+          tags?: string[] | null
+          tenant_id?: string
+          title?: string
+          token_count?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_knowledge_docs_promoted_to_canon_id_fkey"
+            columns: ["promoted_to_canon_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_base"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_knowledge_docs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_members: {
         Row: {
           created_at: string
@@ -14010,6 +14227,21 @@ export type Database = {
           quality_score: number
           similarity: number
           summary: string
+          title: string
+        }[]
+      }
+      match_tenant_knowledge: {
+        Args: {
+          p_match_count?: number
+          p_query_embedding: string
+          p_tenant_id: string
+        }
+        Returns: {
+          chunk_id: string
+          content: string
+          doc_id: string
+          similarity: number
+          source_tier: string
           title: string
         }[]
       }
