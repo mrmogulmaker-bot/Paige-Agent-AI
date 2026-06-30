@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserCircle2, Loader2 } from "lucide-react";
+import { UserCircle2, Loader2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useImpersonation } from "@/contexts/ImpersonationContext";
+import { useClientOnboardingStatus, describeBlockedReason } from "@/hooks/useClientOnboardingStatus";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Props = {
   contactId: string;
-  linkedUserId: string | null;
-  /** Visual variants */
+  /** Kept for API back-compat; readiness is sourced from server-side status. */
+  linkedUserId?: string | null;
   variant?: "outline" | "ghost" | "default";
   size?: "sm" | "default";
   className?: string;
@@ -17,12 +19,12 @@ type Props = {
 
 /**
  * Opens the contact's `/app` workspace exactly as the client would see it,
- * scoped to the client's data. Tenant staff & platform admins only — gated
- * server-side by `start_client_impersonation` + `can_access_contact`.
+ * scoped to the client's data. Hard-gated by `client_view_ready`: the button
+ * is disabled — and the server RPC refuses — until the client has accepted
+ * their invite, signed the agreement, and completed intake.
  */
 export function ImpersonateClientButton({
   contactId,
-  linkedUserId,
   variant = "outline",
   size = "sm",
   className,
@@ -31,19 +33,22 @@ export function ImpersonateClientButton({
   const navigate = useNavigate();
   const { toast } = useToast();
   const { start } = useImpersonation();
-  const [loading, setLoading] = useState(false);
+  const { status, loading } = useClientOnboardingStatus(contactId);
+  const [submitting, setSubmitting] = useState(false);
 
-  const disabled = !linkedUserId || loading;
+  const blockedReason = describeBlockedReason(status);
+  const ready = !!status?.ready;
+  const disabled = !ready || submitting || loading;
 
   const handleClick = async () => {
-    if (!linkedUserId) {
+    if (!ready) {
       toast({
-        title: "Client hasn't activated yet",
-        description: "They need to accept their invite and set a password first.",
+        title: "Client view unavailable",
+        description: blockedReason ?? "Onboarding not complete.",
       });
       return;
     }
-    setLoading(true);
+    setSubmitting(true);
     try {
       const t = await start(contactId);
       try { sessionStorage.setItem("paige_stay_in_client_view", "1"); } catch {}
@@ -56,21 +61,37 @@ export function ImpersonateClientButton({
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  return (
+  const btn = (
     <Button
       variant={variant}
       size={size}
       className={className}
       onClick={handleClick}
       disabled={disabled}
-      title={!linkedUserId ? "Client hasn't accepted their invite yet" : "Open this client's workspace"}
     >
-      {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <UserCircle2 className="h-4 w-4 mr-1" />}
+      {submitting ? (
+        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+      ) : ready ? (
+        <UserCircle2 className="h-4 w-4 mr-1" />
+      ) : (
+        <Lock className="h-4 w-4 mr-1" />
+      )}
       {label}
     </Button>
+  );
+
+  if (ready) return btn;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild><span>{btn}</span></TooltipTrigger>
+        <TooltipContent>{blockedReason ?? "Onboarding incomplete"}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
