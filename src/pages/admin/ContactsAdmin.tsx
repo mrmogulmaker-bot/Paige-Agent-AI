@@ -530,6 +530,31 @@ export default function ContactsAdmin() {
             setEditTarget(null);
           }}
         />
+
+        <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && !deleting && setDeleteTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Delete {deleteTarget ? `${deleteTarget.first_name} ${deleteTarget.last_name}`.trim() || deleteTarget.email || "this contact" : "contact"}?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                This permanently removes the contact and their CRM history — deals, activities, notes,
+                documents, and coach assignments. Any linked portal user account is left intact.
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => { e.preventDefault(); confirmDelete(); }}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? "Deleting…" : "Delete contact"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </TooltipProvider>
   );
