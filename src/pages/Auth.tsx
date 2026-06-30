@@ -474,23 +474,29 @@ const Auth = () => {
                 <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
                   <label className="flex items-start gap-2.5 cursor-pointer">
                     <Checkbox
-                      checked={consentPrivacy}
-                      onCheckedChange={(v) => setConsentPrivacy(!!v)}
+                      checked={consentAgreements}
+                      onCheckedChange={(v) => setConsentAgreements(!!v)}
                       className="mt-0.5"
                       aria-required
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
                       I have read and agree to the PaigeAgent{" "}
-                      <Link to="/privacy" target="_blank" className="underline text-accent hover:opacity-80">
-                        Privacy Policy
-                      </Link>{" "}
-                      and{" "}
-                      <Link to="/terms" target="_blank" className="underline text-accent hover:opacity-80">
+                      <Link to="/legal/terms" target="_blank" className="underline text-accent hover:opacity-80">
                         Terms of Service
                       </Link>
-                      . I understand that PaigeAgent will collect my financial data including credit
-                      information to provide fundability scoring and financial coaching services.{" "}
-                      <span className="text-destructive">*</span>
+                      ,{" "}
+                      <Link to="/legal/privacy" target="_blank" className="underline text-accent hover:opacity-80">
+                        Privacy Policy
+                      </Link>
+                      ,{" "}
+                      <Link to="/legal/esign" target="_blank" className="underline text-accent hover:opacity-80">
+                        E-Sign Consent
+                      </Link>
+                      , and{" "}
+                      <Link to="/legal/ai-disclaimer" target="_blank" className="underline text-accent hover:opacity-80">
+                        AI Advisory Disclaimer
+                      </Link>
+                      .{" "}<span className="text-destructive">*</span>
                     </span>
                   </label>
 
@@ -530,7 +536,7 @@ const Auth = () => {
                     ? "bg-primary hover:bg-primary-light text-primary-foreground shadow-md hover:shadow-lg"
                     : "bg-gradient-gold text-primary shadow-glow hover:shadow-glow-lg hover:scale-[1.01]"
                 }`}
-                disabled={isLoading || (!isLogin && (!consentPrivacy || !consentDataUsage))}
+                disabled={isLoading || (!isLogin && (!consentAgreements || !consentDataUsage))}
               >
                 {isLoading ? (
                   <>
