@@ -164,18 +164,29 @@ Deno.serve(async (req) => {
 
       if (targetEmail) {
         try {
+          // Resolve the target user's tenant so the email From: header carries
+          // that tenant's brand (e.g. "Mogul Maker Academy") instead of the
+          // platform-wide default.
+          const { data: targetProfile } = await admin
+            .from("profiles")
+            .select("active_tenant_id")
+            .eq("user_id", user_id)
+            .maybeSingle();
+          const targetTenantId = targetProfile?.active_tenant_id ?? null;
+
           await admin.functions.invoke("send-transactional-email", {
             body: {
               templateName: "security-signed-out",
               recipientEmail: targetEmail,
               idempotencyKey: `signout-${user_id}-${Date.now()}`,
+              tenantId: targetTenantId,
               templateData: {
                 actor_email: caller.email ?? "an administrator",
                 signed_out_at: new Date().toISOString(),
               },
             },
           });
-          log(reqId, "signout_email_queued");
+          log(reqId, "signout_email_queued", { tenant_id: targetTenantId });
         } catch (mailErr: any) {
           result.email_error = mailErr?.message ?? String(mailErr);
           log(reqId, "signout_email_failed", { error: result.email_error });
