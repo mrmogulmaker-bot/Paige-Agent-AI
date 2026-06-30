@@ -1,6 +1,12 @@
 // Sub-Agent: Sales / Pipeline Agent
 // Reads the deals pipeline and surfaces stalled deals, close-this-week, and
 // next-best-action recommendations. Tenant-scoped via the deal owner.
+//
+// Doctrine §116 — Archetype-only references in generated output.
+// Deal titles and recommendations may legitimately reference the owner's OWN
+// pipeline records. NEVER surface names of clients/contacts outside the
+// requesting owner's tenant scope. Any example phrasing added later must use
+// archetype phrasing only — "a deal", "the contact", "their business".
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
