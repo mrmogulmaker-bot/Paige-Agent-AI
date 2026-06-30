@@ -1,0 +1,209 @@
+// Unified team-event notifier — task assignments, new form submissions,
+// and contact-to-coach assignments. Called by Postgres triggers, mirrors the
+// notify-approval-event pattern: insert into paige_admin_notifications +
+// send a transactional email per recipient.
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const APP_BASE = "https://paigeagent.ai";
+
+type Event =
+  | "task_assigned"
+  | "form_submission"
+  | "contact_assigned";
+
+interface Payload {
+  event: Event;
+  // Task
+  task_id?: string;
+  assignee_user_id?: string;
+  // Form submission
+  submission_id?: string;
+  // Contact assignment
+  contact_id?: string;
+  coach_user_id?: string;
+  tenant_id?: string;
+}
+
+function json(data: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, serviceKey);
+
+  let body: Payload;
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: "invalid json" }, 400);
+  }
+  if (!body.event) return json({ error: "event required" }, 400);
+
+  type Recipient = { user_id: string; email?: string; name?: string };
+  const recipients: Recipient[] = [];
+  let title = "";
+  let bodyText = "";
+  let link = "/admin";
+  let severity: "info" | "warning" | "urgent" = "info";
+  let contactId: string | null = null;
+  let workflowKey = `team.${body.event}`;
+
+  const resolveUser = async (uid: string): Promise<Recipient | null> => {
+    if (!uid) return null;
+    const [{ data: au }, { data: p }] = await Promise.all([
+      supabase.auth.admin.getUserById(uid),
+      supabase
+        .from("profiles")
+        .select("display_name, first_name, last_name")
+        .eq("user_id", uid)
+        .maybeSingle(),
+    ]);
+    return {
+      user_id: uid,
+      email: au?.user?.email ?? undefined,
+      name:
+        p?.display_name ||
+        [p?.first_name, p?.last_name].filter(Boolean).join(" ").trim() ||
+        undefined,
+    };
+  };
+
+  if (body.event === "task_assigned") {
+    if (!body.task_id || !body.assignee_user_id) {
+      return json({ error: "task_id and assignee_user_id required" }, 400);
+    }
+    const { data: task } = await supabase
+      .from("tasks")
+      .select("id,title,description,due_date,deal_id")
+      .eq("id", body.task_id)
+      .maybeSingle();
+    if (!task) return json({ error: "task not found" }, 404);
+    title = `New task assigned: ${task.title ?? "Task"}`;
+    bodyText = `${task.description ?? ""}${task.due_date ? `\nDue ${new Date(task.due_date).toLocaleDateString()}` : ""}`.trim();
+    link = "/admin/tasks";
+    const r = await resolveUser(body.assignee_user_id);
+    if (r) recipients.push(r);
+  } else if (body.event === "form_submission") {
+    if (!body.submission_id) return json({ error: "submission_id required" }, 400);
+    const { data: sub } = await supabase
+      .from("growth_form_submissions")
+      .select("id,tenant_id,form_id,contact_id,payload_json,source")
+      .eq("id", body.submission_id)
+      .maybeSingle();
+    if (!sub) return json({ error: "submission not found" }, 404);
+    contactId = sub.contact_id ?? null;
+    const { data: form } = await supabase
+      .from("growth_forms")
+      .select("name")
+      .eq("id", sub.form_id)
+      .maybeSingle();
+    title = `New form submission: ${form?.name ?? "Form"}`;
+    const preview = sub.payload_json
+      ? Object.entries(sub.payload_json as Record<string, unknown>)
+          .slice(0, 4)
+          .map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`)
+          .join("\n")
+      : "";
+    bodyText = `Source: ${sub.source ?? "direct"}\n\n${preview}`;
+    link = `/admin/campaigns?tab=submissions`;
+    severity = "info";
+
+    // Recipients: admins in tenant. Fall back to all admins.
+    const { data: roleRows } = await supabase
+      .from("user_roles")
+      .select("user_id, role")
+      .in("role", ["admin", "super_admin"]);
+    const userIds = Array.from(new Set((roleRows ?? []).map((r) => r.user_id as string)));
+    for (const uid of userIds) {
+      const r = await resolveUser(uid);
+      if (r) recipients.push(r);
+    }
+  } else if (body.event === "contact_assigned") {
+    if (!body.contact_id || !body.coach_user_id) {
+      return json({ error: "contact_id and coach_user_id required" }, 400);
+    }
+    contactId = body.contact_id;
+    const { data: c } = await supabase
+      .from("clients")
+      .select("id, first_name, last_name, business_name")
+      .eq("id", body.contact_id)
+      .maybeSingle();
+    const name =
+      [c?.first_name, c?.last_name].filter(Boolean).join(" ").trim() ||
+      c?.business_name ||
+      "a client";
+    title = `New client assigned: ${name}`;
+    bodyText = `You've been assigned as the coach for ${name}.`;
+    link = `/admin/contacts/${body.contact_id}`;
+    const r = await resolveUser(body.coach_user_id);
+    if (r) recipients.push(r);
+  } else {
+    return json({ error: `unknown event: ${body.event}` }, 400);
+  }
+
+  // In-app notifications
+  const notifRows = recipients.map((r) => ({
+    severity,
+    title,
+    body: bodyText,
+    link_to: link,
+    source_workflow_key: workflowKey,
+    contact_id: contactId,
+    assigned_user_id: r.user_id,
+    scope: "user",
+  }));
+  if (notifRows.length) {
+    const { error: nErr } = await supabase.from("paige_admin_notifications").insert(notifRows);
+    if (nErr) console.error("notif insert error", nErr);
+  }
+
+  // Emails
+  const emailResults: unknown[] = [];
+  for (const r of recipients) {
+    if (!r.email) continue;
+    try {
+      const idKey =
+        body.event === "task_assigned"
+          ? `task-${body.task_id}-${r.user_id}`
+          : body.event === "form_submission"
+            ? `submission-${body.submission_id}-${r.user_id}`
+            : `contact-${body.contact_id}-${body.coach_user_id}`;
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-transactional-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          templateName: "team-event-notification",
+          recipientEmail: r.email,
+          idempotencyKey: idKey,
+          templateData: {
+            recipientName: r.name,
+            eventType: body.event,
+            title,
+            body: bodyText,
+            actionUrl: `${APP_BASE}${link}`,
+          },
+        }),
+      });
+      emailResults.push({ to: r.email, status: res.status });
+    } catch (err) {
+      emailResults.push({ to: r.email, error: (err as Error).message });
+    }
+  }
+
+  return json({ success: true, event: body.event, recipients: recipients.length, emails: emailResults });
+});
