@@ -96,6 +96,7 @@ const hubs: Hub[] = [
     children: [
       { label: "Workflows", href: "/admin/workflows", icon: Workflow },
       { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
+      { label: "Paige Skills", href: "/admin/skills", icon: Bot },
       { label: "Integrations", href: "/admin/integrations", icon: Plug },
       { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
       { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
@@ -104,6 +105,7 @@ const hubs: Hub[] = [
     aliases: [
       "/admin/integrations",
       "/admin/sub-agents",
+      "/admin/skills",
       "/admin/knowledge",
       "/admin/knowledge-base",
       "/admin/signatures",
