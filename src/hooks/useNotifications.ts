@@ -23,10 +23,12 @@ export const useNotifications = () => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
+  const scopedId = useScopedUserId();
+
   const fetchNotifications = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const uid = await getEffectiveUserId();
+      if (!uid) return;
 
       const { data, error } = await supabase
         .from("notifications")
