@@ -3519,6 +3519,23 @@ const TOOL_SCOPE: Record<string, Scope> = {
   run_skill: "workflows.run",
   get_skill_run: "crm.read",
   verify_business: "crm.write",
+  // Batch #4 — Master Admin (MMA-only via MASTER_ONLY_TOOLS)
+  list_tenants: "admin.read",
+  create_tenant: "admin.write",
+  suspend_tenant: "admin.write",
+  update_tenant_features: "admin.write",
+  get_platform_metrics: "admin.read",
+  broadcast_system_announcement: "admin.write",
+  // Batch #5 — Tenant Admin + Comms
+  update_tenant_branding: "admin.write",
+  list_email_domains: "admin.read",
+  add_email_domain: "admin.write",
+  set_default_email_domain: "admin.write",
+  list_email_send_log: "crm.read",
+  list_communication_log: "crm.read",
+  bulk_send_template_email: "crm.write",
+  list_journey_stages: "crm.read",
+  advance_contact_journey_stage: "crm.write",
 };
 
 const DISCOVERY_RESOURCE = {
