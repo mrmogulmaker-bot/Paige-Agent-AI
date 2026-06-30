@@ -44,13 +44,43 @@ serve(async (req) => {
       );
     }
 
-    // Validate URL format
+    // Validate URL format and prevent SSRF
+    let parsedUrl: URL;
     try {
-      new URL(url);
+      parsedUrl = new URL(url);
     } catch {
       return new Response(
         JSON.stringify({ error: 'Invalid URL format' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (parsedUrl.protocol !== 'https:') {
+      return new Response(
+        JSON.stringify({ error: 'Only HTTPS URLs are allowed' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const hostname = parsedUrl.hostname.toLowerCase();
+    const blockedPatterns = [
+      /^localhost$/i,
+      /^127\./,
+      /^10\./,
+      /^192\.168\./,
+      /^172\.(1[6-9]|2[0-9]|3[01])\./,
+      /^169\.254\./,
+      /^::1$/,
+      /^0\.0\.0\.0$/,
+      /^fc00:/i,
+      /^fd00:/i,
+      /\.local$/i,
+      /\.internal$/i,
+    ];
+    if (blockedPatterns.some((p) => p.test(hostname))) {
+      return new Response(
+        JSON.stringify({ error: 'URL not allowed' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
