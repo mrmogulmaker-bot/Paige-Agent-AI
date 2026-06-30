@@ -574,3 +574,108 @@ function formTemplateSchema(template: string): any {
     { key: "timeline", label: "Funding timeline", type: "select", options: ["Immediate","30 days","60-90 days","Just exploring"] },
   ]}]};
 }
+
+/**
+ * Submission card with one-click "Send to Contact" — upserts a `clients`
+ * row from the submission payload (by email) and links it back so the
+ * submission becomes visible on that contact's record.
+ */
+function SubmissionRow({
+  sub,
+  tenantId,
+  onConverted,
+}: {
+  sub: Submission;
+  tenantId: string | null;
+  onConverted: (contactId: string) => void;
+}) {
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const payload = (sub.payload_json ?? {}) as Record<string, any>;
+  const email = String(payload.email ?? "").trim().toLowerCase() || null;
+  const firstName = String(payload.first_name ?? payload.firstName ?? "").trim() || null;
+  const lastName = String(payload.last_name ?? payload.lastName ?? "").trim() || null;
+  const phone = String(payload.phone ?? "").trim() || null;
+  const entity = String(payload.business_name ?? payload.entity_name ?? "").trim() || null;
+
+  const sendToContact = async () => {
+    if (!tenantId) return toast.error("No active tenant");
+    if (!email) return toast.error("Submission has no email — can't create contact");
+    setBusy(true);
+    try {
+      const { data: existing } = await supabase
+        .from("clients")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .ilike("email", email)
+        .maybeSingle();
+
+      let contactId = existing?.id as string | undefined;
+      if (!contactId) {
+        const { data: inserted, error: insErr } = await supabase
+          .from("clients")
+          .insert({
+            tenant_id: tenantId,
+            first_name: firstName ?? "Unknown",
+            last_name: lastName ?? "",
+            email,
+            phone,
+            entity_name: entity,
+            source: "growth_form",
+            status: "lead",
+          } as any)
+          .select("id")
+          .single();
+        if (insErr) throw insErr;
+        contactId = inserted.id;
+      }
+
+      const { error: linkErr } = await supabase
+        .from("growth_form_submissions")
+        .update({ contact_id: contactId, processed: true, processed_at: new Date().toISOString() })
+        .eq("id", sub.id);
+      if (linkErr) throw linkErr;
+
+      toast.success(existing ? "Linked to existing contact" : "Contact created");
+      onConverted(contactId!);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to send to contact");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardContent className="p-3 text-xs space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-[10px]">{sub.source}</Badge>
+            {sub.contact_id && (
+              <Badge variant="secondary" className="text-[10px]">
+                <Check className="w-3 h-3 mr-1" /> Linked
+              </Badge>
+            )}
+            <span className="text-muted-foreground">{new Date(sub.created_at).toLocaleString()}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {sub.contact_id ? (
+              <Button size="sm" variant="ghost" onClick={() => navigate(`/admin/contacts/${sub.contact_id}`)}>
+                <ExternalLink className="w-3 h-3 mr-1" /> Open contact
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={sendToContact} disabled={busy || !email}>
+                {busy ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <UserPlus className="w-3 h-3 mr-1" />}
+                Send to Contact
+              </Button>
+            )}
+          </div>
+        </div>
+        <pre className="whitespace-pre-wrap break-words text-muted-foreground bg-muted/40 p-2 rounded">
+          {JSON.stringify(sub.payload_json, null, 2)}
+        </pre>
+      </CardContent>
+    </Card>
+  );
+}
+
