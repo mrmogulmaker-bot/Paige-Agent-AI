@@ -188,6 +188,64 @@ const Privacy = () => {
             </p>
           </section>
 
+          {/* 8.5 — Google API Services / Limited Use */}
+          <section>
+            <h2 className="text-2xl font-semibold text-foreground">
+              8.5 Google user data — Limited Use disclosure
+            </h2>
+            <p>
+              When you choose to connect your Google Calendar to PaigeAgent, we
+              request the following OAuth scopes:
+            </p>
+            <ul className="list-disc pl-6 space-y-2">
+              <li>
+                <code>https://www.googleapis.com/auth/calendar.events</code> — to
+                create, update, and remove the calendar events you explicitly
+                schedule through PaigeAgent (funding sessions, milestone
+                check-ins, application deadlines).
+              </li>
+              <li>
+                <code>https://www.googleapis.com/auth/calendar.readonly</code> —
+                to read your existing events so PaigeAgent can show your
+                availability inside the platform and avoid double-booking.
+              </li>
+              <li>
+                <code>https://www.googleapis.com/auth/userinfo.email</code> — to
+                identify which Google account is connected.
+              </li>
+            </ul>
+            <p className="mt-3">
+              <strong>Limited Use.</strong> PaigeAgent's use and transfer of
+              information received from Google APIs to any other app adheres to
+              the{" "}
+              <a
+                href="https://developers.google.com/terms/api-services-user-data-policy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent underline underline-offset-2"
+              >
+                Google API Services User Data Policy
+              </a>
+              , including the Limited Use requirements. Specifically:
+            </p>
+            <ul className="list-disc pl-6 space-y-2">
+              <li>We use Google Calendar data <strong>only</strong> to provide user-facing scheduling features inside PaigeAgent.</li>
+              <li>We do <strong>not</strong> sell Google user data.</li>
+              <li>We do <strong>not</strong> transfer Google user data to third parties except as necessary to provide or improve the scheduling feature, comply with applicable law, or as part of a merger, acquisition, or asset sale with equivalent protections.</li>
+              <li>We do <strong>not</strong> use Google user data for serving advertisements.</li>
+              <li>We do <strong>not</strong> allow humans to read Google user data unless (a) you give explicit consent for a specific action, (b) it is necessary for security purposes such as investigating abuse, (c) it is required by law, or (d) the data is aggregated and used for internal operations in accordance with applicable privacy rules.</li>
+              <li>We do <strong>not</strong> use Google user data to train, fine-tune, or improve generalized AI or machine-learning models.</li>
+            </ul>
+            <p>
+              Calendar tokens are encrypted at rest using AES-256 and are only
+              decrypted server-side to perform the Calendar actions you request.
+              You can disconnect your Google Calendar at any time from{" "}
+              <strong>Settings → Calendar → Disconnect</strong>, which
+              immediately revokes PaigeAgent's access token and deletes all
+              stored Google credentials.
+            </p>
+          </section>
+
           {/* 9 */}
           <section>
             <h2 className="text-2xl font-semibold text-foreground">9. Contact and updates</h2>
