@@ -276,6 +276,44 @@ Deno.serve(async (req) => {
     return domain === SENDER_DOMAIN || domain === SENDER_ROOT || domain.endsWith('.' + SENDER_ROOT)
   }
 
+  // Auto-resolve tenantId if not provided by caller.
+  // Every enqueued email should reflect the recipient's tenant brand, not the
+  // shared Paige default. Resolve via recipient user's profile / membership.
+  if (!tenantId) {
+    try {
+      let uid = recipientUserId
+      if (!uid) {
+        const { data: u } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', effectiveRecipient)
+          .maybeSingle()
+        uid = (u as any)?.id ?? null
+      }
+      if (uid) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('active_tenant_id')
+          .eq('id', uid)
+          .maybeSingle()
+        tenantId = (prof as any)?.active_tenant_id ?? null
+        if (!tenantId) {
+          const { data: mem } = await supabase
+            .from('tenant_members')
+            .select('tenant_id')
+            .eq('user_id', uid)
+            .eq('status', 'active')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle()
+          tenantId = (mem as any)?.tenant_id ?? null
+        }
+      }
+    } catch (e) {
+      console.warn('tenant auto-resolve failed', e)
+    }
+  }
+
   let resolvedFrom = `${SITE_NAME} <noreply@${FROM_DOMAIN}>`
   let resolvedReplyTo: string | null = null
   if (tenantId) {
@@ -283,7 +321,7 @@ Deno.serve(async (req) => {
       _tenant_id: tenantId,
     })
     const sender = (senderRow ?? null) as
-      | { from_name?: string; from_address?: string; reply_to?: string }
+      | { from_name?: string; from_address?: string; reply_to?: string; tenant_name?: string }
       | null
     if (sender?.from_name && sender?.from_address) {
       const candidate = `${sender.from_name} <${sender.from_address}>`
@@ -291,7 +329,12 @@ Deno.serve(async (req) => {
         resolvedFrom = candidate
         resolvedReplyTo = sender.reply_to ?? null
       } else {
-        console.warn('tenant_sender_identity from-address does not align with sender_domain — using default', {
+        // Address domain isn't verified for sending, but we can still honor
+        // the tenant's display name by swapping in the aligned fallback address.
+        const displayName = sender.from_name || sender.tenant_name || SITE_NAME
+        resolvedFrom = `${displayName} <noreply@${FROM_DOMAIN}>`
+        resolvedReplyTo = sender.reply_to ?? null
+        console.warn('tenant from-address unaligned — kept tenant display name with default address', {
           tenant_id: tenantId,
           tenant_from: sender.from_address,
           sender_domain: SENDER_DOMAIN,
