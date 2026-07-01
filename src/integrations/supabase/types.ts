@@ -14816,6 +14816,14 @@ export type Database = {
           white_label_ai_connect: boolean
         }[]
       }
+      grant_tenant_member_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _tenant_id?: string
+          _user_id: string
+        }
+        Returns: undefined
+      }
       has_any_role: {
         Args: { _roles: string[]; _user_id: string }
         Returns: boolean
@@ -14874,6 +14882,10 @@ export type Database = {
           status: string
           tenant_id: string
         }[]
+      }
+      map_app_role_to_tenant_role: {
+        Args: { _app_role: Database["public"]["Enums"]["app_role"] }
+        Returns: Database["public"]["Enums"]["tenant_role"]
       }
       map_tenant_role_to_app_role: {
         Args: { _tenant_role: Database["public"]["Enums"]["tenant_role"] }

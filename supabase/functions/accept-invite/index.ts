@@ -72,7 +72,7 @@ async function findBtfInvite(tokenHash: string) {
 async function findTeamInvite(tokenHash: string) {
   const { data } = await admin
     .from("invitations")
-    .select("id,email,role,expires_at,accepted_at,metadata,template_name")
+    .select("id,email,role,expires_at,accepted_at,metadata,template_name,tenant_id,created_at")
     .eq("token_hash", tokenHash)
     .maybeSingle();
   return data;
@@ -271,10 +271,34 @@ Deno.serve(async (req) => {
           .eq("user_id", authUser.id);
       }
 
-      // Ensure role is assigned (defensive — should already be set by send-admin-invitation)
+      // Ensure role + tenant membership are assigned. Tenant-scoped RLS uses
+      // tenant_members, not user_roles alone, for live CRM/pipeline visibility.
       await admin
         .from("user_roles")
         .upsert({ user_id: authUser.id, role: team.role }, { onConflict: "user_id,role" });
+
+      if (team.tenant_id && team.role !== "super_admin") {
+        const tenantRole = team.role === "admin" ? "admin" : team.role === "coach" ? "coach" : "member";
+        await admin
+          .from("tenant_members")
+          .upsert(
+            {
+              tenant_id: team.tenant_id,
+              user_id: authUser.id,
+              role: tenantRole,
+              status: "active",
+              invited_at: team.created_at ?? new Date().toISOString(),
+              joined_at: new Date().toISOString(),
+            },
+            { onConflict: "tenant_id,user_id" },
+          );
+
+        await admin
+          .from("profiles")
+          .update({ active_tenant_id: team.tenant_id })
+          .eq("user_id", authUser.id)
+          .is("active_tenant_id", null);
+      }
 
       await admin
         .from("invitations")

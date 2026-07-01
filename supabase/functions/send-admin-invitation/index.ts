@@ -58,14 +58,22 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Creating invitation for ${email} with role ${role}`);
 
-    // Get inviter's name + active tenant for the email
+    // Get inviter's name + active tenant for the email. Tenant membership is
+    // required for live CRM/pipeline RLS visibility; app roles alone are not enough.
     const { data: inviterProfile } = await supabase
       .from("profiles")
       .select("full_name, active_tenant_id")
       .eq("user_id", user.id)
       .single();
+    const { data: inviterMemberships } = await supabase
+      .from("tenant_members")
+      .select("tenant_id")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .order("joined_at", { ascending: true })
+      .limit(1);
     const inviterName = inviterProfile?.full_name || user.email || "An administrator";
-    const inviterTenantId = inviterProfile?.active_tenant_id || null;
+    const inviterTenantId = inviterProfile?.active_tenant_id || inviterMemberships?.[0]?.tenant_id || null;
 
     // 1. Check if user already exists
     const { data: existingUsers } = await supabase.auth.admin.listUsers();
@@ -92,10 +100,34 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("Created new user:", targetUserId);
     }
 
-    // 3. Assign the role
+    // 3. Assign the role and tenant membership. Tenant-scoped RLS resolves
+    // visibility from tenant_members, while user_roles drives app navigation.
     await supabase
       .from("user_roles")
       .upsert({ user_id: targetUserId, role }, { onConflict: "user_id,role" });
+
+    if (inviterTenantId && role !== "client") {
+      const tenantRole = role === "admin" ? "admin" : role === "coach" ? "coach" : "member";
+      await supabase
+        .from("tenant_members")
+        .upsert(
+          {
+            tenant_id: inviterTenantId,
+            user_id: targetUserId,
+            role: tenantRole,
+            status: "active",
+            invited_at: new Date().toISOString(),
+            joined_at: new Date().toISOString(),
+          },
+          { onConflict: "tenant_id,user_id" },
+        );
+
+      await supabase
+        .from("profiles")
+        .update({ active_tenant_id: inviterTenantId })
+        .eq("user_id", targetUserId)
+        .is("active_tenant_id", null);
+    }
 
     // 4. Mint our own opaque token; the BEFORE INSERT trigger hashes it and clears the plaintext.
     const rawToken = Array.from(crypto.getRandomValues(new Uint8Array(32)))
@@ -111,6 +143,7 @@ const handler = async (req: Request): Promise<Response> => {
         token: rawToken,
         expires_at: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
         template_name: templateName ?? null,
+        tenant_id: inviterTenantId,
         metadata: { ...(message ? { message } : {}), invited_by_name: inviterName },
       })
       .select()
@@ -154,7 +187,7 @@ const handler = async (req: Request): Promise<Response> => {
       entity: "invitation",
       action: "user_invited",
       entity_id: invitation.id,
-      data: { invited_email: email, role, target_user_id: targetUserId },
+      data: { invited_email: email, role, target_user_id: targetUserId, tenant_id: inviterTenantId },
     });
 
     return new Response(
