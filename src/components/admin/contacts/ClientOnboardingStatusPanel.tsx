@@ -62,21 +62,12 @@ export function ClientOnboardingStatusPanel({ contactId }: { contactId: string }
           when={status?.agreement_signed_at ?? null}
           pendingHint={status?.linked_user_id ? "Awaiting signature" : "Locked until invite accepted"}
         />
-        <Row
-          done={status?.stage === "completed"}
-          title="Intake submitted"
-          when={status?.intake_submitted_at ?? null}
-          pendingHint={
-            status?.agreement_signed_at
-              ? `Current stage: ${status?.stage ?? "—"}`
-              : "Locked until agreement signed"
-          }
-        />
         {!status?.ready && (
           <div className="mt-3 text-xs text-muted-foreground border-t pt-3">
-            Client view is unavailable until all three steps are complete.
+            Client view is unavailable until the invite is accepted and the agreement is signed.
           </div>
         )}
+
       </CardContent>
     </Card>
   );

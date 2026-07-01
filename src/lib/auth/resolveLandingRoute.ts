@@ -1,13 +1,14 @@
 import { supabase } from "@/integrations/supabase/client";
 
+// Pre-portal onboarding is now just two gates: welcome + agreement.
+// Anything beyond signing_agreement lands the client directly in /workspace,
+// where Paige takes over the intake/docs conversation.
 const STAGE_TO_PATH: Record<string, string> = {
   invited: "/onboard/welcome",
   signing_agreement: "/onboard/agreement",
-  accepting_payment: "/onboard/payment",
-  completing_intake: "/onboard/intake",
-  uploading_docs: "/onboard/documents",
-  completed: "/onboard/complete",
 };
+const PRE_PORTAL_STAGES = new Set(Object.keys(STAGE_TO_PATH));
+
 
 /**
  * Canonical post-login landing route for a given user, based on their roles
@@ -64,11 +65,12 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
 
     if (clientRow?.id) {
       const stage = clientRow.onboarding_stage ?? "invited";
-      if (stage !== "completed") {
-        return STAGE_TO_PATH[stage] ?? "/onboard/welcome";
+      if (PRE_PORTAL_STAGES.has(stage)) {
+        return STAGE_TO_PATH[stage];
       }
       return "/workspace";
     }
+
     return "/app";
   } catch {
     return "/app";
