@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
-  TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
+  TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
   Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature,
 } from "lucide-react";
 import {
@@ -19,7 +19,7 @@ import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { useDashboardMode } from "@/contexts/DashboardModeContext";
+
 import { useRoleLens } from "@/contexts/RoleLensContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
@@ -188,13 +188,8 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     await performSignOut("/");
   };
 
-  const handleSwitchToClientView = () => {
-    setMode("client");
-    // Mark intent so AppShell's role-based redirect doesn't bounce admins
-    // straight back to /admin when they're previewing the client view.
-    try { sessionStorage.setItem("paige_stay_in_client_view", "1"); } catch {}
-    navigate("/app?stay=1");
-  };
+
+
 
   const isActive = (href: string) => {
     if (href === "/admin") return location.pathname === "/admin";
