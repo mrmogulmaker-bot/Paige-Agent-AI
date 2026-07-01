@@ -199,15 +199,10 @@ const Privacy = () => {
             </p>
             <ul className="list-disc pl-6 space-y-2">
               <li>
-                <code>https://www.googleapis.com/auth/calendar.events</code> — to
-                create, update, and remove the calendar events you explicitly
-                schedule through PaigeAgent (funding sessions, milestone
-                check-ins, application deadlines).
-              </li>
-              <li>
-                <code>https://www.googleapis.com/auth/calendar.readonly</code> —
-                to read your existing events so PaigeAgent can show your
-                availability inside the platform and avoid double-booking.
+                <code>https://www.googleapis.com/auth/calendar.events.owned</code> — to
+                create, update, view, and remove the calendar events you
+                explicitly schedule through PaigeAgent on calendars you own
+                (funding sessions, milestone check-ins, application deadlines).
               </li>
               <li>
                 <code>https://www.googleapis.com/auth/userinfo.email</code> — to

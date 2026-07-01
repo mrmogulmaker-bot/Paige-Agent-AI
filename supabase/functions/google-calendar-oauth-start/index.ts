@@ -103,8 +103,7 @@ Deno.serve(async (req) => {
       redirect_uri: redirectUri,
       response_type: "code",
       scope: [
-        "https://www.googleapis.com/auth/calendar.events",
-        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/calendar.events.owned",
         "https://www.googleapis.com/auth/userinfo.email",
       ].join(" "),
       access_type: "offline",
