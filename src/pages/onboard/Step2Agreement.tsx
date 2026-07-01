@@ -174,7 +174,7 @@ export default function Step2Agreement() {
       <ProgressHeader
         stepIndex={1}
         title={AGREEMENT_DISPLAY_TITLE}
-        subtitle="Read the full agreement. Scroll to the end to unlock the signature block."
+        subtitle="Read the full agreement. Scroll to the end to unlock signing — this is the last step before your workspace opens."
       />
       <div className="onboard-card p-6 sm:p-8 space-y-6">
         <div className="agreement-body" onScroll={onScroll}>{agreementText}</div>
