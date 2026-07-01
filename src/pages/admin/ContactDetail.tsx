@@ -215,7 +215,19 @@ export default function ContactDetail() {
         </Button>
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl sm:text-3xl font-bold truncate">{fullName || "Unnamed Contact"}</h1>
-          <p className="text-sm text-muted-foreground">{client.entity_name || "No business on file"}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm text-muted-foreground">{client.entity_name || "No business on file"}</p>
+            {client.account_number && (
+              <button
+                type="button"
+                onClick={() => { navigator.clipboard.writeText(client.account_number!); }}
+                title="Click to copy account number"
+                className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground transition"
+              >
+                #{client.account_number}
+              </button>
+            )}
+          </div>
         </div>
         <QuickLogMenu
           contactId={client.id}
