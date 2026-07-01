@@ -1,0 +1,1 @@
+ALTER FUNCTION public.map_tenant_role_to_app_role(tenant_role) SET search_path = public;
