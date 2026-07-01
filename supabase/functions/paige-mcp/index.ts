@@ -139,19 +139,51 @@ const MASTER_ONLY_TOOLS = new Set<string>([
   "broadcast_system_announcement",
 ]);
 
-// Resolve the actor's effective tenant_id WITHOUT falling back to MMA.
-// Platform-key callers → MMA (they ARE the platform owner).
-// User callers → their profiles.active_tenant_id, or null if unset.
+// Resolve the actor's effective tenant_id WITHOUT relying on static data.
+// Platform-key callers → MMA. User callers → active_tenant_id only when valid,
+// otherwise the first active tenant_members row. This mirrors SQL current_user_tenant_id().
+async function actorIsPlatformOwner(actor = currentActor()): Promise<boolean> {
+  if (actor.kind === "platform") return true;
+  if (!actor.user_id) return false;
+  const { data } = await admin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", actor.user_id)
+    .in("role", ["super_admin", "admin"]);
+  return (data ?? []).some((r: any) => r.role === "super_admin");
+}
+
 async function actorTenantId(): Promise<string | null> {
   const actor = currentActor();
   if (actor.kind === "platform") return MMA_TENANT_ID;
   if (!actor.user_id) return null;
-  const { data } = await admin
-    .from("profiles")
-    .select("active_tenant_id")
-    .eq("user_id", actor.user_id)
-    .maybeSingle();
-  return (data?.active_tenant_id as string | null) ?? null;
+
+  const [{ data: profile }, { data: memberships }, isPlatformOwner] = await Promise.all([
+    admin.from("profiles").select("active_tenant_id").eq("user_id", actor.user_id).maybeSingle(),
+    admin
+      .from("tenant_members")
+      .select("tenant_id, joined_at")
+      .eq("user_id", actor.user_id)
+      .eq("status", "active")
+      .order("joined_at", { ascending: true })
+      .limit(1),
+    actorIsPlatformOwner(actor),
+  ]);
+
+  const activeTenantId = profile?.active_tenant_id as string | null | undefined;
+  if (activeTenantId) {
+    if (isPlatformOwner) return activeTenantId;
+    const { data: member } = await admin
+      .from("tenant_members")
+      .select("tenant_id")
+      .eq("user_id", actor.user_id)
+      .eq("tenant_id", activeTenantId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (member?.tenant_id) return member.tenant_id as string;
+  }
+
+  return (memberships?.[0]?.tenant_id as string | null) ?? null;
 }
 
 
@@ -170,10 +202,14 @@ mcp.tool("search_contacts", {
     const safe = String(args.query).replace(/[,()]/g, " ").trim();
     let q = admin
       .from("clients")
-      .select("id, first_name, last_name, email, phone, entity_name, lifecycle_stage, tier, status, assigned_coach_user_id, updated_at")
+      .select("id, first_name, last_name, email, phone, entity_name, lifecycle_stage, tier, status, assigned_coach_user_id, tenant_id, updated_at")
       .or(`first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,email.ilike.%${safe}%,phone.ilike.%${safe}%,entity_name.ilike.%${safe}%`)
+      .eq("tenant_id", tenantId)
       .order("updated_at", { ascending: false })
       .limit(limit);
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    q = q.eq("tenant_id", tenantId);
     if (args.lifecycle_stage) q = q.eq("lifecycle_stage", args.lifecycle_stage);
     const { data, error } = await q;
     if (error) return err(error.message);
@@ -186,7 +222,9 @@ mcp.tool("get_contact", {
     "Fetch a single contact's full Paige profile, including funding goal, address, owner/coach assignments, and notes.",
   inputSchema: z.object({ contact_id: z.string().describe("clients.id (uuid)") }),
   handler: async ({ contact_id }) => {
-    const { data, error } = await admin.from("clients").select("*").eq("id", contact_id).maybeSingle();
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const { data, error } = await admin.from("clients").select("*").eq("id", contact_id).eq("tenant_id", tenantId).maybeSingle();
     if (error) return err(error.message);
     if (!data) return err("contact_not_found");
     return ok({ contact: data, paige_url: `https://paigeagent.ai/admin/contacts/${contact_id}` });
@@ -201,8 +239,8 @@ mcp.tool("lookup_contact_by_account_number", {
   }),
   handler: async ({ account_number }) => {
     const tenantId = await actorTenantId();
-    let q = admin.from("clients").select("*").eq("account_number", account_number.trim());
-    if (tenantId) q = q.eq("tenant_id", tenantId);
+    if (!tenantId) return err("tenant_not_resolved");
+    let q = admin.from("clients").select("*").eq("account_number", account_number.trim()).eq("tenant_id", tenantId);
     const { data, error } = await q.maybeSingle();
     if (error) return err(error.message);
     if (!data) return err("contact_not_found", { account_number });
@@ -219,21 +257,24 @@ mcp.tool("update_contact_stage", {
     reason: z.string().optional().describe("Short note explaining the move; appended to current_notes."),
   }),
   handler: async ({ contact_id, lifecycle_stage, reason }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
     const patch: Record<string, unknown> = { lifecycle_stage };
     const { data, error } = await admin
       .from("clients")
       .update(patch)
       .eq("id", contact_id)
+      .eq("tenant_id", tenantId)
       .select("id, lifecycle_stage")
       .maybeSingle();
     if (error) return err(error.message);
     if (!data) return err("contact_not_found");
     if (reason) {
       // Append reason to notes
-      const { data: c } = await admin.from("clients").select("current_notes").eq("id", contact_id).maybeSingle();
+      const { data: c } = await admin.from("clients").select("current_notes").eq("id", contact_id).eq("tenant_id", tenantId).maybeSingle();
       const stamp = new Date().toISOString();
       const next = `${c?.current_notes ?? ""}\n\n[${stamp} · stage→${lifecycle_stage}] ${reason}`.trim().slice(0, 8000);
-      await admin.from("clients").update({ current_notes: next }).eq("id", contact_id);
+      await admin.from("clients").update({ current_notes: next }).eq("id", contact_id).eq("tenant_id", tenantId);
     }
     await audit("update_contact_stage", "client", contact_id, { lifecycle_stage, reason });
     return ok({ ok: true, contact_id, lifecycle_stage: data.lifecycle_stage });
@@ -248,16 +289,19 @@ mcp.tool("add_contact_note", {
     note: z.string().describe("Plain text, max 2000 chars."),
   }),
   handler: async ({ contact_id, note }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
     const { data: existing, error: readErr } = await admin
       .from("clients")
       .select("current_notes")
       .eq("id", contact_id)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
     if (readErr) return err(readErr.message);
     if (!existing) return err("contact_not_found");
     const stamp = new Date().toISOString();
     const next = `${existing.current_notes ?? ""}\n\n[${stamp} · MCP] ${String(note).slice(0, 2000)}`.trim();
-    const { error } = await admin.from("clients").update({ current_notes: next }).eq("id", contact_id);
+    const { error } = await admin.from("clients").update({ current_notes: next }).eq("id", contact_id).eq("tenant_id", tenantId);
     if (error) return err(error.message);
     await audit("add_contact_note", "client", contact_id, { length: String(note).length });
     return ok({ ok: true, contact_id, appended_at: stamp });
@@ -276,6 +320,8 @@ mcp.tool("list_deals", {
   }),
   handler: async (args) => {
     const limit = Math.min(Math.max(args.limit ?? 25, 1), 50);
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
     let q = admin
       .from("deals")
       .select(
@@ -334,12 +380,15 @@ mcp.tool("create_deal", {
     source: z.string().optional(),
   }),
   handler: async (args) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
     let resolvedStage = args.stage_id;
     if (!resolvedStage) {
       const { data: stages } = await admin
         .from("pipeline_stages")
         .select("id")
         .eq("pipeline_id", args.pipeline_id)
+        .eq("tenant_id", tenantId)
         .order("position", { ascending: true })
         .limit(1);
       resolvedStage = stages?.[0]?.id;
@@ -357,6 +406,8 @@ mcp.tool("create_deal", {
         expected_close_date: args.expected_close_date ?? null,
         source: args.source ?? "mcp",
         status: "open",
+        tenant_id: tenantId,
+        created_by: currentActor().user_id ?? null,
       })
       .select("id")
       .single();
@@ -378,9 +429,12 @@ mcp.tool("list_tasks", {
   }),
   handler: async (args) => {
     const limit = Math.min(Math.max(args.limit ?? 25, 1), 50);
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
     let q = admin
       .from("tasks")
-      .select("id, user_id, deal_id, biz_id, title, description, status, track, due_date, metadata, created_at, updated_at")
+      .select("id, user_id, deal_id, biz_id, title, description, status, track, due_date, metadata, tenant_id, created_at, updated_at")
+      .eq("tenant_id", tenantId)
       .order("due_date", { ascending: true, nullsFirst: false })
       .limit(limit);
     if (args.owner_user_id) q = q.eq("user_id", args.owner_user_id);
@@ -417,6 +471,7 @@ mcp.tool("create_task", {
         track: args.track ?? null,
         status: args.status ?? "pending",
         metadata: args.metadata ?? null,
+        tenant_id: await actorTenantId(),
       })
       .select("id")
       .single();
@@ -1469,13 +1524,23 @@ mcp.tool("send_btf_template_email", {
 // Helper: resolve a tenant_id for the actor. User actors → their active_tenant_id.
 // Platform actors → optional explicit arg, falling back to the MMA tenant (slug='mma').
 async function resolveTenantId(explicit?: string | null): Promise<string | null> {
-  if (explicit) return explicit;
   const actor = currentActor();
-  if (actor.kind === "user" && actor.user_id) {
-    const { data } = await admin.from("profiles").select("active_tenant_id").eq("user_id", actor.user_id).maybeSingle();
-    if (data?.active_tenant_id) return data.active_tenant_id as string;
+  if (explicit) {
+    if (actor.kind === "platform" || await actorIsPlatformOwner(actor)) return explicit;
+    if (actor.user_id) {
+      const { data: member } = await admin
+        .from("tenant_members")
+        .select("tenant_id")
+        .eq("user_id", actor.user_id)
+        .eq("tenant_id", explicit)
+        .eq("status", "active")
+        .maybeSingle();
+      if (member?.tenant_id) return explicit;
+    }
+    return null;
   }
-  // Platform fallback (single-tenant phase): MMA workspace.
+  const tenantId = await actorTenantId();
+  if (tenantId) return tenantId;
   const { data: mma } = await admin.from("tenants").select("id").eq("slug", "mma").maybeSingle();
   return (mma?.id as string) ?? null;
 }

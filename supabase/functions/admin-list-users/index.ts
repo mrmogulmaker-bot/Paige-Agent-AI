@@ -49,11 +49,37 @@ Deno.serve(async (req) => {
       return json({ error: "Failed to verify role" }, 500);
     }
     const roleList = (roles || []).map((r: { role: string }) => r.role);
-    if (!roleList.includes("admin") && !roleList.includes("coach")) {
+    const isPlatformOwner = roleList.includes("super_admin");
+    if (!roleList.includes("admin") && !roleList.includes("coach") && !isPlatformOwner) {
       return json({ error: "Forbidden" }, 403);
     }
 
-    // Page through up to 5,000 users so the admin panel sees everyone.
+    const { data: activeProfile } = await admin
+      .from("profiles")
+      .select("active_tenant_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const { data: memberRows } = await admin
+      .from("tenant_members")
+      .select("tenant_id, user_id")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .order("joined_at", { ascending: true });
+    const activeTenantId = activeProfile?.active_tenant_id ?? memberRows?.[0]?.tenant_id ?? null;
+
+    let allowedUserIds: Set<string> | null = null;
+    if (!isPlatformOwner) {
+      if (!activeTenantId) return json({ users: [] });
+      const { data: tenantUsers, error: tenantUsersErr } = await admin
+        .from("tenant_members")
+        .select("user_id")
+        .eq("tenant_id", activeTenantId)
+        .eq("status", "active");
+      if (tenantUsersErr) return json({ error: "Failed to resolve tenant users" }, 500);
+      allowedUserIds = new Set((tenantUsers ?? []).map((r: { user_id: string }) => r.user_id));
+    }
+
+    // Page through up to 5,000 users so the admin panel sees relevant users.
     const perPage = 1000;
     const collected: Array<{
       id: string;
@@ -71,6 +97,7 @@ Deno.serve(async (req) => {
         return json({ error: error.message }, 500);
       }
       for (const u of data.users) {
+        if (allowedUserIds && !allowedUserIds.has(u.id)) continue;
         collected.push({
           id: u.id,
           email: u.email ?? null,
@@ -81,7 +108,7 @@ Deno.serve(async (req) => {
       if (data.users.length < perPage) break;
     }
 
-    return json({ users: collected });
+    return json({ users: collected, tenant_id: activeTenantId, scoped: !isPlatformOwner });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     return json({ error: msg }, 500);
