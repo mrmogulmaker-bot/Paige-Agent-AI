@@ -64,17 +64,9 @@ const hubs: Hub[] = [
     ],
     aliases: ["/admin/funding", "/admin/funding-pipeline", "/admin/funding-lens"],
   },
-  {
-    label: "Inbox",
-    href: "/admin/communications",
-    icon: Inbox,
-    children: [
-      { label: "Conversations", href: "/admin/communications", icon: Inbox },
-      { label: "Bookings", href: "/admin/bookings", icon: BarChart3 },
-      { label: "Support", href: "/admin/support", icon: LifeBuoy },
-    ],
-    aliases: ["/admin/bookings", "/admin/support"],
-  },
+  // Inbox hub dissolved — Conversations live per-contact under Contacts → [contact] → Comms tab.
+  // Bookings is being rebuilt as personal Calendar (Phase 2). Support moved to the More menu.
+  // Routes (/admin/communications, /admin/bookings, /admin/support) remain mounted for deep-link back-compat.
   // Tasks & Approvals removed from global nav — now scoped per-contact under Contacts → [contact] → Tasks / Approvals tabs.
   // Routes (/admin/tasks, /admin/approvals, /admin/approvals/:id) remain mounted for deep-link back-compat from notifications.
   {
