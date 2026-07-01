@@ -7,9 +7,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mail, MessageSquare, Send, Clock, Lock } from "lucide-react";
+import { Mail, MessageSquare, Send, Clock, Lock, Sparkles, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+
+const TONES = [
+  "professional","warm","welcoming","stern","friendly",
+  "executive","apologetic","celebratory","direct","empathetic","urgent",
+] as const;
+type Tone = typeof TONES[number];
+
 
 type Contact = {
   id: string;
@@ -46,6 +55,15 @@ export function ContactCommsPanel({ contact, history }: { contact: Contact; hist
   const [sending, setSending] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [coachName, setCoachName] = useState("");
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiIntent, setAiIntent] = useState("");
+  const [aiTone, setAiTone] = useState<Tone>("professional");
+  const [aiLength, setAiLength] = useState<"short" | "medium" | "long">("medium");
+  const [aiCta, setAiCta] = useState("");
+  const [aiKeyPoints, setAiKeyPoints] = useState("");
+  const [aiFlags, setAiFlags] = useState<string[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+
 
   useEffect(() => {
     (async () => {
@@ -64,7 +82,47 @@ export function ContactCommsPanel({ contact, history }: { contact: Contact; hist
   const previewSubject = useMemo(() => applyMerge(subject, contact, coachName), [subject, contact, coachName]);
   const previewBody = useMemo(() => applyMerge(bodyMd, contact, coachName), [bodyMd, contact, coachName]);
 
+  const runAiDraft = async () => {
+    if (!aiIntent.trim()) { toast.error("Tell the composer what this email is about."); return; }
+    setAiLoading(true);
+    setAiFlags([]);
+    try {
+      const { data, error } = await supabase.functions.invoke("subagent-email-composer", {
+        body: {
+          input: {
+            intent: aiIntent,
+            tone: aiTone,
+            length: aiLength,
+            cta: aiCta || undefined,
+            key_points: aiKeyPoints.split("\n").map((s) => s.trim()).filter(Boolean),
+            contact_id: contact.id,
+            recipient_name: `${contact.first_name || ""} ${contact.last_name || ""}`.trim() || undefined,
+            recipient_email: contact.email || undefined,
+            sender_name: coachName || undefined,
+            format: "html",
+          },
+          context: { contact_id: contact.id },
+        },
+      });
+      if (error) throw error;
+      const draft = (data as any)?.draft ?? data;
+      if (!draft?.subject || !(draft?.body_html || draft?.body_text)) {
+        throw new Error("Composer returned no draft.");
+      }
+      setSubject(draft.subject);
+      setBodyMd(draft.body_text || String(draft.body_html).replace(/<[^>]+>/g, ""));
+      setAiFlags((data as any)?.compliance_flags ?? []);
+      setAiOpen(false);
+      toast.success("Draft ready — review before sending.");
+    } catch (e: any) {
+      toast.error(e?.message || "AI draft failed");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const applyTemplate = (key: string) => {
+
     const t = templates.find((x) => x.template_key === key);
     if (!t) return;
     setSubject(t.subject);
@@ -122,7 +180,7 @@ export function ContactCommsPanel({ contact, history }: { contact: Contact; hist
                 <span className="ml-2">Merge tags:</span>
                 <code className="text-[11px]">{"{{first_name}} {{last_name}} {{entity_name}} {{coach_name}}"}</code>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Select onValueChange={applyTemplate}>
                   <SelectTrigger className="w-[260px]"><SelectValue placeholder="Insert template…" /></SelectTrigger>
                   <SelectContent>
@@ -134,7 +192,16 @@ export function ContactCommsPanel({ contact, history }: { contact: Contact; hist
                     ))}
                   </SelectContent>
                 </Select>
+                <Button type="button" variant="outline" className="gap-1.5" onClick={() => setAiOpen(true)}>
+                  <Sparkles className="h-4 w-4" /> AI Draft
+                </Button>
               </div>
+              {aiFlags.length > 0 && (
+                <div className="rounded border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-700 dark:text-amber-400">
+                  <span className="font-medium">Compliance flags:</span> {aiFlags.join(" · ")} — please review before sending.
+                </div>
+              )}
+
               <Input placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
               <Textarea rows={8} placeholder="Write your message…" value={bodyMd} onChange={(e) => setBodyMd(e.target.value)} />
               {(subject || bodyMd) && (
@@ -183,6 +250,63 @@ export function ContactCommsPanel({ contact, history }: { contact: Contact; hist
           )}
         </CardContent></Card>
       </TabsContent>
+
+      <Dialog open={aiOpen} onOpenChange={setAiOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> AI Email Draft</DialogTitle>
+            <DialogDescription>
+              The Email Composer sub-agent will draft a message for {contact.first_name || "this contact"}. You'll review before sending.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">What should this email accomplish?</Label>
+              <Textarea rows={3} placeholder="e.g. Follow up on their funding intake and book a 15-min strategy call."
+                value={aiIntent} onChange={(e) => setAiIntent(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Tone</Label>
+                <Select value={aiTone} onValueChange={(v) => setAiTone(v as Tone)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {TONES.map((t) => <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Length</Label>
+                <Select value={aiLength} onValueChange={(v) => setAiLength(v as any)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="short">Short</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="long">Long</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Call to action (optional)</Label>
+              <Input placeholder="e.g. Book a 15-min call" value={aiCta} onChange={(e) => setAiCta(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Key points (one per line, optional)</Label>
+              <Textarea rows={3} placeholder={"Reference their intake form\nMention BUILD phase progress"}
+                value={aiKeyPoints} onChange={(e) => setAiKeyPoints(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAiOpen(false)} disabled={aiLoading}>Cancel</Button>
+            <Button onClick={runAiDraft} disabled={aiLoading} className="gap-1.5">
+              {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {aiLoading ? "Drafting…" : "Generate draft"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Tabs>
   );
+
 }
