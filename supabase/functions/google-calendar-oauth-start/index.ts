@@ -7,6 +7,53 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const enc = new TextEncoder();
+
+function base64UrlEncode(value: string | Uint8Array): string {
+  const bytes = typeof value === "string" ? enc.encode(value) : value;
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function signState(payload: Record<string, unknown>): Promise<string> {
+  const secret = Deno.env.get("CALENDAR_ENCRYPTION_KEY");
+  if (!secret) throw new Error("CALENDAR_ENCRYPTION_KEY not configured");
+  const payloadPart = base64UrlEncode(JSON.stringify(payload));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(payloadPart)));
+  return `${payloadPart}.${base64UrlEncode(sig)}`;
+}
+
+function allowedReturnOrigin(origin: string): string | null {
+  try {
+    const url = new URL(origin);
+    const host = url.hostname.toLowerCase();
+    const allowed =
+      url.protocol === "http:" && host === "localhost" ||
+      url.protocol === "https:" && (
+        host === "paigeagent.ai" ||
+        host === "www.paigeagent.ai" ||
+        host === "portal.mogulmakeracademy.com" ||
+        host.endsWith(".lovable.app") ||
+        host.endsWith(".lovableproject.com")
+      );
+    return allowed ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function calendarRedirectOrigin(fallbackOrigin: string): string {
+  return (Deno.env.get("CALENDAR_OAUTH_REDIRECT_ORIGIN") || fallbackOrigin).replace(/\/$/, "");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -35,21 +82,21 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const origin = body.origin as string | undefined;
-    if (!origin) {
+    const returnOrigin = origin ? allowedReturnOrigin(origin) : null;
+    if (!returnOrigin) {
       return new Response(JSON.stringify({ error: "origin_required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const redirectUri = `${origin.replace(/\/$/, "")}/auth/google-calendar/callback`;
-    // Signed state = base64(json{ user_id, nonce, ts }) — verified on callback via user_id match + freshness.
-    const state = btoa(JSON.stringify({
+    const redirectUri = `${calendarRedirectOrigin(returnOrigin)}/auth/google-calendar/callback`;
+    const state = await signState({
       u: user.id,
       n: crypto.randomUUID(),
       t: Date.now(),
-      r: origin,
-    }));
+      r: returnOrigin,
+    });
 
     const params = new URLSearchParams({
       client_id: clientId,
