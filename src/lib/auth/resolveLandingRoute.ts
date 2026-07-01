@@ -65,11 +65,12 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
 
     if (clientRow?.id) {
       const stage = clientRow.onboarding_stage ?? "invited";
-      if (stage !== "completed") {
-        return STAGE_TO_PATH[stage] ?? "/onboard/welcome";
+      if (PRE_PORTAL_STAGES.has(stage)) {
+        return STAGE_TO_PATH[stage];
       }
       return "/workspace";
     }
+
     return "/app";
   } catch {
     return "/app";
