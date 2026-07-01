@@ -233,16 +233,19 @@ Deno.serve(async (req) => {
     .single();
   if (insErr || !row) return err(500, "PERSIST_FAILED", insErr?.message ?? "Could not save agreement");
 
-  // Advance onboarding stage (idempotent — never downgrade).
+  // Advance onboarding stage straight to `completed` — the consumer onboarding
+  // flow is now just (personal info → agreement). Everything else (business
+  // details, funding intake, doc uploads) happens inside the portal with Paige.
   await admin
     .from("clients")
     .update({
-      onboarding_stage: "accepting_payment",
+      onboarding_stage: "completed",
       agreement_signed_at: signedAtIso,
+      onboarding_completed_at: signedAtIso,
       updated_at: signedAtIso,
     })
     .eq("id", client_id)
-    .in("onboarding_stage", ["invited", "signing_agreement"]);
+    .in("onboarding_stage", ["invited", "signing_agreement", "pre_invite"]);
 
   fireAndForgetBridge("client.agreement_signed", {
     client_id,
