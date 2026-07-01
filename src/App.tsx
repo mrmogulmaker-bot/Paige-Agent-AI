@@ -117,6 +117,7 @@ const MyAgreements = lazyWithReload(() => import("./pages/MyAgreements"));
 const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
 const WorkspaceApprovals = lazyWithReload(() => import("./pages/workspace/WorkspaceApprovals"));
 const WorkspaceConnect = lazyWithReload(() => import("./pages/workspace/WorkspaceConnect"));
+const GoogleCalendarCallback = lazyWithReload(() => import("./pages/GoogleCalendarCallback"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
