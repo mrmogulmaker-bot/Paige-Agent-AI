@@ -200,6 +200,8 @@ mcp.tool("search_contacts", {
   handler: async (args) => {
     const limit = Math.min(Math.max(args.limit ?? 20, 1), 50);
     const safe = String(args.query).replace(/[,()]/g, " ").trim();
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
     let q = admin
       .from("clients")
       .select("id, first_name, last_name, email, phone, entity_name, lifecycle_stage, tier, status, assigned_coach_user_id, tenant_id, updated_at")
@@ -207,9 +209,6 @@ mcp.tool("search_contacts", {
       .eq("tenant_id", tenantId)
       .order("updated_at", { ascending: false })
       .limit(limit);
-    const tenantId = await actorTenantId();
-    if (!tenantId) return err("tenant_not_resolved");
-    q = q.eq("tenant_id", tenantId);
     if (args.lifecycle_stage) q = q.eq("lifecycle_stage", args.lifecycle_stage);
     const { data, error } = await q;
     if (error) return err(error.message);
@@ -243,7 +242,7 @@ mcp.tool("lookup_contact_by_account_number", {
     let q = admin.from("clients").select("*").eq("account_number", account_number.trim()).eq("tenant_id", tenantId);
     const { data, error } = await q.maybeSingle();
     if (error) return err(error.message);
-    if (!data) return err("contact_not_found", { account_number });
+    if (!data) return err("contact_not_found");
     return ok({ contact: data, paige_url: `https://paigeagent.ai/admin/contacts/${data.id}` });
   },
 });
@@ -327,6 +326,7 @@ mcp.tool("list_deals", {
       .select(
         "id, title, pipeline_id, stage_id, contact_client_id, owner_user_id, value_cents, currency, status, expected_close_date, updated_at",
       )
+      .eq("tenant_id", tenantId)
       .order("updated_at", { ascending: false })
       .limit(limit);
     if (args.pipeline_id) q = q.eq("pipeline_id", args.pipeline_id);
@@ -389,7 +389,7 @@ mcp.tool("create_deal", {
         .select("id")
         .eq("pipeline_id", args.pipeline_id)
         .eq("tenant_id", tenantId)
-        .order("position", { ascending: true })
+        .order("order_index", { ascending: true })
         .limit(1);
       resolvedStage = stages?.[0]?.id;
       if (!resolvedStage) return err("pipeline_has_no_stages");
@@ -460,6 +460,8 @@ mcp.tool("create_task", {
     metadata: z.record(z.string(), z.any()).optional(),
   }),
   handler: async (args) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
     const { data, error } = await admin
       .from("tasks")
       .insert({
@@ -471,7 +473,7 @@ mcp.tool("create_task", {
         track: args.track ?? null,
         status: args.status ?? "pending",
         metadata: args.metadata ?? null,
-        tenant_id: await actorTenantId(),
+        tenant_id: tenantId,
       })
       .select("id")
       .single();
