@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    return new Response(JSON.stringify({ ok: true, google_email: googleEmail }), {
+    return new Response(JSON.stringify({ ok: true, google_email: googleEmail, return_origin: parsed.r ?? null }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
