@@ -138,10 +138,10 @@ export function InviteMemberDialog({ open, onOpenChange, onInvited }: Props) {
     if (!promoteSelected) return;
     setSubmitting(true);
     try {
-      const { error } = await supabase.from("user_roles").upsert(
-        { user_id: promoteSelected, role: promoteRole as any },
-        { onConflict: "user_id,role" }
-      );
+      const { error } = await supabase.rpc("grant_tenant_member_role", {
+        _user_id: promoteSelected,
+        _role: promoteRole as any,
+      });
       if (error) throw error;
       const target = users.find((u) => u.id === promoteSelected);
       toast.success(`Granted ${promoteRole} to ${target?.email ?? "user"}`);

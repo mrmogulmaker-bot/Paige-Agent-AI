@@ -208,6 +208,7 @@ export default function MembersAdmin() {
       .channel("members-admin-sync")
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "user_roles" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "tenant_members" }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "invitations" }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "affiliate_profiles" }, refresh)
       .subscribe();
@@ -281,8 +282,10 @@ export default function MembersAdmin() {
 
   const handleAddRole = async () => {
     if (!addRoleTarget) return;
-    const { error } = await supabase.from("user_roles")
-      .insert({ user_id: addRoleTarget.user_id, role: newRole as any });
+    const { error } = await supabase.rpc("grant_tenant_member_role", {
+      _user_id: addRoleTarget.user_id,
+      _role: newRole as any,
+    });
     if (error) { toast.error(error.message); return; }
     toast.success(`Granted ${newRole}`);
     setAddRoleTarget(null);
