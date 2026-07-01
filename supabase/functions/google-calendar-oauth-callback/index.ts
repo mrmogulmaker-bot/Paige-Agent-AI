@@ -53,12 +53,6 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } },
     );
     const { data: { user } } = await userSupa.auth.getUser();
-    if (!user) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
     const { code, state, origin } = await req.json();
     if (!code || !state || !origin) {
@@ -79,7 +73,7 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (parsed.u !== user.id) {
+    if (user && parsed.u !== user.id) {
       return new Response(JSON.stringify({ error: "state_user_mismatch" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -135,12 +129,12 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
     const { data: prof } = await admin
-      .from("profiles").select("tenant_id").eq("id", user.id).maybeSingle();
+      .from("profiles").select("tenant_id").eq("id", parsed.u).maybeSingle();
 
     const { error } = await admin
       .from("staff_calendar_settings")
       .upsert({
-        user_id: user.id,
+        user_id: parsed.u,
         tenant_id: prof?.tenant_id ?? null,
         google_calendar_connected: true,
         google_refresh_token_encrypted: refreshEnc,
