@@ -55,6 +55,15 @@ export function ContactCommsPanel({ contact, history }: { contact: Contact; hist
   const [sending, setSending] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [coachName, setCoachName] = useState("");
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiIntent, setAiIntent] = useState("");
+  const [aiTone, setAiTone] = useState<Tone>("professional");
+  const [aiLength, setAiLength] = useState<"short" | "medium" | "long">("medium");
+  const [aiCta, setAiCta] = useState("");
+  const [aiKeyPoints, setAiKeyPoints] = useState("");
+  const [aiFlags, setAiFlags] = useState<string[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+
 
   useEffect(() => {
     (async () => {
