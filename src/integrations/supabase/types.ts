@@ -12665,6 +12665,178 @@ export type Database = {
           },
         ]
       }
+      stage_automation_events: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          deal_id: string | null
+          dispatched_at: string | null
+          error: string | null
+          from_stage_id: string | null
+          id: string
+          rule_id: string | null
+          status: string
+          tenant_id: string
+          to_stage_id: string | null
+          webhook_response: Json | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          deal_id?: string | null
+          dispatched_at?: string | null
+          error?: string | null
+          from_stage_id?: string | null
+          id?: string
+          rule_id?: string | null
+          status: string
+          tenant_id: string
+          to_stage_id?: string | null
+          webhook_response?: Json | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          deal_id?: string | null
+          dispatched_at?: string | null
+          error?: string | null
+          from_stage_id?: string | null
+          id?: string
+          rule_id?: string | null
+          status?: string
+          tenant_id?: string
+          to_stage_id?: string | null
+          webhook_response?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stage_automation_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_automation_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "stage_automation_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "stage_automation_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_automation_events_deal_id_fkey"
+            columns: ["deal_id"]
+            isOneToOne: false
+            referencedRelation: "deals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_automation_events_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "stage_automation_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_automation_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stage_automation_rules: {
+        Row: {
+          compose_intent: string
+          created_at: string
+          created_by: string | null
+          from_stage_id: string | null
+          id: string
+          is_active: boolean
+          pipeline_id: string
+          send_mode: string
+          template_hint: string | null
+          tenant_id: string
+          to_stage_id: string
+          tone: string
+          updated_at: string
+        }
+        Insert: {
+          compose_intent: string
+          created_at?: string
+          created_by?: string | null
+          from_stage_id?: string | null
+          id?: string
+          is_active?: boolean
+          pipeline_id: string
+          send_mode?: string
+          template_hint?: string | null
+          tenant_id: string
+          to_stage_id: string
+          tone?: string
+          updated_at?: string
+        }
+        Update: {
+          compose_intent?: string
+          created_at?: string
+          created_by?: string | null
+          from_stage_id?: string | null
+          id?: string
+          is_active?: boolean
+          pipeline_id?: string
+          send_mode?: string
+          template_hint?: string | null
+          tenant_id?: string
+          to_stage_id?: string
+          tone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stage_automation_rules_from_stage_id_fkey"
+            columns: ["from_stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_automation_rules_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: false
+            referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_automation_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stage_automation_rules_to_stage_id_fkey"
+            columns: ["to_stage_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stripe_event_log: {
         Row: {
           account_id: string | null
@@ -13131,6 +13303,41 @@ export type Database = {
             foreignKeyName: "tenant_email_domains_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_features: {
+        Row: {
+          coaching_enabled: boolean
+          created_at: string
+          credit_services_enabled: boolean
+          legal_services_enabled: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          coaching_enabled?: boolean
+          created_at?: string
+          credit_services_enabled?: boolean
+          legal_services_enabled?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          coaching_enabled?: boolean
+          created_at?: string
+          credit_services_enabled?: boolean
+          legal_services_enabled?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_features_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -13690,6 +13897,7 @@ export type Database = {
       tenants: {
         Row: {
           account_number_prefix: string
+          automation_webhook_url_encrypted: string | null
           brand: Json
           created_at: string
           customer_limit: number
@@ -13710,6 +13918,7 @@ export type Database = {
         }
         Insert: {
           account_number_prefix: string
+          automation_webhook_url_encrypted?: string | null
           brand?: Json
           created_at?: string
           customer_limit?: number
@@ -13730,6 +13939,7 @@ export type Database = {
         }
         Update: {
           account_number_prefix?: string
+          automation_webhook_url_encrypted?: string | null
           brand?: Json
           created_at?: string
           customer_limit?: number
@@ -14611,6 +14821,7 @@ export type Database = {
       }
     }
     Functions: {
+      _automation_webhook_key: { Args: never; Returns: string }
       accept_invitation: {
         Args: { _token: string; _user_id: string }
         Returns: Json
@@ -14624,12 +14835,20 @@ export type Database = {
         Args: { target_user: string }
         Returns: number
       }
+      admin_get_automation_webhook_url: {
+        Args: { _tenant_id: string }
+        Returns: string
+      }
       admin_get_workflow_webhook_url: {
         Args: { _workflow_id: string }
         Returns: string
       }
       admin_meta_capi_token_is_set: { Args: never; Returns: boolean }
       admin_remove_coach_role: { Args: { _user_id: string }; Returns: Json }
+      admin_set_automation_webhook_url: {
+        Args: { _tenant_id: string; _url: string }
+        Returns: undefined
+      }
       admin_set_meta_capi_token: {
         Args: { _token: string }
         Returns: undefined
@@ -15250,6 +15469,10 @@ export type Database = {
       suspend_user: {
         Args: { _reason: string; _user_id: string }
         Returns: undefined
+      }
+      tenant_feature_enabled: {
+        Args: { _feature: string; _tenant_id: string }
+        Returns: boolean
       }
       tenant_has_feature: { Args: { _feature: string }; Returns: boolean }
       tenant_sender_identity: { Args: { _tenant_id: string }; Returns: Json }

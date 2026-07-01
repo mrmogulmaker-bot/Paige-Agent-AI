@@ -121,10 +121,16 @@ export function AdminSettingsHub() {
                 Build multiple pipelines with custom stages, win probabilities, and won/lost rules. Power your weighted forecast and Paige's CRM automations.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-wrap gap-2">
               <Button asChild>
                 <Link to="/admin/settings/pipelines">
                   Configure pipelines
+                  <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link to="/admin/automation/stage-rules">
+                  Stage automation rules
                   <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
                 </Link>
               </Button>
