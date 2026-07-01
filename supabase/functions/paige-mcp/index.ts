@@ -4161,7 +4161,7 @@ type Scope = (typeof SUPPORTED_SCOPES)[number];
 //   platform.*         → Platform Owner only (cross-tenant, doctrine, sub-agent forge, infra)
 const TOOL_SCOPE: Record<string, Scope> = {
   // CRM
-  search_contacts: "crm.read", get_contact: "crm.read",
+  search_contacts: "crm.read", get_contact: "crm.read", lookup_contact_by_account_number: "crm.read",
   update_contact_stage: "crm.write", add_contact_note: "crm.write",
   list_deals: "crm.read", move_deal_stage: "crm.write", create_deal: "crm.write",
   list_tasks: "crm.read", create_task: "crm.write", update_task: "crm.write",
