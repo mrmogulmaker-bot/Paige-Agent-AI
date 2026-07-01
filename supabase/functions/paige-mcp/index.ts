@@ -193,6 +193,23 @@ mcp.tool("get_contact", {
   },
 });
 
+mcp.tool("lookup_contact_by_account_number", {
+  description:
+    "Look up a customer by their tenant-scoped account number (e.g. 'MMA-000123'). Every customer created in Paige gets one auto-assigned. Scoped to the caller's active tenant unless the caller is the platform owner. Returns the full contact record on match.",
+  inputSchema: z.object({
+    account_number: z.string().describe("Format: {PREFIX}-{6-digit sequence}, e.g. 'MMA-000123'."),
+  }),
+  handler: async ({ account_number }) => {
+    const tenantId = await actorTenantId();
+    let q = admin.from("clients").select("*").eq("account_number", account_number.trim());
+    if (tenantId) q = q.eq("tenant_id", tenantId);
+    const { data, error } = await q.maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("contact_not_found", { account_number });
+    return ok({ contact: data, paige_url: `https://paigeagent.ai/admin/contacts/${data.id}` });
+  },
+});
+
 mcp.tool("update_contact_stage", {
   description:
     "DEPRECATED — use `update_lifecycle_stage` instead. Free-form predecessor that accepts any string for `lifecycle_stage`. Kept for backward compatibility with existing automations; will be removed in a future release. New callers should use update_lifecycle_stage (Doctrine §111 enum-validated).",
