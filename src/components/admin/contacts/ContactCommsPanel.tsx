@@ -250,6 +250,63 @@ export function ContactCommsPanel({ contact, history }: { contact: Contact; hist
           )}
         </CardContent></Card>
       </TabsContent>
+
+      <Dialog open={aiOpen} onOpenChange={setAiOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> AI Email Draft</DialogTitle>
+            <DialogDescription>
+              The Email Composer sub-agent will draft a message for {contact.first_name || "this contact"}. You'll review before sending.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">What should this email accomplish?</Label>
+              <Textarea rows={3} placeholder="e.g. Follow up on their funding intake and book a 15-min strategy call."
+                value={aiIntent} onChange={(e) => setAiIntent(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Tone</Label>
+                <Select value={aiTone} onValueChange={(v) => setAiTone(v as Tone)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {TONES.map((t) => <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Length</Label>
+                <Select value={aiLength} onValueChange={(v) => setAiLength(v as any)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="short">Short</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="long">Long</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Call to action (optional)</Label>
+              <Input placeholder="e.g. Book a 15-min call" value={aiCta} onChange={(e) => setAiCta(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Key points (one per line, optional)</Label>
+              <Textarea rows={3} placeholder={"Reference their intake form\nMention BUILD phase progress"}
+                value={aiKeyPoints} onChange={(e) => setAiKeyPoints(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAiOpen(false)} disabled={aiLoading}>Cancel</Button>
+            <Button onClick={runAiDraft} disabled={aiLoading} className="gap-1.5">
+              {aiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {aiLoading ? "Drafting…" : "Generate draft"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Tabs>
   );
+
 }
