@@ -468,6 +468,9 @@ const Admin = () => {
         <Route path="bookings" element={
           <Suspense fallback={<SuspenseFallback />}><BookingsAdmin /></Suspense>
         } />
+        <Route path="calendar" element={
+          <Suspense fallback={<SuspenseFallback />}><CalendarAdmin /></Suspense>
+        } />
         <Route path="integrations/meta" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><MetaIntegrationConfig /></Suspense></AdminOnly>
         } />
