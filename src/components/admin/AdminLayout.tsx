@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
-  TrendingUp, Eye, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
+  TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
   Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature,
 } from "lucide-react";
 import {
@@ -19,7 +19,7 @@ import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { useDashboardMode } from "@/contexts/DashboardModeContext";
+
 import { useRoleLens } from "@/contexts/RoleLensContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
@@ -162,7 +162,6 @@ interface AdminLayoutProps {
 export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { setMode } = useDashboardMode();
   const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
   const { isPlatformOwner } = useTenantContext();
@@ -188,13 +187,8 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     await performSignOut("/");
   };
 
-  const handleSwitchToClientView = () => {
-    setMode("client");
-    // Mark intent so AppShell's role-based redirect doesn't bounce admins
-    // straight back to /admin when they're previewing the client view.
-    try { sessionStorage.setItem("paige_stay_in_client_view", "1"); } catch {}
-    navigate("/app?stay=1");
-  };
+
+
 
   const isActive = (href: string) => {
     if (href === "/admin") return location.pathname === "/admin";
@@ -267,30 +261,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
 
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-sidebar-accent/50"
-                >
-                  <Eye className="w-4 h-4 mr-1.5" />
-                  Views
-                  <ChevronDown className="w-3.5 h-3.5 ml-1 opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Switch workspace</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {/* Generic "Client view" removed — client view is only
-                    accessible per-client via Impersonate from a contact's portal. */}
-                {canAccessBrokerWorkspace && (
-                  <DropdownMenuItem onClick={() => navigate("/broker/app")}>
-                    <Building2 className="w-4 h-4 mr-2" /> Broker workspace
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
 
             <Button
               variant="ghost"
