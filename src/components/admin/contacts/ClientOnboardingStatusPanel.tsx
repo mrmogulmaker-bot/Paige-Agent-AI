@@ -39,7 +39,7 @@ export function ClientOnboardingStatusPanel({ contactId }: { contactId: string }
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-base">Client onboarding</CardTitle>
+          <CardTitle className="text-base">Client intake</CardTitle>
           {loading ? (
             <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" /> Loading</Badge>
           ) : status?.ready ? (
