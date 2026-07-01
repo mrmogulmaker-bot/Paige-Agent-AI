@@ -6836,6 +6836,120 @@ export type Database = {
           },
         ]
       }
+      internal_bookings: {
+        Row: {
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          contact_id: string | null
+          created_at: string
+          end_at: string
+          external_calendar_id: string | null
+          external_event_id: string | null
+          guest_email: string | null
+          guest_name: string | null
+          guest_phone: string | null
+          host_user_id: string
+          id: string
+          location: string | null
+          meeting_link: string | null
+          notes: string | null
+          source: string
+          start_at: string
+          status: string
+          tenant_id: string | null
+          timezone: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          contact_id?: string | null
+          created_at?: string
+          end_at: string
+          external_calendar_id?: string | null
+          external_event_id?: string | null
+          guest_email?: string | null
+          guest_name?: string | null
+          guest_phone?: string | null
+          host_user_id: string
+          id?: string
+          location?: string | null
+          meeting_link?: string | null
+          notes?: string | null
+          source?: string
+          start_at: string
+          status?: string
+          tenant_id?: string | null
+          timezone?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          contact_id?: string | null
+          created_at?: string
+          end_at?: string
+          external_calendar_id?: string | null
+          external_event_id?: string | null
+          guest_email?: string | null
+          guest_name?: string | null
+          guest_phone?: string | null
+          host_user_id?: string
+          id?: string
+          location?: string | null
+          meeting_link?: string | null
+          notes?: string | null
+          source?: string
+          start_at?: string
+          status?: string
+          tenant_id?: string | null
+          timezone?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_bookings_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_bookings_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "internal_bookings_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "internal_bookings_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_bookings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invitations: {
         Row: {
           accepted_at: string | null
@@ -12465,6 +12579,92 @@ export type Database = {
         }
         Relationships: []
       }
+      staff_calendar_settings: {
+        Row: {
+          apple_app_password_encrypted: string | null
+          apple_caldav_connected: boolean
+          apple_caldav_url: string | null
+          apple_caldav_username: string | null
+          apple_last_sync_at: string | null
+          availability_json: Json
+          booking_page_enabled: boolean
+          booking_page_slug: string | null
+          buffer_after_min: number
+          buffer_before_min: number
+          created_at: string
+          default_meeting_duration_min: number
+          google_calendar_connected: boolean
+          google_calendar_id: string | null
+          google_email: string | null
+          google_last_sync_at: string | null
+          google_refresh_token_encrypted: string | null
+          google_sync_token: string | null
+          id: string
+          tenant_id: string | null
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          apple_app_password_encrypted?: string | null
+          apple_caldav_connected?: boolean
+          apple_caldav_url?: string | null
+          apple_caldav_username?: string | null
+          apple_last_sync_at?: string | null
+          availability_json?: Json
+          booking_page_enabled?: boolean
+          booking_page_slug?: string | null
+          buffer_after_min?: number
+          buffer_before_min?: number
+          created_at?: string
+          default_meeting_duration_min?: number
+          google_calendar_connected?: boolean
+          google_calendar_id?: string | null
+          google_email?: string | null
+          google_last_sync_at?: string | null
+          google_refresh_token_encrypted?: string | null
+          google_sync_token?: string | null
+          id?: string
+          tenant_id?: string | null
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          apple_app_password_encrypted?: string | null
+          apple_caldav_connected?: boolean
+          apple_caldav_url?: string | null
+          apple_caldav_username?: string | null
+          apple_last_sync_at?: string | null
+          availability_json?: Json
+          booking_page_enabled?: boolean
+          booking_page_slug?: string | null
+          buffer_after_min?: number
+          buffer_before_min?: number
+          created_at?: string
+          default_meeting_duration_min?: number
+          google_calendar_connected?: boolean
+          google_calendar_id?: string | null
+          google_email?: string | null
+          google_last_sync_at?: string | null
+          google_refresh_token_encrypted?: string | null
+          google_sync_token?: string | null
+          id?: string
+          tenant_id?: string | null
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_calendar_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stripe_event_log: {
         Row: {
           account_id: string | null
@@ -14787,6 +14987,19 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      get_public_booking_page: {
+        Args: { _slug: string }
+        Returns: {
+          availability_json: Json
+          buffer_after_min: number
+          buffer_before_min: number
+          default_meeting_duration_min: number
+          display_name: string
+          tenant_id: string
+          timezone: string
+          user_id: string
+        }[]
       }
       get_tenant_sender: {
         Args: { _tenant_id: string }
