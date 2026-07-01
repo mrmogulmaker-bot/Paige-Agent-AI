@@ -126,6 +126,7 @@ const moreNavItems: MoreItem[] = [
   { label: "Members & Roles", href: "/admin/members", icon: UserCog, adminOnly: true },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
   { label: "Brokers", href: "/admin/brokers", icon: Briefcase, adminOnly: true },
+  { label: "Support Tickets", href: "/admin/support", icon: LifeBuoy, adminOnly: true },
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench, adminOnly: true },
   { label: "Security Canary", href: "/admin/security", icon: ShieldCheck, adminOnly: true },
   { label: "Legal Documents", href: "/admin/legal", icon: ShieldCheck, adminOnly: true },
