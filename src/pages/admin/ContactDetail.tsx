@@ -58,6 +58,7 @@ type Client = {
   linked_user_id: string | null;
   created_at: string;
   current_notes?: string | null;
+  account_number?: string | null;
 };
 
 type Coach = { user_id: string; name: string };
