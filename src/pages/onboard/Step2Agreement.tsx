@@ -16,7 +16,7 @@ import type { OnboardClient } from "./useOnboardingClient";
 
 type Ctx = { client: OnboardClient; refresh: () => void };
 
-const STEPS = ["Welcome", "Agreement", "Payment", "Intake", "Documents", "Complete"];
+const STEPS = ["Your info", "Agreement"];
 
 function ProgressHeader({ stepIndex, title, subtitle }: { stepIndex: number; title: string; subtitle: string }) {
   const pct = Math.round(((stepIndex + 1) / STEPS.length) * 100);
@@ -159,9 +159,9 @@ export default function Step2Agreement() {
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || "Could not finalize");
-      toast({ title: "Agreement signed", description: "Saved to your account." });
+      toast({ title: "Agreement signed", description: "Welcome aboard — taking you into your workspace." });
       await refresh();
-      navigate("/onboard/payment");
+      navigate("/workspace");
     } catch (e: any) {
       toast({ title: "Could not sign", description: e.message || String(e), variant: "destructive" });
     } finally {
@@ -174,7 +174,7 @@ export default function Step2Agreement() {
       <ProgressHeader
         stepIndex={1}
         title={AGREEMENT_DISPLAY_TITLE}
-        subtitle="Read the full agreement. Scroll to the end to unlock the signature block."
+        subtitle="Read the full agreement. Scroll to the end to unlock signing — this is the last step before your workspace opens."
       />
       <div className="onboard-card p-6 sm:p-8 space-y-6">
         <div className="agreement-body" onScroll={onScroll}>{agreementText}</div>
