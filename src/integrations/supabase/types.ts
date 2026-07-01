@@ -2917,6 +2917,7 @@ export type Database = {
       }
       clients: {
         Row: {
+          account_number: string | null
           agreement_signed_at: string | null
           assigned_coach_user_id: string | null
           city: string | null
@@ -2963,6 +2964,7 @@ export type Database = {
           zip_code: string | null
         }
         Insert: {
+          account_number?: string | null
           agreement_signed_at?: string | null
           assigned_coach_user_id?: string | null
           city?: string | null
@@ -3009,6 +3011,7 @@ export type Database = {
           zip_code?: string | null
         }
         Update: {
+          account_number?: string | null
           agreement_signed_at?: string | null
           assigned_coach_user_id?: string | null
           city?: string | null
@@ -12782,6 +12785,32 @@ export type Database = {
           },
         ]
       }
+      tenant_account_number_seq: {
+        Row: {
+          last_value: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          last_value?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          last_value?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_account_number_seq_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_agreement_versions: {
         Row: {
           base_template_id: string | null
@@ -13460,6 +13489,7 @@ export type Database = {
       }
       tenants: {
         Row: {
+          account_number_prefix: string
           brand: Json
           created_at: string
           customer_limit: number
@@ -13479,6 +13509,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          account_number_prefix: string
           brand?: Json
           created_at?: string
           customer_limit?: number
@@ -13498,6 +13529,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          account_number_prefix?: string
           brand?: Json
           created_at?: string
           customer_limit?: number
@@ -14402,6 +14434,7 @@ export type Database = {
         Args: { _max_businesses: number; _target_user_id: string }
         Returns: Json
       }
+      allocate_account_number: { Args: { _tenant_id: string }; Returns: string }
       approve_affiliate_application: {
         Args: { _application_id: string; _notes?: string; _tier_key?: string }
         Returns: Json
@@ -14820,6 +14853,23 @@ export type Database = {
       is_tenant_owner: {
         Args: { _tenant_id?: string; _user_id: string }
         Returns: boolean
+      }
+      lookup_client_by_account_number: {
+        Args: { _account_number: string }
+        Returns: {
+          account_number: string
+          created_at: string
+          email: string
+          entity_name: string
+          first_name: string
+          id: string
+          last_name: string
+          lifecycle_stage: string
+          linked_user_id: string
+          phone: string
+          status: string
+          tenant_id: string
+        }[]
       }
       match_paige_memory: {
         Args: {
