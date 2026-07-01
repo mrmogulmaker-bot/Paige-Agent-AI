@@ -17,9 +17,21 @@ Deno.serve(async (req) => {
     new Response(JSON.stringify(b), { status: s, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   try {
-    const token = req.headers.get('x-seed-token');
-    const expected = Deno.env.get('PAIGE_MCP_PLATFORM_KEY');
-    if (!expected || token !== expected) return json({ error: 'unauthorized' }, 401);
+    // Auth: platform owner via JWT, OR x-seed-token = PAIGE_MCP_PLATFORM_KEY
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const seedToken = req.headers.get('x-seed-token');
+    const expectedToken = Deno.env.get('PAIGE_MCP_PLATFORM_KEY');
+    let authorized = !!(expectedToken && seedToken === expectedToken);
+    if (!authorized && authHeader) {
+      const userClient = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authHeader } } },
+      );
+      const { data: owner } = await userClient.rpc('is_platform_owner');
+      authorized = owner === true;
+    }
+    if (!authorized) return json({ error: 'unauthorized' }, 401);
 
     const body = await req.json().catch(() => ({}));
     const key = String(body.key ?? '');
