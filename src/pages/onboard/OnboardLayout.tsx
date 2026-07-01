@@ -75,6 +75,13 @@ export default function OnboardLayout() {
     }
 
     const stage = client.onboarding_stage ?? "invited";
+
+    // Anything past agreement belongs in the workspace, not /onboard/*.
+    if (POST_AGREEMENT_STAGES.has(stage)) {
+      navigate("/workspace", { replace: true });
+      return;
+    }
+
     const expected = STEP_TO_PATH[stage] ?? "/onboard/welcome";
     const currentStage = PATH_TO_STAGE[path];
 
@@ -91,6 +98,7 @@ export default function OnboardLayout() {
       }
     }
   }, [loading, client, location.pathname, location.search, location.hash, navigate]);
+
 
   // If we land on /onboard with an authed session but no client record yet,
   // trigger the server-side self-heal RPC once. Covers legacy invites where
