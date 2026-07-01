@@ -409,6 +409,13 @@ const Admin = () => {
             </Suspense>
           </AdminOnly>
         } />
+        <Route path="automation/stage-rules" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <StageAutomationRules />
+            </Suspense>
+          </AdminOnly>
+        } />
         <Route path="workflows" element={
           <Suspense fallback={<SuspenseFallback />}><WorkflowsList /></Suspense>
         } />
