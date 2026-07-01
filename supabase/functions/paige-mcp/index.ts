@@ -4313,6 +4313,170 @@ mcp.tool("me_search_lender_products", {
   },
 });
 
+// ============================================================================
+// Stage Automation Rules — Ship #1 Phase B (§189/§191 governed)
+// ============================================================================
+async function ensureStageAutomationEnabled(tenantId: string): Promise<string | null> {
+  const { data } = await admin
+    .from("tenant_features")
+    .select("stage_change_automation_enabled")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (!data?.stage_change_automation_enabled) return "feature_disabled_stage_change_automation";
+  return null;
+}
+
+mcp.tool("list_stage_automation_rules", {
+  description: "List stage-change automation rules for the caller's tenant.",
+  inputSchema: z.object({
+    pipeline_id: z.string().uuid().optional(),
+    is_active: z.boolean().optional(),
+  }),
+  handler: async ({ pipeline_id, is_active }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    let q = admin.from("stage_automation_rules")
+      .select("id, tenant_id, pipeline_id, from_stage_id, to_stage_id, compose_intent, tone, template_hint, send_mode, is_active, created_at, updated_at")
+      .eq("tenant_id", tenantId)
+      .order("updated_at", { ascending: false });
+    if (pipeline_id) q = q.eq("pipeline_id", pipeline_id);
+    if (is_active !== undefined) q = q.eq("is_active", is_active);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("create_stage_automation_rule", {
+  description: "Create a stage-change automation rule. Requires tenant_features.stage_change_automation_enabled = true (§189). Defaults to is_active=false.",
+  inputSchema: z.object({
+    pipeline_id: z.string().uuid(),
+    to_stage_id: z.string().uuid(),
+    from_stage_id: z.string().uuid().nullable().optional(),
+    compose_intent: z.enum(["transactional", "marketing", "nurture", "notification"]),
+    tone: z.string().optional(),
+    template_hint: z.string().optional(),
+    send_mode: z.enum(["draft_for_review", "auto_send"]).optional(),
+    is_active: z.boolean().optional(),
+  }),
+  handler: async (args) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const gate = await ensureStageAutomationEnabled(tenantId);
+    if (gate) return err(gate);
+    const actor = currentActor();
+    const { data, error } = await admin.from("stage_automation_rules").insert({
+      tenant_id: tenantId,
+      pipeline_id: args.pipeline_id,
+      to_stage_id: args.to_stage_id,
+      from_stage_id: args.from_stage_id ?? null,
+      compose_intent: args.compose_intent,
+      tone: args.tone ?? "professional",
+      template_hint: args.template_hint ?? null,
+      send_mode: args.send_mode ?? "draft_for_review",
+      is_active: args.is_active ?? false,
+      created_by: actor.user_id,
+    }).select("id, tenant_id, pipeline_id, from_stage_id, to_stage_id, is_active, created_at").single();
+    if (error) return err(error.message);
+    await audit("create_stage_automation_rule", "stage_automation_rules", data.id, { pipeline_id: args.pipeline_id, compose_intent: args.compose_intent });
+    return ok({ rule: data });
+  },
+});
+
+mcp.tool("update_stage_automation_rule", {
+  description: "Update a stage-change automation rule (toggle active, tone, template, send_mode, compose_intent).",
+  inputSchema: z.object({
+    id: z.string().uuid(),
+    is_active: z.boolean().optional(),
+    tone: z.string().optional(),
+    template_hint: z.string().nullable().optional(),
+    send_mode: z.enum(["draft_for_review", "auto_send"]).optional(),
+    compose_intent: z.enum(["transactional", "marketing", "nurture", "notification"]).optional(),
+  }),
+  handler: async ({ id, ...patch }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const clean: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(patch)) if (v !== undefined) clean[k] = v;
+    if (Object.keys(clean).length === 0) return err("no_fields_to_update");
+    const { data, error } = await admin.from("stage_automation_rules")
+      .update(clean).eq("id", id).eq("tenant_id", tenantId)
+      .select("id, is_active, updated_at").single();
+    if (error) return err(error.message);
+    await audit("update_stage_automation_rule", "stage_automation_rules", id, clean);
+    return ok({ rule: data });
+  },
+});
+
+mcp.tool("delete_stage_automation_rule", {
+  description: "Permanently delete a stage-change automation rule. History rows keep rule_id nulled.",
+  inputSchema: z.object({ id: z.string().uuid() }),
+  annotations: { destructiveHint: true },
+  handler: async ({ id }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const { error } = await admin.from("stage_automation_rules").delete().eq("id", id).eq("tenant_id", tenantId);
+    if (error) return err(error.message);
+    await audit("delete_stage_automation_rule", "stage_automation_rules", id, {});
+    return ok({ deleted: true });
+  },
+});
+
+mcp.tool("list_stage_automation_events", {
+  description: "List recent stage-change automation dispatch events for the caller's tenant. Filter by contact_id, deal_id, rule_id, or status.",
+  inputSchema: z.object({
+    contact_id: z.string().uuid().optional(),
+    deal_id: z.string().uuid().optional(),
+    rule_id: z.string().uuid().optional(),
+    status: z.string().optional(),
+    limit: z.number().int().optional(),
+  }),
+  handler: async ({ contact_id, deal_id, rule_id, status, limit }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const lim = Math.min(Math.max(limit ?? 50, 1), 200);
+    let q = admin.from("stage_automation_events")
+      .select("id, tenant_id, rule_id, deal_id, contact_id, from_stage_id, to_stage_id, status, error, dispatched_at, created_at")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(lim);
+    if (contact_id) q = q.eq("contact_id", contact_id);
+    if (deal_id) q = q.eq("deal_id", deal_id);
+    if (rule_id) q = q.eq("rule_id", rule_id);
+    if (status) q = q.eq("status", status);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+// ============================================================================
+// Data Subject Rights (GDPR/CCPA) — Ship #1 Phase B
+// ============================================================================
+mcp.tool("handle_data_subject_request", {
+  description: "Handle a GDPR/CCPA data subject request. request_type: export | delete | correct | portability. Logs to pii_access_log + paige_audit_log with 7-year retention.",
+  inputSchema: z.object({
+    contact_id: z.string().uuid(),
+    request_type: z.enum(["export", "delete", "correct", "portability"]),
+    corrections: z.record(z.string(), z.any()).optional(),
+    reason: z.string().optional(),
+  }),
+  annotations: { destructiveHint: true },
+  handler: async ({ contact_id, request_type, corrections, reason }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const { data, error } = await admin.rpc("handle_data_subject_request", {
+      _tenant_id: tenantId,
+      _contact_id: contact_id,
+      _request_type: request_type,
+      _corrections: corrections ?? null,
+      _reason: reason ?? null,
+    });
+    if (error) return err(error.message);
+    await audit("handle_data_subject_request", "clients", contact_id, { request_type, reason });
+    return ok(data ?? {});
+  },
+});
 
 
 // ---------- HTTP transport + bearer auth ----------
@@ -4442,6 +4606,15 @@ const TOOL_SCOPE: Record<string, Scope> = {
   me_list_tasks: "self.read",
   me_get_phase_progress: "self.read",
   me_search_lender_products: "self.read",
+  // Ship #1 Phase B — Stage Automation Rules
+  list_stage_automation_rules: "admin.read",
+  create_stage_automation_rule: "admin.write",
+  update_stage_automation_rule: "admin.write",
+  delete_stage_automation_rule: "admin.delete",
+  list_stage_automation_events: "crm.read",
+  // Ship #1 Phase B — GDPR/CCPA DSR
+  handle_data_subject_request: "admin.delete",
+
 };
 
 // Branding shown by MCP clients (ChatGPT, Claude, etc.) in the connector

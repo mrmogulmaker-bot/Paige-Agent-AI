@@ -15256,6 +15256,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      handle_data_subject_request: {
+        Args: {
+          _contact_id: string
+          _corrections?: Json
+          _reason?: string
+          _request_type: string
+          _tenant_id: string
+        }
+        Returns: Json
+      }
       has_any_role: {
         Args: { _roles: string[]; _user_id: string }
         Returns: boolean
