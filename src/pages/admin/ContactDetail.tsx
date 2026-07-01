@@ -9,8 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
   MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
-  CreditCard, User, Landmark, TrendingUp, Send, Pencil, ClipboardCheck, Trash2,
+  CreditCard, User, Landmark, TrendingUp, Send, Pencil, ClipboardCheck, Trash2, Zap,
 } from "lucide-react";
+import { ContactAutomationHistory } from "@/components/admin/contacts/ContactAutomationHistory";
+
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { LIFECYCLE_STAGES, lifecycleMeta, deleteContact } from "@/lib/contacts";
