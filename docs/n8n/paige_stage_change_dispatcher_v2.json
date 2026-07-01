@@ -1,0 +1,114 @@
+{
+  "name": "paige_stage_change_dispatcher_v2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "paige-stage-change",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook_in",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// §191 envelope guard — reject unknown event kinds or missing universals.\nconst e = $json;\nconst required = ['event_id','tenant_id','rule_id','dispatched_at','consent_status','compose_intent'];\nfor (const k of required) if (e[k] === undefined) throw new Error('envelope_missing:' + k);\nconst kind = e.event_kind || 'stage_change';\nreturn [{ json: { ...e, event_kind: kind } }];"
+      },
+      "id": "envelope_guard",
+      "name": "§191 Envelope Guard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "conditions": [ { "leftValue": "={{$json.consent_status}}", "operator": {"type":"string","operation":"equals"}, "rightValue": "revoked" } ] }, "renameOutput": true, "outputKey": "revoked" },
+            { "conditions": { "conditions": [ { "leftValue": "={{$json.event_kind}}", "operator": {"type":"string","operation":"equals"}, "rightValue": "stage_change" } ] }, "renameOutput": true, "outputKey": "stage_change" },
+            { "conditions": { "conditions": [ { "leftValue": "={{$json.event_kind}}", "operator": {"type":"string","operation":"equals"}, "rightValue": "readiness_scan" } ] }, "renameOutput": true, "outputKey": "readiness_scan" }
+          ]
+        },
+        "fallbackOutput": 3
+      },
+      "id": "router",
+      "name": "Event Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Revoked consent → log + short-circuit (§182).\nreturn [{ json: { skipped: true, reason: 'consent_revoked', event_id: $json.event_id } }];"
+      },
+      "id": "branch_revoked",
+      "name": "Skip: Consent Revoked",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage-change branch — flatten shortcuts for downstream nodes but keep raw envelope.\nconst e = $json;\nreturn [{ json: {\n  event_id: e.event_id,\n  tenant_id: e.tenant_id,\n  rule_id: e.rule_id,\n  deal_id: e.deal?.id,\n  contact_id: e.contact?.id,\n  contact_email: e.contact?.email,\n  from_stage: e.from_stage?.name,\n  to_stage: e.to_stage?.name,\n  compose_intent: e.compose_intent,\n  raw: e\n}}];"
+      },
+      "id": "branch_stage",
+      "name": "Handle: stage_change",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "// readiness_scan branch skeleton — placeholder for future §191 event kind.\nreturn [{ json: { queued: true, kind: 'readiness_scan', event_id: $json.event_id } }];"
+      },
+      "id": "branch_readiness",
+      "name": "Handle: readiness_scan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Unknown event kind — surface for audit, do not silently drop.\nreturn [{ json: { skipped: true, reason: 'unknown_event_kind', event_kind: $json.event_kind, event_id: $json.event_id } }];"
+      },
+      "id": "branch_unknown",
+      "name": "Skip: Unknown Kind",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 580]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1180, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "§191 Envelope Guard", "type": "main", "index": 0 }]] },
+    "§191 Envelope Guard": { "main": [[{ "node": "Event Router", "type": "main", "index": 0 }]] },
+    "Event Router": {
+      "main": [
+        [{ "node": "Skip: Consent Revoked", "type": "main", "index": 0 }],
+        [{ "node": "Handle: stage_change", "type": "main", "index": 0 }],
+        [{ "node": "Handle: readiness_scan", "type": "main", "index": 0 }],
+        [{ "node": "Skip: Unknown Kind", "type": "main", "index": 0 }]
+      ]
+    },
+    "Skip: Consent Revoked":   { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Handle: stage_change":    { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Handle: readiness_scan":  { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Skip: Unknown Kind":      { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": { "paige_doctrines": ["§182","§189","§191"], "envelope_version": "1.0.0" }
+}
