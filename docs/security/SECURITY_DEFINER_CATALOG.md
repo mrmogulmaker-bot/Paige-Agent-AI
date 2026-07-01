@@ -155,7 +155,55 @@ Grants: authenticated
 Category: A — Intentional user-facing public API
 Justification: Owner-scoped credit report deletion. Requires `linked_user_id = auth.uid()` or `is_staff`.
 
+### Function: public.tenant_feature_enabled
+Grants: authenticated + service_role
+Category: B — Public-flow with internal auth check
+Justification: Boolean-only per-vertical feature gate (§189). Returns FALSE if row missing or feature name unknown; never raises, never reveals other tenants' flags.
+Auth-check location: N/A (read-only, tenant_id parameter supplied by caller). Called from UI gates + policies.
+Regression test: manual — unknown tenant returns false; unknown feature returns false.
+Re-review triggers: signature changes · adds data-returning branches
+
+### Function: public.admin_get_automation_webhook_url
+Grants: authenticated + service_role
+Category: B — Public-flow with internal auth check
+Justification: Returns pgcrypto-decrypted webhook URL to tenant admins only. Every read writes a `pii_access_log` row.
+Auth-check location: `RAISE EXCEPTION 'not authorized'` unless `is_platform_owner()` OR `is_tenant_admin(_tenant_id)`.
+Regression test: manual — non-admin call raises; admin call returns plaintext + creates pii_access_log row.
+Re-review triggers: audit log skipped · authorization branch relaxed
+
+### Function: public.admin_set_automation_webhook_url
+Grants: authenticated + service_role
+Category: B — Public-flow with internal auth check
+Justification: Encrypts and stores tenant webhook URL. HTTPS-only enforcement in body. Audit-logged.
+Auth-check location: `RAISE EXCEPTION 'not authorized'` unless `is_platform_owner()` OR `is_tenant_admin(_tenant_id)`. HTTPS scheme enforced.
+Regression test: manual — non-https URL rejected; non-admin call raises.
+Re-review triggers: scheme validation removed · audit log skipped
+
 ---
+
+## Trigger-only (Category C — no EXECUTE grant)
+
+### Function: public.on_deal_stage_change
+Grants: none (revoked from PUBLIC, anon, authenticated)
+Category: C — Trigger/cron/internal only
+Justification: AFTER UPDATE OF stage_id trigger on `public.deals`. Resolves active rule, records event row, POSTs to dispatcher edge function. Every path (no rule / inactive / no webhook / dispatched) writes an audit row.
+Regression test: manual — non-existent rule → skipped_no_rule row; inactive rule → skipped_inactive; missing webhook → skipped_no_webhook.
+Re-review triggers: EXECUTE granted to any role · additional table writes added
+
+### Function: public.ensure_tenant_features_row
+Grants: none (revoked from anon, authenticated)
+Category: C — Trigger/cron/internal only
+Justification: AFTER INSERT trigger on `public.tenants` that inserts the corresponding `tenant_features` row with all vertical flags = false. Guarantees `tenant_feature_enabled()` always finds a row for real tenants (§189).
+Re-review triggers: writes beyond `tenant_features` added · logic reads other tables
+
+### Function: public._automation_webhook_key
+Grants: none (revoked from anon, authenticated)
+Category: C — Trigger/cron/internal only
+Justification: Internal fetch of `_internal_secrets.automation_webhook_key` for pgcrypto encrypt/decrypt of tenant webhook URLs. Never returned to any client-facing path.
+Re-review triggers: called from a non-crypto path · EXECUTE granted
+
+---
+
 
 ## Authenticated only — Category C (RLS-helper; internal use)
 
