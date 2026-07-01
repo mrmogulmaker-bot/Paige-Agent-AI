@@ -4606,6 +4606,15 @@ const TOOL_SCOPE: Record<string, Scope> = {
   me_list_tasks: "self.read",
   me_get_phase_progress: "self.read",
   me_search_lender_products: "self.read",
+  // Ship #1 Phase B — Stage Automation Rules
+  list_stage_automation_rules: "admin.read",
+  create_stage_automation_rule: "admin.write",
+  update_stage_automation_rule: "admin.write",
+  delete_stage_automation_rule: "admin.delete",
+  list_stage_automation_events: "crm.read",
+  // Ship #1 Phase B — GDPR/CCPA DSR
+  handle_data_subject_request: "admin.delete",
+
 };
 
 // Branding shown by MCP clients (ChatGPT, Claude, etc.) in the connector
