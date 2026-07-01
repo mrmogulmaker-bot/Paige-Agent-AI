@@ -117,6 +117,7 @@ const MyAgreements = lazyWithReload(() => import("./pages/MyAgreements"));
 const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
 const WorkspaceApprovals = lazyWithReload(() => import("./pages/workspace/WorkspaceApprovals"));
 const WorkspaceConnect = lazyWithReload(() => import("./pages/workspace/WorkspaceConnect"));
+const GoogleCalendarCallback = lazyWithReload(() => import("./pages/GoogleCalendarCallback"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -166,6 +167,7 @@ const App = () => (
             <Route path="/accept-invite" element={<PageSuspense><AcceptInvite /></PageSuspense>} />
             <Route path="/join/:token" element={<PageSuspense><JoinWorkspace /></PageSuspense>} />
             <Route path="/mcp/authorize" element={<PageSuspense><McpAuthorize /></PageSuspense>} />
+            <Route path="/auth/google-calendar/callback" element={<PageSuspense><GoogleCalendarCallback /></PageSuspense>} />
 
             {/* New agent-first dashboard */}
             <Route path="/app" element={<PageSuspense><AppShell /></PageSuspense>}>

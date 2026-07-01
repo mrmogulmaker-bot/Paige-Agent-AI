@@ -95,6 +95,7 @@ const DocuSignConfig = lazy(() => import("@/pages/admin/DocuSignConfig"));
 const SignaturesAdmin = lazy(() => import("@/pages/admin/SignaturesAdmin"));
 const CalIntegrationConfig = lazy(() => import("@/pages/admin/CalIntegrationConfig"));
 const BookingsAdmin = lazy(() => import("@/pages/admin/BookingsAdmin"));
+const CalendarAdmin = lazy(() => import("@/pages/admin/CalendarAdmin"));
 const MetaIntegrationConfig = lazy(() => import("@/pages/admin/MetaIntegrationConfig"));
 const MetaPixelConfig = lazy(() => import("@/pages/admin/MetaPixelConfig"));
 const SocialAdmin = lazy(() => import("@/pages/admin/SocialAdmin"));
@@ -466,6 +467,9 @@ const Admin = () => {
         } />
         <Route path="bookings" element={
           <Suspense fallback={<SuspenseFallback />}><BookingsAdmin /></Suspense>
+        } />
+        <Route path="calendar" element={
+          <Suspense fallback={<SuspenseFallback />}><CalendarAdmin /></Suspense>
         } />
         <Route path="integrations/meta" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><MetaIntegrationConfig /></Suspense></AdminOnly>
