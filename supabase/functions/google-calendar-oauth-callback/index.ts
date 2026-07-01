@@ -8,6 +8,40 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const enc = new TextEncoder();
+
+function base64UrlEncode(value: Uint8Array): string {
+  let binary = "";
+  for (const byte of value) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value: string): string {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  return atob(padded);
+}
+
+async function verifyState(state: string): Promise<Record<string, unknown> | null> {
+  const secret = Deno.env.get("CALENDAR_ENCRYPTION_KEY");
+  if (!secret) throw new Error("CALENDAR_ENCRYPTION_KEY not configured");
+  const [payloadPart, signaturePart] = state.split(".");
+  if (!payloadPart || !signaturePart) return null;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const expected = base64UrlEncode(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(payloadPart))));
+  if (expected !== signaturePart) return null;
+  return JSON.parse(base64UrlDecode(payloadPart));
+}
+
+function calendarRedirectOrigin(fallbackOrigin: string): string {
+  return (Deno.env.get("CALENDAR_OAUTH_REDIRECT_ORIGIN") || fallbackOrigin).replace(/\/$/, "");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -36,7 +70,10 @@ Deno.serve(async (req) => {
 
     // Verify state
     let parsed: any;
-    try { parsed = JSON.parse(atob(state)); } catch {
+    try { parsed = await verifyState(state); } catch {
+      parsed = null;
+    }
+    if (!parsed) {
       return new Response(JSON.stringify({ error: "invalid_state" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -57,7 +94,7 @@ Deno.serve(async (req) => {
 
     const clientId = Deno.env.get("GOOGLE_OAUTH_CLIENT_ID")!;
     const clientSecret = Deno.env.get("GOOGLE_OAUTH_CLIENT_SECRET")!;
-    const redirectUri = `${String(origin).replace(/\/$/, "")}/auth/google-calendar/callback`;
+    const redirectUri = `${calendarRedirectOrigin(String(origin))}/auth/google-calendar/callback`;
 
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
