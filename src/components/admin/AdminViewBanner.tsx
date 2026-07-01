@@ -9,10 +9,12 @@ export function AdminViewBanner() {
   if (!isImpersonating || !target) return null;
 
   const handleExit = async () => {
+    const contactId = target.contactId;
     await stop();
     try { sessionStorage.removeItem("paige_stay_in_client_view"); } catch {}
-    navigate("/admin");
+    navigate(contactId ? `/admin/contacts/${contactId}` : "/admin");
   };
+
 
   return (
     <div className="bg-accent text-primary flex items-center justify-between px-4 py-2 text-sm font-medium z-50">
