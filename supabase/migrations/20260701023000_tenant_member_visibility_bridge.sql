@@ -158,6 +158,7 @@ WITH accepted_invites AS (
   WHERE i.tenant_id IS NOT NULL
     AND i.accepted_at IS NOT NULL
     AND i.role IS NOT NULL
+    AND i.role IN ('admin','coach','sales_rep','broker','broker_team_member','cs_rep','finance','viewer','moderator','user','client')
     AND i.role <> 'super_admin'
 ), upserted AS (
   INSERT INTO public.tenant_members (tenant_id, user_id, role, status, invited_at, joined_at)
@@ -252,7 +253,9 @@ BEGIN
   VALUES (_user_id, _invitation.role)
   ON CONFLICT (user_id, role) DO NOTHING;
 
-  IF _invitation.tenant_id IS NOT NULL AND _invitation.role <> 'super_admin'::public.app_role THEN
+  IF _invitation.tenant_id IS NOT NULL
+     AND _invitation.role::text IN ('admin','coach','sales_rep','broker','broker_team_member','cs_rep','finance','viewer','moderator','user','client')
+     AND _invitation.role <> 'super_admin'::public.app_role THEN
     _tenant_role := public.map_app_role_to_tenant_role(_invitation.role);
 
     INSERT INTO public.tenant_members (tenant_id, user_id, role, status, invited_at, joined_at)

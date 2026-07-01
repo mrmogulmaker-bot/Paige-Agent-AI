@@ -106,7 +106,7 @@ const handler = async (req: Request): Promise<Response> => {
       .from("user_roles")
       .upsert({ user_id: targetUserId, role }, { onConflict: "user_id,role" });
 
-    if (inviterTenantId && role !== "client" && role !== "super_admin") {
+    if (inviterTenantId && role !== "client") {
       const tenantRole = role === "admin" ? "admin" : role === "coach" ? "coach" : "member";
       await supabase
         .from("tenant_members")
@@ -117,7 +117,7 @@ const handler = async (req: Request): Promise<Response> => {
             role: tenantRole,
             status: "active",
             invited_at: new Date().toISOString(),
-            joined_at: existingUser ? new Date().toISOString() : null,
+            joined_at: new Date().toISOString(),
           },
           { onConflict: "tenant_id,user_id" },
         );
