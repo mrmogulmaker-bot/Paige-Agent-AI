@@ -5,6 +5,26 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 
+function safeReturnOrigin(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const allowed =
+      (url.protocol === "http:" && host === "localhost") ||
+      (url.protocol === "https:" && (
+        host === "paigeagent.ai" ||
+        host === "www.paigeagent.ai" ||
+        host === "portal.mogulmakeracademy.com" ||
+        host.endsWith(".lovable.app") ||
+        host.endsWith(".lovableproject.com")
+      ));
+    return allowed ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function GoogleCalendarCallback() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -37,7 +57,14 @@ export default function GoogleCalendarCallback() {
       setState("ok");
       setMessage(`Connected${(data as any)?.google_email ? ` as ${(data as any).google_email}` : ""}. Redirecting...`);
       toast.success("Google Calendar connected");
-      setTimeout(() => navigate("/admin/calendar", { replace: true }), 1200);
+      const returnOrigin = safeReturnOrigin((data as any)?.return_origin);
+      setTimeout(() => {
+        if (returnOrigin && returnOrigin !== window.location.origin) {
+          window.location.replace(`${returnOrigin}/admin/calendar`);
+          return;
+        }
+        navigate("/admin/calendar", { replace: true });
+      }, 1200);
     })();
   }, [params, navigate]);
 
