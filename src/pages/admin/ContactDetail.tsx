@@ -356,7 +356,13 @@ export default function ContactDetail() {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="automation"><Zap className="h-4 w-4 mr-1" /> Automation</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="automation">
+          <ContactAutomationHistory contactId={client.id} />
+        </TabsContent>
+
 
 
         <TabsContent value="deals">
