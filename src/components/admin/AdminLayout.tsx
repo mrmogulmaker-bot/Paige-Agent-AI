@@ -75,16 +75,8 @@ const hubs: Hub[] = [
     ],
     aliases: ["/admin/bookings", "/admin/support"],
   },
-  {
-    label: "Tasks & Approvals",
-    href: "/admin/tasks",
-    icon: CheckSquare,
-    children: [
-      { label: "Tasks", href: "/admin/tasks", icon: CheckSquare },
-      { label: "Approvals", href: "/admin/approvals", icon: ClipboardCheck },
-    ],
-    aliases: ["/admin/approvals"],
-  },
+  // Tasks & Approvals removed from global nav — now scoped per-contact under Contacts → [contact] → Tasks / Approvals tabs.
+  // Routes (/admin/tasks, /admin/approvals, /admin/approvals/:id) remain mounted for deep-link back-compat from notifications.
   {
     label: "Campaigns",
     href: "/admin/campaigns",
