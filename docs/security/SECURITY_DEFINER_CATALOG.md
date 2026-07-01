@@ -7,7 +7,7 @@ Living registry of every `SECURITY DEFINER` function in `public` that retains `E
 - **B** — Public-flow with internal auth check (called unauthenticated but verifies caller identity/state internally)
 - **C** — Trigger/cron/internal only (should never have anon; authenticated allowed only when invoked from RLS policies)
 
-Last reviewed: 2026-07-01 · Reviewer: Lovable Agent (Paige Agent AI)
+Last reviewed: 2026-07-01 · Reviewer: Lovable Agent (Paige Agent AI) · Ship #1 additions applied
 
 ---
 
