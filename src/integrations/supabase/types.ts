@@ -14875,6 +14875,10 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      map_tenant_role_to_app_role: {
+        Args: { _tenant_role: Database["public"]["Enums"]["tenant_role"] }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
       match_paige_memory: {
         Args: {
           _match_threshold?: number
