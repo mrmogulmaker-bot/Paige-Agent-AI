@@ -16,6 +16,7 @@ import { TestimonialsSection } from "@/components/landing/TestimonialsSection";
 import { TrustSecuritySection } from "@/components/landing/TrustSecuritySection";
 import { FAQSection } from "@/components/landing/FAQSection";
 import { Footer } from "@/components/landing/Footer";
+import { IntegrationsSection } from "@/components/landing/IntegrationsSection";
 import { SiteBackground } from "@/components/landing/SiteBackground";
 
 const Index = () => {
@@ -47,8 +48,9 @@ const Index = () => {
       <div id="what-paige-knows">
         <WhatPaigeKnowsSection />
       </div>
-      <PricingSection />
-      <TestimonialsSection />
+        <PricingSection />
+        <IntegrationsSection />
+        <TestimonialsSection />
       <TrustSecuritySection />
       <FAQSection />
       <Footer />
