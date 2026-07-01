@@ -193,7 +193,7 @@ UPDATE public.profiles p
 -- Repair the observed Mogul Maker Academy admin account that was granted admin
 -- directly and therefore had no tenant membership for RLS visibility.
 WITH mma AS (
-  SELECT id AS tenant_id FROM public.tenants WHERE slug = 'mogul-maker-academy' LIMIT 1
+  SELECT id AS tenant_id FROM public.tenants WHERE id = 'a25194e0-93c4-4e2c-91d0-66ea012660b2'::uuid OR slug IN ('mma','mogul-maker-academy') OR name = 'Mogul Maker Academy' ORDER BY CASE WHEN id = 'a25194e0-93c4-4e2c-91d0-66ea012660b2'::uuid THEN 0 ELSE 1 END LIMIT 1
 ), direct_staff AS (
   SELECT DISTINCT ur.user_id,
          CASE
