@@ -16,7 +16,7 @@ import type { OnboardClient } from "./useOnboardingClient";
 
 type Ctx = { client: OnboardClient; refresh: () => void };
 
-const STEPS = ["Welcome", "Agreement", "Payment", "Intake", "Documents", "Complete"];
+const STEPS = ["Your info", "Agreement"];
 
 function ProgressHeader({ stepIndex, title, subtitle }: { stepIndex: number; title: string; subtitle: string }) {
   const pct = Math.round(((stepIndex + 1) / STEPS.length) * 100);
