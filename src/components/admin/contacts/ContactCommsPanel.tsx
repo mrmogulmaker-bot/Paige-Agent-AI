@@ -7,9 +7,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mail, MessageSquare, Send, Clock, Lock } from "lucide-react";
+import { Mail, MessageSquare, Send, Clock, Lock, Sparkles, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+
+const TONES = [
+  "professional","warm","welcoming","stern","friendly",
+  "executive","apologetic","celebratory","direct","empathetic","urgent",
+] as const;
+type Tone = typeof TONES[number];
+
 
 type Contact = {
   id: string;
