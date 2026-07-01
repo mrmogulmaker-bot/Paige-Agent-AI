@@ -347,10 +347,13 @@ mcp.tool("move_deal_stage", {
     reason: z.string().optional(),
   }),
   handler: async ({ deal_id, stage_id, reason }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
     const { data, error } = await admin
       .from("deals")
       .update({ stage_id })
       .eq("id", deal_id)
+      .eq("tenant_id", tenantId)
       .select("id, stage_id, pipeline_id")
       .maybeSingle();
     if (error) return err(error.message);
@@ -504,7 +507,9 @@ mcp.tool("update_task", {
     if (args.due_date !== undefined) patch.due_date = args.due_date;
     if (args.metadata !== undefined) patch.metadata = args.metadata;
     if (Object.keys(patch).length === 0) return err("no_fields_to_update");
-    const { data, error } = await admin.from("tasks").update(patch).eq("id", args.task_id).select("id").maybeSingle();
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const { data, error } = await admin.from("tasks").update(patch).eq("id", args.task_id).eq("tenant_id", tenantId).select("id").maybeSingle();
     if (error) return err(error.message);
     if (!data) return err("task_not_found");
     await audit("update_task", "task", args.task_id, patch);
@@ -516,10 +521,13 @@ mcp.tool("complete_task", {
   description: "Mark a task as completed.",
   inputSchema: z.object({ task_id: z.string() }),
   handler: async ({ task_id }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
     const { data, error } = await admin
       .from("tasks")
       .update({ status: "completed" })
       .eq("id", task_id)
+      .eq("tenant_id", tenantId)
       .select("id")
       .maybeSingle();
     if (error) return err(error.message);
@@ -533,10 +541,13 @@ mcp.tool("reopen_task", {
   description: "Move a task back to 'pending' (undo complete/cancel).",
   inputSchema: z.object({ task_id: z.string() }),
   handler: async ({ task_id }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
     const { data, error } = await admin
       .from("tasks")
       .update({ status: "pending" })
       .eq("id", task_id)
+      .eq("tenant_id", tenantId)
       .select("id")
       .maybeSingle();
     if (error) return err(error.message);
@@ -551,7 +562,9 @@ mcp.tool("delete_task", {
   inputSchema: z.object({ task_id: z.string() }),
   annotations: { destructiveHint: true },
   handler: async ({ task_id }) => {
-    const { error } = await admin.from("tasks").delete().eq("id", task_id);
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const { error } = await admin.from("tasks").delete().eq("id", task_id).eq("tenant_id", tenantId);
     if (error) return err(error.message);
     await audit("delete_task", "task", task_id, {});
     return ok({ ok: true, task_id });
