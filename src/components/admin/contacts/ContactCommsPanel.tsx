@@ -82,7 +82,47 @@ export function ContactCommsPanel({ contact, history }: { contact: Contact; hist
   const previewSubject = useMemo(() => applyMerge(subject, contact, coachName), [subject, contact, coachName]);
   const previewBody = useMemo(() => applyMerge(bodyMd, contact, coachName), [bodyMd, contact, coachName]);
 
+  const runAiDraft = async () => {
+    if (!aiIntent.trim()) { toast.error("Tell the composer what this email is about."); return; }
+    setAiLoading(true);
+    setAiFlags([]);
+    try {
+      const { data, error } = await supabase.functions.invoke("subagent-email-composer", {
+        body: {
+          input: {
+            intent: aiIntent,
+            tone: aiTone,
+            length: aiLength,
+            cta: aiCta || undefined,
+            key_points: aiKeyPoints.split("\n").map((s) => s.trim()).filter(Boolean),
+            contact_id: contact.id,
+            recipient_name: `${contact.first_name || ""} ${contact.last_name || ""}`.trim() || undefined,
+            recipient_email: contact.email || undefined,
+            sender_name: coachName || undefined,
+            format: "html",
+          },
+          context: { contact_id: contact.id },
+        },
+      });
+      if (error) throw error;
+      const draft = (data as any)?.draft ?? data;
+      if (!draft?.subject || !(draft?.body_html || draft?.body_text)) {
+        throw new Error("Composer returned no draft.");
+      }
+      setSubject(draft.subject);
+      setBodyMd(draft.body_text || String(draft.body_html).replace(/<[^>]+>/g, ""));
+      setAiFlags((data as any)?.compliance_flags ?? []);
+      setAiOpen(false);
+      toast.success("Draft ready — review before sending.");
+    } catch (e: any) {
+      toast.error(e?.message || "AI draft failed");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const applyTemplate = (key: string) => {
+
     const t = templates.find((x) => x.template_key === key);
     if (!t) return;
     setSubject(t.subject);
