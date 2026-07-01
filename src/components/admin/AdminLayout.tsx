@@ -162,7 +162,6 @@ interface AdminLayoutProps {
 export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { setMode } = useDashboardMode();
   const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
   const { isPlatformOwner } = useTenantContext();
@@ -262,30 +261,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
 
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-sidebar-accent/50"
-                >
-                  <Eye className="w-4 h-4 mr-1.5" />
-                  Views
-                  <ChevronDown className="w-3.5 h-3.5 ml-1 opacity-70" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Switch workspace</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {/* Generic "Client view" removed — client view is only
-                    accessible per-client via Impersonate from a contact's portal. */}
-                {canAccessBrokerWorkspace && (
-                  <DropdownMenuItem onClick={() => navigate("/broker/app")}>
-                    <Building2 className="w-4 h-4 mr-2" /> Broker workspace
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
 
             <Button
               variant="ghost"
