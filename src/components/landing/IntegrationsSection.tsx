@@ -10,8 +10,8 @@ const INTEGRATIONS = [
     icon: Calendar,
     title: "Google Calendar",
     purpose:
-      "With your permission, PaigeAgent connects to your Google Calendar so coaches and clients can schedule funding sessions, milestone check-ins, and application deadlines without leaving the platform. We request the calendar.events and calendar.readonly scopes solely to read your availability and create the events you approve. Your calendar data is never sold, shared, or used to train AI models, and you can disconnect at any time from Settings.",
-    scopes: "calendar.events, calendar.readonly, userinfo.email",
+      "With your permission, PaigeAgent connects to your Google Calendar so coaches and clients can schedule funding sessions, milestone check-ins, and application deadlines without leaving the platform. We request the calendar.events.owned scope solely to create and manage events on calendars you own. Your calendar data is never sold, shared, or used to train AI models, and you can disconnect at any time from Settings.",
+    scopes: "calendar.events.owned, userinfo.email",
   },
   {
     icon: FileSpreadsheet,
