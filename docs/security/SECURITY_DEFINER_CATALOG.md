@@ -235,3 +235,19 @@ Anon + authenticated EXECUTE was previously revoked from the following internal 
 
 - Weekly `pg_cron` job `doctrine_124_weekly_sweep` diffs live grants against this catalog and raises `paige_admin_notifications` on drift.
 - Any migration that alters a function body or expands its grant list MUST update this file in the same PR.
+
+---
+
+## §190 pgcrypto column-encryption pattern (registry)
+
+All getter/setter RPC pairs implementing the §190 Column Encryption Standard land here as Category B with the standard justification block. See `docs/security/DOCTRINE_190_191_192.md` for the full pattern.
+
+Current entries:
+- `public.admin_get_automation_webhook_url` / `public.admin_set_automation_webhook_url` (Ship #1 reference implementation — already cataloged above under Category B).
+
+Queued entries (land with their respective ships):
+- `admin_get_google_calendar_refresh_token` / `admin_set_google_calendar_refresh_token`
+- `admin_get_twilio_auth_token` / `admin_set_twilio_auth_token` (root-tier migration under §192)
+- `admin_get_stripe_webhook_secret` / `admin_set_stripe_webhook_secret`
+- `admin_get_n8n_webhook_url` / `admin_set_n8n_webhook_url` (retrofit)
+
