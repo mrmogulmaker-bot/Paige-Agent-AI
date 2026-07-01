@@ -180,7 +180,7 @@ export function ContactCommsPanel({ contact, history }: { contact: Contact; hist
                 <span className="ml-2">Merge tags:</span>
                 <code className="text-[11px]">{"{{first_name}} {{last_name}} {{entity_name}} {{coach_name}}"}</code>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Select onValueChange={applyTemplate}>
                   <SelectTrigger className="w-[260px]"><SelectValue placeholder="Insert template…" /></SelectTrigger>
                   <SelectContent>
@@ -192,7 +192,16 @@ export function ContactCommsPanel({ contact, history }: { contact: Contact; hist
                     ))}
                   </SelectContent>
                 </Select>
+                <Button type="button" variant="outline" className="gap-1.5" onClick={() => setAiOpen(true)}>
+                  <Sparkles className="h-4 w-4" /> AI Draft
+                </Button>
               </div>
+              {aiFlags.length > 0 && (
+                <div className="rounded border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-700 dark:text-amber-400">
+                  <span className="font-medium">Compliance flags:</span> {aiFlags.join(" · ")} — please review before sending.
+                </div>
+              )}
+
               <Input placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} />
               <Textarea rows={8} placeholder="Write your message…" value={bodyMd} onChange={(e) => setBodyMd(e.target.value)} />
               {(subject || bodyMd) && (
