@@ -4,30 +4,29 @@ import { useOnboardingClient } from "./useOnboardingClient";
 import { supabase } from "@/integrations/supabase/client";
 import "./onboard-theme.css";
 
-const STAGE_ORDER = [
-  "invited",
-  "signing_agreement",
-  "accepting_payment",
-  "completing_intake",
-  "uploading_docs",
-  "completed",
-] as const;
+// Pre-portal onboarding is now two steps: welcome + agreement. Everything else
+// (intake, docs, etc.) happens inside /workspace under Paige's guidance.
+const STAGE_ORDER = ["invited", "signing_agreement"] as const;
 
 const STEP_TO_PATH: Record<string, string> = {
   invited: "/onboard/welcome",
   signing_agreement: "/onboard/agreement",
-  accepting_payment: "/onboard/payment",
-  completing_intake: "/onboard/intake",
-  uploading_docs: "/onboard/documents",
-  completed: "/onboard/complete",
 };
+
+const POST_AGREEMENT_STAGES = new Set([
+  "accepting_payment",
+  "completing_intake",
+  "uploading_docs",
+  "completed",
+]);
 
 const PATH_TO_STAGE: Record<string, string> = Object.fromEntries(
   Object.entries(STEP_TO_PATH).map(([s, p]) => [p, s]),
 );
 
-// Legacy / alias paths from older emails and earlier builds. Map them onto the
-// canonical step so deep links from prior invites still resolve cleanly.
+// Legacy / alias paths from older emails and earlier builds. Anything that
+// used to be a post-agreement step now resolves to the workspace so clients
+// don't get parked in a pre-portal dead end.
 const LEGACY_PATH_ALIASES: Record<string, string> = {
   "/onboard": "/onboard/welcome",
   "/onboard/start": "/onboard/welcome",
@@ -35,19 +34,24 @@ const LEGACY_PATH_ALIASES: Record<string, string> = {
   "/onboard/sign": "/onboard/agreement",
   "/onboard/contract": "/onboard/agreement",
   "/onboard/terms": "/onboard/agreement",
-  "/onboard/pay": "/onboard/payment",
-  "/onboard/checkout": "/onboard/payment",
-  "/onboard/billing": "/onboard/payment",
-  "/onboard/form": "/onboard/intake",
-  "/onboard/questionnaire": "/onboard/intake",
-  "/onboard/profile": "/onboard/intake",
-  "/onboard/upload": "/onboard/documents",
-  "/onboard/docs": "/onboard/documents",
-  "/onboard/files": "/onboard/documents",
-  "/onboard/done": "/onboard/complete",
-  "/onboard/finish": "/onboard/complete",
-  "/onboard/success": "/onboard/complete",
+  "/onboard/pay": "/workspace",
+  "/onboard/payment": "/workspace",
+  "/onboard/checkout": "/workspace",
+  "/onboard/billing": "/workspace",
+  "/onboard/form": "/workspace",
+  "/onboard/intake": "/workspace",
+  "/onboard/questionnaire": "/workspace",
+  "/onboard/profile": "/workspace",
+  "/onboard/upload": "/workspace",
+  "/onboard/documents": "/workspace",
+  "/onboard/docs": "/workspace",
+  "/onboard/files": "/workspace",
+  "/onboard/complete": "/workspace",
+  "/onboard/done": "/workspace",
+  "/onboard/finish": "/workspace",
+  "/onboard/success": "/workspace",
 };
+
 
 export default function OnboardLayout() {
   const { loading, error, client, userEmail, refresh } = useOnboardingClient();
