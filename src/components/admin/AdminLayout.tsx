@@ -64,8 +64,14 @@ const hubs: Hub[] = [
     ],
     aliases: ["/admin/funding", "/admin/funding-pipeline", "/admin/funding-lens"],
   },
+  {
+    label: "Calendar",
+    href: "/admin/calendar",
+    icon: CalendarDays,
+    aliases: ["/admin/bookings"],
+  },
   // Inbox hub dissolved — Conversations live per-contact under Contacts → [contact] → Comms tab.
-  // Bookings is being rebuilt as personal Calendar (Phase 2). Support moved to the More menu.
+  // Bookings rebuilt as personal Calendar (per-user Google/Apple). Support moved to the More menu.
   // Routes (/admin/communications, /admin/bookings, /admin/support) remain mounted for deep-link back-compat.
   // Tasks & Approvals removed from global nav — now scoped per-contact under Contacts → [contact] → Tasks / Approvals tabs.
   // Routes (/admin/tasks, /admin/approvals, /admin/approvals/:id) remain mounted for deep-link back-compat from notifications.
