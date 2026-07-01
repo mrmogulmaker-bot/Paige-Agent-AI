@@ -64,9 +64,10 @@ export function ClientOnboardingStatusPanel({ contactId }: { contactId: string }
         />
         {!status?.ready && (
           <div className="mt-3 text-xs text-muted-foreground border-t pt-3">
-            Client view is unavailable until the invite is accepted and the agreement is signed.
+            Client view unlocks once intake is complete — invite accepted and agreement signed.
           </div>
         )}
+
 
       </CardContent>
     </Card>
