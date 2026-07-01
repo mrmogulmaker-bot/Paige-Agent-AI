@@ -3238,6 +3238,120 @@ mcp.tool("delegate_to_subagent", {
   },
 });
 
+// ---------- compose_email (dedicated Email Composer sub-agent) ----------
+mcp.tool("compose_email", {
+  description:
+    "Draft an email via the dedicated Email Composer sub-agent. Paige orchestrates; the composer handles free-form writing so Paige doesn't burn context on hand-crafting every message. Choose `tone` from: professional, warm, welcoming, stern, friendly, executive, apologetic, celebratory, direct, empathetic, urgent. Provide either `contact_id` (auto-loads recipient) OR `recipient_name`/`recipient_email`. Returns {draft.subject, draft.body_html, draft.body_text, compliance_flags}. Pair with `send_composed_email` (or `send_transactional_email`) after review. Never sends on its own.",
+  inputSchema: z.object({
+    intent: z.string().describe("What this email should accomplish (one sentence)."),
+    tone: z.enum([
+      "professional","warm","welcoming","stern","friendly",
+      "executive","apologetic","celebratory","direct","empathetic","urgent",
+    ]).optional().describe("Voice/tone. Default: professional."),
+    contact_id: z.string().optional().describe("clients.id — auto-loads name/email/business context."),
+    recipient_name: z.string().optional(),
+    recipient_email: z.string().optional(),
+    key_points: z.array(z.string()).optional().describe("Bullet points the draft must cover."),
+    length: z.enum(["short","medium","long"]).optional().describe("Default: medium."),
+    cta: z.string().optional().describe("Desired call-to-action, e.g. 'book a 15-min call'."),
+    subject_hint: z.string().optional(),
+    sender_name: z.string().optional().describe("Signature line. Defaults to 'Mogul Maker Academy'."),
+    sender_title: z.string().optional(),
+    format: z.enum(["html","plain"]).optional(),
+  }),
+  handler: async (args) => {
+    const r = await callOrchestrator({
+      action: "tool_invoke",
+      slug: "email-composer",
+      input: args,
+      context: { contact_id: args.contact_id, user_id: currentActor().user_id ?? undefined },
+    });
+    await audit("compose_email", "email_draft", args.contact_id ?? args.recipient_email ?? "adhoc", {
+      tone: args.tone ?? "professional", length: args.length ?? "medium", status: r.status,
+    });
+    if (r.status >= 300) return err(typeof r.body === "object" ? JSON.stringify(r.body) : String(r.body));
+    return ok(r.body);
+  },
+});
+
+// ---------- send_composed_email (convenience: send a drafted email) ----------
+mcp.tool("send_composed_email", {
+  description:
+    "Send an email that was drafted via `compose_email`. Thin wrapper over `send_transactional_email` that keeps the composer → send flow explicit. Use this ONLY after a human (or Paige) has reviewed the draft. For programmatic composition+send in one shot, still prefer the two-step so compliance flags are surfaced.",
+  inputSchema: z.object({
+    to: z.string().describe("Recipient email address."),
+    subject: z.string(),
+    body_html: z.string(),
+    body_text: z.string().optional(),
+    contact_id: z.string().optional(),
+    tenant_id: z.string().optional(),
+    tone_used: z.string().optional().describe("Echo of tone (audit trail)."),
+    acknowledged_compliance_flags: z.array(z.string()).optional()
+      .describe("If compose_email returned flags, list them here to confirm human review."),
+  }),
+  handler: async (args) => {
+    const tenant_id = await resolveTenantId(args.tenant_id ?? null);
+    if (!tenant_id) return err("tenant_not_resolved");
+    const { data: idn } = await admin.rpc("tenant_sender_identity", { _tenant_id: tenant_id });
+    const fromAddress = (idn as any)?.from_address as string | undefined;
+    const fromName = (idn as any)?.from_name as string | undefined;
+    const replyTo = (idn as any)?.reply_to as string | undefined;
+    if (!fromAddress) return err("from_address_not_resolved");
+    if (!RESEND_API_KEY) return err("resend_not_configured");
+
+    const send_id = crypto.randomUUID();
+    const fromHeader = fromName ? `${fromName} <${fromAddress}>` : fromAddress;
+    let resendId: string | null = null;
+    let status: "sent" | "failed" = "sent";
+    let errorMsg: string | null = null;
+    try {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${RESEND_API_KEY}` },
+        body: JSON.stringify({
+          from: fromHeader,
+          to: [args.to],
+          subject: args.subject,
+          html: args.body_html,
+          text: args.body_text || undefined,
+          reply_to: replyTo || undefined,
+          headers: { "X-Paige-Send-Id": send_id, "X-Paige-Source": "compose_email" },
+        }),
+      });
+      const j = await r.json().catch(() => ({} as any));
+      if (!r.ok) { status = "failed"; errorMsg = (j as any)?.message ?? `resend_${r.status}`; }
+      else resendId = (j as any)?.id ?? null;
+    } catch (e) {
+      status = "failed";
+      errorMsg = (e as Error).message.slice(0, 300);
+    }
+    try {
+      await admin.from("email_send_log").insert({
+        id: send_id,
+        tenant_id,
+        contact_id: args.contact_id ?? null,
+        recipient_email: args.to,
+        from_address: fromAddress,
+        subject: args.subject,
+        template_key: null,
+        product_scope: "composed",
+        status,
+        provider_message_id: resendId,
+        error_message: errorMsg,
+      });
+    } catch { /* log table may not have all columns — non-fatal */ }
+    await audit("send_composed_email", "email", send_id, {
+      to: args.to, tenant_id, tone_used: args.tone_used ?? null,
+      acknowledged_flags: args.acknowledged_compliance_flags ?? [],
+      status,
+    });
+    return ok({ send_id, resend_id: resendId, status, from: fromHeader, to: args.to, error: errorMsg });
+  },
+});
+
+
+
+
 
 mcp.tool("get_subagent_history", {
   description:
