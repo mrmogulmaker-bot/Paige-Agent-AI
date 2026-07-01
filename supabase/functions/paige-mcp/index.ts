@@ -4400,6 +4400,9 @@ const TOOL_SCOPE: Record<string, Scope> = {
   // Sub-agents — runtime use vs. forge
   list_subagents: "crm.read",
   delegate_to_subagent: "workflows.run",
+  compose_email: "crm.write",
+  send_composed_email: "crm.write",
+
   get_subagent_history: "crm.read",
   propose_subagent: "platform.write",          // sub-agent forge = infra
   list_subagent_proposals: "platform.read",
