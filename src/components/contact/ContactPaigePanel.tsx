@@ -1,20 +1,98 @@
-import { useState } from "react";
-import { Sparkles, ShieldCheck, ShieldAlert, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Sparkles,
+  ShieldCheck,
+  ShieldAlert,
+  Loader2,
+  Plus,
+  Trash2,
+  Send,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
-// Ship #3.5 — Customer-Scoped Paige (coach/admin view).
-// Loads read-only, consent-gated context for one contact and asks grounded Paige.
+// Ship #3.5 + #3.6 — Customer-Scoped Paige (coach/admin view).
+//   Ask Paige (read-only, consent-gated grounded answers).
+//   Actions   (two-phase §181: coach proposes, Paige composes,
+//              customer accepts/declines/questions/completes).
 
 interface Props {
   contactId: string;
 }
 
+type ActionType = "task" | "message" | "recommendation" | "nudge";
+
+interface DraftAction {
+  action_type: ActionType;
+  title: string;
+  body: string;
+}
+
+interface AdminActionRow {
+  id: string;
+  action_type: ActionType;
+  title: string;
+  body: string | null;
+  status: string;
+  created_at: string;
+  expires_at: string;
+  responses: Array<{
+    id: string;
+    response_type: string;
+    response_text: string | null;
+    created_at: string;
+  }>;
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  proposed: "Proposed",
+  customer_notified: "Sent",
+  customer_acted: "Client acted",
+  customer_declined: "Declined",
+  expired: "Expired",
+};
+
+function emptyDraft(): DraftAction {
+  return { action_type: "recommendation", title: "", body: "" };
+}
+
 export function ContactPaigePanel({ contactId }: Props) {
+  return (
+    <Tabs defaultValue="ask" className="space-y-4">
+      <TabsList>
+        <TabsTrigger value="ask">Ask Paige</TabsTrigger>
+        <TabsTrigger value="actions">Actions</TabsTrigger>
+      </TabsList>
+      <TabsContent value="ask">
+        <AskPaigeCard contactId={contactId} />
+      </TabsContent>
+      <TabsContent value="actions">
+        <ActionsCard contactId={contactId} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+function AskPaigeCard({ contactId }: Props) {
   const [prompt, setPrompt] = useState("");
   const [running, setRunning] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
@@ -30,13 +108,16 @@ export function ContactPaigePanel({ contactId }: Props) {
     setConsentBlock(null);
     setSurfaces([]);
     try {
-      const { data, error } = await supabase.functions.invoke("paige-context-router", {
-        body: { contact_id: contactId, user_prompt: q, scopes: ["contact"] },
-      });
+      const { data, error } = await supabase.functions.invoke(
+        "paige-context-router",
+        { body: { contact_id: contactId, user_prompt: q, scopes: ["contact"] } },
+      );
       if (error) throw error;
       if (!data?.ok) {
         if (data?.error === "CONSENT_NOT_GRANTED") {
-          setConsentBlock(data.message ?? "Customer has not consented to sharing context.");
+          setConsentBlock(
+            data.message ?? "Customer has not consented to sharing context.",
+          );
         } else {
           toast.error(data?.message ?? data?.error ?? "Paige could not answer.");
         }
@@ -46,67 +127,348 @@ export function ContactPaigePanel({ contactId }: Props) {
       setSurfaces(data.surfaces_used ?? []);
       setLoadId(data.load_id ?? null);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Request failed";
-      toast.error(msg);
+      toast.error(e instanceof Error ? e.message : "Request failed");
     } finally {
       setRunning(false);
     }
   }
 
   return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Sparkles className="h-4 w-4" />
+          Ask Paige about this contact
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Grounded answers only — Paige reads consented, RLS-scoped fields from
+          this contact. Credit monitoring + building, never credit repair
+          (Doctrine §194).
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Textarea
+          placeholder="e.g. Summarize where this client stands on funding readiness."
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={3}
+          disabled={running}
+        />
+        <div className="flex justify-end">
+          <Button onClick={ask} disabled={running || !prompt.trim()}>
+            {running ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-2" />
+            )}
+            Ask Paige
+          </Button>
+        </div>
+
+        {consentBlock && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm flex items-start gap-2">
+            <ShieldAlert className="h-4 w-4 text-amber-500 mt-0.5" />
+            <div>
+              <div className="font-medium">Consent required</div>
+              <div className="text-muted-foreground">{consentBlock}</div>
+            </div>
+          </div>
+        )}
+
+        {answer && (
+          <div className="space-y-2">
+            <div className="rounded-md border bg-muted/30 p-3 whitespace-pre-wrap text-sm">
+              {answer}
+            </div>
+            {surfaces.length > 0 && (
+              <div className="flex flex-wrap gap-1 items-center text-xs text-muted-foreground">
+                <ShieldCheck className="h-3 w-3" />
+                <span>Sources:</span>
+                {surfaces.map((s) => (
+                  <Badge key={s} variant="outline" className="text-[10px]">
+                    {s}
+                  </Badge>
+                ))}
+                {loadId && (
+                  <span className="ml-auto opacity-60">
+                    load: {loadId.slice(0, 8)}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ActionsCard({ contactId }: Props) {
+  const [consent, setConsent] = useState<boolean | null>(null);
+  const [drafts, setDrafts] = useState<DraftAction[]>([emptyDraft()]);
+  const [proposing, setProposing] = useState(false);
+  const [rows, setRows] = useState<AdminActionRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    void loadConsent();
+    void loadRows();
+  }, [contactId]);
+
+  useEffect(() => {
+    const ch = supabase
+      .channel(`admin-actions-${contactId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "paige_customer_actions",
+          filter: `contact_id=eq.${contactId}`,
+        },
+        () => void loadRows(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "paige_customer_responses",
+          filter: `contact_id=eq.${contactId}`,
+        },
+        () => void loadRows(),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [contactId]);
+
+  async function loadConsent() {
+    const { data } = await supabase
+      .from("clients")
+      .select("paige_shared_context_consent")
+      .eq("id", contactId)
+      .maybeSingle();
+    setConsent(!!data?.paige_shared_context_consent);
+  }
+
+  async function loadRows() {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.rpc(
+        "list_pending_customer_actions",
+        { p_contact_id: contactId },
+      );
+      if (error) throw error;
+      const payload = data as { ok?: boolean; actions?: AdminActionRow[] } | null;
+      if (payload?.ok) setRows(payload.actions ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Load failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function updateDraft(i: number, patch: Partial<DraftAction>) {
+    setDrafts((d) => d.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  }
+  function addDraft() {
+    setDrafts((d) => [...d, emptyDraft()]);
+  }
+  function removeDraft(i: number) {
+    setDrafts((d) => (d.length === 1 ? d : d.filter((_, idx) => idx !== i)));
+  }
+
+  async function propose() {
+    const cleaned = drafts
+      .map((d) => ({ ...d, title: d.title.trim(), body: d.body.trim() }))
+      .filter((d) => d.title.length > 0);
+    if (cleaned.length === 0) {
+      toast.error("Add at least one action with a title.");
+      return;
+    }
+    setProposing(true);
+    try {
+      const { data, error } = await supabase.rpc("admin_propose_paige_actions", {
+        p_contact_id: contactId,
+        p_actions: cleaned,
+      });
+      if (error) throw error;
+      const payload = data as
+        | { ok?: boolean; count?: number; error?: string; message?: string }
+        | null;
+      if (!payload?.ok) {
+        toast.error(payload?.message ?? payload?.error ?? "Could not propose actions.");
+        return;
+      }
+      toast.success(`Sent ${payload.count ?? cleaned.length} action(s) to client.`);
+      setDrafts([emptyDraft()]);
+      await loadRows();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Request failed");
+    } finally {
+      setProposing(false);
+    }
+  }
+
+  const consentBlocked = consent === false;
+
+  return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="h-4 w-4" />
-            Ask Paige about this contact
+          <CardTitle className="text-base flex items-center gap-2">
+            <Send className="h-4 w-4" /> Propose Paige actions
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Grounded answers only — Paige reads consented, RLS-scoped fields from this contact.
-            Credit monitoring + building, never credit repair (Doctrine §194).
+            Paige delivers these to the client's workspace. They can accept,
+            decline, ask a question, or mark complete — responses stream back to
+            you. Two-phase (§181): you review the wording before it lands.
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Textarea
-            placeholder="e.g. Summarize where this client stands on funding readiness."
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            rows={3}
-            disabled={running}
-          />
-          <div className="flex justify-end">
-            <Button onClick={ask} disabled={running || !prompt.trim()}>
-              {running ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-              Ask Paige
-            </Button>
-          </div>
-
-          {consentBlock && (
+          {consentBlocked && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm flex items-start gap-2">
               <ShieldAlert className="h-4 w-4 text-amber-500 mt-0.5" />
               <div>
                 <div className="font-medium">Consent required</div>
-                <div className="text-muted-foreground">{consentBlock}</div>
+                <div className="text-muted-foreground">
+                  This client has not enabled coach-brokered actions. Ask them
+                  to turn on coach access in their workspace.
+                </div>
               </div>
             </div>
           )}
 
-          {answer && (
-            <div className="space-y-2">
-              <div className="rounded-md border bg-muted/30 p-3 whitespace-pre-wrap text-sm">
-                {answer}
+          {drafts.map((d, i) => (
+            <div key={i} className="rounded-md border p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Select
+                  value={d.action_type}
+                  onValueChange={(v) =>
+                    updateDraft(i, { action_type: v as ActionType })
+                  }
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recommendation">Recommendation</SelectItem>
+                    <SelectItem value="task">Task</SelectItem>
+                    <SelectItem value="message">Message</SelectItem>
+                    <SelectItem value="nudge">Nudge</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  placeholder="Title (e.g. Pay down utilization below 30%)"
+                  value={d.title}
+                  onChange={(e) => updateDraft(i, { title: e.target.value })}
+                />
+                {drafts.length > 1 && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => removeDraft(i)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
-              {surfaces.length > 0 && (
-                <div className="flex flex-wrap gap-1 items-center text-xs text-muted-foreground">
-                  <ShieldCheck className="h-3 w-3" />
-                  <span>Sources:</span>
-                  {surfaces.map((s) => (
-                    <Badge key={s} variant="outline" className="text-[10px]">{s}</Badge>
-                  ))}
-                  {loadId && <span className="ml-auto opacity-60">load: {loadId.slice(0, 8)}</span>}
-                </div>
-              )}
+              <Textarea
+                placeholder="Details for the client…"
+                value={d.body}
+                onChange={(e) => updateDraft(i, { body: e.target.value })}
+                rows={3}
+              />
             </div>
+          ))}
+
+          <div className="flex items-center justify-between">
+            <Button variant="outline" size="sm" onClick={addDraft}>
+              <Plus className="h-4 w-4 mr-1" /> Add another
+            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      onClick={propose}
+                      disabled={proposing || consentBlocked}
+                    >
+                      {proposing ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4 mr-2" />
+                      )}
+                      Send to client
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {consentBlocked && (
+                  <TooltipContent>
+                    Client has not consented to coach-brokered actions.
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No actions proposed yet.
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {rows.map((a) => (
+                <li key={a.id} className="rounded-md border p-3 space-y-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-medium">{a.title}</div>
+                      <div className="text-xs text-muted-foreground capitalize">
+                        {a.action_type} ·{" "}
+                        {new Date(a.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">
+                      {STATUS_LABEL[a.status] ?? a.status}
+                    </Badge>
+                  </div>
+                  {a.body && (
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                      {a.body}
+                    </p>
+                  )}
+                  {a.responses.length > 0 && (
+                    <ul className="text-xs text-muted-foreground space-y-1 border-l-2 pl-2 mt-1">
+                      {a.responses.map((r) => (
+                        <li key={r.id}>
+                          <span className="capitalize font-medium">
+                            {r.response_type}
+                          </span>
+                          {r.response_text ? ` — ${r.response_text}` : ""}
+                          <span className="opacity-60">
+                            {" "}
+                            · {new Date(r.created_at).toLocaleString()}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>
