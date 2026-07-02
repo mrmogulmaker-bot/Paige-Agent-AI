@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Download, AlertCircle, User, Home, CreditCard, DollarSign, Wallet, AlertTriangle, FileText, Search, Phone, Bot } from "lucide-react";
-import { DisputeLetterDialog } from "./DisputeLetterDialog";
+// [§194] DisputeLetterDialog removed — monitoring-only, no repair actions.
 
 interface BureauData {
   name: string;
@@ -1265,13 +1265,7 @@ export function ThreeBureauReport() {
         </div>
       </Card>
 
-      {selectedBureau && (
-        <DisputeLetterDialog 
-          open={isDialogOpen}
-          onOpenChange={setIsDialogOpen}
-          bureauData={selectedBureau}
-        />
-      )}
+      {/* [§194] Dispute-letter dialog removed. */}
     </div>
   );
 }
