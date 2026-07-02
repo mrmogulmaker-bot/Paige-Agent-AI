@@ -88,7 +88,7 @@ export function HeroSection() {
                 <div className="text-2xl font-bold text-white tabular-nums">
                   $1.2B+
                 </div>
-                <div className="text-xs text-white/50 uppercase tracking-widest">
+                <div className="text-xs text-white/75 uppercase tracking-widest">
                   Volume Modeled
                 </div>
               </div>
@@ -97,7 +97,7 @@ export function HeroSection() {
                 <div className="text-2xl font-bold text-white tabular-nums">
                   18
                 </div>
-                <div className="text-xs text-white/50 uppercase tracking-widest">
+                <div className="text-xs text-white/75 uppercase tracking-widest">
                   Sub-Agents Live
                 </div>
               </div>
@@ -106,16 +106,16 @@ export function HeroSection() {
                 <div className="text-2xl font-bold text-white tabular-nums">
                   3-Bureau
                 </div>
-                <div className="text-xs text-white/50 uppercase tracking-widest">
+                <div className="text-xs text-white/75 uppercase tracking-widest">
                   Intelligence
                 </div>
               </div>
             </div>
 
-            <p className="text-[11px] text-white/40 pt-2">
+            <p className="text-[11px] text-white/70 pt-2">
               The Operator Command Center for coaching academies, brokerages, and
               consultancies ·{" "}
-              <span className="text-gold/70">From Borrower to Banker</span>
+              <span className="text-gold">From Borrower to Banker</span>
             </p>
           </div>
 
@@ -132,7 +132,7 @@ export function HeroSection() {
                   <div className="w-2.5 h-2.5 rounded-full bg-white/10" />
                   <div className="w-2.5 h-2.5 rounded-full bg-white/10" />
                 </div>
-                <div className="text-[10px] text-white/40 font-mono tracking-tight uppercase">
+                <div className="text-[10px] text-white/70 font-mono tracking-tight uppercase">
                   paige_os // core_engine
                 </div>
               </div>
@@ -151,7 +151,7 @@ export function HeroSection() {
                   </div>
                 </div>
                 <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
-                  <div className="text-[10px] text-white/50 font-bold uppercase tracking-widest mb-1">
+                  <div className="text-[10px] text-white/75 font-bold uppercase tracking-widest mb-1">
                     Roster Active
                   </div>
                   <div className="text-2xl font-bold text-white tabular-nums">
@@ -215,7 +215,7 @@ export function HeroSection() {
                         className={
                           row.tone === "gold"
                             ? "text-gold"
-                            : "text-white/40"
+                            : "text-white/70"
                         }
                       >
                         &gt; {row.t}
@@ -223,8 +223,8 @@ export function HeroSection() {
                       <span
                         className={
                           row.tone === "gold"
-                            ? "text-white/90"
-                            : "text-white/50"
+                            ? "text-white"
+                            : "text-white/75"
                         }
                       >
                         {row.label}
@@ -241,7 +241,7 @@ export function HeroSection() {
                 <div className="w-2 h-2 rounded-full bg-fundability-excellent animate-pulse" />
               </div>
               <div>
-                <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                <div className="text-[10px] text-white/75 font-bold uppercase tracking-wider">
                   API Health
                 </div>
                 <div className="text-xs text-white font-bold">99.9% Uptime</div>
@@ -254,7 +254,7 @@ export function HeroSection() {
                 <div className="w-3 h-3 rounded-sm bg-gold rotate-45" />
               </div>
               <div>
-                <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                <div className="text-[10px] text-white/75 font-bold uppercase tracking-wider">
                   Queue
                 </div>
                 <div className="text-xs text-white font-bold">842 Tasks</div>
