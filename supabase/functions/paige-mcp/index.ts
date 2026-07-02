@@ -4614,6 +4614,14 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_stage_automation_events: "crm.read",
   // Ship #1 Phase B — GDPR/CCPA DSR
   handle_data_subject_request: "admin.delete",
+  // Ship #2 — Scheduled Readiness Proposals (§122 two-phase)
+  list_readiness_proposals: "btf.read",
+  get_readiness_proposal: "btf.read",
+  approve_readiness_proposal: "btf.write",
+  reject_readiness_proposal: "btf.write",
+  trigger_readiness_scan_for_contact: "btf.write",
+
+
 
 };
 
