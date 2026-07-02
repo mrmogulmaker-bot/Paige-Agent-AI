@@ -17,6 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { resolveCreditDataProvider } from "./credit-data-provider.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,10 +28,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-// iSoftpull cost estimate per credit re-pull ($0.35 placeholder, wire real
-// contract price when integration lands). Tracked for per-tenant billing.
-const ISOFTPULL_UNIT_COST_USD = 0.35;
-const THROTTLE_RATE_PER_MIN = 20; // §304
+// §304 throttle for credit provider API calls
+const THROTTLE_RATE_PER_MIN = 20;
 const THROTTLE_DELAY_MS = Math.ceil(60_000 / THROTTLE_RATE_PER_MIN);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
