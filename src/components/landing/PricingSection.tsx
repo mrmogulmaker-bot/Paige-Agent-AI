@@ -229,22 +229,24 @@ export function PricingSection() {
             <h3 className="text-3xl font-bold mb-3">Your offers. Your prices. Your brand.</h3>
             <p className="text-muted-foreground">
               End-customer pricing is <span className="font-semibold">100% tenant-sovereign</span>.
-              Paige never sets or sees your retail rates. Here's what a few tenants offer today:
+              Paige never sets or sees your retail rates. Three illustrative sovereignty models:
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
             {tenantExamples.map((ex) => (
-              <Card key={ex.tenant} className="p-6 border-border">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold mb-2">
-                  {ex.tenant}
+              <Card key={ex.model} className="p-6 border-border">
+                <p className="text-xs uppercase tracking-wider text-gold-dark font-bold mb-2">
+                  {ex.model}
                 </p>
-                <h4 className="text-lg font-bold mb-1">{ex.program}</h4>
+                <h4 className="text-lg font-bold mb-1">{ex.archetype}</h4>
+                <p className="text-xs text-muted-foreground mb-3">{ex.program}</p>
                 <p className="text-3xl font-extrabold text-accent mb-2 tabular-nums">{ex.price}</p>
                 <p className="text-sm text-muted-foreground">{ex.what}</p>
               </Card>
             ))}
           </div>
+
 
           <p className="text-center text-sm text-muted-foreground mt-8 max-w-2xl mx-auto">
             Payments flow directly into your Stripe Connect account. Paige takes only its
