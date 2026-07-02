@@ -68,14 +68,17 @@ The two write paths that carry **L4 intent** (`stripe-webhook`, `check-subscript
 
 **Not a copy. In-place rename + additive columns + backfill + read-only compatibility view.**
 
+**Precedence rule (reviewer refinement #3):** If a user exists in both `tenant_members` and `clients`, classification is `tenant_member`. Staff identity takes precedence over customer identity for internal-facing subscription state. B.0 audit found **0 overlap** in current data; documented here for future user lifecycles where overlap may occur (e.g., a tenant staffer who also signs up as an end-customer of a sibling tenant). The trigger in 3.8 enforces the same precedence at INSERT time (`tenant_member` > `end_customer` > SKIP for L4/unclassified).
+
 Phase B.1 migration structure (single transaction):
 
 ```sql
--- Header: §197 + §198 + §198 Addendum Category B + §206 + §208 + §210
+-- Header: §197 + §198 + §198 Addendum Category B + §200 + §206 + §208 + §210
 -- Ship: Migration B.1 (Naming-Layer Deprecation, founding case study)
 -- Rename target: public.user_subscriptions → public.tenant_customer_trials
 -- Layer identity: L2 (subscription STATE), distinguished by subject_role (§210)
 -- No row copy. No write-freeze trigger (see Section 7).
+-- Precedence: tenant_member > end_customer > SKIP (L4/unclassified — no L2 row).
 
 BEGIN;
 
