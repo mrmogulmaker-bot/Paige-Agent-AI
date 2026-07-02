@@ -88,7 +88,7 @@ export function HeroSection() {
                 <div className="text-2xl font-bold text-white tabular-nums">
                   $1.2B+
                 </div>
-                <div className="text-xs text-white/50 uppercase tracking-widest">
+                <div className="text-xs text-white/75 uppercase tracking-widest">
                   Volume Modeled
                 </div>
               </div>
