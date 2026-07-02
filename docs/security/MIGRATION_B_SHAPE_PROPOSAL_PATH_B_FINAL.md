@@ -79,6 +79,11 @@ Phase B.1 migration structure (single transaction):
 -- Layer identity: L2 (subscription STATE), distinguished by subject_role (§210)
 -- No row copy. No write-freeze trigger (see Section 7).
 -- Precedence: tenant_member > end_customer > SKIP (L4/unclassified — no L2 row).
+-- handle_new_user is NOT modified by B.1. The rename affects only create_free_trial
+-- (trigger on public.profiles), which is the sole active source of the 19
+-- user_subscriptions rows (verified via pg_get_functiondef 2026-07-02).
+-- handle_new_user's referral+profile+user_roles+clients autocreate is orthogonal
+-- to subscription state and remains unchanged.
 
 BEGIN;
 
