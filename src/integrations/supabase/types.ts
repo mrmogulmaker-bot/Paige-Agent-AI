@@ -8957,6 +8957,104 @@ export type Database = {
           },
         ]
       }
+      paige_data_source_registry: {
+        Row: {
+          column_name: string | null
+          created_at: string
+          ecosystem_owner: string
+          external_source_label: string | null
+          field_key: string
+          id: string
+          notes: string | null
+          paige_context_eligible: boolean
+          pii_sensitive: boolean
+          realtime_enabled: boolean
+          staleness_ttl_seconds: number | null
+          surface: string
+          sync_mechanism: string
+          table_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          column_name?: string | null
+          created_at?: string
+          ecosystem_owner: string
+          external_source_label?: string | null
+          field_key: string
+          id?: string
+          notes?: string | null
+          paige_context_eligible?: boolean
+          pii_sensitive?: boolean
+          realtime_enabled?: boolean
+          staleness_ttl_seconds?: number | null
+          surface: string
+          sync_mechanism: string
+          table_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          column_name?: string | null
+          created_at?: string
+          ecosystem_owner?: string
+          external_source_label?: string | null
+          field_key?: string
+          id?: string
+          notes?: string | null
+          paige_context_eligible?: boolean
+          pii_sensitive?: boolean
+          realtime_enabled?: boolean
+          staleness_ttl_seconds?: number | null
+          surface?: string
+          sync_mechanism?: string
+          table_name?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      paige_data_source_sync_state: {
+        Row: {
+          created_at: string
+          id: string
+          last_sync_error: string | null
+          last_sync_status: string
+          last_synced_at: string
+          record_count: number | null
+          source_key: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_sync_error?: string | null
+          last_sync_status?: string
+          last_synced_at?: string
+          record_count?: number | null
+          source_key: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_sync_error?: string | null
+          last_sync_status?: string
+          last_synced_at?: string
+          record_count?: number | null
+          source_key?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_data_source_sync_state_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paige_enrichment_log: {
         Row: {
           contact_id: string | null
@@ -15877,6 +15975,32 @@ export type Database = {
           title: string
           version: number
         }[]
+      }
+      get_paige_context_fields: {
+        Args: { _surface?: string }
+        Returns: {
+          column_name: string | null
+          created_at: string
+          ecosystem_owner: string
+          external_source_label: string | null
+          field_key: string
+          id: string
+          notes: string | null
+          paige_context_eligible: boolean
+          pii_sensitive: boolean
+          realtime_enabled: boolean
+          staleness_ttl_seconds: number | null
+          surface: string
+          sync_mechanism: string
+          table_name: string | null
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "paige_data_source_registry"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       get_profile_with_pii_log: {
         Args: { _user_id: string }
