@@ -254,7 +254,7 @@ export function HeroSection() {
                 <div className="w-3 h-3 rounded-sm bg-gold rotate-45" />
               </div>
               <div>
-                <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">
+                <div className="text-[10px] text-white/75 font-bold uppercase tracking-wider">
                   Queue
                 </div>
                 <div className="text-xs text-white font-bold">842 Tasks</div>
