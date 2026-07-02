@@ -4447,10 +4447,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   me_update_business: "self.write",
   me_create_business: "self.write",
   me_log_progress_update: "self.write",
-  me_send_message_to_coach: "self.write",
-  me_list_messages: "self.read",
   me_list_tasks: "self.read",
-  me_get_phase_progress: "self.read",
   me_search_lender_products: "self.read",
   // Ship #1 Phase B — Stage Automation Rules
   list_stage_automation_rules: "admin.read",
