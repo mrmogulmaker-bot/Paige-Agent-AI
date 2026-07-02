@@ -5,6 +5,7 @@ const footerLinks = {
   product: [
     { name: "How It Works", href: "#how-paige-works" },
     { name: "What Paige Knows", href: "#what-paige-knows" },
+    { name: "For Business Owners", href: "/for-owners" },
     { name: "Pricing", href: "#pricing" },
     { name: "Dashboard", href: "/app" },
   ],
@@ -16,14 +17,15 @@ const footerLinks = {
     { name: "Broker Program", href: "/broker" },
   ],
   legal: [
-    { name: "Terms of Service", href: "/legal/terms" },
-    { name: "Privacy Policy", href: "/legal/privacy" },
+    { name: "Terms of Service", href: "/terms" },
+    { name: "Privacy Policy", href: "/privacy" },
     { name: "E-Sign Consent", href: "/legal/esign" },
     { name: "AI Disclaimer", href: "/legal/ai-disclaimer" },
   ],
 };
 
 export function Footer() {
+  const year = new Date().getFullYear();
   return (
     <footer className="bg-primary text-primary-foreground">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -31,12 +33,12 @@ export function Footer() {
           <div className="col-span-1">
             <h3 className="text-xl font-extrabold text-gold">PaigeAgent.ai</h3>
             <p className="text-sm font-semibold opacity-90 mt-2">
-              Your Personal Funding Advisor
+              A personal AI advisor for business owners.
             </p>
             <p className="text-xs opacity-70 leading-relaxed mt-3">
-              Built by Project Mogul Enterprise Inc.
+              Operated by <strong>PaigeAgent AI LLC</strong>
               <br />
-              Atlanta, Georgia
+              Wyoming, USA
             </p>
           </div>
 
@@ -76,16 +78,19 @@ export function Footer() {
             </span>
           </div>
           <p className="text-[11px] text-primary-foreground/60 leading-relaxed max-w-4xl">
-            PaigeAgent AI provides financial education and credit intelligence
-            tools. It is not a licensed financial advisor, credit repair
-            organization, or lender. Credit score projections are estimates
-            based on general FICO scoring factors. Actual results may vary.
-            Rate information is sourced from public Federal Reserve data and
-            is subject to change.
+            Paige provides financial education, credit monitoring, and business funding
+            intelligence. It is not a licensed financial advisor, credit repair organization, or
+            lender. Credit score projections are estimates based on general FICO scoring factors;
+            actual results may vary. Rate information is sourced from public Federal Reserve data
+            and is subject to change.
+          </p>
+          <p className="text-[11px] text-primary-foreground/50 leading-relaxed max-w-4xl">
+            PaigeAgent AI LLC is a Wyoming limited liability company operating under license from
+            Aedis Brands LLC, a wholly-owned subsidiary of Givalli Heritage Holdings Inc.
+            (Delaware).
           </p>
           <p className="text-sm text-center opacity-60">
-            © {new Date().getFullYear()} PaigeAgent.ai — Project Mogul
-            Enterprise Inc. All rights reserved.
+            © {year} PaigeAgent AI LLC. All rights reserved.
           </p>
         </div>
       </div>
