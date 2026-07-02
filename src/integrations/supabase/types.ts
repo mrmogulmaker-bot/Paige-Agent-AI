@@ -15677,6 +15677,7 @@ export type Database = {
         Args: { _user_id: string }
         Returns: Json
       }
+      trigger_readiness_scan_cron: { Args: never; Returns: undefined }
       unassigned_queue_for_caller: {
         Args: never
         Returns: {
