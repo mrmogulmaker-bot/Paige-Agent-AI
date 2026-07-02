@@ -83,9 +83,7 @@ serve(async (req) => {
       ["credit_alerts", admin.from("credit_alerts").delete().eq("client_id", user.id)],
       ["credit_factor_scores_user", admin.from("credit_factor_scores").delete().eq("user_id", user.id)],
       ["credit_inquiries", admin.from("credit_inquiries").delete().eq("user_id", user.id)],
-      ["dispute_outcomes", admin.from("dispute_outcomes").delete().eq("user_id", user.id)],
-      ["dispute_letters", admin.from("dispute_letters").delete().eq("user_id", user.id)],
-      ["disputes_user", admin.from("disputes").delete().eq("user_id", user.id)],
+      // [§194] dispute_outcomes / dispute_letters / disputes tables removed.
       ["funding_readiness_scores", admin.from("funding_readiness_scores").delete().eq("user_id", user.id)],
       ["funding_secured_user", admin.from("funding_secured").delete().eq("user_id", user.id)],
       ["funding_secured_client_user", admin.from("funding_secured").delete().eq("client_user_id", user.id)],
@@ -113,8 +111,7 @@ serve(async (req) => {
         ["credit_factor_scores_client", admin.from("credit_factor_scores").delete().in("client_id", linkedClientIds)],
         ["client_memory_client", admin.from("client_memory").delete().in("client_id", linkedClientIds)],
         ["extraction_quality_log_client", admin.from("extraction_quality_log").delete().in("client_id", linkedClientIds)],
-        ["dispute_outcomes_client", admin.from("dispute_outcomes").delete().in("client_id", linkedClientIds)],
-        ["disputes_client", admin.from("disputes").delete().in("client_id", linkedClientIds)],
+        // [§194] dispute_outcomes / disputes removed.
         ["funding_application_outcomes_client", admin.from("funding_application_outcomes").delete().in("client_id", linkedClientIds)],
       ] as const;
 
