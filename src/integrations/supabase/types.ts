@@ -2948,6 +2948,8 @@ export type Database = {
           onboarding_completed_at: string | null
           onboarding_stage: string | null
           onboarding_started_at: string | null
+          paige_shared_context_consent: boolean
+          paige_shared_context_consent_updated_at: string | null
           phone: string | null
           primary_business_id: string | null
           primary_offer: string | null
@@ -2995,6 +2997,8 @@ export type Database = {
           onboarding_completed_at?: string | null
           onboarding_stage?: string | null
           onboarding_started_at?: string | null
+          paige_shared_context_consent?: boolean
+          paige_shared_context_consent_updated_at?: string | null
           phone?: string | null
           primary_business_id?: string | null
           primary_offer?: string | null
@@ -3042,6 +3046,8 @@ export type Database = {
           onboarding_completed_at?: string | null
           onboarding_stage?: string | null
           onboarding_started_at?: string | null
+          paige_shared_context_consent?: boolean
+          paige_shared_context_consent_updated_at?: string | null
           phone?: string | null
           primary_business_id?: string | null
           primary_offer?: string | null
@@ -8876,6 +8882,48 @@ export type Database = {
         }
         Relationships: []
       }
+      paige_context_loads: {
+        Row: {
+          caller_role: string
+          caller_user_id: string
+          consent_state: string
+          contact_id: string | null
+          created_at: string
+          id: string
+          row_count: number
+          scope: string
+          surfaces_used: string[]
+          tenant_id: string | null
+          token_estimate: number
+        }
+        Insert: {
+          caller_role?: string
+          caller_user_id: string
+          consent_state?: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          row_count?: number
+          scope: string
+          surfaces_used?: string[]
+          tenant_id?: string | null
+          token_estimate?: number
+        }
+        Update: {
+          caller_role?: string
+          caller_user_id?: string
+          consent_state?: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          row_count?: number
+          scope?: string
+          surfaces_used?: string[]
+          tenant_id?: string | null
+          token_estimate?: number
+        }
+        Relationships: []
+      }
       paige_conversations: {
         Row: {
           body: string
@@ -8960,6 +9008,10 @@ export type Database = {
       paige_data_source_registry: {
         Row: {
           column_name: string | null
+          context_field_whitelist: string[]
+          context_max_rows: number
+          context_priority: number
+          context_scope: string
           created_at: string
           ecosystem_owner: string
           external_source_label: string | null
@@ -8977,6 +9029,10 @@ export type Database = {
         }
         Insert: {
           column_name?: string | null
+          context_field_whitelist?: string[]
+          context_max_rows?: number
+          context_priority?: number
+          context_scope?: string
           created_at?: string
           ecosystem_owner: string
           external_source_label?: string | null
@@ -8994,6 +9050,10 @@ export type Database = {
         }
         Update: {
           column_name?: string | null
+          context_field_whitelist?: string[]
+          context_max_rows?: number
+          context_priority?: number
+          context_scope?: string
           created_at?: string
           ecosystem_owner?: string
           external_source_label?: string | null
@@ -15845,6 +15905,10 @@ export type Database = {
       }
       current_user_roles: { Args: never; Returns: string[] }
       current_user_tenant_id: { Args: never; Returns: string }
+      customer_paige_activity_summary: {
+        Args: { p_days?: number }
+        Returns: Json
+      }
       default_max_businesses_for_plan: {
         Args: { _plan_slug: string }
         Returns: number
@@ -15980,6 +16044,10 @@ export type Database = {
         Args: { _surface?: string }
         Returns: {
           column_name: string | null
+          context_field_whitelist: string[]
+          context_max_rows: number
+          context_priority: number
+          context_scope: string
           created_at: string
           ecosystem_owner: string
           external_source_label: string | null
@@ -16209,6 +16277,11 @@ export type Database = {
         Args: { _tenant_id?: string; _user_id: string }
         Returns: boolean
       }
+      load_contact_context: {
+        Args: { p_contact_id: string; p_scopes?: string[] }
+        Returns: Json
+      }
+      load_self_context: { Args: never; Returns: Json }
       lookup_client_by_account_number: {
         Args: { _account_number: string }
         Returns: {
@@ -16378,6 +16451,7 @@ export type Database = {
         Args: { _application_id: string; _notes?: string }
         Returns: Json
       }
+      require_tenant_brand: { Args: { p_tenant_id: string }; Returns: Json }
       resolve_client_id_by_email: { Args: { _email: string }; Returns: string }
       revoke_platform_access: { Args: { _user_id: string }; Returns: undefined }
       scan_soft_subagents_for_tool_refs: {
