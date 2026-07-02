@@ -86,17 +86,7 @@ const About = lazyWithReload(() => import("./pages/About"));
 const ForOwners = lazyWithReload(() => import("./pages/ForOwners"));
 const Blog = lazyWithReload(() => import("./pages/Blog"));
 
-// BTF Client Workspace (white-labeled — no Paige branding in these routes)
-const WorkspaceLayout = lazyWithReload(() => import("./pages/workspace/WorkspaceLayout"));
-const WorkspaceDashboard = lazyWithReload(() => import("./pages/workspace/WorkspaceDashboard"));
-const WorkspacePhases = lazyWithReload(() => import("./pages/workspace/WorkspacePhases"));
-const WorkspaceIntake = lazyWithReload(() => import("./pages/workspace/WorkspaceIntake"));
-const WorkspaceDocuments = lazyWithReload(() => import("./pages/workspace/WorkspaceDocuments"));
-const WorkspaceMessages = lazyWithReload(() => import("./pages/workspace/WorkspaceMessages"));
-const WorkspacePayments = lazyWithReload(() => import("./pages/workspace/WorkspacePayments"));
-const WorkspaceTasks = lazyWithReload(() => import("./pages/workspace/WorkspaceTasks"));
-const WorkspaceFundingReadiness = lazyWithReload(() => import("./pages/workspace/WorkspaceFundingReadiness"));
-const WorkspaceAcceptInvite = lazyWithReload(() => import("./pages/workspace/AcceptInvite"));
+// BTF workspace surface removed — consumer /app dashboard is the single client home.
 const OnboardLayout = lazyWithReload(() => import("./pages/onboard/OnboardLayout"));
 const OnboardStep1 = lazyWithReload(() => import("./pages/onboard/Step1Welcome"));
 const OnboardStep2 = lazyWithReload(() => import("./pages/onboard/Step2Agreement"));
