@@ -12049,6 +12049,7 @@ export type Database = {
           end_customer_user_id: string | null
           event_type: string
           id: string
+          idempotency_key: string
           layer: string
           metadata: Json
           occurred_at: string
@@ -12071,6 +12072,7 @@ export type Database = {
           end_customer_user_id?: string | null
           event_type: string
           id?: string
+          idempotency_key: string
           layer: string
           metadata?: Json
           occurred_at?: string
@@ -12093,6 +12095,7 @@ export type Database = {
           end_customer_user_id?: string | null
           event_type?: string
           id?: string
+          idempotency_key?: string
           layer?: string
           metadata?: Json
           occurred_at?: string
