@@ -2227,7 +2227,7 @@ const BTF_PLANS: Record<string, { description: string; total_cents: number; line
 
 mcp.tool("create_invoice", {
   description:
-    "Create a draft invoice for a contact (optionally tied to a deal). Use payment_plan_key for BTF presets (btf_pif|btf_split|btf_getstarted). Returns invoice_id + hosted_invoice_url. Stripe Connect placeholder mode supported.",
+    "Create a draft invoice for a contact (optionally tied to a deal). Use payment_plan_key for BUILD-to-FUND presets (btf_pif|btf_split|btf_getstarted). Returns invoice_id + hosted_invoice_url. Stripe Connect placeholder mode supported.",
   inputSchema: z.object({
     contact_id: z.string(),
     deal_id: z.string().optional(),
