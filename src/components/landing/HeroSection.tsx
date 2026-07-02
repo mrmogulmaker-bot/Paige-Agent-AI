@@ -215,7 +215,7 @@ export function HeroSection() {
                         className={
                           row.tone === "gold"
                             ? "text-gold"
-                            : "text-white/40"
+                            : "text-white/70"
                         }
                       >
                         &gt; {row.t}
@@ -223,8 +223,8 @@ export function HeroSection() {
                       <span
                         className={
                           row.tone === "gold"
-                            ? "text-white/90"
-                            : "text-white/50"
+                            ? "text-white"
+                            : "text-white/75"
                         }
                       >
                         {row.label}
