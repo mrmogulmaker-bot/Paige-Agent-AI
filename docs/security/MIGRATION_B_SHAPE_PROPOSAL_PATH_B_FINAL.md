@@ -261,6 +261,48 @@ END $$;
 --   HINT:  To enable inserting into the view, provide an INSTEAD OF INSERT trigger...
 ```
 
+### 4.4.1 CHECK constraint enforcement (reviewer refinement #1)
+
+Proves the two CHECK constraints installed in 3.7 actually fire. Both tests are self-rolling-back (no rows persist).
+
+```sql
+-- P7: tct_layer_pinned_l2 must reject any non-'L2' value
+DO $$
+DECLARE bad_row_accepted boolean := false;
+BEGIN
+  BEGIN
+    INSERT INTO public.tenant_customer_trials
+      (id, user_id, plan_slug, status, layer, subject_role, tenant_id)
+    VALUES
+      (gen_random_uuid(), gen_random_uuid(), 'free', 'trial',
+       'L3', 'end_customer',
+       (SELECT id FROM public.tenants LIMIT 1));
+    bad_row_accepted := true;
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  IF bad_row_accepted THEN
+    RAISE EXCEPTION 'B.1 P7 FAIL: tct_layer_pinned_l2 CHECK did not fire';
+  END IF;
+END $$;
+
+-- P8: tct_subject_role_enum must reject any value outside the §210 enum
+DO $$
+DECLARE bad_row_accepted boolean := false;
+BEGIN
+  BEGIN
+    INSERT INTO public.tenant_customer_trials
+      (id, user_id, plan_slug, status, layer, subject_role, tenant_id)
+    VALUES
+      (gen_random_uuid(), gen_random_uuid(), 'free', 'trial',
+       'L2', 'rogue_role',
+       (SELECT id FROM public.tenants LIMIT 1));
+    bad_row_accepted := true;
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  IF bad_row_accepted THEN
+    RAISE EXCEPTION 'B.1 P8 FAIL: tct_subject_role_enum CHECK did not fire';
+  END IF;
+END $$;
+```
+
 ### 4.5 Post-commit (out of txn — reported in ship artifacts, not gated)
 
 - `SELECT * FROM public.tenant_customer_trials ORDER BY created_at;` — screenshot in ship notes.
