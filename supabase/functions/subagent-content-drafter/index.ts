@@ -52,23 +52,43 @@ Deno.serve(async (req) => {
   const contactId = input.contact_id ?? input.client_id ?? payload.context?.contact_id;
   if (!contactId) return ok({ ok: false, error: "contact_id required" }, 400);
   const channel: Channel = input.channel ?? "email";
-  const goal = input.goal ?? "follow up on next BTF milestone";
+  const goal = input.goal ?? "follow up on next milestone";
   const tone = input.tone ?? "warm";
 
   const { data: client } = await supabase
     .from("clients")
-    .select("first_name,last_name,email,entity_name,funding_goal,linked_user_id")
+    .select("first_name,last_name,email,entity_name,funding_goal,linked_user_id,tenant_id")
     .eq("id", contactId)
     .maybeSingle();
   if (!client) return ok({ ok: false, error: "Client not found" }, 404);
 
+  // Sprint C.1.6 — Loud-fail tenant branding.
+  const clientTenantId = (client as { tenant_id?: string }).tenant_id ?? null;
+  let brandName = "";
+  if (clientTenantId) {
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("name,brand")
+      .eq("id", clientTenantId)
+      .maybeSingle();
+    const brand = (tenant?.brand ?? {}) as { name?: string; sender_name?: string };
+    brandName = (brand.sender_name ?? brand.name ?? tenant?.name ?? "").trim();
+  }
+  if (!brandName) {
+    return ok({
+      ok: false,
+      error: "TENANT_SENDER_IDENTITY_NOT_CONFIGURED",
+      message: "Tenant sender identity not configured. Set tenants.brand.name before drafting tenant-branded content.",
+    }, 424);
+  }
+
   let draft = "";
   if (!LOVABLE_API_KEY) {
     // Fallback template
-    draft = `Hi ${client.first_name ?? "there"},\n\nQuick note on ${goal}. Let me know a time this week that works to talk through next steps for ${client.entity_name ?? "your business"}.\n\n— Mogul Maker Academy`;
+    draft = `Hi ${client.first_name ?? "there"},\n\nQuick note on ${goal}. Let me know a time this week that works to talk through next steps for ${client.entity_name ?? "your business"}.\n\n— ${brandName}`;
   } else {
-    const system = `You are Paige, the Mogul Maker Academy AI. Draft a ${tone} ${channel} message.
-Hard rules: never guarantee approval/funding/results; never promise to remove negatives; never use the phrase "credit repair"; no legal or tax advice; sign as "Mogul Maker Academy". Keep under 140 words for email, under 50 words for sms.
+    const system = `You are Paige, drafting a ${tone} ${channel} message on behalf of ${brandName}.
+Hard rules: never guarantee approval/funding/results; never promise to remove negatives; never use the phrase "credit repair"; no legal or tax advice; sign as "${brandName}". Keep under 140 words for email, under 50 words for sms.
 Doctrine §116 — WHEN GIVING EXAMPLES: never name another specific client, coach, admin, or customer of the platform. Use archetype phrasing only — "a client", "the contact", "their business", "a coach in your tenant". This applies even if the user explicitly names another client in their query — translate them to archetype in your response.`;
     const user = `Recipient: ${client.first_name ?? ""} ${client.last_name ?? ""}
 Business: ${client.entity_name ?? "n/a"}
@@ -92,6 +112,7 @@ Goal of message: ${goal}`;
     const j = await aiRes.json();
     draft = j?.choices?.[0]?.message?.content ?? "";
   }
+
 
   const flags = complianceScan(draft);
 

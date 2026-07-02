@@ -109,10 +109,11 @@ Deno.serve(async (req) => {
   let recipientEmail = input.recipient_email ?? "";
   let entityName = "";
   let fundingGoal = "";
+  let contactTenantId: string | null = null;
   if (contactId) {
     const { data: c } = await supabase
       .from("clients")
-      .select("first_name,last_name,email,entity_name,funding_goal")
+      .select("first_name,last_name,email,entity_name,funding_goal,tenant_id")
       .eq("id", contactId)
       .maybeSingle();
     if (c) {
@@ -120,6 +121,7 @@ Deno.serve(async (req) => {
       recipientEmail ||= c.email ?? "";
       entityName = c.entity_name ?? "";
       fundingGoal = c.funding_goal ?? "";
+      contactTenantId = (c as { tenant_id?: string }).tenant_id ?? null;
     }
   }
 
@@ -127,7 +129,33 @@ Deno.serve(async (req) => {
   const tone = ALLOWED_TONES.has(rawTone) ? rawTone : "professional";
   const length = input.length ?? "medium";
   const format = input.format ?? "html";
-  const senderName = input.sender_name ?? "Mogul Maker Academy";
+
+  // Sprint C.1.6 — Loud-fail tenant branding. No hardcoded academy fallback.
+  let senderName = (input.sender_name ?? "").trim();
+  if (!senderName) {
+    if (!contactTenantId) {
+      return ok({
+        ok: false,
+        error: "TENANT_SENDER_IDENTITY_NOT_CONFIGURED",
+        message: "Tenant sender identity not configured for this contact. Pass sender_name or link the contact to a tenant with branding set.",
+      }, 424);
+    }
+    const { data: tenant } = await supabase
+      .from("tenants")
+      .select("name,brand")
+      .eq("id", contactTenantId)
+      .maybeSingle();
+    const brand = (tenant?.brand ?? {}) as { name?: string; sender_name?: string };
+    senderName = (brand.sender_name ?? brand.name ?? tenant?.name ?? "").trim();
+    if (!senderName) {
+      return ok({
+        ok: false,
+        error: "TENANT_SENDER_IDENTITY_NOT_CONFIGURED",
+        message: "Tenant sender identity not configured. Set tenants.brand.name / brand.sender_name before composing tenant-branded email.",
+      }, 424);
+    }
+  }
+
   const senderTitle = input.sender_title ?? "";
 
   const wordBudget = length === "short" ? "60-100" : length === "long" ? "220-320" : "130-190";
