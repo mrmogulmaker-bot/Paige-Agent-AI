@@ -68,14 +68,17 @@ The two write paths that carry **L4 intent** (`stripe-webhook`, `check-subscript
 
 **Not a copy. In-place rename + additive columns + backfill + read-only compatibility view.**
 
+**Precedence rule (reviewer refinement #3):** If a user exists in both `tenant_members` and `clients`, classification is `tenant_member`. Staff identity takes precedence over customer identity for internal-facing subscription state. B.0 audit found **0 overlap** in current data; documented here for future user lifecycles where overlap may occur (e.g., a tenant staffer who also signs up as an end-customer of a sibling tenant). The trigger in 3.8 enforces the same precedence at INSERT time (`tenant_member` > `end_customer` > SKIP for L4/unclassified).
+
 Phase B.1 migration structure (single transaction):
 
 ```sql
--- Header: §197 + §198 + §198 Addendum Category B + §206 + §208 + §210
+-- Header: §197 + §198 + §198 Addendum Category B + §200 + §206 + §208 + §210
 -- Ship: Migration B.1 (Naming-Layer Deprecation, founding case study)
 -- Rename target: public.user_subscriptions → public.tenant_customer_trials
 -- Layer identity: L2 (subscription STATE), distinguished by subject_role (§210)
 -- No row copy. No write-freeze trigger (see Section 7).
+-- Precedence: tenant_member > end_customer > SKIP (L4/unclassified — no L2 row).
 
 BEGIN;
 
@@ -119,18 +122,33 @@ ALTER TABLE public.tenant_customer_trials
   ADD CONSTRAINT tct_subject_role_enum CHECK (subject_role IN
     ('end_customer','tenant_member','consumer_user','platform_admin'));
 
--- 3.8 Update handle_new_user trigger body (references by NAME, not OID)
+-- 3.8 Update handle_new_user trigger body (§200 platform-neutral, §180 search_path='')
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
-DECLARE v_tenant_id uuid;
+DECLARE
+  v_tenant_id uuid;
+  v_role      text;
 BEGIN
-  -- Resolve tenant: staff via tenant_members else default MMA tenant
+  -- Precedence: tenant_member > end_customer > NO INSERT
+  -- No hardcoded tenant fallback per §200.
+  -- L4 consumer_direct signups do NOT get an L2 row —
+  -- consumer_subscriptions is populated by the L4 checkout
+  -- flow, not by this trigger.
   SELECT tenant_id INTO v_tenant_id
     FROM public.tenant_members WHERE user_id = NEW.id LIMIT 1;
+  IF v_tenant_id IS NOT NULL THEN
+    v_role := 'tenant_member';
+  ELSE
+    SELECT tenant_id INTO v_tenant_id
+      FROM public.clients WHERE linked_user_id = NEW.id LIMIT 1;
+    IF v_tenant_id IS NOT NULL THEN
+      v_role := 'end_customer';
+    END IF;
+  END IF;
+
   IF v_tenant_id IS NULL THEN
-    SELECT id INTO v_tenant_id FROM public.tenants
-     WHERE slug = 'mma' LIMIT 1;  -- founding tenant fallback
+    RETURN NEW;  -- L4 or unclassified: no L2 row created
   END IF;
 
   INSERT INTO public.tenant_customer_trials
@@ -138,10 +156,8 @@ BEGIN
      layer, subject_role, tenant_id)
   VALUES
     (NEW.id, 'free', 'trial', now() + interval '14 days',
-     'L2',
-     CASE WHEN EXISTS(SELECT 1 FROM public.tenant_members WHERE user_id = NEW.id)
-          THEN 'tenant_member' ELSE 'end_customer' END,
-     v_tenant_id);
+     'L2', v_role, v_tenant_id);
+
   RETURN NEW;
 END $$;
 
@@ -245,6 +261,48 @@ END $$;
 --   HINT:  To enable inserting into the view, provide an INSTEAD OF INSERT trigger...
 ```
 
+### 4.4.1 CHECK constraint enforcement (reviewer refinement #1)
+
+Proves the two CHECK constraints installed in 3.7 actually fire. Both tests are self-rolling-back (no rows persist).
+
+```sql
+-- P7: tct_layer_pinned_l2 must reject any non-'L2' value
+DO $$
+DECLARE bad_row_accepted boolean := false;
+BEGIN
+  BEGIN
+    INSERT INTO public.tenant_customer_trials
+      (id, user_id, plan_slug, status, layer, subject_role, tenant_id)
+    VALUES
+      (gen_random_uuid(), gen_random_uuid(), 'free', 'trial',
+       'L3', 'end_customer',
+       (SELECT id FROM public.tenants LIMIT 1));
+    bad_row_accepted := true;
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  IF bad_row_accepted THEN
+    RAISE EXCEPTION 'B.1 P7 FAIL: tct_layer_pinned_l2 CHECK did not fire';
+  END IF;
+END $$;
+
+-- P8: tct_subject_role_enum must reject any value outside the §210 enum
+DO $$
+DECLARE bad_row_accepted boolean := false;
+BEGIN
+  BEGIN
+    INSERT INTO public.tenant_customer_trials
+      (id, user_id, plan_slug, status, layer, subject_role, tenant_id)
+    VALUES
+      (gen_random_uuid(), gen_random_uuid(), 'free', 'trial',
+       'L2', 'rogue_role',
+       (SELECT id FROM public.tenants LIMIT 1));
+    bad_row_accepted := true;
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  IF bad_row_accepted THEN
+    RAISE EXCEPTION 'B.1 P8 FAIL: tct_subject_role_enum CHECK did not fire';
+  END IF;
+END $$;
+```
+
 ### 4.5 Post-commit (out of txn — reported in ship artifacts, not gated)
 
 - `SELECT * FROM public.tenant_customer_trials ORDER BY created_at;` — screenshot in ship notes.
@@ -334,7 +392,69 @@ ALTER TABLE public.tenant_customer_trials
   DROP COLUMN IF EXISTS subject_role,
   DROP COLUMN IF EXISTS layer;
 ALTER TABLE public.tenant_customer_trials RENAME TO user_subscriptions;
--- Restore prior handle_new_user body from git (previous CREATE OR REPLACE FUNCTION)
+-- Restore prior handle_new_user body (verbatim from live DB pre-B.1, captured via
+-- pg_get_functiondef on 2026-07-02). Self-contained; no external state reference.
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+declare
+  v_ref_code  text;
+  v_full_name text;
+  v_first     text;
+  v_last      text;
+  v_owner_id  uuid;
+begin
+  v_ref_code := nullif(upper(trim(new.raw_user_meta_data->>'referral_code')), '');
+  v_full_name := coalesce(new.raw_user_meta_data->>'full_name', '');
+
+  insert into public.profiles (user_id, full_name, referral_code)
+  values (new.id, nullif(v_full_name, ''), v_ref_code);
+
+  insert into public.user_roles (user_id, role)
+  values (new.id, 'user');
+
+  -- Auto-create CRM contact for every new signup (skip admins; there are none at insert time anyway).
+  v_first := coalesce(nullif(split_part(v_full_name, ' ', 1), ''), split_part(coalesce(new.email, ''), '@', 1));
+  v_last  := coalesce(nullif(substring(v_full_name from position(' ' in v_full_name) + 1), ''), '');
+
+  -- Owner of the platform owns auto-created contacts so admins can see them
+  select u.id into v_owner_id
+  from auth.users u
+  join public.app_settings_owner o on lower(u.email) = lower(o.owner_email)
+  limit 1;
+
+  if v_owner_id is null then
+    v_owner_id := new.id; -- fallback so NOT NULL constraint holds
+  end if;
+
+  begin
+    insert into public.clients (
+      created_by, first_name, last_name, email, linked_user_id,
+      lifecycle_stage, source, status
+    ) values (
+      v_owner_id,
+      coalesce(nullif(v_first, ''), 'New'),
+      v_last,
+      new.email,
+      new.id,
+      'lead',
+      'signup',
+      'active'
+    );
+  exception when others then
+    raise warning 'handle_new_user: client autocreate failed: %', sqlerrm;
+  end;
+
+  return new;
+end;
+$function$;
+
+-- Note: pre-B.1 handle_new_user did NOT touch user_subscriptions. The B.1 trigger's
+-- INSERT into tenant_customer_trials is new behavior introduced by B.1; rollback
+-- removes that behavior alongside the rename.
 COMMIT;
 ```
 
