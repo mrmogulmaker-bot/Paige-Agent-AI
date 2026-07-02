@@ -1,5 +1,13 @@
 name: Security Audit
 
+# Fails the build on any new high/critical severity vulnerability in
+# production dependencies. Kept strict on purpose — see security-memory.
+#
+# NOTE: this project's canonical lockfile is `bun.lockb`, which `npm audit`
+# cannot read. We synthesize a temporary `package-lock.json` from
+# `package.json` (respecting `overrides`) purely for auditing. The generated
+# lockfile is never committed.
+
 on:
   pull_request:
     branches: [main, master]
@@ -18,5 +26,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Run npm audit
-        run: npm audit --audit-level=high
+      - name: Generate npm lockfile for audit
+        # --package-lock-only: don't touch node_modules
+        # --ignore-scripts: no lifecycle scripts, defense-in-depth
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Run npm audit (production deps only, high+)
+        # Dev-only vulns (vitest/vite/eslint toolchain) don't reach the
+        # published bundle and are tracked separately. We keep prod strict.
+        run: npm audit --omit=dev --audit-level=high
