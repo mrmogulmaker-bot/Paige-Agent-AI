@@ -283,14 +283,13 @@ async function runTenantScan(payload: ScanPayload) {
     }
   }
 
-  const costTotal = isoftpullCalls * ISOFTPULL_UNIT_COST_USD;
   await admin.rpc("increment_readiness_scan_counters", {
     _run_id: run.id,
     _contacts_scanned: contactsScanned,
     _proposals_generated: proposalsGenerated,
     _proposals_insufficient_data: proposalsInsufficient,
-    _isoftpull_calls: isoftpullCalls,
-    _cost_usd: costTotal,
+    _credit_provider_calls: creditProviderCalls,
+    _credit_provider_cost_usd: creditProviderCostUsd,
   });
   await admin
     .from("paige_readiness_scan_runs")
@@ -308,8 +307,8 @@ async function runTenantScan(payload: ScanPayload) {
     contacts_scanned: contactsScanned,
     proposals_generated: proposalsGenerated,
     proposals_insufficient_data: proposalsInsufficient,
-    isoftpull_calls: isoftpullCalls,
-    cost_usd_total: costTotal,
+    credit_provider_calls_count: creditProviderCalls,
+    credit_provider_cost_usd: creditProviderCostUsd,
     errors: errors.length,
   };
 }
