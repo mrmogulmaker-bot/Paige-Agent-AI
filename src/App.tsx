@@ -209,7 +209,7 @@ const App = () => (
             <Route path="/workspace/accept-invite" element={<Navigate to={`/accept-invite${window.location.search}`} replace />} />
             <Route path="/workspace/*" element={<Navigate to="/app" replace />} />
 
-            {/* BTF Onboarding Wizard — admin-triggered, magic-link entry */}
+            {/* Client program onboarding wizard — admin-triggered, magic-link entry */}
             <Route path="/onboard" element={<PageSuspense><OnboardLayout /></PageSuspense>}>
               <Route index element={<PageSuspense><OnboardStep1 /></PageSuspense>} />
               <Route path="welcome" element={<PageSuspense><OnboardStep1 /></PageSuspense>} />
