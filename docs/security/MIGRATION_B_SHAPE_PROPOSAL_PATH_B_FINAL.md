@@ -46,7 +46,7 @@ Reproduced from `MIGRATION_B_SHAPE_PROPOSAL.md` §1 + B.0 audit; unchanged since
 | ADD COLUMN | `tenant_id uuid NOT NULL REFERENCES public.tenants(id)` | backfilled pre-constraint |
 | RENAME POLICY | scoped policies retained under new table name (Postgres auto) | verified during self-test |
 | CREATE VIEW | `public.user_subscriptions` selecting original 10 columns from `tenant_customer_trials` | read-only, no INSTEAD OF |
-| UPDATE FUNCTION BODY | `public.handle_new_user()` → insert into `tenant_customer_trials` with new columns | trigger follows by OID, body references by name |
+| UPDATE FUNCTION BODY | `public.create_free_trial()` (trigger on `public.profiles`) → insert into `tenant_customer_trials` with new columns | sole active writer of the 19 rows; `handle_new_user` untouched |
 
 No column is dropped or retyped in B.1. All additive.
 
@@ -79,6 +79,11 @@ Phase B.1 migration structure (single transaction):
 -- Layer identity: L2 (subscription STATE), distinguished by subject_role (§210)
 -- No row copy. No write-freeze trigger (see Section 7).
 -- Precedence: tenant_member > end_customer > SKIP (L4/unclassified — no L2 row).
+-- handle_new_user is NOT modified by B.1. The rename affects only create_free_trial
+-- (trigger on public.profiles), which is the sole active source of the 19
+-- user_subscriptions rows (verified via pg_get_functiondef 2026-07-02).
+-- handle_new_user's referral+profile+user_roles+clients autocreate is orthogonal
+-- to subscription state and remains unchanged.
 
 BEGIN;
 
