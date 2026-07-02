@@ -7,8 +7,7 @@
 //            list_deals, move_deal_stage, create_deal, list_tasks, create_task, complete_task
 //  Workflows (5): list_workflows, run_workflow*, get_workflow_run,
 //                 list_pending_approvals, decide_pending_approval*
-//  BTF (6): list_btf_clients, get_btf_workspace, list_btf_phase_items,
-//           update_btf_phase_item*, list_btf_document_requests, send_btf_message*
+//  (retired workspace tools consolidated into program_* canonical surface — Sprint 211.b)
 //  Admin (6): list_team_members, assign_coach*, create_team_invitation*,
 //             list_unassigned_queue, list_admin_notifications, create_admin_notification
 //  Destructive tools marked * carry annotations.destructiveHint=true so MCP hosts
@@ -458,7 +457,7 @@ mcp.tool("create_task", {
     description: z.string().optional(),
     deal_id: z.string().optional(),
     due_date: z.string().optional().describe("ISO timestamp."),
-    track: z.string().optional().describe("Free-form bucket, e.g. 'sales', 'cs', 'btf', 'BUILD'."),
+    track: z.string().optional().describe("Free-form bucket, e.g. 'sales', 'cs', 'build-to-fund', 'BUILD'."),
     status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }),
@@ -575,7 +574,7 @@ mcp.tool("delete_task", {
 // ---------- Workflows ----------
 mcp.tool("list_workflows", {
   description:
-    "List Paige workflows from paige_workflow_registry. Filter by category (e.g. 'sales', 'cs', 'btf', 'compliance') or active state.",
+    "List Paige workflows from paige_workflow_registry. Filter by category (e.g. 'sales', 'cs', 'build-to-fund', 'compliance') or active state.",
   inputSchema: z.object({
     category: z.string().optional(),
     only_active: z.boolean().optional(),
@@ -882,141 +881,7 @@ mcp.tool("list_approval_comments", {
   },
 });
 
-// ---------- BTF Workspace ----------
-mcp.tool("list_btf_clients", {
-  description:
-    "List Build-to-Fund clients with current phase + last activity. NOTE: this reads `btf_workspace_settings` — only clients with a BTF workspace row appear here. If empty, the contact may exist in `clients` but has no BTF workspace yet — use `list_contacts` / `search_contacts` instead, or call `create_contact` to add them. Valid phase enum values: 'build', 'stack', 'fund', 'complete'.",
-  inputSchema: z.object({
-    phase: z.enum(["build", "stack", "fund", "complete"]).optional()
-      .describe("BTF phase: build | stack | fund | complete"),
-    limit: z.number().int().optional(),
-  }),
-  handler: async (args) => {
-    const limit = Math.min(Math.max(args.limit ?? 25, 1), 100);
-    let q = admin
-      .from("btf_workspace_settings")
-      .select("id, client_id, current_phase, mma_os_btf_deal_id, intake_submitted_at, portal_first_login_at, last_activity_at, updated_at")
-      .order("updated_at", { ascending: false })
-      .limit(limit);
-    if (args.phase) q = q.eq("current_phase", args.phase);
-    const { data, error } = await q;
-    if (error) return err(error.message);
-    return ok({ items: data ?? [], hint: (data?.length ?? 0) === 0 ? "No BTF workspaces found. Try `list_contacts` / `search_contacts` for the full client/lead roster, or `create_contact` to add a new one." : undefined });
-  },
-});
-
-
-mcp.tool("get_btf_workspace", {
-  description: "Fetch the BTF workspace_settings + phase summary for one client.",
-  inputSchema: z.object({ client_id: z.string() }),
-  handler: async ({ client_id }) => {
-    const [{ data: ws, error: wsErr }, { data: items }] = await Promise.all([
-      admin.from("btf_workspace_settings").select("*").eq("client_id", client_id).maybeSingle(),
-      admin
-        .from("btf_phase_items")
-        .select("id, phase, item_key, title, status, due_at, sort_order")
-        .eq("client_id", client_id)
-        .order("sort_order", { ascending: true }),
-    ]);
-    if (wsErr) return err(wsErr.message);
-    if (!ws) return err("workspace_not_found");
-    return ok({ workspace: ws, items: items ?? [] });
-  },
-});
-
-mcp.tool("list_btf_phase_items", {
-  description: "List BTF phase items for a client, optionally scoped to a phase.",
-  inputSchema: z.object({
-    client_id: z.string(),
-    phase: z.string().optional(),
-  }),
-  handler: async ({ client_id, phase }) => {
-    let q = admin
-      .from("btf_phase_items")
-      .select("id, phase, item_key, title, description, status, assigned_to, due_at, sort_order, completed_at")
-      .eq("client_id", client_id)
-      .order("sort_order", { ascending: true });
-    if (phase) q = q.eq("phase", phase);
-    const { data, error } = await q;
-    if (error) return err(error.message);
-    return ok({ items: data ?? [] });
-  },
-});
-
-mcp.tool("update_btf_phase_item", {
-  description: "Update a BTF phase item's status, due date, or notes. Use to mark items in_progress/done from automation.",
-  inputSchema: z.object({
-    item_id: z.string(),
-    status: z.string().optional().describe("not_started | in_progress | blocked | done"),
-    notes: z.string().optional(),
-    due_at: z.string().optional().describe("ISO timestamp"),
-  }),
-  annotations: { destructiveHint: true },
-  handler: async (args) => {
-    const patch: Record<string, unknown> = {};
-    if (args.status) {
-      patch.status = args.status;
-      if (args.status === "done") patch.completed_at = new Date().toISOString();
-    }
-    if (args.notes !== undefined) patch.notes = args.notes;
-    if (args.due_at !== undefined) patch.due_at = args.due_at;
-    const { data, error } = await admin
-      .from("btf_phase_items")
-      .update(patch)
-      .eq("id", args.item_id)
-      .select("id, status")
-      .maybeSingle();
-    if (error) return err(error.message);
-    if (!data) return err("item_not_found");
-    await audit("update_btf_phase_item", "btf_phase_item", args.item_id, patch);
-    return ok({ ok: true, item_id: args.item_id, status: data.status });
-  },
-});
-
-mcp.tool("list_btf_document_requests", {
-  description: "List document requests/uploads for a BTF client.",
-  inputSchema: z.object({
-    client_id: z.string(),
-    status: z.string().optional().describe("requested | uploaded | approved | rejected"),
-  }),
-  handler: async ({ client_id, status }) => {
-    let q = admin
-      .from("btf_document_requests")
-      .select("id, title, status, file_name, file_size, requested_at, uploaded_at, approved_at, rejection_reason")
-      .eq("client_id", client_id)
-      .order("requested_at", { ascending: false });
-    if (status) q = q.eq("status", status);
-    const { data, error } = await q;
-    if (error) return err(error.message);
-    return ok({ items: data ?? [] });
-  },
-});
-
-mcp.tool("send_btf_message", {
-  description: "Post a message to a BTF client's workspace coach thread. sender_type='coach' by default.",
-  inputSchema: z.object({
-    client_id: z.string(),
-    body: z.string(),
-    sender_type: z.enum(["coach", "system"]).optional(),
-    pinned: z.boolean().optional(),
-  }),
-  annotations: { destructiveHint: true },
-  handler: async (args) => {
-    const { data, error } = await admin
-      .from("btf_messages")
-      .insert({
-        client_id: args.client_id,
-        sender_type: args.sender_type ?? "coach",
-        body: args.body.slice(0, 8000),
-        pinned: args.pinned ?? false,
-      })
-      .select("id")
-      .single();
-    if (error) return err(error.message);
-    await audit("send_btf_message", "btf_message", data.id, { client_id: args.client_id });
-    return ok({ ok: true, message_id: data.id });
-  },
-});
+// ---------- (BTF Workspace tools removed — Sprint 211.b: tables consolidated into program_* canonical surface) ----------
 
 // ---------- Admin ----------
 mcp.tool("list_team_members", {
@@ -1914,7 +1779,7 @@ mcp.tool("update_lifecycle_stage", {
 });
 
 
-// ---------- Read-only BTF / agreements / payments ----------
+// ---------- Read-only BUILD-to-FUND / agreements / payments ----------
 mcp.tool("list_signed_agreements", {
   description: "List signed service agreements in the caller's tenant (paige_signed_agreements). Paginated.",
   inputSchema: z.object({
@@ -1947,7 +1812,7 @@ mcp.tool("list_signed_agreements", {
 });
 
 mcp.tool("list_intake_submissions", {
-  description: "List BTF intake submissions (paige_client_intake_submissions). Filter by contact or status.",
+  description: "List BUILD-to-FUND intake submissions (paige_client_intake_submissions). Filter by contact or status.",
   inputSchema: z.object({
     contact_id: z.string().optional(),
     status: z.enum(["in_progress", "submitted", "all"]).optional(),
@@ -2362,7 +2227,7 @@ const BTF_PLANS: Record<string, { description: string; total_cents: number; line
 
 mcp.tool("create_invoice", {
   description:
-    "Create a draft invoice for a contact (optionally tied to a deal). Use payment_plan_key for BTF presets (btf_pif|btf_split|btf_getstarted). Returns invoice_id + hosted_invoice_url. Stripe Connect placeholder mode supported.",
+    "Create a draft invoice for a contact (optionally tied to a deal). Use payment_plan_key for BUILD-to-FUND presets (btf_pif|btf_split|btf_getstarted). Returns invoice_id + hosted_invoice_url. Stripe Connect placeholder mode supported.",
   inputSchema: z.object({
     contact_id: z.string(),
     deal_id: z.string().optional(),
@@ -3163,7 +3028,7 @@ mcp.tool("compose_email", {
     length: z.enum(["short","medium","long"]).optional().describe("Default: medium."),
     cta: z.string().optional().describe("Desired call-to-action, e.g. 'book a 15-min call'."),
     subject_hint: z.string().optional(),
-    sender_name: z.string().optional().describe("Signature line. Defaults to 'Mogul Maker Academy'."),
+    sender_name: z.string().optional().describe("Signature line. Defaults to the configured sender name."),
     sender_title: z.string().optional(),
     format: z.enum(["html","plain"]).optional(),
   }),
@@ -4111,55 +3976,15 @@ mcp.tool("me_log_progress_update", {
     const { data: cur } = await admin.from("clients").select("current_notes").eq("id", me.id).maybeSingle();
     const next = [cur?.current_notes ?? "", line].filter(Boolean).join("\n\n");
     await admin.from("clients").update({ current_notes: next }).eq("id", me.id);
-    await admin.from("btf_messages").insert({
-      client_id: me.id,
-      sender_type: "client",
-      sender_id: a.user_id,
-      body: update,
-    });
+    // NOTE: coach-thread messaging leg deferred — restore via program_messages integration
+    // in a discrete feature-restore ship. current_notes append above remains live.
     await audit("me_log_progress_update", "contact", me.id, { length: update.length });
     return ok({ logged: true });
   },
 });
 
-mcp.tool("me_send_message_to_coach", {
-  description: "Send a message to the calling user's assigned coach in the BTF workspace thread. The coach receives it in their inbox.",
-  inputSchema: z.object({
-    body: z.string(),
-  }),
-  handler: async ({ body }) => {
-    const a = currentActor();
-    const me = await actorClient();
-    if (!me || !a.user_id) return err("no_linked_client_record");
-    const { data, error } = await admin.from("btf_messages").insert({
-      client_id: me.id,
-      sender_type: "client",
-      sender_id: a.user_id,
-      body,
-    }).select("id").single();
-    if (error) return err(error.message);
-    await audit("me_send_message_to_coach", "contact", me.id, { message_id: data.id });
-    return ok({ message_id: data.id });
-  },
-});
+// (me_send_message_to_coach, me_list_messages removed — Sprint 211.b: btf_messages consolidated into program_messages canonical surface; restore via program_messages integration in a discrete feature-restore ship)
 
-mcp.tool("me_list_messages", {
-  description: "List recent messages in the calling user's BTF workspace thread (both their own messages and replies from their coach).",
-  inputSchema: z.object({ limit: z.number().int().optional() }),
-  handler: async ({ limit }) => {
-    const me = await actorClient();
-    if (!me) return err("no_linked_client_record");
-    const lim = Math.min(Math.max(limit ?? 30, 1), 100);
-    const { data, error } = await admin
-      .from("btf_messages")
-      .select("id, sender_type, body, created_at, read_at")
-      .eq("client_id", me.id)
-      .order("created_at", { ascending: false })
-      .limit(lim);
-    if (error) return err(error.message);
-    return ok({ items: data ?? [] });
-  },
-});
 
 mcp.tool("me_list_tasks", {
   description: "List tasks assigned to or created for the calling user (tasks where user_id = caller). Optionally filter by status.",
@@ -4183,21 +4008,8 @@ mcp.tool("me_list_tasks", {
   },
 });
 
-mcp.tool("me_get_phase_progress", {
-  description: "Get the calling user's BTF (Build · Tradelines · Funding) journey progress: which phase items are completed, in progress, or pending.",
-  inputSchema: z.object({}),
-  handler: async () => {
-    const me = await actorClient();
-    if (!me) return err("no_linked_client_record");
-    const { data, error } = await admin
-      .from("btf_phase_items")
-      .select("id, phase, item_key, title, status, completed_at, sort_order")
-      .eq("client_id", me.id)
-      .order("sort_order", { ascending: true });
-    if (error) return err(error.message);
-    return ok({ items: data ?? [] });
-  },
-});
+// (me_get_phase_progress removed — Sprint 211.b: btf_phase_items consolidated into program_* canonical surface)
+
 
 mcp.tool("me_search_lender_products", {
   description: "Search the lender product catalog (public marketplace). Returns lender name, product type, min/max amount, rate range, requirements. Use when the user asks what funding options they qualify for or wants to research products.",
@@ -4566,9 +4378,6 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_pending_approvals: "crm.read", decide_pending_approval: "workflows.run",
   create_approval: "crm.write", claim_approval: "crm.write",
   comment_on_approval: "crm.write", list_approval_comments: "crm.read",
-  // BTF
-  list_btf_clients: "btf.read", get_btf_workspace: "btf.read", list_btf_phase_items: "btf.read",
-  update_btf_phase_item: "btf.write", list_btf_document_requests: "btf.read", send_btf_message: "btf.write",
   // Admin (operator)
   list_team_members: "admin.read", assign_coach: "admin.write", create_team_invitation: "admin.write",
   list_unassigned_queue: "admin.read", list_admin_notifications: "admin.read", create_admin_notification: "admin.write",
@@ -4638,10 +4447,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   me_update_business: "self.write",
   me_create_business: "self.write",
   me_log_progress_update: "self.write",
-  me_send_message_to_coach: "self.write",
-  me_list_messages: "self.read",
   me_list_tasks: "self.read",
-  me_get_phase_progress: "self.read",
   me_search_lender_products: "self.read",
   // Ship #1 Phase B — Stage Automation Rules
   list_stage_automation_rules: "admin.read",
