@@ -34,22 +34,22 @@ const LEGACY_PATH_ALIASES: Record<string, string> = {
   "/onboard/sign": "/onboard/agreement",
   "/onboard/contract": "/onboard/agreement",
   "/onboard/terms": "/onboard/agreement",
-  "/onboard/pay": "/workspace",
-  "/onboard/payment": "/workspace",
-  "/onboard/checkout": "/workspace",
-  "/onboard/billing": "/workspace",
-  "/onboard/form": "/workspace",
-  "/onboard/intake": "/workspace",
-  "/onboard/questionnaire": "/workspace",
-  "/onboard/profile": "/workspace",
-  "/onboard/upload": "/workspace",
-  "/onboard/documents": "/workspace",
-  "/onboard/docs": "/workspace",
-  "/onboard/files": "/workspace",
-  "/onboard/complete": "/workspace",
-  "/onboard/done": "/workspace",
-  "/onboard/finish": "/workspace",
-  "/onboard/success": "/workspace",
+  "/onboard/pay": "/app",
+  "/onboard/payment": "/app",
+  "/onboard/checkout": "/app",
+  "/onboard/billing": "/app",
+  "/onboard/form": "/app",
+  "/onboard/intake": "/app",
+  "/onboard/questionnaire": "/app",
+  "/onboard/profile": "/app",
+  "/onboard/upload": "/app",
+  "/onboard/documents": "/app",
+  "/onboard/docs": "/app",
+  "/onboard/files": "/app",
+  "/onboard/complete": "/app",
+  "/onboard/done": "/app",
+  "/onboard/finish": "/app",
+  "/onboard/success": "/app",
 };
 
 
@@ -78,7 +78,7 @@ export default function OnboardLayout() {
 
     // Anything past agreement belongs in the workspace, not /onboard/*.
     if (POST_AGREEMENT_STAGES.has(stage)) {
-      navigate("/workspace", { replace: true });
+      navigate("/app", { replace: true });
       return;
     }
 

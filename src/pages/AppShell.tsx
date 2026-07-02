@@ -200,7 +200,7 @@ const AppShell = () => {
   }, [user?.id, queryClient]);
 
   // Role-based landing redirect: admins/coaches → /admin, brokers → /broker/app,
-  // BTF workspace clients → /workspace. Honors ?stay=1 (or the
+  // BTF workspace clients → /app. Honors ?stay=1 (or the
   // paige_stay_in_client_view sessionStorage flag set by AdminLayout's
   // "preview as client" toggle) so internal users can opt into the client view.
   const [redirectingStaff, setRedirectingStaff] = useState(false);
