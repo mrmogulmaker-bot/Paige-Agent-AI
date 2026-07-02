@@ -1,7 +1,9 @@
 # Migration B.0 — Row-Level Layer Classification Audit (Preflight)
 
-**Date:** 2026-07-02
+**Date:** 2026-07-02 (revised same day)
 **Target legacy table:** `public.user_subscriptions`
+
+> **REVISION NOTE (post §210 codification):** The initial draft of this audit classified the 15 end-customer rows as `L3_tenant_passthrough_trial`. That was wrong under §210 (see `DOCTRINE_210_L2_L3_SCOPE_BOUNDARIES.md`): subscription **state** is L2 regardless of delivery passthrough; only metering **events** are L3. All 19 rows are now correctly classified as **L2** distinguished by `subject_role` (`end_customer` × 15, `tenant_member` × 4). Path B still holds structurally; rename target updated to `tenant_customer_trials`. Section 0.2 / 0.4 / draft Sections 3–9 read in the reclassified terms below.
 **Discipline invoked:** §198 Addendum (row-level classification) + §208 (verified state)
 **Status:** ✅ Preflight complete. Path B recommended.
 
