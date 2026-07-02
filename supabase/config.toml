@@ -171,3 +171,6 @@ project_id = "bfmyebsjyuoecmjskqhs"
 
   [functions.platform-independence-sweep]
     verify_jwt = false
+
+  [functions.paige-context-router]
+    verify_jwt = true
