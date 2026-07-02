@@ -4378,9 +4378,6 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_pending_approvals: "crm.read", decide_pending_approval: "workflows.run",
   create_approval: "crm.write", claim_approval: "crm.write",
   comment_on_approval: "crm.write", list_approval_comments: "crm.read",
-  // BTF
-  list_btf_clients: "btf.read", get_btf_workspace: "btf.read", list_btf_phase_items: "btf.read",
-  update_btf_phase_item: "btf.write", list_btf_document_requests: "btf.read", send_btf_message: "btf.write",
   // Admin (operator)
   list_team_members: "admin.read", assign_coach: "admin.write", create_team_invitation: "admin.write",
   list_unassigned_queue: "admin.read", list_admin_notifications: "admin.read", create_admin_notification: "admin.write",
