@@ -43,7 +43,7 @@
     "@radix-ui/react-toggle-group": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.7",
     "@sentry/react": "^10.62.0",
-    "@supabase/supabase-js": "^2.75.0",
+    "@supabase/supabase-js": "^2.110.0",
     "@tanstack/react-query": "^5.83.0",
     "@vitest/ui": "^4.1.9",
     "class-variance-authority": "^0.7.1",
@@ -101,13 +101,15 @@
     "esbuild": "^0.25.10",
     "picomatch": "^4.0.3",
     "rollup": "^4.52.4",
-    "launch-editor": "^2.11.2"
+    "launch-editor": "^2.11.2",
+    "ws": "^8.18.4"
   },
   "resolutions": {
     "esbuild": "^0.25.10",
     "picomatch": "^4.0.3",
     "rollup": "^4.52.4",
-    "launch-editor": "^2.11.2"
+    "launch-editor": "^2.11.2",
+    "ws": "^8.18.4"
   }
-}
 
+}
