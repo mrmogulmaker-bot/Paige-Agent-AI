@@ -100,7 +100,7 @@ export default function FieldIngestionTab() {
             if (s.bureau === "EQ") patch.estimated_fico_eq = s.score;
           }
           if (Object.keys(patch).length) {
-            await supabase.from("profiles").update(patch).eq("user_id", cli.linked_user_id);
+            await supabase.from("profiles").update(patch as any).eq("user_id", cli.linked_user_id);
           }
         }
         const summary = (payload.scores ?? [])
