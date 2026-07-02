@@ -425,7 +425,7 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
               .limit(3),
             supabase
               .from("profiles")
-              .select("street_address, city, state, zip_code, phone_number, email")
+              .select("street_address:address, city, state, zip_code:postal_code, phone")
               .eq("user_id", resolvedUserId)
               .maybeSingle(),
           ]);
@@ -479,8 +479,8 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
                 personalCity: (ownerProfile as any)?.city ?? null,
                 personalState: (ownerProfile as any)?.state ?? null,
                 personalZip: (ownerProfile as any)?.zip_code ?? null,
-                personalPhone: (ownerProfile as any)?.phone_number ?? null,
-                personalEmail: (ownerProfile as any)?.email ?? null,
+                personalPhone: (ownerProfile as any)?.phone ?? null,
+                personalEmail: null,
                 businessName: biz.legal_name,
                 businessStreetAddress: biz.business_street_address,
                 businessCity: biz.business_city,
