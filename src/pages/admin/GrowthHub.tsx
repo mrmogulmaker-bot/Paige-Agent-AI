@@ -229,7 +229,7 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
           ) : (
             <div className="space-y-2">
               {sources.map((s) => {
-                const webhookUrl = `${inboundBase}/${s.webhook_token}`;
+                const webhookUrl = s.webhook_token ? `${inboundBase}/${s.webhook_token}` : `${inboundBase}/[token hidden — regenerate to view]`;
                 return (
                   <Card key={s.id}>
                     <CardContent className="p-3 text-xs space-y-2">
