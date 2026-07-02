@@ -12042,57 +12042,79 @@ export type Database = {
       }
       platform_metered_events: {
         Row: {
+          consumer_subscription_id: string | null
+          consumer_user_id: string | null
           created_at: string
           end_customer_contact_id: string | null
           end_customer_user_id: string | null
           event_type: string
           id: string
+          layer: string
           metadata: Json
           occurred_at: string
           provider: string | null
           quantity: number
           reconciliation_id: string | null
           service_category: string
+          subject_id: string
+          subject_type: string
           tenant_billing_method: string | null
-          tenant_id: string
+          tenant_id: string | null
           tenant_retail_charge_usd: number | null
           wholesale_cost_usd: number
         }
         Insert: {
+          consumer_subscription_id?: string | null
+          consumer_user_id?: string | null
           created_at?: string
           end_customer_contact_id?: string | null
           end_customer_user_id?: string | null
           event_type: string
           id?: string
+          layer: string
           metadata?: Json
           occurred_at?: string
           provider?: string | null
           quantity?: number
           reconciliation_id?: string | null
           service_category: string
+          subject_id: string
+          subject_type: string
           tenant_billing_method?: string | null
-          tenant_id: string
+          tenant_id?: string | null
           tenant_retail_charge_usd?: number | null
           wholesale_cost_usd?: number
         }
         Update: {
+          consumer_subscription_id?: string | null
+          consumer_user_id?: string | null
           created_at?: string
           end_customer_contact_id?: string | null
           end_customer_user_id?: string | null
           event_type?: string
           id?: string
+          layer?: string
           metadata?: Json
           occurred_at?: string
           provider?: string | null
           quantity?: number
           reconciliation_id?: string | null
           service_category?: string
+          subject_id?: string
+          subject_type?: string
           tenant_billing_method?: string | null
-          tenant_id?: string
+          tenant_id?: string | null
           tenant_retail_charge_usd?: number | null
           wholesale_cost_usd?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "platform_metered_events_consumer_subscription_id_fkey"
+            columns: ["consumer_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "consumer_subscriptions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "platform_metered_events_end_customer_contact_id_fkey"
             columns: ["end_customer_contact_id"]
@@ -12133,6 +12155,8 @@ export type Database = {
       platform_metered_events_dead_letter: {
         Row: {
           attempt_count: number
+          consumer_subscription_id: string | null
+          consumer_user_id: string | null
           created_at: string
           error_class: string | null
           error_message: string | null
@@ -12141,11 +12165,14 @@ export type Database = {
           id: string
           idempotency_key: string
           last_failed_at: string
+          layer: string | null
           next_retry_at: string
           payload: Json
           quantity: number
           resolved_at: string | null
           status: string
+          subject_id: string | null
+          subject_type: string | null
           tenant_id: string | null
           unit_amount_cents: number
           updated_at: string
@@ -12153,6 +12180,8 @@ export type Database = {
         }
         Insert: {
           attempt_count?: number
+          consumer_subscription_id?: string | null
+          consumer_user_id?: string | null
           created_at?: string
           error_class?: string | null
           error_message?: string | null
@@ -12161,11 +12190,14 @@ export type Database = {
           id?: string
           idempotency_key: string
           last_failed_at?: string
+          layer?: string | null
           next_retry_at?: string
           payload?: Json
           quantity?: number
           resolved_at?: string | null
           status?: string
+          subject_id?: string | null
+          subject_type?: string | null
           tenant_id?: string | null
           unit_amount_cents?: number
           updated_at?: string
@@ -12173,6 +12205,8 @@ export type Database = {
         }
         Update: {
           attempt_count?: number
+          consumer_subscription_id?: string | null
+          consumer_user_id?: string | null
           created_at?: string
           error_class?: string | null
           error_message?: string | null
@@ -12181,11 +12215,14 @@ export type Database = {
           id?: string
           idempotency_key?: string
           last_failed_at?: string
+          layer?: string | null
           next_retry_at?: string
           payload?: Json
           quantity?: number
           resolved_at?: string | null
           status?: string
+          subject_id?: string | null
+          subject_type?: string | null
           tenant_id?: string | null
           unit_amount_cents?: number
           updated_at?: string
