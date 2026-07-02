@@ -4008,21 +4008,8 @@ mcp.tool("me_list_tasks", {
   },
 });
 
-mcp.tool("me_get_phase_progress", {
-  description: "Get the calling user's BTF (Build · Tradelines · Funding) journey progress: which phase items are completed, in progress, or pending.",
-  inputSchema: z.object({}),
-  handler: async () => {
-    const me = await actorClient();
-    if (!me) return err("no_linked_client_record");
-    const { data, error } = await admin
-      .from("btf_phase_items")
-      .select("id, phase, item_key, title, status, completed_at, sort_order")
-      .eq("client_id", me.id)
-      .order("sort_order", { ascending: true });
-    if (error) return err(error.message);
-    return ok({ items: data ?? [] });
-  },
-});
+// (me_get_phase_progress removed — Sprint 211.b: btf_phase_items consolidated into program_* canonical surface)
+
 
 mcp.tool("me_search_lender_products", {
   description: "Search the lender product catalog (public marketplace). Returns lender name, product type, min/max amount, rate range, requirements. Use when the user asks what funding options they qualify for or wants to research products.",
