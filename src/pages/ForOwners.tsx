@@ -168,6 +168,12 @@ export default function ForOwners() {
             watches your credit, matches you to funding you can actually get, and helps you make
             smarter money moves every week.
           </p>
+          <p className="text-sm text-muted-foreground mt-4">
+            Standalone credit monitoring alone (MyFICO Advanced, IdentityIQ Max, SmartCredit
+            Premium) runs around <strong>$29.95/mo</strong> — for just the scores.{" "}
+            <strong>Paige Founder is $27</strong> and includes 3-bureau monitoring{" "}
+            <em>plus</em> an AI credit + funding advisor.
+          </p>
         </section>
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
