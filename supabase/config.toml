@@ -3,8 +3,6 @@ project_id = "bfmyebsjyuoecmjskqhs"
 [functions]
   [functions.paige-bridge]
     verify_jwt = false
-  [functions.invite-btf-client]
-    verify_jwt = false
   [functions.sla-watcher]
     verify_jwt = false
   [functions.admin-list-users]
