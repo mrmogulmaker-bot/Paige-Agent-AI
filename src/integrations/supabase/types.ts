@@ -12130,6 +12130,69 @@ export type Database = {
           },
         ]
       }
+      platform_metered_events_dead_letter: {
+        Row: {
+          attempt_count: number
+          created_at: string
+          error_class: string | null
+          error_message: string | null
+          event_type: string
+          first_failed_at: string
+          id: string
+          idempotency_key: string
+          last_failed_at: string
+          next_retry_at: string
+          payload: Json
+          quantity: number
+          resolved_at: string | null
+          status: string
+          tenant_id: string | null
+          unit_amount_cents: number
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          attempt_count?: number
+          created_at?: string
+          error_class?: string | null
+          error_message?: string | null
+          event_type: string
+          first_failed_at?: string
+          id?: string
+          idempotency_key: string
+          last_failed_at?: string
+          next_retry_at?: string
+          payload?: Json
+          quantity?: number
+          resolved_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          unit_amount_cents?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          attempt_count?: number
+          created_at?: string
+          error_class?: string | null
+          error_message?: string | null
+          event_type?: string
+          first_failed_at?: string
+          id?: string
+          idempotency_key?: string
+          last_failed_at?: string
+          next_retry_at?: string
+          payload?: Json
+          quantity?: number
+          resolved_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          unit_amount_cents?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       platform_metering_reconciliation: {
         Row: {
           created_at: string
@@ -15992,6 +16055,17 @@ export type Database = {
         | { Args: { _workflow_id: string }; Returns: string }
         | { Args: { _workflow_slug: string }; Returns: string }
       admin_meta_capi_token_is_set: { Args: never; Returns: boolean }
+      admin_metering_dead_letter_summary: {
+        Args: never
+        Returns: {
+          dollars_at_risk: number
+          event_type: string
+          most_recent_failure: string
+          oldest_failure: string
+          row_count: number
+          status: string
+        }[]
+      }
       admin_pause_customer_subscription: {
         Args: { _subscription_id: string }
         Returns: undefined
@@ -16659,6 +16733,13 @@ export type Database = {
       platform_set_workflow_webhook_url: {
         Args: { _url: string; _workflow_slug: string }
         Returns: undefined
+      }
+      pmedl_retry_scan: {
+        Args: never
+        Returns: {
+          escalated: number
+          picked: number
+        }[]
       }
       qb_decrypt_token: { Args: { _ciphertext: string }; Returns: string }
       qb_encrypt_token: { Args: { _plaintext: string }; Returns: string }
