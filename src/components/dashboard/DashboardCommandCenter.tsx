@@ -432,11 +432,8 @@ export function DashboardCommandCenter({ userId, onNavigate }: DashboardCommandC
       {/* Credit Score Simulator */}
       {userId && <CreditScoreSimulator userId={userId} onNavigate={onNavigate} />}
 
-      {/* Middle row: Disputes + File Completion */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <DisputeStatus onNavigate={onNavigate} />
-        <CreditFileCompletion onNavigate={onNavigate} />
-      </div>
+      {/* Credit File Completion (Disputes widget removed per §194) */}
+      <CreditFileCompletion onNavigate={onNavigate} />
 
       {/* Funding Journey summary */}
       <JourneyDashboardCard />

@@ -25,15 +25,13 @@ export const CreditScoreOverview = () => {
     queryKey: ["credit-score-overview-stats"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return { disputes: 0, negatives: 0, fundability: 0 };
-      const [disputesRes, negativesRes, factorsRes] = await Promise.all([
-        supabase.from("disputes").select("id", { count: "exact", head: true }).eq("user_id", user.id).in("status", ["draft", "submitted", "under_review"]),
+      if (!user) return { negatives: 0, fundability: 0 };
+      const [negativesRes, factorsRes] = await Promise.all([
         supabase.from("credit_negative_items").select("creditor_name, account_number_masked, bureau, amount, status").eq("user_id", user.id).neq("status", "removed"),
         supabase.from("credit_factor_scores").select("overall_fundability_score").eq("user_id", user.id).order("calculated_at", { ascending: false }).limit(1),
       ]);
       const negItems = negativesRes.data || [];
       return {
-        disputes: disputesRes.count ?? 0,
         negatives: countUniqueNegativeAccounts(negItems),
         fundability: (factorsRes.data as any)?.[0]?.overall_fundability_score ?? 0,
       };
@@ -113,13 +111,7 @@ export const CreditScoreOverview = () => {
       <Card className="p-6 bg-card border-border shadow-card">
         <h3 className="text-lg font-semibold mb-4">Quick Stats</h3>
         <div className="space-y-4">
-          <div className="flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-success mt-0.5" />
-            <div>
-              <p className="font-medium text-sm">Active Disputes</p>
-              <p className="text-2xl font-bold">{stats?.disputes ?? 0}</p>
-            </div>
-          </div>
+          {/* [§194] Active Disputes tile removed */}
           
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-warning mt-0.5" />
