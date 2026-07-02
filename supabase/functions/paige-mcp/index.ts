@@ -3983,44 +3983,8 @@ mcp.tool("me_log_progress_update", {
   },
 });
 
-mcp.tool("me_send_message_to_coach", {
-  description: "Send a message to the calling user's assigned coach in the BTF workspace thread. The coach receives it in their inbox.",
-  inputSchema: z.object({
-    body: z.string(),
-  }),
-  handler: async ({ body }) => {
-    const a = currentActor();
-    const me = await actorClient();
-    if (!me || !a.user_id) return err("no_linked_client_record");
-    const { data, error } = await admin.from("btf_messages").insert({
-      client_id: me.id,
-      sender_type: "client",
-      sender_id: a.user_id,
-      body,
-    }).select("id").single();
-    if (error) return err(error.message);
-    await audit("me_send_message_to_coach", "contact", me.id, { message_id: data.id });
-    return ok({ message_id: data.id });
-  },
-});
+// (me_send_message_to_coach, me_list_messages removed — Sprint 211.b: btf_messages consolidated into program_messages canonical surface; restore via program_messages integration in a discrete feature-restore ship)
 
-mcp.tool("me_list_messages", {
-  description: "List recent messages in the calling user's BTF workspace thread (both their own messages and replies from their coach).",
-  inputSchema: z.object({ limit: z.number().int().optional() }),
-  handler: async ({ limit }) => {
-    const me = await actorClient();
-    if (!me) return err("no_linked_client_record");
-    const lim = Math.min(Math.max(limit ?? 30, 1), 100);
-    const { data, error } = await admin
-      .from("btf_messages")
-      .select("id, sender_type, body, created_at, read_at")
-      .eq("client_id", me.id)
-      .order("created_at", { ascending: false })
-      .limit(lim);
-    if (error) return err(error.message);
-    return ok({ items: data ?? [] });
-  },
-});
 
 mcp.tool("me_list_tasks", {
   description: "List tasks assigned to or created for the calling user (tasks where user_id = caller). Optionally filter by status.",
