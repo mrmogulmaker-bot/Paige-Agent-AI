@@ -35,11 +35,12 @@ const TIERS: Tier[] = [
     price: "$27",
     tagline: "For business owners just getting started with Paige.",
     features: [
+      "3-bureau credit monitoring (1 refresh/mo)",
+      "Real-time credit alerts",
+      "Unlimited Paige AI chat",
+      "2 sub-agents: Compose Email + Funding Path Advisor",
       "1 business profile",
-      "5 credit pulls per month",
-      "Unlimited Paige chat",
-      "Email Composer AI",
-      "Monthly funding path recommendations",
+      "Monthly funding path recommendation",
       "Email support (48-hour response)",
     ],
     cta: "Start with Founder",
@@ -50,13 +51,14 @@ const TIERS: Tier[] = [
     price: "$67",
     tagline: "For owners scaling operations with Paige as their co-pilot.",
     features: [
+      "3-bureau credit monitoring (1 refresh/mo)",
+      "Real-time credit alerts + Score simulator",
+      "Unlimited Paige AI chat",
+      "All AI sub-agents (Email, Funding, Deal Analyzer, Document, CFO Coach)",
+      "MCP read-only access",
       "3 business profiles",
-      "20 credit pulls per month",
-      "Unlimited Paige chat",
-      "All AI sub-agents",
-      "Read-only tool access (MCP)",
-      "Weekly funding recommendations",
-      "1 fractional CFO coaching hour / month",
+      "Weekly funding path recommendation",
+      "1 Paige CFO Coach AI session / month",
       "Email support (24-hour response)",
     ],
     popular: true,
@@ -68,17 +70,24 @@ const TIERS: Tier[] = [
     price: "$297",
     tagline: "For serious business owners running multiple companies.",
     features: [
+      "3-bureau credit monitoring (1 refresh/mo)",
+      "Real-time credit alerts + Score simulator + Credit-builder tools",
+      "Unlimited Paige AI chat (priority queue)",
+      "All AI sub-agents + priority processing",
+      "Full MCP access",
       "Unlimited business profiles",
-      "100 credit pulls per month",
-      "Priority Paige chat queue",
-      "All AI sub-agents",
-      "Full tool access (MCP)",
-      "On-demand funding recommendations",
-      "4 fractional CFO coaching hours / month",
-      "Priority chat support",
+      "On-demand funding path recommendations",
+      "4 Paige CFO Coach AI sessions / month",
+      "Priority chat support (business hours)",
     ],
     cta: "Scale with Paige",
   },
+];
+
+const OVERAGES = [
+  { label: "Extra credit inquiry (soft pull)", price: "$5", scope: "on-demand, all tiers" },
+  { label: "Extra business profile", price: "$10/mo", scope: "Founder + Growth" },
+  { label: "Extra Paige CFO Coach AI session", price: "$25", scope: "Growth only" },
 ];
 
 export default function ForOwners() {
@@ -159,6 +168,12 @@ export default function ForOwners() {
             watches your credit, matches you to funding you can actually get, and helps you make
             smarter money moves every week.
           </p>
+          <p className="text-sm text-muted-foreground mt-4">
+            Standalone credit monitoring alone (MyFICO Advanced, IdentityIQ Max, SmartCredit
+            Premium) runs around <strong>$29.95/mo</strong> — for just the scores.{" "}
+            <strong>Paige Founder is $27</strong> and includes 3-bureau monitoring{" "}
+            <em>plus</em> an AI credit + funding advisor.
+          </p>
         </section>
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
@@ -209,11 +224,29 @@ export default function ForOwners() {
           ))}
         </section>
 
+        <section className="max-w-4xl mx-auto">
+          <h2 className="text-2xl font-bold text-center mb-6">Only pay for what you use</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {OVERAGES.map((o) => (
+              <Card key={o.label} className="p-5 bg-card border-border">
+                <p className="text-sm font-semibold">{o.label}</p>
+                <p className="text-2xl font-bold text-gold-dark mt-1">{o.price}</p>
+                <p className="text-xs text-muted-foreground mt-1">{o.scope}</p>
+              </Card>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground text-center mt-4">
+            Every tier includes 1 credit refresh per month. Additional soft-pull credit inquiries
+            (used when shopping products with lenders) are billed on-demand.
+          </p>
+        </section>
+
         <section className="max-w-3xl mx-auto text-center">
           <p className="text-sm text-muted-foreground">
             Cancel anytime. Prices in USD, billed monthly. Paige provides education, credit
             monitoring, and funding intelligence — it is not a lender, broker, or credit repair
-            organization. Service provided by <strong>PaigeAgent AI LLC</strong> (Wyoming).
+            organization. "Paige CFO Coach" is an AI sub-agent, not a human fractional CFO.
+            Service provided by <strong>PaigeAgent AI LLC</strong> (Wyoming).
           </p>
         </section>
       </main>
