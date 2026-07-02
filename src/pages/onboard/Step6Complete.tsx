@@ -50,7 +50,7 @@ export default function Step6Complete() {
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={() => navigate("/workspace")}>Enter your workspace</Button>
+          <Button onClick={() => navigate("/app")}>Enter your workspace</Button>
         </div>
       </div>
     </>

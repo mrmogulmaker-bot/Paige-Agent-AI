@@ -68,7 +68,7 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
       if (PRE_PORTAL_STAGES.has(stage)) {
         return STAGE_TO_PATH[stage];
       }
-      return "/workspace";
+      return "/app";
     }
 
     return "/app";

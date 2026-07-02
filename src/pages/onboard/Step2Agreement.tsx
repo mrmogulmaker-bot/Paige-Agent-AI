@@ -161,7 +161,7 @@ export default function Step2Agreement() {
       if (!data?.ok) throw new Error(data?.error || "Could not finalize");
       toast({ title: "Agreement signed", description: "Welcome aboard — taking you into your workspace." });
       await refresh();
-      navigate("/workspace");
+      navigate("/app");
     } catch (e: any) {
       toast({ title: "Could not sign", description: e.message || String(e), variant: "destructive" });
     } finally {

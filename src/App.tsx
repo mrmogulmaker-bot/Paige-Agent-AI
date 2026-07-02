@@ -86,17 +86,7 @@ const About = lazyWithReload(() => import("./pages/About"));
 const ForOwners = lazyWithReload(() => import("./pages/ForOwners"));
 const Blog = lazyWithReload(() => import("./pages/Blog"));
 
-// BTF Client Workspace (white-labeled — no Paige branding in these routes)
-const WorkspaceLayout = lazyWithReload(() => import("./pages/workspace/WorkspaceLayout"));
-const WorkspaceDashboard = lazyWithReload(() => import("./pages/workspace/WorkspaceDashboard"));
-const WorkspacePhases = lazyWithReload(() => import("./pages/workspace/WorkspacePhases"));
-const WorkspaceIntake = lazyWithReload(() => import("./pages/workspace/WorkspaceIntake"));
-const WorkspaceDocuments = lazyWithReload(() => import("./pages/workspace/WorkspaceDocuments"));
-const WorkspaceMessages = lazyWithReload(() => import("./pages/workspace/WorkspaceMessages"));
-const WorkspacePayments = lazyWithReload(() => import("./pages/workspace/WorkspacePayments"));
-const WorkspaceTasks = lazyWithReload(() => import("./pages/workspace/WorkspaceTasks"));
-const WorkspaceFundingReadiness = lazyWithReload(() => import("./pages/workspace/WorkspaceFundingReadiness"));
-const WorkspaceAcceptInvite = lazyWithReload(() => import("./pages/workspace/AcceptInvite"));
+// BTF workspace surface removed — consumer /app dashboard is the single client home.
 const OnboardLayout = lazyWithReload(() => import("./pages/onboard/OnboardLayout"));
 const OnboardStep1 = lazyWithReload(() => import("./pages/onboard/Step1Welcome"));
 const OnboardStep2 = lazyWithReload(() => import("./pages/onboard/Step2Agreement"));
@@ -116,10 +106,6 @@ const AffiliateTracking = lazyWithReload(() => import("./components/dashboard/Af
 const Support = lazyWithReload(() => import("./pages/Support"));
 const MyAgreements = lazyWithReload(() => import("./pages/MyAgreements"));
 const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
-const WorkspaceApprovals = lazyWithReload(() => import("./pages/workspace/WorkspaceApprovals"));
-const WorkspaceConnect = lazyWithReload(() => import("./pages/workspace/WorkspaceConnect"));
-const WorkspacePaige = lazyWithReload(() => import("./pages/workspace/WorkspacePaige"));
-const WorkspacePaigeActions = lazyWithReload(() => import("./pages/workspace/WorkspacePaigeActions"));
 const GoogleCalendarCallback = lazyWithReload(() => import("./pages/GoogleCalendarCallback"));
 
 const queryClient = new QueryClient({
@@ -217,22 +203,11 @@ const App = () => (
             <Route path="/f/:tenantSlug/:funnelSlug" element={<PageSuspense><GrowthFunnelRenderer /></PageSuspense>} />
             <Route path="/form/:id" element={<PageSuspense><GrowthFormRenderer /></PageSuspense>} />
 
-            {/* BTF Client Workspace (white-labeled — Mogul Maker Academy) */}
-            <Route path="/workspace/accept-invite" element={<PageSuspense><WorkspaceAcceptInvite /></PageSuspense>} />
-            <Route path="/workspace" element={<PageSuspense><WorkspaceLayout /></PageSuspense>}>
-              <Route index element={<PageSuspense><WorkspaceDashboard /></PageSuspense>} />
-              <Route path="phases" element={<PageSuspense><WorkspacePhases /></PageSuspense>} />
-              <Route path="intake" element={<PageSuspense><WorkspaceIntake /></PageSuspense>} />
-              <Route path="documents" element={<PageSuspense><WorkspaceDocuments /></PageSuspense>} />
-              <Route path="messages" element={<PageSuspense><WorkspaceMessages /></PageSuspense>} />
-              <Route path="payments" element={<PageSuspense><WorkspacePayments /></PageSuspense>} />
-              <Route path="tasks" element={<PageSuspense><WorkspaceTasks /></PageSuspense>} />
-              <Route path="funding-readiness" element={<PageSuspense><WorkspaceFundingReadiness /></PageSuspense>} />
-              <Route path="approvals" element={<PageSuspense><WorkspaceApprovals /></PageSuspense>} />
-              <Route path="connect" element={<PageSuspense><WorkspaceConnect /></PageSuspense>} />
-              <Route path="paige" element={<PageSuspense><WorkspacePaige /></PageSuspense>} />
-              <Route path="paige/actions" element={<PageSuspense><WorkspacePaigeActions /></PageSuspense>} />
-            </Route>
+            {/* Legacy BTF workspace surface removed — everything lives in the consumer /app dashboard now.
+                Preserve invite deep-links by redirecting to the unified /accept-invite handler; all other
+                /workspace/* URLs land in the consumer dashboard. */}
+            <Route path="/workspace/accept-invite" element={<Navigate to={`/accept-invite${window.location.search}`} replace />} />
+            <Route path="/workspace/*" element={<Navigate to="/app" replace />} />
 
             {/* BTF Onboarding Wizard — admin-triggered, magic-link entry */}
             <Route path="/onboard" element={<PageSuspense><OnboardLayout /></PageSuspense>}>
