@@ -183,7 +183,7 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
         if (updates.status !== undefined) { prevValues.status = record.status; newValues.status = updates.status; updatePayload.status = updates.status; }
         if (updates.credit_limit !== undefined) { prevValues.credit_limit = record.credit_limit; newValues.credit_limit = updates.credit_limit; updatePayload.credit_limit = updates.credit_limit; }
         updatePayload.updated_at = new Date().toISOString();
-        await supabase.from("credit_accounts").update(updatePayload).eq("id", record.id);
+        await supabase.from("credit_accounts").update(updatePayload as any).eq("id", record.id);
       } else {
         const updatePayload: Record<string, any> = {};
         if (updates.creditor !== undefined) { prevValues.creditor_name = record.creditor; newValues.creditor_name = updates.creditor; updatePayload.creditor_name = updates.creditor; }
@@ -192,7 +192,8 @@ export function AccountManager({ isOpen, onClose, userRole = "client", targetUse
         if (updates.amount !== undefined) { prevValues.amount = record.amount; newValues.amount = updates.amount; updatePayload.amount = updates.amount; }
         if (updates.status !== undefined) { prevValues.status = record.status; newValues.status = updates.status; updatePayload.status = updates.status; }
         updatePayload.updated_at = new Date().toISOString();
-        await supabase.from("credit_negative_items").update(updatePayload).eq("id", record.id);
+        await supabase.from("credit_negative_items").update(updatePayload as any).eq("id", record.id);
+
       }
 
       await supabase.from("audit_logs").insert({
