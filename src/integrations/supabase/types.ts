@@ -10267,12 +10267,12 @@ export type Database = {
         Row: {
           cadence: string
           contacts_scanned: number
-          cost_usd_total: number
           created_at: string
+          credit_provider_calls_count: number
+          credit_provider_cost_usd: number
           errors_json: Json
           finished_at: string | null
           id: string
-          isoftpull_calls: number
           proposals_generated: number
           proposals_insufficient_data: number
           started_at: string
@@ -10283,12 +10283,12 @@ export type Database = {
         Insert: {
           cadence?: string
           contacts_scanned?: number
-          cost_usd_total?: number
           created_at?: string
+          credit_provider_calls_count?: number
+          credit_provider_cost_usd?: number
           errors_json?: Json
           finished_at?: string | null
           id?: string
-          isoftpull_calls?: number
           proposals_generated?: number
           proposals_insufficient_data?: number
           started_at?: string
@@ -10299,12 +10299,12 @@ export type Database = {
         Update: {
           cadence?: string
           contacts_scanned?: number
-          cost_usd_total?: number
           created_at?: string
+          credit_provider_calls_count?: number
+          credit_provider_cost_usd?: number
           errors_json?: Json
           finished_at?: string | null
           id?: string
-          isoftpull_calls?: number
           proposals_generated?: number
           proposals_insufficient_data?: number
           started_at?: string
@@ -13480,6 +13480,7 @@ export type Database = {
         Row: {
           coaching_enabled: boolean
           created_at: string
+          credit_data_provider: string | null
           credit_services_enabled: boolean
           legal_services_enabled: boolean
           readiness_scan_cadence: string
@@ -13489,6 +13490,7 @@ export type Database = {
         Insert: {
           coaching_enabled?: boolean
           created_at?: string
+          credit_data_provider?: string | null
           credit_services_enabled?: boolean
           legal_services_enabled?: boolean
           readiness_scan_cadence?: string
@@ -13498,6 +13500,7 @@ export type Database = {
         Update: {
           coaching_enabled?: boolean
           created_at?: string
+          credit_data_provider?: string | null
           credit_services_enabled?: boolean
           legal_services_enabled?: boolean
           readiness_scan_cadence?: string
@@ -15464,8 +15467,8 @@ export type Database = {
       increment_readiness_scan_counters: {
         Args: {
           _contacts_scanned?: number
-          _cost_usd?: number
-          _isoftpull_calls?: number
+          _credit_provider_calls?: number
+          _credit_provider_cost_usd?: number
           _proposals_generated?: number
           _proposals_insufficient_data?: number
           _run_id: string
