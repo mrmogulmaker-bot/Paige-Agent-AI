@@ -67,24 +67,29 @@ const businessTiers = [
   },
 ];
 
+// Fictional archetypes illustrating the three tenant sovereignty models.
+// Per §116: no real customer names, no specific brand references.
 const tenantExamples = [
   {
-    tenant: "Mogul Maker Academy",
-    program: "BUILD-to-FUND",
-    price: "$4,997",
-    what: "12-month funding readiness cohort",
+    model: "Absorb Model",
+    archetype: "A Fitness Business Coaching Academy",
+    program: "Included in $497 six-week program",
+    price: "Free to clients",
+    what: "Bundles credit monitoring into the cohort price and uses it as a competitive weapon at enrollment.",
   },
   {
-    tenant: "LaunchPad Coaching",
-    program: "Monthly Membership",
-    price: "$199/mo",
-    what: "Small-business credit accelerator",
+    model: "Markup Model",
+    archetype: "A Business Funding Brokerage",
+    program: "Standalone subscription",
+    price: "$39/mo",
+    what: "Resells monitoring as a recurring revenue rail alongside placement fees.",
   },
   {
-    tenant: "Your Academy",
-    program: "Your Offer",
-    price: "You set the price",
-    what: "Full sovereignty over your retail pricing",
+    model: "Bundled Model",
+    archetype: "A Credit Consultancy",
+    program: "Monitoring + monthly strategy session",
+    price: "$79/mo",
+    what: "Uses Paige as the whole client experience — monitoring, coaching notes, and check-ins in one place.",
   },
 ];
 
@@ -224,22 +229,24 @@ export function PricingSection() {
             <h3 className="text-3xl font-bold mb-3">Your offers. Your prices. Your brand.</h3>
             <p className="text-muted-foreground">
               End-customer pricing is <span className="font-semibold">100% tenant-sovereign</span>.
-              Paige never sets or sees your retail rates. Here's what a few tenants offer today:
+              Paige never sets or sees your retail rates. Three illustrative sovereignty models:
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
             {tenantExamples.map((ex) => (
-              <Card key={ex.tenant} className="p-6 border-border">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground font-bold mb-2">
-                  {ex.tenant}
+              <Card key={ex.model} className="p-6 border-border">
+                <p className="text-xs uppercase tracking-wider text-gold-dark font-bold mb-2">
+                  {ex.model}
                 </p>
-                <h4 className="text-lg font-bold mb-1">{ex.program}</h4>
+                <h4 className="text-lg font-bold mb-1">{ex.archetype}</h4>
+                <p className="text-xs text-muted-foreground mb-3">{ex.program}</p>
                 <p className="text-3xl font-extrabold text-accent mb-2 tabular-nums">{ex.price}</p>
                 <p className="text-sm text-muted-foreground">{ex.what}</p>
               </Card>
             ))}
           </div>
+
 
           <p className="text-center text-sm text-muted-foreground mt-8 max-w-2xl mx-auto">
             Payments flow directly into your Stripe Connect account. Paige takes only its
