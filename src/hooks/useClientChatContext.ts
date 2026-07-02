@@ -413,41 +413,7 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
           }
         }
 
-        // --- Disputes ---
-        const disputeFilter = clientId
-          ? supabase.from("disputes").select("status, dispute_round").eq("client_id", clientId)
-          : resolvedUserId
-            ? supabase.from("disputes").select("status, dispute_round").eq("user_id", resolvedUserId)
-            : null;
-
-        if (disputeFilter) {
-          const { data: disputes } = await disputeFilter;
-          if (disputes && disputes.length > 0) {
-            const openDisputes = disputes.filter(d => d.status !== "resolved");
-            const statusCounts: Record<string, number> = {};
-            openDisputes.forEach(d => { statusCounts[d.status] = (statusCounts[d.status] || 0) + 1; });
-            const maxRound = Math.max(...disputes.map(d => d.dispute_round || 1));
-            const statusStr = Object.entries(statusCounts).map(([s, c]) => `${c} ${s}`).join(", ");
-            parts.push(`Disputes: ${openDisputes.length} open (${statusStr || "none"}) | Round ${maxRound}`);
-          } else {
-            parts.push("Disputes: None on file");
-          }
-        }
-
-        // Last dispute outcome
-        const outcomeFilter = clientId
-          ? supabase.from("dispute_outcomes").select("outcome_type, creditor_name, bureau, created_at").eq("client_id", clientId).order("created_at", { ascending: false }).limit(1)
-          : resolvedUserId
-            ? supabase.from("dispute_outcomes").select("outcome_type, creditor_name, bureau, created_at").eq("user_id", resolvedUserId).order("created_at", { ascending: false }).limit(1)
-            : null;
-
-        if (outcomeFilter) {
-          const { data: outcomes } = await outcomeFilter;
-          if (outcomes?.[0]) {
-            const o = outcomes[0];
-            parts.push(`Last Dispute Outcome: ${o.outcome_type} — ${o.creditor_name} (${o.bureau}) on ${new Date(o.created_at).toLocaleDateString()}`);
-          }
-        }
+        // [§194] Disputes + outcomes context removed — monitoring-only.
 
         // --- Business Foundation Status + Personal/Business Separation Audit ---
         if (resolvedUserId) {
