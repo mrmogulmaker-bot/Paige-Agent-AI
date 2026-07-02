@@ -1779,7 +1779,7 @@ mcp.tool("update_lifecycle_stage", {
 });
 
 
-// ---------- Read-only BTF / agreements / payments ----------
+// ---------- Read-only BUILD-to-FUND / agreements / payments ----------
 mcp.tool("list_signed_agreements", {
   description: "List signed service agreements in the caller's tenant (paige_signed_agreements). Paginated.",
   inputSchema: z.object({
