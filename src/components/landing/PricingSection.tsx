@@ -2,15 +2,17 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Sparkles, Building2, Users, User, ShieldCheck } from "lucide-react";
+import { CheckCircle, Sparkles, Building2, Users, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Three-section pricing per Doctrine §197 (Billing Layer Taxonomy):
+ * Two-section public pricing per Doctrine §197 (Billing Layer Taxonomy):
  *   §1 FOR BUSINESSES     → LAYER 1 (Tenant → Paige) — Practice / Academy / Enterprise
  *   §2 FOR YOUR CLIENTS   → LAYER 2 (End Customer → Tenant) sovereignty archetypes
- *   §3 FOR BUSINESS OWNERS → LAYER 4 (Consumer → Paige) — Founder / Growth / Scale (LIVE)
+ *
+ * LAYER 4 (Consumer → Paige) is invite-only via tokenized email/SMS delivery;
+ * intentionally not surfaced on the public site. See Sprint C.I.F.
  *
  * §201 compliant: no "operator" copy anywhere.
  */
