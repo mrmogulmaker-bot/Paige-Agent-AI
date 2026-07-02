@@ -4530,7 +4530,7 @@ mcp.tool("approve_readiness_proposal", {
   handler: async ({ proposal_id }) => {
     const tenantId = await actorTenantId();
     if (!tenantId) return err("tenant_not_resolved");
-    const actor = await actorUserId();
+    const actor = currentActor().user_id;
     const { data, error } = await admin
       .from("paige_readiness_proposals")
       .update({ status: "approved", approved_by: actor, approved_at: new Date().toISOString() })
@@ -4555,7 +4555,7 @@ mcp.tool("reject_readiness_proposal", {
   handler: async ({ proposal_id, reason }) => {
     const tenantId = await actorTenantId();
     if (!tenantId) return err("tenant_not_resolved");
-    const actor = await actorUserId();
+    const actor = currentActor().user_id;
     const { data, error } = await admin
       .from("paige_readiness_proposals")
       .update({
