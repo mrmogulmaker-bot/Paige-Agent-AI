@@ -40,12 +40,25 @@ function looksLikeJwtError(message: unknown): boolean {
 let interceptorInstalled = false;
 let sessionExpiredHandled = false;
 
-function handleExpiredSession() {
+async function handleExpiredSession() {
   if (sessionExpiredHandled) return;
-  sessionExpiredHandled = true;
 
+  // Only treat a 401 as "expired" when we actually have a session to expire.
+  // Unauthenticated 401s on public routes (e.g. /auth) must not trigger a
+  // toast + redirect loop.
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+  } catch {
+    return;
+  }
+
+  if (typeof window !== "undefined" && isPublicRoute(window.location.pathname)) {
+    return;
+  }
+
+  sessionExpiredHandled = true;
   toast.error("Your session expired — please sign in again.");
-  // Small delay so the toast is visible before redirect.
   setTimeout(() => {
     performSignOut({ redirectTo: "/auth", scope: "local" });
   }, 250);
@@ -60,7 +73,6 @@ function installFetchInterceptor() {
   window.fetch = async (input, init) => {
     const response = await originalFetch(input, init);
 
-    // Only inspect Supabase REST/auth/functions calls to avoid false positives.
     let url = "";
     try {
       url = typeof input === "string"
@@ -75,18 +87,28 @@ function installFetchInterceptor() {
     if (!url.includes("supabase.co")) return response;
     if (response.status !== 401) return response;
 
-    // Try to read the body without breaking the caller's downstream consumption.
+    // Requests without an Authorization header are anonymous by design
+    // (e.g. public marketing queries). A 401 here just means "not allowed
+    // anonymously", not "your session expired".
+    let hadAuthHeader = false;
+    try {
+      const headers = new Headers(
+        init?.headers ?? (input instanceof Request ? input.headers : undefined),
+      );
+      hadAuthHeader = headers.has("authorization");
+    } catch {
+      hadAuthHeader = false;
+    }
+    if (!hadAuthHeader) return response;
+
     try {
       const cloned = response.clone();
       const text = await cloned.text();
-      if (text && (looksLikeJwtError(text) || /401/.test(String(response.status)))) {
-        handleExpiredSession();
-      } else {
-        // Even a generic 401 from supabase usually means the session is bad.
-        handleExpiredSession();
+      if (text && looksLikeJwtError(text)) {
+        void handleExpiredSession();
       }
     } catch {
-      handleExpiredSession();
+      // ignore
     }
 
     return response;
