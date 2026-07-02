@@ -83,7 +83,7 @@ const Terms = lazyWithReload(() => import("./pages/Terms"));
 const Privacy = lazyWithReload(() => import("./pages/Privacy"));
 const LegalDoc = lazyWithReload(() => import("./pages/LegalDoc"));
 const About = lazyWithReload(() => import("./pages/About"));
-const ForOwners = lazyWithReload(() => import("./pages/ForOwners"));
+const Pricing = lazyWithReload(() => import("./pages/Pricing"));
 const Blog = lazyWithReload(() => import("./pages/Blog"));
 
 // BTF workspace surface removed — consumer /app dashboard is the single client home. (Sprint 211.b cleanup)
