@@ -43,8 +43,8 @@ export function NewFeatureRequestDialog({ open, onOpenChange, userId, onCreated 
           description: description.trim(),
           category,
           vote_count: 1,
-          is_anonymous: true,
         })
+
         .select("id")
         .single();
       if (error) throw error;
