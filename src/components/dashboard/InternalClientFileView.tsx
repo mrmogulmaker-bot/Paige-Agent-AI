@@ -18,7 +18,7 @@ import { OutreachCenter } from "./OutreachCenter";
 import { PMEFundingReadiness } from "./PMEFundingReadiness";
 import { ClientMemoryTab } from "./ClientMemoryTab";
 import { FundingApplicationLog } from "./FundingApplicationLog";
-import { ClientOutcomesTab } from "./ClientOutcomesTab";
+// [§194] ClientOutcomesTab removed — monitoring-only.
 import { AdminAccountManagement } from "./AdminAccountManagement";
 import { AdminFactoryResetDialog, AdminChatHistory, AdminFundingOverride } from "./admin/AdminClientTools";
 import { toast } from "sonner";
@@ -247,17 +247,11 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           <TabsTrigger value="memory" className="text-xs">
             <Brain className="w-3 h-3 mr-1" /> Memory
           </TabsTrigger>
-          <TabsTrigger value="outcomes" className="text-xs">
-            <TrendingUp className="w-3 h-3 mr-1" /> Outcomes
-          </TabsTrigger>
           {client.linked_user_id && (
             <TabsTrigger value="chat-history" className="text-xs">
               <MessageSquare className="w-3 h-3 mr-1" /> Chat
             </TabsTrigger>
           )}
-          <TabsTrigger value="outcomes" className="text-xs">
-            <TrendingUp className="w-3 h-3 mr-1" /> Outcomes
-          </TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -411,10 +405,7 @@ export function InternalClientFileView({ clientId, onBack }: InternalClientFileV
           <ClientMemoryTab clientUserId={effectiveUserId} />
         </TabsContent>
 
-        {/* Outcomes */}
-        <TabsContent value="outcomes" className="mt-4">
-          <ClientOutcomesTab clientId={clientId} clientName={fullName} />
-        </TabsContent>
+        {/* [§194] Outcomes tab removed */}
 
         {/* Chat History */}
         {client.linked_user_id && (
