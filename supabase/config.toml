@@ -165,3 +165,6 @@ project_id = "bfmyebsjyuoecmjskqhs"
 
   [functions.mma-journey]
     verify_jwt = true
+
+  [functions.readiness-scan]
+    verify_jwt = false

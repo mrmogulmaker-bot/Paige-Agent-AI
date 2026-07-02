@@ -10154,6 +10154,174 @@ export type Database = {
           },
         ]
       }
+      paige_readiness_proposals: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          compose_intent: string
+          contact_id: string
+          created_at: string
+          envelope_json: Json
+          executed_at: string | null
+          expires_at: string
+          id: string
+          proposed_at: string
+          readiness_delta_json: Json
+          recommended_actions_json: Json
+          rejected_at: string | null
+          rejected_by: string | null
+          rejection_reason: string | null
+          scan_run_id: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          compose_intent?: string
+          contact_id: string
+          created_at?: string
+          envelope_json?: Json
+          executed_at?: string | null
+          expires_at?: string
+          id?: string
+          proposed_at?: string
+          readiness_delta_json?: Json
+          recommended_actions_json?: Json
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          scan_run_id?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          compose_intent?: string
+          contact_id?: string
+          created_at?: string
+          envelope_json?: Json
+          executed_at?: string | null
+          expires_at?: string
+          id?: string
+          proposed_at?: string
+          readiness_delta_json?: Json
+          recommended_actions_json?: Json
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejection_reason?: string | null
+          scan_run_id?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_readiness_proposals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_readiness_proposals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_readiness_proposals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_readiness_proposals_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_readiness_proposals_scan_run_id_fkey"
+            columns: ["scan_run_id"]
+            isOneToOne: false
+            referencedRelation: "paige_readiness_scan_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_readiness_proposals_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_readiness_scan_runs: {
+        Row: {
+          cadence: string
+          contacts_scanned: number
+          cost_usd_total: number
+          created_at: string
+          errors_json: Json
+          finished_at: string | null
+          id: string
+          isoftpull_calls: number
+          proposals_generated: number
+          proposals_insufficient_data: number
+          started_at: string
+          status: string
+          tenant_id: string
+          trigger_source: string
+        }
+        Insert: {
+          cadence?: string
+          contacts_scanned?: number
+          cost_usd_total?: number
+          created_at?: string
+          errors_json?: Json
+          finished_at?: string | null
+          id?: string
+          isoftpull_calls?: number
+          proposals_generated?: number
+          proposals_insufficient_data?: number
+          started_at?: string
+          status?: string
+          tenant_id: string
+          trigger_source?: string
+        }
+        Update: {
+          cadence?: string
+          contacts_scanned?: number
+          cost_usd_total?: number
+          created_at?: string
+          errors_json?: Json
+          finished_at?: string | null
+          id?: string
+          isoftpull_calls?: number
+          proposals_generated?: number
+          proposals_insufficient_data?: number
+          started_at?: string
+          status?: string
+          tenant_id?: string
+          trigger_source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_readiness_scan_runs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paige_referrals: {
         Row: {
           conversion_event: string | null
@@ -13314,6 +13482,7 @@ export type Database = {
           created_at: string
           credit_services_enabled: boolean
           legal_services_enabled: boolean
+          readiness_scan_cadence: string
           tenant_id: string
           updated_at: string
         }
@@ -13322,6 +13491,7 @@ export type Database = {
           created_at?: string
           credit_services_enabled?: boolean
           legal_services_enabled?: boolean
+          readiness_scan_cadence?: string
           tenant_id: string
           updated_at?: string
         }
@@ -13330,6 +13500,7 @@ export type Database = {
           created_at?: string
           credit_services_enabled?: boolean
           legal_services_enabled?: boolean
+          readiness_scan_cadence?: string
           tenant_id?: string
           updated_at?: string
         }
@@ -15033,6 +15204,7 @@ export type Database = {
         }[]
       }
       ensure_owner_admin: { Args: never; Returns: undefined }
+      expire_stale_readiness_proposals: { Args: never; Returns: number }
       factory_reset_delete_dispute_related: {
         Args: { _user_id: string }
         Returns: undefined
@@ -15289,6 +15461,17 @@ export type Database = {
         Args: { _role: string; _tenant_id: string; _user_id: string }
         Returns: boolean
       }
+      increment_readiness_scan_counters: {
+        Args: {
+          _contacts_scanned?: number
+          _cost_usd?: number
+          _isoftpull_calls?: number
+          _proposals_generated?: number
+          _proposals_insufficient_data?: number
+          _run_id: string
+        }
+        Returns: undefined
+      }
       is_admin: { Args: { p_user_id: string }; Returns: boolean }
       is_assigned_to_client: {
         Args: { _assignment_role?: string; _client: string; _user: string }
@@ -15494,6 +15677,7 @@ export type Database = {
         Args: { _user_id: string }
         Returns: Json
       }
+      trigger_readiness_scan_cron: { Args: never; Returns: undefined }
       unassigned_queue_for_caller: {
         Args: never
         Returns: {

@@ -4479,7 +4479,136 @@ mcp.tool("handle_data_subject_request", {
 });
 
 
+// ============================================================================
+// Ship #2 — Scheduled Credit + Funding Readiness Proposals
+// ============================================================================
+mcp.tool("list_readiness_proposals", {
+  description: "List readiness proposals for the current tenant. Filter by status and/or contact_id.",
+  inputSchema: z.object({
+    status: z.enum(["pending", "approved", "rejected", "expired", "executed", "insufficient_data"]).optional(),
+    contact_id: z.string().uuid().optional(),
+    limit: z.number().min(1).max(200).default(50),
+  }),
+  handler: async ({ status, contact_id, limit }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    let q = admin
+      .from("paige_readiness_proposals")
+      .select("id, contact_id, status, readiness_delta_json, recommended_actions_json, proposed_at, approved_at, rejected_at, rejection_reason, expires_at, scan_run_id")
+      .eq("tenant_id", tenantId)
+      .order("proposed_at", { ascending: false })
+      .limit(limit);
+    if (status) q = q.eq("status", status);
+    if (contact_id) q = q.eq("contact_id", contact_id);
+    const { data, error } = await q;
+    if (error) return err(error.message);
+    return ok({ items: data ?? [] });
+  },
+});
+
+mcp.tool("get_readiness_proposal", {
+  description: "Fetch a single readiness proposal by ID.",
+  inputSchema: z.object({ proposal_id: z.string().uuid() }),
+  handler: async ({ proposal_id }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const { data, error } = await admin
+      .from("paige_readiness_proposals")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("id", proposal_id)
+      .maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("proposal_not_found");
+    return ok(data);
+  },
+});
+
+mcp.tool("approve_readiness_proposal", {
+  description: "Approve a pending readiness proposal. Fires client workspace notification via trigger. §122 phase 2 (send) still requires compose_email in Ship #3.",
+  inputSchema: z.object({ proposal_id: z.string().uuid() }),
+  handler: async ({ proposal_id }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const actor = currentActor().user_id;
+    const { data, error } = await admin
+      .from("paige_readiness_proposals")
+      .update({ status: "approved", approved_by: actor, approved_at: new Date().toISOString() })
+      .eq("tenant_id", tenantId)
+      .eq("id", proposal_id)
+      .eq("status", "pending")
+      .select()
+      .maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("proposal_not_pending_or_not_found");
+    await audit("approve_readiness_proposal", "paige_readiness_proposals", proposal_id, {});
+    return ok(data);
+  },
+});
+
+mcp.tool("reject_readiness_proposal", {
+  description: "Reject a pending readiness proposal with an optional reason.",
+  inputSchema: z.object({
+    proposal_id: z.string().uuid(),
+    reason: z.string().max(500).optional(),
+  }),
+  handler: async ({ proposal_id, reason }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const actor = currentActor().user_id;
+    const { data, error } = await admin
+      .from("paige_readiness_proposals")
+      .update({
+        status: "rejected",
+        rejected_by: actor,
+        rejected_at: new Date().toISOString(),
+        rejection_reason: reason ?? null,
+      })
+      .eq("tenant_id", tenantId)
+      .eq("id", proposal_id)
+      .eq("status", "pending")
+      .select()
+      .maybeSingle();
+    if (error) return err(error.message);
+    if (!data) return err("proposal_not_pending_or_not_found");
+    await audit("reject_readiness_proposal", "paige_readiness_proposals", proposal_id, { reason });
+    return ok(data);
+  },
+});
+
+mcp.tool("trigger_readiness_scan_for_contact", {
+  description: "Fire an ad-hoc readiness scan for a single contact (respects §189 credit_services_enabled flag).",
+  inputSchema: z.object({
+    contact_id: z.string().uuid(),
+    dry_run: z.boolean().default(false),
+  }),
+  handler: async ({ contact_id, dry_run }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const url = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/readiness-scan`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({
+        tenant_id: tenantId,
+        contact_ids: [contact_id],
+        trigger_source: "manual",
+        dry_run,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return err(`scan_failed:${res.status}`);
+    await audit("trigger_readiness_scan_for_contact", "clients", contact_id, { dry_run });
+    return ok(body);
+  },
+});
+
+
 // ---------- HTTP transport + bearer auth ----------
+
 const app = new Hono();
 const transport = new StreamableHttpTransport();
 const httpHandler = transport.bind(mcp);
@@ -4614,6 +4743,14 @@ const TOOL_SCOPE: Record<string, Scope> = {
   list_stage_automation_events: "crm.read",
   // Ship #1 Phase B — GDPR/CCPA DSR
   handle_data_subject_request: "admin.delete",
+  // Ship #2 — Scheduled Readiness Proposals (§122 two-phase)
+  list_readiness_proposals: "btf.read",
+  get_readiness_proposal: "btf.read",
+  approve_readiness_proposal: "btf.write",
+  reject_readiness_proposal: "btf.write",
+  trigger_readiness_scan_for_contact: "btf.write",
+
+
 
 };
 

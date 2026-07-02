@@ -71,6 +71,7 @@ const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
 const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
 const PipelineSettings = lazy(() => import("@/pages/admin/PipelineSettings"));
 const StageAutomationRules = lazy(() => import("@/pages/admin/StageAutomationRules"));
+const ReadinessProposalsAdmin = lazy(() => import("@/pages/admin/ReadinessProposalsAdmin"));
 const TasksAdmin = lazy(() => import("@/pages/admin/TasksAdmin"));
 const SubAgentsAdmin = lazy(() => import("@/pages/admin/SubAgentsAdmin"));
 const SkillsHub = lazy(() => import("@/pages/admin/SkillsHub"));
@@ -413,6 +414,13 @@ const Admin = () => {
           <AdminOnly>
             <Suspense fallback={<SuspenseFallback />}>
               <StageAutomationRules />
+            </Suspense>
+          </AdminOnly>
+        } />
+        <Route path="automation/readiness-proposals" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <ReadinessProposalsAdmin />
             </Suspense>
           </AdminOnly>
         } />
