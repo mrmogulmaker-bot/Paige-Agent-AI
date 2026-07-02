@@ -3390,19 +3390,19 @@ export type Database = {
         Row: {
           account_row_id: string
           created_at: string
-          plaid_access_token: string
+          plaid_access_token_ct: string | null
           updated_at: string
         }
         Insert: {
           account_row_id: string
           created_at?: string
-          plaid_access_token: string
+          plaid_access_token_ct?: string | null
           updated_at?: string
         }
         Update: {
           account_row_id?: string
           created_at?: string
-          plaid_access_token?: string
+          plaid_access_token_ct?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -6374,7 +6374,7 @@ export type Database = {
           target_form_id: string | null
           tenant_id: string
           updated_at: string
-          webhook_token: string
+          webhook_token_ct: string | null
         }
         Insert: {
           active?: boolean
@@ -6388,7 +6388,7 @@ export type Database = {
           target_form_id?: string | null
           tenant_id: string
           updated_at?: string
-          webhook_token?: string
+          webhook_token_ct?: string | null
         }
         Update: {
           active?: boolean
@@ -6402,7 +6402,7 @@ export type Database = {
           target_form_id?: string | null
           tenant_id?: string
           updated_at?: string
-          webhook_token?: string
+          webhook_token_ct?: string | null
         }
         Relationships: [
           {
@@ -7834,7 +7834,7 @@ export type Database = {
           label: string
           subscribed_events: string[]
           updated_at: string
-          url: string
+          url_ct: string | null
         }
         Insert: {
           created_at?: string
@@ -7844,7 +7844,7 @@ export type Database = {
           label: string
           subscribed_events?: string[]
           updated_at?: string
-          url: string
+          url_ct?: string | null
         }
         Update: {
           created_at?: string
@@ -7854,7 +7854,7 @@ export type Database = {
           label?: string
           subscribed_events?: string[]
           updated_at?: string
-          url?: string
+          url_ct?: string | null
         }
         Relationships: []
       }
@@ -9406,7 +9406,7 @@ export type Database = {
           id: string
           label: string
           last_probed_at: string | null
-          server_url: string
+          server_url_ct: string | null
           tools_cache: Json | null
           transport: string
           updated_at: string
@@ -9419,7 +9419,7 @@ export type Database = {
           id?: string
           label: string
           last_probed_at?: string | null
-          server_url: string
+          server_url_ct?: string | null
           tools_cache?: Json | null
           transport?: string
           updated_at?: string
@@ -9432,7 +9432,7 @@ export type Database = {
           id?: string
           label?: string
           last_probed_at?: string | null
-          server_url?: string
+          server_url_ct?: string | null
           tools_cache?: Json | null
           transport?: string
           updated_at?: string
@@ -9675,7 +9675,7 @@ export type Database = {
         Row: {
           api_key_last4: string | null
           api_key_ref: string | null
-          base_url: string
+          base_url_ct: string | null
           created_at: string
           id: string
           is_default: boolean
@@ -9687,7 +9687,7 @@ export type Database = {
         Insert: {
           api_key_last4?: string | null
           api_key_ref?: string | null
-          base_url: string
+          base_url_ct?: string | null
           created_at?: string
           id?: string
           is_default?: boolean
@@ -9699,7 +9699,7 @@ export type Database = {
         Update: {
           api_key_last4?: string | null
           api_key_ref?: string | null
-          base_url?: string
+          base_url_ct?: string | null
           created_at?: string
           id?: string
           is_default?: boolean
@@ -11177,7 +11177,7 @@ export type Database = {
           key: string
           label: string
           langgraph_graph_id: string | null
-          n8n_webhook_url: string | null
+          n8n_webhook_url_ct: string | null
           n8n_workflow_id: string | null
           needs_n8n_link: boolean
           parameters_schema: Json
@@ -11199,7 +11199,7 @@ export type Database = {
           key: string
           label: string
           langgraph_graph_id?: string | null
-          n8n_webhook_url?: string | null
+          n8n_webhook_url_ct?: string | null
           n8n_workflow_id?: string | null
           needs_n8n_link?: boolean
           parameters_schema?: Json
@@ -11221,7 +11221,7 @@ export type Database = {
           key?: string
           label?: string
           langgraph_graph_id?: string | null
-          n8n_webhook_url?: string | null
+          n8n_webhook_url_ct?: string | null
           n8n_workflow_id?: string | null
           needs_n8n_link?: boolean
           parameters_schema?: Json
@@ -15568,10 +15568,9 @@ export type Database = {
         Args: { _tenant_id: string }
         Returns: string
       }
-      admin_get_workflow_webhook_url: {
-        Args: { _workflow_id: string }
-        Returns: string
-      }
+      admin_get_workflow_webhook_url:
+        | { Args: { _workflow_id: string }; Returns: string }
+        | { Args: { _workflow_slug: string }; Returns: string }
       admin_meta_capi_token_is_set: { Args: never; Returns: boolean }
       admin_remove_coach_role: { Args: { _user_id: string }; Returns: Json }
       admin_set_automation_webhook_url: {
@@ -16150,6 +16149,32 @@ export type Database = {
           tenant_name: string
           tenant_slug: string
         }[]
+      }
+      platform_decrypt: { Args: { ciphertext: string }; Returns: string }
+      platform_encrypt: { Args: { plaintext: string }; Returns: string }
+      platform_set_growth_external_source_token: {
+        Args: { _id: string; _token: string }
+        Returns: undefined
+      }
+      platform_set_mcp_server_url: {
+        Args: { _id: string; _url: string }
+        Returns: undefined
+      }
+      platform_set_n8n_base_url: {
+        Args: { _id: string; _url: string }
+        Returns: undefined
+      }
+      platform_set_outbound_webhook_url: {
+        Args: { _id: string; _url: string }
+        Returns: undefined
+      }
+      platform_set_plaid_access_token: {
+        Args: { _row_id: string; _token: string }
+        Returns: undefined
+      }
+      platform_set_workflow_webhook_url: {
+        Args: { _url: string; _workflow_slug: string }
+        Returns: undefined
       }
       qb_decrypt_token: { Args: { _ciphertext: string }; Returns: string }
       qb_encrypt_token: { Args: { _plaintext: string }; Returns: string }
