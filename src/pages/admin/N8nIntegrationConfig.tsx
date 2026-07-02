@@ -29,10 +29,10 @@ export default function N8nIntegrationConfig() {
   async function load() {
     const { data, error } = await supabase
       .from("paige_n8n_connections")
-      .select("id, label, base_url, api_key_last4, api_key_ref, is_default, last_sync_at")
+      .select("id, label, api_key_last4, api_key_ref, is_default, last_sync_at")
       .order("created_at", { ascending: true });
     if (error) toast.error(error.message);
-    setConnections((data ?? []) as Connection[]);
+    setConnections((data ?? []).map((d: any) => ({ ...d, base_url: "" })) as Connection[]);
   }
 
   useEffect(() => { void load(); }, []);
@@ -40,18 +40,21 @@ export default function N8nIntegrationConfig() {
   async function createConnection() {
     if (!newLabel || !newBase) return;
     setBusy(true);
-    const { error } = await supabase.from("paige_n8n_connections").insert({
+    const { data, error } = await supabase.from("paige_n8n_connections").insert({
       label: newLabel,
-      base_url: newBase,
       api_key_ref: newRef,
       is_default: connections.length === 0,
-    });
+    } as any).select("id").single();
+    if (!error && data?.id) {
+      await supabase.rpc("platform_set_n8n_base_url" as any, { _id: data.id, _url: newBase });
+    }
     setBusy(false);
     if (error) return toast.error(error.message);
     setNewLabel("");
     await load();
     toast.success("Connection added. Set the secret with the same name in Edge Functions.");
   }
+
 
   async function setDefault(id: string) {
     setBusy(true);

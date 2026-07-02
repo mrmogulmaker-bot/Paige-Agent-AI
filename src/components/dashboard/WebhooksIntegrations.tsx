@@ -146,12 +146,14 @@ export const WebhooksIntegrations = () => {
       return;
     }
     const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase.from("outbound_webhook_configs").insert({
+    const { data, error } = await supabase.from("outbound_webhook_configs").insert({
       label: newWebhook.label,
-      url: newWebhook.url,
       subscribed_events: newWebhook.events,
       created_by: user!.id,
-    });
+    } as any).select("id").single();
+    if (!error && data?.id) {
+      await supabase.rpc("platform_set_outbound_webhook_url" as any, { _id: data.id, _url: newWebhook.url });
+    }
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
@@ -161,6 +163,7 @@ export const WebhooksIntegrations = () => {
       toast({ title: "Webhook Added" });
     }
   };
+
 
   const deleteWebhookConfig = async (id: string) => {
     await supabase.from("outbound_webhook_configs").update({ is_active: false }).eq("id", id);
