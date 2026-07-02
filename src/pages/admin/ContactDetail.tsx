@@ -172,25 +172,14 @@ export default function ContactDetail() {
   };
 
   const startOnboarding = async () => {
-    if (!client?.email) {
-      toast.error("Add an email to this contact first");
-      return;
-    }
-    const ok = window.confirm(
-      `Start BTF onboarding for ${fullName || client.email}? This will mark them as an active client and email them the welcome / magic-link.`,
+    // start-btf-onboarding edge function was retired in Commit N+1
+    // (Sprint 211.b close-out). The replacement client-program
+    // onboarding kickoff path is scheduled for a follow-up ship.
+    // Preserving the button binding so the admin surface still renders
+    // under btfEnabled + isAdmin + lifecycle_stage === "won" gating.
+    toast.info(
+      "Client program onboarding kickoff is temporarily unavailable — reach out to platform admin if needed.",
     );
-    if (!ok) return;
-    const toastId = toast.loading("Starting onboarding…");
-    try {
-      const { data, error } = await supabase.functions.invoke("start-btf-onboarding", {
-        body: { client_id: client.id },
-      });
-      if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || "Could not start onboarding");
-      toast.success("Onboarding started — welcome email sent", { id: toastId });
-    } catch (e: any) {
-      toast.error(e.message || "Could not start onboarding", { id: toastId });
-    }
   };
 
   if (loading || !client) {
