@@ -9009,6 +9009,7 @@ export type Database = {
         Row: {
           column_name: string | null
           context_field_whitelist: string[]
+          context_fk_column: string | null
           context_max_rows: number
           context_priority: number
           context_scope: string
@@ -9030,6 +9031,7 @@ export type Database = {
         Insert: {
           column_name?: string | null
           context_field_whitelist?: string[]
+          context_fk_column?: string | null
           context_max_rows?: number
           context_priority?: number
           context_scope?: string
@@ -9051,6 +9053,7 @@ export type Database = {
         Update: {
           column_name?: string | null
           context_field_whitelist?: string[]
+          context_fk_column?: string | null
           context_max_rows?: number
           context_priority?: number
           context_scope?: string
@@ -16045,6 +16048,7 @@ export type Database = {
         Returns: {
           column_name: string | null
           context_field_whitelist: string[]
+          context_fk_column: string | null
           context_max_rows: number
           context_priority: number
           context_scope: string
