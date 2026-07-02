@@ -203,22 +203,11 @@ const App = () => (
             <Route path="/f/:tenantSlug/:funnelSlug" element={<PageSuspense><GrowthFunnelRenderer /></PageSuspense>} />
             <Route path="/form/:id" element={<PageSuspense><GrowthFormRenderer /></PageSuspense>} />
 
-            {/* BTF Client Workspace (white-labeled — Mogul Maker Academy) */}
-            <Route path="/workspace/accept-invite" element={<PageSuspense><WorkspaceAcceptInvite /></PageSuspense>} />
-            <Route path="/workspace" element={<PageSuspense><WorkspaceLayout /></PageSuspense>}>
-              <Route index element={<PageSuspense><WorkspaceDashboard /></PageSuspense>} />
-              <Route path="phases" element={<PageSuspense><WorkspacePhases /></PageSuspense>} />
-              <Route path="intake" element={<PageSuspense><WorkspaceIntake /></PageSuspense>} />
-              <Route path="documents" element={<PageSuspense><WorkspaceDocuments /></PageSuspense>} />
-              <Route path="messages" element={<PageSuspense><WorkspaceMessages /></PageSuspense>} />
-              <Route path="payments" element={<PageSuspense><WorkspacePayments /></PageSuspense>} />
-              <Route path="tasks" element={<PageSuspense><WorkspaceTasks /></PageSuspense>} />
-              <Route path="funding-readiness" element={<PageSuspense><WorkspaceFundingReadiness /></PageSuspense>} />
-              <Route path="approvals" element={<PageSuspense><WorkspaceApprovals /></PageSuspense>} />
-              <Route path="connect" element={<PageSuspense><WorkspaceConnect /></PageSuspense>} />
-              <Route path="paige" element={<PageSuspense><WorkspacePaige /></PageSuspense>} />
-              <Route path="paige/actions" element={<PageSuspense><WorkspacePaigeActions /></PageSuspense>} />
-            </Route>
+            {/* Legacy BTF workspace surface removed — everything lives in the consumer /app dashboard now.
+                Preserve invite deep-links by redirecting to the unified /accept-invite handler; all other
+                /workspace/* URLs land in the consumer dashboard. */}
+            <Route path="/workspace/accept-invite" element={<Navigate to={`/accept-invite${window.location.search}`} replace />} />
+            <Route path="/workspace/*" element={<Navigate to="/app" replace />} />
 
             {/* BTF Onboarding Wizard — admin-triggered, magic-link entry */}
             <Route path="/onboard" element={<PageSuspense><OnboardLayout /></PageSuspense>}>
