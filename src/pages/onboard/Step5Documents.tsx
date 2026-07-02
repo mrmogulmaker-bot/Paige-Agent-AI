@@ -46,11 +46,19 @@ export default function Step5Documents() {
 
   const reload = async () => {
     const { data } = await supabase
-      .from("paige_btf_documents")
-      .select("id, category, original_filename, uploaded_at")
+      .from("documents")
+      .select("id, document_type, file_name, uploaded_at")
       .eq("client_id", client.id)
+      .eq("bucket_name", "btf-onboarding")
       .order("uploaded_at", { ascending: false });
-    setDocs((data as UploadRow[]) ?? []);
+    setDocs(
+      ((data as Array<{ id: string; document_type: string; file_name: string | null; uploaded_at: string }>) ?? []).map((d) => ({
+        id: d.id,
+        category: d.document_type,
+        original_filename: d.file_name,
+        uploaded_at: d.uploaded_at,
+      })),
+    );
   };
   useEffect(() => { reload(); }, [client.id]);
 
@@ -66,14 +74,16 @@ export default function Step5Documents() {
       if (upErr) throw upErr;
 
       const { data: { user } } = await supabase.auth.getUser();
-      const { error: insErr } = await supabase.from("paige_btf_documents").insert({
+      if (!user?.id) throw new Error("You must be signed in to upload documents.");
+      const { error: insErr } = await supabase.from("documents").insert({
+        user_id: user.id,
         client_id: client.id,
-        category,
-        storage_path: path,
-        original_filename: file.name,
-        mime: file.type,
-        size_bytes: file.size,
-        uploaded_by: user?.id ?? null,
+        document_type: category,
+        file_name: file.name,
+        file_path: path,
+        file_size: file.size,
+        mime_type: file.type,
+        bucket_name: "btf-onboarding",
       });
       if (insErr) throw insErr;
 
@@ -85,6 +95,7 @@ export default function Step5Documents() {
       setBusy(false);
     }
   };
+
 
   const finish = async () => {
     if (!hasId) {

@@ -66,11 +66,17 @@ export function ContactPortalPanel({
   useEffect(() => { setLocalLinkedUserId(linkedUserId); }, [linkedUserId]);
 
   const load = async () => {
-    const [{ data: inv }, { data: env }] = await Promise.all([
-      supabase.from("btf_workspace_invites").select("*").eq("client_id", contactId).order("created_at", { ascending: false }),
-      supabase.from("paige_signature_envelopes").select("*").eq("contact_id", contactId).order("sent_at", { ascending: false }),
-    ]);
-    setInvites((inv as Invite[]) || []);
+    // btf_workspace_invites table was dropped in Sprint 211.b. Invite
+    // tracking is out of 211.b scope — invite send path (invite-btf-client
+    // edge function) still writes to the platform's canonical invite store;
+    // the historical list here is stubbed empty until the replacement
+    // read-side is wired in a follow-up ship.
+    const { data: env } = await supabase
+      .from("paige_signature_envelopes")
+      .select("*")
+      .eq("contact_id", contactId)
+      .order("sent_at", { ascending: false });
+    setInvites([]);
     setEnvelopes((env as Envelope[]) || []);
   };
 
@@ -104,24 +110,11 @@ export function ContactPortalPanel({
   };
 
   const cancelPendingInvites = async () => {
-    setBusy("revoke");
-    try {
-      const nowIso = new Date().toISOString();
-      const { error } = await supabase
-        .from("btf_workspace_invites")
-        .update({ expires_at: nowIso })
-        .eq("client_id", contactId)
-        .is("used_at", null)
-        .gt("expires_at", nowIso);
-      if (error) throw error;
-      toast.success("Pending invite canceled");
-      await load();
-    } catch (e: any) {
-      toast.error(e?.message || "Could not cancel invite");
-    } finally {
-      setBusy(null);
-    }
+    // Historical invite-cancel path targeted btf_workspace_invites, which
+    // was dropped in Sprint 211.b. Replacement wiring lands in follow-up.
+    toast.info("Invite cancel is temporarily unavailable — reach out to platform admin if needed.");
   };
+
 
   const revokeAccess = async () => {
     if (!localLinkedUserId) return;
