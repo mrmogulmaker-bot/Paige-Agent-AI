@@ -67,24 +67,29 @@ const businessTiers = [
   },
 ];
 
+// Fictional archetypes illustrating the three tenant sovereignty models.
+// Per §116: no real customer names, no specific brand references.
 const tenantExamples = [
   {
-    tenant: "Mogul Maker Academy",
-    program: "BUILD-to-FUND",
-    price: "$4,997",
-    what: "12-month funding readiness cohort",
+    model: "Absorb Model",
+    archetype: "A Fitness Business Coaching Academy",
+    program: "Included in $497 six-week program",
+    price: "Free to clients",
+    what: "Bundles credit monitoring into the cohort price and uses it as a competitive weapon at enrollment.",
   },
   {
-    tenant: "LaunchPad Coaching",
-    program: "Monthly Membership",
-    price: "$199/mo",
-    what: "Small-business credit accelerator",
+    model: "Markup Model",
+    archetype: "A Business Funding Brokerage",
+    program: "Standalone subscription",
+    price: "$39/mo",
+    what: "Resells monitoring as a recurring revenue rail alongside placement fees.",
   },
   {
-    tenant: "Your Academy",
-    program: "Your Offer",
-    price: "You set the price",
-    what: "Full sovereignty over your retail pricing",
+    model: "Bundled Model",
+    archetype: "A Credit Consultancy",
+    program: "Monitoring + monthly strategy session",
+    price: "$79/mo",
+    what: "Uses Paige as the whole client experience — monitoring, coaching notes, and check-ins in one place.",
   },
 ];
 
