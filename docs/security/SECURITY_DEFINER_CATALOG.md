@@ -264,3 +264,15 @@ Queued entries (land with their respective ships):
 - `admin_get_stripe_webhook_secret` / `admin_set_stripe_webhook_secret`
 - `admin_get_n8n_webhook_url` / `admin_set_n8n_webhook_url` (retrofit)
 
+
+---
+
+## Category D — Trigger Function Hygiene
+
+**Scope:** `SECURITY INVOKER` trigger functions that pin `search_path = ''` for §180 hygiene even though they don't run with elevated privileges. Different risk profile than Categories A/B/C: no privilege escalation surface (writes only to `NEW`), but still deserves catalog visibility so search_path drift is caught by the §124 weekly sweep.
+
+**Rule:** Trigger functions in the `public` schema that touch only `NEW`/`OLD` should be `SECURITY INVOKER` (default) with `SET search_path = ''`. Never `SECURITY DEFINER` unless the trigger legitimately needs to bypass the invoker's RLS — and if it does, promote it to Category A/B with the standard justification block.
+
+### Current entries
+
+- `public.pme_set_subject_id()` — BEFORE INSERT/UPDATE trigger on `public.platform_metered_events`. Auto-populates `subject_id` from `tenant_id` or `consumer_user_id` based on `layer`. `SECURITY INVOKER`, `search_path = ''`. Landed in Migration A (Sprint P.0.1 Gate 1, §206).
