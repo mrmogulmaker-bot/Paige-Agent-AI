@@ -123,17 +123,33 @@ ALTER TABLE public.tenant_customer_trials
     ('end_customer','tenant_member','consumer_user','platform_admin'));
 
 -- 3.8 Update handle_new_user trigger body (references by NAME, not OID)
+-- 3.8 Update handle_new_user trigger body (§200 platform-neutral, §180 search_path='')
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
-DECLARE v_tenant_id uuid;
+DECLARE
+  v_tenant_id uuid;
+  v_role      text;
 BEGIN
-  -- Resolve tenant: staff via tenant_members else default MMA tenant
+  -- Precedence: tenant_member > end_customer > NO INSERT
+  -- No hardcoded tenant fallback per §200.
+  -- L4 consumer_direct signups do NOT get an L2 row —
+  -- consumer_subscriptions is populated by the L4 checkout
+  -- flow, not by this trigger.
   SELECT tenant_id INTO v_tenant_id
     FROM public.tenant_members WHERE user_id = NEW.id LIMIT 1;
+  IF v_tenant_id IS NOT NULL THEN
+    v_role := 'tenant_member';
+  ELSE
+    SELECT tenant_id INTO v_tenant_id
+      FROM public.clients WHERE linked_user_id = NEW.id LIMIT 1;
+    IF v_tenant_id IS NOT NULL THEN
+      v_role := 'end_customer';
+    END IF;
+  END IF;
+
   IF v_tenant_id IS NULL THEN
-    SELECT id INTO v_tenant_id FROM public.tenants
-     WHERE slug = 'mma' LIMIT 1;  -- founding tenant fallback
+    RETURN NEW;  -- L4 or unclassified: no L2 row created
   END IF;
 
   INSERT INTO public.tenant_customer_trials
@@ -141,10 +157,8 @@ BEGIN
      layer, subject_role, tenant_id)
   VALUES
     (NEW.id, 'free', 'trial', now() + interval '14 days',
-     'L2',
-     CASE WHEN EXISTS(SELECT 1 FROM public.tenant_members WHERE user_id = NEW.id)
-          THEN 'tenant_member' ELSE 'end_customer' END,
-     v_tenant_id);
+     'L2', v_role, v_tenant_id);
+
   RETURN NEW;
 END $$;
 
