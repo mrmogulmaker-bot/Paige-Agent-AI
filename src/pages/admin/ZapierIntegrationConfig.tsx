@@ -30,9 +30,9 @@ export default function ZapierIntegrationConfig() {
   async function load() {
     const { data } = await supabase
       .from("paige_mcp_connections")
-      .select("id,label,server_url,transport,auth_token_ref,enabled,tools_cache,last_probed_at")
+      .select("id,label,transport,auth_token_ref,enabled,tools_cache,last_probed_at")
       .order("created_at", { ascending: true });
-    setConns((data ?? []) as Conn[]);
+    setConns((data ?? []).map((d: any) => ({ ...d, server_url: "" })) as Conn[]);
   }
 
   useEffect(() => { void load(); }, []);
@@ -40,14 +40,18 @@ export default function ZapierIntegrationConfig() {
   async function add() {
     if (!label || !url) return;
     setBusy(true);
-    const { error } = await supabase.from("paige_mcp_connections").insert({
-      label, server_url: url, auth_token_ref: ref, transport: "http", enabled: true,
-    });
+    const { data, error } = await supabase.from("paige_mcp_connections").insert({
+      label, auth_token_ref: ref, transport: "http", enabled: true,
+    } as any).select("id").single();
+    if (!error && data?.id) {
+      await supabase.rpc("platform_set_mcp_server_url" as any, { _id: data.id, _url: url });
+    }
     setBusy(false);
     if (error) return toast.error(error.message);
     setLabel(""); setUrl("");
     await load();
   }
+
 
   async function toggle(id: string, enabled: boolean) {
     await supabase.from("paige_mcp_connections").update({ enabled }).eq("id", id);
