@@ -712,47 +712,9 @@ async function processSync(supabase: any, payload: any, targetUserId: string, ca
     }
 
     // ========== STEP 6: AUTO-CREATE DISPUTE DRAFTS ==========
+    // [§194] Auto-dispute creation removed — Paige is monitoring-only.
     currentStep = "disputes";
-    let disputesCreated = 0;
-    const disputeSources = payload.priority_disputes.length > 0
-      ? payload.priority_disputes.map((d: any) => ({
-          creditor_name: d.account_name,
-          bureau: d.bureau,
-          reason_code: d.dispute_basis,
-        }))
-      : payload.negative_items.map((n: any) => ({
-          creditor_name: n.creditor_name,
-          bureau: n.bureau,
-          reason_code: n.dispute_basis || `Dispute: ${n.item_type}`,
-        }));
-
-    for (const ds of disputeSources) {
-      const { data: existingDispute } = await supabase
-        .from("disputes").select("id")
-        .eq("user_id", targetUserId)
-        .eq("creditor_name", ds.creditor_name)
-        .eq("bureau", ds.bureau)
-        .maybeSingle();
-
-      if (existingDispute) {
-        await supabase.from("disputes").update({
-          reason_code: ds.reason_code,
-          narrative: `Auto-generated from credit report analysis. Dispute basis: ${ds.reason_code}`,
-          updated_at: new Date().toISOString(),
-        }).eq("id", existingDispute.id);
-      } else {
-        await supabase.from("disputes").insert(withClientId({
-          user_id: targetUserId,
-          creditor_name: ds.creditor_name,
-          bureau: ds.bureau,
-          reason_code: ds.reason_code,
-          status: "draft",
-          narrative: `Auto-generated from credit report analysis. Dispute basis: ${ds.reason_code}`,
-        }));
-        disputesCreated++;
-      }
-    }
-    results.disputes_auto_created = disputesCreated;
+    results.disputes_auto_created = 0;
 
     // ========== STEP 7: CROSS-BUREAU DISCREPANCIES ==========
     currentStep = "discrepancies";

@@ -200,16 +200,6 @@ serve(async (req) => {
 async function handleCreateDispute(_supabase: any, _userId: string, _params: any) {
   throw new Error("Dispute creation removed under §194. Paige provides credit monitoring only.");
 }
-// Legacy body preserved for reference (all remaining code below unchanged):
-      month: 'short', 
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    })}`,
-    timestamp: currentTime
-  };
-}
 
 async function handleSendSMS(supabaseUrl: string, userId: string, params: any) {
   const response = await fetch(`${supabaseUrl}/functions/v1/send-sms-reminder`, {
