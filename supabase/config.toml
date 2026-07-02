@@ -168,3 +168,6 @@ project_id = "bfmyebsjyuoecmjskqhs"
 
   [functions.readiness-scan]
     verify_jwt = false
+
+  [functions.platform-independence-sweep]
+    verify_jwt = false
