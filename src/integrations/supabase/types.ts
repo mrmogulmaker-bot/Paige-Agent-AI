@@ -12715,6 +12715,530 @@ export type Database = {
           },
         ]
       }
+      program_approvals: {
+        Row: {
+          approval_type: string
+          approved_at: string | null
+          approved_by: string | null
+          client_id: string
+          created_at: string
+          enrollment_id: string
+          id: string
+          metadata: Json
+          requested_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          approval_type: string
+          approved_at?: string | null
+          approved_by?: string | null
+          client_id: string
+          created_at?: string
+          enrollment_id: string
+          id?: string
+          metadata?: Json
+          requested_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          approval_type?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          client_id?: string
+          created_at?: string
+          enrollment_id?: string
+          id?: string
+          metadata?: Json
+          requested_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_approvals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_approvals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "program_approvals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "program_approvals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_approvals_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "program_enrollments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      program_document_requests: {
+        Row: {
+          client_id: string
+          created_at: string
+          description: string | null
+          document_id: string | null
+          enrollment_id: string
+          fulfilled_at: string | null
+          id: string
+          metadata: Json
+          requested_at: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          description?: string | null
+          document_id?: string | null
+          enrollment_id: string
+          fulfilled_at?: string | null
+          id?: string
+          metadata?: Json
+          requested_at?: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          description?: string | null
+          document_id?: string | null
+          enrollment_id?: string
+          fulfilled_at?: string | null
+          id?: string
+          metadata?: Json
+          requested_at?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_document_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_document_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "program_document_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "program_document_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_document_requests_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_document_requests_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "program_enrollments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      program_enrollments: {
+        Row: {
+          client_id: string
+          completed_at: string | null
+          created_at: string
+          enrolled_at: string
+          id: string
+          metadata: Json
+          program_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          completed_at?: string | null
+          created_at?: string
+          enrolled_at?: string
+          id?: string
+          metadata?: Json
+          program_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          completed_at?: string | null
+          created_at?: string
+          enrolled_at?: string
+          id?: string
+          metadata?: Json
+          program_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_enrollments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_enrollments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "program_enrollments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "program_enrollments_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_enrollments_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      program_messages: {
+        Row: {
+          body: string
+          client_id: string
+          created_at: string
+          enrollment_id: string
+          id: string
+          metadata: Json
+          sender_type: string
+          sender_user_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          client_id: string
+          created_at?: string
+          enrollment_id: string
+          id?: string
+          metadata?: Json
+          sender_type: string
+          sender_user_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          client_id?: string
+          created_at?: string
+          enrollment_id?: string
+          id?: string
+          metadata?: Json
+          sender_type?: string
+          sender_user_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "program_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "program_messages_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_messages_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "program_enrollments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      program_phase_item_states: {
+        Row: {
+          client_id: string
+          completed_at: string | null
+          created_at: string
+          enrollment_id: string
+          id: string
+          metadata: Json
+          phase_item_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          completed_at?: string | null
+          created_at?: string
+          enrollment_id: string
+          id?: string
+          metadata?: Json
+          phase_item_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          completed_at?: string | null
+          created_at?: string
+          enrollment_id?: string
+          id?: string
+          metadata?: Json
+          phase_item_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_phase_item_states_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_phase_item_states_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "program_phase_item_states_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "program_phase_item_states_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_phase_item_states_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "program_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "program_phase_item_states_phase_item_id_fkey"
+            columns: ["phase_item_id"]
+            isOneToOne: false
+            referencedRelation: "program_phase_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      program_phase_items: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          item_type: string
+          metadata: Json
+          phase_id: string
+          required: boolean
+          slug: string
+          sort_order: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          item_type?: string
+          metadata?: Json
+          phase_id: string
+          required?: boolean
+          slug: string
+          sort_order?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          item_type?: string
+          metadata?: Json
+          phase_id?: string
+          required?: boolean
+          slug?: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_phase_items_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "program_phases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      program_phases: {
+        Row: {
+          created_at: string
+          id: string
+          metadata: Json
+          name: string
+          program_id: string
+          slug: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metadata?: Json
+          name: string
+          program_id: string
+          slug: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metadata?: Json
+          name?: string
+          program_id?: string
+          slug?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "program_phases_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      programs: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          metadata: Json
+          name: string
+          slug: string
+          status: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json
+          name: string
+          slug: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json
+          name?: string
+          slug?: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "programs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       push_notification_log: {
         Row: {
           body: string
@@ -14129,6 +14653,63 @@ export type Database = {
           },
         ]
       }
+      tenant_delegations: {
+        Row: {
+          created_at: string
+          from_tenant_id: string
+          granted_at: string
+          granted_by: string | null
+          id: string
+          metadata: Json
+          revoked_at: string | null
+          scope: Json
+          status: string
+          to_tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          from_tenant_id: string
+          granted_at?: string
+          granted_by?: string | null
+          id?: string
+          metadata?: Json
+          revoked_at?: string | null
+          scope: Json
+          status?: string
+          to_tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          from_tenant_id?: string
+          granted_at?: string
+          granted_by?: string | null
+          id?: string
+          metadata?: Json
+          revoked_at?: string | null
+          scope?: Json
+          status?: string
+          to_tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_delegations_from_tenant_id_fkey"
+            columns: ["from_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_delegations_to_tenant_id_fkey"
+            columns: ["to_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_email_domains: {
         Row: {
           created_at: string
@@ -15043,6 +15624,7 @@ export type Database = {
           id: string
           name: string
           owner_user_id: string | null
+          parent_tenant_id: string | null
           plan_offer: string | null
           platform_fee_bps: number
           seat_limit: number
@@ -15064,6 +15646,7 @@ export type Database = {
           id?: string
           name: string
           owner_user_id?: string | null
+          parent_tenant_id?: string | null
           plan_offer?: string | null
           platform_fee_bps?: number
           seat_limit?: number
@@ -15085,6 +15668,7 @@ export type Database = {
           id?: string
           name?: string
           owner_user_id?: string | null
+          parent_tenant_id?: string | null
           plan_offer?: string | null
           platform_fee_bps?: number
           seat_limit?: number
@@ -15096,7 +15680,15 @@ export type Database = {
           trial_ends_at?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tenants_parent_tenant_id_fkey"
+            columns: ["parent_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tier_state: {
         Row: {
@@ -16619,6 +17211,7 @@ export type Database = {
         Returns: undefined
       }
       is_admin: { Args: { p_user_id: string }; Returns: boolean }
+      is_assigned_coach: { Args: { _client_id: string }; Returns: boolean }
       is_assigned_to_client: {
         Args: { _assignment_role?: string; _client: string; _user: string }
         Returns: boolean
@@ -16627,13 +17220,23 @@ export type Database = {
         Args: { _broker_id: string }
         Returns: boolean
       }
-      is_btf_assigned_coach: { Args: { _client_id: string }; Returns: boolean }
-      is_btf_client_owner: { Args: { _client_id: string }; Returns: boolean }
+      is_platform_admin: { Args: never; Returns: boolean }
       is_platform_owner:
         | { Args: never; Returns: boolean }
         | { Args: { _user_id: string }; Returns: boolean }
+      is_program_client_owner: {
+        Args: { _client_id: string }
+        Returns: boolean
+      }
       is_staff: { Args: { _user_id: string }; Returns: boolean }
+      is_super_admin:
+        | { Args: never; Returns: boolean }
+        | { Args: { _user_id: string }; Returns: boolean }
       is_tenant_admin: { Args: { _tenant: string }; Returns: boolean }
+      is_tenant_ancestor: {
+        Args: { _candidate_ancestor: string; _tenant_id: string }
+        Returns: boolean
+      }
       is_tenant_member: { Args: { _tenant: string }; Returns: boolean }
       is_tenant_owner: {
         Args: { _tenant_id?: string; _user_id: string }
@@ -16935,6 +17538,7 @@ export type Database = {
         | "viewer"
         | "client"
         | "developer"
+        | "platform_admin"
       btf_doc_status: "pending" | "uploaded" | "approved" | "rejected"
       btf_item_status: "pending" | "in_progress" | "complete"
       btf_phase: "build" | "stack" | "fund" | "complete"
@@ -17217,6 +17821,7 @@ export const Constants = {
         "viewer",
         "client",
         "developer",
+        "platform_admin",
       ],
       btf_doc_status: ["pending", "uploaded", "approved", "rejected"],
       btf_item_status: ["pending", "in_progress", "complete"],
