@@ -1,5 +1,6 @@
-// BTF Service Agreement — v1 (paralegal draft, pending lawyer review).
-// Canonical source of truth lives in mma-os/docs/legal/btf-service-agreement-v1.md.
+// Service Agreement — v1 (paralegal draft, pending lawyer review). Sprint 211.b:
+// brand-specific agreement content refactor tracked as Category #9 (per-tenant branding bundle).
+// Canonical source of truth lives in the legal repository under legal/service-agreement-v1.md.
 // When that file is updated, bump AGREEMENT_VERSION and replace the template body.
 //
 // Placeholders use {{double_braces}} and are substituted at render time.
