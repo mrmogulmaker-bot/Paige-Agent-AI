@@ -117,6 +117,7 @@ const MyAgreements = lazyWithReload(() => import("./pages/MyAgreements"));
 const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
 const WorkspaceApprovals = lazyWithReload(() => import("./pages/workspace/WorkspaceApprovals"));
 const WorkspaceConnect = lazyWithReload(() => import("./pages/workspace/WorkspaceConnect"));
+const WorkspacePaige = lazyWithReload(() => import("./pages/workspace/WorkspacePaige"));
 const GoogleCalendarCallback = lazyWithReload(() => import("./pages/GoogleCalendarCallback"));
 
 const queryClient = new QueryClient({
@@ -226,6 +227,7 @@ const App = () => (
               <Route path="funding-readiness" element={<PageSuspense><WorkspaceFundingReadiness /></PageSuspense>} />
               <Route path="approvals" element={<PageSuspense><WorkspaceApprovals /></PageSuspense>} />
               <Route path="connect" element={<PageSuspense><WorkspaceConnect /></PageSuspense>} />
+              <Route path="paige" element={<PageSuspense><WorkspacePaige /></PageSuspense>} />
             </Route>
 
             {/* BTF Onboarding Wizard — admin-triggered, magic-link entry */}

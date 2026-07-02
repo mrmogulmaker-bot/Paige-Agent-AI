@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
   MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
-  CreditCard, User, Landmark, TrendingUp, Send, Pencil, ClipboardCheck, Trash2, Zap, Wallet,
+  CreditCard, User, Landmark, TrendingUp, Send, Pencil, ClipboardCheck, Trash2, Zap, Wallet, Sparkles,
 } from "lucide-react";
 import { ContactAutomationHistory } from "@/components/admin/contacts/ContactAutomationHistory";
 import { ContactBillingPanel } from "@/components/admin/contacts/ContactBillingPanel";
+import { ContactPaigePanel } from "@/components/contact/ContactPaigePanel";
 
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -359,6 +360,7 @@ export default function ContactDetail() {
           </TabsTrigger>
           <TabsTrigger value="automation"><Zap className="h-4 w-4 mr-1" /> Automation</TabsTrigger>
           <TabsTrigger value="billing"><Wallet className="h-4 w-4 mr-1" /> Billing</TabsTrigger>
+          <TabsTrigger value="paige"><Sparkles className="h-4 w-4 mr-1" /> Paige</TabsTrigger>
         </TabsList>
 
         <TabsContent value="automation">
@@ -367,6 +369,10 @@ export default function ContactDetail() {
 
         <TabsContent value="billing">
           <ContactBillingPanel contactId={client.id} />
+        </TabsContent>
+
+        <TabsContent value="paige">
+          <ContactPaigePanel contactId={client.id} />
         </TabsContent>
 
 
