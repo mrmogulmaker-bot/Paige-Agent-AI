@@ -8,7 +8,7 @@ const Terms = () => {
     <div className="min-h-screen bg-background">
       <PageHead
         title="Terms of Service — PaigeAgent.ai"
-        description="Platform terms, compliance disclosures, and acceptable use for PaigeAgent.ai — the AI-powered entrepreneurial operating system by Mogul Maker Academy."
+        description="Platform terms, compliance disclosures, and acceptable use for PaigeAgent.ai — operated by PaigeAgent AI LLC (Wyoming)."
         path="/terms"
       />
       <SiteBackground />
