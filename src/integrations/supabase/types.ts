@@ -15461,6 +15461,17 @@ export type Database = {
         Args: { _role: string; _tenant_id: string; _user_id: string }
         Returns: boolean
       }
+      increment_readiness_scan_counters: {
+        Args: {
+          _contacts_scanned?: number
+          _cost_usd?: number
+          _isoftpull_calls?: number
+          _proposals_generated?: number
+          _proposals_insufficient_data?: number
+          _run_id: string
+        }
+        Returns: undefined
+      }
       is_admin: { Args: { p_user_id: string }; Returns: boolean }
       is_assigned_to_client: {
         Args: { _assignment_role?: string; _client: string; _user: string }
