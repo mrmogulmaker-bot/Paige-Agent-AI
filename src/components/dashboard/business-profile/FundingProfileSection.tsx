@@ -171,7 +171,7 @@ export function FundingProfileSection({ businessId, userId, isAdminOrCoach }: Pr
     if (mirrorMap[type]) {
       await supabase
         .from("businesses")
-        .update({ [mirrorMap[type]]: status === "certified" })
+        .update({ [mirrorMap[type]]: status === "certified" } as any)
         .eq("id", businessId);
     }
     toast.success("Certification status updated");

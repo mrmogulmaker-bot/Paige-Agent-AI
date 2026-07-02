@@ -98,7 +98,7 @@ export const NotificationsSettings = () => {
       if (!user) return;
       const { error } = await supabase
         .from("communication_preferences")
-        .update({ [key]: value as any })
+        .update({ [key]: value } as any)
         .eq("user_id", user.id);
       if (error) throw error;
     } catch (err) {

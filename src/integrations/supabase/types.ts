@@ -4005,7 +4005,21 @@ export type Database = {
             foreignKeyName: "credit_alerts_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "coach_client_profiles_safe"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "credit_alerts_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "credit_alerts_dismissed_by_fkey"
+            columns: ["dismissed_by"]
+            isOneToOne: false
+            referencedRelation: "coach_client_profiles_safe"
             referencedColumns: ["user_id"]
           },
           {
@@ -12713,6 +12727,13 @@ export type Database = {
             foreignKeyName: "rag_documents_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
+            referencedRelation: "coach_client_profiles_safe"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "rag_documents_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["user_id"]
           },
@@ -12747,6 +12768,13 @@ export type Database = {
           was_helpful?: boolean | null
         }
         Relationships: [
+          {
+            foreignKeyName: "rag_retrieval_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "coach_client_profiles_safe"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "rag_retrieval_log_user_id_fkey"
             columns: ["user_id"]
@@ -15243,6 +15271,92 @@ export type Database = {
           usage_count: number | null
         }
         Relationships: []
+      }
+      coach_client_profiles_safe: {
+        Row: {
+          active_tenant_id: string | null
+          avatar_url: string | null
+          business_name: string | null
+          created_at: string | null
+          dashboard_mode: string | null
+          experience_level: string | null
+          full_name: string | null
+          goal_timeline: string | null
+          has_broker_access: boolean | null
+          id: string | null
+          intake_completed: boolean | null
+          intake_completed_at: string | null
+          is_complimentary: boolean | null
+          onboarding_completed: boolean | null
+          onboarding_step: string | null
+          pme_phase: string | null
+          primary_goal: string | null
+          primary_goal_category: string | null
+          staff_notes: string | null
+          updated_at: string | null
+          user_id: string | null
+          website_url: string | null
+          work_email: string | null
+        }
+        Insert: {
+          active_tenant_id?: string | null
+          avatar_url?: string | null
+          business_name?: string | null
+          created_at?: string | null
+          dashboard_mode?: string | null
+          experience_level?: string | null
+          full_name?: string | null
+          goal_timeline?: string | null
+          has_broker_access?: boolean | null
+          id?: string | null
+          intake_completed?: boolean | null
+          intake_completed_at?: string | null
+          is_complimentary?: boolean | null
+          onboarding_completed?: boolean | null
+          onboarding_step?: string | null
+          pme_phase?: string | null
+          primary_goal?: string | null
+          primary_goal_category?: string | null
+          staff_notes?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          website_url?: string | null
+          work_email?: string | null
+        }
+        Update: {
+          active_tenant_id?: string | null
+          avatar_url?: string | null
+          business_name?: string | null
+          created_at?: string | null
+          dashboard_mode?: string | null
+          experience_level?: string | null
+          full_name?: string | null
+          goal_timeline?: string | null
+          has_broker_access?: boolean | null
+          id?: string | null
+          intake_completed?: boolean | null
+          intake_completed_at?: string | null
+          is_complimentary?: boolean | null
+          onboarding_completed?: boolean | null
+          onboarding_step?: string | null
+          pme_phase?: string | null
+          primary_goal?: string | null
+          primary_goal_category?: string | null
+          staff_notes?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          website_url?: string | null
+          work_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_active_tenant_id_fkey"
+            columns: ["active_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       contact_deal_rollup: {
         Row: {
