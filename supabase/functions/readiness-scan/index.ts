@@ -188,7 +188,8 @@ async function runTenantScan(payload: ScanPayload) {
   let contactsScanned = 0;
   let proposalsGenerated = 0;
   let proposalsInsufficient = 0;
-  let isoftpullCalls = 0;
+  let creditProviderCalls = 0;
+  let creditProviderCostUsd = 0;
 
   for (const contact of cohort) {
     contactsScanned++;
@@ -206,10 +207,13 @@ async function runTenantScan(payload: ScanPayload) {
         .limit(1)
         .maybeSingle();
 
-      // Placeholder: treat every scan as an iSoftpull for cost tracking
-      // until the real integration is wired. Real integration will replace
-      // this with the actual API call + response parsing.
-      isoftpullCalls += 1;
+      // §193 — delegate the actual credit re-pull to the tenant's configured
+      // provider adapter. Cost/call counters are vendor-neutral.
+      if (provider && contact.linked_user_id) {
+        const pull = await provider.pullSnapshot(contact.linked_user_id);
+        creditProviderCalls += pull.calls;
+        creditProviderCostUsd += pull.cost_usd;
+      }
 
       if (!current) {
         // Insufficient data — write proposal with insufficient_data status,
