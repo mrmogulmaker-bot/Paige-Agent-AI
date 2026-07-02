@@ -159,27 +159,16 @@ export default function ContactDetail() {
   const { enabled: btfEnabled } = useTenantFeature("btf_enabled");
   const coachName = (uid: string | null) => uid ? (coaches.find((c) => c.user_id === uid)?.name || "Coach") : "Unassigned";
 
-  const sendBtfInvite = async () => {
-    if (!client?.email) {
-      toast.error("Add an email to this contact first");
-      return;
-    }
-    const toastId = toast.loading("Sending BTF workspace invite…");
-    try {
-      const { data, error } = await supabase.functions.invoke("invite-btf-client", {
-        body: {
-          contact_email: client.email,
-          full_name: fullName || null,
-          preferred_name: client.first_name || null,
-          paige_client_id: client.id,
-        },
-      });
-      if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || "Invite failed");
-      toast.success(data.email_sent ? "Invite emailed" : "Invite created (email pending)", { id: toastId });
-    } catch (e: any) {
-      toast.error(e.message || "Could not send invite", { id: toastId });
-    }
+  const sendClientProgramInvite = async () => {
+    // invite-btf-client edge function was retired in Commit N+1 (Sprint
+    // 211.b close-out). The replacement client-program invite path is
+    // scheduled for a follow-up ship. Preserving the button binding so
+    // the admin surface still renders under btfEnabled + isAdmin gating,
+    // but the send action is a no-op stub until the replacement lands —
+    // matches ContactPortalPanel.cancelPendingInvites pattern.
+    toast.info(
+      "Client program invite is temporarily unavailable — reach out to platform admin if needed.",
+    );
   };
 
   const startOnboarding = async () => {
@@ -247,8 +236,8 @@ export default function ContactDetail() {
         </Button>
         {btfEnabled && isAdmin && (
           <>
-            <Button variant="outline" size="sm" onClick={sendBtfInvite}>
-              <Send className="h-4 w-4 mr-1" /> Resend BTF Invite
+            <Button variant="outline" size="sm" onClick={sendClientProgramInvite}>
+              <Send className="h-4 w-4 mr-1" /> Resend Client Program Invite
             </Button>
             {client.lifecycle_stage === "won" && (
               <Button size="sm" onClick={startOnboarding}>
