@@ -241,7 +241,7 @@ export function AdminAccountManagement({ clientUserId, clientId, userRole }: Adm
         if (updates.type !== undefined) { prev.type = record.type; next.type = updates.type; payload.type = updates.type; }
         if (updates.status !== undefined) { prev.status = record.status; next.status = updates.status; payload.status = updates.status; }
         if (updates.credit_limit !== undefined) { prev.credit_limit = record.credit_limit; next.credit_limit = updates.credit_limit; payload.credit_limit = updates.credit_limit; }
-        await supabase.from("credit_accounts").update(payload).eq("id", record.id);
+        await supabase.from("credit_accounts").update(payload as any).eq("id", record.id);
       } else {
         const payload: Record<string, any> = { updated_at: new Date().toISOString() };
         if (updates.creditor !== undefined) { prev.creditor_name = record.creditor; next.creditor_name = updates.creditor; payload.creditor_name = updates.creditor; }
@@ -249,7 +249,8 @@ export function AdminAccountManagement({ clientUserId, clientId, userRole }: Adm
         if (updates.bureau !== undefined) { prev.bureau = record.bureau; next.bureau = updates.bureau; payload.bureau = updates.bureau; }
         if (updates.amount !== undefined) { prev.amount = record.amount; next.amount = updates.amount; payload.amount = updates.amount; }
         if (updates.status !== undefined) { prev.status = record.status; next.status = updates.status; payload.status = updates.status; }
-        await supabase.from("credit_negative_items").update(payload).eq("id", record.id);
+        await supabase.from("credit_negative_items").update(payload as any).eq("id", record.id);
+
       }
 
       await supabase.from("account_modifications" as any).insert({
