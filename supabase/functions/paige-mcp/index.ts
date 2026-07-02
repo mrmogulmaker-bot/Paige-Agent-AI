@@ -574,7 +574,7 @@ mcp.tool("delete_task", {
 // ---------- Workflows ----------
 mcp.tool("list_workflows", {
   description:
-    "List Paige workflows from paige_workflow_registry. Filter by category (e.g. 'sales', 'cs', 'btf', 'compliance') or active state.",
+    "List Paige workflows from paige_workflow_registry. Filter by category (e.g. 'sales', 'cs', 'build-to-fund', 'compliance') or active state.",
   inputSchema: z.object({
     category: z.string().optional(),
     only_active: z.boolean().optional(),
