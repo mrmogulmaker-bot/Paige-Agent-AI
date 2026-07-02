@@ -168,9 +168,6 @@ export function PricingSection() {
     })();
   }, []);
 
-  const goConsumer = (slug: string) => {
-    navigate(`/for-owners?post_signup_tier=${slug}`);
-  };
 
   return (
     <section id="pricing" className="py-20 bg-background">
