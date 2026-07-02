@@ -15436,6 +15436,7 @@ export type Database = {
     }
     Functions: {
       _automation_webhook_key: { Args: never; Returns: string }
+      _ship26_assert_super_admin: { Args: never; Returns: undefined }
       accept_invitation: {
         Args: { _token: string; _user_id: string }
         Returns: Json
@@ -16096,6 +16097,9 @@ export type Database = {
         }
         Returns: Json
       }
+      ship_26_check_dependencies: { Args: never; Returns: Json }
+      ship_26_drop_legacy_tables: { Args: { _force?: boolean }; Returns: Json }
+      ship_26_freeze_legacy_tables: { Args: never; Returns: Json }
       start_client_impersonation: {
         Args: { p_contact_id: string }
         Returns: {
