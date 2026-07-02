@@ -46,7 +46,7 @@ Reproduced from `MIGRATION_B_SHAPE_PROPOSAL.md` §1 + B.0 audit; unchanged since
 | ADD COLUMN | `tenant_id uuid NOT NULL REFERENCES public.tenants(id)` | backfilled pre-constraint |
 | RENAME POLICY | scoped policies retained under new table name (Postgres auto) | verified during self-test |
 | CREATE VIEW | `public.user_subscriptions` selecting original 10 columns from `tenant_customer_trials` | read-only, no INSTEAD OF |
-| UPDATE FUNCTION BODY | `public.handle_new_user()` → insert into `tenant_customer_trials` with new columns | trigger follows by OID, body references by name |
+| UPDATE FUNCTION BODY | `public.create_free_trial()` (trigger on `public.profiles`) → insert into `tenant_customer_trials` with new columns | sole active writer of the 19 rows; `handle_new_user` untouched |
 
 No column is dropped or retyped in B.1. All additive.
 
