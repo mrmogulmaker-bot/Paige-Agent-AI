@@ -224,11 +224,29 @@ export default function ForOwners() {
           ))}
         </section>
 
+        <section className="max-w-4xl mx-auto">
+          <h2 className="text-2xl font-bold text-center mb-6">Only pay for what you use</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {OVERAGES.map((o) => (
+              <Card key={o.label} className="p-5 bg-card border-border">
+                <p className="text-sm font-semibold">{o.label}</p>
+                <p className="text-2xl font-bold text-gold-dark mt-1">{o.price}</p>
+                <p className="text-xs text-muted-foreground mt-1">{o.scope}</p>
+              </Card>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground text-center mt-4">
+            Every tier includes 1 credit refresh per month. Additional soft-pull credit inquiries
+            (used when shopping products with lenders) are billed on-demand.
+          </p>
+        </section>
+
         <section className="max-w-3xl mx-auto text-center">
           <p className="text-sm text-muted-foreground">
             Cancel anytime. Prices in USD, billed monthly. Paige provides education, credit
             monitoring, and funding intelligence — it is not a lender, broker, or credit repair
-            organization. Service provided by <strong>PaigeAgent AI LLC</strong> (Wyoming).
+            organization. "Paige CFO Coach" is an AI sub-agent, not a human fractional CFO.
+            Service provided by <strong>PaigeAgent AI LLC</strong> (Wyoming).
           </p>
         </section>
       </main>
