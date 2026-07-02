@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
+import { useTenantContext } from "@/hooks/useTenantContext";
 import { Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -62,6 +63,7 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
   const [predictionsCount, setPredictionsCount] = useState(0);
   const { planSlug } = useSubscription();
   const { mode, isCoachOrAdmin: modeCoachOrAdmin } = useDashboardMode();
+  const { activeTenant } = useTenantContext();
 
   useEffect(() => {
     checkRoles();
@@ -126,7 +128,9 @@ export function AppSidebar({ activeSection, setActiveSection }: AppSidebarProps)
           <div>
             <h2 className="text-lg font-bold">PaigeAgent.ai</h2>
             <p className="text-xs text-muted-foreground">
-              {modeCoachOrAdmin && mode === "internal" ? "Internal Mode" : "Mogul Maker Academy"}
+              {modeCoachOrAdmin && mode === "internal"
+                ? "Internal Mode"
+                : (activeTenant?.name ?? "Operator Command Center")}
             </p>
           </div>
         </div>
