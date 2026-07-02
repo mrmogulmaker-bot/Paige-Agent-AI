@@ -32,12 +32,8 @@ export function useRealtimeTable<T = unknown>(
     if (!enabled) return;
     const channel = supabase
       .channel(`rt:${schema}:${table}:${filter ?? "all"}`)
-      .on(
-        // @ts-expect-error — supabase-js typing is looser than the runtime API
-        "postgres_changes",
-        { event, schema, table, ...(filter ? { filter } : {}) },
-        onChange
-      )
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .on("postgres_changes" as any, { event, schema, table, ...(filter ? { filter } : {}) }, onChange)
       .subscribe();
 
     return () => {
