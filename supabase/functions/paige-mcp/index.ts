@@ -7,8 +7,7 @@
 //            list_deals, move_deal_stage, create_deal, list_tasks, create_task, complete_task
 //  Workflows (5): list_workflows, run_workflow*, get_workflow_run,
 //                 list_pending_approvals, decide_pending_approval*
-//  BTF (6): list_btf_clients, get_btf_workspace, list_btf_phase_items,
-//           update_btf_phase_item*, list_btf_document_requests, send_btf_message*
+//  (retired workspace tools consolidated into program_* canonical surface — Sprint 211.b)
 //  Admin (6): list_team_members, assign_coach*, create_team_invitation*,
 //             list_unassigned_queue, list_admin_notifications, create_admin_notification
 //  Destructive tools marked * carry annotations.destructiveHint=true so MCP hosts
