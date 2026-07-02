@@ -58,6 +58,7 @@ const TenantKnowledgeAdmin = lazy(() => import("@/pages/admin/TenantKnowledgeAdm
 const NetworkKbInsights = lazy(() => import("@/pages/admin/NetworkKbInsights"));
 const SecurityCanaryAdmin = lazy(() => import("@/pages/admin/SecurityCanaryAdmin"));
 const LegalAdmin = lazy(() => import("@/pages/admin/LegalAdmin"));
+const DataSourceRegistryAdmin = lazy(() => import("@/pages/admin/DataSourceRegistryAdmin"));
 const AgreementsAdmin = lazy(() => import("@/pages/admin/AgreementsAdmin"));
 const AILearningOverview = lazy(() => import("@/components/admin/AILearningOverview").then(m => ({ default: m.AILearningOverview })));
 const CommunicationsAdmin = lazy(() => import("@/pages/admin/CommunicationsAdmin"));
@@ -444,6 +445,9 @@ const Admin = () => {
         } />
         <Route path="notifications" element={
           <Suspense fallback={<SuspenseFallback />}><AdminNotifications /></Suspense>
+        } />
+        <Route path="data-registry" element={
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><DataSourceRegistryAdmin /></Suspense></AdminOnly>
         } />
         <Route path="approvals/:id" element={
           <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
