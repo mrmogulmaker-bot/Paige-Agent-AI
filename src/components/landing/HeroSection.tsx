@@ -132,7 +132,7 @@ export function HeroSection() {
                   <div className="w-2.5 h-2.5 rounded-full bg-white/10" />
                   <div className="w-2.5 h-2.5 rounded-full bg-white/10" />
                 </div>
-                <div className="text-[10px] text-white/40 font-mono tracking-tight uppercase">
+                <div className="text-[10px] text-white/70 font-mono tracking-tight uppercase">
                   paige_os // core_engine
                 </div>
               </div>
