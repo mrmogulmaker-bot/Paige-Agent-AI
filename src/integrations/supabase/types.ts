@@ -3519,6 +3519,184 @@ export type Database = {
         }
         Relationships: []
       }
+      consumer_invoices: {
+        Row: {
+          created_at: string
+          currency: string
+          hosted_invoice_url: string | null
+          id: string
+          invoice_number: string | null
+          line_items: Json
+          paid_at: string | null
+          status: string
+          stripe_invoice_id: string | null
+          subscription_id: string | null
+          total_cents: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          hosted_invoice_url?: string | null
+          id?: string
+          invoice_number?: string | null
+          line_items?: Json
+          paid_at?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          subscription_id?: string | null
+          total_cents?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          hosted_invoice_url?: string | null
+          id?: string
+          invoice_number?: string | null
+          line_items?: Json
+          paid_at?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          subscription_id?: string | null
+          total_cents?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consumer_invoices_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "consumer_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consumer_subscription_plans: {
+        Row: {
+          annual_price_cents: number | null
+          created_at: string
+          description: string | null
+          features: Json
+          id: string
+          is_active: boolean
+          launch_at: string | null
+          monthly_price_cents: number
+          name: string
+          slug: string
+          stripe_price_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          annual_price_cents?: number | null
+          created_at?: string
+          description?: string | null
+          features?: Json
+          id?: string
+          is_active?: boolean
+          launch_at?: string | null
+          monthly_price_cents?: number
+          name: string
+          slug: string
+          stripe_price_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          annual_price_cents?: number | null
+          created_at?: string
+          description?: string | null
+          features?: Json
+          id?: string
+          is_active?: boolean
+          launch_at?: string | null
+          monthly_price_cents?: number
+          name?: string
+          slug?: string
+          stripe_price_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      consumer_subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          metadata: Json
+          plan_id: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          metadata?: Json
+          plan_id: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          metadata?: Json
+          plan_id?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consumer_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "consumer_subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consumer_waitlist: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          metadata: Json
+          source: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          metadata?: Json
+          source?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          metadata?: Json
+          source?: string | null
+        }
+        Relationships: []
+      }
       conversation_context: {
         Row: {
           active_scope: string | null
@@ -11420,6 +11598,81 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_invoices: {
+        Row: {
+          created_at: string
+          currency: string
+          hosted_invoice_url: string | null
+          id: string
+          invoice_number: string | null
+          line_items: Json
+          metering_cents: number
+          paid_at: string | null
+          period_end: string | null
+          period_start: string | null
+          status: string
+          stripe_invoice_id: string | null
+          subscription_id: string | null
+          subtotal_cents: number
+          tenant_id: string
+          total_cents: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          hosted_invoice_url?: string | null
+          id?: string
+          invoice_number?: string | null
+          line_items?: Json
+          metering_cents?: number
+          paid_at?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          subscription_id?: string | null
+          subtotal_cents?: number
+          tenant_id: string
+          total_cents?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          hosted_invoice_url?: string | null
+          id?: string
+          invoice_number?: string | null
+          line_items?: Json
+          metering_cents?: number
+          paid_at?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          status?: string
+          stripe_invoice_id?: string | null
+          subscription_id?: string | null
+          subtotal_cents?: number
+          tenant_id?: string
+          total_cents?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_invoices_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "platform_subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_invoices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_legal_profile: {
         Row: {
           created_at: string
@@ -11467,6 +11720,315 @@ export type Database = {
           website_url?: string
         }
         Relationships: []
+      }
+      platform_metered_events: {
+        Row: {
+          created_at: string
+          end_customer_contact_id: string | null
+          end_customer_user_id: string | null
+          event_type: string
+          id: string
+          metadata: Json
+          occurred_at: string
+          provider: string | null
+          quantity: number
+          reconciliation_id: string | null
+          service_category: string
+          tenant_billing_method: string | null
+          tenant_id: string
+          tenant_retail_charge_usd: number | null
+          wholesale_cost_usd: number
+        }
+        Insert: {
+          created_at?: string
+          end_customer_contact_id?: string | null
+          end_customer_user_id?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          provider?: string | null
+          quantity?: number
+          reconciliation_id?: string | null
+          service_category: string
+          tenant_billing_method?: string | null
+          tenant_id: string
+          tenant_retail_charge_usd?: number | null
+          wholesale_cost_usd?: number
+        }
+        Update: {
+          created_at?: string
+          end_customer_contact_id?: string | null
+          end_customer_user_id?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          provider?: string | null
+          quantity?: number
+          reconciliation_id?: string | null
+          service_category?: string
+          tenant_billing_method?: string | null
+          tenant_id?: string
+          tenant_retail_charge_usd?: number | null
+          wholesale_cost_usd?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_metered_events_end_customer_contact_id_fkey"
+            columns: ["end_customer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_metered_events_end_customer_contact_id_fkey"
+            columns: ["end_customer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "platform_metered_events_end_customer_contact_id_fkey"
+            columns: ["end_customer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "platform_metered_events_end_customer_contact_id_fkey"
+            columns: ["end_customer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_metered_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_metering_reconciliation: {
+        Row: {
+          created_at: string
+          event_count: number
+          id: string
+          invoice_id: string | null
+          period_end: string
+          period_start: string
+          service_category: string
+          status: string
+          tenant_id: string
+          total_wholesale_cost_usd: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          event_count?: number
+          id?: string
+          invoice_id?: string | null
+          period_end: string
+          period_start: string
+          service_category: string
+          status?: string
+          tenant_id: string
+          total_wholesale_cost_usd?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          event_count?: number
+          id?: string
+          invoice_id?: string | null
+          period_end?: string
+          period_start?: string
+          service_category?: string
+          status?: string
+          tenant_id?: string
+          total_wholesale_cost_usd?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_metering_reconciliation_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "platform_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_metering_reconciliation_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_subscription_plans: {
+        Row: {
+          annual_price_cents: number | null
+          created_at: string
+          description: string | null
+          id: string
+          included_contacts: number | null
+          included_seats: number
+          is_active: boolean
+          metered_addons: Json
+          monthly_price_cents: number
+          name: string
+          slug: string
+          stripe_price_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          annual_price_cents?: number | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          included_contacts?: number | null
+          included_seats?: number
+          is_active?: boolean
+          metered_addons?: Json
+          monthly_price_cents?: number
+          name: string
+          slug: string
+          stripe_price_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          annual_price_cents?: number | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          included_contacts?: number | null
+          included_seats?: number
+          is_active?: boolean
+          metered_addons?: Json
+          monthly_price_cents?: number
+          name?: string
+          slug?: string
+          stripe_price_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_subscriptions: {
+        Row: {
+          billing_period: string
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          id: string
+          metadata: Json
+          plan_id: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          billing_period?: string
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          metadata?: Json
+          plan_id: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          billing_period?: string
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          id?: string
+          metadata?: Json
+          plan_id?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "platform_subscription_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_subscriptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_usage_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          occurred_at: string
+          quantity: number
+          reconciled_invoice_id: string | null
+          tenant_id: string
+          unit: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          quantity?: number
+          reconciled_invoice_id?: string | null
+          tenant_id: string
+          unit?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          quantity?: number
+          reconciled_invoice_id?: string | null
+          tenant_id?: string
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_usage_events_reconciled_invoice_id_fkey"
+            columns: ["reconciled_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "platform_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_usage_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -13729,6 +14291,173 @@ export type Database = {
           },
         ]
       }
+      tenant_service_subscriptions: {
+        Row: {
+          application_fee_amount: number | null
+          billing_period: string
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          end_customer_contact_id: string | null
+          end_customer_user_id: string | null
+          id: string
+          metadata: Json
+          price_id: string | null
+          product_id: string | null
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          application_fee_amount?: number | null
+          billing_period?: string
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          end_customer_contact_id?: string | null
+          end_customer_user_id?: string | null
+          id?: string
+          metadata?: Json
+          price_id?: string | null
+          product_id?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          application_fee_amount?: number | null
+          billing_period?: string
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          end_customer_contact_id?: string | null
+          end_customer_user_id?: string | null
+          id?: string
+          metadata?: Json
+          price_id?: string | null
+          product_id?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_service_subscriptions_end_customer_contact_id_fkey"
+            columns: ["end_customer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_service_subscriptions_end_customer_contact_id_fkey"
+            columns: ["end_customer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "tenant_service_subscriptions_end_customer_contact_id_fkey"
+            columns: ["end_customer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "tenant_service_subscriptions_end_customer_contact_id_fkey"
+            columns: ["end_customer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_service_subscriptions_price_id_fkey"
+            columns: ["price_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_service_subscriptions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_service_subscriptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_service_usage_events: {
+        Row: {
+          amount_cents: number | null
+          created_at: string
+          end_customer_user_id: string | null
+          event_type: string
+          id: string
+          metadata: Json
+          occurred_at: string
+          quantity: number
+          subscription_id: string | null
+          tenant_id: string
+          unit_price_cents: number | null
+        }
+        Insert: {
+          amount_cents?: number | null
+          created_at?: string
+          end_customer_user_id?: string | null
+          event_type: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          quantity?: number
+          subscription_id?: string | null
+          tenant_id: string
+          unit_price_cents?: number | null
+        }
+        Update: {
+          amount_cents?: number | null
+          created_at?: string
+          end_customer_user_id?: string | null
+          event_type?: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          quantity?: number
+          subscription_id?: string | null
+          tenant_id?: string
+          unit_price_cents?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_service_usage_events_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_service_subscriptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_service_usage_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_stripe_accounts: {
         Row: {
           account_type: string
@@ -15197,7 +15926,9 @@ export type Database = {
       }
       is_btf_assigned_coach: { Args: { _client_id: string }; Returns: boolean }
       is_btf_client_owner: { Args: { _client_id: string }; Returns: boolean }
-      is_platform_owner: { Args: never; Returns: boolean }
+      is_platform_owner:
+        | { Args: never; Returns: boolean }
+        | { Args: { _user_id: string }; Returns: boolean }
       is_staff: { Args: { _user_id: string }; Returns: boolean }
       is_tenant_admin: { Args: { _tenant: string }; Returns: boolean }
       is_tenant_member: { Args: { _tenant: string }; Returns: boolean }
