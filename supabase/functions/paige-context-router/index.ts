@@ -1,0 +1,140 @@
+// Customer-Scoped Paige (CSP) router — Ship #3.5.
+// Loads a per-contact context bundle via load_contact_context / load_self_context
+// (SECURITY INVOKER — caller RLS applies), then asks Lovable AI to answer ONLY from
+// that bundle. Enforces §189 feature gate + §194 monitoring-not-repair framing.
+
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function redactKeys(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(redactKeys);
+  if (v && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      const lk = k.toLowerCase();
+      if (
+        lk.endsWith("_ct") || lk.endsWith("_encrypted") ||
+        lk.includes("ssn") || lk.includes("secret") ||
+        lk.includes("access_token") || lk.includes("refresh_token") ||
+        lk === "token" || lk === "password"
+      ) continue;
+      out[k] = redactKeys(val);
+    }
+    return out;
+  }
+  return v;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "POST only" }, 405);
+
+  const authz = req.headers.get("authorization") ?? "";
+  if (!authz.toLowerCase().startsWith("bearer ")) return json({ error: "Unauthorized" }, 401);
+
+  const client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authz } },
+    auth: { persistSession: false },
+  });
+
+  const { data: userRes, error: userErr } = await client.auth.getUser();
+  if (userErr || !userRes?.user) return json({ error: "Unauthorized" }, 401);
+
+  let body: { contact_id?: string; self?: boolean; user_prompt?: string; scopes?: string[] };
+  try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+  const prompt = (body.user_prompt ?? "").toString().trim();
+  if (!prompt) return json({ error: "user_prompt is required" }, 400);
+  if (prompt.length > 4000) return json({ error: "user_prompt too long" }, 400);
+
+  // Load context (RLS applies)
+  const rpc = body.self
+    ? await client.rpc("load_self_context")
+    : await client.rpc("load_contact_context", {
+        p_contact_id: body.contact_id,
+        p_scopes: body.scopes && body.scopes.length ? body.scopes : ["contact"],
+      });
+
+  if (rpc.error) return json({ error: rpc.error.message }, 400);
+  const ctx = rpc.data as { ok: boolean; error?: string; message?: string; bundle?: unknown; surfaces_used?: string[]; load_id?: string; row_count?: number };
+  if (!ctx?.ok) {
+    return json({
+      ok: false,
+      error: ctx?.error ?? "CONTEXT_UNAVAILABLE",
+      message: ctx?.message ?? "Paige could not load context for this contact.",
+      load_id: ctx?.load_id,
+    }, ctx?.error === "CONSENT_NOT_GRANTED" ? 403 : 422);
+  }
+
+  const safeBundle = redactKeys(ctx.bundle ?? {});
+
+  if (!LOVABLE_API_KEY) {
+    return json({
+      ok: true,
+      answer: "AI is not configured on this environment.",
+      surfaces_used: ctx.surfaces_used ?? [],
+      load_id: ctx.load_id,
+    });
+  }
+
+  const system = [
+    "You are Paige — a compliance-first business-growth assistant.",
+    "Answer ONLY from the CONTEXT bundle provided below. Do not invent facts.",
+    "If the bundle is insufficient, say exactly what is missing and stop.",
+    "You are a credit MONITORING and credit BUILDING platform. NEVER use the phrase 'credit repair' — Doctrine §194.",
+    "Never guarantee approval or funding. Never claim to remove negatives. No legal or tax advice.",
+    "Doctrine §116: never name another specific client, coach, or customer — use archetype phrasing.",
+    "Keep replies under 220 words unless the user asks for detail.",
+  ].join("\n");
+
+  const user = [
+    "CONTEXT (JSON, redacted):",
+    "```json",
+    JSON.stringify(safeBundle).slice(0, 24_000),
+    "```",
+    "",
+    "QUESTION:",
+    prompt,
+  ].join("\n");
+
+  const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+    }),
+  });
+  if (!aiRes.ok) {
+    const detail = (await aiRes.text()).slice(0, 500);
+    return json({ ok: false, error: `AI gateway ${aiRes.status}`, detail }, 502);
+  }
+  const j = await aiRes.json();
+  const answer = j?.choices?.[0]?.message?.content ?? "";
+
+  return json({
+    ok: true,
+    answer,
+    surfaces_used: ctx.surfaces_used ?? [],
+    row_count: ctx.row_count ?? 0,
+    load_id: ctx.load_id,
+  });
+});
