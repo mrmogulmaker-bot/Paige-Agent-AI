@@ -570,3 +570,86 @@ Once `table_layer_registry` (§207) ships, add each new `programs` / `program_*`
 ---
 
 **On approval:** ship in this order — (1) archive CSVs, (2) migration transaction, (3) verification P7 regex sweep, (4) code sweep commits, (5) CI guard commit, (6) §211 doctrine file commit. All in one PR.
+
+---
+
+## Addendum — Locked Refinements (pre-execution)
+
+**Status:** LOCKED pending Antonio's GO. No DDL, no code sweep, no drops executed yet.
+
+### R1 — Legacy migration attribution (Section B Step 3)
+Add `programs.originates_from_legacy_migration boolean NOT NULL DEFAULT false`. Backfill sets it to `true` for the 14 rows migrated from legacy phase-item templates. Client Re-Attribution sprint UPDATEs `tenant_id` on these rows to the PME tenant once that row exists, then flips the flag to `false` (or leaves it as historical marker — decide in that sprint). Chose boolean over `notes` string: machine-readable, easy to filter, no free-text drift.
+
+### R2 — tenant_delegations.scope CHECK test cases (add to Section F)
+```sql
+-- Should succeed
+INSERT INTO tenant_delegations (from_tenant_id, to_tenant_id, granted_by, scope)
+VALUES (:t1, :t2, :u, '{"access":"read","tables":["*"],"row_filter":null}'::jsonb);
+
+INSERT INTO tenant_delegations (from_tenant_id, to_tenant_id, granted_by, scope)
+VALUES (:t1, :t3, :u, '{"access":"read","tables":["*"],"row_filter":"tenant_id = current_setting(''app.tenant_id'')"}'::jsonb);
+
+-- Should fail (row_filter must be null or string)
+INSERT INTO tenant_delegations (from_tenant_id, to_tenant_id, granted_by, scope)
+VALUES (:t1, :t4, :u, '{"access":"read","tables":["*"],"row_filter":{}}'::jsonb);
+
+-- Should fail (missing required keys)
+INSERT INTO tenant_delegations (from_tenant_id, to_tenant_id, granted_by, scope)
+VALUES (:t1, :t5, :u, '{"access":"read"}'::jsonb);
+```
+CHECK expression must enforce: required keys `access`, `tables`, `row_filter` present; `row_filter` is `null` OR `jsonb_typeof(scope->'row_filter') = 'string'`.
+
+### R3 — Section C storage object export
+Before dropping `paige_btf_documents`, export both the row and the referenced storage object:
+```bash
+mkdir -p /mnt/documents/archive_sprint_211_212/paige_btf_documents_files/
+STORAGE_PATH=$(psql -tAc "SELECT storage_path FROM paige_btf_documents LIMIT 1")
+BUCKET=$(psql -tAc "SELECT bucket FROM paige_btf_documents LIMIT 1")
+# Download via supabase storage API (service_role) — record SHA256
+supabase storage download "$BUCKET/$STORAGE_PATH" \
+  /mnt/documents/archive_sprint_211_212/paige_btf_documents_files/
+sha256sum /mnt/documents/archive_sprint_211_212/paige_btf_documents_files/* \
+  >> /mnt/documents/archive_sprint_211_212/MANIFEST.sha256
+```
+Manifest must list: JSONL row exports + storage file(s) + counts + SHA256 of each.
+
+### R4 — Expanded blocklist regex (Sections F + G)
+```
+\bbtf\b|build[.\-_ ]?to[.\-_ ]?fund|b2f|\bmma\b|mogul[.\-_ ]?maker|mrmogulmaker|paige_btf|mma_os|\bpme\b|project[.\-_ ]?mogul|\btmg\b|treasury[.\-_ ]?media|\bmfs\b|mogul[.\-_ ]?funding|coreconnect|core[.\-_ ]?connect|disputera|\bmcc\b|mogul[.\-_ ]?credit|\baedis\b|\bgivalli\b
+```
+`\blegs\b` intentionally excluded — false-positive risk on the English word. LEGS caught by manual review only.
+
+### Judgment-call procedures (Section A resolutions)
+
+**Flag 1 — btf_workspace_invites (2 rows):**
+```sql
+SELECT email, expires_at, used_at, created_at, created_by
+FROM btf_workspace_invites
+ORDER BY created_at;
+```
+Extract to `/mnt/documents/archive_sprint_211_212/live_invites_notes.md`. Bucket:
+- `used_at IS NOT NULL` → redeemed, drop-safe.
+- `used_at IS NULL AND expires_at < now()` → expired, drop-safe.
+- `used_at IS NULL AND expires_at > now()` → LIVE. Record email + expires_at + created_by. Re-invite manually via PME tenant after Client Re-Attribution sprint. Antonio confirms disposition before drop.
+
+**Flag 2 — paige_btf_documents (1 row):** Archive per R3 (row + storage object + SHA256). Drop approved post-archive.
+
+**Flag 3 — mma_os_bridge_outbox (1 row):**
+```sql
+SELECT verb, delivered_at, last_error, attempts, next_retry_at, created_at
+FROM mma_os_bridge_outbox;
+```
+Extract to `/mnt/documents/archive_sprint_211_212/bridge_outbox_notes.md`.
+- `delivered_at IS NOT NULL` → drop-safe.
+- `delivered_at IS NULL` → undelivered event to legacy GHL/MMA-OS bridge. MMA is migrating off GHL, so treat as moot. Antonio confirms abandonment before archive/drop.
+
+### Commit sequencing
+- Commit N — main §211/§212 sweep (schema + non-mcp code + docs).
+- Commit N+1 — `supabase/functions/paige-mcp/index.ts` rewrite in isolation (75 brand references, isolated review surface).
+
+### Gates on Antonio before GO
+1. Insert `app_settings_owner` row with `owner_email = <Antonio's login email>` (Section B Step 12 depends on it).
+2. Resolve the 3 judgment flags (record decisions in the notes files above).
+3. Archive uploaded to Google Drive with SHA256 manifest recorded.
+
+On Antonio's "GO," execute Section B DDL in a single transaction, then commit N, then commit N+1.
