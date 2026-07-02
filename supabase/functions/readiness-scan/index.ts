@@ -162,12 +162,13 @@ async function runTenantScan(payload: ScanPayload) {
   // §189 gate
   const { data: features } = await admin
     .from("tenant_features")
-    .select("credit_services_enabled, readiness_scan_cadence")
+    .select("credit_services_enabled, readiness_scan_cadence, credit_data_provider")
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (!features?.credit_services_enabled) {
     return { skipped: true, reason: "credit_services_disabled", tenant_id: tenantId };
   }
+  const provider = resolveCreditDataProvider(features?.credit_data_provider);
 
   const cohort = await loadCohort(tenantId, payload.contact_ids);
 
