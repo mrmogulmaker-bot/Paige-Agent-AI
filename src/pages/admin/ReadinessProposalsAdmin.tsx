@@ -39,8 +39,8 @@ interface ScanRun {
   contacts_scanned: number;
   proposals_generated: number;
   proposals_insufficient_data: number;
-  isoftpull_calls: number;
-  cost_usd_total: number;
+  credit_provider_calls_count: number;
+  credit_provider_cost_usd: number;
   trigger_source: string;
 }
 
