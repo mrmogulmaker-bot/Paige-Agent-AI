@@ -25,7 +25,7 @@ const CLIENT_FORBIDDEN_PREFIXES = ["/admin", "/broker/app"];
  * Hard guard: a signed-in account whose only role is `client` (or no role at all
  * while linked to a clients row) is locked to /app, /onboard, /auth, and public
  * pages. They cannot reach the admin, broker, or BTF workspace surfaces — even
- * if they paste a URL directly.
+ * if they paste a URL directly. (BTF surface retired — Sprint 211.b cleanup)
  */
 export function ClientOnlyRouteGuard() {
   const location = useLocation();

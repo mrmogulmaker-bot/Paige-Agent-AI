@@ -52,7 +52,7 @@ function nextStepFor(row: MyApprovalRow): string | null {
 }
 
 interface Props {
-  /** White-label switch: hide the "Paige" name in BTF workspace. */
+  /** White-label switch: hide the "Paige" name in BTF workspace. (Sprint 211.b: BTF surface retired; prop preserved for future white-label reuse) */
   whiteLabel?: boolean;
   brandedAgentName?: string; // e.g. "Paige" or "your coaching team"
   /** Optional stage line shown in the header card. */

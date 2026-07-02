@@ -3,7 +3,7 @@
  *
  * Every tenant sees the same UI. Rules are inactive by default until an
  * admin flips them on. Rule seeds are UNIVERSAL templates only — tenant-
- * specific pipelines (e.g. BTF, 3M) are created as tenant config via
+ * specific pipelines (e.g. BTF, 3M) are created as tenant config via (Sprint 211.b: BTF cited as historical example only)
  * PipelineSettings first, then mapped through this same wizard.
  *
  * Webhook URL is stored pgcrypto-encrypted on tenants.automation_webhook_url_encrypted

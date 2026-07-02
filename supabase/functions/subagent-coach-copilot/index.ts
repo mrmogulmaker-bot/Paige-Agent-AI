@@ -1,6 +1,6 @@
 // Sub-Agent: Coach Copilot
 // Summarizes a coach's book of business: client load, overdue tasks, clients
-// without recent touchpoints, and BTF progress signals. Scoped by coach user.
+// without recent touchpoints, and BTF progress signals. Scoped by coach user. (Sprint 211.b: BTF surface retired; signal integration deferred to per-tenant program-progress refactor)
 //
 // Doctrine §116 — Archetype-only references in generated output.
 // This agent legitimately names the requesting coach's OWN clients (their book).
