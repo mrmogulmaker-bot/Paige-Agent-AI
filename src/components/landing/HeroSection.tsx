@@ -112,10 +112,10 @@ export function HeroSection() {
               </div>
             </div>
 
-            <p className="text-[11px] text-white/40 pt-2">
+            <p className="text-[11px] text-white/70 pt-2">
               The Operator Command Center for coaching academies, brokerages, and
               consultancies ·{" "}
-              <span className="text-gold/70">From Borrower to Banker</span>
+              <span className="text-gold">From Borrower to Banker</span>
             </p>
           </div>
 
