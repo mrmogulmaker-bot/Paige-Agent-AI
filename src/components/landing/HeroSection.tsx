@@ -113,7 +113,8 @@ export function HeroSection() {
             </div>
 
             <p className="text-[11px] text-white/40 pt-2">
-              Brought to you by Mogul Maker Academy ·{" "}
+              The Operator Command Center for coaching academies, brokerages, and
+              consultancies ·{" "}
               <span className="text-gold/70">From Borrower to Banker</span>
             </p>
           </div>
