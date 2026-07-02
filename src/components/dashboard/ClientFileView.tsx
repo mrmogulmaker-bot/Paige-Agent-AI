@@ -12,7 +12,7 @@ import { ReportUploadTab } from "./ReportUploadTab";
 import { OutreachCenter } from "./OutreachCenter";
 import { PMEFundingReadiness } from "./PMEFundingReadiness";
 import { ClientMemoryTab } from "./ClientMemoryTab";
-import { ClientOutcomesTab } from "./ClientOutcomesTab";
+// [§194] ClientOutcomesTab removed — credit monitoring only, no dispute outcomes.
 import { AdminAccountManagement } from "./AdminAccountManagement";
 import { AdminFactoryResetDialog, AdminChatHistory, AdminFundingOverride } from "./admin/AdminClientTools";
 import { ClientDemographicsCard } from "./ClientDemographicsCard";
@@ -264,9 +264,7 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           <TabsTrigger value="memory" className="text-xs">
             <Brain className="w-3 h-3 mr-1" /> Memory
           </TabsTrigger>
-          <TabsTrigger value="outcomes" className="text-xs">
-            <TrendingUp className="w-3 h-3 mr-1" /> Outcomes
-          </TabsTrigger>
+          {/* [§194] Outcomes tab removed */}
           <TabsTrigger value="chat-history" className="text-xs">
             <MessageSquare className="w-3 h-3 mr-1" /> Chat
           </TabsTrigger>
@@ -503,9 +501,7 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           <ClientMemoryTab clientUserId={clientUserId} />
         </TabsContent>
 
-        <TabsContent value="outcomes" className="mt-4">
-          <ClientOutcomesTab clientId={clientUserId} clientName={profile?.full_name || "Client"} />
-        </TabsContent>
+        {/* [§194] outcomes tab removed */}
 
         <TabsContent value="chat-history" className="mt-4">
           <AdminChatHistory clientUserId={clientUserId} />

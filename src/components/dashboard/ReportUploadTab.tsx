@@ -98,7 +98,7 @@ export function ReportUploadTab({ clientUserId }: ReportUploadTabProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState<string | null>(null);
   const [selectedUpload, setSelectedUpload] = useState<ReportUpload | null>(null);
-  const [generatingDispute, setGeneratingDispute] = useState<string | null>(null);
+  // [§194] generatingDispute state removed.
   const [deletingUpload, setDeletingUpload] = useState<string | null>(null);
 
   const fetchUploads = useCallback(async () => {
@@ -271,51 +271,7 @@ export function ReportUploadTab({ clientUserId }: ReportUploadTabProps) {
     }
   };
 
-  const handleGenerateDispute = async (item: NegativeItem) => {
-    const key = `${item.creditor_name}-${item.category}`;
-    setGeneratingDispute(key);
-    try {
-      const bureauData = {
-        name: item.bureau || 'Unknown Bureau',
-        totalAccounts: selectedUpload?.analysis_result?.positive_accounts?.length || 0,
-        derogatoryItems: selectedUpload?.analysis_result?.negative_items?.filter(
-          (n) => ['collection', 'charge_off', 'repossession', 'foreclosure'].includes(n.category)
-        ).length || 0,
-        delinquentItems: selectedUpload?.analysis_result?.negative_items?.filter(
-          (n) => n.category === 'late_payment'
-        ).length || 0,
-      };
-
-      const { data, error } = await supabase.functions.invoke('generate-dispute-letter', {
-        body: {
-          bureauData,
-          issueType: `${item.category.replace(/_/g, ' ')} - ${item.creditor_name}${item.amount ? ` ($${item.amount})` : ''}${item.dispute_reason_suggestion ? ` - ${item.dispute_reason_suggestion}` : ''}`,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.letter) {
-        // Save the letter
-        const currentUser = (await supabase.auth.getUser()).data.user;
-        await supabase.from('dispute_letters').insert({
-          user_id: clientUserId || currentUser?.id || '',
-          dispute_type: item.category.replace(/_/g, ' '),
-          business_name: item.creditor_name,
-          account_number: item.account_number_masked,
-          letter_content: data.letter,
-          status: 'draft',
-        });
-
-        toast.success('Dispute letter generated! Check your Disputes section.');
-      }
-    } catch (error) {
-      console.error('Dispute generation error:', error);
-      toast.error('Failed to generate dispute letter');
-    } finally {
-      setGeneratingDispute(null);
-    }
-  };
+  // [§194] Dispute-letter generation removed — Paige is monitoring-only.
 
   const handleDeleteUpload = async (upload: ReportUpload) => {
     if (!confirm(`Delete "${upload.file_name}" and all extracted data? This cannot be undone.`)) return;
@@ -619,25 +575,14 @@ export function ReportUploadTab({ clientUserId }: ReportUploadTabProps) {
                         {item.notes && (
                           <p className="text-xs text-muted-foreground bg-muted/30 p-2 rounded">{item.notes}</p>
                         )}
-                        {item.is_disputable && (
-                          <div className="flex items-center justify-between border-t border-border pt-3">
-                            <p className="text-xs text-accent">
+                        {item.is_disputable && item.dispute_reason_suggestion && (
+                          <div className="border-t border-border pt-3">
+                            <p className="text-xs text-muted-foreground">
                               💡 {item.dispute_reason_suggestion}
                             </p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-accent text-accent hover:bg-accent hover:text-accent-foreground"
-                              onClick={() => handleGenerateDispute(item)}
-                              disabled={generatingDispute === `${item.creditor_name}-${item.category}`}
-                            >
-                              {generatingDispute === `${item.creditor_name}-${item.category}` ? (
-                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                              ) : (
-                                <FileText className="w-3 h-3 mr-1" />
-                              )}
-                              Generate Dispute
-                            </Button>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              Paige tracks and reports — for filing disputes, use the CFPB's free self-help tools.
+                            </p>
                           </div>
                         )}
                       </div>

@@ -101,7 +101,7 @@ serve(async (req) => {
           supabase.from("user_subscriptions").select("plan_slug, status").eq("user_id", user.id).maybeSingle(),
           supabase.from("credit_accounts").select("id, creditor, type, is_open, is_authorized_user, credit_limit, limit_amount, balance, current_balance, account_open_date, account_close_date, opened_on, status, bureau_source, payment_history_json, original_amount, is_disputed_ownership, duplicate_of_id, needs_review").eq("user_id", user.id),
           supabase.from("credit_negative_items").select("id, creditor_name, amount, bureau, item_type, status, date_of_occurrence, date_reported, is_disputed_ownership, duplicate_of_id").eq("user_id", user.id).neq("status", "removed"),
-          supabase.from("disputes").select("bureau, creditor_name, status, dispute_round").eq("user_id", user.id).order("created_at", { ascending: false }).limit(5),
+          Promise.resolve({ data: [] as any[] }), // [§194] disputes removed
           supabase.from("businesses").select("legal_name, entity_type, state_of_formation, formation_date, ein, business_phone, phone_411_listed, has_bank_account, bank_name").eq("owner_user_id", user.id).limit(3),
           supabase.from("credit_alerts").select("alert_type, alert_severity, alert_title, alert_description, bureau, created_at").eq("client_id", user.id).eq("is_dismissed", false).eq("is_read", false).order("created_at", { ascending: false }).limit(5),
           supabase.from("credit_report_uploads").select("bureau_detected, last_analyzed_at").eq("user_id", user.id).eq("analysis_status", "completed").order("last_analyzed_at", { ascending: false }).limit(6),

@@ -51,20 +51,7 @@ export const OnboardingChecklist = ({ userId }: { userId: string }) => {
         return (count ?? 0) > 0;
       },
     },
-    {
-      id: "start_dispute",
-      label: "Start Your First Dispute",
-      description: "Challenge inaccurate items on your credit report",
-      icon: FileText,
-      route: "/app/disputes",
-      check: async () => {
-        const { count } = await supabase
-          .from("disputes")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", userId);
-        return (count ?? 0) > 0;
-      },
-    },
+    // [§194] "Start Your First Dispute" step removed — monitoring-only surface.
     {
       id: "add_business",
       label: "Set Up Your Business Profile",

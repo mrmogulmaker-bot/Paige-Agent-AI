@@ -196,31 +196,9 @@ serve(async (req) => {
 });
 
 // Handler functions
-async function handleCreateDispute(supabase: any, userId: string, params: any) {
-  const currentTime = new Date().toISOString();
-  const { data, error } = await supabase.from('disputes').insert({
-    user_id: userId,
-    creditor_name: params.creditorName,
-    bureau: params.bureau,
-    reason_code: params.reasonCode,
-    account_number_masked: params.accountNumber?.slice(-4),
-    narrative: params.narrative,
-    status: 'draft',
-  }).select().single();
-
-  if (error) throw error;
-  return { 
-    disputeId: data.id, 
-    message: `Dispute against ${params.creditorName} created successfully at ${new Date(currentTime).toLocaleString('en-US', { 
-      weekday: 'short', 
-      month: 'short', 
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    })}`,
-    timestamp: currentTime
-  };
+// [§194] handleCreateDispute stubbed — Paige is monitoring-only.
+async function handleCreateDispute(_supabase: any, _userId: string, _params: any) {
+  throw new Error("Dispute creation removed under §194. Paige provides credit monitoring only.");
 }
 
 async function handleSendSMS(supabaseUrl: string, userId: string, params: any) {

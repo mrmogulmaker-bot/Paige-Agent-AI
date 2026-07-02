@@ -18,7 +18,7 @@ import { BusinessBankAccountsOverview } from "@/components/dashboard/BusinessBan
 import { BusinessTasksOverview } from "@/components/dashboard/BusinessTasksOverview";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 import { LearningVault } from "@/components/dashboard/LearningVault";
-import { DisputesManager } from "@/components/dashboard/DisputesManager";
+// [§194] DisputesManager removed — credit monitoring only.
 import { AccountsOverview } from "@/components/dashboard/AccountsOverview";
 import { BuildProgramOutline } from "@/components/dashboard/BuildProgramOutline";
 // BuildProgramBusinessWrapper unused — TODO handlers gated until real APIs are wired.

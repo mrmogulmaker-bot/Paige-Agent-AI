@@ -190,59 +190,7 @@ function ActiveAlerts({ onNavigate }: { onNavigate: (section: string) => void })
   );
 }
 
-// ── Widget 3: Dispute Status ──
-
-function DisputeStatus({ onNavigate }: { onNavigate: (section: string) => void }) {
-  const { data: userId } = useUserId();
-
-  const { data: counts } = useQuery({
-    queryKey: ["dashboard-dispute-counts"],
-    enabled: !!userId,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("disputes")
-        .select("status")
-        .eq("user_id", userId!);
-      const items = data || [];
-      return {
-        draft: items.filter(d => d.status === "draft").length,
-        inProgress: items.filter(d => ["submitted", "in_progress", "under_review", "round_1_submitted", "round_2_submitted"].includes(d.status)).length,
-        resolved: items.filter(d => d.status === "resolved").length,
-      };
-    },
-  });
-
-  const tiles = [
-    { label: "Draft", count: counts?.draft ?? 0, icon: FileText, color: "text-muted-foreground" },
-    { label: "In Progress", count: counts?.inProgress ?? 0, icon: Clock, color: "text-amber-500" },
-    { label: "Resolved", count: counts?.resolved ?? 0, icon: CheckCircle2, color: "text-green-500" },
-  ];
-
-  return (
-    <Card className="shadow-card">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base flex items-center gap-2">
-          <FileText className="w-4 h-4 text-accent" /> Disputes
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-3 gap-3">
-          {tiles.map(t => (
-            <button
-              key={t.label}
-              onClick={() => onNavigate("personal")}
-              className="rounded-lg border border-border p-3 text-center transition hover:bg-accent/5"
-            >
-              <t.icon className={`w-4 h-4 mx-auto mb-1 ${t.color}`} />
-              <p className="text-xl font-bold">{t.count}</p>
-              <p className="text-[10px] text-muted-foreground">{t.label}</p>
-            </button>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+// [§194] DisputeStatus widget removed — Paige is monitoring-only, no dispute automation.
 
 // ── Widget 4: Credit File Completion ──
 
@@ -346,21 +294,7 @@ function NextBestAction({ onNavigate }: { onNavigate: (section: string) => void 
         };
       }
 
-      // Priority 3: Draft disputes waiting
-      const { count: draftCount } = await supabase
-        .from("disputes")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId!)
-        .eq("status", "draft");
-
-      if ((draftCount ?? 0) > 0) {
-        return {
-          title: "Submit Draft Disputes",
-          description: `You have ${draftCount} dispute draft${draftCount! > 1 ? "s" : ""} ready to send.`,
-          icon: "disputes",
-          target: "personal",
-        };
-      }
+      // [§194] Draft-dispute priority removed — no repair automation.
 
       // Priority 4: Missing account types
       const { data: accounts } = await supabase
@@ -498,11 +432,8 @@ export function DashboardCommandCenter({ userId, onNavigate }: DashboardCommandC
       {/* Credit Score Simulator */}
       {userId && <CreditScoreSimulator userId={userId} onNavigate={onNavigate} />}
 
-      {/* Middle row: Disputes + File Completion */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <DisputeStatus onNavigate={onNavigate} />
-        <CreditFileCompletion onNavigate={onNavigate} />
-      </div>
+      {/* Credit File Completion (Disputes widget removed per §194) */}
+      <CreditFileCompletion onNavigate={onNavigate} />
 
       {/* Funding Journey summary */}
       <JourneyDashboardCard />

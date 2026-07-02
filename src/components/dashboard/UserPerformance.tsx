@@ -101,10 +101,8 @@ export const UserPerformance = () => {
         .from("tasks")
         .select("user_id, status");
 
-      // Get disputes
-      const { data: disputes } = await supabase
-        .from("disputes")
-        .select("user_id, status");
+      // [§194] Disputes removed — monitoring-only.
+      const disputes: Array<{ user_id: string; status: string }> = [];
 
       // Get documents
       const { data: documents } = await supabase
