@@ -425,7 +425,7 @@ export function useClientChatContext(clientId?: string | null, userId?: string |
               .limit(3),
             supabase
               .from("profiles")
-              .select("street_address, city, state, zip_code, phone_number, email")
+              .select("street_address:address, city, state, zip_code:postal_code, phone")
               .eq("user_id", resolvedUserId)
               .maybeSingle(),
           ]);
