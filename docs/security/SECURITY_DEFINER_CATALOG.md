@@ -7,7 +7,20 @@ Living registry of every `SECURITY DEFINER` function in `public` that retains `E
 - **B** — Public-flow with internal auth check (called unauthenticated but verifies caller identity/state internally)
 - **C** — Trigger/cron/internal only (should never have anon; authenticated allowed only when invoked from RLS policies)
 
-Last reviewed: 2026-07-01 · Reviewer: Lovable Agent (Paige Agent AI) · Ship #1 additions applied
+Last reviewed: 2026-07-02 · Reviewer: Lovable Agent (Paige Agent AI) · §205 Metering Safety Net added
+
+---
+
+## Category B — §205 Metering Dead-Letter (Fire-and-Forget)
+
+The following functions support the §205 metering safety net. All have `SET search_path = ''` in the function body and EXECUTE is restricted to `service_role` (or admin-gated for the observability RPC). See `docs/security/DOCTRINE_205_METERING_SAFETY_NET.md`.
+
+- `public.pmedl_touch_updated_at()` — BEFORE UPDATE trigger on `platform_metered_events_dead_letter`. EXECUTE revoked from PUBLIC/anon/authenticated. Runs only as trigger.
+- `public.pmedl_notify_admin()` — AFTER INSERT trigger that fans out `paige_admin_notifications` with dollars-at-risk metadata. EXECUTE revoked from PUBLIC/anon/authenticated.
+- `public.pmedl_retry_scan()` — pg_cron worker (`pmedl_retry_scan_every_15m`) that marks pending rows for retry and auto-escalates rows past 10 attempts. EXECUTE granted to `service_role` only.
+- `public.admin_metering_dead_letter_summary()` — admin observability RPC (grouped counts, dollars at risk, oldest/most-recent failure). EXECUTE granted to `authenticated` + `service_role`; body enforces `has_role(admin|super_admin)` and raises `not_authorized` otherwise.
+
+**Justification (Category B):** These functions must bypass RLS on `platform_metered_events_dead_letter` and `paige_admin_notifications` to guarantee at-least-once metering delivery even when the caller has no direct table access (edge function / cron / user request path). Loss of a metering event = revenue leak = §120 case-study candidate.
 
 ---
 
