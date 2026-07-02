@@ -2,15 +2,17 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Sparkles, Building2, Users, User, ShieldCheck } from "lucide-react";
+import { CheckCircle, Sparkles, Building2, Users, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
 /**
- * Three-section pricing per Doctrine §197 (Billing Layer Taxonomy):
+ * Two-section public pricing per Doctrine §197 (Billing Layer Taxonomy):
  *   §1 FOR BUSINESSES     → LAYER 1 (Tenant → Paige) — Practice / Academy / Enterprise
  *   §2 FOR YOUR CLIENTS   → LAYER 2 (End Customer → Tenant) sovereignty archetypes
- *   §3 FOR BUSINESS OWNERS → LAYER 4 (Consumer → Paige) — Founder / Growth / Scale (LIVE)
+ *
+ * LAYER 4 (Consumer → Paige) is invite-only via tokenized email/SMS delivery;
+ * intentionally not surfaced on the public site. See Sprint C.I.F.
  *
  * §201 compliant: no "operator" copy anywhere.
  */
@@ -107,49 +109,6 @@ const tenantExamples = [
   },
 ];
 
-type ConsumerTier = {
-  slug: "founder" | "growth" | "scale";
-  name: string;
-  price: string;
-  tagline: string;
-  highlights: string[];
-  popular?: boolean;
-};
-
-const consumerTiers: ConsumerTier[] = [
-  {
-    slug: "founder",
-    name: "Founder",
-    price: "$27",
-    tagline: "For business owners just getting started with Paige.",
-    highlights: ["1 business profile", "5 credit pulls / month", "Email Composer AI", "Monthly funding path"],
-  },
-  {
-    slug: "growth",
-    name: "Growth",
-    price: "$67",
-    tagline: "For owners scaling operations with Paige as their co-pilot.",
-    highlights: [
-      "3 business profiles",
-      "20 credit pulls / month",
-      "All AI sub-agents",
-      "1 CFO coaching hour / month",
-    ],
-    popular: true,
-  },
-  {
-    slug: "scale",
-    name: "Scale",
-    price: "$297",
-    tagline: "For serious owners running multiple businesses.",
-    highlights: [
-      "Unlimited business profiles",
-      "100 credit pulls / month",
-      "Priority queue",
-      "4 CFO coaching hours / month",
-    ],
-  },
-];
 
 export function PricingSection() {
   const navigate = useNavigate();
@@ -166,9 +125,6 @@ export function PricingSection() {
     })();
   }, []);
 
-  const goConsumer = (slug: string) => {
-    navigate(`/for-owners?post_signup_tier=${slug}`);
-  };
 
   return (
     <section id="pricing" className="py-20 bg-background">
@@ -302,70 +258,6 @@ export function PricingSection() {
           </p>
         </div>
 
-        {/* SECTION 3 — FOR BUSINESS OWNERS (Layer 4) — LIVE */}
-        <div>
-          <div className="text-center mb-10 max-w-2xl mx-auto">
-            <div className="inline-flex items-center gap-2 mb-3 px-3 py-1 rounded-full bg-gold/10 border border-gold/20">
-              <User className="w-4 h-4 text-gold-dark" />
-              <span className="text-xs font-bold uppercase tracking-wider text-gold-dark">
-                Section 3 · For Business Owners
-              </span>
-            </div>
-            <h3 className="text-3xl font-bold mb-3">Paige for the business you run</h3>
-            <p className="text-muted-foreground">
-              A personal AI advisor for individual business owners — coffee shops, salons, trucking,
-              barbering, credit pros, sales reps, educators. Same Paige, no coaching business required.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {consumerTiers.map((tier) => (
-              <Card
-                key={tier.slug}
-                className={`p-7 bg-card relative flex flex-col transition-all duration-300 hover:shadow-glow hover:-translate-y-1 ${
-                  tier.popular ? "border-2 border-gold shadow-glow-lg md:scale-[1.04]" : "border-border"
-                }`}
-              >
-                {tier.popular && (
-                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-gold text-primary border-0 font-bold px-4">
-                    MOST POPULAR
-                  </Badge>
-                )}
-                <div className="mb-6">
-                  <h4 className="text-xl font-bold mb-1 text-foreground">{tier.name}</h4>
-                  <p className="text-xs text-muted-foreground mb-4 min-h-[2.5rem]">{tier.tagline}</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-5xl font-extrabold tabular-nums">{tier.price}</span>
-                    <span className="text-muted-foreground text-sm">/mo</span>
-                  </div>
-                </div>
-                <ul className="space-y-2.5 mb-7 flex-grow">
-                  {tier.highlights.map((f, i) => (
-                    <li key={i} className="flex items-start gap-2.5">
-                      <CheckCircle className="w-4 h-4 text-fundability-excellent flex-shrink-0 mt-0.5" />
-                      <span className="text-sm leading-snug">{f}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Button
-                  size="lg"
-                  className={`w-full font-bold ${
-                    tier.popular
-                      ? "bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105"
-                      : "border-2 border-gold text-gold-dark hover:bg-gold hover:text-primary bg-transparent"
-                  }`}
-                  onClick={() => goConsumer(tier.slug)}
-                >
-                  Start {tier.name}
-                </Button>
-              </Card>
-            ))}
-          </div>
-
-          <p className="text-center text-sm text-muted-foreground mt-8 max-w-2xl mx-auto">
-            See the full comparison on <button onClick={() => navigate("/for-owners")} className="underline hover:text-foreground">the Paige for Business Owners page</button>.
-          </p>
-        </div>
 
         <p className="text-center text-xs text-muted-foreground max-w-3xl mx-auto leading-relaxed">
           Paige provides financial education, credit monitoring, and coaching workflow

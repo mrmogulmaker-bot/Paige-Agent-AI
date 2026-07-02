@@ -83,7 +83,7 @@ const Terms = lazyWithReload(() => import("./pages/Terms"));
 const Privacy = lazyWithReload(() => import("./pages/Privacy"));
 const LegalDoc = lazyWithReload(() => import("./pages/LegalDoc"));
 const About = lazyWithReload(() => import("./pages/About"));
-const ForOwners = lazyWithReload(() => import("./pages/ForOwners"));
+const Pricing = lazyWithReload(() => import("./pages/Pricing"));
 const Blog = lazyWithReload(() => import("./pages/Blog"));
 
 // BTF workspace surface removed — consumer /app dashboard is the single client home. (Sprint 211.b cleanup)
@@ -187,7 +187,7 @@ const App = () => (
            <Route path="/privacy" element={<PageSuspense><Privacy /></PageSuspense>} />
            <Route path="/legal/:slug" element={<PageSuspense><LegalDoc /></PageSuspense>} />
             <Route path="/about" element={<PageSuspense><About /></PageSuspense>} />
-            <Route path="/for-owners" element={<PageSuspense><ForOwners /></PageSuspense>} />
+            <Route path="/pricing" element={<PageSuspense><Pricing /></PageSuspense>} />
             <Route path="/blog" element={<PageSuspense><Blog /></PageSuspense>} />
             <Route path="/affiliates" element={<PageSuspense><AffiliateApply /></PageSuspense>} />
             <Route path="/become-an-affiliate" element={<Navigate to="/affiliates" replace />} />

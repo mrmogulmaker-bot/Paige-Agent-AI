@@ -5,8 +5,7 @@ const footerLinks = {
   product: [
     { name: "How It Works", href: "#how-paige-works" },
     { name: "What Paige Knows", href: "#what-paige-knows" },
-    { name: "For Business Owners", href: "/for-owners" },
-    { name: "Pricing", href: "#pricing" },
+    { name: "Pricing", href: "/pricing" },
     { name: "Dashboard", href: "/app" },
   ],
   company: [
