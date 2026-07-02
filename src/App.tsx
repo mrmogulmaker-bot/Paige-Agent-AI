@@ -203,7 +203,7 @@ const App = () => (
             <Route path="/f/:tenantSlug/:funnelSlug" element={<PageSuspense><GrowthFunnelRenderer /></PageSuspense>} />
             <Route path="/form/:id" element={<PageSuspense><GrowthFormRenderer /></PageSuspense>} />
 
-            {/* Legacy BTF workspace surface removed — everything lives in the consumer /app dashboard now.
+            {/* Legacy BTF workspace surface removed — everything lives in the consumer /app dashboard now. (Sprint 211.b cleanup)
                 Preserve invite deep-links by redirecting to the unified /accept-invite handler; all other
                 /workspace/* URLs land in the consumer dashboard. */}
             <Route path="/workspace/accept-invite" element={<Navigate to={`/accept-invite${window.location.search}`} replace />} />
