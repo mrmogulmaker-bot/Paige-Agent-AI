@@ -109,49 +109,6 @@ const tenantExamples = [
   },
 ];
 
-type ConsumerTier = {
-  slug: "founder" | "growth" | "scale";
-  name: string;
-  price: string;
-  tagline: string;
-  highlights: string[];
-  popular?: boolean;
-};
-
-const consumerTiers: ConsumerTier[] = [
-  {
-    slug: "founder",
-    name: "Founder",
-    price: "$27",
-    tagline: "For business owners just getting started with Paige.",
-    highlights: ["1 business profile", "5 credit pulls / month", "Email Composer AI", "Monthly funding path"],
-  },
-  {
-    slug: "growth",
-    name: "Growth",
-    price: "$67",
-    tagline: "For owners scaling operations with Paige as their co-pilot.",
-    highlights: [
-      "3 business profiles",
-      "20 credit pulls / month",
-      "All AI sub-agents",
-      "1 CFO coaching hour / month",
-    ],
-    popular: true,
-  },
-  {
-    slug: "scale",
-    name: "Scale",
-    price: "$297",
-    tagline: "For serious owners running multiple businesses.",
-    highlights: [
-      "Unlimited business profiles",
-      "100 credit pulls / month",
-      "Priority queue",
-      "4 CFO coaching hours / month",
-    ],
-  },
-];
 
 export function PricingSection() {
   const navigate = useNavigate();
