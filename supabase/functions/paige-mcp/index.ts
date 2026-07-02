@@ -1812,7 +1812,7 @@ mcp.tool("list_signed_agreements", {
 });
 
 mcp.tool("list_intake_submissions", {
-  description: "List BTF intake submissions (paige_client_intake_submissions). Filter by contact or status.",
+  description: "List BUILD-to-FUND intake submissions (paige_client_intake_submissions). Filter by contact or status.",
   inputSchema: z.object({
     contact_id: z.string().optional(),
     status: z.enum(["in_progress", "submitted", "all"]).optional(),
