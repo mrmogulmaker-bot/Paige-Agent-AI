@@ -3593,6 +3593,7 @@ export type Database = {
           monthly_price_cents: number
           name: string
           slug: string
+          stripe_mode: string
           stripe_price_id: string | null
           updated_at: string
         }
@@ -3607,6 +3608,7 @@ export type Database = {
           monthly_price_cents?: number
           name: string
           slug: string
+          stripe_mode?: string
           stripe_price_id?: string | null
           updated_at?: string
         }
@@ -3621,6 +3623,7 @@ export type Database = {
           monthly_price_cents?: number
           name?: string
           slug?: string
+          stripe_mode?: string
           stripe_price_id?: string | null
           updated_at?: string
         }
@@ -3742,6 +3745,57 @@ export type Database = {
           turn_number?: number
           user_id?: string
           utterance?: string
+        }
+        Relationships: []
+      }
+      corporate_entity_registry: {
+        Row: {
+          created_at: string
+          entity_type: string
+          id: string
+          ip_licensor_slug: string | null
+          is_active: boolean
+          lane: string | null
+          lane_separated: boolean
+          legal_name: string
+          notes: string | null
+          parent_slug: string | null
+          role: string
+          slug: string
+          state_of_formation: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entity_type: string
+          id?: string
+          ip_licensor_slug?: string | null
+          is_active?: boolean
+          lane?: string | null
+          lane_separated?: boolean
+          legal_name: string
+          notes?: string | null
+          parent_slug?: string | null
+          role: string
+          slug: string
+          state_of_formation: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entity_type?: string
+          id?: string
+          ip_licensor_slug?: string | null
+          is_active?: boolean
+          lane?: string | null
+          lane_separated?: boolean
+          legal_name?: string
+          notes?: string | null
+          parent_slug?: string | null
+          role?: string
+          slug?: string
+          state_of_formation?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -14021,6 +14075,94 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "tenant_email_domains_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_entity_relationships: {
+        Row: {
+          contact_id: string
+          created_at: string
+          created_by: string | null
+          ended_at: string | null
+          entity_id: string
+          id: string
+          metadata: Json
+          relationship_type: string
+          started_at: string
+          status: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          entity_id: string
+          id?: string
+          metadata?: Json
+          relationship_type: string
+          started_at?: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          entity_id?: string
+          id?: string
+          metadata?: Json
+          relationship_type?: string
+          started_at?: string
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_entity_relationships_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_entity_relationships_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "tenant_entity_relationships_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "tenant_entity_relationships_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_entity_relationships_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "corporate_entity_registry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_entity_relationships_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"

@@ -174,3 +174,8 @@ project_id = "bfmyebsjyuoecmjskqhs"
 
   [functions.paige-context-router]
     verify_jwt = true
+
+  [functions.create-consumer-checkout]
+    verify_jwt = true
+  [functions.doctrine-201-language-sweep]
+    verify_jwt = false

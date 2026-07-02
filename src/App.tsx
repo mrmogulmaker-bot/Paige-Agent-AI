@@ -83,6 +83,7 @@ const Terms = lazyWithReload(() => import("./pages/Terms"));
 const Privacy = lazyWithReload(() => import("./pages/Privacy"));
 const LegalDoc = lazyWithReload(() => import("./pages/LegalDoc"));
 const About = lazyWithReload(() => import("./pages/About"));
+const ForOwners = lazyWithReload(() => import("./pages/ForOwners"));
 const Blog = lazyWithReload(() => import("./pages/Blog"));
 
 // BTF Client Workspace (white-labeled — no Paige branding in these routes)
@@ -200,6 +201,7 @@ const App = () => (
            <Route path="/privacy" element={<PageSuspense><Privacy /></PageSuspense>} />
            <Route path="/legal/:slug" element={<PageSuspense><LegalDoc /></PageSuspense>} />
             <Route path="/about" element={<PageSuspense><About /></PageSuspense>} />
+            <Route path="/for-owners" element={<PageSuspense><ForOwners /></PageSuspense>} />
             <Route path="/blog" element={<PageSuspense><Blog /></PageSuspense>} />
             <Route path="/affiliates" element={<PageSuspense><AffiliateApply /></PageSuspense>} />
             <Route path="/become-an-affiliate" element={<Navigate to="/affiliates" replace />} />

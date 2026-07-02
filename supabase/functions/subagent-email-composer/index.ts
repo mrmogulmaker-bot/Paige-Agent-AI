@@ -9,11 +9,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  { auth: { persistSession: false } },
-);
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
 type Tone =
@@ -238,12 +238,70 @@ Return STRICT JSON with this shape (no markdown, no code fences):
 
   const bodyHtml = format === "plain" ? "" : paragraphsToHtml(bodyPlain);
   const bodyText = format === "plain" ? bodyPlain : stripToText(bodyHtml);
-  const flags = complianceScan(bodyPlain + "\n" + subject);
+  const localFlags = complianceScan(bodyPlain + "\n" + subject);
+
+  // §203 runtime enforcement: hand the composed draft to the Legal & Compliance
+  // Reviewer sub-agent. Admins CANNOT override a `blocked` verdict from here —
+  // the draft is refused and the caller must revise. Fail closed on 5xx.
+  let complianceVerdict: "approved" | "needs_human_approval" | "blocked" = "approved";
+  let complianceFindings: Array<{ severity: string; message: string }> = [];
+  try {
+    const reviewer = await fetch(`${SUPABASE_URL}/functions/v1/subagent-compliance`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        input: {
+          contact_id: contactId ?? undefined,
+          action_type: "email",
+          draft_text: `${subject}\n\n${bodyPlain}`,
+          channel: "email",
+        },
+        context: { contact_id: contactId ?? undefined },
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!reviewer.ok) {
+      return ok({
+        ok: false,
+        error: "compliance_reviewer_unavailable",
+        detail: `HTTP ${reviewer.status}`,
+        doctrine: "§203 fail-closed",
+      }, 503);
+    }
+    const rev = await reviewer.json();
+    complianceVerdict = rev?.verdict ?? "approved";
+    complianceFindings = Array.isArray(rev?.findings) ? rev.findings : [];
+  } catch (err) {
+    return ok({
+      ok: false,
+      error: "compliance_reviewer_timeout",
+      detail: err instanceof Error ? err.message : String(err),
+      doctrine: "§203 fail-closed",
+    }, 503);
+  }
+
+  if (complianceVerdict === "blocked") {
+    return ok({
+      ok: false,
+      error: "compliance_blocked",
+      doctrine: "§203",
+      subagent: "email-composer",
+      summary: "Draft blocked by Legal & Compliance Reviewer. Revise wording and retry.",
+      compliance_verdict: complianceVerdict,
+      compliance_findings: complianceFindings,
+      local_flags: localFlags,
+    }, 422);
+  }
+
+  const requiresApproval = complianceVerdict === "needs_human_approval" || localFlags.length > 0;
 
   return ok({
     ok: true,
     subagent: "email-composer",
-    summary: `Composed ${tone} email (${length}) for ${recipientName || recipientEmail || "recipient"}${flags.length ? ` — ${flags.length} compliance flag(s)` : ""}.`,
+    summary: `Composed ${tone} email (${length}) for ${recipientName || recipientEmail || "recipient"}${requiresApproval ? " — requires human approval" : ""}.`,
     draft: {
       subject,
       body_html: bodyHtml,
@@ -257,11 +315,13 @@ Return STRICT JSON with this shape (no markdown, no code fences):
       name: recipientName || null,
       email: recipientEmail || null,
     },
-    compliance_flags: flags,
-    requires_approval: flags.length > 0,
-    confidence: flags.length > 0 ? "low" : "high",
-    next_action_hint: flags.length > 0
-      ? "Review flagged phrasing before sending."
+    compliance_verdict: complianceVerdict,
+    compliance_findings: complianceFindings,
+    compliance_flags: localFlags,
+    requires_approval: requiresApproval,
+    confidence: requiresApproval ? "low" : "high",
+    next_action_hint: requiresApproval
+      ? "Human review required before sending — see compliance_findings."
       : "Pass draft.subject + draft.body_html to the `send_composed_email` (or `send_transactional_email`) MCP tool.",
   });
 });
