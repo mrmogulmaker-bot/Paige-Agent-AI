@@ -151,7 +151,7 @@ export function HeroSection() {
                   </div>
                 </div>
                 <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
-                  <div className="text-[10px] text-white/50 font-bold uppercase tracking-widest mb-1">
+                  <div className="text-[10px] text-white/75 font-bold uppercase tracking-widest mb-1">
                     Roster Active
                   </div>
                   <div className="text-2xl font-bold text-white tabular-nums">
