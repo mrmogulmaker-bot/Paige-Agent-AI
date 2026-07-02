@@ -122,7 +122,6 @@ ALTER TABLE public.tenant_customer_trials
   ADD CONSTRAINT tct_subject_role_enum CHECK (subject_role IN
     ('end_customer','tenant_member','consumer_user','platform_admin'));
 
--- 3.8 Update handle_new_user trigger body (references by NAME, not OID)
 -- 3.8 Update handle_new_user trigger body (§200 platform-neutral, §180 search_path='')
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
