@@ -19,7 +19,7 @@ const STAFF_ROLES = new Set([
 ]);
 
 /** Routes a pure-client account is forbidden from. They get bounced to /app. */
-const CLIENT_FORBIDDEN_PREFIXES = ["/admin", "/broker/app", "/workspace"];
+const CLIENT_FORBIDDEN_PREFIXES = ["/admin", "/broker/app"];
 
 /**
  * Hard guard: a signed-in account whose only role is `client` (or no role at all
