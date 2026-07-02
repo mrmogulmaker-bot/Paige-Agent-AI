@@ -3976,12 +3976,8 @@ mcp.tool("me_log_progress_update", {
     const { data: cur } = await admin.from("clients").select("current_notes").eq("id", me.id).maybeSingle();
     const next = [cur?.current_notes ?? "", line].filter(Boolean).join("\n\n");
     await admin.from("clients").update({ current_notes: next }).eq("id", me.id);
-    await admin.from("btf_messages").insert({
-      client_id: me.id,
-      sender_type: "client",
-      sender_id: a.user_id,
-      body: update,
-    });
+    // NOTE: coach-thread messaging leg deferred — restore via program_messages integration
+    // in a discrete feature-restore ship. current_notes append above remains live.
     await audit("me_log_progress_update", "contact", me.id, { length: update.length });
     return ok({ logged: true });
   },
