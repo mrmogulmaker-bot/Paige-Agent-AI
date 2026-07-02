@@ -14334,8 +14334,8 @@ export type Database = {
           price_id: string | null
           product_id: string | null
           status: string
-          stripe_customer_id: string | null
-          stripe_subscription_id: string | null
+          stripe_customer_id_ct: string | null
+          stripe_subscription_id_ct: string | null
           tenant_id: string
           updated_at: string
         }
@@ -14353,8 +14353,8 @@ export type Database = {
           price_id?: string | null
           product_id?: string | null
           status?: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
+          stripe_customer_id_ct?: string | null
+          stripe_subscription_id_ct?: string | null
           tenant_id: string
           updated_at?: string
         }
@@ -14372,8 +14372,8 @@ export type Database = {
           price_id?: string | null
           product_id?: string | null
           status?: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
+          stripe_customer_id_ct?: string | null
+          stripe_subscription_id_ct?: string | null
           tenant_id?: string
           updated_at?: string
         }
@@ -15549,7 +15549,17 @@ export type Database = {
       }
     }
     Functions: {
+      _assert_billing_admin: { Args: never; Returns: undefined }
       _automation_webhook_key: { Args: never; Returns: string }
+      _log_billing_admin_action: {
+        Args: {
+          _action: string
+          _contact_id: string
+          _details: Json
+          _subscription_id: string
+        }
+        Returns: undefined
+      }
       _ship26_assert_super_admin: { Args: never; Returns: undefined }
       accept_invitation: {
         Args: { _token: string; _user_id: string }
@@ -15559,6 +15569,23 @@ export type Database = {
       admin_bulk_assign_coach: {
         Args: { _client_ids: string[]; _coach: string }
         Returns: Json
+      }
+      admin_cancel_customer_subscription: {
+        Args: { _grace_period_days?: number; _subscription_id: string }
+        Returns: undefined
+      }
+      admin_change_customer_subscription_price: {
+        Args: { _new_price_id: string; _subscription_id: string }
+        Returns: undefined
+      }
+      admin_create_customer_subscription: {
+        Args: {
+          _billing_period?: string
+          _contact_id: string
+          _price_id: string
+          _start_date?: string
+        }
+        Returns: string
       }
       admin_force_signout_user: {
         Args: { target_user: string }
@@ -15572,7 +15599,15 @@ export type Database = {
         | { Args: { _workflow_id: string }; Returns: string }
         | { Args: { _workflow_slug: string }; Returns: string }
       admin_meta_capi_token_is_set: { Args: never; Returns: boolean }
+      admin_pause_customer_subscription: {
+        Args: { _subscription_id: string }
+        Returns: undefined
+      }
       admin_remove_coach_role: { Args: { _user_id: string }; Returns: Json }
+      admin_resume_customer_subscription: {
+        Args: { _subscription_id: string }
+        Returns: undefined
+      }
       admin_set_automation_webhook_url: {
         Args: { _tenant_id: string; _url: string }
         Returns: undefined
