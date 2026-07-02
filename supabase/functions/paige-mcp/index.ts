@@ -457,7 +457,7 @@ mcp.tool("create_task", {
     description: z.string().optional(),
     deal_id: z.string().optional(),
     due_date: z.string().optional().describe("ISO timestamp."),
-    track: z.string().optional().describe("Free-form bucket, e.g. 'sales', 'cs', 'btf', 'BUILD'."),
+    track: z.string().optional().describe("Free-form bucket, e.g. 'sales', 'cs', 'build-to-fund', 'BUILD'."),
     status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }),
