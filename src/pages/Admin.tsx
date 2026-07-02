@@ -417,6 +417,13 @@ const Admin = () => {
             </Suspense>
           </AdminOnly>
         } />
+        <Route path="automation/readiness-proposals" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <ReadinessProposalsAdmin />
+            </Suspense>
+          </AdminOnly>
+        } />
         <Route path="workflows" element={
           <Suspense fallback={<SuspenseFallback />}><WorkflowsList /></Suspense>
         } />
