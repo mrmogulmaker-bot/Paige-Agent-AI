@@ -17,6 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { resolveCreditDataProvider } from "./credit-data-provider.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,10 +28,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-// iSoftpull cost estimate per credit re-pull ($0.35 placeholder, wire real
-// contract price when integration lands). Tracked for per-tenant billing.
-const ISOFTPULL_UNIT_COST_USD = 0.35;
-const THROTTLE_RATE_PER_MIN = 20; // §304
+// §304 throttle for credit provider API calls
+const THROTTLE_RATE_PER_MIN = 20;
 const THROTTLE_DELAY_MS = Math.ceil(60_000 / THROTTLE_RATE_PER_MIN);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -163,12 +162,13 @@ async function runTenantScan(payload: ScanPayload) {
   // §189 gate
   const { data: features } = await admin
     .from("tenant_features")
-    .select("credit_services_enabled, readiness_scan_cadence")
+    .select("credit_services_enabled, readiness_scan_cadence, credit_data_provider")
     .eq("tenant_id", tenantId)
     .maybeSingle();
   if (!features?.credit_services_enabled) {
     return { skipped: true, reason: "credit_services_disabled", tenant_id: tenantId };
   }
+  const provider = resolveCreditDataProvider(features?.credit_data_provider);
 
   const cohort = await loadCohort(tenantId, payload.contact_ids);
 
@@ -188,7 +188,8 @@ async function runTenantScan(payload: ScanPayload) {
   let contactsScanned = 0;
   let proposalsGenerated = 0;
   let proposalsInsufficient = 0;
-  let isoftpullCalls = 0;
+  let creditProviderCalls = 0;
+  let creditProviderCostUsd = 0;
 
   for (const contact of cohort) {
     contactsScanned++;
@@ -206,10 +207,13 @@ async function runTenantScan(payload: ScanPayload) {
         .limit(1)
         .maybeSingle();
 
-      // Placeholder: treat every scan as an iSoftpull for cost tracking
-      // until the real integration is wired. Real integration will replace
-      // this with the actual API call + response parsing.
-      isoftpullCalls += 1;
+      // §193 — delegate the actual credit re-pull to the tenant's configured
+      // provider adapter. Cost/call counters are vendor-neutral.
+      if (provider && contact.linked_user_id) {
+        const pull = await provider.pullSnapshot(contact.linked_user_id);
+        creditProviderCalls += pull.calls;
+        creditProviderCostUsd += pull.cost_usd;
+      }
 
       if (!current) {
         // Insufficient data — write proposal with insufficient_data status,
@@ -279,14 +283,13 @@ async function runTenantScan(payload: ScanPayload) {
     }
   }
 
-  const costTotal = isoftpullCalls * ISOFTPULL_UNIT_COST_USD;
   await admin.rpc("increment_readiness_scan_counters", {
     _run_id: run.id,
     _contacts_scanned: contactsScanned,
     _proposals_generated: proposalsGenerated,
     _proposals_insufficient_data: proposalsInsufficient,
-    _isoftpull_calls: isoftpullCalls,
-    _cost_usd: costTotal,
+    _credit_provider_calls: creditProviderCalls,
+    _credit_provider_cost_usd: creditProviderCostUsd,
   });
   await admin
     .from("paige_readiness_scan_runs")
@@ -304,8 +307,8 @@ async function runTenantScan(payload: ScanPayload) {
     contacts_scanned: contactsScanned,
     proposals_generated: proposalsGenerated,
     proposals_insufficient_data: proposalsInsufficient,
-    isoftpull_calls: isoftpullCalls,
-    cost_usd_total: costTotal,
+    credit_provider_calls_count: creditProviderCalls,
+    credit_provider_cost_usd: creditProviderCostUsd,
     errors: errors.length,
   };
 }

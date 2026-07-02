@@ -39,8 +39,8 @@ interface ScanRun {
   contacts_scanned: number;
   proposals_generated: number;
   proposals_insufficient_data: number;
-  isoftpull_calls: number;
-  cost_usd_total: number;
+  credit_provider_calls_count: number;
+  credit_provider_cost_usd: number;
   trigger_source: string;
 }
 
@@ -82,7 +82,7 @@ export default function ReadinessProposalsAdmin() {
   useEffect(() => { load(); }, [status]);
 
   const totals = useMemo(() => {
-    const cost = runs.reduce((sum, r) => sum + Number(r.cost_usd_total || 0), 0);
+    const cost = runs.reduce((sum, r) => sum + Number(r.credit_provider_cost_usd || 0), 0);
     const scanned = runs.reduce((sum, r) => sum + (r.contacts_scanned || 0), 0);
     const generated = runs.reduce((sum, r) => sum + (r.proposals_generated || 0), 0);
     return { cost, scanned, generated };
