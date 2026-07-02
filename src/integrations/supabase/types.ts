@@ -3593,6 +3593,7 @@ export type Database = {
           monthly_price_cents: number
           name: string
           slug: string
+          stripe_mode: string
           stripe_price_id: string | null
           updated_at: string
         }
@@ -3607,6 +3608,7 @@ export type Database = {
           monthly_price_cents?: number
           name: string
           slug: string
+          stripe_mode?: string
           stripe_price_id?: string | null
           updated_at?: string
         }
@@ -3621,6 +3623,7 @@ export type Database = {
           monthly_price_cents?: number
           name?: string
           slug?: string
+          stripe_mode?: string
           stripe_price_id?: string | null
           updated_at?: string
         }
