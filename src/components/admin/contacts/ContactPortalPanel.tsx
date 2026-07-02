@@ -66,11 +66,10 @@ export function ContactPortalPanel({
   useEffect(() => { setLocalLinkedUserId(linkedUserId); }, [linkedUserId]);
 
   const load = async () => {
-    // btf_workspace_invites table was dropped in Sprint 211.b. Invite
-    // tracking is out of 211.b scope — invite send path (invite-btf-client
-    // edge function) still writes to the platform's canonical invite store;
-    // the historical list here is stubbed empty until the replacement
-    // read-side is wired in a follow-up ship.
+    // btf_workspace_invites table was dropped in Sprint 211.b, and the
+    // invite-btf-client edge function was retired in Commit N+1. Both
+    // the send path and the historical list here are stubbed until the
+    // replacement client-program invite flow lands in a follow-up ship.
     const { data: env } = await supabase
       .from("paige_signature_envelopes")
       .select("*")
@@ -84,29 +83,14 @@ export function ContactPortalPanel({
 
   const sendInvite = async () => {
     if (!email) return toast.error("Contact needs an email address first");
-    setBusy("invite");
-    try {
-      const { data, error } = await supabase.functions.invoke("invite-btf-client", {
-        body: {
-          paige_client_id: contactId,
-          contact_email: email,
-        },
-      });
-      if (error) throw error;
-      if (data && (data as any).ok === false) {
-        throw new Error((data as any).error || "Invite failed");
-      }
-      toast.success(
-        (data as any)?.email_sent === false
-          ? "Invite created — email delivery pending"
-          : "Paige access invite sent",
-      );
-      await load();
-    } catch (e: any) {
-      toast.error(e.message || "Invite failed");
-    } finally {
-      setBusy(null);
-    }
+    // invite-btf-client edge function was retired in Commit N+1 (Sprint
+    // 211.b close-out). Both the send path and the read-side list are
+    // stubbed until the replacement client-program invite flow lands in
+    // a follow-up ship. Preserving the button binding + busy-state
+    // handoff so the surrounding portal UI keeps working.
+    toast.info(
+      "Client program invite send is temporarily unavailable — reach out to platform admin if needed.",
+    );
   };
 
   const cancelPendingInvites = async () => {
