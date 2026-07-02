@@ -3028,7 +3028,7 @@ mcp.tool("compose_email", {
     length: z.enum(["short","medium","long"]).optional().describe("Default: medium."),
     cta: z.string().optional().describe("Desired call-to-action, e.g. 'book a 15-min call'."),
     subject_hint: z.string().optional(),
-    sender_name: z.string().optional().describe("Signature line. Defaults to 'Mogul Maker Academy'."),
+    sender_name: z.string().optional().describe("Signature line. Defaults to the configured sender name."),
     sender_title: z.string().optional(),
     format: z.enum(["html","plain"]).optional(),
   }),
