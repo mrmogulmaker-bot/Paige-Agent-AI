@@ -7591,63 +7591,6 @@ export type Database = {
         }
         Relationships: []
       }
-      mcc_service_requests: {
-        Row: {
-          broker_id: string
-          client_relationship_id: string
-          created_at: string
-          id: string
-          notes: string | null
-          priority: string
-          service_type: string
-          status: string
-          updated_at: string
-          webhook_dispatched_at: string | null
-          webhook_response: Json | null
-        }
-        Insert: {
-          broker_id: string
-          client_relationship_id: string
-          created_at?: string
-          id?: string
-          notes?: string | null
-          priority?: string
-          service_type: string
-          status?: string
-          updated_at?: string
-          webhook_dispatched_at?: string | null
-          webhook_response?: Json | null
-        }
-        Update: {
-          broker_id?: string
-          client_relationship_id?: string
-          created_at?: string
-          id?: string
-          notes?: string | null
-          priority?: string
-          service_type?: string
-          status?: string
-          updated_at?: string
-          webhook_dispatched_at?: string | null
-          webhook_response?: Json | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "mcc_service_requests_broker_id_fkey"
-            columns: ["broker_id"]
-            isOneToOne: false
-            referencedRelation: "broker_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "mcc_service_requests_client_relationship_id_fkey"
-            columns: ["client_relationship_id"]
-            isOneToOne: false
-            referencedRelation: "broker_client_relationships"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       mma_os_bridge_outbox: {
         Row: {
           attempts: number
@@ -9001,6 +8944,153 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_customer_actions: {
+        Row: {
+          action_type: string
+          body: string | null
+          contact_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          initiated_by_admin_id: string
+          payload_json: Json
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          action_type: string
+          body?: string | null
+          contact_id: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          initiated_by_admin_id: string
+          payload_json?: Json
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          action_type?: string
+          body?: string | null
+          contact_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          initiated_by_admin_id?: string
+          payload_json?: Json
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_customer_actions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_customer_actions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_customer_actions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_customer_actions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_customer_actions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_customer_responses: {
+        Row: {
+          action_id: string
+          contact_id: string
+          created_at: string
+          id: string
+          responded_by_user_id: string
+          response_text: string | null
+          response_type: string
+        }
+        Insert: {
+          action_id: string
+          contact_id: string
+          created_at?: string
+          id?: string
+          responded_by_user_id: string
+          response_text?: string | null
+          response_type: string
+        }
+        Update: {
+          action_id?: string
+          contact_id?: string
+          created_at?: string
+          id?: string
+          responded_by_user_id?: string
+          response_text?: string | null
+          response_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_customer_responses_action_id_fkey"
+            columns: ["action_id"]
+            isOneToOne: false
+            referencedRelation: "paige_customer_actions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_customer_responses_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_customer_responses_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_customer_responses_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_customer_responses_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
             referencedColumns: ["id"]
           },
         ]
@@ -15764,6 +15854,10 @@ export type Database = {
         Args: { _subscription_id: string }
         Returns: undefined
       }
+      admin_propose_paige_actions: {
+        Args: { p_actions: Json; p_contact_id: string }
+        Returns: Json
+      }
       admin_remove_coach_role: { Args: { _user_id: string }; Returns: Json }
       admin_resume_customer_subscription: {
         Args: { _subscription_id: string }
@@ -15910,6 +16004,14 @@ export type Database = {
       current_user_tenant_id: { Args: never; Returns: string }
       customer_paige_activity_summary: {
         Args: { p_days?: number }
+        Returns: Json
+      }
+      customer_respond_to_action: {
+        Args: {
+          p_action_id: string
+          p_response_text?: string
+          p_response_type: string
+        }
         Returns: Json
       }
       default_max_businesses_for_plan: {
@@ -16280,6 +16382,10 @@ export type Database = {
       is_tenant_owner: {
         Args: { _tenant_id?: string; _user_id: string }
         Returns: boolean
+      }
+      list_pending_customer_actions: {
+        Args: { p_contact_id: string }
+        Returns: Json
       }
       load_contact_context: {
         Args: { p_contact_id: string; p_scopes?: string[] }
