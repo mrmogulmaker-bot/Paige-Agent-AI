@@ -3224,7 +3224,7 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
             type: "function",
             function: {
               name: "crm_assign_coach",
-              description: "Admin/coach only. Assign a coach (by email) to one or more clients. Use when the operator says 'assign Antonio to these 5 BTF clients' or 'put this lead on my roster'.",
+              description: "Admin/coach only. Assign a coach (by email) to one or more clients. Use when the operator says 'assign a coach to these 5 clients' or 'put this lead on my roster'.",
               parameters: {
                 type: "object",
                 properties: {
