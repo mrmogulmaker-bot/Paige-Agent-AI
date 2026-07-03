@@ -29,7 +29,7 @@ export default function CampaignsAdmin() {
     setRefreshing(true);
     setError(null);
     try {
-      const { data, error } = await supabase.functions.invoke("mma-campaigns", {
+      const { data, error } = await supabase.functions.invoke("tenant-campaigns", {
         body: { verb: "list_active_campaigns", payload: {} },
       });
       if (error) throw error;
