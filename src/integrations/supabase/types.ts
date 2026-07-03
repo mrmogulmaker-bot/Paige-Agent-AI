@@ -738,8 +738,8 @@ export type Database = {
           referral_code: string | null
           specializations: string[] | null
           status: string
-          stripe_customer_id: string | null
-          stripe_subscription_id: string | null
+          stripe_customer_id_ct: string | null
+          stripe_subscription_id_ct: string | null
           subscription_status: string
           typical_client_profile: string | null
           updated_at: string
@@ -769,8 +769,8 @@ export type Database = {
           referral_code?: string | null
           specializations?: string[] | null
           status?: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
+          stripe_customer_id_ct?: string | null
+          stripe_subscription_id_ct?: string | null
           subscription_status?: string
           typical_client_profile?: string | null
           updated_at?: string
@@ -800,8 +800,8 @@ export type Database = {
           referral_code?: string | null
           specializations?: string[] | null
           status?: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
+          stripe_customer_id_ct?: string | null
+          stripe_subscription_id_ct?: string | null
           subscription_status?: string
           typical_client_profile?: string | null
           updated_at?: string
@@ -9569,9 +9569,9 @@ export type Database = {
           plan_selected: string
           recurring_auth_text_snapshot: string | null
           status: string
-          stripe_customer_id: string | null
-          stripe_payment_method_id: string | null
-          stripe_subscription_id: string | null
+          stripe_customer_id_ct: string | null
+          stripe_payment_method_id_ct: string | null
+          stripe_subscription_id_ct: string | null
           user_agent: string | null
         }
         Insert: {
@@ -9583,9 +9583,9 @@ export type Database = {
           plan_selected: string
           recurring_auth_text_snapshot?: string | null
           status?: string
-          stripe_customer_id?: string | null
-          stripe_payment_method_id?: string | null
-          stripe_subscription_id?: string | null
+          stripe_customer_id_ct?: string | null
+          stripe_payment_method_id_ct?: string | null
+          stripe_subscription_id_ct?: string | null
           user_agent?: string | null
         }
         Update: {
@@ -9597,9 +9597,9 @@ export type Database = {
           plan_selected?: string
           recurring_auth_text_snapshot?: string | null
           status?: string
-          stripe_customer_id?: string | null
-          stripe_payment_method_id?: string | null
-          stripe_subscription_id?: string | null
+          stripe_customer_id_ct?: string | null
+          stripe_payment_method_id_ct?: string | null
+          stripe_subscription_id_ct?: string | null
           user_agent?: string | null
         }
         Relationships: [
