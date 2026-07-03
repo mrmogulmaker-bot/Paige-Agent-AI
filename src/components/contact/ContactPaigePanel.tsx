@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Sparkles,
   ShieldCheck,
@@ -79,7 +79,7 @@ export function ContactPaigePanel({ contactId }: Props) {
   return (
     <Tabs defaultValue="ask" className="space-y-4">
       <TabsList>
-        <TabsTrigger value="ask">Ask Paige</TabsTrigger>
+        <TabsTrigger value="ask">Paige · Chat</TabsTrigger>
         <TabsTrigger value="actions">Actions</TabsTrigger>
       </TabsList>
       <TabsContent value="ask">
@@ -92,38 +92,116 @@ export function ContactPaigePanel({ contactId }: Props) {
   );
 }
 
-function AskPaigeCard({ contactId }: Props) {
-  const [prompt, setPrompt] = useState("");
-  const [running, setRunning] = useState(false);
-  const [answer, setAnswer] = useState<string | null>(null);
-  const [surfaces, setSurfaces] = useState<string[]>([]);
-  const [consentBlock, setConsentBlock] = useState<string | null>(null);
-  const [loadId, setLoadId] = useState<string | null>(null);
+type Msg = { role: "user" | "assistant"; content: string };
 
-  async function ask() {
-    const q = prompt.trim();
-    if (!q) return;
-    setRunning(true);
-    setAnswer(null);
-    setConsentBlock(null);
+function AskPaigeCard({ contactId }: Props) {
+  const [messages, setMessages] = useState<Msg[]>([]);
+  const [input, setInput] = useState("");
+  const [running, setRunning] = useState(false);
+  const [consentBlocked, setConsentBlocked] = useState(false);
+  const [surfaces, setSurfaces] = useState<string[]>([]);
+  const [loadId, setLoadId] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string>("this client");
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Reset transient chat when switching contacts (§116: no literals; contactId only).
+  useEffect(() => {
+    setMessages([]);
+    setConsentBlocked(false);
     setSurfaces([]);
+    setLoadId(null);
+    setInput("");
+  }, [contactId]);
+
+  // Pull display name from RLS-scoped clients row (same fields the page already reads).
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await supabase
+        .from("clients")
+        .select("first_name, last_name, entity_name")
+        .eq("id", contactId)
+        .maybeSingle();
+      if (!alive || !data) return;
+      const full = `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim();
+      setDisplayName(full || data.entity_name || "this client");
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [contactId]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages, running]);
+
+  // Client-side multi-turn: last 6 turns prefaced as "Earlier context:" before the current question.
+  // Neutral "User" label — role-agnostic so it never contradicts the server-side identity line.
+  function composePrompt(history: Msg[], latest: string): string {
+    const prior = history.slice(-6);
+    if (prior.length === 0) return latest;
+    const transcript = prior
+      .map((m) => `${m.role === "user" ? "User" : "Paige"}: ${m.content}`)
+      .join("\n");
+    return `Earlier context:\n${transcript}\n\nCurrent question:\n${latest}`;
+  }
+
+  async function send() {
+    const q = input.trim();
+    if (!q || running) return;
+    const nextMessages: Msg[] = [...messages, { role: "user", content: q }];
+    setMessages(nextMessages);
+    setInput("");
+    setRunning(true);
     try {
       const { data, error } = await supabase.functions.invoke(
         "paige-context-router",
-        { body: { contact_id: contactId, user_prompt: q, scopes: ["contact"] } },
+        {
+          body: {
+            contact_id: contactId,
+            user_prompt: composePrompt(messages, q),
+            scopes: ["contact"],
+          },
+        },
       );
-      if (error) throw error;
+
+      // Site 3: FunctionsHttpError swallows non-2xx bodies. Parse the response
+      // before rethrowing so the CONSENT_NOT_GRANTED soft-branch fires.
+      // (Also resurrects the dead soft-branch that was silently swallowed.)
+      if (error) {
+        let parsed: { error?: string; message?: string } | null = null;
+        try {
+          const resp = (error as { context?: { response?: Response } }).context
+            ?.response;
+          if (resp && typeof resp.json === "function") {
+            parsed = await resp.clone().json();
+          }
+        } catch {
+          /* ignore parse failure — fall through to generic toast */
+        }
+        if (parsed?.error === "CONSENT_NOT_GRANTED") {
+          setConsentBlocked(true);
+          return;
+        }
+        throw error;
+      }
+
       if (!data?.ok) {
         if (data?.error === "CONSENT_NOT_GRANTED") {
-          setConsentBlock(
-            data.message ?? "Customer has not consented to sharing context.",
-          );
-        } else {
-          toast.error(data?.message ?? data?.error ?? "Paige could not answer.");
+          setConsentBlocked(true);
+          return;
         }
+        toast.error(data?.message ?? data?.error ?? "Paige could not answer.");
         return;
       }
-      setAnswer(data.answer ?? "");
+
+      setMessages([
+        ...nextMessages,
+        { role: "assistant", content: data.answer ?? "" },
+      ]);
       setSurfaces(data.surfaces_used ?? []);
       setLoadId(data.load_id ?? null);
     } catch (e) {
@@ -133,57 +211,120 @@ function AskPaigeCard({ contactId }: Props) {
     }
   }
 
+  function copyPortalLink() {
+    const url = `${window.location.origin}/portal/settings`;
+    navigator.clipboard.writeText(url).then(
+      () => toast.success("Portal link copied — share with client."),
+      () => toast.error("Could not copy link."),
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Sparkles className="h-4 w-4" />
-          Ask Paige about this contact
+          Paige · Coach chat
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Grounded answers only — Paige reads consented, RLS-scoped fields from
-          this contact. Credit monitoring + building, never credit repair
-          (Doctrine §194).
+          Multi-turn, grounded in this contact's consented, RLS-scoped record.
+          Credit monitoring + building only — never credit repair (Doctrine §194).
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <Textarea
-          placeholder="e.g. Summarize where this client stands on funding readiness."
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          rows={3}
-          disabled={running}
-        />
-        <div className="flex justify-end">
-          <Button onClick={ask} disabled={running || !prompt.trim()}>
-            {running ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4 mr-2" />
-            )}
-            Ask Paige
-          </Button>
-        </div>
-
-        {consentBlock && (
-          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm flex items-start gap-2">
-            <ShieldAlert className="h-4 w-4 text-amber-500 mt-0.5" />
-            <div>
-              <div className="font-medium">Consent required</div>
-              <div className="text-muted-foreground">{consentBlock}</div>
+        {consentBlocked ? (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-4 text-sm space-y-3">
+            <div className="flex items-start gap-2">
+              <ShieldAlert className="h-4 w-4 text-amber-500 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-medium">
+                  Waiting on {displayName}'s workspace consent
+                </div>
+                <div className="text-muted-foreground">
+                  This client hasn't enabled Paige to share their workspace with
+                  you yet. Ask them to enable it in their portal settings, or
+                  reach out via their preferred channel.
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConsentBlocked(false)}
+              >
+                Retry
+              </Button>
+              <Button variant="outline" size="sm" onClick={copyPortalLink}>
+                Copy portal link
+              </Button>
             </div>
           </div>
-        )}
-
-        {answer && (
-          <div className="space-y-2">
-            <div className="rounded-md border bg-muted/30 p-3 whitespace-pre-wrap text-sm">
-              {answer}
+        ) : (
+          <>
+            <div
+              ref={scrollRef}
+              className="max-h-[420px] min-h-[160px] overflow-y-auto rounded-md border bg-muted/20 p-3 space-y-3"
+            >
+              {messages.length === 0 && !running && (
+                <div className="text-xs text-muted-foreground">
+                  Ask about funding readiness, credit posture, next best action —
+                  Paige only reads what this client has consented to share.
+                </div>
+              )}
+              {messages.map((m, i) => (
+                <div
+                  key={i}
+                  className={
+                    m.role === "user"
+                      ? "text-sm whitespace-pre-wrap"
+                      : "text-sm whitespace-pre-wrap rounded-md bg-background border p-2"
+                  }
+                >
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
+                    {m.role === "user" ? "You" : "Paige"}
+                  </div>
+                  {m.content}
+                </div>
+              ))}
+              {running && (
+                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Paige is thinking…
+                </div>
+              )}
             </div>
+
+            <Textarea
+              placeholder="e.g. Summarize where this client stands on funding readiness."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              rows={3}
+              disabled={running}
+            />
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] text-muted-foreground">
+                ⌘/Ctrl + Enter to send
+              </div>
+              <Button onClick={send} disabled={running || !input.trim()}>
+                {running ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4 mr-2" />
+                )}
+                Send
+              </Button>
+            </div>
+
             {surfaces.length > 0 && (
               <div className="flex flex-wrap gap-1 items-center text-xs text-muted-foreground">
                 <ShieldCheck className="h-3 w-3" />
-                <span>Sources:</span>
+                <span>Sources (latest turn):</span>
                 {surfaces.map((s) => (
                   <Badge key={s} variant="outline" className="text-[10px]">
                     {s}
@@ -196,7 +337,7 @@ function AskPaigeCard({ contactId }: Props) {
                 )}
               </div>
             )}
-          </div>
+          </>
         )}
       </CardContent>
     </Card>

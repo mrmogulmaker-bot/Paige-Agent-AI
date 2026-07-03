@@ -56,6 +56,30 @@ Deno.serve(async (req) => {
   const { data: userRes, error: userErr } = await client.auth.getUser();
   if (userErr || !userRes?.user) return json({ error: "Unauthorized" }, 401);
 
+  // Site 2 (Phase 1 coach identity): resolve caller for system-prompt injection.
+  // Non-fatal on failure — falls back to generic labels.
+  let callerRole = "team member";
+  let callerDisplayName = "an authenticated user";
+  try {
+    const [profRes, rolesRes] = await Promise.all([
+      client.from("profiles").select("full_name").eq("user_id", userRes.user.id).maybeSingle(),
+      client.from("user_roles").select("role").eq("user_id", userRes.user.id),
+    ]);
+    if (profRes.data?.full_name) callerDisplayName = String(profRes.data.full_name);
+    if (rolesRes.data && rolesRes.data.length > 0) {
+      // Priority order verified against SELECT DISTINCT role FROM user_roles:
+      // enum values in this project = super_admin, admin, coach, broker, client, user.
+      // No platform_admin / platform_owner / tenant_admin / staff exist here.
+      const priority = ["super_admin", "admin", "coach", "broker", "client", "user"];
+      const roles = (rolesRes.data as Array<{ role: string }>).map((r) => String(r.role));
+      for (const p of priority) {
+        if (roles.includes(p)) { callerRole = p; break; }
+      }
+      // Fallback: unknown role name not in priority list — use first returned.
+      if (callerRole === "team member" && roles.length > 0) callerRole = roles[0];
+    }
+  } catch { /* non-fatal */ }
+
   let body: { contact_id?: string; self?: boolean; user_prompt?: string; scopes?: string[] };
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
   const prompt = (body.user_prompt ?? "").toString().trim();
@@ -83,6 +107,17 @@ Deno.serve(async (req) => {
 
   const safeBundle = redactKeys(ctx.bundle ?? {});
 
+  // Contact display name pulled from bundle (registry-whitelisted client fields).
+  let contactDisplayName = "this contact";
+  if (!body.self && ctx.bundle && typeof ctx.bundle === "object") {
+    const arr = (ctx.bundle as Record<string, unknown>).contact;
+    if (Array.isArray(arr) && arr.length > 0) {
+      const c = arr[0] as Record<string, unknown>;
+      const full = `${(c.first_name as string) ?? ""} ${(c.last_name as string) ?? ""}`.trim();
+      contactDisplayName = full || (c.entity_name as string | undefined) || "this contact";
+    }
+  }
+
   if (!LOVABLE_API_KEY) {
     return json({
       ok: true,
@@ -92,7 +127,12 @@ Deno.serve(async (req) => {
     });
   }
 
+  const identityLine = body.self
+    ? `You are speaking with ${callerRole} ${callerDisplayName}. They are asking about their own workspace.`
+    : `You are speaking with ${callerRole} ${callerDisplayName}. They are asking about contact ${body.contact_id} (${contactDisplayName}).`;
+
   const system = [
+    identityLine,
     "You are Paige — a compliance-first business-growth assistant.",
     "Answer ONLY from the CONTEXT bundle provided below. Do not invent facts.",
     "If the bundle is insufficient, say exactly what is missing and stop.",
