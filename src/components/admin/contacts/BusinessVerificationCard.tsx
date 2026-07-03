@@ -85,7 +85,16 @@ export function BusinessVerificationCard({ businessId }: { businessId: string })
         toast({ title: "Verification failed", description: message, variant: "destructive" });
         return;
       }
-      toast({ title: "Verification complete", description: `Score: ${(data as { composite_score?: number })?.composite_score ?? "—"}` });
+      const result = data as { ok?: boolean; error?: string; message?: string; composite_score?: number } | null;
+      if (result?.ok === false) {
+        toast({
+          title: result.error === "BUSINESS_NOT_FOUND" ? "Business not found" : "Verification unavailable",
+          description: result.message || "Business verification could not complete. Please retry.",
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({ title: "Verification complete", description: `Score: ${result?.composite_score ?? "—"}` });
       load();
     } catch (e: any) {
       toast({ title: "Verification failed", description: e?.message || "Unknown error", variant: "destructive" });

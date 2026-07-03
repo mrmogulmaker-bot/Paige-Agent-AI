@@ -10,6 +10,12 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+const jsonResponse = (payload: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -18,18 +24,34 @@ Deno.serve(async (req) => {
     const business_id: string | undefined = body.business_id;
     const triggered_by: string = body.triggered_by ?? "system";
     if (!business_id) {
-      return new Response(JSON.stringify({ error: "business_id required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonResponse({ ok: false, error: "BUSINESS_ID_REQUIRED", message: "A business ID is required." }, 400);
     }
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
     const { data: biz, error: bizErr } = await admin
       .from("businesses")
-      .select("id, owner_user_id, legal_name, dba, ein, state, city, address_line_1, postal_code, phone, website, entity_type")
+      .select("id, owner_user_id, legal_name, dba, ein, state_of_formation, business_state, business_city, business_street_address, business_zip, business_phone, website, entity_type")
       .eq("id", business_id)
       .maybeSingle();
-    if (bizErr || !biz) {
-      return new Response(JSON.stringify({ error: "business not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (bizErr) {
+      console.error("business-verifier business lookup error", bizErr);
+      return jsonResponse({
+        ok: false,
+        error: "BUSINESS_LOOKUP_FAILED",
+        message: "Business verification could not load this business. Please retry.",
+        fallback: true,
+      });
+    }
+
+    if (!biz) {
+      return jsonResponse({
+        ok: false,
+        error: "BUSINESS_NOT_FOUND",
+        message: "This business record is no longer available. Refresh the contact and try again.",
+        business_id,
+        fallback: true,
+      });
     }
 
     // Resolve contact_id (best-effort) via owner
@@ -60,11 +82,11 @@ Deno.serve(async (req) => {
       legal_name: biz.legal_name ?? "",
       dba: biz.dba,
       ein: biz.ein,
-      state: biz.state,
-      city: biz.city,
-      address_line_1: biz.address_line_1,
-      postal_code: biz.postal_code,
-      phone: biz.phone,
+      state: biz.state_of_formation ?? biz.business_state,
+      city: biz.business_city,
+      address_line_1: biz.business_street_address,
+      postal_code: biz.business_zip,
+      phone: biz.business_phone,
       website: biz.website,
       entity_type: biz.entity_type,
     };
@@ -73,7 +95,7 @@ Deno.serve(async (req) => {
       await admin.from("business_verification_runs")
         .update({ status: "failed", error: "missing legal_name", completed_at: new Date().toISOString() })
         .eq("id", run.id);
-      return new Response(JSON.stringify({ run_id: run.id, status: "failed" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return jsonResponse({ ok: true, run_id: run.id, status: "failed" });
     }
 
     const results = await Promise.allSettled(
@@ -140,12 +162,14 @@ Deno.serve(async (req) => {
       })
       .eq("id", run.id);
 
-    return new Response(
-      JSON.stringify({ run_id: run.id, status: finalStatus, composite_score: composite, sources: rows.length }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return jsonResponse({ ok: true, run_id: run.id, status: finalStatus, composite_score: composite, sources: rows.length });
   } catch (err) {
     console.error("business-verifier error", err);
-    return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return jsonResponse({
+      ok: false,
+      error: "BUSINESS_VERIFICATION_FAILED",
+      message: "Business verification could not complete. Please retry.",
+      fallback: true,
+    });
   }
 });
