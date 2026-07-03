@@ -120,6 +120,57 @@ Ship P.0.1.b Step 3 second attempt included in-migration V1–V6 inside a post-D
 
 ---
 
+## §213.d — Preflight Guard Column Uniqueness
+
+A single `DO` block reads one transaction snapshot at its start. If a preflight guard adds a column and a later guard in the same block re-checks that same column, the second guard reads the pre-mutation snapshot and lies about the column's existence.
+
+### Rule
+
+Every preflight guard / `ALTER` pair within a single `DO` block MUST target a **distinct column**. Same-column re-checks inside one `DO` block trip snapshot isolation (see §213.c) and produce false-positive verification.
+
+### Anti-pattern
+
+```sql
+-- BAD: second guard reads pre-mutation snapshot; "EXISTS" is always false
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'T' AND column_name = 'X'
+  ) THEN
+    ALTER TABLE public.T ADD COLUMN X INTEGER;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'T' AND column_name = 'X'
+  ) THEN
+    ALTER TABLE public.T ALTER COLUMN X SET NOT NULL;
+  END IF;
+END $$;
+```
+
+### Correct pattern
+
+Split into separate `DO` blocks or separate migrations:
+
+```sql
+-- Migration N: add the column
+DO $$ BEGIN
+  IF NOT EXISTS (... column X ...) THEN
+    ALTER TABLE public.T ADD COLUMN X INTEGER;
+  END IF;
+END $$;
+
+-- Migration N+1: alter the now-verifiably-present column
+ALTER TABLE public.T ALTER COLUMN X SET NOT NULL;
+```
+
+### Precedent case
+
+The §213.c retro-audit of 332 migrations found zero violations because every preflight-guard migration touched a distinct column per guard/ALTER pair. The residual risk — a future edit adding a same-column re-check — is what §213.d closes. If that pattern had existed, it would have produced a silent false negative: the second guard would have seen `X` as missing, skipped the `ALTER`, and left the column in an unintended state.
+
+---
+
 ## Companion doctrines
 
 - **§66** — Antonio rules, migration writes. §213 preserves this: post-apply audits surface issues; Antonio confirms remediation migration content before ship.
