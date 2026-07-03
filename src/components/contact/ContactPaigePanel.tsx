@@ -79,7 +79,7 @@ export function ContactPaigePanel({ contactId }: Props) {
   return (
     <Tabs defaultValue="ask" className="space-y-4">
       <TabsList>
-        <TabsTrigger value="ask">Ask Paige</TabsTrigger>
+        <TabsTrigger value="ask">Paige · Chat</TabsTrigger>
         <TabsTrigger value="actions">Actions</TabsTrigger>
       </TabsList>
       <TabsContent value="ask">
