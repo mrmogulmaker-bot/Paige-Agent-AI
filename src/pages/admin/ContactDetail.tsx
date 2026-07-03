@@ -160,15 +160,29 @@ export default function ContactDetail() {
   const coachName = (uid: string | null) => uid ? (coaches.find((c) => c.user_id === uid)?.name || "Coach") : "Unassigned";
 
   const sendClientProgramInvite = async () => {
-    // invite-btf-client edge function was retired in Commit N+1 (Sprint
-    // 211.b close-out). The replacement client-program invite path is
-    // scheduled for a follow-up ship. Preserving the button binding so
-    // the admin surface still renders under btfEnabled + isAdmin gating,
-    // but the send action is a no-op stub until the replacement lands —
-    // matches ContactPortalPanel.cancelPendingInvites pattern.
-    toast.info(
-      "Client program invite is temporarily unavailable — reach out to platform admin if needed.",
-    );
+    // BRIDGE (Task #21): points at send-admin-invitation with role="client"
+    // to unblock smoke testing coach-lens Paige. Task #22 ships the real
+    // invite-client-program function with program-enrollment semantics
+    // (program picker, agreement attachment, Stripe intent, coach
+    // auto-assignment). Replace this call at that time.
+    if (!client?.email) {
+      toast.error("This contact has no email on file — add one before inviting.");
+      return;
+    }
+    try {
+      const { data, error } = await supabase.functions.invoke("send-admin-invitation", {
+        body: { email: client.email, role: "client" },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (data?.emailSent === false) {
+        toast.warning(`Invite created for ${client.email}, but the email didn't send. Check delivery.`);
+      } else {
+        toast.success(`Client program invite sent to ${client.email}`);
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to send client program invite");
+    }
   };
 
   const startOnboarding = async () => {
