@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
 
     const { data: biz, error: bizErr } = await admin
       .from("businesses")
-      .select("id, owner_user_id, legal_name, dba, ein, state, city, address_line_1, postal_code, phone, website, entity_type")
+      .select("id, owner_user_id, legal_name, dba, ein, state_of_formation, business_state, business_city, business_street_address, business_zip, business_phone, website, entity_type")
       .eq("id", business_id)
       .maybeSingle();
     if (bizErr) {
@@ -82,11 +82,11 @@ Deno.serve(async (req) => {
       legal_name: biz.legal_name ?? "",
       dba: biz.dba,
       ein: biz.ein,
-      state: biz.state,
-      city: biz.city,
-      address_line_1: biz.address_line_1,
-      postal_code: biz.postal_code,
-      phone: biz.phone,
+      state: biz.state_of_formation ?? biz.business_state,
+      city: biz.business_city,
+      address_line_1: biz.business_street_address,
+      postal_code: biz.business_zip,
+      phone: biz.business_phone,
       website: biz.website,
       entity_type: biz.entity_type,
     };
