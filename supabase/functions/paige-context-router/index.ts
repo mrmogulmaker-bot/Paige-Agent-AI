@@ -56,6 +56,30 @@ Deno.serve(async (req) => {
   const { data: userRes, error: userErr } = await client.auth.getUser();
   if (userErr || !userRes?.user) return json({ error: "Unauthorized" }, 401);
 
+  // Site 2 (Phase 1 coach identity): resolve caller for system-prompt injection.
+  // Non-fatal on failure — falls back to generic labels.
+  let callerRole = "team member";
+  let callerDisplayName = "an authenticated user";
+  try {
+    const [profRes, rolesRes] = await Promise.all([
+      client.from("profiles").select("full_name").eq("user_id", userRes.user.id).maybeSingle(),
+      client.from("user_roles").select("role").eq("user_id", userRes.user.id),
+    ]);
+    if (profRes.data?.full_name) callerDisplayName = String(profRes.data.full_name);
+    if (rolesRes.data && rolesRes.data.length > 0) {
+      // Priority order verified against SELECT DISTINCT role FROM user_roles:
+      // enum values in this project = super_admin, admin, coach, broker, client, user.
+      // No platform_admin / platform_owner / tenant_admin / staff exist here.
+      const priority = ["super_admin", "admin", "coach", "broker", "client", "user"];
+      const roles = (rolesRes.data as Array<{ role: string }>).map((r) => String(r.role));
+      for (const p of priority) {
+        if (roles.includes(p)) { callerRole = p; break; }
+      }
+      // Fallback: unknown role name not in priority list — use first returned.
+      if (callerRole === "team member" && roles.length > 0) callerRole = roles[0];
+    }
+  } catch { /* non-fatal */ }
+
   let body: { contact_id?: string; self?: boolean; user_prompt?: string; scopes?: string[] };
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
   const prompt = (body.user_prompt ?? "").toString().trim();
