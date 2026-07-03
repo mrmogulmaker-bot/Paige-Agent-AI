@@ -1,0 +1,1 @@
+CREATE POLICY csp_loads_caller_insert ON public.paige_context_loads FOR INSERT TO authenticated WITH CHECK (caller_user_id = auth.uid());
