@@ -298,6 +298,12 @@ function AskPaigeCard({ contactId }: Props) {
               ref={scrollRef}
               className="max-h-[420px] min-h-[160px] overflow-y-auto rounded-md border bg-muted/20 p-3 space-y-3"
             >
+              {resumedCount > 0 && (
+                <div className="text-[11px] text-muted-foreground italic border-b pb-2">
+                  Continuing where you left off — {resumedCount} prior message
+                  {resumedCount === 1 ? "" : "s"}.
+                </div>
+              )}
               {messages.length === 0 && !running && (
                 <div className="text-xs text-muted-foreground">
                   Ask about funding readiness, credit posture, next best action —
