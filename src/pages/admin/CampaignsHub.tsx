@@ -1,7 +1,7 @@
 // Campaigns Hub — single home for outbound marketing & acquisition.
 // Folds the legacy "Growth OS" (Pages / Funnels / Forms / Submissions / External Sources)
 // under Campaigns so the top-bar stays lean. All data continues to flow live from
-// Supabase (growth_* + mma-campaigns bridge), keyed to the active tenant — coaches /
+// Supabase (growth_* + tenant-campaigns bridge), keyed to the active tenant — coaches /
 // admins / clients still see exactly what their RLS policies allow.
 import { lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
