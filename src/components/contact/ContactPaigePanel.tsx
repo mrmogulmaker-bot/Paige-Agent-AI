@@ -102,6 +102,8 @@ function AskPaigeCard({ contactId }: Props) {
   const [surfaces, setSurfaces] = useState<string[]>([]);
   const [loadId, setLoadId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string>("this client");
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [resumedCount, setResumedCount] = useState<number>(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // Reset transient chat when switching contacts (§116: no literals; contactId only).
@@ -111,6 +113,8 @@ function AskPaigeCard({ contactId }: Props) {
     setSurfaces([]);
     setLoadId(null);
     setInput("");
+    setThreadId(null);
+    setResumedCount(0);
   }, [contactId]);
 
   // Pull display name from RLS-scoped clients row (same fields the page already reads).
@@ -131,23 +135,50 @@ function AskPaigeCard({ contactId }: Props) {
     };
   }, [contactId]);
 
+  // Task #20: on mount / contact-switch, resume active thread for (caller, contact, lens='coach').
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data: userRes } = await supabase.auth.getUser();
+      const uid = userRes?.user?.id;
+      if (!uid) return;
+      const { data: thread } = await supabase
+        .from("paige_chat_threads")
+        .select("id")
+        .eq("caller_user_id", uid)
+        .eq("contact_id", contactId)
+        .eq("lens", "coach")
+        .eq("is_archived", false)
+        .order("last_message_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!alive || !thread?.id) return;
+      const { data: turns } = await supabase
+        .from("paige_chat_turns")
+        .select("role, content, created_at")
+        .eq("thread_id", thread.id)
+        .in("role", ["user", "assistant"])
+        .order("created_at", { ascending: true });
+      if (!alive) return;
+      setThreadId(thread.id);
+      const restored: Msg[] = (turns ?? []).map((t) => ({
+        role: t.role === "assistant" ? "assistant" : "user",
+        content: String(t.content),
+      }));
+      setMessages(restored);
+      setResumedCount(restored.length);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [contactId]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
   }, [messages, running]);
-
-  // Client-side multi-turn: last 6 turns prefaced as "Earlier context:" before the current question.
-  // Neutral "User" label — role-agnostic so it never contradicts the server-side identity line.
-  function composePrompt(history: Msg[], latest: string): string {
-    const prior = history.slice(-6);
-    if (prior.length === 0) return latest;
-    const transcript = prior
-      .map((m) => `${m.role === "user" ? "User" : "Paige"}: ${m.content}`)
-      .join("\n");
-    return `Earlier context:\n${transcript}\n\nCurrent question:\n${latest}`;
-  }
 
   async function send() {
     const q = input.trim();
@@ -162,15 +193,13 @@ function AskPaigeCard({ contactId }: Props) {
         {
           body: {
             contact_id: contactId,
-            user_prompt: composePrompt(messages, q),
+            user_prompt: q,
             scopes: ["contact"],
+            thread_id: threadId ?? undefined,
           },
         },
       );
 
-      // Site 3: FunctionsHttpError swallows non-2xx bodies. Parse the response
-      // before rethrowing so the CONSENT_NOT_GRANTED soft-branch fires.
-      // (Also resurrects the dead soft-branch that was silently swallowed.)
       if (error) {
         let parsed: { error?: string; message?: string } | null = null;
         try {
@@ -180,7 +209,7 @@ function AskPaigeCard({ contactId }: Props) {
             parsed = await resp.clone().json();
           }
         } catch {
-          /* ignore parse failure — fall through to generic toast */
+          /* ignore parse failure */
         }
         if (parsed?.error === "CONSENT_NOT_GRANTED") {
           setConsentBlocked(true);
@@ -204,6 +233,9 @@ function AskPaigeCard({ contactId }: Props) {
       ]);
       setSurfaces(data.surfaces_used ?? []);
       setLoadId(data.load_id ?? null);
+      if (data.thread_id && data.thread_id !== threadId) {
+        setThreadId(data.thread_id as string);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Request failed");
     } finally {
@@ -266,6 +298,12 @@ function AskPaigeCard({ contactId }: Props) {
               ref={scrollRef}
               className="max-h-[420px] min-h-[160px] overflow-y-auto rounded-md border bg-muted/20 p-3 space-y-3"
             >
+              {resumedCount > 0 && (
+                <div className="text-[11px] text-muted-foreground italic border-b pb-2">
+                  Continuing where you left off — {resumedCount} prior message
+                  {resumedCount === 1 ? "" : "s"}.
+                </div>
+              )}
               {messages.length === 0 && !running && (
                 <div className="text-xs text-muted-foreground">
                   Ask about funding readiness, credit posture, next best action —
