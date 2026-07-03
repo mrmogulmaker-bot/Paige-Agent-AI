@@ -28,7 +28,7 @@ new tenant's data to MMA or ships MMA branding to their operators.
 | # | Item | Fix |
 |---|------|-----|
 | 1D | `mma_os_btf_deal_id` → `external_deal_ref jsonb` | Migration: add `external_deal_ref jsonb`, backfill `{provider:'mma_os', deal_id: mma_os_btf_deal_id}`, drop old column after 7-day observation. |
-| 2A.1 | `mma-campaigns` / `mma-journey` edge functions | Rename to `tenant-campaigns` / `tenant-journey` — Sprint N+2 in flight. |
+| 2A.1 | `mma-campaigns` / `mma-journey` edge functions | ✅ shipped in Sprint N+2 — renamed to `tenant-campaigns` / `tenant-journey`. Old endpoints hard-deleted 2026-07-03. |
 | 2A.2 | Tenancy-enforcement contract on `tenant-campaigns` / `tenant-journey` | Deferred to own ship — add `x-tenant-id` header requirement, refuse when caller `tenant_id !== body.tenant_id` and caller is not platform owner. |
 
 ## Sprint completion checklist
