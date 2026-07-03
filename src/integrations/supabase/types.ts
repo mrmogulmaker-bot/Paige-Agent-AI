@@ -7871,6 +7871,143 @@ export type Database = {
           },
         ]
       }
+      paige_chat_threads: {
+        Row: {
+          auto_delete_at: string | null
+          caller_user_id: string
+          consent_snapshot: Json | null
+          contact_id: string | null
+          created_at: string
+          id: string
+          is_archived: boolean
+          last_message_at: string | null
+          lens: string
+          message_count: number
+          summary: string | null
+          tenant_id: string
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          auto_delete_at?: string | null
+          caller_user_id: string
+          consent_snapshot?: Json | null
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          is_archived?: boolean
+          last_message_at?: string | null
+          lens: string
+          message_count?: number
+          summary?: string | null
+          tenant_id: string
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          auto_delete_at?: string | null
+          caller_user_id?: string
+          consent_snapshot?: Json | null
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          is_archived?: boolean
+          last_message_at?: string | null
+          lens?: string
+          message_count?: number
+          summary?: string | null
+          tenant_id?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_chat_threads_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_chat_threads_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_chat_threads_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_chat_threads_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_chat_threads_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_chat_turns: {
+        Row: {
+          bundle_ref: Json | null
+          content: string
+          created_at: string
+          id: string
+          latency_ms: number | null
+          load_id: string | null
+          model: string | null
+          role: string
+          surfaces_used: string[] | null
+          thread_id: string
+          tokens_used: number | null
+        }
+        Insert: {
+          bundle_ref?: Json | null
+          content: string
+          created_at?: string
+          id?: string
+          latency_ms?: number | null
+          load_id?: string | null
+          model?: string | null
+          role: string
+          surfaces_used?: string[] | null
+          thread_id: string
+          tokens_used?: number | null
+        }
+        Update: {
+          bundle_ref?: Json | null
+          content?: string
+          created_at?: string
+          id?: string
+          latency_ms?: number | null
+          load_id?: string | null
+          model?: string | null
+          role?: string
+          surfaces_used?: string[] | null
+          thread_id?: string
+          tokens_used?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_chat_turns_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "paige_chat_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       paige_client_intake_submissions: {
         Row: {
           client_id: string
@@ -16595,6 +16732,29 @@ export type Database = {
           source_queue: string
         }
         Returns: number
+      }
+      paige_chat_thread_create: {
+        Args: {
+          p_consent_snapshot: Json
+          p_contact_id: string
+          p_lens: string
+          p_title: string
+        }
+        Returns: string
+      }
+      paige_chat_turn_append: {
+        Args: {
+          p_bundle_ref: Json
+          p_content: string
+          p_latency_ms: number
+          p_load_id: string
+          p_model: string
+          p_role: string
+          p_surfaces_used: string[]
+          p_thread_id: string
+          p_tokens_used: number
+        }
+        Returns: string
       }
       peek_tenant_invite: {
         Args: { _token: string }
