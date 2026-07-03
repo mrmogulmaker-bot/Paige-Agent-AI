@@ -54,13 +54,44 @@ export function BusinessVerificationCard({ businessId }: { businessId: string })
 
   const runNow = async () => {
     setRunning(true);
-    const { data, error } = await supabase.functions.invoke("business-verifier", {
-      body: { business_id: businessId, triggered_by: "admin" },
-    });
-    setRunning(false);
-    if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
-    toast({ title: "Verification complete", description: `Score: ${(data as { composite_score?: number })?.composite_score ?? "—"}` });
-    load();
+    try {
+      // Guard: confirm the business row still exists before invoking the verifier.
+      // Prevents a stale local list from producing a 404 blank-screen surface.
+      const { data: exists } = await supabase
+        .from("businesses")
+        .select("id")
+        .eq("id", businessId)
+        .maybeSingle();
+      if (!exists) {
+        toast({
+          title: "Business not found",
+          description: "This business record is no longer available. Refresh the contact.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("business-verifier", {
+        body: { business_id: businessId, triggered_by: "admin" },
+      });
+      if (error) {
+        let message = error.message;
+        if (error instanceof FunctionsHttpError) {
+          try {
+            const parsed = await error.context.response.json();
+            message = parsed?.error || parsed?.message || message;
+          } catch { /* keep default */ }
+        }
+        toast({ title: "Verification failed", description: message, variant: "destructive" });
+        return;
+      }
+      toast({ title: "Verification complete", description: `Score: ${(data as { composite_score?: number })?.composite_score ?? "—"}` });
+      load();
+    } catch (e: any) {
+      toast({ title: "Verification failed", description: e?.message || "Unknown error", variant: "destructive" });
+    } finally {
+      setRunning(false);
+    }
   };
 
   const ageMs = run?.created_at ? Date.now() - new Date(run.created_at).getTime() : null;
