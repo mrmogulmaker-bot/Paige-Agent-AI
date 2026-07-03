@@ -209,7 +209,7 @@ export default function ClientJourney() {
 
     // Try MMA OS bridge (stub-safe)
     try {
-      const { data } = await supabase.functions.invoke("mma-journey", {
+      const { data } = await supabase.functions.invoke("tenant-journey", {
         body: { verb: "get_journey", payload: { contact_id: c.id, email: c.email } },
       });
       const remote = (data as any)?.data?.events ?? [];
