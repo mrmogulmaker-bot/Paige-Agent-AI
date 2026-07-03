@@ -1,7 +1,7 @@
-// Customer-Scoped Paige (CSP) router — Ship #3.5.
-// Loads a per-contact context bundle via load_contact_context / load_self_context
-// (SECURITY INVOKER — caller RLS applies), then asks Lovable AI to answer ONLY from
-// that bundle. Enforces §189 feature gate + §194 monitoring-not-repair framing.
+// Customer-Scoped Paige (CSP) router — Ship #3.5 + Task #20 Phase 2.1 memory.
+// Loads a per-contact context bundle via load_contact_context / load_self_context,
+// mints/resumes a paige_chat_threads row, appends user + assistant turns via
+// paige_chat_turn_append RPC. Enforces §189 feature gate + §194 monitoring framing.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -14,6 +14,9 @@ const corsHeaders = {
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+const MODEL = "google/gemini-2.5-flash";
+const PRIOR_TURN_LIMIT = 20;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -56,8 +59,7 @@ Deno.serve(async (req) => {
   const { data: userRes, error: userErr } = await client.auth.getUser();
   if (userErr || !userRes?.user) return json({ error: "Unauthorized" }, 401);
 
-  // Site 2 (Phase 1 coach identity): resolve caller for system-prompt injection.
-  // Non-fatal on failure — falls back to generic labels.
+  // Site 2: resolve caller for system-prompt injection.
   let callerRole = "team member";
   let callerDisplayName = "an authenticated user";
   try {
@@ -67,35 +69,42 @@ Deno.serve(async (req) => {
     ]);
     if (profRes.data?.full_name) callerDisplayName = String(profRes.data.full_name);
     if (rolesRes.data && rolesRes.data.length > 0) {
-      // Priority order verified against SELECT DISTINCT role FROM user_roles:
-      // enum values in this project = super_admin, admin, coach, broker, client, user.
-      // No platform_admin / platform_owner / tenant_admin / staff exist here.
       const priority = ["super_admin", "admin", "coach", "broker", "client", "user"];
       const roles = (rolesRes.data as Array<{ role: string }>).map((r) => String(r.role));
       for (const p of priority) {
         if (roles.includes(p)) { callerRole = p; break; }
       }
-      // Fallback: unknown role name not in priority list — use first returned.
       if (callerRole === "team member" && roles.length > 0) callerRole = roles[0];
     }
   } catch { /* non-fatal */ }
 
-  let body: { contact_id?: string; self?: boolean; user_prompt?: string; scopes?: string[] };
+  let body: {
+    contact_id?: string;
+    self?: boolean;
+    user_prompt?: string;
+    scopes?: string[];
+    thread_id?: string;
+  };
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
   const prompt = (body.user_prompt ?? "").toString().trim();
   if (!prompt) return json({ error: "user_prompt is required" }, 400);
   if (prompt.length > 4000) return json({ error: "user_prompt too long" }, 400);
+
+  const scopesUsed = body.scopes && body.scopes.length ? body.scopes : ["contact"];
 
   // Load context (RLS applies)
   const rpc = body.self
     ? await client.rpc("load_self_context")
     : await client.rpc("load_contact_context", {
         p_contact_id: body.contact_id,
-        p_scopes: body.scopes && body.scopes.length ? body.scopes : ["contact"],
+        p_scopes: scopesUsed,
       });
 
   if (rpc.error) return json({ error: rpc.error.message }, 400);
-  const ctx = rpc.data as { ok: boolean; error?: string; message?: string; bundle?: unknown; surfaces_used?: string[]; load_id?: string; row_count?: number };
+  const ctx = rpc.data as {
+    ok: boolean; error?: string; message?: string;
+    bundle?: unknown; surfaces_used?: string[]; load_id?: string; row_count?: number;
+  };
   if (!ctx?.ok) {
     return json({
       ok: false,
@@ -107,7 +116,7 @@ Deno.serve(async (req) => {
 
   const safeBundle = redactKeys(ctx.bundle ?? {});
 
-  // Contact display name pulled from bundle (registry-whitelisted client fields).
+  // Contact display name from bundle
   let contactDisplayName = "this contact";
   if (!body.self && ctx.bundle && typeof ctx.bundle === "object") {
     const arr = (ctx.bundle as Record<string, unknown>).contact;
@@ -118,12 +127,53 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ==========================================================================
+  // Task #20 — mint or resume thread
+  // ==========================================================================
+  let threadId: string | null = body.thread_id ?? null;
+  let priorTurns: Array<{ role: string; content: string }> = [];
+
+  if (threadId) {
+    const { data: turns, error: turnsErr } = await client
+      .from("paige_chat_turns")
+      .select("role, content, created_at")
+      .eq("thread_id", threadId)
+      .in("role", ["user", "assistant"])
+      .order("created_at", { ascending: true })
+      .limit(PRIOR_TURN_LIMIT);
+    if (turnsErr) return json({ ok: false, error: "TURN_LOAD_FAILED", message: turnsErr.message }, 400);
+    priorTurns = (turns ?? []).map((t) => ({ role: String(t.role), content: String(t.content) }));
+  } else {
+    // Mint thread. Consent has passed via load_contact_context.
+    const consentSnapshot = {
+      checked_at: new Date().toISOString(),
+      consent_flag: true,
+      source: body.self ? "self_mode" : "clients.paige_shared_context_consent",
+      source_row_id: body.self ? userRes.user.id : (body.contact_id ?? null),
+      caller_user_id: userRes.user.id,
+      scopes_requested: scopesUsed,
+    };
+    const title = prompt.split(/\s+/).slice(0, 8).join(" ").slice(0, 120);
+    const { data: newId, error: createErr } = await client.rpc(
+      "paige_chat_thread_create",
+      {
+        p_contact_id: body.self ? null : (body.contact_id ?? null),
+        p_lens: body.self ? "client" : "coach",
+        p_title: title,
+        p_consent_snapshot: consentSnapshot,
+      },
+    );
+    if (createErr) return json({ ok: false, error: "THREAD_CREATE_FAILED", message: createErr.message }, 400);
+    threadId = newId as string;
+  }
+
   if (!LOVABLE_API_KEY) {
     return json({
       ok: true,
       answer: "AI is not configured on this environment.",
       surfaces_used: ctx.surfaces_used ?? [],
       load_id: ctx.load_id,
+      thread_id: threadId,
     });
   }
 
@@ -142,7 +192,14 @@ Deno.serve(async (req) => {
     "Keep replies under 220 words unless the user asks for detail.",
   ].join("\n");
 
-  const user = [
+  // Assemble message list: system + prior turns + current user turn (with bundle)
+  const messages: Array<{ role: string; content: string }> = [
+    { role: "system", content: system },
+  ];
+  for (const t of priorTurns) {
+    messages.push({ role: t.role === "assistant" ? "assistant" : "user", content: t.content });
+  }
+  const userTurn = [
     "CONTEXT (JSON, redacted):",
     "```json",
     JSON.stringify(safeBundle).slice(0, 24_000),
@@ -151,24 +208,59 @@ Deno.serve(async (req) => {
     "QUESTION:",
     prompt,
   ].join("\n");
+  messages.push({ role: "user", content: userTurn });
 
+  const t0 = Date.now();
   const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+    body: JSON.stringify({ model: MODEL, messages }),
   });
   if (!aiRes.ok) {
     const detail = (await aiRes.text()).slice(0, 500);
-    return json({ ok: false, error: `AI gateway ${aiRes.status}`, detail }, 502);
+    return json({ ok: false, error: `AI gateway ${aiRes.status}`, detail, thread_id: threadId }, 502);
   }
   const j = await aiRes.json();
   const answer = j?.choices?.[0]?.message?.content ?? "";
+  const latencyMs = Date.now() - t0;
+  const tokensUsed = Number(j?.usage?.total_tokens ?? 0) || null;
+
+  // Append user turn (raw prompt only — bundle is per-turn state, kept in bundle_ref)
+  const bundleRef = {
+    surfaces_used: ctx.surfaces_used ?? [],
+    row_count: ctx.row_count ?? 0,
+    scopes: scopesUsed,
+  };
+  const { error: userAppendErr } = await client.rpc("paige_chat_turn_append", {
+    p_thread_id: threadId,
+    p_role: "user",
+    p_content: prompt,
+    p_surfaces_used: ctx.surfaces_used ?? [],
+    p_load_id: ctx.load_id ?? null,
+    p_model: null,
+    p_tokens_used: null,
+    p_latency_ms: null,
+    p_bundle_ref: bundleRef,
+  });
+  if (userAppendErr) {
+    return json({ ok: false, error: "TURN_APPEND_FAILED", message: userAppendErr.message, thread_id: threadId }, 400);
+  }
+
+  const { error: asstAppendErr } = await client.rpc("paige_chat_turn_append", {
+    p_thread_id: threadId,
+    p_role: "assistant",
+    p_content: answer,
+    p_surfaces_used: ctx.surfaces_used ?? [],
+    p_load_id: ctx.load_id ?? null,
+    p_model: MODEL,
+    p_tokens_used: tokensUsed,
+    p_latency_ms: latencyMs,
+    p_bundle_ref: bundleRef,
+  });
+  if (asstAppendErr) {
+    // Don't fail the response — answer is already produced. Log and continue.
+    console.error("assistant turn append failed:", asstAppendErr.message);
+  }
 
   return json({
     ok: true,
@@ -176,5 +268,7 @@ Deno.serve(async (req) => {
     surfaces_used: ctx.surfaces_used ?? [],
     row_count: ctx.row_count ?? 0,
     load_id: ctx.load_id,
+    thread_id: threadId,
+    prior_turn_count: priorTurns.length,
   });
 });
