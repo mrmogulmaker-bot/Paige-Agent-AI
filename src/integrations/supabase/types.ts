@@ -3084,187 +3084,6 @@ export type Database = {
         }
         Relationships: []
       }
-      consumer_invoices: {
-        Row: {
-          created_at: string
-          currency: string
-          hosted_invoice_url: string | null
-          id: string
-          invoice_number: string | null
-          line_items: Json
-          paid_at: string | null
-          status: string
-          stripe_invoice_id: string | null
-          subscription_id: string | null
-          total_cents: number
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          currency?: string
-          hosted_invoice_url?: string | null
-          id?: string
-          invoice_number?: string | null
-          line_items?: Json
-          paid_at?: string | null
-          status?: string
-          stripe_invoice_id?: string | null
-          subscription_id?: string | null
-          total_cents?: number
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          currency?: string
-          hosted_invoice_url?: string | null
-          id?: string
-          invoice_number?: string | null
-          line_items?: Json
-          paid_at?: string | null
-          status?: string
-          stripe_invoice_id?: string | null
-          subscription_id?: string | null
-          total_cents?: number
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "consumer_invoices_subscription_id_fkey"
-            columns: ["subscription_id"]
-            isOneToOne: false
-            referencedRelation: "consumer_subscriptions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      consumer_subscription_plans: {
-        Row: {
-          annual_price_cents: number | null
-          created_at: string
-          description: string | null
-          features: Json
-          id: string
-          is_active: boolean
-          launch_at: string | null
-          monthly_price_cents: number
-          name: string
-          slug: string
-          stripe_mode: string
-          stripe_price_id: string | null
-          updated_at: string
-        }
-        Insert: {
-          annual_price_cents?: number | null
-          created_at?: string
-          description?: string | null
-          features?: Json
-          id?: string
-          is_active?: boolean
-          launch_at?: string | null
-          monthly_price_cents?: number
-          name: string
-          slug: string
-          stripe_mode?: string
-          stripe_price_id?: string | null
-          updated_at?: string
-        }
-        Update: {
-          annual_price_cents?: number | null
-          created_at?: string
-          description?: string | null
-          features?: Json
-          id?: string
-          is_active?: boolean
-          launch_at?: string | null
-          monthly_price_cents?: number
-          name?: string
-          slug?: string
-          stripe_mode?: string
-          stripe_price_id?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      consumer_subscriptions: {
-        Row: {
-          cancel_at_period_end: boolean
-          created_at: string
-          current_period_end: string | null
-          current_period_start: string | null
-          id: string
-          metadata: Json
-          plan_id: string
-          status: string
-          stripe_customer_id: string | null
-          stripe_subscription_id: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          cancel_at_period_end?: boolean
-          created_at?: string
-          current_period_end?: string | null
-          current_period_start?: string | null
-          id?: string
-          metadata?: Json
-          plan_id: string
-          status?: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          cancel_at_period_end?: boolean
-          created_at?: string
-          current_period_end?: string | null
-          current_period_start?: string | null
-          id?: string
-          metadata?: Json
-          plan_id?: string
-          status?: string
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "consumer_subscriptions_plan_id_fkey"
-            columns: ["plan_id"]
-            isOneToOne: false
-            referencedRelation: "consumer_subscription_plans"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      consumer_waitlist: {
-        Row: {
-          created_at: string
-          email: string
-          id: string
-          metadata: Json
-          source: string | null
-        }
-        Insert: {
-          created_at?: string
-          email: string
-          id?: string
-          metadata?: Json
-          source?: string | null
-        }
-        Update: {
-          created_at?: string
-          email?: string
-          id?: string
-          metadata?: Json
-          source?: string | null
-        }
-        Relationships: []
-      }
       conversation_context: {
         Row: {
           active_scope: string | null
@@ -11500,8 +11319,6 @@ export type Database = {
       }
       platform_metered_events: {
         Row: {
-          consumer_subscription_id: string | null
-          consumer_user_id: string | null
           created_at: string
           end_customer_contact_id: string | null
           end_customer_user_id: string | null
@@ -11523,8 +11340,6 @@ export type Database = {
           wholesale_cost_usd: number
         }
         Insert: {
-          consumer_subscription_id?: string | null
-          consumer_user_id?: string | null
           created_at?: string
           end_customer_contact_id?: string | null
           end_customer_user_id?: string | null
@@ -11546,8 +11361,6 @@ export type Database = {
           wholesale_cost_usd?: number
         }
         Update: {
-          consumer_subscription_id?: string | null
-          consumer_user_id?: string | null
           created_at?: string
           end_customer_contact_id?: string | null
           end_customer_user_id?: string | null
@@ -11569,13 +11382,6 @@ export type Database = {
           wholesale_cost_usd?: number
         }
         Relationships: [
-          {
-            foreignKeyName: "platform_metered_events_consumer_subscription_id_fkey"
-            columns: ["consumer_subscription_id"]
-            isOneToOne: false
-            referencedRelation: "consumer_subscriptions"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "platform_metered_events_end_customer_contact_id_fkey"
             columns: ["end_customer_contact_id"]
