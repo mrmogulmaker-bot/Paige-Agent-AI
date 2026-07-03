@@ -29,7 +29,7 @@ export default function CampaignsAdmin() {
     setRefreshing(true);
     setError(null);
     try {
-      const { data, error } = await supabase.functions.invoke("mma-campaigns", {
+      const { data, error } = await supabase.functions.invoke("tenant-campaigns", {
         body: { verb: "list_active_campaigns", payload: {} },
       });
       if (error) throw error;
@@ -63,7 +63,7 @@ export default function CampaignsAdmin() {
       {stub && (
         <div className="text-xs flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:text-amber-200 px-3 py-2">
           <AlertCircle className="w-3.5 h-3.5" />
-          MMA OS bridge v15 verbs not wired yet — showing empty state. Set <code className="font-mono">MMA_OS_BRIDGE_URL</code> + <code className="font-mono">MMA_OS_BRIDGE_API_KEY</code> on the <code className="font-mono">mma-campaigns</code> function to go live.
+          MMA OS bridge v15 verbs not wired yet — showing empty state. Set <code className="font-mono">MMA_OS_BRIDGE_URL</code> + <code className="font-mono">MMA_OS_BRIDGE_API_KEY</code> on the <code className="font-mono">tenant-campaigns</code> function to go live.
         </div>
       )}
 

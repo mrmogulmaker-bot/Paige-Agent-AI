@@ -153,9 +153,6 @@ project_id = "bfmyebsjyuoecmjskqhs"
   [functions.sentry-tunnel]
     verify_jwt = false
 
-  [functions.mma-campaigns]
-    verify_jwt = true
-
   [functions.tenant-campaigns]
     verify_jwt = true
 
@@ -163,9 +160,6 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = false
   [functions.rebuild-client-financial-brief]
     verify_jwt = false
-
-  [functions.mma-journey]
-    verify_jwt = true
 
   [functions.tenant-journey]
     verify_jwt = true
