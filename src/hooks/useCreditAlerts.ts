@@ -130,8 +130,9 @@ export function useCreditAlerts(options: UseCreditAlertsOptions = {}) {
       const resolvedClientId = clientId || (await getCurrentUserId());
       if (!resolvedClientId) return;
 
+      const topic = `credit-alerts-${resolvedClientId}-${Math.random().toString(36).slice(2, 10)}`;
       channel = supabase
-        .channel(`credit-alerts-${resolvedClientId}`)
+        .channel(topic)
         .on("postgres_changes", {
           event: "INSERT",
           schema: "public",

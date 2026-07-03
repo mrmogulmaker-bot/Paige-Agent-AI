@@ -45,15 +45,17 @@ export function useClientOnboardingStatus(contactId: string | null | undefined) 
 
   useEffect(() => {
     if (!contactId) return;
-    const ch = supabase
-      .channel(`client-onboarding-${contactId}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "clients", filter: `id=eq.${contactId}` },
-        () => { void load(); },
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    // Unique topic per mount avoids StrictMode double-mount race where the
+    // second mount reuses a still-subscribed channel and throws
+    // "cannot add postgres_changes callbacks ... after subscribe()".
+    const topic = `client-onboarding-${contactId}-${Math.random().toString(36).slice(2, 10)}`;
+    const ch = supabase.channel(topic);
+    ch.on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "clients", filter: `id=eq.${contactId}` },
+      () => { void load(); },
+    ).subscribe();
+    return () => { void supabase.removeChannel(ch); };
   }, [contactId, load]);
 
   return { status: data, loading, error, refresh: load };
