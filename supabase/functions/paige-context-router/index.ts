@@ -107,6 +107,17 @@ Deno.serve(async (req) => {
 
   const safeBundle = redactKeys(ctx.bundle ?? {});
 
+  // Contact display name pulled from bundle (registry-whitelisted client fields).
+  let contactDisplayName = "this contact";
+  if (!body.self && ctx.bundle && typeof ctx.bundle === "object") {
+    const arr = (ctx.bundle as Record<string, unknown>).contact;
+    if (Array.isArray(arr) && arr.length > 0) {
+      const c = arr[0] as Record<string, unknown>;
+      const full = `${(c.first_name as string) ?? ""} ${(c.last_name as string) ?? ""}`.trim();
+      contactDisplayName = full || (c.entity_name as string | undefined) || "this contact";
+    }
+  }
+
   if (!LOVABLE_API_KEY) {
     return json({
       ok: true,
@@ -116,7 +127,12 @@ Deno.serve(async (req) => {
     });
   }
 
+  const identityLine = body.self
+    ? `You are speaking with ${callerRole} ${callerDisplayName}. They are asking about their own workspace.`
+    : `You are speaking with ${callerRole} ${callerDisplayName}. They are asking about contact ${body.contact_id} (${contactDisplayName}).`;
+
   const system = [
+    identityLine,
     "You are Paige — a compliance-first business-growth assistant.",
     "Answer ONLY from the CONTEXT bundle provided below. Do not invent facts.",
     "If the bundle is insufficient, say exactly what is missing and stop.",
