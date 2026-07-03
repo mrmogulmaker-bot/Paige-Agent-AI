@@ -11422,8 +11422,6 @@ export type Database = {
       platform_metered_events_dead_letter: {
         Row: {
           attempt_count: number
-          consumer_subscription_id: string | null
-          consumer_user_id: string | null
           created_at: string
           error_class: string | null
           error_message: string | null
@@ -11447,8 +11445,6 @@ export type Database = {
         }
         Insert: {
           attempt_count?: number
-          consumer_subscription_id?: string | null
-          consumer_user_id?: string | null
           created_at?: string
           error_class?: string | null
           error_message?: string | null
@@ -11472,8 +11468,6 @@ export type Database = {
         }
         Update: {
           attempt_count?: number
-          consumer_subscription_id?: string | null
-          consumer_user_id?: string | null
           created_at?: string
           error_class?: string | null
           error_message?: string | null
