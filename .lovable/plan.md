@@ -1,80 +1,64 @@
-# Calendar + Inbox Overhaul
+# Restore admin/coach profile name visibility
 
-## Ship Order
+## Problem (confirmed)
+Migration `20260703153924_...sql` dropped "Admins can view all profiles" from `public.profiles`. Current policies (verified via `pg_policies`):
+- `Users can view own profile` (SELECT) — `auth.uid() = user_id`
+- Update/insert policies only
 
-### Phase 1 — Dissolve Inbox (this turn, quick)
-- Remove **Inbox** hub from `AdminLayout.tsx` global nav
-- Move **Support** route to live under `Settings → Support` (keep `/admin/support` mounted for back-compat)
-- Add a **"My Conversations"** widget to the admin dashboard (unread + last-touched, jumps to per-contact Comms tab)
-- Per-contact Conversations tab already exists — verify realtime subscription
+No SELECT policy exists for admins, coaches, or super_admins. The `coach_client_profiles_safe` view uses `security_invoker = true`, so it inherits RLS and returns 0 rows for admins looking up other users. Result: name pickers, drawers, audit views etc. render "Unnamed".
 
-### Phase 2 — Personal Calendar (main build)
+## §180 doctrine constraint
+PII (SSN, DOB, phone, address, FICO, intake, demographics) must flow through the audited `get_profile_with_pii_log` RPC. The safe view is the sanctioned non-PII channel — but it currently doesn't work for admins/coaches.
 
-#### 2A. Rename + reroute
-- `Bookings → Calendar` everywhere (labels, icon, sidebar)
-- New primary route `/admin/calendar`; `/admin/bookings` becomes alias
+## Recommended fix (two parts)
 
-#### 2B. Database
-Two new tables (both tenant + user scoped, RLS):
+### Part A — DB migration
+Make the non-PII view usable by staff without a broad profiles SELECT policy that would leak PII columns:
 
-**`staff_calendar_settings`** (one row per staff user_id)
-- `google_calendar_connected` (bool), `google_refresh_token_encrypted`, `google_calendar_id`, `google_sync_token`
-- `apple_caldav_url`, `apple_caldav_username`, `apple_app_password_encrypted` (Apple has no OAuth — uses CalDAV + app-specific password from appleid.apple.com)
-- `booking_page_slug` (unique), `default_meeting_duration_min`, `availability_json` (weekly windows), `buffer_before_min`, `buffer_after_min`, `timezone`, `is_bookable` (bool)
+```sql
+-- Recreate as security_definer (owner-privileged) with an in-view role gate.
+CREATE OR REPLACE VIEW public.coach_client_profiles_safe
+WITH (security_invoker = false) AS
+SELECT p.id, p.user_id, p.full_name, p.avatar_url, p.pme_phase,
+       p.dashboard_mode, p.onboarding_completed, p.onboarding_step,
+       p.intake_completed, p.intake_completed_at, p.primary_goal,
+       p.primary_goal_category, p.goal_timeline, p.experience_level,
+       p.is_complimentary, p.has_broker_access, p.active_tenant_id,
+       p.business_name /* + other non-PII columns already listed */
+FROM public.profiles p
+WHERE public.has_role(auth.uid(), 'admin')
+   OR public.has_role(auth.uid(), 'coach')
+   OR public.has_role(auth.uid(), 'super_admin')
+   OR public.is_platform_owner()
+   OR p.user_id = auth.uid();
 
-**`internal_bookings`** (native bookings)
-- `tenant_id`, `host_user_id`, `contact_id` (nullable), `guest_email`, `guest_name`
-- `start_at`, `end_at`, `title`, `notes`, `status` (scheduled/cancelled/completed)
-- `meeting_link`, `source` ('internal' | 'calendly' | 'google' | 'apple'), `external_event_id`
-- RLS: host + tenant admins can manage; guest can view via signed link
+GRANT SELECT ON public.coach_client_profiles_safe TO authenticated;
+```
 
-#### 2C. Per-user Google Calendar OAuth
-Google Calendar connector is workspace-scoped (all bookings on one calendar). For **each staff member's own calendar** we need per-user OAuth:
-- New Edge Function `google-calendar-oauth-start` → returns Google authorization URL with `state = user_id + tenant_id`, scope `calendar.events`
-- New Edge Function `google-calendar-oauth-callback` → exchanges code, encrypts + stores refresh token in `staff_calendar_settings`
-- New Edge Function `google-calendar-sync` → uses refresh token to pull events (incremental via `syncToken`) into `internal_bookings` as `source='google'`
-- Requires `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` secrets — Google Cloud Console credentials (I'll request via `add_secret` when Phase 2 starts). User provides these once; then every staff member connects their own account.
+This keeps §180 intact (PII columns not in the projection; audited RPC still required for PII) while giving staff a safe channel for names/avatars.
 
-#### 2D. Apple Calendar (CalDAV)
-- Staff enters iCloud email + app-specific password (generated at appleid.apple.com)
-- Edge Function `apple-caldav-sync` uses CalDAV protocol (`caldav.icloud.com`) via `tsdav` npm package to read + write events
-- Same `internal_bookings` table, `source='apple'`
+### Part B — Wire callers to the view
+Replace direct `.from("profiles").select("user_id, full_name, …non-PII")` reads with `.from("coach_client_profiles_safe")` in the caller sites the scanner listed:
 
-#### 2E. UI
-**`/admin/calendar` page** — 3 tabs:
-1. **My Calendar** — week/month view (`react-big-calendar` or custom), shows internal + Google + Apple events overlaid, click-to-create
-2. **Team Calendar** — org view with filter chips per staff member (RBAC-respecting)
-3. **My Booking Page** — public URL `paigeagent.ai/book/{slug}`, availability editor, connect Google/Apple buttons
+- `src/components/admin/pipeline/DealDrawer.tsx` (line 59)
+- `src/components/admin/AddCoachDialog.tsx` (line 36)
+- `src/components/admin/InviteMemberDialog.tsx` (line 78)
+- `src/components/admin/contacts/NewContactDialog.tsx` (line 50)
+- `src/components/admin/pipeline/NewDealDialog.tsx` (line 70)
+- `src/components/dashboard/admin/AuditLogsViewer.tsx`
+- `src/components/dashboard/admin/FundingPipelineView.tsx`
+- `src/pages/admin/AdminAccountManagement.tsx`, `UserManagement.tsx`, `ComplianceMonitor.tsx`, `ClientManagementDashboard.tsx`
+- Any other admin surface still selecting `profiles` by `.in("user_id", […])`
 
-**Per-contact "Schedule" tab** (new tab in ContactDetail)
-- One-click "Book with [assigned coach]" → creates internal booking + syncs to coach's connected calendars
+Keep queries that only fetch the caller's own profile pointed at `profiles` (own-row policy handles it). Keep PII-reading paths pointed at `get_profile_with_pii_log`.
 
-**Public booking page** `/book/{staff-slug}`
-- Timezone-aware slot picker respecting `availability_json` + buffers, cross-checked against connected calendars for real free/busy
-- Writes to `internal_bookings`, sends confirmation via `send-transactional-email` with tenant branding, pushes event to connected Google/Apple
+## Verification
+1. Run migration; confirm `pg_policies` unchanged on `profiles` (still no admin SELECT policy).
+2. Sign in as admin, open Members, Support, Audit Logs, Deal Drawer, Funding Pipeline, Add Coach — names render.
+3. Sign in as regular user — no cross-user data leaks via view.
+4. `SELECT * FROM coach_client_profiles_safe WHERE user_id <> auth.uid()` from a non-staff session returns 0 rows.
 
-#### 2F. MCP tools (added to `paige-mcp`)
-- `list_my_calendar_events(from, to)` — read connected calendars
-- `create_calendar_event(title, start, end, attendee_email?, contact_id?)` — writes to internal_bookings + pushes to connected Google/Apple
-- `cancel_calendar_event(event_id)` — cancels + syncs
-- `get_staff_availability(user_id, date_range)` — returns free slots
-- All scoped under `calendar.read` / `calendar.write`; auto-granted to Tenant Admins, Coaches, Sales Reps
-
-## Technical Details
-
-**Encryption:** Google refresh tokens + Apple app passwords encrypted with `pgsodium` using existing project encryption pattern (same as `_internal_secrets` table).
-
-**Realtime:** `internal_bookings` gets Realtime enabled; staff dashboard shows live booking notifications.
-
-**Sync cadence:** Google incremental sync via `syncToken` (webhook where possible, otherwise 5-min pg_cron). Apple CalDAV polled every 10 min via pg_cron.
-
-**Secrets needed (Phase 2 start):**
-- `GOOGLE_OAUTH_CLIENT_ID` — from Google Cloud Console → Credentials → OAuth 2.0 Client ID (Web application)
-- `GOOGLE_OAUTH_CLIENT_SECRET` — same location
-- Redirect URI to configure in Google Console: `https://paigeagent.ai/auth/google-calendar/callback`
-
-## Confirmation
-
-Ready to ship Phase 1 immediately (Inbox dissolution — small, safe). Phase 2 has ~15 files + 2 migrations + 4 edge functions + Google Console setup.
-
-Confirm and I'll ship Phase 1 this turn, then request the Google OAuth secrets to kick off Phase 2.
+## Risk
+- View change is DB migration → needs review.
+- Caller edits are mechanical but span ~10 files.
+- No PII column added to view; §180 audit trail preserved.
