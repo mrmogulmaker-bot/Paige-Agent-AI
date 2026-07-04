@@ -119,7 +119,7 @@ export default function MembersAdmin() {
 
       const [{ data: roleRows }, { data: profRows }, { data: ownerCheck }, { data: pendingInvites }] = await Promise.all([
         supabase.from("user_roles").select("user_id, role").in("user_id", userIds),
-        supabase.from("profiles").select("user_id, full_name, email, suspended_at, suspended_reason").in("user_id", userIds),
+        supabase.from("profiles").select("user_id, full_name, suspended_at, suspended_reason").in("user_id", userIds),
         supabase.rpc("is_platform_owner"),
         supabase.from("invitations").select("id, email, role, invited_by, created_at, expires_at")
           .is("accepted_at", null).order("created_at", { ascending: false }),
