@@ -376,6 +376,13 @@ function AskPaigeCard({ contactId }: Props) {
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
                     {m.role === "user" ? "You" : "Paige"}
                   </div>
+                  {m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0 && (
+                    <div className="mb-1.5 flex flex-wrap gap-1">
+                      {m.tool_calls.map((tc, j) => (
+                        <ToolChip key={tc.id ?? j} tc={tc} />
+                      ))}
+                    </div>
+                  )}
                   {m.content}
                 </div>
               ))}
