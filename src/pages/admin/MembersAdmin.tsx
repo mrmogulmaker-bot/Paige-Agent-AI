@@ -91,6 +91,12 @@ export default function MembersAdmin() {
   const [addRoleTarget, setAddRoleTarget] = useState<MemberRow | null>(null);
   const [newRole, setNewRole] = useState("coach");
 
+  // Change role dialog (atomic from→to transition via change_user_role RPC)
+  const [changeRoleTarget, setChangeRoleTarget] = useState<MemberRow | null>(null);
+  const [changeFromRole, setChangeFromRole] = useState<string>("");
+  const [changeToRole, setChangeToRole] = useState<string>("");
+  const [changeReason, setChangeReason] = useState("");
+
   // Reassign dialog (when removing a coach)
   const [reassignCoachId, setReassignCoachId] = useState<string | null>(null);
   const [reassignLabel, setReassignLabel] = useState<string | undefined>();
@@ -301,6 +307,31 @@ export default function MembersAdmin() {
       .delete().eq("user_id", m.user_id).eq("role", role as any);
     if (error) { toast.error(error.message); return; }
     toast.success(`Removed ${role}`);
+    loadAll();
+  };
+
+  const handleChangeRole = async () => {
+    if (!changeRoleTarget || !changeFromRole || !changeToRole) return;
+    if (changeFromRole === changeToRole) {
+      toast.error("Pick a different destination role");
+      return;
+    }
+    const { error } = await supabase.rpc("change_user_role", {
+      _target_user_id: changeRoleTarget.user_id,
+      _from_role: changeFromRole as any,
+      _to_role: changeToRole as any,
+      _reason: changeReason.trim() || null,
+    });
+    if (error) {
+      // Server-side hierarchy errors surface via RAISE EXCEPTION — show clean message.
+      const msg = /ROLE_CHANGE_FORBIDDEN:\s*(.*)/i.exec(error.message)?.[1]
+        || error.message
+        || "Role change was rejected";
+      toast.error(msg);
+      return;
+    }
+    toast.success(`Changed ${changeFromRole} → ${changeToRole}`);
+    setChangeRoleTarget(null); setChangeFromRole(""); setChangeToRole(""); setChangeReason("");
     loadAll();
   };
 
@@ -570,6 +601,16 @@ export default function MembersAdmin() {
                             <UserCog className="w-4 h-4 mr-2" /> Add role
                           </DropdownMenuItem>
                           {m.roles.length > 0 && (
+                            <DropdownMenuItem onClick={() => {
+                              setChangeRoleTarget(m);
+                              setChangeFromRole(m.roles[0]);
+                              setChangeToRole("");
+                              setChangeReason("");
+                            }}>
+                              <UserCog className="w-4 h-4 mr-2" /> Change role…
+                            </DropdownMenuItem>
+                          )}
+                          {m.roles.length > 0 && (
                             <>
                               <DropdownMenuLabel className="text-[10px] uppercase text-muted-foreground pt-2">Remove single role</DropdownMenuLabel>
                               {m.roles.map(r => (
@@ -675,6 +716,50 @@ export default function MembersAdmin() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setAddRoleTarget(null)}>Cancel</Button>
             <Button onClick={handleAddRole}>Add role</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change role dialog (atomic from→to via change_user_role RPC) */}
+      <Dialog open={!!changeRoleTarget} onOpenChange={(o) => { if (!o) { setChangeRoleTarget(null); setChangeFromRole(""); setChangeToRole(""); setChangeReason(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change role for {changeRoleTarget?.email}</DialogTitle>
+            <DialogDescription>
+              Atomically swaps one staff role for another. Enforced by the server: admins can't demote other admins or super-admins, and tenant owners can't lose admin.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>From role</Label>
+              <Select value={changeFromRole} onValueChange={setChangeFromRole}>
+                <SelectTrigger><SelectValue placeholder="Current role" /></SelectTrigger>
+                <SelectContent>
+                  {(changeRoleTarget?.roles ?? []).map(r => (
+                    <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>To role</Label>
+              <Select value={changeToRole} onValueChange={setChangeToRole}>
+                <SelectTrigger><SelectValue placeholder="Pick new role" /></SelectTrigger>
+                <SelectContent>
+                  {ASSIGNABLE_ROLES.filter(r => r !== changeFromRole).map(r => (
+                    <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Reason (optional — saved to audit log)</Label>
+              <Textarea value={changeReason} onChange={(e) => setChangeReason(e.target.value)} rows={2} placeholder="e.g. Promoting to broker after certification…" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setChangeRoleTarget(null)}>Cancel</Button>
+            <Button onClick={handleChangeRole} disabled={!changeFromRole || !changeToRole}>Change role</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

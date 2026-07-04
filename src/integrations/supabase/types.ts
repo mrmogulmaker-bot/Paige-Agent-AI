@@ -16150,6 +16150,16 @@ export type Database = {
         Args: { _contact_id: string; _user_id: string }
         Returns: boolean
       }
+      change_user_role: {
+        Args: {
+          _from_role: Database["public"]["Enums"]["app_role"]
+          _reason?: string
+          _target_user_id: string
+          _tenant_id?: string
+          _to_role: Database["public"]["Enums"]["app_role"]
+        }
+        Returns: undefined
+      }
       check_feature_access: {
         Args: { _feature: string; _user_id: string }
         Returns: boolean
@@ -16562,14 +16572,24 @@ export type Database = {
           white_label_ai_connect: boolean
         }[]
       }
-      grant_tenant_member_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _tenant_id?: string
-          _user_id: string
-        }
-        Returns: undefined
-      }
+      grant_tenant_member_role:
+        | {
+            Args: {
+              _role: Database["public"]["Enums"]["app_role"]
+              _tenant_id?: string
+              _user_id: string
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              _reason?: string
+              _role: Database["public"]["Enums"]["app_role"]
+              _tenant_id?: string
+              _user_id: string
+            }
+            Returns: undefined
+          }
       handle_data_subject_request: {
         Args: {
           _contact_id: string
@@ -16877,7 +16897,9 @@ export type Database = {
       }
       require_tenant_brand: { Args: { p_tenant_id: string }; Returns: Json }
       resolve_client_id_by_email: { Args: { _email: string }; Returns: string }
-      revoke_platform_access: { Args: { _user_id: string }; Returns: undefined }
+      revoke_platform_access:
+        | { Args: { _user_id: string }; Returns: undefined }
+        | { Args: { _reason?: string; _user_id: string }; Returns: undefined }
       scan_soft_subagents_for_tool_refs: {
         Args: never
         Returns: {

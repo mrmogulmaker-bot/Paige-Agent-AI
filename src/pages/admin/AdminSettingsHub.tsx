@@ -9,7 +9,8 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe } from "lucide-react";
 import { Link } from "react-router-dom";
-import { UserManagement } from "@/components/dashboard/UserManagement";
+// Team & Roles lives at /admin/members — the Settings tab was retired in Ship #3 (Task #15).
+// A transitional signpost card below the tab list points users to the canonical route.
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
 import { McpSessionsPanel } from "@/components/dashboard/admin/McpSessionsPanel";
 import { WorkspaceSettingsPanel } from "@/components/admin/WorkspaceSettingsPanel";
@@ -61,15 +62,33 @@ export function AdminSettingsHub() {
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Settings</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Manage team access, platform behavior, and system health from one place.
+          Manage workspace, platform behavior, and system health from one place.
         </p>
       </div>
 
-      <Tabs defaultValue="team" className="space-y-4">
+      {/* Transitional signpost — Team & Roles moved to /admin/members (Ship #3 / Task #15).
+          Keep visible until users' muscle memory catches up; remove in a future cleanup ship. */}
+      <Card className="border-primary/30 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Shield className="w-4 h-4" /> Team &amp; Roles has moved
+          </CardTitle>
+          <CardDescription>
+            Manage teammates, roles, invitations, suspend/reactivate, and access controls from the dedicated Members &amp; Roles page.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild>
+            <Link to="/admin/members">
+              Go to Members &amp; Roles
+              <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Tabs defaultValue="workspace" className="space-y-4">
         <TabsList className="w-full sm:w-auto flex-wrap h-auto">
-          <TabsTrigger value="team" className="gap-2">
-            <Shield className="w-4 h-4" /> Team & Roles
-          </TabsTrigger>
           <TabsTrigger value="workspace" className="gap-2">
             <Building2 className="w-4 h-4" /> Workspace
           </TabsTrigger>
@@ -99,9 +118,7 @@ export function AdminSettingsHub() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="team" className="space-y-4">
-          <UserManagement />
-        </TabsContent>
+
 
         <TabsContent value="workspace" className="space-y-4">
           <WorkspaceSettingsPanel />
