@@ -75,7 +75,7 @@ export function InviteMemberDialog({ open, onOpenChange, onInvited }: Props) {
       const list: any[] = usersRes?.users ?? [];
       const ids = list.map((u) => u.id);
       const [{ data: profs }, { data: roleRows }] = await Promise.all([
-        supabase.from("profiles").select("user_id, full_name").in("user_id", ids),
+        supabase.from("coach_client_profiles_safe").select("user_id, full_name").in("user_id", ids),
         supabase.from("user_roles").select("user_id, role").in("user_id", ids),
       ]);
       const nameById = new Map((profs ?? []).map((p: any) => [p.user_id, p.full_name]));

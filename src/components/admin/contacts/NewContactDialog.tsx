@@ -47,7 +47,7 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
       const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
       const ids = (roles || []).map((r: any) => r.user_id);
       if (ids.length) {
-        const { data: profs } = await supabase.from("profiles").select("user_id, full_name").in("user_id", ids);
+        const { data: profs } = await supabase.from("coach_client_profiles_safe").select("user_id, full_name").in("user_id", ids);
         setCoaches((profs || []).map((p: any) => ({ user_id: p.user_id, name: p.full_name || "Unnamed Coach" })));
       } else setCoaches([]);
     })();
