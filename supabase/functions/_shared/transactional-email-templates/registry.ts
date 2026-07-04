@@ -36,7 +36,7 @@ import { template as supportTicketResolved } from './support-ticket-resolved.tsx
 import { template as featureRequestStatusUpdate } from './feature-request-status-update.tsx'
 import { template as brokerTeamInvitation } from './broker-team-invitation.tsx'
 import { template as betaLaunchWelcome } from './beta-launch-welcome.tsx'
-import { template as btfWelcomeInvite } from './btf-welcome-invite.tsx'
+
 import { template as approvalNotification } from './approval-notification.tsx'
 import { template as securityCanaryRegression } from './security-canary-regression.tsx'
 import { template as securitySignedOut } from './security-signed-out.tsx'
