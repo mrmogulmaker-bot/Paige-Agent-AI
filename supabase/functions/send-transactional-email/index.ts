@@ -9,11 +9,11 @@ const SITE_NAME = "Paige Agent AI"
 // SENDER_DOMAIN is the verified sender subdomain FQDN (e.g., "notify.example.com").
 // It MUST match the subdomain delegated to Lovable's nameservers — never the root domain.
 // The email API looks up this exact domain; a mismatch causes "No email domain record found".
-const SENDER_DOMAIN = "notify.mail.mogulmakeracademy.com"
-// FROM_DOMAIN is the domain shown in the From: header (e.g., "example.com").
-// When display_from_root is enabled, this can be the root domain for cleaner branding,
-// even though actual sending uses the subdomain above.
-const FROM_DOMAIN = "mail.mogulmakeracademy.com"
+const SENDER_DOMAIN = "notify.paigeagent.ai"
+// FROM_DOMAIN is the domain shown in the From: header. It MUST align with SENDER_DOMAIN
+// (same subdomain, or the SENDER_ROOT). A different subdomain (e.g., mail.example.com while
+// SENDER_DOMAIN is notify.example.com) triggers a provider 400 sender_domain_mismatch.
+const FROM_DOMAIN = "notify.paigeagent.ai"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
