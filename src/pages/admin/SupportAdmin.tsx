@@ -101,11 +101,23 @@ export default function SupportAdmin() {
       if (userIds.length > 0) {
         const { data: profs } = await supabase
           .from("profiles")
-          .select("user_id,full_name,email")
+          .select("user_id,full_name")
           .in("user_id", userIds);
         profilesById = Object.fromEntries(
-          (profs ?? []).map((p: any) => [p.user_id, { full_name: p.full_name, email: p.email }]),
+          (profs ?? []).map((p: any) => [p.user_id, { full_name: p.full_name, email: null as string | null }]),
         );
+        // Emails live in auth.users; hydrate via admin-list-users edge function.
+        try {
+          const { data: usersRes } = await supabase.functions.invoke("admin-list-users", { body: {} });
+          const usersList: Array<{ id: string; email: string | null }> = usersRes?.users ?? [];
+          for (const u of usersList) {
+            if (!userIds.includes(u.id)) continue;
+            const existing = profilesById[u.id] ?? { full_name: null, email: null };
+            profilesById[u.id] = { ...existing, email: u.email };
+          }
+        } catch {
+          // non-fatal: emails simply won't render
+        }
       }
 
       setTickets(ticketRows.map((t) => ({
