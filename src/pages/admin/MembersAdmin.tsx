@@ -91,6 +91,12 @@ export default function MembersAdmin() {
   const [addRoleTarget, setAddRoleTarget] = useState<MemberRow | null>(null);
   const [newRole, setNewRole] = useState("coach");
 
+  // Change role dialog (atomic from→to transition via change_user_role RPC)
+  const [changeRoleTarget, setChangeRoleTarget] = useState<MemberRow | null>(null);
+  const [changeFromRole, setChangeFromRole] = useState<string>("");
+  const [changeToRole, setChangeToRole] = useState<string>("");
+  const [changeReason, setChangeReason] = useState("");
+
   // Reassign dialog (when removing a coach)
   const [reassignCoachId, setReassignCoachId] = useState<string | null>(null);
   const [reassignLabel, setReassignLabel] = useState<string | undefined>();
@@ -301,6 +307,31 @@ export default function MembersAdmin() {
       .delete().eq("user_id", m.user_id).eq("role", role as any);
     if (error) { toast.error(error.message); return; }
     toast.success(`Removed ${role}`);
+    loadAll();
+  };
+
+  const handleChangeRole = async () => {
+    if (!changeRoleTarget || !changeFromRole || !changeToRole) return;
+    if (changeFromRole === changeToRole) {
+      toast.error("Pick a different destination role");
+      return;
+    }
+    const { error } = await supabase.rpc("change_user_role", {
+      _target_user_id: changeRoleTarget.user_id,
+      _from_role: changeFromRole as any,
+      _to_role: changeToRole as any,
+      _reason: changeReason.trim() || null,
+    });
+    if (error) {
+      // Server-side hierarchy errors surface via RAISE EXCEPTION — show clean message.
+      const msg = /ROLE_CHANGE_FORBIDDEN:\s*(.*)/i.exec(error.message)?.[1]
+        || error.message
+        || "Role change was rejected";
+      toast.error(msg);
+      return;
+    }
+    toast.success(`Changed ${changeFromRole} → ${changeToRole}`);
+    setChangeRoleTarget(null); setChangeFromRole(""); setChangeToRole(""); setChangeReason("");
     loadAll();
   };
 
