@@ -92,7 +92,51 @@ export function ContactPaigePanel({ contactId }: Props) {
   );
 }
 
-type Msg = { role: "user" | "assistant"; content: string };
+type ToolCall = {
+  id?: string;
+  name: string;
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+  args?: Record<string, unknown>;
+};
+type Msg = { role: "user" | "assistant"; content: string; tool_calls?: ToolCall[] };
+
+function ToolChip({ tc }: { tc: ToolCall }) {
+  const label =
+    tc.name === "create_task"
+      ? "Task"
+      : tc.name === "add_client_note"
+      ? "Note"
+      : tc.name;
+  const preview =
+    tc.name === "create_task"
+      ? String((tc.result as { title?: string } | undefined)?.title ?? tc.args?.title ?? "")
+      : tc.name === "add_client_note"
+      ? String((tc.result as { preview?: string } | undefined)?.preview ?? tc.args?.content ?? "")
+      : "";
+  const shortPreview = preview.length > 48 ? preview.slice(0, 45) + "…" : preview;
+  if (tc.ok) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full border border-[#CFAE70]/40 bg-[#CFAE70]/10 px-2 py-0.5 text-[11px] font-medium text-[#8a6f3d]"
+        title={`Tool call succeeded: ${tc.name}`}
+      >
+        <span aria-hidden>✓</span>
+        <span>{label}{shortPreview ? ` · ${shortPreview}` : ""}</span>
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+      title={tc.error ?? "Tool call failed"}
+    >
+      <span aria-hidden>⚠</span>
+      <span>{label} failed</span>
+    </span>
+  );
+}
 
 function AskPaigeCard({ contactId }: Props) {
   const [messages, setMessages] = useState<Msg[]>([]);
