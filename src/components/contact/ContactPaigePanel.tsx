@@ -277,7 +277,13 @@ function AskPaigeCard({ contactId }: Props) {
 
       setMessages([
         ...nextMessages,
-        { role: "assistant", content: data.answer ?? "" },
+        {
+          role: "assistant",
+          content: data.answer ?? "",
+          tool_calls: Array.isArray(data.tool_calls) && data.tool_calls.length > 0
+            ? (data.tool_calls as ToolCall[])
+            : undefined,
+        },
       ]);
       setSurfaces(data.surfaces_used ?? []);
       setLoadId(data.load_id ?? null);
