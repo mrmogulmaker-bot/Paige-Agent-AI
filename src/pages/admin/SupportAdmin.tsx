@@ -64,10 +64,10 @@ export default function SupportAdmin() {
       if (uid) {
         const { data: prof } = await supabase
           .from("profiles")
-          .select("full_name,email")
+          .select("full_name")
           .eq("user_id", uid)
           .maybeSingle();
-        setAdminName((prof as any)?.full_name || (prof as any)?.email || null);
+        setAdminName((prof as any)?.full_name || data.user?.email || null);
       }
       await loadAll();
     })();
@@ -100,7 +100,7 @@ export default function SupportAdmin() {
       let profilesById: Record<string, { full_name: string | null; email: string | null }> = {};
       if (userIds.length > 0) {
         const { data: profs } = await supabase
-          .from("profiles")
+          .from("coach_client_profiles_safe")
           .select("user_id,full_name")
           .in("user_id", userIds);
         profilesById = Object.fromEntries(

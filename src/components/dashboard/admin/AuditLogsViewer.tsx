@@ -44,7 +44,7 @@ export function AuditLogsViewer() {
       // Fetch user profiles separately
       const userIds = [...new Set(data?.map(log => log.user_id).filter(Boolean))];
       const { data: profiles } = await supabase
-        .from("profiles")
+        .from("coach_client_profiles_safe")
         .select("user_id, full_name")
         .in("user_id", userIds);
 

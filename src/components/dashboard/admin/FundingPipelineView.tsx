@@ -30,7 +30,7 @@ export function FundingPipelineView() {
       // Hydrate client names from profiles
       const userIds = [...new Set((apps || []).map((a) => a.user_id))];
       const { data: profiles } = await supabase
-        .from("profiles")
+        .from("coach_client_profiles_safe")
         .select("user_id, full_name")
         .in("user_id", userIds);
       const nameMap = new Map((profiles || []).map((p: any) => [p.user_id, p.full_name]));

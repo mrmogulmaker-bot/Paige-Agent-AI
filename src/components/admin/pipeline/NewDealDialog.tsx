@@ -67,7 +67,7 @@ export function NewDealDialog({ open, onOpenChange, pipeline, stages, defaultSta
       const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
       const coachIds = (roles || []).map((r: any) => r.user_id);
       if (coachIds.length) {
-        const { data: profs } = await supabase.from("profiles").select("user_id, full_name").in("user_id", coachIds);
+        const { data: profs } = await supabase.from("coach_client_profiles_safe").select("user_id, full_name").in("user_id", coachIds);
         setCoaches((profs || []).map((p: any) => ({ user_id: p.user_id, name: p.full_name || "Unnamed Coach" })));
       } else {
         setCoaches([]);

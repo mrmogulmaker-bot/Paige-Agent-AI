@@ -15776,6 +15776,8 @@ export type Database = {
           primary_goal: string | null
           primary_goal_category: string | null
           staff_notes: string | null
+          suspended_at: string | null
+          suspended_reason: string | null
           updated_at: string | null
           user_id: string | null
           website_url: string | null
@@ -15801,6 +15803,8 @@ export type Database = {
           primary_goal?: string | null
           primary_goal_category?: string | null
           staff_notes?: string | null
+          suspended_at?: string | null
+          suspended_reason?: string | null
           updated_at?: string | null
           user_id?: string | null
           website_url?: string | null
@@ -15826,6 +15830,8 @@ export type Database = {
           primary_goal?: string | null
           primary_goal_category?: string | null
           staff_notes?: string | null
+          suspended_at?: string | null
+          suspended_reason?: string | null
           updated_at?: string | null
           user_id?: string | null
           website_url?: string | null

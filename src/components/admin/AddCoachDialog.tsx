@@ -33,7 +33,7 @@ export function AddCoachDialog({ open, onOpenChange, onAdded }: Props) {
       const { data, error } = await supabase.functions.invoke("admin-list-users");
       if (error) return;
       const list = (data?.users ?? []) as UserRow[];
-      const { data: profs } = await supabase.from("profiles").select("user_id, full_name").in("user_id", list.map((u) => u.id));
+      const { data: profs } = await supabase.from("coach_client_profiles_safe").select("user_id, full_name").in("user_id", list.map((u) => u.id));
       const byId = new Map((profs ?? []).map((p: any) => [p.user_id, p.full_name]));
       setUsers(list.map((u) => ({ ...u, full_name: byId.get(u.id) ?? null })));
     })();
