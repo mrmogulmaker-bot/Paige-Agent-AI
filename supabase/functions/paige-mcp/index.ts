@@ -1348,9 +1348,8 @@ mcp.tool("send_btf_template_email", {
     const fromAddr = `${fromName} <${fromEmail}>`;
     const replyTo = args.reply_to ?? scopeCfg.reply_to;
 
-    // Single shared Resend account authenticates sends from both notify.paigeagent.ai
-    // (Paige scope) and portal.mogulmakeracademy.com (BTF/MMA scope). sender_account
-    // is retained in logs/audits as a constant for historical continuity.
+    // Single shared Resend account authenticates all sends from notify.paigeagent.ai.
+    // sender_account label retained as a constant for historical audit continuity.
     const apiKey = RESEND_API_KEY;
     const senderAccount = "mma_os_shared" as const;
     if (!apiKey) return err("resend_not_configured");
