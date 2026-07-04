@@ -181,6 +181,7 @@ Deno.serve(async (req) => {
     ? `You are speaking with ${callerRole} ${callerDisplayName}. They are asking about their own workspace.`
     : `You are speaking with ${callerRole} ${callerDisplayName}. They are asking about contact ${body.contact_id} (${contactDisplayName}).`;
 
+  const canUseTools = !body.self && !!body.contact_id; // Phase 3.1 tools are coach-lens only
   const system = [
     identityLine,
     "You are Paige — a compliance-first business-growth assistant.",
@@ -190,10 +191,13 @@ Deno.serve(async (req) => {
     "Never guarantee approval or funding. Never claim to remove negatives. No legal or tax advice.",
     "Doctrine §116: never name another specific client, coach, or customer — use archetype phrasing.",
     "Keep replies under 220 words unless the user asks for detail.",
-  ].join("\n");
+    canUseTools
+      ? "You have write-back tools: create_task (adds a task to the coach's own queue for this contact) and add_client_note (saves a private note about this contact). Call them when the coach asks you to remember something, follow up, or note something down. After a tool call, narrate the outcome naturally in your final reply (e.g. 'Got it — added a task to follow up next Tuesday.'). Only call each tool when clearly warranted; do not invent tasks or notes from ambient chat."
+      : "",
+  ].filter(Boolean).join("\n");
 
   // Assemble message list: system + prior turns + current user turn (with bundle)
-  const messages: Array<{ role: string; content: string }> = [
+  const messages: Array<Record<string, unknown>> = [
     { role: "system", content: system },
   ];
   for (const t of priorTurns) {
@@ -210,22 +214,7 @@ Deno.serve(async (req) => {
   ].join("\n");
   messages.push({ role: "user", content: userTurn });
 
-  const t0 = Date.now();
-  const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
-    body: JSON.stringify({ model: MODEL, messages }),
-  });
-  if (!aiRes.ok) {
-    const detail = (await aiRes.text()).slice(0, 500);
-    return json({ ok: false, error: `AI gateway ${aiRes.status}`, detail, thread_id: threadId }, 502);
-  }
-  const j = await aiRes.json();
-  const answer = j?.choices?.[0]?.message?.content ?? "";
-  const latencyMs = Date.now() - t0;
-  const tokensUsed = Number(j?.usage?.total_tokens ?? 0) || null;
-
-  // Append user turn (raw prompt only — bundle is per-turn state, kept in bundle_ref)
+  // Append the user turn BEFORE the AI call so it's persisted even if the model errors.
   const bundleRef = {
     surfaces_used: ctx.surfaces_used ?? [],
     row_count: ctx.row_count ?? 0,
@@ -246,6 +235,143 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "TURN_APPEND_FAILED", message: userAppendErr.message, thread_id: threadId }, 400);
   }
 
+  // ==========================================================================
+  // Phase 3.1 — Multi-turn tool-use loop (max 4 steps)
+  // ==========================================================================
+  const TOOLS = [
+    {
+      type: "function",
+      function: {
+        name: "create_task",
+        description:
+          "Create a follow-up task in the coach's own task queue, tied to the current contact. Use when the coach says to remember, follow up, or add to their to-do list.",
+        parameters: {
+          type: "object",
+          properties: {
+            title: { type: "string", description: "Short task title (≤120 chars)." },
+            description: { type: "string", description: "Optional longer detail." },
+            due_date: { type: "string", description: "ISO 8601 datetime, optional." },
+            priority: { type: "string", enum: ["low", "medium", "high"], description: "Optional." },
+          },
+          required: ["title"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "add_client_note",
+        description:
+          "Save a private note about this contact for the coach's own reference. Use when the coach shares observations or context worth remembering about the client.",
+        parameters: {
+          type: "object",
+          properties: {
+            content: { type: "string", description: "Note body." },
+            category: { type: "string", description: "Optional short tag/category label." },
+          },
+          required: ["content"],
+        },
+      },
+    },
+  ];
+  const MAX_TOOL_STEPS = 4;
+  type ToolCallEntry = {
+    id: string;
+    name: string;
+    args: Record<string, unknown>;
+    ok: boolean;
+    result?: unknown;
+    error?: string;
+  };
+  const toolCallLog: ToolCallEntry[] = [];
+
+  const t0 = Date.now();
+  let answer = "";
+  let tokensUsed: number | null = null;
+
+  for (let step = 0; step < MAX_TOOL_STEPS; step++) {
+    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        ...(canUseTools ? { tools: TOOLS, tool_choice: "auto" } : {}),
+      }),
+    });
+    if (!aiRes.ok) {
+      const detail = (await aiRes.text()).slice(0, 500);
+      return json({ ok: false, error: `AI gateway ${aiRes.status}`, detail, thread_id: threadId }, 502);
+    }
+    const j = await aiRes.json();
+    const msg = j?.choices?.[0]?.message ?? {};
+    const usage = Number(j?.usage?.total_tokens ?? 0);
+    if (usage) tokensUsed = (tokensUsed ?? 0) + usage;
+
+    const toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+    if (toolCalls.length === 0) {
+      answer = String(msg.content ?? "");
+      break;
+    }
+
+    // Persist the assistant's tool-call turn in the message list for the next round.
+    messages.push({
+      role: "assistant",
+      content: msg.content ?? "",
+      tool_calls: toolCalls,
+    });
+
+    for (const tc of toolCalls) {
+      const name = String(tc?.function?.name ?? "");
+      const tcId = String(tc?.id ?? crypto.randomUUID());
+      let args: Record<string, unknown> = {};
+      try { args = JSON.parse(tc?.function?.arguments ?? "{}"); } catch { args = {}; }
+      let toolResult: unknown = null;
+      let ok = false;
+      let errMsg: string | undefined;
+
+      try {
+        if (name === "create_task") {
+          const { data, error } = await client.rpc("paige_tool_create_task", {
+            p_thread_id: threadId,
+            p_contact_id: body.contact_id,
+            p_title: String(args.title ?? ""),
+            p_description: args.description != null ? String(args.description) : null,
+            p_due_date: args.due_date != null ? String(args.due_date) : null,
+            p_priority: args.priority != null ? String(args.priority) : null,
+          });
+          if (error) throw new Error(error.message);
+          toolResult = data;
+          ok = true;
+        } else if (name === "add_client_note") {
+          const { data, error } = await client.rpc("paige_tool_add_client_note", {
+            p_thread_id: threadId,
+            p_contact_id: body.contact_id,
+            p_content: String(args.content ?? ""),
+            p_category: args.category != null ? String(args.category) : null,
+          });
+          if (error) throw new Error(error.message);
+          toolResult = data;
+          ok = true;
+        } else {
+          throw new Error(`unknown tool: ${name}`);
+        }
+      } catch (e) {
+        errMsg = e instanceof Error ? e.message : String(e);
+        toolResult = { ok: false, error: errMsg };
+      }
+
+      toolCallLog.push({ id: tcId, name, args, ok, result: toolResult, error: errMsg });
+      messages.push({
+        role: "tool",
+        tool_call_id: tcId,
+        content: JSON.stringify(toolResult),
+      });
+    }
+  }
+
+  const latencyMs = Date.now() - t0;
+
   const { error: asstAppendErr } = await client.rpc("paige_chat_turn_append", {
     p_thread_id: threadId,
     p_role: "assistant",
@@ -256,6 +382,7 @@ Deno.serve(async (req) => {
     p_tokens_used: tokensUsed,
     p_latency_ms: latencyMs,
     p_bundle_ref: bundleRef,
+    p_tool_calls: toolCallLog.length ? toolCallLog : null,
   });
   if (asstAppendErr) {
     // Don't fail the response — answer is already produced. Log and continue.
@@ -270,5 +397,6 @@ Deno.serve(async (req) => {
     load_id: ctx.load_id,
     thread_id: threadId,
     prior_turn_count: priorTurns.length,
+    tool_calls: toolCallLog,
   });
 });
