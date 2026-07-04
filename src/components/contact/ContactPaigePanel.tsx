@@ -199,7 +199,7 @@ function AskPaigeCard({ contactId }: Props) {
       if (!alive || !thread?.id) return;
       const { data: turns } = await supabase
         .from("paige_chat_turns")
-        .select("role, content, created_at")
+        .select("role, content, tool_calls, created_at")
         .eq("thread_id", thread.id)
         .in("role", ["user", "assistant"])
         .order("created_at", { ascending: true });
@@ -208,6 +208,9 @@ function AskPaigeCard({ contactId }: Props) {
       const restored: Msg[] = (turns ?? []).map((t) => ({
         role: t.role === "assistant" ? "assistant" : "user",
         content: String(t.content),
+        tool_calls: Array.isArray((t as { tool_calls?: unknown }).tool_calls)
+          ? ((t as { tool_calls?: ToolCall[] }).tool_calls as ToolCall[])
+          : undefined,
       }));
       setMessages(restored);
       setResumedCount(restored.length);
