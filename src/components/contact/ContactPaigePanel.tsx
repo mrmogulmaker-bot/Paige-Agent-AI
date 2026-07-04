@@ -92,7 +92,51 @@ export function ContactPaigePanel({ contactId }: Props) {
   );
 }
 
-type Msg = { role: "user" | "assistant"; content: string };
+type ToolCall = {
+  id?: string;
+  name: string;
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+  args?: Record<string, unknown>;
+};
+type Msg = { role: "user" | "assistant"; content: string; tool_calls?: ToolCall[] };
+
+function ToolChip({ tc }: { tc: ToolCall }) {
+  const label =
+    tc.name === "create_task"
+      ? "Task"
+      : tc.name === "add_client_note"
+      ? "Note"
+      : tc.name;
+  const preview =
+    tc.name === "create_task"
+      ? String((tc.result as { title?: string } | undefined)?.title ?? tc.args?.title ?? "")
+      : tc.name === "add_client_note"
+      ? String((tc.result as { preview?: string } | undefined)?.preview ?? tc.args?.content ?? "")
+      : "";
+  const shortPreview = preview.length > 48 ? preview.slice(0, 45) + "…" : preview;
+  if (tc.ok) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full border border-[#CFAE70]/40 bg-[#CFAE70]/10 px-2 py-0.5 text-[11px] font-medium text-[#8a6f3d]"
+        title={`Tool call succeeded: ${tc.name}`}
+      >
+        <span aria-hidden>✓</span>
+        <span>{label}{shortPreview ? ` · ${shortPreview}` : ""}</span>
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+      title={tc.error ?? "Tool call failed"}
+    >
+      <span aria-hidden>⚠</span>
+      <span>{label} failed</span>
+    </span>
+  );
+}
 
 function AskPaigeCard({ contactId }: Props) {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -155,16 +199,20 @@ function AskPaigeCard({ contactId }: Props) {
       if (!alive || !thread?.id) return;
       const { data: turns } = await supabase
         .from("paige_chat_turns")
-        .select("role, content, created_at")
+        .select("role, content, tool_calls, created_at")
         .eq("thread_id", thread.id)
         .in("role", ["user", "assistant"])
         .order("created_at", { ascending: true });
       if (!alive) return;
       setThreadId(thread.id);
-      const restored: Msg[] = (turns ?? []).map((t) => ({
-        role: t.role === "assistant" ? "assistant" : "user",
-        content: String(t.content),
-      }));
+      const restored: Msg[] = (turns ?? []).map((t) => {
+        const rawTc = (t as { tool_calls?: unknown }).tool_calls;
+        return {
+          role: t.role === "assistant" ? "assistant" : "user",
+          content: String(t.content),
+          tool_calls: Array.isArray(rawTc) ? (rawTc as unknown as ToolCall[]) : undefined,
+        };
+      });
       setMessages(restored);
       setResumedCount(restored.length);
     })();
@@ -229,7 +277,13 @@ function AskPaigeCard({ contactId }: Props) {
 
       setMessages([
         ...nextMessages,
-        { role: "assistant", content: data.answer ?? "" },
+        {
+          role: "assistant",
+          content: data.answer ?? "",
+          tool_calls: Array.isArray(data.tool_calls) && data.tool_calls.length > 0
+            ? (data.tool_calls as ToolCall[])
+            : undefined,
+        },
       ]);
       setSurfaces(data.surfaces_used ?? []);
       setLoadId(data.load_id ?? null);
@@ -322,6 +376,13 @@ function AskPaigeCard({ contactId }: Props) {
                   <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
                     {m.role === "user" ? "You" : "Paige"}
                   </div>
+                  {m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0 && (
+                    <div className="mb-1.5 flex flex-wrap gap-1">
+                      {m.tool_calls.map((tc, j) => (
+                        <ToolChip key={tc.id ?? j} tc={tc} />
+                      ))}
+                    </div>
+                  )}
                   {m.content}
                 </div>
               ))}

@@ -450,8 +450,10 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
     }
   };
 
-  // On mobile: hide on /app (PaigeChat is full-screen there) and on non-app pages (auth, landing, etc.)
-  const hideChatbot = isMobile && (location.pathname === "/app" || !location.pathname.startsWith("/app"));
+  // §66 ruling — FAB hidden on admin routes. Coach-lens Paige lives inside
+  // ContactPaigePanel on contact detail pages; no persistent floating widget
+  // on admin surface. FAB preserved on all consumer-facing routes.
+  const hideChatbot = location.pathname.startsWith("/admin");
 
   // --- Draggable floating button + tuck-to-edge "pocket" mode ---
   // Persisted across reloads so the user's chosen spot sticks.
