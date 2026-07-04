@@ -69,7 +69,7 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'feature-request-status-update': featureRequestStatusUpdate,
   'broker-team-invitation': brokerTeamInvitation,
   'beta-launch-welcome': betaLaunchWelcome,
-  'btf-welcome-invite': btfWelcomeInvite,
+  
   'approval-notification': approvalNotification,
   'security-canary-regression': securityCanaryRegression,
   'security-signed-out': securitySignedOut,
