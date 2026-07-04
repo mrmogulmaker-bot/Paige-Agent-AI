@@ -7971,6 +7971,7 @@ export type Database = {
           surfaces_used: string[] | null
           thread_id: string
           tokens_used: number | null
+          tool_calls: Json | null
         }
         Insert: {
           bundle_ref?: Json | null
@@ -7984,6 +7985,7 @@ export type Database = {
           surfaces_used?: string[] | null
           thread_id: string
           tokens_used?: number | null
+          tool_calls?: Json | null
         }
         Update: {
           bundle_ref?: Json | null
@@ -7997,6 +7999,7 @@ export type Database = {
           surfaces_used?: string[] | null
           thread_id?: string
           tokens_used?: number | null
+          tool_calls?: Json | null
         }
         Relationships: [
           {
@@ -16759,8 +16762,29 @@ export type Database = {
           p_surfaces_used: string[]
           p_thread_id: string
           p_tokens_used: number
+          p_tool_calls?: Json
         }
         Returns: string
+      }
+      paige_tool_add_client_note: {
+        Args: {
+          p_category?: string
+          p_contact_id: string
+          p_content: string
+          p_thread_id: string
+        }
+        Returns: Json
+      }
+      paige_tool_create_task: {
+        Args: {
+          p_contact_id: string
+          p_description?: string
+          p_due_date?: string
+          p_priority?: string
+          p_thread_id: string
+          p_title: string
+        }
+        Returns: Json
       }
       peek_tenant_invite: {
         Args: { _token: string }
