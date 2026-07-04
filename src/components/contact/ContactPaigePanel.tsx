@@ -205,13 +205,14 @@ function AskPaigeCard({ contactId }: Props) {
         .order("created_at", { ascending: true });
       if (!alive) return;
       setThreadId(thread.id);
-      const restored: Msg[] = (turns ?? []).map((t) => ({
-        role: t.role === "assistant" ? "assistant" : "user",
-        content: String(t.content),
-        tool_calls: Array.isArray((t as { tool_calls?: unknown }).tool_calls)
-          ? ((t as { tool_calls?: ToolCall[] }).tool_calls as ToolCall[])
-          : undefined,
-      }));
+      const restored: Msg[] = (turns ?? []).map((t) => {
+        const rawTc = (t as { tool_calls?: unknown }).tool_calls;
+        return {
+          role: t.role === "assistant" ? "assistant" : "user",
+          content: String(t.content),
+          tool_calls: Array.isArray(rawTc) ? (rawTc as unknown as ToolCall[]) : undefined,
+        };
+      });
       setMessages(restored);
       setResumedCount(restored.length);
     })();
