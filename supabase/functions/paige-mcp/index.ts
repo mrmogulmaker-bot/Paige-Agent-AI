@@ -1279,27 +1279,28 @@ function mdToHtml(md: string): string {
 }
 
 // Per-product_scope sender map. Each `from` must be on a domain verified in the Resend
-// account that holds RESEND_API_KEY. BTF/MMA route to MMA's verified portal subdomain so
-// white-labeled customer emails never expose Paige branding (Doctrine §46 + §123).
+// account that holds RESEND_API_KEY. All scopes route through Paige's verified
+// notify.paigeagent.ai subdomain post-Ship #2 (MMA sender identities retired).
+// btf/mma reply_to temporarily routes to coach@mogulmakeracademy.com until a
+// dedicated Paige support inbox is provisioned (follow-up ship).
 const SCOPE_SENDERS: Record<string, { from: string; name: string; reply_to: string }> = {
   btf: {
-    from: "alerts@portal.mogulmakeracademy.com",
-    name: "Mogul Maker Academy",
+    from: "alerts@notify.paigeagent.ai",
+    name: "Paige",
     reply_to: "coach@mogulmakeracademy.com",
   },
   mma: {
-    from: "alerts@portal.mogulmakeracademy.com",
-    name: "Mogul Maker Academy",
+    from: "alerts@notify.paigeagent.ai",
+    name: "Paige",
     reply_to: "coach@mogulmakeracademy.com",
   },
-  // launchpad: add once launchpad.mogulmakeracademy.com (or designated subdomain) is verified in Resend.
   paige: {
     from: "hello@notify.paigeagent.ai",
     name: "Paige",
     reply_to: "support@paigeagent.ai",
   },
 };
-const DEFAULT_SCOPE_SENDER = SCOPE_SENDERS.btf;
+const DEFAULT_SCOPE_SENDER = SCOPE_SENDERS.paige;
 
 mcp.tool("send_btf_template_email", {
   description:
