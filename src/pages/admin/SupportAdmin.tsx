@@ -100,7 +100,7 @@ export default function SupportAdmin() {
       let profilesById: Record<string, { full_name: string | null; email: string | null }> = {};
       if (userIds.length > 0) {
         const { data: profs } = await supabase
-          .from("profiles")
+          .from("coach_client_profiles_safe")
           .select("user_id,full_name")
           .in("user_id", userIds);
         profilesById = Object.fromEntries(
