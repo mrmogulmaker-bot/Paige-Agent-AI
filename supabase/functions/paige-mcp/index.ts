@@ -1854,7 +1854,7 @@ mcp.tool("list_payment_authorizations", {
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 200);
     let q = admin
       .from("paige_payment_authorizations")
-      .select("id, client_id, plan_selected, stripe_customer_id, stripe_payment_method_id, stripe_subscription_id, authorized_at, status, created_at")
+      .select("id, client_id, plan_selected, authorized_at, status, created_at")
       .order("authorized_at", { ascending: false, nullsFirst: false })
       .limit(limit);
     if (args.contact_id) q = q.eq("client_id", args.contact_id);
@@ -1865,8 +1865,6 @@ mcp.tool("list_payment_authorizations", {
       auth_id: row.id,
       contact_id: row.client_id,
       payment_plan: row.plan_selected,
-      stripe_customer_id: row.stripe_customer_id,
-      stripe_subscription_id: row.stripe_subscription_id,
       status: row.status,
       authorized_at: row.authorized_at,
     }));
