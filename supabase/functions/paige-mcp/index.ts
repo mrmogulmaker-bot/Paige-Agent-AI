@@ -1311,7 +1311,7 @@ mcp.tool("send_btf_template_email", {
     vars: z.record(z.any()).optional().describe("Variable values for {{var}} substitution"),
     from_name: z.string().optional(),
     from_override: z.string().email().optional()
-      .describe("Full from address (e.g. 'alerts@portal.mogulmakeracademy.com'). Must be a domain verified in Resend. Overrides product_scope default."),
+      .describe("Full from address (e.g. 'alerts@notify.paigeagent.ai'). Must be a domain verified in Resend. Overrides product_scope default."),
     reply_to: z.string().optional(),
   }),
   annotations: { destructiveHint: true },
