@@ -1304,7 +1304,7 @@ const DEFAULT_SCOPE_SENDER = SCOPE_SENDERS.paige;
 
 mcp.tool("send_btf_template_email", {
   description:
-    "Look up an email_templates row by template_key, render {{vars}}, and send via Resend. From-address is auto-selected by the template's product_scope (BTF/MMA → portal.mogulmakeracademy.com; Paige internal → notify.paigeagent.ai). Override with `from_override` for one-off sends. Sends real customer email — use idempotency in the caller.",
+    "Look up an email_templates row by template_key, render {{vars}}, and send via Resend. From-address is auto-selected by the template's product_scope; all scopes currently route through notify.paigeagent.ai. Override with `from_override` for one-off sends. Sends real customer email — use idempotency in the caller.",
   inputSchema: z.object({
     to_email: z.string().describe("Recipient email"),
     template_key: z.string().describe("public.email_templates.template_key"),
