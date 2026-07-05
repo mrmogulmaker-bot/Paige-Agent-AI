@@ -112,8 +112,6 @@ project_id = "bfmyebsjyuoecmjskqhs"
     verify_jwt = true
   [functions.track-lesson-progress]
     verify_jwt = true
-  [functions.vapi-create-session]
-    verify_jwt = true
   [functions.voice-command-processor]
     verify_jwt = true
   [functions.webhook-inbound]
