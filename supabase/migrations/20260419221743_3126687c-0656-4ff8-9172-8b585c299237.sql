@@ -73,4 +73,8 @@ SELECT
   application_url, notes, confidence_level,
   is_active
 FROM public.lender_bureau_preferences
-WHERE is_active = true;
+-- Skip bureau-preference rows that carry no product_category: they are not
+-- fundable products, and product_category feeds both NOT NULL targets
+-- (product_name via COALESCE, and product_type). Guarding product_category
+-- alone is sufficient — lender_bureau_preferences has no product_type column.
+WHERE is_active = true AND product_category IS NOT NULL;
