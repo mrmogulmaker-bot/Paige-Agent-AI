@@ -3,7 +3,18 @@
 REVOKE EXECUTE ON FUNCTION public.auto_stub_business_from_contact() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.ensure_client_role_self_heal() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.notify_approval_event() FROM PUBLIC, anon, authenticated;
-REVOKE EXECUTE ON FUNCTION public.email_queue_dispatch() FROM PUBLIC, anon, authenticated;
+-- Task #32 guard: email_queue_dispatch() is created out-of-band on prod (schema
+-- drift — see Task #37), not by any migration, so a fresh rebuild 42883s here.
+-- Guard so the chain rebuilds; BYO gets the function via the Phase-3 bootstrap.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc
+    WHERE proname = 'email_queue_dispatch' AND pronamespace = 'public'::regnamespace
+  ) THEN
+    REVOKE EXECUTE ON FUNCTION public.email_queue_dispatch() FROM PUBLIC, anon, authenticated;
+  END IF;
+END $$;
 REVOKE EXECUTE ON FUNCTION public.enforce_doctrine_120() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.enforce_doctrine_120_columns() FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION public.enforce_doctrine_120_full() FROM PUBLIC, anon, authenticated;
