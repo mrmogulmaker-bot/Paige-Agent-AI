@@ -555,19 +555,13 @@ BEGIN
   PERFORM public.is_platform_admin();
   RAISE NOTICE 'V13 PASS: is_super_admin()/(uuid) + is_platform_admin() executed without error.';
 
-  SELECT count(*) INTO v_count FROM public.user_roles WHERE role = 'super_admin'::public.app_role;
-  IF v_count <> 1 THEN
-    RAISE EXCEPTION 'V14 FAIL: expected exactly 1 super_admin user_roles row, found %', v_count;
-  END IF;
-  RAISE NOTICE 'V14 PASS: exactly 1 super_admin row (singleton index will hold).';
-
-  SELECT count(*) INTO v_count FROM public.app_settings_owner;
-  IF v_count <> 1 THEN
-    RAISE EXCEPTION 'V15 FAIL: expected exactly 1 app_settings_owner row, found %', v_count;
-  END IF;
-  RAISE NOTICE 'V15 PASS: exactly 1 app_settings_owner row.';
-
-  RAISE NOTICE 'SPRINT_211a: ALL VERIFICATION CHECKPOINTS PASSED (V1–V15).';
+  -- §213.c (Task #32): V14 (singleton super_admin user_roles) and V15 (singleton
+  -- app_settings_owner) were DATA assertions and RAISE'd on a fresh migration-only
+  -- rebuild where that data does not yet exist. Per §213.c, fail-loud data probes
+  -- belong in a POST-APPLY audit, not an in-migration DO block. Both are re-homed to
+  -- supabase/audit/post-apply-data-integrity.sql (run after the Phase-2 data import;
+  -- see the Sprint P.S.M Phase-4 cutover checklist). Schema checks V1–V13 stay here.
+  RAISE NOTICE 'SPRINT_211a: schema checkpoints V1–V13 PASSED (V14–V15 re-homed to post-apply audit per §213.c).';
 END $$;
 
 COMMIT;
