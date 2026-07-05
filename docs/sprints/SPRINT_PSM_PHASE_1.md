@@ -169,3 +169,31 @@ advisory — including `contacts` (656 real people), `member_outcomes` (124),
 **Not P.S.M-blocking** — belongs to the MMA OS repo. **Do NOT auto-fix**: enabling
 RLS without policies would break the app. Logged as its own task: *"MMA OS RLS enable
 + policy design — 22 tables currently exposed to anon."*
+
+## PHASE-2 HARD RULE — `_internal_secrets` MUST be CSV-exported
+
+> **MUST:** the `_internal_secrets` table **MUST** be included in the Phase-2 CSV
+> export from Lovable Cloud, and imported to BYO with
+> `ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value` (Phase-3 Hard Rule #1).
+
+This is the mechanism that preserves the three **table-resident encryption keys**
+(`qb_token_key`, `automation_webhook_key`, `platform_column_key`) — plus every other
+`_internal_secrets` key (full list under Hard Rule #1) — **entirely programmatically,
+with zero human custody**. The operator never sees or holds any key value. If this
+table is missed in the export, QuickBooks/automation decryption and §190 column
+decryption break silently on BYO with no import-time error.
+
+## PHASE-3 — `CALENDAR_ENCRYPTION_KEY` automated handoff (no human custody)
+
+`CALENDAR_ENCRYPTION_KEY` is the one **env-only** encryption key (not table-resident),
+so it is carried programmatically at Phase-3, never through personal storage:
+
+1. Briefly **redeploy `extract-secret`** on the OLD Cloud project (`bfmyebsjyuoecmjskqhs`).
+2. Invoke it with `{ "secret_name": "CALENDAR_ENCRYPTION_KEY", "reveal": true }`.
+3. Pipe the returned value **directly** into BYO's secrets (Supabase MCP secret-write
+   on `xygzykjyynhzqytbqnzu`) — value never surfaces to the operator or to chat.
+4. **Delete `extract-secret` immediately** (same 60-min hard rule).
+5. The invocation is logged in `paige_audit_log` on OLD Cloud for the compliance trail.
+
+Whole cycle < 5 minutes, fully automated. Verification-via-1Password is **permanently
+retired** — the operator is not a keystore; rotation is a post-revenue tech-hire concern.
