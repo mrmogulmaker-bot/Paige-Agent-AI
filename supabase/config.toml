@@ -176,5 +176,3 @@ project_id = "bfmyebsjyuoecmjskqhs"
   [functions.doctrine-201-language-sweep]
     verify_jwt = false
 
-  [functions.extract-secret]
-    verify_jwt = true
