@@ -28,9 +28,11 @@ on BYO with **no env-secret extraction**. The audit script lists its key names
 | Key | Verdict | Reason |
 |---|---|---|
 | `CALENDAR_ENCRYPTION_KEY` | ✅ included | env-only (`_shared/calendarCrypto.ts`), no table fallback; encrypts Calendar OAuth tokens |
-| `QUICKBOOKS_TOKEN_ENCRYPTION_KEY` | ✅ included | operator-confirmed live secret; verify env copy matches records |
+| `AUTOMATION_WEBHOOK_ENCRYPTION_KEY` | ✅ included | live secret (Cowork survey); seeds `_internal_secrets.automation_webhook_key` (table-resident at runtime). Verify env copy |
+| `QUICKBOOKS_TOKEN_ENCRYPTION_KEY` | ✅ included | live secret; provenance of `_internal_secrets.qb_token_key` (table-resident at runtime). Verify env copy |
 | `SSN_ENCRYPTION_KEY` | ❌ excluded | real code ref (`paige-write-back:289`, `?? null`) but not provisioned as a live secret → would 500 |
-| `AUTOMATION_WEBHOOK_ENCRYPTION_KEY` | ❌ excluded | runtime reads `_internal_secrets` table, not env → travels with data export |
+
+> The two table-resident keys (`AUTOMATION_WEBHOOK_*`, `QUICKBOOKS_TOKEN_*`) decrypt on BYO via the migrated `_internal_secrets` table, **not** these env vars. The verifier only confirms the operator's saved copies match live.
 
 ## Security posture (locked)
 

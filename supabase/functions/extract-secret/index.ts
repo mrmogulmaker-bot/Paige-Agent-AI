@@ -6,20 +6,22 @@
 // source project. Hash-by-default: plaintext is never returned unless reveal:true
 // is explicitly passed. super_admin-only. Every invocation is audited.
 //
-// Allowlist rationale (verified via §208 grep, not inferred):
-//   - Only keys consumed directly from Deno.env AND used to encrypt data at rest,
-//     that are NOT recoverable from a migrating table, belong here.
+// Allowlist rationale (verified via §208 grep, not inferred) — the live env
+// encryption secrets whose 1Password copies we verify before cutover:
 //   - CALENDAR_ENCRYPTION_KEY   → env-only (_shared/calendarCrypto.ts); encrypts
 //                                 Google Calendar OAuth tokens. No table fallback.
-//   - QUICKBOOKS_TOKEN_ENCRYPTION_KEY → operator-confirmed live secret; provenance
-//                                 copy of the qb_token_key material. (Runtime QB
-//                                 encryption reads _internal_secrets.qb_token_key,
-//                                 which migrates as table data — this verifies the
-//                                 env copy matches the operator's records.)
+//   - AUTOMATION_WEBHOOK_ENCRYPTION_KEY → live secret; seeds _internal_secrets
+//                                 .automation_webhook_key (runtime reads the TABLE,
+//                                 which migrates as data). Env copy verified here.
+//   - QUICKBOOKS_TOKEN_ENCRYPTION_KEY → live secret; provenance of _internal_secrets
+//                                 .qb_token_key (runtime reads the TABLE via
+//                                 qb_encrypt_token). Env copy verified here.
+//   NOTE: for the two table-resident keys, decryption on BYO depends on the
+//   _internal_secrets TABLE being in the Phase 2 data export — not on these env
+//   vars. This verifier only confirms the operator's saved copies match live.
 //   Deliberately EXCLUDED:
-//   - SSN_ENCRYPTION_KEY   → referenced but not provisioned as a live secret.
-//   - AUTOMATION_WEBHOOK_ENCRYPTION_KEY → runtime reads _internal_secrets table,
-//                                 not env; the key travels with the data export.
+//   - SSN_ENCRYPTION_KEY   → referenced (paige-write-back) but NOT provisioned as
+//                            a live secret; would 500 "secret not configured".
 //
 // Gate mirrors admin-drop-bucket (is_super_admin), the destructive-op pattern —
 // NOT the broad owner/super_admin/admin/developer set of admin-account-actions.
@@ -41,6 +43,7 @@ const corsHeaders = {
 // requires editing this set; there is no by-name passthrough.
 const ALLOWLIST = new Set([
   "CALENDAR_ENCRYPTION_KEY",
+  "AUTOMATION_WEBHOOK_ENCRYPTION_KEY",
   "QUICKBOOKS_TOKEN_ENCRYPTION_KEY",
 ]);
 
