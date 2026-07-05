@@ -5,12 +5,12 @@
 -- (prod, BYO post-cutover, staging). It performs NO writes and NO schema changes.
 --
 -- Origin: these checks were originally in-migration DO-block verification
--- checkpoints V14 + V15 of migration
---   supabase/migrations/20260702184358_a1b946ac-338b-4c86-8b70-0850b38b2c8c.sql
--- (SPRINT_211a). They assert on DATA state and therefore fail on a fresh
+-- checkpoints that assert on DATA state and therefore fail on a fresh
 -- migration-only rebuild (empty DB). Per §213.c — "move fail-loud probes to
 -- POST-APPLY audit scripts, not in-migration DO blocks" — they were removed from
--- the migration and re-homed here.
+-- their migrations and re-homed here:
+--   V14 + V15  ← 20260702184358_a1b946ac-...  (SPRINT_211a singleton invariants)
+--   V7-rehome  ← 20260702193352_05c5009a-...  (SPRINT 211.b content migration)
 --
 -- WHEN TO RUN: after data has been loaded into a target DB — specifically, on BYO
 -- after the Phase-2 CSV data import and BEFORE decommissioning Lovable Cloud
@@ -43,5 +43,23 @@ BEGIN
   END IF;
   RAISE NOTICE 'AUDIT V15 PASS: exactly 1 app_settings_owner row.';
 
-  RAISE NOTICE 'POST-APPLY DATA-INTEGRITY AUDIT: all singleton invariants hold.';
+  -- V7-rehome: the SPRINT 211.b content migration (paige_btf_documents → documents)
+  -- moved exactly 1 document row. The original in-migration V7 asserted this on
+  -- prod-runtime data and failed the clean replay; re-homed here. On BYO the row
+  -- arrives via the Phase-2 `documents` import, so this confirms the import carried
+  -- the migrated content. NOTE: the source-side snapshot the migration also ran
+  -- (btf_workspace_invites = 2, mma_os_bridge_outbox = 1, paige_btf_documents = 1)
+  -- is NOT re-checkable here — those legacy tables were dropped by 211.b — so it
+  -- was a prod-at-migration-time §208 purge-guard only; the destination invariant
+  -- below is its durable successor.
+  SELECT count(*) INTO v_count
+  FROM public.documents
+  WHERE metadata->>'migration_ship' = 'SPRINT_211_212'
+    AND metadata->>'source_table'   = 'paige_btf_documents';
+  IF v_count <> 1 THEN
+    RAISE EXCEPTION 'AUDIT V7-rehome FAIL: expected exactly 1 migrated SPRINT_211_212 document in public.documents, found %', v_count;
+  END IF;
+  RAISE NOTICE 'AUDIT V7-rehome PASS: exactly 1 migrated SPRINT_211_212 document present.';
+
+  RAISE NOTICE 'POST-APPLY DATA-INTEGRITY AUDIT: all singleton + content-migration invariants hold.';
 END $$;
