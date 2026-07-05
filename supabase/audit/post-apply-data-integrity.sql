@@ -1,16 +1,31 @@
 -- =============================================================================
--- POST-APPLY DATA-INTEGRITY AUDIT — singleton invariants
+-- POST-APPLY DATA-INTEGRITY AUDIT
 -- =============================================================================
 -- Standalone, read-only, fail-loud audit. Safe to run against ANY live database
 -- (prod, BYO post-cutover, staging). It performs NO writes and NO schema changes.
 --
--- Origin: these checks were originally in-migration DO-block verification
--- checkpoints that assert on DATA state and therefore fail on a fresh
--- migration-only rebuild (empty DB). Per §213.c — "move fail-loud probes to
--- POST-APPLY audit scripts, not in-migration DO blocks" — they were removed from
--- their migrations and re-homed here:
+-- DESIGN INTENT (permanent infrastructure — not Sprint P.S.M scaffolding):
+--   This file collects data-integrity checks that were RE-HOMED out of migrations
+--   per doctrine §213.c — "fail-loud probes on DATA state belong in post-apply
+--   audits, not in-migration DO blocks." A migration must clean-rebuild on an
+--   empty DB; a check that asserts on live row counts cannot, so it lives here and
+--   runs ON DEMAND against a populated database instead.
+--   >> When you refactor a §213.c-violating migration, MOVE its data checks here. <<
+--   Keep each check labeled with the migration it came from so provenance is clear.
+--
+-- Re-homed checks currently collected here:
 --   V14 + V15  ← 20260702184358_a1b946ac-...  (SPRINT_211a singleton invariants)
 --   V7-rehome  ← 20260702193352_05c5009a-...  (SPRINT 211.b content migration)
+--
+-- Re-homed as DOCUMENTATION ONLY (no executable check — the original was a
+-- point-in-time prod baseline with no durable invariant to assert against here):
+--   20260703132122_4f949c83-...  (Sprint N+2 Task #14 — email_templates policy swap)
+--     stripped a §208 preflight that froze email_templates at row_count=24,
+--     NULL-tenant=0, MMA-tenant=24. Those counts are live prod data that changes
+--     over time, so "= 24" is NOT re-checkable on BYO without false-failing. The
+--     durable outcome (permissive base + RESTRICTIVE tenant_isolation sole gate,
+--     admin permissive policies removed) is schema, carried by the Phase-3
+--     bootstrap; no data assertion belongs here for it.
 --
 -- WHEN TO RUN: after data has been loaded into a target DB — specifically, on BYO
 -- after the Phase-2 CSV data import and BEFORE decommissioning Lovable Cloud
