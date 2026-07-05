@@ -1,6 +1,8 @@
 project_id = "bfmyebsjyuoecmjskqhs"
 
 [functions]
+  [functions.extract-secret]
+    verify_jwt = true
   [functions.paige-bridge]
     verify_jwt = false
   [functions.sla-watcher]
