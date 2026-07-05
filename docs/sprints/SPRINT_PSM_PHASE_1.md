@@ -112,3 +112,40 @@ one-shot tool that is deleted immediately after run-mode.
       Rule #1 governs its import).
 - [ ] Separate integrity check (not blocking): does encrypted SSN ciphertext exist
       that depends on the unset `SSN_ENCRYPTION_KEY`?
+
+## Phase-3 BYO destination (§66 ruling — LOCKED)
+
+**Destination: existing project `xygzykjyynhzqytbqnzu`** ("Paige Agent AI", Mogul
+Maker Academy org, `us-east-2`). Dormant since Sep 2025 with 12 empty legacy tables.
+`create_project` is **skipped** — reuse this project slot.
+
+**Do NOT use `slcqeiqcrhepicqxqjng` ("mma-os").** MMA OS is an independent live
+microservice Paige talks to via `MMA_OS_LANGGRAPH_BRIDGE_KEY` / `MMA_OS_BRIDGE_API_KEY`
+/ `MMA_OS_BRIDGE_URL`. Merging schemas would collapse the microservice boundary
+(contact-centric vs tenant-centric) into a monolith. Keep isolated for blast-radius
+separation.
+
+**Deltas (accepted):** region source Europe (Ireland) → dest `us-east-2` (Ohio),
+negligible for a US customer base; Postgres `17.6.1.016 → 17.6.1.021` intra-patch,
+no compatibility concern.
+
+### Phase-3 step 11 (revised) — pre-wipe then apply
+1. Drop the 12 legacy empty tables on `xygzykjyynhzqytbqnzu` via a **wipe migration**
+   (§66 fire order required): `public.profiles`, `public.businesses`,
+   `public.disputes`, `public.letters`, `public.credit_accounts`,
+   `public.vendor_offers`, `public.funding_offers`, `public.tasks`,
+   `public.audit_logs`, `public.dispute_letters`, `public.orders`,
+   `public.platform_api_keys`. (Verify each is empty at fire time — §208.)
+2. Apply all `supabase/migrations/` in filename order.
+3. Then Phase-3 Hard Rule #1 governs the `_internal_secrets` import.
+
+## Side finding (discovered during P.S.M — NOT in scope, separate task)
+
+**MMA OS (`slcqeiqcrhepicqxqjng`) has 22 tables with RLS disabled** per Supabase
+advisory — including `contacts` (656 real people), `member_outcomes` (124),
+`quality_check_runs` (719), `campaign_control`, `member_events`, `system_health`,
+`agent_dispatches`, `agent_calls`, `btf_*`. Exposed to anon-key holders.
+
+**Not P.S.M-blocking** — belongs to the MMA OS repo. **Do NOT auto-fix**: enabling
+RLS without policies would break the app. Logged as its own task: *"MMA OS RLS enable
++ policy design — 22 tables currently exposed to anon."*
