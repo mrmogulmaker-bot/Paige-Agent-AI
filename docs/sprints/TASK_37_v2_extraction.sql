@@ -31,10 +31,17 @@
 -- ASSUMPTIONS (verify at apply time): BYO has the standard Supabase roles
 --   (postgres, anon, authenticated, service_role) and the `extensions` schema.
 --   Data (INSERTs) + sequence setval() come from the Phase-2 CSV import, NOT here.
--- SECTION ORDER (dependency-safe):
---   1 extensions · 2 enums · 3 sequences · 4 tables(cols) · 5 PK/UNIQUE · 6 FKs
---   7 checks · 8 indexes · 9 functions · 10 triggers · 11 views+matviews(topo)
---   12 RLS enable+policies · 13 GRANTs (REVOKE-then-GRANT) · 14 comments
+-- APPLY ORDER (dependency-correct — proven during the BYO bootstrap, 5 apply-time
+-- findings folded in; run each with SET check_function_bodies = false active for §9):
+--   1 extensions → 2 enums → 3 sequences → 4 tables → 5 PK/UNIQUE → 6 FKs
+--   → 7 checks → 8a table-indexes → 9a functions(no relation sig) → 11 views+matviews(topo)
+--   → 8b matview-indexes → 9b functions(relation sig) → 10 triggers
+--   → 12 RLS enable+policies → 13 GRANTs (REVOKE-then-GRANT, allowlisted) → 14 comments
+-- APPLY-TIME FIXES vs a naive category order:
+--   #1 §8 split (8a tables before views; 8b matview indexes after §11)
+--   #2 SET check_function_bodies=false before functions
+--   #3+#4 §9 two-phase split around §11 (signature vs no-signature relation deps)
+--   #5 §13 grantee allowlist (drop managed-platform roles absent on BYO)
 -- =============================================================================
 
 
@@ -149,14 +156,28 @@ ORDER BY rel.relname, con.conname;
 
 
 -- ---------------------------------------------------------------------------
--- 8. INDEXES  (399)   (excludes PK/UNIQUE-constraint-backing indexes)
+-- 8a. INDEXES on TABLES  (relkind='r')   (excludes PK/UNIQUE-constraint-backing)
+--    FIX (apply-finding #1): filtered to tc.relkind='r'. Indexes on materialized
+--    views are split out to §8b and MUST be applied AFTER §11 (matviews exist).
 -- ---------------------------------------------------------------------------
 SELECT pg_get_indexdef(i.indexrelid) || ';' AS ddl
 FROM pg_index i
 JOIN pg_class ic ON ic.oid = i.indexrelid
 JOIN pg_class tc ON tc.oid = i.indrelid
 JOIN pg_namespace n ON n.oid = tc.relnamespace
-WHERE n.nspname = 'public'
+WHERE n.nspname = 'public' AND tc.relkind = 'r'
+  AND NOT i.indisprimary
+  AND NOT EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid = i.indexrelid AND con.contype IN ('p','u'))
+ORDER BY tc.relname, ic.relname;
+
+-- 8b. INDEXES on MATERIALIZED VIEWS  (relkind='m')  — APPLY AFTER §11.
+--    Emit here for review, but in the apply order these run once the matviews exist.
+SELECT pg_get_indexdef(i.indexrelid) || ';' AS ddl
+FROM pg_index i
+JOIN pg_class ic ON ic.oid = i.indexrelid
+JOIN pg_class tc ON tc.oid = i.indrelid
+JOIN pg_namespace n ON n.oid = tc.relnamespace
+WHERE n.nspname = 'public' AND tc.relkind = 'm'
   AND NOT i.indisprimary
   AND NOT EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid = i.indexrelid AND con.contype IN ('p','u'))
 ORDER BY tc.relname, ic.relname;
@@ -165,12 +186,43 @@ ORDER BY tc.relname, ic.relname;
 -- ---------------------------------------------------------------------------
 -- 9. FUNCTIONS + PROCEDURES  (214)   (bodies via pg_get_functiondef)
 --    Captures the out-of-band drift objects too (email_queue_wake/dispatch, …).
+--
+--    FIX (apply-findings #2,#3,#4): both phases below MUST be applied with
+--       SET check_function_bodies = false;
+--    prepended (pg_dump-standard — defers body validation so bodies referencing
+--    renamed/latent columns still create; also lets body-only cross-refs resolve).
+--
+--    TWO-PHASE SPLIT to break the function<->view/matview cross-dependency:
+--      §9a = functions whose SIGNATURE (return/arg type) does NOT reference a public
+--            view/matview rowtype — apply BEFORE §11 (they create has_role /
+--            is_platform_owner / etc. that §11 views depend on).
+--      §9b = functions whose SIGNATURE references a public view/matview rowtype
+--            (RETURNS SETOF <matview|view>) — apply AFTER §11 (the rowtype exists).
+--    Signature types are validated at CREATE regardless of check_function_bodies,
+--    so these two must straddle §11.
 -- ---------------------------------------------------------------------------
+-- 9a. relation-independent functions (apply BEFORE §11)
 SELECT pg_get_functiondef(p.oid) || ';' AS ddl
 FROM pg_proc p
 JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'public'
-  AND p.prokind IN ('f','p')
+WHERE n.nspname = 'public' AND p.prokind IN ('f','p')
+  AND NOT EXISTS (
+    SELECT 1 FROM pg_class rc JOIN pg_namespace rn ON rn.oid = rc.relnamespace
+    WHERE rn.nspname = 'public' AND rc.relkind IN ('v','m')
+      AND (rc.reltype = p.prorettype OR rc.reltype = ANY (p.proargtypes))
+  )
+ORDER BY p.proname, p.oid;
+
+-- 9b. relation-dependent functions (signature references a view/matview rowtype) — APPLY AFTER §11
+SELECT pg_get_functiondef(p.oid) || ';' AS ddl
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.prokind IN ('f','p')
+  AND EXISTS (
+    SELECT 1 FROM pg_class rc JOIN pg_namespace rn ON rn.oid = rc.relnamespace
+    WHERE rn.nspname = 'public' AND rc.relkind IN ('v','m')
+      AND (rc.reltype = p.prorettype OR rc.reltype = ANY (p.proargtypes))
+  )
 ORDER BY p.proname, p.oid;
 
 
@@ -265,6 +317,11 @@ ORDER BY c.relname, pol.polname;
 -- 13. GRANTS — REVOKE-then-GRANT so tightened ACLs survive.  [finding #1]
 --    Emit order: 13a table/view/seq grants, 13b function REVOKEs (ALL funcs),
 --    13c function grants. 13b MUST precede 13c.
+--    FIX (apply-finding #5): 13a/13c restrict grantees to the app permission model
+--    (PUBLIC + postgres/anon/authenticated/service_role). Managed-platform roles
+--    such as sandbox_exec / sandbox_exec_<projectref> are prod-environment artifacts
+--    absent on BYO by design; grants to them are dropped (explicit allowlist, so a
+--    new legitimate app role must be added here deliberately).
 -- ---------------------------------------------------------------------------
 -- 13a. table / view / matview / sequence privileges (266 rels w/ explicit ACL)
 SELECT format('GRANT %s ON public.%I TO %s;',
@@ -275,6 +332,7 @@ JOIN pg_namespace n ON n.oid = c.relnamespace
 CROSS JOIN LATERAL aclexplode(c.relacl) acl
 LEFT JOIN pg_roles r ON r.oid = acl.grantee
 WHERE n.nspname = 'public' AND c.relkind IN ('r','v','m','S') AND c.relacl IS NOT NULL
+  AND (acl.grantee = 0 OR r.rolname IN ('postgres','anon','authenticated','service_role'))
 ORDER BY c.relname, acl.grantee, acl.privilege_type;
 
 -- 13b. function REVOKEs — strip the default PUBLIC execute for ALL 214 functions
@@ -297,6 +355,7 @@ JOIN pg_namespace n ON n.oid = p.pronamespace
 CROSS JOIN LATERAL aclexplode(p.proacl) acl
 LEFT JOIN pg_roles r ON r.oid = acl.grantee
 WHERE n.nspname = 'public' AND p.prokind IN ('f','p') AND p.proacl IS NOT NULL
+  AND (acl.grantee = 0 OR r.rolname IN ('postgres','anon','authenticated','service_role'))
 ORDER BY p.proname, acl.grantee, acl.privilege_type;
 
 

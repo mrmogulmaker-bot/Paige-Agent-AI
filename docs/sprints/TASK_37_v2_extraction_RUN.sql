@@ -11,10 +11,13 @@
 -- copy-back unambiguous (one cell = one section), and isolates any error to its
 -- own section.
 --
--- HOW TO RUN (Antonio, prod bfmyebsjyuoecmjskqhs):
---   1. Run each numbered block below, in order.
---   2. Each returns one row; copy the `section_ddl` cell.
---   3. Append the cells in section order → bootstrap-byo-schema.sql.
+-- HOW TO RUN (extract from prod, then APPLY to BYO in dependency order):
+--   1. Run each block to extract; copy each `section_ddl` cell.
+--   2. APPLY ORDER (proven during the BYO bootstrap — NOT plain file order):
+--        01→02→03→04→05→06→07→08a→09a→11→08b→09b→10→12→13→14
+--      i.e. table-indexes(08a) + relation-independent fns(09a) BEFORE views(11);
+--      matview-indexes(08b) + relation-dependent fns(09b) AFTER views(11).
+--   3. Apply §09a and §09b each with `SET check_function_bodies = false;` prepended.
 -- Ordering WITHIN a section is cosmetic EXCEPT §11 (views/matviews), which is
 -- dependency-ordered via the recursive CTE — do not reorder its output.
 --
@@ -104,20 +107,43 @@ SELECT '07_checks' AS section, string_agg(ddl, E'\n' ORDER BY ddl) AS section_dd
   WHERE n.nspname = 'public' AND con.contype = 'c'
 ) s;
 
--- ===== 08 · INDEXES ==========================================================
-SELECT '08_indexes' AS section, string_agg(ddl, E'\n' ORDER BY ddl) AS section_ddl FROM (
+-- ===== 08a · TABLE INDEXES (relkind='r') =====================================
+SELECT '08a_table_indexes' AS section, string_agg(ddl, E'\n' ORDER BY ddl) AS section_ddl FROM (
   SELECT pg_get_indexdef(i.indexrelid) || ';' AS ddl
   FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
   JOIN pg_class tc ON tc.oid = i.indrelid JOIN pg_namespace n ON n.oid = tc.relnamespace
-  WHERE n.nspname = 'public' AND NOT i.indisprimary
+  WHERE n.nspname = 'public' AND tc.relkind = 'r' AND NOT i.indisprimary
     AND NOT EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid = i.indexrelid AND con.contype IN ('p','u'))
 ) s;
 
--- ===== 09 · FUNCTIONS + PROCEDURES (large cell — see header note) ============
-SELECT '09_functions' AS section, string_agg(ddl, E'\n\n' ORDER BY ddl) AS section_ddl FROM (
+-- ===== 08b · MATVIEW INDEXES (relkind='m') — RUN AFTER §11 ====================
+SELECT '08b_matview_indexes' AS section, string_agg(ddl, E'\n' ORDER BY ddl) AS section_ddl FROM (
+  SELECT pg_get_indexdef(i.indexrelid) || ';' AS ddl
+  FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
+  JOIN pg_class tc ON tc.oid = i.indrelid JOIN pg_namespace n ON n.oid = tc.relnamespace
+  WHERE n.nspname = 'public' AND tc.relkind = 'm' AND NOT i.indisprimary
+    AND NOT EXISTS (SELECT 1 FROM pg_constraint con WHERE con.conindid = i.indexrelid AND con.contype IN ('p','u'))
+) s;
+
+-- ===== 09 · FUNCTIONS — run BOTH phases with SET check_function_bodies=false ==
+-- 09a: relation-independent functions — RUN BEFORE §11
+SELECT '09a_functions' AS section, string_agg(ddl, E'\n\n' ORDER BY ddl) AS section_ddl FROM (
   SELECT pg_get_functiondef(p.oid) || ';' AS ddl
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public' AND p.prokind IN ('f','p')
+    AND NOT EXISTS (SELECT 1 FROM pg_class rc JOIN pg_namespace rn ON rn.oid=rc.relnamespace
+                    WHERE rn.nspname='public' AND rc.relkind IN ('v','m')
+                      AND (rc.reltype = p.prorettype OR rc.reltype = ANY (p.proargtypes)))
+) s;
+
+-- 09b: relation-dependent functions (signature references a view/matview) — RUN AFTER §11
+SELECT '09b_functions' AS section, string_agg(ddl, E'\n\n' ORDER BY ddl) AS section_ddl FROM (
+  SELECT pg_get_functiondef(p.oid) || ';' AS ddl
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public' AND p.prokind IN ('f','p')
+    AND EXISTS (SELECT 1 FROM pg_class rc JOIN pg_namespace rn ON rn.oid=rc.relnamespace
+                WHERE rn.nspname='public' AND rc.relkind IN ('v','m')
+                  AND (rc.reltype = p.prorettype OR rc.reltype = ANY (p.proargtypes)))
 ) s;
 
 -- ===== 10 · TRIGGERS =========================================================
@@ -188,6 +214,7 @@ SELECT '13_grants' AS section, string_agg(ddl, E'\n' ORDER BY ord, ddl) AS secti
   FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
   CROSS JOIN LATERAL aclexplode(c.relacl) acl LEFT JOIN pg_roles r ON r.oid = acl.grantee
   WHERE n.nspname = 'public' AND c.relkind IN ('r','v','m','S') AND c.relacl IS NOT NULL
+    AND (acl.grantee = 0 OR r.rolname IN ('postgres','anon','authenticated','service_role'))
   UNION ALL
   -- 13b function REVOKEs (strip default PUBLIC execute for all functions)
   SELECT 1 AS ord, format('REVOKE ALL ON FUNCTION public.%I(%s) FROM PUBLIC, anon, authenticated;',
@@ -202,6 +229,7 @@ SELECT '13_grants' AS section, string_agg(ddl, E'\n' ORDER BY ord, ddl) AS secti
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
   CROSS JOIN LATERAL aclexplode(p.proacl) acl LEFT JOIN pg_roles r ON r.oid = acl.grantee
   WHERE n.nspname = 'public' AND p.prokind IN ('f','p') AND p.proacl IS NOT NULL
+    AND (acl.grantee = 0 OR r.rolname IN ('postgres','anon','authenticated','service_role'))
 ) s;
 
 -- ===== 14 · COMMENTS (table · column · function) =============================
