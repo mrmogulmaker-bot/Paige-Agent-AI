@@ -197,3 +197,18 @@ so it is carried programmatically at Phase-3, never through personal storage:
 
 Whole cycle < 5 minutes, fully automated. Verification-via-1Password is **permanently
 retired** — the operator is not a keystore; rotation is a post-revenue tech-hire concern.
+
+## PHASE-4 — Cutover checklist (post-import, pre-decommission)
+
+Ordered gates that must clear on BYO (`xygzykjyynhzqytbqnzu`) **after** the Phase-2
+data import and **before** the OLD Cloud project is decommissioned:
+
+- [ ] **Run `supabase/audit/post-apply-data-integrity.sql` against BYO after data import,
+  before decommissioning Cloud.** This re-homed §213.c audit (V14 super_admin singleton,
+  V15 app_settings_owner singleton) was stripped out of the migration chain so the chain
+  clean-rebuilds; the invariants it asserts are only meaningful against the imported data,
+  so they run here as a post-apply gate. A red result blocks decommission.
+- [ ] Reconfigure Google/Apple OAuth providers on BYO Supabase Auth (redirect URLs,
+  client IDs/secrets) — see the OAuth-reconfig task.
+- [ ] Confirm `_internal_secrets` imported with `ON CONFLICT DO UPDATE` (Hard Rule #1)
+  and `CALENDAR_ENCRYPTION_KEY` handoff completed (Phase-3 section above).
