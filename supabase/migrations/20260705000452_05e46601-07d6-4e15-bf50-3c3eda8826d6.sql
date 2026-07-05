@@ -1,0 +1,1 @@
+ALTER VIEW public.coach_client_profiles_safe SET (security_invoker = true);
