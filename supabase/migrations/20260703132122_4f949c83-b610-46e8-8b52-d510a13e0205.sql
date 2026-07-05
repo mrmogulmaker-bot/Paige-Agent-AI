@@ -7,9 +7,6 @@
 DO $preflight$
 DECLARE
   v_tenant_iso_qual text;
-  v_row_count int;
-  v_null_tenant_count int;
-  v_mma_count int;
   v_admin1_exists bool;
   v_admin2_exists bool;
 BEGIN
@@ -38,22 +35,18 @@ BEGIN
     RAISE EXCEPTION '§208 preflight: email_templates_read_admin_coach policy missing';
   END IF;
 
-  SELECT count(*),
-         count(*) FILTER (WHERE tenant_id IS NULL),
-         count(*) FILTER (WHERE tenant_id = 'a25194e0-93c4-4e2c-91d0-66ea012660b2'::uuid)
-    INTO v_row_count, v_null_tenant_count, v_mma_count
-  FROM public.email_templates;
-  IF v_row_count <> 24 THEN
-    RAISE EXCEPTION '§208 preflight: row count baseline drift — expected 24, got %', v_row_count;
-  END IF;
-  IF v_null_tenant_count <> 0 THEN
-    RAISE EXCEPTION '§208 preflight: NULL-tenant row count drift — expected 0, got %', v_null_tenant_count;
-  END IF;
-  IF v_mma_count <> 24 THEN
-    RAISE EXCEPTION '§208 preflight: MMA tenant row count drift — expected 24, got %', v_mma_count;
-  END IF;
-
-  RAISE NOTICE '§208 preflight passed: tenant_isolation intact, 2 admin permissive policies present, 24 rows all MMA-tenant, 0 NULL-tenant rows';
+  -- §213.c re-home: the data-baseline assertions (email_templates row_count = 24,
+  -- NULL-tenant = 0, MMA-tenant = 24) were stripped. They froze a point-in-time
+  -- prod row count that never exists on a fresh migration-only rebuild (0 rows),
+  -- so they hard-failed the clean replay. Unlike the 211.b document invariant this
+  -- baseline has NO durable post-apply successor: the counts are live prod data
+  -- that legitimately changes between authoring and BYO cutover (templates added,
+  -- platform-default NULL-tenant rows), so re-planting "= 24" as a BYO assertion
+  -- would false-fail. The durable outcome this migration protects — the policy
+  -- shape (permissive base + RESTRICTIVE tenant_isolation as the sole scoping gate,
+  -- admin permissive policies removed) — is schema, guaranteed by the DDL below and
+  -- the Phase-3 bootstrap. Recorded as documentation-only in the post-apply audit.
+  RAISE NOTICE '§208 preflight passed: tenant_isolation intact + 2 admin permissive policies present (data-baseline freeze re-homed per §213.c).';
 END
 $preflight$;
 

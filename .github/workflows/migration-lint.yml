@@ -1,0 +1,35 @@
+# SPRINT P.S.M / Task #32 — forward guard so new migrations stay clean-rebuild-safe.
+# Lints ONLY the migrations added/modified in a PR (not the existing chain), for the
+# failure classes that break `apply_migration` against a fresh/empty BYO database.
+name: migration-lint
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect changed migrations
+        id: changed
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          git diff --name-only --diff-filter=AM "$base" "$head" -- 'supabase/migrations/*.sql' \
+            | tee changed_migrations.txt
+          echo "count=$(grep -c . changed_migrations.txt || true)" >> "$GITHUB_OUTPUT"
+
+      - name: Lint changed migrations
+        if: steps.changed.outputs.count != '0'
+        run: |
+          xargs -a changed_migrations.txt python3 .github/scripts/lint_migrations.py
+
+      - name: No migration changes
+        if: steps.changed.outputs.count == '0'
+        run: echo "No added/modified migrations in this PR — nothing to lint."

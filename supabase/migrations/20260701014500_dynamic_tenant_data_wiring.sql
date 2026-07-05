@@ -54,9 +54,12 @@ ALTER TABLE public.businesses
 
 CREATE INDEX IF NOT EXISTS businesses_tenant_id_idx ON public.businesses(tenant_id);
 
+-- Task #32 mechanical fix: original used `FROM LATERAL (... referencing b ...)`,
+-- illegal (42P10 — UPDATE target not referenceable in FROM LATERAL). Rewritten as a
+-- scalar correlated subquery in SET (legal reference to b); EXISTS avoids NULL-overwrite.
+-- Same input tables, match criteria, ordering/tie-break, and result set. §213 rescue.
 UPDATE public.businesses b
-SET tenant_id = src.tenant_id
-FROM LATERAL (
+SET tenant_id = (
   SELECT c.tenant_id
   FROM public.clients c
   WHERE c.tenant_id IS NOT NULL
@@ -70,20 +73,37 @@ FROM LATERAL (
     c.updated_at DESC NULLS LAST,
     c.created_at DESC NULLS LAST
   LIMIT 1
-) src
-WHERE b.tenant_id IS NULL;
+)
+WHERE b.tenant_id IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM public.clients c
+    WHERE c.tenant_id IS NOT NULL
+      AND (
+        c.primary_business_id = b.id
+        OR c.linked_user_id = b.owner_user_id
+        OR c.created_by = b.owner_user_id
+      )
+  );
 
+-- Task #32 mechanical fix: same FROM LATERAL 42P10 issue as above; rewritten as a
+-- scalar correlated subquery in SET. Same input table, match criteria, ordering, result.
 UPDATE public.businesses b
-SET tenant_id = src.tenant_id
-FROM LATERAL (
+SET tenant_id = (
   SELECT tm.tenant_id
   FROM public.tenant_members tm
   WHERE tm.user_id = b.owner_user_id
     AND tm.status = 'active'
   ORDER BY tm.joined_at ASC
   LIMIT 1
-) src
-WHERE b.tenant_id IS NULL;
+)
+WHERE b.tenant_id IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM public.tenant_members tm
+    WHERE tm.user_id = b.owner_user_id
+      AND tm.status = 'active'
+  );
 
 DROP TRIGGER IF EXISTS trg_stamp_tenant_id ON public.businesses;
 CREATE TRIGGER trg_stamp_tenant_id

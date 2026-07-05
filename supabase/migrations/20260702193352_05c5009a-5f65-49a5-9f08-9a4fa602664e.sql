@@ -13,38 +13,38 @@ DECLARE
   v_count_btf_messages             int;
   v_count_btf_phase_items          int;
   v_count_btf_phase_item_templates int;
-  v_count_btf_workspace_invites    int;
   v_count_btf_workspace_settings   int;
-  v_count_mma_os_bridge_outbox     int;
-  v_count_paige_btf_documents      int;
 
   v_program_id       uuid;
   v_phase_build_id   uuid;
   v_phase_stack_id   uuid;
   v_phase_fund_id    uuid;
   v_items_inserted   int;
-  v_doc_migrated_id  uuid;
 BEGIN
+  -- §208 snapshot — REPRODUCIBLE checks only.
+  -- §213.c re-home: the prod-runtime-data assertions
+  --   btf_workspace_invites = 2, mma_os_bridge_outbox = 1, paige_btf_documents = 1
+  -- were stripped from this migration. They assert on live prod-runtime rows that
+  -- never exist on a fresh migration-only rebuild, so they hard-failed the clean
+  -- replay (this migration does not run on BYO — bootstrap marks it already-applied
+  -- per Ruling (A); it only ever executes against live prod or the CI replay oracle).
+  -- Those invariants are re-homed to supabase/audit/post-apply-data-integrity.sql,
+  -- which runs against BYO after the Phase-2 import. The checks kept below are
+  -- reproducible: empty legacy tables (0) or migration-seeded templates (14).
   SELECT count(*) INTO v_count_btf_document_requests     FROM public.btf_document_requests;
   SELECT count(*) INTO v_count_btf_messages              FROM public.btf_messages;
   SELECT count(*) INTO v_count_btf_phase_items           FROM public.btf_phase_items;
   SELECT count(*) INTO v_count_btf_phase_item_templates  FROM public.btf_phase_item_templates;
-  SELECT count(*) INTO v_count_btf_workspace_invites     FROM public.btf_workspace_invites;
   SELECT count(*) INTO v_count_btf_workspace_settings    FROM public.btf_workspace_settings;
-  SELECT count(*) INTO v_count_mma_os_bridge_outbox      FROM public.mma_os_bridge_outbox;
-  SELECT count(*) INTO v_count_paige_btf_documents       FROM public.paige_btf_documents;
 
   IF v_count_btf_document_requests    <> 0  THEN RAISE EXCEPTION '[211.b Chunk 2 snapshot] btf_document_requests expected 0, got %',    v_count_btf_document_requests;    END IF;
   IF v_count_btf_messages             <> 0  THEN RAISE EXCEPTION '[211.b Chunk 2 snapshot] btf_messages expected 0, got %',             v_count_btf_messages;             END IF;
   IF v_count_btf_phase_items          <> 0  THEN RAISE EXCEPTION '[211.b Chunk 2 snapshot] btf_phase_items expected 0, got %',          v_count_btf_phase_items;          END IF;
   IF v_count_btf_phase_item_templates <> 14 THEN RAISE EXCEPTION '[211.b Chunk 2 snapshot] btf_phase_item_templates expected 14, got %',v_count_btf_phase_item_templates; END IF;
-  IF v_count_btf_workspace_invites    <> 2  THEN RAISE EXCEPTION '[211.b Chunk 2 snapshot] btf_workspace_invites expected 2, got %',    v_count_btf_workspace_invites;    END IF;
   IF v_count_btf_workspace_settings   <> 0  THEN RAISE EXCEPTION '[211.b Chunk 2 snapshot] btf_workspace_settings expected 0, got %',   v_count_btf_workspace_settings;   END IF;
-  IF v_count_mma_os_bridge_outbox     <> 1  THEN RAISE EXCEPTION '[211.b Chunk 2 snapshot] mma_os_bridge_outbox expected 1, got %',     v_count_mma_os_bridge_outbox;     END IF;
-  IF v_count_paige_btf_documents      <> 1  THEN RAISE EXCEPTION '[211.b Chunk 2 snapshot] paige_btf_documents expected 1, got %',      v_count_paige_btf_documents;      END IF;
 
-  RAISE NOTICE '[211.b Chunk 2] §208 snapshot verified: 18 total rows across 8 legacy tables.';
-  RAISE NOTICE '[211.b Chunk 2] Archive acknowledged: btf_workspace_invites rows + mma_os_bridge_outbox row previously written to /mnt/documents/archive_sprint_211_212/ before this migration.';
+  RAISE NOTICE '[211.b Chunk 2] §208 reproducible snapshot verified (empty legacy tables + 14 seeded templates). Prod-runtime snapshot (invites/outbox/documents) re-homed to post-apply audit per §213.c.';
+  RAISE NOTICE '[211.b Chunk 2] Archive provenance: btf_workspace_invites + mma_os_bridge_outbox prod rows were written to /mnt/documents/archive_sprint_211_212/ before the original prod run of this migration.';
 
   INSERT INTO public.programs (tenant_id, slug, name, description, status, metadata)
   VALUES (
@@ -113,36 +113,16 @@ BEGIN
     RAISE EXCEPTION '[211.b Chunk 2 Step 2.4] expected 14 items migrated, got %', v_items_inserted;
   END IF;
 
-  -- Fail-loud guard: documents.user_id NOT NULL requires uploaded_by non-null.
-  IF (SELECT count(*) FROM public.paige_btf_documents WHERE uploaded_by IS NULL) > 0 THEN
-    RAISE EXCEPTION '[211.b Chunk 2 Step 2.5] paige_btf_documents has rows with NULL uploaded_by — cannot satisfy documents.user_id NOT NULL';
-  END IF;
-
-  INSERT INTO public.documents
-    (user_id, client_id, document_type, file_name, file_path, file_size,
-     mime_type, bucket_name, uploaded_at, metadata)
-  SELECT
-    p.uploaded_by,
-    p.client_id,
-    p.category,
-    p.original_filename,
-    p.storage_path,
-    p.size_bytes::int4,
-    p.mime,
-    'btf-onboarding',
-    p.uploaded_at,
-    jsonb_build_object(
-      'migration_ship',   'SPRINT_211_212',
-      'source_table',     'paige_btf_documents',
-      'source_id',        p.id,
-      'legacy_bucket',    'btf-onboarding',
-      'legacy_category',  p.category
-    )
-  FROM public.paige_btf_documents p
-  RETURNING id INTO v_doc_migrated_id;
-
-  RAISE NOTICE '[211.b Chunk 2] Migrated 1 document, new id = %', v_doc_migrated_id;
-  RAISE NOTICE '[211.b Chunk 2] Case-3 storage orphan preserved in btf-onboarding bucket (agreement PDF, no DB tracking row). Sprint P.6 owns final disposition. This migration does NOT touch storage.objects.';
+  -- §213.c re-home: the paige_btf_documents → public.documents content migration
+  -- was stripped from this migration. It moved live prod-runtime document rows
+  -- (0 on a clean rebuild) and its companion assertion V7 hard-failed the replay.
+  -- On BYO the migrated rows arrive via the Phase-2 `documents` import (they were
+  -- already moved during the original prod run of this migration), so re-executing
+  -- the movement here is moot. The surviving invariant — that the SPRINT_211_212
+  -- document landed — is verified in supabase/audit/post-apply-data-integrity.sql.
+  -- The btf-onboarding storage orphan (agreement PDF, no DB tracking row) is
+  -- untouched by this migration; Sprint P.6 owns its final disposition.
+  RAISE NOTICE '[211.b Chunk 2] paige_btf_documents → documents content migration re-homed to post-apply audit per §213.c (see supabase/audit/post-apply-data-integrity.sql).';
 END
 $chunk2$;
 
@@ -193,7 +173,6 @@ DECLARE
   v_program_count   int;
   v_phase_count     int;
   v_item_count      int;
-  v_doc_count       int;
   v_blocklist_hits  int;
   v_hit_detail      text;
 BEGIN
@@ -248,13 +227,9 @@ BEGIN
     RAISE EXCEPTION '[211.b V6] expected 14 migrated program_phase_items, got %', v_item_count;
   END IF;
 
-  SELECT count(*) INTO v_doc_count
-    FROM public.documents
-   WHERE metadata->>'migration_ship' = 'SPRINT_211_212'
-     AND metadata->>'source_table'   = 'paige_btf_documents';
-  IF v_doc_count <> 1 THEN
-    RAISE EXCEPTION '[211.b V7] expected 1 migrated document, got %', v_doc_count;
-  END IF;
+  -- §213.c re-home: V7 (expected 1 migrated SPRINT_211_212 document) asserted on
+  -- prod-runtime data moved by the stripped content migration above, so it hard-
+  -- failed the clean replay. Re-homed to supabase/audit/post-apply-data-integrity.sql.
 
   WITH pat AS (
     SELECT '(^|[^a-z0-9])(btf|b2f|build_to_fund|mma|mma_os|mogul_maker|mrmogulmaker|pme|project_mogul|tmg|treasury_media|mfs|mogul_funding|mcc|mogul_credit|coreconnect|disputera|aedis|givalli)($|[^a-z0-9])'::text AS re
@@ -280,6 +255,6 @@ BEGIN
     RAISE EXCEPTION '[211.b V8] brand-token blocklist tripped: % artifact(s) — %', v_blocklist_hits, v_hit_detail;
   END IF;
 
-  RAISE NOTICE '[211.b V1–V8] all checkpoints green: 0 leftover tables, 0 leftover enums, 0 leftover function, 1 program, 3 phases, 14 items, 1 document, 0 blocklist hits.';
+  RAISE NOTICE '[211.b V1–V6, V8] all reproducible checkpoints green: 0 leftover tables, 0 leftover enums, 0 leftover function, 1 program, 3 phases, 14 items, 0 blocklist hits. (V7 document count re-homed to post-apply audit per §213.c.)';
 END
 $chunk3_verify$;
