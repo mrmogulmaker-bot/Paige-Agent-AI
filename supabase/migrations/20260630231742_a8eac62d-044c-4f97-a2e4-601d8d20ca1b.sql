@@ -16,7 +16,19 @@ USING (public.has_role(auth.uid(), 'admin'::app_role));
 
 -- 3) Revoke EXECUTE from anon on SECURITY DEFINER helper functions that don't need anon access
 REVOKE EXECUTE ON FUNCTION public.scan_soft_subagents_for_tool_refs() FROM anon, authenticated, public;
-REVOKE EXECUTE ON FUNCTION public.email_queue_wake() FROM anon, authenticated, public;
+-- Task #32 guard: email_queue_wake() is created out-of-band on prod (schema drift —
+-- see Task #37), NOT by any migration, so a fresh rebuild has no such function and
+-- this REVOKE would 42883. Guard it so the chain rebuilds as defense-in-depth; on BYO
+-- the function itself is supplied by the Phase-3 schema-authoritative bootstrap.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc
+    WHERE proname = 'email_queue_wake' AND pronamespace = 'public'::regnamespace
+  ) THEN
+    REVOKE EXECUTE ON FUNCTION public.email_queue_wake() FROM anon, authenticated, public;
+  END IF;
+END $$;
 
 -- 4) Stripe product mappings table (replace hardcoded map)
 CREATE TABLE IF NOT EXISTS public.stripe_product_mappings (
