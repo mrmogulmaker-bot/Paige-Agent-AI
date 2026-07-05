@@ -59,6 +59,26 @@ decryption failure with no error at import time. `DO UPDATE` forces the source
 values to overwrite the migration-generated ones. This applies to all
 `_internal_secrets` rows.
 
+### `_internal_secrets` key inventory (import ALL with `DO UPDATE`)
+
+| Key | Class | Migration-seeded? |
+|---|---|---|
+| `platform_column_key` | **encryption (§190)** | `gen_random_bytes(32)` + **`DO NOTHING`** ⚠️ (`20260702022450`) — the specific silent-corruption trigger |
+| `qb_token_key` | **encryption** (QB OAuth tokens) | runtime (seed / CSV) — must not be clobbered |
+| `automation_webhook_key` | **encryption** (webhook URLs) | runtime (seed / CSV) — must not be clobbered |
+| `meta_capi_access_token` | service token | `DO UPDATE` ✓ (`20260629000558/000629`) |
+| `platform_stage_change_webhook_url` | config URL | `DO UPDATE` ✓ (`20260701174236`) |
+| `service_role_key` / `supabase_service_role_key` / `readiness_scan_service_role_key` | service tokens | runtime / CSV |
+| `supabase_functions_base_url` | config URL | runtime / CSV |
+
+**Correction to earlier note:** only `platform_column_key` is a
+`gen_random_bytes` + `DO NOTHING` seed. The other five `gen_random_bytes` sites in
+the migration chain are per-row **column defaults** (`verification_code`, tenant
+invite tokens, webhook tokens) — NOT keys, no `DO UPDATE` concern. The
+**encryption-critical subset** (silent PII corruption if the wrong value lands) is
+`platform_column_key`, `qb_token_key`, `automation_webhook_key`. Verify each of the
+above is present in the Phase-2 export and imported with `DO UPDATE`.
+
 ### `extract-secret` allowlist (env-only, at-rest, not table-recoverable)
 
 | Key | Verdict | Reason |
