@@ -121,7 +121,7 @@ $md$# Terms of Service
 **Effective Date:** June 30, 2026
 **Version:** 1.0
 
-These Terms of Service ("Terms") govern your access to and use of the PaigeAgent.ai platform ("Service"), operated by Mogul Maker Academy, LLC ("Company", "we", "us"). By creating an account or using the Service, you agree to these Terms.
+These Terms of Service ("Terms") govern your access to and use of the PaigeAgent.ai platform ("Service"), operated by Paige Agent AI, LLC ("Company", "we", "us"). By creating an account or using the Service, you agree to these Terms.
 
 ## 1. Eligibility & Account
 You must be at least 18 years old and legally able to enter contracts. You are responsible for safeguarding your credentials and for all activity under your account. Notify us immediately of any unauthorized use.
@@ -163,7 +163,7 @@ These Terms are governed by the laws of the State of Georgia, USA, without regar
 We may update these Terms. Material changes will be presented in-app and require your acknowledgment before continued use. Continued use after non-material changes constitutes acceptance.
 
 ## 14. Contact
-Mogul Maker Academy, LLC — support@news.mrmogulmaker.com — +1 (470) 594-4470.
+Paige Agent AI, LLC — support@paigeagent.ai — +1 (470) 594-4470.
 $md$,
  'all', true, true),
 
@@ -174,7 +174,7 @@ $md$# Privacy Policy
 **Effective Date:** June 30, 2026
 **Version:** 1.0
 
-This Privacy Policy describes how Mogul Maker Academy, LLC ("we") collects, uses, discloses, and protects information when you use PaigeAgent.ai (the "Service").
+This Privacy Policy describes how Paige Agent AI, LLC ("we") collects, uses, discloses, and protects information when you use PaigeAgent.ai (the "Service").
 
 ## 1. Information We Collect
 - **Account information:** name, email, phone, password hash, role.
@@ -210,7 +210,7 @@ We use first-party cookies and limited analytics to operate the Service. We do n
 We retain account and operational data for the life of your account and as required by law (typically up to 24 months after account closure for audit, dispute resolution, and fraud prevention). You may request earlier deletion subject to legal retention obligations.
 
 ## 8. Your Rights
-You may access, correct, export, or delete your personal information from account settings or by emailing privacy@news.mrmogulmaker.com. Residents of California, Colorado, Virginia, Connecticut, Utah, and other states with comprehensive privacy laws have additional rights including the right to opt out of sale (we do not sell), targeted advertising (we do not use), and profiling that produces legal effects.
+You may access, correct, export, or delete your personal information from account settings or by emailing privacy@paigeagent.ai. Residents of California, Colorado, Virginia, Connecticut, Utah, and other states with comprehensive privacy laws have additional rights including the right to opt out of sale (we do not sell), targeted advertising (we do not use), and profiling that produces legal effects.
 
 ## 9. Security
 We use TLS in transit, AES-256 at rest, role-based access controls, audit logging, encrypted secrets storage, and routine vulnerability scanning. No system is perfectly secure; we will notify affected users of any breach as required by law.
@@ -225,7 +225,7 @@ The Service is hosted in the United States. By using the Service from outside th
 Material changes will be presented in-app and require acknowledgment before continued use.
 
 ## 13. Contact
-privacy@news.mrmogulmaker.com — Mogul Maker Academy, LLC — +1 (470) 594-4470.
+privacy@paigeagent.ai — Paige Agent AI, LLC — +1 (470) 594-4470.
 $md$,
  'all', true, true),
 
@@ -246,11 +246,11 @@ By checking the consent box at signup and using PaigeAgent.ai, you consent under
 
 4. **Updating contact information.** You must keep your email address current in your account settings. We are not responsible for Records that fail to reach an outdated address.
 
-5. **Paper copies.** You may request a paper copy of any Record by emailing support@news.mrmogulmaker.com. We may charge a reasonable fee for paper copies that is not otherwise free under applicable law.
+5. **Paper copies.** You may request a paper copy of any Record by emailing support@paigeagent.ai. We may charge a reasonable fee for paper copies that is not otherwise free under applicable law.
 
-6. **Withdrawal of consent.** You may withdraw this consent by emailing support@news.mrmogulmaker.com with the subject "Withdraw ESIGN Consent". Withdrawal does not affect the legal validity of Records or signatures provided before withdrawal, and may require us to suspend or terminate your account because the Service relies on electronic delivery.
+6. **Withdrawal of consent.** You may withdraw this consent by emailing support@paigeagent.ai with the subject "Withdraw ESIGN Consent". Withdrawal does not affect the legal validity of Records or signatures provided before withdrawal, and may require us to suspend or terminate your account because the Service relies on electronic delivery.
 
-7. **Scope.** This consent applies to all Records exchanged between you and Mogul Maker Academy, LLC related to PaigeAgent.ai, including subsequent versions of the Terms of Service, Privacy Policy, and any contextual authorizations such as the Credit Data Authorization and Tenant Agreements.
+7. **Scope.** This consent applies to all Records exchanged between you and Paige Agent AI, LLC related to PaigeAgent.ai, including subsequent versions of the Terms of Service, Privacy Policy, and any contextual authorizations such as the Credit Data Authorization and Tenant Agreements.
 $md$,
  'all', true, true),
 
@@ -302,7 +302,7 @@ $md$# Credit Data Authorization
 You are providing this authorization the first time you upload a credit report, connect a credit-monitoring account, or request Paige to process credit-bureau information about you.
 
 ## 1. Permissible Purpose
-You authorize Mogul Maker Academy, LLC and its service providers to obtain, receive, store, and process consumer-report information about you for the **permissible purpose** of providing the services you have requested, including credit intelligence, fundability scoring, and educational guidance. This authorization is given under the Fair Credit Reporting Act ("FCRA") 15 U.S.C. §1681b.
+You authorize Paige Agent AI, LLC and its service providers to obtain, receive, store, and process consumer-report information about you for the **permissible purpose** of providing the services you have requested, including credit intelligence, fundability scoring, and educational guidance. This authorization is given under the Fair Credit Reporting Act ("FCRA") 15 U.S.C. §1681b.
 
 ## 2. What You Authorize
 - Uploading and parsing PDF or image copies of your tri-merge credit reports.
@@ -318,7 +318,7 @@ You authorize Mogul Maker Academy, LLC and its service providers to obtain, rece
 Credit information is treated as Financial Information under our Privacy Policy and GLBA. It is encrypted at rest, restricted by role-based access, audit-logged, and never sold.
 
 ## 5. Revocation
-You may revoke this authorization at any time by emailing privacy@news.mrmogulmaker.com or by disconnecting the credit source in account settings. Revocation does not affect processing already completed.
+You may revoke this authorization at any time by emailing privacy@paigeagent.ai or by disconnecting the credit source in account settings. Revocation does not affect processing already completed.
 
 ## 6. Acknowledgment
 You confirm you are the consumer to whom the information pertains, or that you are an authorized user acting on the consumer's behalf with their documented permission.
@@ -376,7 +376,7 @@ $md$# Data Processing Addendum
 **Effective Date:** June 30, 2026
 **Version:** 1.0
 
-This Data Processing Addendum ("DPA") forms part of the Tenant Master Services Agreement between Mogul Maker Academy, LLC ("Processor") and the Tenant Owner ("Controller").
+This Data Processing Addendum ("DPA") forms part of the Tenant Master Services Agreement between Paige Agent AI, LLC ("Processor") and the Tenant Owner ("Controller").
 
 ## 1. Roles
 Controller determines the purposes and means of processing End Client personal data. Processor processes such data only on documented instructions from Controller (which include configuration, API calls, and the use of in-product features).

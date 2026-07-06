@@ -110,7 +110,7 @@ VALUES (
 
 **Effective Date:** 2026-06-30
 
-This Broker Producer Agreement ("Agreement") is between **PaigeAgent / Mogul Maker Academy LLC** ("PaigeAgent") and the individual or entity registering as a broker, affiliate, or independent producer ("Producer").
+This Broker Producer Agreement ("Agreement") is between **PaigeAgent / Paige Agent AI LLC** ("PaigeAgent") and the individual or entity registering as a broker, affiliate, or independent producer ("Producer").
 
 ## 1. Independent contractor relationship
 Producer is an **independent contractor**, not an employee, agent, partner, or joint venturer of PaigeAgent. Producer is solely responsible for all federal, state, and local taxes (including self-employment tax) on amounts paid by PaigeAgent, and will provide a current IRS Form **W-9** (or W-8 for non-US persons) before any commission is paid.
