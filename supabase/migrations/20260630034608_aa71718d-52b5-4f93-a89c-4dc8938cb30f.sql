@@ -83,7 +83,7 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
--- Clear Bradley's orphan linked_user_id so the system knows he's CRM-only,
+-- Clear the client's orphan linked_user_id so the system knows he's CRM-only,
 -- then trigger fires via the UPDATE to create his business stub.
 DO $$
 BEGIN
