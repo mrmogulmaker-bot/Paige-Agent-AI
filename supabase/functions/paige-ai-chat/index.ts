@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { gatewayCompat } from "../_shared/claude.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
@@ -291,17 +292,17 @@ ${transcript}
 JSON:`;
 
       const [summaryResponse, milestoneResponse, preferenceResponse] = await Promise.all([
-        fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        gatewayCompat("anthropic", {
           method: "POST",
           headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: summaryPrompt }] }),
         }),
-        fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        gatewayCompat("anthropic", {
           method: "POST",
           headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: milestonePrompt }] }),
         }),
-        fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        gatewayCompat("anthropic", {
           method: "POST",
           headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: preferencePrompt }] }),
@@ -3045,7 +3046,7 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
     }
 
     // Call AI
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${lovableApiKey}`,
@@ -3952,7 +3953,7 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
         ...toolResults,
       ];
 
-      const followUpResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const followUpResponse = await gatewayCompat("anthropic", {
         method: "POST",
         headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -4098,7 +4099,7 @@ function extractKeywords(text: string): string {
 }
 
 async function runDocumentReadCheck(base64: string, lovableApiKey: string) {
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const response = await gatewayCompat("anthropic", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${lovableApiKey}`,
@@ -4158,7 +4159,7 @@ async function runStructuredExtractionAndSync(
 
   try {
     // Step 1: Extract structured JSON from the analysis via a second AI call
-    const extractionResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const extractionResponse = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${lovableApiKey}`,

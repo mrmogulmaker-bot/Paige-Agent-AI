@@ -5,6 +5,7 @@
 //   - PaigeChat.tsx onDisconnect (ElevenLabs)
 //   - paige-voice-chat WebSocket onclose hook (OpenAI Realtime)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { gatewayCompat } from "../_shared/claude.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { extractFromTranscript, type ProfileSnapshot } from "../_shared/conversational-extract.ts";
@@ -57,7 +58,7 @@ CONVERSATION:
 JSON:`;
 
 async function callAI(prompt: string, lovableApiKey: string, model = "google/gemini-2.5-flash-lite") {
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const resp = await gatewayCompat("anthropic", {
     method: "POST",
     headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }] }),

@@ -196,12 +196,123 @@ export async function chatCompletionCompat(body: OpenAIStyleBody): Promise<any> 
 // swapping `fetch("https://ai.gateway.lovable.dev/v1/chat/completions", init)`
 // for `gatewayCompat("anthropic", init)`. (Streaming call sites are handled
 // separately; do NOT use this for stream:true requests.)
+// Translate an OpenAI-/gateway-style body into an Anthropic Messages request object.
+function buildClaudeRequest(body: OpenAIStyleBody): Record<string, unknown> {
+  const systemParts: string[] = [];
+  const msgs: ClaudeMessage[] = [];
+  for (const m of body.messages ?? []) {
+    const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+    if (m.role === "system") { systemParts.push(content); continue; }
+    if (m.role === "tool") {
+      msgs.push({ role: "user", content: [{ type: "tool_result", tool_use_id: (m as any).tool_call_id, content }] });
+      continue;
+    }
+    msgs.push({ role: m.role === "assistant" ? "assistant" : "user", content });
+  }
+  let system = systemParts.join("\n\n");
+  if (body.response_format?.type && /json/.test(body.response_format.type)) {
+    system = (system ? system + "\n\n" : "") +
+      "Respond with a single valid JSON value only. No prose, no markdown fences.";
+  }
+  const tools = body.tools?.map((t) => ({
+    name: t.function.name,
+    description: t.function.description ?? "",
+    input_schema: t.function.parameters ?? { type: "object", properties: {} },
+  }));
+  const req: Record<string, unknown> = {
+    model: tierModel(tierForLegacyModel(body.model)),
+    max_tokens: body.max_tokens ?? 2048,
+    messages: msgs,
+  };
+  if (system) req.system = system;
+  if (body.temperature != null) req.temperature = body.temperature;
+  if (tools?.length) { req.tools = tools; req.tool_choice = body.tool_choice ? { type: "auto" } : { type: "auto" }; }
+  return req;
+}
+
+// Call Anthropic with stream:true and translate its SSE events into OpenAI-style
+// SSE (`data: {choices:[{delta:{content|tool_calls}, finish_reason}]}` ... `data: [DONE]`),
+// so existing frontends/edge readers that parse the OpenAI stream keep working.
+async function streamAnthropicAsOpenAI(
+  reqBody: Record<string, unknown>,
+): Promise<{ ok: boolean; status: number; body?: ReadableStream<Uint8Array> }> {
+  const resp = await fetch(ANTHROPIC_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey(),
+      "anthropic-version": ANTHROPIC_VERSION,
+    },
+    body: JSON.stringify({ ...reqBody, stream: true }),
+  });
+  if (!resp.ok || !resp.body) return { ok: false, status: resp.status };
+
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  const upstream = resp.body.getReader();
+  const send = (c: ReadableStreamDefaultController<Uint8Array>, obj: unknown) =>
+    c.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let buf = "";
+      let toolIndex = -1;
+      const blockToTool = new Map<number, number>();
+      let stopReason = "end_turn";
+      send(controller, { choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] });
+      try {
+        while (true) {
+          const { done, value } = await upstream.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            const t = line.trim();
+            if (!t.startsWith("data:")) continue;
+            const js = t.slice(5).trim();
+            if (!js) continue;
+            let ev: any;
+            try { ev = JSON.parse(js); } catch { continue; }
+            if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
+              toolIndex++;
+              blockToTool.set(ev.index, toolIndex);
+              send(controller, { choices: [{ index: 0, delta: { tool_calls: [{ index: toolIndex, id: ev.content_block.id, type: "function", function: { name: ev.content_block.name, arguments: "" } }] }, finish_reason: null }] });
+            } else if (ev.type === "content_block_delta") {
+              if (ev.delta?.type === "text_delta") {
+                send(controller, { choices: [{ index: 0, delta: { content: ev.delta.text }, finish_reason: null }] });
+              } else if (ev.delta?.type === "input_json_delta") {
+                const ti = blockToTool.get(ev.index) ?? 0;
+                send(controller, { choices: [{ index: 0, delta: { tool_calls: [{ index: ti, function: { arguments: ev.delta.partial_json } }] }, finish_reason: null }] });
+              }
+            } else if (ev.type === "message_delta" && ev.delta?.stop_reason) {
+              stopReason = ev.delta.stop_reason;
+            } else if (ev.type === "message_stop") {
+              send(controller, { choices: [{ index: 0, delta: {}, finish_reason: stopReason === "tool_use" ? "tool_calls" : "stop" }] });
+            }
+          }
+        }
+      } catch (_e) {
+        // fall through to DONE so the client stream terminates cleanly
+      } finally {
+        controller.enqueue(enc.encode("data: [DONE]\n\n"));
+        controller.close();
+      }
+    },
+  });
+  return { ok: true, status: 200, body: stream };
+}
+
 export async function gatewayCompat(
   _url: string,
   init: { body?: string; method?: string; headers?: unknown },
-): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
+): Promise<{ ok: boolean; status: number; body?: ReadableStream<Uint8Array>; json: () => Promise<any>; text: () => Promise<string> }> {
+  const parsed: OpenAIStyleBody & { stream?: boolean } = init?.body ? JSON.parse(init.body) : ({} as any);
   try {
-    const parsed = init?.body ? JSON.parse(init.body) : {};
+    if (parsed.stream === true) {
+      const r = await streamAnthropicAsOpenAI(buildClaudeRequest(parsed));
+      return { ok: r.ok, status: r.status, body: r.body, json: async () => ({}), text: async () => "" };
+    }
     const data = await chatCompletionCompat(parsed);
     return { ok: true, status: 200, json: async () => data, text: async () => JSON.stringify(data) };
   } catch (e) {
