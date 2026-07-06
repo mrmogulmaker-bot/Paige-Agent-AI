@@ -2,9 +2,9 @@
 // Voyage AI embeddings for Paige edge functions (Anthropic-ecosystem partner).
 // Replaces OpenAI text-embedding-3-small (1536) and Gemini gemini-embedding-001 (3072).
 //
-// NOTE (pending Antonio confirm): default model voyage-3 => 1024 dimensions.
-// The pgvector columns must be sized to VOYAGE_DIMS via the R5 schema migration,
-// and every embed call site must use the SAME model so vectors are comparable.
+// Default model voyage-3 => 1024 dimensions. The pgvector columns are sized to
+// VOYAGE_DIMS via the R5 schema migration, and every embed call site must use the
+// SAME model so vectors are comparable.
 
 const VOYAGE_URL = "https://api.voyageai.com/v1/embeddings";
 export const VOYAGE_MODEL = "voyage-3";
