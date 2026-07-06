@@ -3,6 +3,7 @@
 // Routes invocations to local Edge Functions or to LangGraph via paige-bridge.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { gatewayCompat } from "../_shared/claude.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -164,13 +165,13 @@ async function invokeSoft(
   input: Record<string, unknown>,
   _context: OrchestratorRequest["context"],
 ) {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  const apiKey = "unused";
   if (!apiKey) return { status: 503, body: { ok: false, error: "LOVABLE_API_KEY not configured" } };
   if (!agent.system_prompt) return { status: 500, body: { ok: false, error: `Soft agent ${agent.slug} missing system_prompt` } };
   const cfg = (agent.config ?? {}) as Record<string, unknown>;
   const model = (cfg.model as string | undefined) ?? "google/gemini-2.5-flash";
   const userPayload = typeof input === "string" ? input : JSON.stringify(input);
-  const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const resp = await gatewayCompat("anthropic", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({

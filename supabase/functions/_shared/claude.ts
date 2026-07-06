@@ -189,3 +189,25 @@ export async function chatCompletionCompat(body: OpenAIStyleBody): Promise<any> 
       : undefined,
   };
 }
+
+// Drop-in replacement for `fetch(gatewayUrl, init)` on NON-streaming chat calls.
+// Returns a Response-like object so existing `.ok` / `.status` / `await x.json()`
+// handling keeps working unchanged — the only migration edit at a call site is
+// swapping `fetch("https://ai.gateway.lovable.dev/v1/chat/completions", init)`
+// for `gatewayCompat("anthropic", init)`. (Streaming call sites are handled
+// separately; do NOT use this for stream:true requests.)
+export async function gatewayCompat(
+  _url: string,
+  init: { body?: string; method?: string; headers?: unknown },
+): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
+  try {
+    const parsed = init?.body ? JSON.parse(init.body) : {};
+    const data = await chatCompletionCompat(parsed);
+    return { ok: true, status: 200, json: async () => data, text: async () => JSON.stringify(data) };
+  } catch (e) {
+    const msg = String((e as Error)?.message ?? e);
+    const m = msg.match(/Anthropic (\d{3})/);
+    const status = m ? Number(m[1]) : 500;
+    return { ok: false, status, json: async () => ({ error: msg }), text: async () => msg };
+  }
+}

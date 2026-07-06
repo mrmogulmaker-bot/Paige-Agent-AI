@@ -3,8 +3,9 @@
 // market brief (trends, top competitors, signals) for a given query.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
+import { gatewayCompat } from "../_shared/claude.ts";
 const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const LOVABLE_API_KEY = "unused";
 
 function ok(d: unknown, status = 200) {
   return new Response(JSON.stringify(d), {
@@ -45,7 +46,7 @@ Deno.serve(async (req) => {
   let brief = "";
   if (LOVABLE_API_KEY && sources.length > 0) {
     const ctx = sources.map((s, i) => `[${i + 1}] ${s.title}\n${s.description}\n${s.url}`).join("\n\n");
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiRes = await gatewayCompat("anthropic", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
       body: JSON.stringify({
