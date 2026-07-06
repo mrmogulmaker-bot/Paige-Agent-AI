@@ -1,6 +1,7 @@
 // Semantic search across tenant-private chunks merged with the global Mogul canon.
 // Logs a metadata-only telemetry row (sha256 hash of query, never raw text).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 
@@ -22,7 +23,7 @@ async function sha256(s: string): Promise<string> {
 }
 
 async function embed(text: string, apiKey: string): Promise<number[]> {
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+  const r = await embeddingsCompat("voyage", {
     method: "POST",
     headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: "google/gemini-embedding-001", input: text }),
@@ -78,7 +79,7 @@ serve(async (req) => {
       tenantId = prof?.active_tenant_id ?? null;
     }
 
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
+    const apiKey = "unused";
     if (!apiKey) {
       return new Response(JSON.stringify({ error: "LOVABLE_API_KEY missing" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -64,3 +64,28 @@ export async function voyageEmbedOne(text: string, opts: VoyageOpts = {}): Promi
   const [v] = await voyageEmbed(text, opts);
   return v;
 }
+
+// Drop-in replacement for `fetch(embeddingsUrl, init)` — mimics the OpenAI/gateway
+// embeddings response shape ({data:[{index,embedding}]}) via Voyage, so existing
+// call sites migrate by swapping the fetch target only:
+//   fetch("https://api.openai.com/v1/embeddings", init)  ->  embeddingsCompat("voyage", init)
+//   fetch("https://ai.gateway.lovable.dev/v1/embeddings", init) -> embeddingsCompat("voyage", init)
+// (input_type is left unset for now — symmetric embeddings work; query/document
+//  tuning is a future optimization.)
+export async function embeddingsCompat(
+  _url: string,
+  init: { body?: string; method?: string; headers?: unknown },
+): Promise<{ ok: boolean; status: number; json: () => Promise<any>; text: () => Promise<string> }> {
+  try {
+    const parsed = init?.body ? JSON.parse(init.body) : {};
+    const vecs = await voyageEmbed(parsed.input, {});
+    const data = vecs.map((embedding, index) => ({ object: "embedding", index, embedding }));
+    const payload = { object: "list", model: VOYAGE_MODEL, data };
+    return { ok: true, status: 200, json: async () => payload, text: async () => JSON.stringify(payload) };
+  } catch (e) {
+    const msg = String((e as Error)?.message ?? e);
+    const m = msg.match(/Voyage (\d{3})/);
+    const status = m ? Number(m[1]) : 500;
+    return { ok: false, status, json: async () => ({ error: msg }), text: async () => msg };
+  }
+}
