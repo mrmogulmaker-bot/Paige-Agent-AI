@@ -1,6 +1,6 @@
 // Edge function: proxy to MMA OS bridge v15 for member-journey reads.
 // Verbs: get_journey, set_journey_stage, auto_compute_stage
-// Returns a graceful stub when MMA_OS_BRIDGE_URL/KEY are not configured so the
+// Returns a graceful stub when PAIGE_OS_BRIDGE_URL/KEY are not configured so the
 // Paige UI can render its shell.
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -26,14 +26,14 @@ Deno.serve(async (req) => {
       return json({ error: `Unknown verb: ${verb}` }, 400);
     }
 
-    const baseUrl = Deno.env.get("MMA_OS_BRIDGE_URL");
-    const apiKey = Deno.env.get("MMA_OS_BRIDGE_API_KEY");
+    const baseUrl = Deno.env.get("PAIGE_OS_BRIDGE_URL");
+    const apiKey = Deno.env.get("PAIGE_OS_BRIDGE_API_KEY");
 
     if (!baseUrl || !apiKey) {
       return json({
         ok: true,
         stub: true,
-        message: "MMA_OS_BRIDGE_URL / MMA_OS_BRIDGE_API_KEY not configured yet",
+        message: "PAIGE_OS_BRIDGE_URL / PAIGE_OS_BRIDGE_API_KEY not configured yet",
         data: stubFor(verb),
       });
     }

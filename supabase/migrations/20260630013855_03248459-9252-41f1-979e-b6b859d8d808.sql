@@ -341,11 +341,11 @@ VALUES
    'documents',
    ARRAY['draft a document','send a document','email a proposal','send the client a summary'],
    'external_send',
-   ARRAY['lovable_ai','resend','pdf_render','communication_log'],
+   ARRAY['anthropic','resend','pdf_render','communication_log'],
    3,
    '[
      {"id":"gather","tool":"context","desc":"Pull contact + recent activity"},
-     {"id":"draft","tool":"lovable_ai","desc":"Draft document body from prompt + context"},
+     {"id":"draft","tool":"anthropic","desc":"Draft document body from prompt + context"},
      {"id":"render","tool":"pdf_render","desc":"Render branded PDF"},
      {"id":"send","tool":"resend","desc":"Email PDF to contact"},
      {"id":"log","tool":"communication_log","desc":"Log send to history"}
@@ -370,13 +370,13 @@ VALUES
    'strategy',
    ARRAY['build a game plan','step-by-step plan','create a roadmap','what should they do next'],
    'draft',
-   ARRAY['lovable_ai','rag','firecrawl','client_memory'],
+   ARRAY['anthropic','rag','firecrawl','client_memory'],
    0,
    '[
      {"id":"context","tool":"context","desc":"Pull client profile + readiness lens + memory"},
      {"id":"research","tool":"rag","desc":"Retrieve KB sections relevant to client stage"},
      {"id":"web","tool":"firecrawl","desc":"Optional fresh web research on niche/lender"},
-     {"id":"synthesize","tool":"lovable_ai","desc":"Compose stage-aware action roadmap"},
+     {"id":"synthesize","tool":"anthropic","desc":"Compose stage-aware action roadmap"},
      {"id":"save","tool":"client_memory","desc":"Save as game_plan record"}
    ]'::jsonb),
   ('research_to_concept_brief',
@@ -385,9 +385,9 @@ VALUES
    'research',
    ARRAY['research this','concept brief','give me a brief on','run research'],
    'read_only',
-   ARRAY['firecrawl','lovable_ai'],
+   ARRAY['firecrawl','anthropic'],
    0,
    '[
      {"id":"scrape","tool":"firecrawl","desc":"Search + scrape top sources"},
-     {"id":"synthesize","tool":"lovable_ai","desc":"Produce structured brief"}
+     {"id":"synthesize","tool":"anthropic","desc":"Produce structured brief"}
    ]'::jsonb);

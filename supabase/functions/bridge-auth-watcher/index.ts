@@ -9,8 +9,8 @@ import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get("SLA_WATCHER_CRON_SECRET") ?? "";
-const MMA_OS_BRIDGE_URL = Deno.env.get("MMA_OS_BRIDGE_URL") ?? "";
-const MMA_OS_BRIDGE_API_KEY = Deno.env.get("MMA_OS_BRIDGE_API_KEY") ?? "";
+const PAIGE_OS_BRIDGE_URL = Deno.env.get("PAIGE_OS_BRIDGE_URL") ?? "";
+const PAIGE_OS_BRIDGE_API_KEY = Deno.env.get("PAIGE_OS_BRIDGE_API_KEY") ?? "";
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -90,13 +90,13 @@ Deno.serve(async (req) => {
   });
 
   // 2. Telegram via MMA OS bridge (best-effort)
-  if (MMA_OS_BRIDGE_URL && MMA_OS_BRIDGE_API_KEY) {
+  if (PAIGE_OS_BRIDGE_URL && PAIGE_OS_BRIDGE_API_KEY) {
     try {
-      await fetch(MMA_OS_BRIDGE_URL, {
+      await fetch(PAIGE_OS_BRIDGE_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${MMA_OS_BRIDGE_API_KEY}`,
+          Authorization: `Bearer ${PAIGE_OS_BRIDGE_API_KEY}`,
         },
         body: JSON.stringify({
           verb: "push_admin_notification",
