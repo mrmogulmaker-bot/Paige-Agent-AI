@@ -46,7 +46,7 @@ export function HeroSection() {
     <section
       ref={sectionRef}
       onMouseMove={onMove}
-      className="relative isolate overflow-hidden bg-black min-h-[92vh] flex items-end"
+      className="relative isolate overflow-hidden bg-background min-h-[92vh] flex items-end"
       style={{ ["--mx" as string]: "50%", ["--my" as string]: "42%" }}
     >
       {/* Cinematic film — full-bleed, seamless loop */}
@@ -64,10 +64,12 @@ export function HeroSection() {
         <source src="/paige/paige-hero.mp4" type="video/mp4" />
       </video>
 
-      {/* Legibility gradient — dark floor for the copy, clear at the top */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/30 pointer-events-none" />
+      {/* Legibility gradient — subtle, clearest at the top */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/15 pointer-events-none" />
       {/* Brand tint — ties the frame to the purple identity */}
       <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_115%,rgba(124,58,237,0.35),transparent_55%)] pointer-events-none mix-blend-screen" />
+      {/* Bottom blend — melts the film into the page so the next section flows out of it */}
+      <div className="absolute inset-x-0 bottom-0 h-52 bg-gradient-to-b from-transparent to-background pointer-events-none" />
       {/* Cursor spotlight — follows the mouse across the footage */}
       <div
         className="absolute inset-0 pointer-events-none opacity-70 transition-opacity duration-300"
@@ -98,30 +100,22 @@ export function HeroSection() {
         </button>
       </div>
 
-      {/* Title card */}
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 lg:pb-24">
-        <div className="max-w-3xl space-y-7 animate-fade-in">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15">
-            <span className="flex h-2 w-2 rounded-full bg-[#c084fc] animate-pulse" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/80">
-              Meet Paige · Your AI Operating System
+      {/* Slim caption bar — a single line across the bottom of the film */}
+      <div className="relative z-10 w-full animate-fade-in">
+        <h1 className="sr-only">
+          Paige — the AI operating system for coaches, consultants, and agencies
+        </h1>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 lg:pb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-center gap-3 text-sm sm:text-[15px] text-white/85 max-w-xl leading-snug drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)]">
+            <span className="flex h-1.5 w-1.5 shrink-0 rounded-full bg-[#c084fc] animate-pulse" />
+            <span>
+              <span className="font-semibold text-white">Meet Paige</span>
+              {" "}— the autonomous operating system for coaches, consultants &amp;
+              agencies.
             </span>
-          </div>
-
-          <h1 className="text-6xl lg:text-8xl font-black text-white leading-[0.9] tracking-[-0.03em] drop-shadow-[0_4px_30px_rgba(0,0,0,0.6)]">
-            The Operating<br className="hidden sm:block" /> System for{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-br from-[#c084fc] via-[#a855f7] to-[#7c3aed] drop-shadow-[0_0_40px_rgba(168,85,247,0.5)]">
-              Scale.
-            </span>
-          </h1>
-
-          <p className="text-lg lg:text-xl text-white/80 leading-relaxed max-w-md drop-shadow-[0_2px_12px_rgba(0,0,0,0.7)]">
-            The autonomous OS for coaches, consultants &amp; agencies.
           </p>
-
-          <div className="flex flex-wrap gap-4 pt-1">
+          <div className="flex gap-3 shrink-0">
             <Button
-              size="lg"
               className="bg-gradient-to-br from-[#a855f7] to-[#7c3aed] text-white hover:from-[#b06bff] hover:to-[#8b40f0] font-bold shadow-[0_10px_40px_rgba(124,58,237,0.5)] hover:scale-105 transition-all border-0"
               onClick={() => navigate("/auth?mode=signup")}
             >
@@ -129,7 +123,6 @@ export function HeroSection() {
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
             <Button
-              size="lg"
               variant="outline"
               className="bg-white/5 backdrop-blur-md text-white border-white/20 hover:bg-white/10 hover:text-white"
               onClick={() =>

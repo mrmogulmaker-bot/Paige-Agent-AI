@@ -18,6 +18,14 @@ import { FAQSection } from "@/components/landing/FAQSection";
 import { Footer } from "@/components/landing/Footer";
 import { IntegrationsSection } from "@/components/landing/IntegrationsSection";
 import { SiteBackground } from "@/components/landing/SiteBackground";
+import { Reveal } from "@/components/landing/Reveal";
+
+/** Light trim between the dark bands — a faint purple hairline. */
+const SectionDivider = () => (
+  <div className="max-w-7xl mx-auto px-6">
+    <div className="h-px bg-gradient-to-r from-transparent via-[#a855f7]/30 to-transparent" />
+  </div>
+);
 
 const Index = () => {
   useEffect(() => {
@@ -43,16 +51,23 @@ const Index = () => {
       <SiteBackground />
       <Header />
       <HeroSection />
-      <ValuePropsSection />
-      <HowPaigeWorksSection />
+      <Reveal><ValuePropsSection /></Reveal>
+      <SectionDivider />
+      <Reveal><HowPaigeWorksSection /></Reveal>
+      <SectionDivider />
       <div id="what-paige-knows">
-        <WhatPaigeKnowsSection />
+        <Reveal><WhatPaigeKnowsSection /></Reveal>
       </div>
-        <PricingSection />
-        <IntegrationsSection />
-        <TestimonialsSection />
-      <TrustSecuritySection />
-      <FAQSection />
+      <SectionDivider />
+      <Reveal><PricingSection /></Reveal>
+      <SectionDivider />
+      <Reveal><IntegrationsSection /></Reveal>
+      <SectionDivider />
+      <Reveal><TestimonialsSection /></Reveal>
+      <SectionDivider />
+      <Reveal><TrustSecuritySection /></Reveal>
+      <SectionDivider />
+      <Reveal><FAQSection /></Reveal>
       <Footer />
     </div>
   );
