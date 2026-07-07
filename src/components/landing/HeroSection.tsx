@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { PaigeHeroFigure } from "./PaigeHeroFigure";
 
 /**
  * Hero — Operator Command Center direction.
@@ -25,9 +24,9 @@ export function HeroSection() {
       <div className="absolute inset-0 pointer-events-none opacity-[0.05] [background-image:linear-gradient(to_right,#fff_1px,transparent_1px),linear-gradient(to_bottom,#fff_1px,transparent_1px)] [background-size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,#000_35%,transparent_78%)]" />
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-          {/* Left — copy */}
-          <div className="space-y-8 animate-fade-in">
+        <div className="flex flex-col items-center text-center max-w-3xl mx-auto">
+          {/* Copy */}
+          <div className="space-y-8 animate-fade-in flex flex-col items-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
               <span className="flex h-2 w-2 rounded-full bg-gold animate-pulse" />
               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">
@@ -108,39 +107,6 @@ export function HeroSection() {
             </p>
           </div>
 
-          {/* Right — engine console */}
-          <div
-            className="relative animate-fade-in"
-            style={{ animationDelay: "0.15s" }}
-          >
-            <PaigeHeroFigure />
-
-            {/* Floating status — API health */}
-            <div className="hidden sm:flex absolute -right-6 top-1/4 bg-card/90 backdrop-blur-md border border-white/10 p-3 rounded-xl shadow-2xl z-20 items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-fundability-excellent/10 flex items-center justify-center">
-                <div className="w-2 h-2 rounded-full bg-fundability-excellent animate-pulse" />
-              </div>
-              <div>
-                <div className="text-[10px] text-white/75 font-bold uppercase tracking-wider">
-                  API Health
-                </div>
-                <div className="text-xs text-white font-bold">99.9% Uptime</div>
-              </div>
-            </div>
-
-            {/* Floating status — queue */}
-            <div className="hidden sm:flex absolute -left-8 bottom-1/4 bg-card/90 backdrop-blur-md border border-white/10 p-3 rounded-xl shadow-2xl z-20 items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gold/15 flex items-center justify-center">
-                <div className="w-3 h-3 rounded-sm bg-gold rotate-45" />
-              </div>
-              <div>
-                <div className="text-[10px] text-white/75 font-bold uppercase tracking-wider">
-                  Queue
-                </div>
-                <div className="text-xs text-white font-bold">842 Tasks</div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </section>
