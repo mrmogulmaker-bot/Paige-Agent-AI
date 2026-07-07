@@ -128,8 +128,8 @@ const PageSuspense = ({ children }: { children: React.ReactNode }) => (
   <React.Suspense fallback={<SuspenseFallback />}>{children}</React.Suspense>
 );
 
-// Keep the floating chat widget off the standalone premium landing preview.
-const CHATBOT_HIDDEN_ROUTES = ["/premium"];
+// Keep the floating chat widget off the premium landing (homepage + preview).
+const CHATBOT_HIDDEN_ROUTES = ["/", "/premium"];
 const GatedChatbot = () => {
   const { pathname } = useLocation();
   if (CHATBOT_HIDDEN_ROUTES.includes(pathname)) return null;

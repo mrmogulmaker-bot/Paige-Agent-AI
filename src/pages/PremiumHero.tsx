@@ -176,6 +176,72 @@ function DayInLife() {
   );
 }
 
+/**
+ * PaigeRings — crisp gold orbital rings over Paige (the orb). They spin gently
+ * and, more importantly, tilt toward the cursor so you can "move the rings" with
+ * the mouse. Pure CSS 3D (vector-crisp, unlike the soft particle field); runs on
+ * a single rAF writing transforms directly (no per-frame React renders).
+ */
+function PaigeRings() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    let spin = 0;
+    let curX = 60;
+    let curY = 0;
+    let tgtX = 60;
+    let tgtY = 0;
+    const onMove = (e: PointerEvent) => {
+      const nx = (e.clientX / window.innerWidth) * 2 - 1;
+      const ny = (e.clientY / window.innerHeight) * 2 - 1;
+      tgtY = nx * 32;
+      tgtX = 60 + ny * -18;
+    };
+    const loop = () => {
+      spin += 0.12;
+      curX += (tgtX - curX) * 0.05;
+      curY += (tgtY - curY) * 0.05;
+      if (ref.current) ref.current.style.transform = `rotateX(${curX}deg) rotateY(${curY}deg) rotateZ(${spin}deg)`;
+      raf = requestAnimationFrame(loop);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    loop();
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", onMove);
+    };
+  }, []);
+
+  const ring = (size: number, tilt: string, opacity: number) => (
+    <span
+      aria-hidden
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        width: size,
+        height: size,
+        marginLeft: -size / 2,
+        marginTop: -size / 2,
+        borderRadius: "50%",
+        border: `1.5px solid rgba(212,175,55,${opacity})`,
+        boxShadow: "0 0 16px rgba(212,175,55,0.18)",
+        transform: tilt,
+      }}
+    />
+  );
+
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-[40%] hidden -translate-x-1/2 -translate-y-1/2 lg:block" style={{ perspective: 1100 }}>
+      <div ref={ref} style={{ transformStyle: "preserve-3d", width: 1, height: 1 }}>
+        {ring(380, "rotateX(0deg)", 0.78)}
+        {ring(310, "rotateY(64deg)", 0.6)}
+        {ring(460, "rotateX(58deg) rotateY(22deg)", 0.5)}
+      </div>
+    </div>
+  );
+}
+
 function FloatingPanels() {
   return (
     <>
@@ -352,8 +418,9 @@ export default function PremiumHero() {
       {/* Hero — pinned; Paige (the orb) powers up + splits as you scroll, with
           her workspace drifting around her */}
       <section ref={heroRef} className="relative z-10 h-screen w-full">
-        {/* Midground: floating workspace panels around Paige */}
+        {/* Midground: crisp gold rings + floating workspace panels around Paige */}
         <div ref={panelsRef} className="pointer-events-none absolute inset-0">
+          <PaigeRings />
           <FloatingPanels />
         </div>
 
@@ -375,7 +442,8 @@ export default function PremiumHero() {
               textShadow: "0 2px 40px rgba(0,0,0,0.85)",
             }}
           >
-            <span className="block text-shimmer-purple">Meet Paige.</span>
+            <span className="text-white">Meet </span>
+            <span className="bg-gradient-to-br from-[#f4e2a8] via-[#e8c66a] to-[#d4af37] bg-clip-text text-transparent">Paige.</span>
           </h1>
           <p className="mt-4 text-2xl font-semibold text-white/90 md:text-3xl" style={{ fontFamily: HEAD }}>
             She runs your coaching business.
