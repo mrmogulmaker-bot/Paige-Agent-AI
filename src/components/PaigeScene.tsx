@@ -53,43 +53,93 @@ function OrbitRings({ reduced }: { reduced: boolean }) {
   );
 }
 
-/** The companion — gold core + orbiting refracting plates. Fully procedural. */
+/**
+ * The companion — a gold core + orbiting refracting plates that actually FLIES
+ * a wide path across the whole scene. Plates tighten around the core as it
+ * accelerates; a golden particle trail follows it. Fully procedural.
+ */
+const PLATES = 6;
+const TRAIL = 7;
 function Companion({ reduced }: { reduced: boolean }) {
-  const orbit = useRef<THREE.Group>(null);
+  const root = useRef<THREE.Group>(null);
   const core = useRef<THREE.Mesh>(null);
-  const plates = useRef<THREE.Group>(null);
+  const platesGroup = useRef<THREE.Group>(null);
+  const coreMat = useRef<THREE.MeshStandardMaterial>(null);
+  const plateRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const trailRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const prev = useRef(new THREE.Vector3(0, 0.85, 0));
+  const smoothSpeed = useRef(0);
 
   const plateEls = useMemo(
     () =>
-      Array.from({ length: 5 }).map((_, i) => {
-        const a = (i / 5) * Math.PI * 2;
-        return (
-          <mesh key={i} position={[Math.cos(a) * 0.19, 0, Math.sin(a) * 0.19]} rotation={[0, -a, 0.32]}>
-            <boxGeometry args={[0.15, 0.02, 0.1]} />
-            <meshStandardMaterial color={GOLD} emissive={GOLD_HI} emissiveIntensity={0.35} metalness={1} roughness={0.22} envMapIntensity={2.2} />
-          </mesh>
-        );
-      }),
+      Array.from({ length: PLATES }).map((_, i) => (
+        <mesh key={i} ref={(el) => (plateRefs.current[i] = el)} rotation={[0, -(i / PLATES) * Math.PI * 2, 0.32]}>
+          <boxGeometry args={[0.15, 0.02, 0.1]} />
+          <meshStandardMaterial color={GOLD} emissive={GOLD_HI} emissiveIntensity={0.4} metalness={1} roughness={0.22} envMapIntensity={2.2} />
+        </mesh>
+      )),
     [],
   );
 
-  useFrame((s) => {
-    const t = reduced ? 0.6 : s.clock.elapsedTime;
-    if (orbit.current) {
-      orbit.current.position.set(0.75 + Math.cos(t * 0.6) * 0.55, 1.15 + Math.sin(t * 0.9) * 0.12, 0.5 + Math.sin(t * 0.6) * 0.45);
+  const trailEls = useMemo(
+    () =>
+      Array.from({ length: TRAIL }).map((_, i) => (
+        <mesh key={i} ref={(el) => (trailRefs.current[i] = el)}>
+          <sphereGeometry args={[0.05 * (1 - i / TRAIL) + 0.014, 12, 12]} />
+          <meshBasicMaterial color={GOLD_HI} transparent opacity={0.45 * (1 - i / TRAIL)} depthWrite={false} />
+        </mesh>
+      )),
+    [],
+  );
+
+  useFrame((s, dt) => {
+    const t = s.clock.elapsedTime * (reduced ? 0.12 : 0.35);
+    // Wide roaming flight path across the hero.
+    const x = Math.sin(t * 0.9) * 2.4 + Math.sin(t * 0.37) * 0.9;
+    const y = 0.85 + Math.sin(t * 1.3) * 0.85 + Math.cos(t * 0.5) * 0.3;
+    const z = Math.cos(t * 0.8) * 1.1 + Math.sin(t * 0.29) * 0.5;
+
+    if (root.current) {
+      root.current.position.set(x, y, z);
+      const inst = root.current.position.distanceTo(prev.current) / Math.max(dt, 0.001);
+      prev.current.copy(root.current.position);
+      smoothSpeed.current += (inst - smoothSpeed.current) * 0.15;
     }
+    const sn = Math.min(1, smoothSpeed.current / 3.2); // 0 slow … 1 fast
+
+    // Plates tighten toward the core as it accelerates.
+    const r = 0.19 - sn * 0.09;
+    for (let i = 0; i < PLATES; i++) {
+      const a = (i / PLATES) * Math.PI * 2;
+      plateRefs.current[i]?.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+    }
+    if (platesGroup.current) platesGroup.current.rotation.y = -s.clock.elapsedTime * (0.8 + sn * 1.6);
     if (core.current) core.current.rotation.y += reduced ? 0.003 : 0.02;
-    if (plates.current) plates.current.rotation.y = -t * 0.8;
+    if (coreMat.current) coreMat.current.emissiveIntensity = 0.7 + sn * 0.9;
+
+    // Golden comet trail follows the core.
+    if (root.current) {
+      let target: THREE.Vector3 = root.current.position;
+      for (let i = 0; i < TRAIL; i++) {
+        const tm = trailRefs.current[i];
+        if (!tm) continue;
+        tm.position.lerp(target, reduced ? 1 : 0.35);
+        target = tm.position;
+      }
+    }
   });
 
   return (
-    <group ref={orbit}>
-      <mesh ref={core}>
-        <sphereGeometry args={[0.1, 32, 32]} />
-        <meshStandardMaterial color={GOLD_HI} emissive={GOLD_HI} emissiveIntensity={0.85} metalness={1} roughness={0.15} envMapIntensity={2.6} />
-      </mesh>
-      <group ref={plates}>{plateEls}</group>
-      <pointLight color={GOLD_HI} intensity={4} distance={3} decay={2} />
+    <group>
+      <group ref={root}>
+        <mesh ref={core}>
+          <sphereGeometry args={[0.1, 32, 32]} />
+          <meshStandardMaterial ref={coreMat} color={GOLD_HI} emissive={GOLD_HI} emissiveIntensity={0.85} metalness={1} roughness={0.15} envMapIntensity={2.6} />
+        </mesh>
+        <group ref={platesGroup}>{plateEls}</group>
+        <pointLight color={GOLD_HI} intensity={5} distance={3.5} decay={2} />
+      </group>
+      {trailEls}
     </group>
   );
 }
@@ -134,7 +184,6 @@ function PaigeFigure({ reduced }: { reduced: boolean }) {
       </mesh>
       <OrbitRings reduced={reduced} />
       <Sparkles count={40} scale={[2.2, 3.6, 2.2]} position={[0, 0.4, 0]} size={2} speed={reduced ? 0 : 0.25} color={GOLD_HI} opacity={0.7} />
-      <Companion reduced={reduced} />
     </group>
   );
 }
@@ -164,6 +213,9 @@ function Scene() {
       <Float speed={reduced ? 0 : 1} rotationIntensity={reduced ? 0 : 0.14} floatIntensity={reduced ? 0 : 0.4}>
         <PaigeFigure reduced={reduced} />
       </Float>
+
+      {/* Companion flies the whole scene in world space (not parented to Paige) */}
+      <Companion reduced={reduced} />
 
       {/* Gold + indigo particle field */}
       <Sparkles count={120} scale={[16, 10, 8]} size={2.4} speed={reduced ? 0 : 0.2} color={GOLD_HI} opacity={0.5} />
