@@ -3,6 +3,8 @@ import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { HeroCanvas } from "./HeroCanvas";
+import { HeroAgentBoard } from "./HeroAgentBoard";
+import paigeLogo from "@/assets/paige-logo-transparent.png";
 
 /**
  * Hero — Operator Command Center direction.
@@ -28,7 +30,7 @@ export function HeroSection() {
   ];
 
   return (
-    <section className="relative overflow-hidden bg-primary py-20 lg:py-28">
+    <section className="relative overflow-hidden bg-primary py-24 lg:py-32 min-h-[92vh] flex items-center">
       {/* GPU-rendered WebGL field (navy→gold, cursor-reactive) */}
       <HeroCanvas />
       {/* Background atmospherics — gold glows layered over the shader for depth */}
@@ -37,6 +39,8 @@ export function HeroSection() {
         <div className="absolute -bottom-24 -right-24 w-[32rem] h-[32rem] bg-gold/[0.07] rounded-full blur-[140px]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,hsl(var(--gold)/0.06),transparent_60%)]" />
       </div>
+      {/* Fine tech grid — masked to fade at the edges */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.05] [background-image:linear-gradient(to_right,#fff_1px,transparent_1px),linear-gradient(to_bottom,#fff_1px,transparent_1px)] [background-size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,#000_35%,transparent_78%)]" />
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
@@ -49,9 +53,9 @@ export function HeroSection() {
               </span>
             </div>
 
-            <h1 className="text-5xl lg:text-7xl font-bold text-white leading-[1.05] tracking-tight">
-              The Operating System for{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-gold to-gold-dark">
+            <h1 className="text-6xl lg:text-8xl font-black text-white leading-[0.92] tracking-[-0.03em]">
+              The Operating<br className="hidden sm:block" /> System for{" "}
+              <span className="relative text-transparent bg-clip-text bg-gradient-to-br from-gold via-gold to-gold-dark drop-shadow-[0_0_34px_hsl(var(--gold)/0.35)]">
                 Scale.
               </span>
             </h1>
@@ -89,10 +93,10 @@ export function HeroSection() {
             <div className="pt-8 flex items-center gap-8 border-t border-white/10">
               <div>
                 <div className="text-2xl font-bold text-white tabular-nums">
-                  $1.2B+
+                  50K+
                 </div>
                 <div className="text-xs text-white/75 uppercase tracking-widest">
-                  Volume Modeled
+                  Tasks Automated
                 </div>
               </div>
               <div className="w-px h-10 bg-white/10" />
@@ -172,33 +176,20 @@ export function HeroSection() {
                 </div>
               </div>
 
-              {/* Brain viz */}
-              <div className="relative h-40 w-full bg-black/40 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden mb-5">
-                <svg
-                  className="absolute inset-0 w-full h-full opacity-30"
-                  viewBox="0 0 400 160"
-                  preserveAspectRatio="none"
-                >
-                  <path
-                    d="M0 80 Q 100 30, 200 80 T 400 80"
-                    fill="none"
-                    stroke="hsl(var(--gold))"
-                    strokeWidth="1"
+              {/* Live agent board — Paige orchestrating the system in real time */}
+              <div className="relative h-64 w-full bg-black/40 rounded-2xl border border-white/5 overflow-hidden mb-5">
+                <HeroAgentBoard />
+                {/* Paige at the center of the system */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <img
+                    src={paigeLogo}
+                    alt="Paige"
+                    className="w-16 h-16 object-contain drop-shadow-[0_0_30px_hsl(var(--gold)/0.6)]"
                   />
-                  <path
-                    d="M0 100 Q 150 10, 300 100 T 400 100"
-                    fill="none"
-                    stroke="hsl(var(--gold))"
-                    strokeWidth="0.6"
-                    opacity="0.6"
-                  />
-                </svg>
-                <div className="z-10 text-center">
-                  <div className="w-14 h-14 rounded-full bg-gold/15 flex items-center justify-center border border-gold/30 mb-2 mx-auto">
-                    <div className="w-7 h-7 rounded-full bg-gold shadow-[0_0_24px_hsl(var(--gold)/0.7)] animate-pulse" />
-                  </div>
+                </div>
+                <div className="absolute bottom-3 inset-x-0 text-center pointer-events-none">
                   <div className="text-[10px] font-mono text-gold/90 uppercase tracking-widest">
-                    System Analysis Active
+                    Paige · orchestrating live
                   </div>
                 </div>
               </div>
