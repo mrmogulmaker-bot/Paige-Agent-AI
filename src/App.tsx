@@ -157,8 +157,9 @@ const App = () => (
           <MetaPixel />
           <ClientOnlyRouteGuard />
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<PageSuspense><PremiumHero /></PageSuspense>} />
             <Route path="/premium" element={<PageSuspense><PremiumHero /></PageSuspense>} />
+            <Route path="/legacy" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
