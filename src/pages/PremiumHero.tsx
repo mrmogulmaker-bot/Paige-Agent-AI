@@ -67,6 +67,13 @@ function Section({
   );
 }
 
+/** A faint gold hairline — a subtle premium trim between sections. */
+const GoldRule = () => (
+  <div className="mx-auto max-w-6xl px-6">
+    <div className="h-px bg-gradient-to-r from-transparent via-[#d4af37]/40 to-transparent" />
+  </div>
+);
+
 const FEATURES = [
   { icon: Users, title: "Client Management", body: "Every client, conversation, and task in one place — Paige surfaces what needs attention today." },
   { icon: Workflow, title: "Workflow Automation", body: "Onboarding, follow-ups, reminders — the repetitive work runs itself in the background." },
@@ -120,6 +127,8 @@ export default function PremiumHero() {
       );
 
       // Pin the hero and scrub the orb power-up → split → constellation.
+      // Pause the particle engine once scrolled past the hero (it sits behind
+      // frosted content anyway) and resume on the way back up — saves CPU.
       ScrollTrigger.create({
         trigger: hero,
         start: "top top",
@@ -127,6 +136,8 @@ export default function PremiumHero() {
         pin: true,
         scrub: 1,
         onUpdate: (self) => engineRef.current?.updateScrollProgress(self.progress),
+        onLeave: () => engineRef.current?.setRenderingEnabled(false),
+        onEnterBack: () => engineRef.current?.setRenderingEnabled(true),
       });
 
       // Fade the copy out as the orb splits.
@@ -139,6 +150,18 @@ export default function PremiumHero() {
     });
 
     return () => ctx.revert();
+  }, [engineRef]);
+
+  // Cursor parallax — feed the pointer (normalized from viewport center) to the
+  // orb so the constellation drifts under the mouse.
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const nx = (e.clientX / window.innerWidth) * 2 - 1;
+      const ny = (e.clientY / window.innerHeight) * 2 - 1;
+      engineRef.current?.setPointer(nx, ny);
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
   }, [engineRef]);
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
@@ -183,7 +206,10 @@ export default function PremiumHero() {
           ref={contentRef}
           className="absolute left-6 top-[58%] w-[min(88%,620px)] -translate-y-1/2 sm:left-[8%]"
         >
-          <div className="font-mono-label mb-5 text-[#22d3ee]">AI OPERATING SYSTEM</div>
+          <div className="mb-5 flex items-center gap-3">
+            <span className="font-mono-label text-[#22d3ee]">AI OPERATING SYSTEM</span>
+            <span aria-hidden className="h-px w-12 bg-gradient-to-r from-[#d4af37]/70 to-transparent" />
+          </div>
           <h1
             className="font-bold tracking-tight"
             style={{
@@ -223,8 +249,10 @@ export default function PremiumHero() {
         </div>
       </section>
 
-      {/* Content — frosted over the living constellation */}
-      <div className="relative z-10 bg-[#07040d]/80 backdrop-blur-xl">
+      {/* Content — frosted over the living constellation. Kept more opaque with
+          a lighter blur: backdrop-blur over an animating canvas is costly, so
+          this trims per-frame compositing while scrolling. */}
+      <div className="relative z-10 bg-[#07040d]/90 backdrop-blur-md">
         {/* Features */}
         <Section id="features" className="py-24">
           <motion.h2 variants={rise} className="mb-3 text-center text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
@@ -266,6 +294,8 @@ export default function PremiumHero() {
           </div>
         </Section>
 
+        <GoldRule />
+
         {/* Pricing */}
         <Section id="pricing" className="py-24">
           <motion.h2 variants={rise} className="mb-14 text-center text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
@@ -277,11 +307,11 @@ export default function PremiumHero() {
                 key={p.name}
                 variants={rise}
                 className={`relative flex flex-col rounded-2xl border p-7 ${
-                  p.highlight ? "border-[#a855f7]/60 bg-gradient-to-b from-[#a855f7]/[0.12] to-transparent shadow-[0_0_50px_rgba(124,58,237,0.25)]" : "border-white/10 bg-white/[0.03]"
+                  p.highlight ? "border-[#d4af37]/45 bg-gradient-to-b from-[#a855f7]/[0.12] to-transparent shadow-[0_0_50px_rgba(124,58,237,0.25)]" : "border-white/10 bg-white/[0.03]"
                 }`}
               >
                 {p.highlight && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-br from-[#a855f7] to-[#7c3aed] px-3 py-1 text-[10px] font-bold uppercase tracking-wider">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-br from-[#f0d878] to-[#d4af37] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#3a2a05]">
                     Most Popular
                   </span>
                 )}
@@ -294,7 +324,7 @@ export default function PremiumHero() {
                 <ul className="mb-8 flex-1 space-y-3">
                   {p.features.map((ft) => (
                     <li key={ft} className="flex items-start gap-2 text-sm text-white/75">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#c084fc]" />
+                      <Check className={`mt-0.5 h-4 w-4 shrink-0 ${p.highlight ? "text-[#e8c66a]" : "text-[#c084fc]"}`} />
                       {ft}
                     </li>
                   ))}
@@ -345,6 +375,8 @@ export default function PremiumHero() {
         {/* CTA */}
         <Section id="final-cta" className="py-24">
           <motion.div variants={rise} className="relative overflow-hidden rounded-3xl border border-[#a855f7]/30 bg-gradient-to-br from-[#a855f7]/[0.15] to-[#7c3aed]/[0.05] px-8 py-16 text-center">
+            {/* Gold trim along the top edge of the CTA card */}
+            <div aria-hidden className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-[#d4af37]/60 to-transparent" />
             <h2 className="mx-auto max-w-2xl text-4xl font-black md:text-5xl" style={{ fontFamily: HEAD }}>Run your entire operation from one engine.</h2>
             <p className="mx-auto mt-4 max-w-lg text-white/70">Start free. No card required to begin. Cancel anytime.</p>
             <button onClick={() => navigate("/auth?mode=signup")} className="mt-8 inline-flex items-center gap-2 rounded-full bg-white px-8 py-3 font-bold text-[#07040d] transition-transform hover:scale-105">
