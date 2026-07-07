@@ -242,6 +242,12 @@ export class ParticleEngine {
   animFrameId: number;
   isRunning: boolean;
   reducedMotion: boolean;
+  // Pointer parallax (interactive): target follows the cursor, pointer lerps.
+  pointer: { x: number; y: number };
+  pointerTarget: { x: number; y: number };
+  // Rendering gate — off when scrolled past the hero or the tab is hidden.
+  private wantRender: boolean;
+  private onVisibility: () => void;
   private splitOrbConfigs: OrbConfig[];
 
   constructor(canvas: HTMLCanvasElement) {
@@ -256,6 +262,10 @@ export class ParticleEngine {
     this.animFrameId = 0;
     this.isRunning = false;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.pointer = { x: 0, y: 0 };
+    this.pointerTarget = { x: 0, y: 0 };
+    this.wantRender = true;
+    this.onVisibility = () => this.syncRunning();
 
     // Final constellation positions (normalized 0-1)
     this.splitOrbConfigs = [
@@ -282,6 +292,26 @@ export class ParticleEngine {
     this.orbs.push(mainOrb);
 
     window.addEventListener('resize', () => this.resize());
+    document.addEventListener('visibilitychange', this.onVisibility);
+  }
+
+  // Pointer input in normalized [-1, 1] from viewport center (interactive).
+  setPointer(nx: number, ny: number) {
+    this.pointerTarget.x = Math.max(-1, Math.min(1, nx));
+    this.pointerTarget.y = Math.max(-1, Math.min(1, ny));
+  }
+
+  // External render gate (e.g. off once scrolled past the hero) to save CPU.
+  setRenderingEnabled(on: boolean) {
+    if (on === this.wantRender) return;
+    this.wantRender = on;
+    this.syncRunning();
+  }
+
+  private syncRunning() {
+    const shouldRun = this.wantRender && !document.hidden;
+    if (shouldRun && !this.isRunning) this.start();
+    else if (!shouldRun && this.isRunning) this.stop();
   }
 
   resize() {
@@ -317,15 +347,24 @@ export class ParticleEngine {
       this.time += 0.01;
     }
 
+    // Ease the pointer toward the cursor target for smooth parallax.
+    this.pointer.x += (this.pointerTarget.x - this.pointer.x) * 0.06;
+    this.pointer.y += (this.pointerTarget.y - this.pointer.y) * 0.06;
+    const shiftX = this.pointer.x * 42;
+    const shiftY = this.pointer.y * 30;
+
     // Set composite operation for glow
     this.ctx.globalCompositeOperation = 'lighter';
 
     for (const orb of this.orbs) {
-      const ox = orb.cx * this.width;
-      const oy = orb.cy * this.height;
+      const isCore = orb === this.orbs[0];
+      // Satellites parallax more than the core → depth under the cursor.
+      const depth = isCore ? 1 : 1.8;
+      const ox = orb.cx * this.width + shiftX * depth;
+      const oy = orb.cy * this.height + shiftY * depth;
 
       // Apply gentle orbital drift for satellite orbs
-      if (this.orbs.length > 1 && orb !== this.orbs[0]) {
+      if (this.orbs.length > 1 && !isCore) {
         orb.angleOffset += 0.002;
         const driftX = Math.sin(orb.angleOffset) * 0.02 * this.width;
         const driftY = Math.cos(orb.angleOffset * 0.7) * 0.015 * this.height;
@@ -452,6 +491,8 @@ export class ParticleEngine {
 
   destroy() {
     this.stop();
+    this.wantRender = false;
     window.removeEventListener('resize', () => this.resize());
+    document.removeEventListener('visibilitychange', this.onVisibility);
   }
 }
