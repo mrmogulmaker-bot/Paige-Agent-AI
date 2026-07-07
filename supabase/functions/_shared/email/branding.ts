@@ -10,7 +10,7 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { buildProvider, type EmailProvider, type TenantEmailProviderConfig } from "./providers.ts";
 
 export type EmailBranding = {
-  brandName: string; // e.g. "Paige", "Acme Credit"
+  brandName: string; // e.g. "Paige", "Acme Coaching"
   wordmark: string; // short uppercase mark shown in the header band
   tagline: string | null; // sub-line under the wordmark / footer
   logoUrl: string | null; // optional hosted logo; shell falls back to wordmark
