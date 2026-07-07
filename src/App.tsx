@@ -30,7 +30,7 @@ const lazyWithReload = <T extends React.ComponentType<any>>(
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { FloatingChatbot } from "./components/FloatingChatbot";
 import { MetaPixel } from "./components/seo/MetaPixel";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
@@ -46,6 +46,7 @@ import { usePageView } from "./hooks/useAnalytics";
 // Eagerly load only the public landing + auth pages (likely first-paint)
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+const PremiumHero = lazyWithReload(() => import("./pages/PremiumHero"));
 const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
 const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
 const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
@@ -127,6 +128,14 @@ const PageSuspense = ({ children }: { children: React.ReactNode }) => (
   <React.Suspense fallback={<SuspenseFallback />}>{children}</React.Suspense>
 );
 
+// Keep the floating chat widget off the standalone premium landing preview.
+const CHATBOT_HIDDEN_ROUTES = ["/premium"];
+const GatedChatbot = () => {
+  const { pathname } = useLocation();
+  if (CHATBOT_HIDDEN_ROUTES.includes(pathname)) return null;
+  return <FloatingChatbot />;
+};
+
 const AppInner = () => {
   useReferralTracking();
   usePageView();
@@ -149,6 +158,7 @@ const App = () => (
           <ClientOnlyRouteGuard />
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/premium" element={<PageSuspense><PremiumHero /></PageSuspense>} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
@@ -243,7 +253,7 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-          <FloatingChatbot />
+          <GatedChatbot />
         </BrowserRouter>
         </ImpersonationProvider>
         </RoleLensProvider>

@@ -409,4 +409,33 @@ All colors MUST be HSL.
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* ── Premium landing (/premium) — orb hero utilities ───────────────── */
+  .font-mono-label {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  /* Amethyst→white text shimmer for the hero accent line */
+  .text-shimmer-purple {
+    background: linear-gradient(90deg, #ffffff 0%, #a855f7 45%, #22d3ee 55%, #ffffff 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: shimmer-purple 5s linear infinite;
+  }
+
+  @keyframes shimmer-purple {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .text-shimmer-purple { animation: none; }
+  }
 }
