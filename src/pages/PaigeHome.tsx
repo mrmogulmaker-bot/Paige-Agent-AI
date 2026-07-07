@@ -13,7 +13,7 @@ import {
   Sparkles as SparkIcon,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 
 /**
  * PaigeHome — the gold + indigo Paige landing (route "/"). A complete, from-
@@ -89,6 +89,18 @@ const PLANS = [
   { name: "Practice", price: "$149", tagline: "Most coaches land here.", features: ["Everything in Solo", "Custom playbooks per coach", "Advanced signals & analytics", "Priority support"], highlight: true },
   { name: "Studio", price: "$349", tagline: "For the coach running the whole show.", features: ["Everything in Practice", "Multi-coach roster & routing", "White-label workspace", "Dedicated success partner"], highlight: false },
 ];
+
+/** Degrade gracefully: if the 3D scene ever throws, drop it and keep the
+ *  gradient + copy — the homepage must never white-screen. */
+class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 function Section({ id, className = "", children }: { id?: string; className?: string; children: React.ReactNode }) {
   return (
@@ -214,9 +226,11 @@ export default function PaigeHome() {
       {/* HERO */}
       <section id="hero" className="relative z-10 min-h-[92vh] w-full">
         <div className="absolute inset-0">
-          <Suspense fallback={<div className="absolute inset-0" />}>
-            <PaigeScene />
-          </Suspense>
+          <SceneBoundary>
+            <Suspense fallback={<div className="absolute inset-0" />}>
+              <PaigeScene />
+            </Suspense>
+          </SceneBoundary>
         </div>
         <div className="pointer-events-none absolute inset-0">
           <FloatingPanels />
