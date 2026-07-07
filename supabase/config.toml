@@ -84,12 +84,6 @@ project_id = "xygzykjyynhzqytbqnzu"
     verify_jwt = true
   [functions.n8n-get-executions]
     verify_jwt = true
-  [functions.ghl-get-contacts]
-    verify_jwt = true
-  [functions.ghl-send-email]
-    verify_jwt = true
-  [functions.ghl-send-sms]
-    verify_jwt = true
   [functions.send-telegram]
     verify_jwt = true
   [functions.web-search]

@@ -336,7 +336,6 @@ function NotificationsCommsPanel() {
 interface PaigeConfig {
   twilio_a2p_status?: "pending" | "approved" | "rejected" | "not_started";
   resend_domain_verified?: boolean;
-  ghl_fallback_enabled?: boolean;
   default_from_email?: string;
   default_from_sms_number?: string;
 }
@@ -407,16 +406,6 @@ function PlatformPipesPanel() {
           />
         </div>
 
-        <div className="flex items-start justify-between gap-4 py-1">
-          <div>
-            <Label className="text-sm font-medium">GHL fallback enabled</Label>
-            <p className="text-xs text-muted-foreground mt-1">Allow Paige to route through GHL when primary pipes are unavailable.</p>
-          </div>
-          <Switch
-            checked={!!config.ghl_fallback_enabled}
-            onCheckedChange={(c) => setConfig({ ...config, ghl_fallback_enabled: c })}
-          />
-        </div>
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">

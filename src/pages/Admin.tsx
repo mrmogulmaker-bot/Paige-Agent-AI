@@ -88,7 +88,6 @@ const AdminNotifications = lazy(() => import("@/pages/admin/AdminNotifications")
 const IntegrationsHub = lazy(() => import("@/pages/admin/IntegrationsHub"));
 const N8nIntegrationConfig = lazy(() => import("@/pages/admin/N8nIntegrationConfig"));
 const SubscriptionsRevenue = lazy(() => import("@/pages/admin/SubscriptionsRevenue"));
-const GhlIntegrationConfig = lazy(() => import("@/pages/admin/GhlIntegrationConfig"));
 const ZapierIntegrationConfig = lazy(() => import("@/pages/admin/ZapierIntegrationConfig"));
 const TelegramIntegrationConfig = lazy(() => import("@/pages/admin/TelegramIntegrationConfig"));
 const GmailIntegrationConfig = lazy(() => import("@/pages/admin/GmailIntegrationConfig"));
@@ -460,9 +459,6 @@ const Admin = () => {
         } />
         <Route path="integrations/subscriptions" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><SubscriptionsRevenue /></Suspense></AdminOnly>
-        } />
-        <Route path="integrations/ghl" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><GhlIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="integrations/zapier" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><ZapierIntegrationConfig /></Suspense></AdminOnly>

@@ -1,7 +1,8 @@
-// Unified send dispatcher — routes email via Resend, SMS via Twilio (or GHL fallback).
+// Unified send dispatcher — routes email via Resend, SMS via Twilio.
+// SMS is a tenant-configurable channel: it sends only when the tenant's Twilio
+// A2P registration is approved (config.twilio_a2p_status). Email is the default.
 // Writes every send to paige_messages_audit and mirrors outbound to paige_conversations.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-// (callMmaOsBridge intentionally not used; GHL fallback uses a direct bridge call.)
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -60,7 +61,7 @@ Deno.serve(async (req) => {
 
   const { data: config } = await admin.from("paige_config").select("*").eq("id", 1).maybeSingle();
 
-  let pipe_used: "resend" | "twilio" | "ghl_fallback" = "resend";
+  let pipe_used: "resend" | "twilio" = "resend";
   let vendor_message_id: string | null = null;
   let status: "sent" | "failed" = "failed";
   let errorText: string | null = null;
@@ -131,24 +132,8 @@ Deno.serve(async (req) => {
         pipe_used = "twilio";
         vendor_message_id = json?.sid ?? null;
         status = "sent";
-      } else if (config?.ghl_fallback_enabled) {
-        const url = Deno.env.get("PAIGE_OS_BRIDGE_URL");
-        const key = Deno.env.get("PAIGE_OS_BRIDGE_API_KEY");
-        if (!url || !key) throw new Error("bridge_env_missing");
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-          body: JSON.stringify({
-            verb: "ghl_send_sms_fallback",
-            payload: { to: body.to, body: body.body, contact_id: body.contact_id },
-          }),
-        });
-        if (!res.ok) throw new Error(`ghl_fallback_${res.status}`);
-        const json = await res.json().catch(() => ({}));
-        pipe_used = "ghl_fallback";
-        vendor_message_id = json?.message_id ?? null;
-        status = "sent";
       } else {
+        // SMS not yet available for this tenant (Twilio A2P not approved).
         throw new Error("no_sms_pipe_available");
       }
     }
