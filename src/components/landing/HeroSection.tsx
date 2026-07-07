@@ -1,74 +1,45 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Suspense, lazy, useEffect, useState } from "react";
-import { supportsWebGL, prefersReducedMotion } from "@/lib/webgl";
-
-// Code-split the WebGL scene so the Three.js bundle never blocks first paint.
-const HeroScene = lazy(() => import("./three/HeroScene"));
 
 /**
- * Hero — real-time 3D (WebGL) direction.
+ * Hero — the entry into the site-wide 3D world.
  *
- * The stage is a live Three.js scene: a glowing distorting "Paige core" in a
- * purple particle field, with the Runway film composited onto a floating 3D
- * panel you can grab and orbit. On devices without WebGL (or when the visitor
- * asked to reduce motion) it degrades to the flat looping film. Copy sits in a
- * slim caption bar over the stage.
+ * No canvas or video of its own: the persistent SiteScene renders behind the
+ * whole page, so this section is transparent and simply lays the title card
+ * over the live 3D. Only the interactive controls capture pointer events — the
+ * empty space lets you reach through and grab the 3D shards behind the copy.
  */
 export function HeroSection() {
   const navigate = useNavigate();
-  const [use3D, setUse3D] = useState(false);
-
-  // Decide on the client — never during SSR/prerender.
-  useEffect(() => {
-    setUse3D(supportsWebGL() && !prefersReducedMotion());
-  }, []);
 
   return (
-    <section className="group relative isolate overflow-hidden bg-background min-h-[92vh] flex items-end">
-      {/* Stage: 3D scene, or the flat film as a graceful fallback */}
-      {use3D ? (
-        <div className="absolute inset-0 cursor-grab active:cursor-grabbing">
-          <Suspense fallback={<div className="absolute inset-0 bg-background" />}>
-            <HeroScene />
-          </Suspense>
-        </div>
-      ) : (
-        <video
-          className="absolute inset-0 h-full w-full object-cover"
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="auto"
-          aria-label="Paige — cinematic introduction"
-        >
-          <source src="/paige/paige-hero.mp4" type="video/mp4" />
-        </video>
-      )}
-
-      {/* Brand tint — ties the frame to the purple identity */}
-      <div className="absolute inset-0 z-[6] pointer-events-none bg-[radial-gradient(120%_90%_at_50%_115%,rgba(124,58,237,0.28),transparent_55%)] mix-blend-screen" />
-      {/* Bottom blend — melts the stage into the page so the next section flows out of it */}
-      <div className="absolute inset-x-0 bottom-0 h-52 z-[6] pointer-events-none bg-gradient-to-b from-transparent to-background" />
-
-      {/* Slim caption bar — a single line across the bottom of the stage */}
-      <div className="relative z-10 w-full animate-fade-in pointer-events-none">
-        <h1 className="sr-only">
-          Paige — the AI operating system for coaches, consultants, and agencies
-        </h1>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 lg:pb-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="flex items-center gap-3 text-sm sm:text-[15px] text-white/85 max-w-xl leading-snug drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)]">
-            <span className="flex h-1.5 w-1.5 shrink-0 rounded-full bg-[#c084fc] animate-pulse" />
-            <span>
-              <span className="font-semibold text-white">Meet Paige</span>
-              {" "}— the autonomous operating system for coaches, consultants &amp;
-              agencies.
+    <section className="relative min-h-screen flex items-center">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-2xl space-y-7">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 backdrop-blur-md border border-white/10">
+            <span className="flex h-2 w-2 rounded-full bg-[#c084fc] animate-pulse" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/80">
+              Meet Paige · Your AI Operating System
             </span>
+          </div>
+
+          <h1 className="text-6xl lg:text-8xl font-black text-white leading-[0.9] tracking-[-0.03em] drop-shadow-[0_6px_40px_rgba(0,0,0,0.7)]">
+            The Operating<br className="hidden sm:block" /> System for{" "}
+            <span className="text-transparent bg-clip-text bg-gradient-to-br from-[#c084fc] via-[#a855f7] to-[#7c3aed] drop-shadow-[0_0_50px_rgba(168,85,247,0.6)]">
+              Scale.
+            </span>
+          </h1>
+
+          <p className="text-lg lg:text-xl text-white/80 leading-relaxed max-w-lg drop-shadow-[0_2px_16px_rgba(0,0,0,0.8)]">
+            The autonomous operating system for coaches, consultants &amp;
+            agencies. White-label the workspace, automate the busywork, run your
+            whole roster from one engine.
           </p>
-          <div className="flex gap-3 shrink-0 pointer-events-auto">
+
+          <div className="flex flex-wrap gap-4 pt-1">
             <Button
+              size="lg"
               className="bg-gradient-to-br from-[#a855f7] to-[#7c3aed] text-white hover:from-[#b06bff] hover:to-[#8b40f0] font-bold shadow-[0_10px_40px_rgba(124,58,237,0.5)] hover:scale-105 transition-all border-0"
               onClick={() => navigate("/auth?mode=signup")}
             >
@@ -76,6 +47,7 @@ export function HeroSection() {
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
             <Button
+              size="lg"
               variant="outline"
               className="bg-white/5 backdrop-blur-md text-white border-white/20 hover:bg-white/10 hover:text-white"
               onClick={() =>
@@ -87,6 +59,11 @@ export function HeroSection() {
               See How It Works
             </Button>
           </div>
+
+          <p className="inline-flex items-center gap-2 text-xs text-white/55 pt-2">
+            <Sparkles className="w-3.5 h-3.5 text-[#c084fc]" />
+            Grab and drag anything on the page · scroll to fly through
+          </p>
         </div>
       </div>
     </section>
