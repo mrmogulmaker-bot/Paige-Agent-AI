@@ -16,28 +16,27 @@ export function HeroSection() {
   return (
     <section className="relative min-h-screen flex items-center">
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="max-w-2xl space-y-7">
+        <div className="max-w-xl space-y-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 backdrop-blur-md border border-white/10">
             <span className="flex h-2 w-2 rounded-full bg-[#c084fc] animate-pulse" />
             <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/80">
-              Meet Paige · Your AI Operating System
+              The AI Operating System
             </span>
           </div>
 
-          <h1 className="text-6xl lg:text-8xl font-black text-white leading-[0.9] tracking-[-0.03em] drop-shadow-[0_6px_40px_rgba(0,0,0,0.7)]">
-            The Operating<br className="hidden sm:block" /> System for{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-br from-[#c084fc] via-[#a855f7] to-[#7c3aed] drop-shadow-[0_0_50px_rgba(168,85,247,0.6)]">
-              Scale.
+          <h1 className="text-7xl lg:text-9xl font-black text-white leading-[0.85] tracking-[-0.04em] drop-shadow-[0_6px_40px_rgba(0,0,0,0.8)]">
+            Meet{" "}
+            <span className="text-transparent bg-clip-text bg-gradient-to-br from-[#c084fc] via-[#a855f7] to-[#7c3aed] drop-shadow-[0_0_60px_rgba(168,85,247,0.7)]">
+              Paige.
             </span>
           </h1>
 
-          <p className="text-lg lg:text-xl text-white/80 leading-relaxed max-w-lg drop-shadow-[0_2px_16px_rgba(0,0,0,0.8)]">
-            The autonomous operating system for coaches, consultants &amp;
-            agencies. White-label the workspace, automate the busywork, run your
-            whole roster from one engine.
+          <p className="text-xl lg:text-2xl text-white/85 font-medium leading-snug max-w-md drop-shadow-[0_2px_16px_rgba(0,0,0,0.85)]">
+            She runs your clients, your workflows, your whole operation —
+            autonomously.
           </p>
 
-          <div className="flex flex-wrap gap-4 pt-1">
+          <div className="flex flex-wrap gap-4 pt-2">
             <Button
               size="lg"
               className="bg-gradient-to-br from-[#a855f7] to-[#7c3aed] text-white hover:from-[#b06bff] hover:to-[#8b40f0] font-bold shadow-[0_10px_40px_rgba(124,58,237,0.5)] hover:scale-105 transition-all border-0"
@@ -62,7 +61,7 @@ export function HeroSection() {
 
           <p className="inline-flex items-center gap-2 text-xs text-white/55 pt-2">
             <Sparkles className="w-3.5 h-3.5 text-[#c084fc]" />
-            Grab and drag anything on the page · scroll to fly through
+            Click Paige to say hi · drag her panels · scroll to explore
           </p>
         </div>
       </div>
