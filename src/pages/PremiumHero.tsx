@@ -133,44 +133,49 @@ export default function PremiumHero() {
         </div>
       </header>
 
-      {/* Hero */}
-      <motion.section
-        variants={stagger}
-        initial="hidden"
-        animate="show"
-        className="relative z-10 mx-auto flex max-w-3xl flex-col items-center gap-7 px-6 pb-24 pt-16 text-center md:pt-24"
-      >
-        <motion.div variants={rise} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 backdrop-blur-md">
-          <Sparkles className="h-3.5 w-3.5 text-[#c084fc]" />
-          <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/80">The AI Operating System</span>
+      {/* Hero — live Spline 3D scene (interactive parallax) */}
+      <section className="relative z-10 h-screen w-full overflow-hidden">
+        <iframe
+          src="https://my.spline.design/interactive3dparallaxscene-EN4O75hknJYKy6Cb3Er88pIk/"
+          title="Paige — interactive 3D scene"
+          className="absolute inset-0 h-full w-full"
+          style={{ border: 0 }}
+          loading="eager"
+          allow="autoplay; fullscreen"
+        />
+        {/* Legibility scrim — fades the scene into the copy + the page below */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0a0510] via-[#0a0510]/10 to-[#0a0510]/30" />
+
+        <motion.div
+          variants={stagger}
+          initial="hidden"
+          animate="show"
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 mx-auto flex max-w-6xl flex-col items-start gap-5 px-6 pb-16"
+        >
+          <motion.div variants={rise} className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 backdrop-blur-md">
+            <Sparkles className="h-3.5 w-3.5 text-[#c084fc]" />
+            <span className="text-[10px] font-bold uppercase tracking-[0.24em] text-white/80">The AI Operating System</span>
+          </motion.div>
+          <motion.h1 variants={rise} className="text-6xl font-black leading-[0.9] tracking-tight drop-shadow-[0_4px_30px_rgba(0,0,0,0.7)] md:text-8xl">
+            Meet{" "}
+            <span className="bg-gradient-to-br from-[#c084fc] via-[#a855f7] to-[#7c3aed] bg-clip-text text-transparent drop-shadow-[0_0_50px_rgba(168,85,247,0.5)]">
+              Paige.
+            </span>
+          </motion.h1>
+          <motion.p variants={rise} className="max-w-xl text-lg leading-relaxed text-white/80 drop-shadow-[0_2px_12px_rgba(0,0,0,0.8)] md:text-xl">
+            The autonomous operating system that runs your clients, your workflows, and your entire operation — so you can scale.
+          </motion.p>
+          <motion.div variants={rise} className="pointer-events-auto flex flex-wrap items-center gap-4 pt-2">
+            <button onClick={() => navigate("/auth?mode=signup")} className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-[#a855f7] to-[#7c3aed] px-7 py-3 font-bold shadow-[0_10px_40px_rgba(124,58,237,0.5)] transition-transform hover:scale-105">
+              Start Your Workspace
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </button>
+            <a href="#how-it-works" className="rounded-full border border-white/20 bg-white/5 px-7 py-3 font-medium text-white/90 backdrop-blur-md transition-colors hover:bg-white/10">
+              See How It Works
+            </a>
+          </motion.div>
         </motion.div>
-        <motion.h1 variants={rise} className="text-6xl font-black leading-[0.9] tracking-tight md:text-8xl">
-          Meet{" "}
-          <span className="bg-gradient-to-br from-[#c084fc] via-[#a855f7] to-[#7c3aed] bg-clip-text text-transparent drop-shadow-[0_0_50px_rgba(168,85,247,0.5)]">
-            Paige.
-          </span>
-        </motion.h1>
-        <motion.p variants={rise} className="max-w-xl text-lg leading-relaxed text-white/70 md:text-xl">
-          The autonomous operating system that runs your clients, your workflows, and your entire operation — so you can scale.
-        </motion.p>
-        <motion.div variants={rise} className="flex flex-wrap items-center justify-center gap-4 pt-2">
-          <button onClick={() => navigate("/auth?mode=signup")} className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-[#a855f7] to-[#7c3aed] px-7 py-3 font-bold shadow-[0_10px_40px_rgba(124,58,237,0.5)] transition-transform hover:scale-105">
-            Start Your Workspace
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-          </button>
-          <a href="#how-it-works" className="rounded-full border border-white/20 bg-white/5 px-7 py-3 font-medium text-white/90 backdrop-blur-md transition-colors hover:bg-white/10">
-            See How It Works
-          </a>
-        </motion.div>
-        <motion.div variants={rise} className="mt-8 flex items-center gap-8 border-t border-white/10 pt-8">
-          {[["50K+", "Tasks Automated"], ["18", "Sub-Agents"], ["360°", "Intelligence"]].map(([n, l]) => (
-            <div key={l} className="text-center">
-              <div className="text-2xl font-bold tabular-nums">{n}</div>
-              <div className="text-[11px] uppercase tracking-widest text-white/50">{l}</div>
-            </div>
-          ))}
-        </motion.div>
-      </motion.section>
+      </section>
 
       {/* Features */}
       <Section id="features" className="py-20">
