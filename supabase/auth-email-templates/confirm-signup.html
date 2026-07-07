@@ -1,0 +1,101 @@
+<!--
+  Paige Agent AI — "Confirm your email" (Supabase Auth → Email Templates → Confirm signup)
+  Email-client-safe HTML: table layout + inline styles + web-safe fonts.
+  Supabase template variables: {{ .ConfirmationURL }}, {{ .Email }}, {{ .SiteURL }}
+  Sent via Resend SMTP configured in Supabase Auth → SMTP Settings.
+  Brand: navy #0a1628 · gold #CFAE70 · ivory #F5F2EC.
+-->
+<div style="margin:0;padding:0;background-color:#F5F2EC;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F5F2EC;margin:0;padding:0;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+
+        <!-- Preheader (hidden) -->
+        <div style="display:none;max-height:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px;color:#F5F2EC;">
+          Confirm your email to activate your Paige account and start your path to funding.
+        </div>
+
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid #e7e2d8;border-radius:14px;overflow:hidden;">
+
+          <!-- Header band -->
+          <tr>
+            <td style="background-color:#0a1628;padding:34px 40px 30px 40px;text-align:center;">
+              <div style="font-family:Georgia,'Times New Roman',serif;font-size:26px;line-height:1;letter-spacing:6px;color:#CFAE70;font-weight:400;">PAIGE</div>
+              <div style="font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:1;letter-spacing:4px;color:#8a93a3;margin-top:8px;text-transform:uppercase;">Agent&nbsp;·&nbsp;AI</div>
+              <div style="height:1px;line-height:1px;font-size:0;background-color:#CFAE70;opacity:0.35;width:56px;margin:18px auto 0 auto;">&nbsp;</div>
+              <div style="font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:1;letter-spacing:3px;color:#6f7788;margin-top:16px;text-transform:uppercase;">Mogul Maker Academy</div>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:44px 40px 8px 40px;">
+              <h1 style="margin:0 0 18px 0;font-family:Georgia,'Times New Roman',serif;font-size:24px;line-height:1.25;color:#0a1628;font-weight:400;">Confirm your email</h1>
+              <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:#3a4356;">
+                Welcome to Paige. You're one click from activating your account and stepping onto your path to funding.
+              </p>
+              <p style="margin:0 0 30px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:#3a4356;">
+                Confirm the address <strong style="color:#0a1628;">{{ .Email }}</strong> to get started:
+              </p>
+            </td>
+          </tr>
+
+          <!-- CTA -->
+          <tr>
+            <td style="padding:0 40px 8px 40px;" align="center">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="border-radius:8px;background-color:#CFAE70;">
+                    <a href="{{ .ConfirmationURL }}" target="_blank"
+                       style="display:inline-block;padding:15px 38px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:1;color:#0a1628;text-decoration:none;border-radius:8px;letter-spacing:0.3px;">
+                      Confirm my email
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Fallback link -->
+          <tr>
+            <td style="padding:26px 40px 0 40px;">
+              <p style="margin:0 0 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#8a90a0;">
+                Button not working? Paste this link into your browser:
+              </p>
+              <p style="margin:0 0 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;word-break:break-all;">
+                <a href="{{ .ConfirmationURL }}" target="_blank" style="color:#9a7b32;text-decoration:underline;">{{ .ConfirmationURL }}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Divider + fine print -->
+          <tr>
+            <td style="padding:28px 40px 36px 40px;">
+              <div style="height:1px;line-height:1px;font-size:0;background-color:#eceadf;margin-bottom:22px;">&nbsp;</div>
+              <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:#9aa0ac;">
+                This link expires in 24 hours. If you didn't create a Paige account, you can safely ignore this email — no account will be activated.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#0a1628;padding:24px 40px;text-align:center;">
+              <div style="font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:3px;color:#CFAE70;">PAIGE<span style="color:#5c6576;"> AGENT AI</span></div>
+              <p style="margin:10px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.6;color:#6f7788;">
+                © PaigeAgent.ai · Mogul Maker Academy<br/>
+                Your partner from first credit step to funded.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+        <div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#b3afa2;margin-top:18px;">
+          Sent by Paige · paigeagent.ai
+        </div>
+
+      </td>
+    </tr>
+  </table>
+</div>
