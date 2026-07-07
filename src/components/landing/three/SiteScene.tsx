@@ -13,23 +13,33 @@ import * as THREE from "three";
 /**
  * SiteScene — the Paige-led 3D world behind the entire landing page.
  *
- * Real Meshy 3D models: Paige (woman) stands centre-right; her bot orbits her,
- * flies into a procedural 3D computer, lights up its chips in a cascade, and
- * flies back out — "task done" — on an 11s loop. Holographic OS panels drift in
- * the back; a purple particle field fills the depth. Scroll flies the camera
- * down through the world; the cursor parallaxes it.
- *
- * The GLBs are geometry-only (no texture/normals), so we compute normals and
- * skin them in the brand purple. Swap-ready for textured re-exports.
+ * Storyline (15s loop): Paige's bot is her agent. It sweeps from Paige across
+ * each system panel — CRM, Automations, Pipeline, Analytics — lighting each one
+ * up (task done ✓), dives into the computer to process, then flies back for a
+ * finale where the whole operation is handled and Paige is highlighted.
+ * Real Meshy 3D models (geometry-only → skinned in brand purple). Scroll flies
+ * the camera; the cursor parallaxes it; panels are grabbable.
  */
 
-const CYCLE = 11;
-const TAU = Math.PI * 2;
+const CYCLE = 15;
 const ease = (t: number) => 1 - Math.pow(1 - Math.min(Math.max(t, 0), 1), 3);
 const smooth = (a: number, b: number, t: number) => a + (b - a) * ease(t);
+const clamp01 = (t: number) => Math.min(Math.max(t, 0), 1);
 
-const COMPUTER = new THREE.Vector3(-3.7, -0.5, 0.3);
-const PAIGE = new THREE.Vector3(3.1, -1.4, -0.4);
+const COMPUTER = new THREE.Vector3(-3.9, -0.6, 0.3);
+const PAIGE = new THREE.Vector3(3.2, -1.4, -0.4);
+const HOVER = new THREE.Vector3(2.9, 0.8, 0.6);
+
+// System panels, right→left (bot visits in this order), and when each lights.
+const PANEL_POS: [number, number, number][] = [
+  [-3.1, 1.7, 0.7],
+  [-1.0, 2.4, 0.4],
+  [1.0, 2.4, 0.4],
+  [2.9, 1.7, 0.7],
+];
+const VISIT = [0.56, 0.42, 0.28, 0.14]; // panel index -> visit time
+const FINALE_START = 0.82;
+const FINALE_END = 0.96;
 
 useGLTF.preload("/paige/paige-bot.glb");
 useGLTF.preload("/paige/paige-woman.glb");
@@ -47,7 +57,6 @@ function makeGlow(hex: string): THREE.CanvasTexture {
   return new THREE.CanvasTexture(c);
 }
 
-/** Load a geometry-only Meshy GLB, fix normals, skin it in brand purple. */
 function usePaigeModel(url: string, color: string, emissive: string) {
   const { scene } = useGLTF(url);
   return useMemo(() => {
@@ -88,21 +97,37 @@ function useScrollProgress() {
   return ref;
 }
 
-function orbitPoint(angle: number) {
-  return new THREE.Vector3(
-    PAIGE.x + Math.cos(angle) * 1.9,
-    PAIGE.y + 1.9 + Math.sin(angle) * 0.8,
-    0.2 + Math.sin(angle) * 0.8,
-  );
+// Bot flight path keyframes across the story.
+const KEYS: { t: number; pos: THREE.Vector3 }[] = [
+  { t: 0.0, pos: HOVER },
+  { t: 0.14, pos: new THREE.Vector3(...PANEL_POS[3]) },
+  { t: 0.28, pos: new THREE.Vector3(...PANEL_POS[2]) },
+  { t: 0.42, pos: new THREE.Vector3(...PANEL_POS[1]) },
+  { t: 0.56, pos: new THREE.Vector3(...PANEL_POS[0]) },
+  { t: 0.66, pos: COMPUTER },
+  { t: 0.8, pos: COMPUTER },
+  { t: 0.9, pos: HOVER },
+  { t: 1.0, pos: HOVER },
+];
+function botPos(p: number, out: THREE.Vector3) {
+  for (let i = 0; i < KEYS.length - 1; i++) {
+    const a = KEYS[i];
+    const b = KEYS[i + 1];
+    if (p >= a.t && p < b.t) {
+      const u = ease((p - a.t) / (b.t - a.t));
+      return out.copy(a.pos).lerp(b.pos, u);
+    }
+  }
+  return out.copy(KEYS[KEYS.length - 1].pos);
 }
 
-/** The bot — real 3D model, choreographed through the narrative loop. */
 function Bot() {
   const model = usePaigeModel("/paige/paige-bot.glb", "#8b5cf6", "#4c1d95");
   const glow = useMemo(() => makeGlow("rgba(168,85,247,1)"), []);
   const group = useRef<THREE.Group>(null);
   const inner = useRef<THREE.Group>(null);
   const glowMat = useRef<THREE.SpriteMaterial>(null);
+  const tmp = useRef(new THREE.Vector3());
   const intro = useRef(0);
 
   useFrame((state) => {
@@ -111,35 +136,28 @@ function Bot() {
     const time = state.clock.elapsedTime;
     intro.current = Math.min(intro.current + 0.016, 1);
     const p = (time % CYCLE) / CYCLE;
-    const angle = time * 1.1;
 
-    let pos: THREE.Vector3;
+    const pos = botPos(p, tmp.current);
     let scale = 1;
     let vis = 1;
-    if (p < 0.34) pos = orbitPoint(angle);
-    else if (p < 0.46) {
-      const u = (p - 0.34) / 0.12;
-      pos = orbitPoint(angle).lerp(COMPUTER, ease(u));
-      scale = smooth(1, 0.05, u);
-    } else if (p < 0.7) {
-      pos = COMPUTER.clone();
+    if (p >= 0.66 && p < 0.8) {
       scale = 0.05;
       vis = 0;
-    } else if (p < 0.82) {
-      const u = (p - 0.7) / 0.12;
-      pos = COMPUTER.clone().lerp(orbitPoint(angle), ease(u));
-      scale = smooth(0.05, 1, u);
-    } else pos = orbitPoint(angle);
+    } else if (p >= 0.6 && p < 0.66) {
+      scale = smooth(1, 0.05, (p - 0.6) / 0.06);
+    } else if (p >= 0.8 && p < 0.86) {
+      scale = smooth(0.05, 1, (p - 0.8) / 0.06);
+    }
 
-    g.position.lerp(pos, 0.25);
+    g.position.lerp(pos, 0.22);
     const introS = ease(intro.current);
     g.scale.setScalar(scale * introS);
     if (inner.current) {
-      inner.current.rotation.y += 0.012;
+      inner.current.rotation.y += 0.03;
       inner.current.visible = vis > 0.05;
     }
     if (glowMat.current)
-      glowMat.current.opacity = vis * introS * (0.7 + Math.sin(time * 3) * 0.15);
+      glowMat.current.opacity = vis * introS * (0.7 + Math.sin(time * 4) * 0.15);
   });
 
   return (
@@ -156,17 +174,18 @@ function Bot() {
           />
         </sprite>
       </Billboard>
-      <group ref={inner} scale={1.25}>
+      <group ref={inner} scale={1.2}>
         <primitive object={model} />
       </group>
     </group>
   );
 }
 
-/** Paige (woman) — real 3D model, standing centre-right with a gentle sway. */
 function PaigeFigure() {
   const model = usePaigeModel("/paige/paige-woman.glb", "#a78bfa", "#4c1d95");
+  const glow = useMemo(() => makeGlow("rgba(196,132,252,1)"), []);
   const group = useRef<THREE.Group>(null);
+  const glowMat = useRef<THREE.SpriteMaterial>(null);
   const intro = useRef(0);
 
   useFrame((state) => {
@@ -175,20 +194,34 @@ function PaigeFigure() {
     intro.current = Math.min(intro.current + 0.012, 1);
     const t = ease(intro.current);
     const time = state.clock.elapsedTime;
+    const p = (time % CYCLE) / CYCLE;
     g.position.y = PAIGE.y + Math.sin(time * 0.7) * 0.05;
     g.position.x = PAIGE.x + (1 - t) * 1.6;
-    g.rotation.y = Math.sin(time * 0.3) * 0.18;
+    g.rotation.y = Math.sin(time * 0.3) * 0.16;
     g.scale.setScalar(t * 2.0);
+    const finale = clamp01((p - FINALE_START) / 0.06) * clamp01((FINALE_END - p) / 0.06);
+    if (glowMat.current) glowMat.current.opacity = t * (0.25 + finale * 0.75);
   });
 
   return (
     <group ref={group} position={[PAIGE.x, PAIGE.y, PAIGE.z]} scale={0}>
+      <Billboard position={[0, 0.4, -0.6]}>
+        <sprite scale={[4.2, 4.6, 1]}>
+          <spriteMaterial
+            ref={glowMat}
+            map={glow}
+            transparent
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+            opacity={0.25}
+          />
+        </sprite>
+      </Billboard>
       <primitive object={model} />
     </group>
   );
 }
 
-/** Procedural 3D computer whose chips light up while the bot is inside. */
 function Computer() {
   const chips = useMemo(() => {
     const arr: [number, number, number][] = [];
@@ -201,20 +234,20 @@ function Computer() {
 
   useFrame((state) => {
     const p = (state.clock.elapsedTime % CYCLE) / CYCLE;
-    const inside = p >= 0.44 && p < 0.72;
-    const u = inside ? (p - 0.44) / 0.28 : 0;
+    const inside = p >= 0.64 && p < 0.82;
+    const u = inside ? (p - 0.64) / 0.18 : 0;
     chips.forEach((_, i) => {
       const m = mats.current[i];
       if (!m) return;
       const lit = inside && u > i / chips.length;
-      m.emissiveIntensity += ((lit ? 2.2 : 0.15) - m.emissiveIntensity) * 0.2;
+      m.emissiveIntensity += ((lit ? 2.4 : 0.15) - m.emissiveIntensity) * 0.2;
     });
     if (screen.current)
       screen.current.emissiveIntensity += ((inside ? 1.6 : 0.4) - screen.current.emissiveIntensity) * 0.1;
   });
 
   return (
-    <group position={COMPUTER.toArray()} rotation={[0, 0.5, 0]}>
+    <group position={COMPUTER.toArray()} rotation={[0, 0.55, 0]}>
       <mesh>
         <boxGeometry args={[2.3, 1.7, 0.14]} />
         <meshStandardMaterial
@@ -253,34 +286,39 @@ function Computer() {
   );
 }
 
-/** A holographic OS panel drifting in the background, grabbable. */
-function Panel({ index, count }: { index: number; count: number }) {
+/** A system panel — lights up (task done ✓) when Paige's bot visits it. */
+function Panel({ index }: { index: number }) {
   const group = useRef<THREE.Group>(null);
   const back = useRef<THREE.MeshBasicMaterial>(null);
+  const check = useRef<THREE.Mesh>(null);
+  const checkMat = useRef<THREE.MeshBasicMaterial>(null);
   const [hovered, setHovered] = useState(false);
   const dragging = useRef(false);
-  const angle = (index / count) * TAU;
-  const home = useMemo(
-    () =>
-      new THREE.Vector3(
-        Math.cos(angle) * 5.4,
-        Math.sin(angle) * 2.7 + 0.5,
-        -3.4 + Math.sin(angle) * 1.2,
-      ),
-    [angle],
-  );
+  const home = useMemo(() => new THREE.Vector3(...PANEL_POS[index]), [index]);
   const intro = useRef(0);
+  const visit = VISIT[index];
 
-  useFrame(() => {
+  useFrame((state) => {
     const g = group.current;
     if (!g) return;
     intro.current = Math.min(intro.current + 0.01, 1);
     const t = ease(intro.current);
     if (!dragging.current) g.position.lerp(home, 0.05);
-    const target = (hovered ? 1.18 : 1) * t;
+    const target = (hovered ? 1.16 : 1) * t;
     g.scale.x += (target - g.scale.x) * 0.15;
     g.scale.y = g.scale.z = g.scale.x;
-    if (back.current) back.current.opacity = t * (hovered ? 0.8 : 0.4);
+
+    const p = (state.clock.elapsedTime % CYCLE) / CYCLE;
+    const lit = p >= visit && p < FINALE_END;
+    const finale = lit && p >= FINALE_START;
+    const litAmt = lit ? clamp01((p - visit) / 0.03) : 0;
+    if (back.current)
+      back.current.opacity = t * (0.28 + litAmt * (finale ? 0.7 : 0.5) + (hovered ? 0.2 : 0));
+    if (checkMat.current) checkMat.current.opacity = litAmt;
+    if (check.current) {
+      const s = 0.5 + ease(litAmt) * 0.5;
+      check.current.scale.setScalar(s);
+    }
   });
 
   return (
@@ -332,7 +370,12 @@ function Panel({ index, count }: { index: number; count: number }) {
         </mesh>
         <mesh>
           <planeGeometry args={[1.55, 0.9]} />
-          <meshBasicMaterial color="#160a26" transparent opacity={0.25} depthWrite={false} />
+          <meshBasicMaterial color="#160a26" transparent opacity={0.28} depthWrite={false} />
+        </mesh>
+        {/* task-done check dot */}
+        <mesh ref={check} position={[0.58, 0.28, 0.02]}>
+          <circleGeometry args={[0.11, 24]} />
+          <meshBasicMaterial ref={checkMat} color="#5eead4" transparent opacity={0} depthWrite={false} />
         </mesh>
       </group>
     </Billboard>
@@ -343,11 +386,11 @@ function Rig({ progress }: { progress: MutableRefObject<number> }) {
   useFrame((state) => {
     const s = progress.current;
     const targetY = -s * 10;
-    const targetZ = 9 - s * 6;
+    const targetZ = 10 - s * 6;
     state.camera.position.y += (targetY + state.pointer.y * 0.6 - state.camera.position.y) * 0.05;
     state.camera.position.x += (state.pointer.x * 1.1 - state.camera.position.x) * 0.05;
     state.camera.position.z += (targetZ - state.camera.position.z) * 0.05;
-    state.camera.lookAt(0, targetY * 0.6, -1);
+    state.camera.lookAt(0, targetY * 0.6 + 0.4, -1);
   });
   return null;
 }
@@ -356,11 +399,11 @@ function Scene({ progress }: { progress: MutableRefObject<number> }) {
   return (
     <>
       <color attach="background" args={["#0a0510"]} />
-      <fog attach="fog" args={["#0a0510", 11, 32]} />
+      <fog attach="fog" args={["#0a0510", 12, 34]} />
       <ambientLight intensity={0.7} />
       <pointLight position={[6, 5, 6]} intensity={80} color="#a855f7" decay={2} />
       <pointLight position={[-6, 2, 5]} intensity={55} color="#6d28d9" decay={2} />
-      <pointLight position={[0, 3, 3]} intensity={30} color="#e9d5ff" decay={2} />
+      <pointLight position={[0, 3, 4]} intensity={35} color="#e9d5ff" decay={2} />
 
       <Suspense fallback={null}>
         <Computer />
@@ -369,7 +412,7 @@ function Scene({ progress }: { progress: MutableRefObject<number> }) {
       </Suspense>
 
       {[0, 1, 2, 3].map((i) => (
-        <Panel key={i} index={i} count={4} />
+        <Panel key={i} index={i} />
       ))}
 
       <Sparkles
@@ -392,7 +435,7 @@ export default function SiteScene() {
     <Canvas
       style={{ position: "fixed", inset: 0, zIndex: 0 }}
       dpr={[1, 2]}
-      camera={{ position: [0, 0, 9], fov: 48 }}
+      camera={{ position: [0, 0, 10], fov: 48 }}
       gl={{ antialias: true, alpha: false }}
     >
       <Scene progress={progress} />
