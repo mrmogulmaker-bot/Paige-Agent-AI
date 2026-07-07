@@ -257,8 +257,8 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
         : "";
 
       const voiceSystemPrompt = contextBlock
-        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data.\n\nCurrent page: ${currentPageName}\n\nCLIENT DATA:\n${contextBlock}${historyBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data\n- Never fabricate data\n- VOICE: Be conversational and concise (1-2 short sentences per turn). Use natural acknowledgments like "Got it", "Right". Never read bullet points aloud.\n- Connect insights to funding goals when relevant`
-        : `You are Paige, the AI credit strategist for PaigeAgent.ai. Current page: ${currentPageName}.${historyBlock}\n\nVOICE: Be conversational and concise. Use short sentences and natural acknowledgments.`;
+        ? `You are Paige, the AI business partner for PaigeAgent.ai. You have access to this client's workspace data.\n\nCurrent page: ${currentPageName}\n\nCLIENT DATA:\n${contextBlock}${historyBlock}\n\nRULES:\n- Reference specific details from the client data\n- Never fabricate data\n- VOICE: Be conversational and concise (1-2 short sentences per turn). Use natural acknowledgments like "Got it", "Right". Never read bullet points aloud.\n- Connect insights to the client's business goals when relevant`
+        : `You are Paige, the AI business partner for PaigeAgent.ai. Current page: ${currentPageName}.${historyBlock}\n\nVOICE: Be conversational and concise. Use short sentences and natural acknowledgments.`;
 
       // ElevenLabs rejects firstMessage/prompt overrides unless explicitly
       // enabled in the agent dashboard. Skip the override payload so the
@@ -316,7 +316,7 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
       setMessages([
         {
           role: "assistant",
-          content: "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation.",
+          content: "I don't have any of your workspace data yet. Connect your workspace and I'll get up to speed so I can help you run your business.",
         },
       ]);
       if (conversation.status === "connected") {
@@ -582,7 +582,7 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
               <img src={paigeAvatar} alt="PaigeAgent.ai" className="w-8 h-8 rounded-full" />
               <div>
                 <h3 className="font-semibold text-sm">PaigeAgent.ai</h3>
-                <p className="text-[10px] sm:text-xs text-muted-foreground">Your Credit Coach</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground">Your AI Business Partner</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
