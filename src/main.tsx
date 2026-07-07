@@ -101,3 +101,19 @@ createRoot(document.getElementById("root")!).render(
   </React.StrictMode>
 );
 
+// ---------------------------------------------------------------------------
+// Cinematic splash dismissal
+// ---------------------------------------------------------------------------
+// The splash (#paige-splash in index.html) paints before React boots so there
+// is no white flash. Once the app has committed its first frame, hold the
+// splash a short beat so it reads as a deliberate open, then fade it out.
+function dismissPaigeSplash() {
+  const el = document.getElementById("paige-splash");
+  if (!el) return;
+  el.classList.add("paige-splash--done");
+  window.setTimeout(() => el.remove(), 700);
+}
+requestAnimationFrame(() =>
+  requestAnimationFrame(() => window.setTimeout(dismissPaigeSplash, 550)),
+);
+

@@ -12,14 +12,14 @@
     <link rel="shortcut icon" href="/favicon.png" type="image/png" />
     <link rel="apple-touch-icon" href="/favicon.png" />
     <link rel="mask-icon" href="/favicon.png" color="#0a0e1a" />
-    <title>PaigeAgent.ai - Credit Mastery Platform | Mogul Maker Academy</title>
-    <meta name="description" content="Transform your credit with PaigeAgent.ai's proven A.C.C.E.L. and B.U.I.L.D. frameworks. FCRA-compliant credit repair and business credit building for Mogul Maker Academy mentees." />
-    <meta name="author" content="Mogul Maker Academy" />
+    <title>Paige — The AI Operating System for Client-Based Businesses</title>
+    <meta name="description" content="Paige is an AI-powered operations platform for coaches, consultants, and agencies — manage clients, automate the busywork, draft outreach, and run your whole practice from one intelligent workspace." />
+    <meta name="author" content="PaigeAgent.ai" />
     <meta name="google-site-verification" content="ISX8_H91hbZw31Igo-PweOkXr18AkDag9jZpg6jxoCA" />
 
     <link rel="canonical" href="https://paigeagent.ai/" />
-    <meta property="og:title" content="PaigeAgent.ai — The Entrepreneurial Operating System" />
-    <meta property="og:description" content="AI-powered credit, capital, and execution infrastructure for serious entrepreneurs. Three-bureau credit intelligence, lender matching, and CFO-level coaching in one platform." />
+    <meta property="og:title" content="Paige — The AI Operating System for Client-Based Businesses" />
+    <meta property="og:description" content="The AI teammate for coaches, consultants, and agencies. Paige manages your clients, automates your workflows, and keeps your whole operation moving — in one conversation." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://paigeagent.ai/" />
     <meta property="og:image" content="https://paigeagent.ai/og-image.jpg" />
@@ -27,10 +27,9 @@
     <meta property="og:image:height" content="672" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="PaigeAgent.ai — The Entrepreneurial Operating System" />
-    <meta name="twitter:description" content="AI-powered credit, capital, and execution infrastructure for serious entrepreneurs." />
+    <meta name="twitter:title" content="Paige — The AI Operating System for Client-Based Businesses" />
+    <meta name="twitter:description" content="The AI teammate for coaches, consultants, and agencies. Manage clients, automate workflows, and run your whole operation from one workspace." />
     <meta name="twitter:image" content="https://paigeagent.ai/og-image.jpg" />
-    <meta name="google-site-verification" content="ISX8_H91hbZw31Igo-PweOkXr18AkDag9jZpg6jxoCA" />
 
     <script type="application/ld+json">
     {
@@ -40,14 +39,11 @@
       "alternateName": "Paige Agent AI",
       "url": "https://paigeagent.ai",
       "logo": "https://paigeagent.ai/favicon.png",
-      "description": "The Entrepreneurial Operating System — AI-powered credit, capital, and execution infrastructure for entrepreneurs.",
-      "founder": { "@type": "Person", "name": "Antonio Cook" },
-      "parentOrganization": { "@type": "Organization", "name": "Mogul Maker Academy" },
+      "description": "The AI operating system for client-based businesses — client management, workflow automation, and an AI teammate in one platform.",
       "contactPoint": {
         "@type": "ContactPoint",
-        "telephone": "+1-470-594-4470",
         "contactType": "customer support",
-        "email": "support@news.mrmogulmaker.com"
+        "email": "support@paigeagent.ai"
       }
     }
     </script>
@@ -73,33 +69,115 @@
       window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{};
       plausible.init()
     </script>
+
+    <!-- Cinematic pre-hydration splash — paints before React boots so there
+         is no white flash on load. Removed by src/main.tsx once the app mounts. -->
+    <style>
+      #paige-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 30px;
+        background: radial-gradient(120% 90% at 50% 38%, #1b0f33 0%, #0b0710 62%);
+        transition: opacity 0.6s ease, visibility 0.6s ease;
+      }
+      #paige-splash.paige-splash--done {
+        opacity: 0;
+        visibility: hidden;
+      }
+      .paige-splash__stage {
+        position: relative;
+        width: 132px;
+        height: 132px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .paige-splash__glow {
+        position: absolute;
+        inset: -28%;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(168, 85, 247, 0.55), transparent 65%);
+        filter: blur(14px);
+        animation: paigePulse 2.4s ease-in-out infinite;
+      }
+      .paige-splash__ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: conic-gradient(from 0deg, transparent 0 68%, #c084fc 86%, #a855f7 100%);
+        -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+        mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+        animation: paigeSpin 1.1s linear infinite;
+      }
+      .paige-splash__bot {
+        position: relative;
+        width: 84px;
+        height: 84px;
+        object-fit: contain;
+        filter: drop-shadow(0 0 22px rgba(168, 85, 247, 0.7));
+        animation: paigeFloat 3s ease-in-out infinite;
+      }
+      .paige-splash__word {
+        font-family: system-ui, -apple-system, sans-serif;
+        font-weight: 800;
+        letter-spacing: 0.42em;
+        font-size: 13px;
+        color: #e9d5ff;
+        text-transform: uppercase;
+        padding-left: 0.42em;
+        animation: paigeFade 2.4s ease-in-out infinite;
+      }
+      @keyframes paigeSpin { to { transform: rotate(360deg); } }
+      @keyframes paigeFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+      @keyframes paigePulse { 0%, 100% { opacity: 0.5; transform: scale(0.92); } 50% { opacity: 0.9; transform: scale(1.06); } }
+      @keyframes paigeFade { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) {
+        .paige-splash__ring,
+        .paige-splash__bot,
+        .paige-splash__glow,
+        .paige-splash__word { animation: none; }
+      }
+    </style>
   </head>
 
   <body>
+    <div id="paige-splash" role="status" aria-label="Loading Paige">
+      <div class="paige-splash__stage">
+        <div class="paige-splash__glow"></div>
+        <div class="paige-splash__ring"></div>
+        <img class="paige-splash__bot" src="/paige/paige-bot-1.png" alt="" />
+      </div>
+      <div class="paige-splash__word">Paige</div>
+    </div>
     <div id="root">
       <!-- Static SEO content for crawlers that do not execute JavaScript -->
-      <main style="font-family:system-ui,-apple-system,sans-serif;background:#0a0e1a;color:#fff;padding:40px 24px;max-width:1200px;margin:0 auto;">
+      <main style="font-family:system-ui,-apple-system,sans-serif;background:#0b0710;color:#fff;padding:40px 24px;max-width:1200px;margin:0 auto;">
         <header style="margin-bottom:48px;">
-          <p style="color:#CFAE70;font-size:14px;font-weight:600;margin-bottom:12px;">Founding Beta — Limited Spots</p>
-          <h1 style="font-size:42px;font-weight:800;line-height:1.15;margin-bottom:16px;color:#fff;">Your Personal AI Funding Advisor</h1>
-          <p style="font-size:18px;color:#d1d5db;max-width:640px;line-height:1.6;margin-bottom:24px;">Built for Entrepreneurs Who Are Serious About Building Wealth. Paige analyzes your credit across all three bureaus, builds your personalized funding roadmap, coaches your business strategy, and searches thousands of lenders — all in one conversation. Stop guessing. Start building.</p>
-          <p style="font-size:14px;color:#9ca3af;">7-day free trial · No credit card required · FCRA &amp; CROA compliant</p>
+          <p style="color:#c084fc;font-size:14px;font-weight:600;margin-bottom:12px;">Founding Beta — Limited Spots</p>
+          <h1 style="font-size:42px;font-weight:800;line-height:1.15;margin-bottom:16px;color:#fff;">Your AI Business Operations Partner</h1>
+          <p style="font-size:18px;color:#d1d5db;max-width:640px;line-height:1.6;margin-bottom:24px;">Built for coaches, consultants, and agencies who are serious about scaling. Paige manages your clients, automates your busywork, drafts your outreach, and keeps your entire operation moving — all in one conversation. Stop juggling tools. Start scaling.</p>
+          <p style="font-size:14px;color:#9ca3af;">7-day free trial · No card required to start · Cancel anytime</p>
         </header>
 
         <section style="margin-bottom:64px;">
           <h2 style="font-size:28px;font-weight:700;margin-bottom:24px;color:#fff;">What Paige Does For You</h2>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;">
             <article style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;">
-              <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:#CFAE70;">Three-Bureau Credit Intelligence</h3>
-              <p style="font-size:15px;color:#d1d5db;line-height:1.6;">Paige reads your Experian, TransUnion, and Equifax files simultaneously — identifying which bureau is your strongest, which lenders pull it, and exactly what actions move your score. Daily predictions flag opportunities and risks before they affect your funding.</p>
+              <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:#CFAE70;">Intelligent Client Management</h3>
+              <p style="font-size:15px;color:#d1d5db;line-height:1.6;">Paige keeps every client, conversation, and task organized in one place — surfacing what needs attention today so nothing and no one slips through the cracks.</p>
             </article>
             <article style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;">
-              <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:#CFAE70;">Real Funding Strategy — Not Generic Advice</h3>
-              <p style="font-size:15px;color:#d1d5db;line-height:1.6;">From hard money loans to SBA programs to DSCR financing — Paige knows which product fits your goal, which bureau the lender pulls, what rate you qualify for today based on the live prime rate, and how far you are from the next approval threshold.</p>
+              <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:#CFAE70;">Automation That Runs Itself</h3>
+              <p style="font-size:15px;color:#d1d5db;line-height:1.6;">From onboarding to follow-ups to reminders, Paige automates the repetitive work behind the scenes so you and your team spend time on what actually moves the needle.</p>
             </article>
             <article style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;">
-              <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:#CFAE70;">CFO-Level Business Coaching</h3>
-              <p style="font-size:15px;color:#d1d5db;line-height:1.6;">Entity structure, expense optimization, payroll strategy, working capital coaching, CAC and LTV analysis, and BRRRR real estate financing — Paige thinks like a seasoned business advisor, not a generic chatbot.</p>
+              <h3 style="font-size:18px;font-weight:700;margin-bottom:8px;color:#CFAE70;">An Advisor, Not a Chatbot</h3>
+              <p style="font-size:15px;color:#d1d5db;line-height:1.6;">Paige understands your business context — your clients, your goals, your playbook — and gives real guidance, ready-to-send drafts, and clear next steps, not generic answers.</p>
             </article>
           </div>
         </section>
@@ -109,23 +187,23 @@
           <ol style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;list-style:none;padding:0;">
             <li style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;">
               <strong style="font-size:32px;color:#CFAE70;opacity:.4;display:block;margin-bottom:8px;">01</strong>
-              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">Discover Your Goal</h3>
-              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">Paige starts by asking what you are working toward — buying investment property, getting business funding, building credit, or something else entirely. Your goal shapes everything she does next.</p>
+              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">Discover Your Goals</h3>
+              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">Paige starts by learning what you're working toward and how your business runs day to day. Your goals shape everything she does next.</p>
             </li>
             <li style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;">
               <strong style="font-size:32px;color:#CFAE70;opacity:.4;display:block;margin-bottom:8px;">02</strong>
-              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">Analyze Your Profile</h3>
-              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">Upload your credit report and Paige reads all three bureaus simultaneously. She identifies your strongest bureau, maps your negative items to their funding impact, and builds your starting point.</p>
+              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">Connect Your Workspace</h3>
+              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">Bring in your clients, tools, and knowledge. Paige builds a complete operating picture of your business so her help is always in context.</p>
             </li>
             <li style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;">
               <strong style="font-size:32px;color:#CFAE70;opacity:.4;display:block;margin-bottom:8px;">03</strong>
-              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">Build Your Roadmap</h3>
-              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">Paige connects your credit profile to your goal and builds a step-by-step roadmap — which scores to hit, which lenders to target, which entity structure to use, and in what order to execute.</p>
+              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">Automate &amp; Assist</h3>
+              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">Paige handles the busywork, drafts your messages, schedules the follow-ups, and guides your next moves — a step-by-step operating rhythm for your whole team.</p>
             </li>
             <li style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;">
               <strong style="font-size:32px;color:#CFAE70;opacity:.4;display:block;margin-bottom:8px;">04</strong>
-              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">Move With You</h3>
-              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">As your profile improves Paige updates your strategy, alerts you to new opportunities, and searches for lenders in real time. She remembers every conversation and builds on it.</p>
+              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">Grows With You</h3>
+              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">Paige learns from every interaction, remembers the details, and gets sharper over time — so the more you work together, the more she does for you.</p>
             </li>
           </ol>
         </section>
@@ -135,46 +213,44 @@
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px;">
             <article style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:28px;">
               <h3 style="font-size:20px;font-weight:700;margin-bottom:8px;color:#fff;">Paige Starter</h3>
-              <p style="font-size:14px;color:#9ca3af;margin-bottom:16px;">For entrepreneurs building their credit and business foundation.</p>
+              <p style="font-size:14px;color:#9ca3af;margin-bottom:16px;">For solopreneurs getting their business organized.</p>
               <p style="font-size:36px;font-weight:800;color:#fff;margin-bottom:4px;">$27<span style="font-size:16px;font-weight:400;color:#9ca3af;">/month</span></p>
               <p style="font-size:13px;color:#CFAE70;margin-bottom:16px;">Founding Beta Rate — Lock in forever</p>
               <ul style="color:#d1d5db;font-size:14px;line-height:1.8;padding-left:18px;margin-bottom:20px;">
                 <li>Paige AI advisor with goal discovery</li>
-                <li>Three-bureau credit intelligence</li>
-                <li>Credit score simulator</li>
-                <li>Business profile builder</li>
-                <li>SBA and CDFI lender search in chat</li>
-                <li>Daily predictive credit monitoring</li>
-                <li>Push notifications for score changes</li>
+                <li>Client CRM &amp; pipeline</li>
+                <li>Task &amp; workflow automation</li>
+                <li>Templates &amp; ready-to-send drafts</li>
+                <li>Smart reminders &amp; follow-ups</li>
+                <li>Mobile access &amp; push notifications</li>
               </ul>
             </article>
             <article style="background:#111827;border:2px solid #CFAE70;border-radius:12px;padding:28px;position:relative;">
               <span style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:#CFAE70;color:#0a0e1a;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;">MOST POPULAR</span>
               <h3 style="font-size:20px;font-weight:700;margin-bottom:8px;color:#fff;">Paige Pro</h3>
-              <p style="font-size:14px;color:#9ca3af;margin-bottom:16px;">For established entrepreneurs ready to access capital and scale.</p>
+              <p style="font-size:14px;color:#9ca3af;margin-bottom:16px;">For growing teams ready to scale their operation.</p>
               <p style="font-size:36px;font-weight:800;color:#fff;margin-bottom:4px;">$67<span style="font-size:16px;font-weight:400;color:#9ca3af;">/month</span></p>
               <p style="font-size:13px;color:#CFAE70;margin-bottom:16px;">Founding Beta Rate — Lock in forever</p>
               <ul style="color:#d1d5db;font-size:14px;line-height:1.8;padding-left:18px;margin-bottom:20px;">
                 <li>Everything in Starter, plus:</li>
-                <li>Full funding journey tracking</li>
-                <li>58 categorized lenders with bureau matching</li>
-                <li>Demographic program unlocking — 8(a), WOSB, HUBZone, Veteran</li>
-                <li>Live interest rate intelligence</li>
-                <li>Entity structure and HoldCo strategy</li>
+                <li>Team collaboration &amp; roles</li>
+                <li>Advanced multi-step automations</li>
+                <li>Integrations with your favorite tools</li>
                 <li>Voice sessions with full context</li>
+                <li>Analytics &amp; reporting</li>
               </ul>
             </article>
             <article style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:28px;">
               <h3 style="font-size:20px;font-weight:700;margin-bottom:8px;color:#fff;">Paige Elite</h3>
-              <p style="font-size:14px;color:#9ca3af;margin-bottom:16px;">For serious wealth builders who want done-with-you PME support.</p>
+              <p style="font-size:14px;color:#9ca3af;margin-bottom:16px;">For established businesses who want done-with-you support.</p>
               <p style="font-size:36px;font-weight:800;color:#fff;margin-bottom:4px;">$297<span style="font-size:16px;font-weight:400;color:#9ca3af;">/month</span></p>
               <p style="font-size:13px;color:#CFAE70;margin-bottom:16px;">Waitlist Open — Limited spots</p>
               <ul style="color:#d1d5db;font-size:14px;line-height:1.8;padding-left:18px;margin-bottom:20px;">
                 <li>Everything in Pro, plus:</li>
-                <li>Assigned PME consultant</li>
-                <li>Mogul Credit AI coordination for disputes</li>
+                <li>Dedicated implementation consultant</li>
+                <li>Custom workflows built for you</li>
                 <li>Monthly strategy session with your coach</li>
-                <li>Priority funding application review</li>
+                <li>Priority feature access</li>
                 <li>White-glove onboarding</li>
               </ul>
             </article>
@@ -183,24 +259,23 @@
         </section>
 
         <section style="margin-bottom:64px;">
-          <h2 style="font-size:28px;font-weight:700;margin-bottom:16px;color:#fff;">One Advisor. Every Answer.</h2>
-          <p style="font-size:16px;color:#d1d5db;margin-bottom:24px;">Paige is trained on the full spectrum of credit, funding, real estate, and business strategy so you never have to go looking for answers elsewhere.</p>
+          <h2 style="font-size:28px;font-weight:700;margin-bottom:16px;color:#fff;">One Assistant. Every Answer.</h2>
+          <p style="font-size:16px;color:#d1d5db;margin-bottom:24px;">Paige is trained across the full range of client operations, marketing, automation, and business strategy — so your team always has an answer without going looking elsewhere.</p>
           <div style="display:flex;flex-wrap:wrap;gap:10px;">
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Three-Bureau Credit Analysis</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">FICO Score Optimization</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">SBA Loan Programs</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">8(a) Business Certification</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">DSCR Loan Intelligence</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">BRRRR Strategy</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Hard Money Financing</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Entity Structure Strategy</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Live Interest Rate Data</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Expense Optimization</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">FDIC Lender Search</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Predictive Credit Intelligence</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Client Management</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Workflow Automation</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Outreach Drafting</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Scheduling</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Analytics &amp; Reporting</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Content Creation</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Team Collaboration</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Knowledge Base</span>
             <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Voice Conversations</span>
             <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Document Ingestion</span>
-            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Working Capital Coaching</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Integrations</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Task Tracking</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Meeting Notes</span>
+            <span style="background:#1f2937;color:#CFAE70;border:1px solid #374151;border-radius:20px;padding:6px 14px;font-size:13px;font-weight:500;">Smart Reminders</span>
           </div>
         </section>
 
@@ -208,12 +283,12 @@
           <h2 style="font-size:28px;font-weight:700;margin-bottom:24px;color:#fff;">Your Data Is Protected</h2>
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px;">
             <article style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;">
-              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">Bank-Grade Encryption</h3>
-              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">All data protected with AES-256 encryption at rest and TLS 1.3 in transit. Your credit reports, bank data, SSNs, and financial information are secured to the same standard as major financial institutions.</p>
+              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">Enterprise-Grade Encryption</h3>
+              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">All data is protected with AES-256 encryption at rest and TLS 1.3 in transit. Your data and your clients' data are secured to enterprise standards.</p>
             </article>
             <article style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;">
-              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">FCRA &amp; CROA Compliant</h3>
-              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">Paige operates as a financial education and intelligence platform. All dispute guidance is CROA-compliant. We never file disputes on your behalf — we equip you with the knowledge and tools to act.</p>
+              <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">Privacy by Design</h3>
+              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">We collect only what's needed, act on clear consent, and never sell your information. You decide what Paige can access and when.</p>
             </article>
             <article style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;">
               <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">You Control Your Data</h3>
@@ -221,14 +296,14 @@
             </article>
             <article style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:24px;">
               <h3 style="font-size:17px;font-weight:700;margin-bottom:8px;color:#fff;">SOC 2 Infrastructure</h3>
-              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">Built on enterprise-grade cloud infrastructure with SOC 2 Type II certified platforms. Regular third-party security audits and penetration testing.</p>
+              <p style="font-size:14px;color:#d1d5db;line-height:1.6;">Built on enterprise-grade cloud infrastructure with SOC 2 Type II certified platforms, regular third-party security audits, and penetration testing.</p>
             </article>
           </div>
         </section>
 
         <footer style="border-top:1px solid #1f2937;padding-top:32px;margin-top:48px;color:#9ca3af;font-size:14px;line-height:1.8;">
-          <p><strong style="color:#fff;">PaigeAgent.ai</strong> provides financial education and credit intelligence tools. It is not a licensed financial advisor, credit repair organization, or lender. Credit score projections are estimates based on general FICO scoring factors. Actual results may vary.</p>
-          <p style="margin-top:16px;">© Mogul Maker Academy. All rights reserved.</p>
+          <p><strong style="color:#fff;">PaigeAgent.ai</strong> is an AI-powered business operations platform providing client management, automation, and advisory tools. Paige is a productivity assistant and is not a licensed professional advisor. Results may vary by business.</p>
+          <p style="margin-top:16px;">© PaigeAgent.ai. All rights reserved.</p>
         </footer>
       </main>
     </div>

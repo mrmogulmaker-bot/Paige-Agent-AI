@@ -5,17 +5,17 @@ const props = [
   {
     icon: BarChart3,
     title: "Intelligence That Moves With You",
-    body: "An always-on intelligence layer reading your credit, capital position, and business signals across every bureau and data source — surfacing the next strategic move before you have to ask. Less guessing. More clarity.",
+    body: "An always-on intelligence layer reading your clients, pipeline, and business signals across every workflow and data source — surfacing the next strategic move before you have to ask. Less guessing. More clarity.",
   },
   {
     icon: Building2,
     title: "Strategic Execution, Not Generic Advice",
-    body: "From entity architecture to capital deployment to lender psychology — Paige operates like a seasoned strategist who already knows the playbook. Every recommendation is tied to a real outcome, a real lender, and a real next step.",
+    body: "From client onboarding to outreach to follow-up sequencing — Paige operates like a seasoned strategist who already knows the playbook. Every recommendation is tied to a real outcome, a real client, and a real next step.",
   },
   {
     icon: TrendingUp,
     title: "Founder-Grade Operating Leverage",
-    body: "Entity structure, expense optimization, working capital, unit economics, real estate strategy — the operational thinking high-performing founders pay advisors $5K/month for, embedded into one ecosystem you actually use.",
+    body: "Team structure, process optimization, client retention, unit economics, growth strategy — the operational thinking high-performing founders pay advisors $5K/month for, embedded into one ecosystem you actually use.",
   },
 ];
 

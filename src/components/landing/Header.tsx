@@ -8,10 +8,14 @@ import { User } from "@supabase/supabase-js";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 
-export function Header() {
+export function Header({ autoHide = false }: { autoHide?: boolean }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [routing, setRouting] = useState(false);
+  // When autoHide is on, the bar lifts out of view over the hero and slides
+  // down when the cursor nears the top; once scrolled into the content it
+  // stays put. Starts revealed unless auto-hiding.
+  const [revealed, setRevealed] = useState(!autoHide);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -21,6 +25,37 @@ export function Header() {
     );
     return () => subscription.unsubscribe();
   }, []);
+
+  // Hover-reveal behavior for the landing hero.
+  useEffect(() => {
+    if (!autoHide) return;
+    // Touch / no-hover devices can't reveal by cursor — keep the bar visible.
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+      setRevealed(true);
+      return;
+    }
+    let mouseY = 999;
+    const update = () => {
+      const scrolledIntoContent = window.scrollY > Math.min(window.innerHeight * 0.7, 620);
+      setRevealed(scrolledIntoContent || mouseY < 90);
+    };
+    const onMove = (e: MouseEvent) => {
+      mouseY = e.clientY;
+      update();
+    };
+    const onScroll = () => update();
+    window.addEventListener("mousemove", onMove, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+    update();
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [autoHide]);
+
+  // Never trap keyboard users behind a hidden bar, and keep it down while the
+  // mobile menu is open.
+  const shown = revealed || mobileMenuOpen;
 
   const goToDashboard = async () => {
     if (!user || routing) return;
@@ -49,7 +84,12 @@ export function Header() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header
+      onFocusCapture={autoHide ? () => setRevealed(true) : undefined}
+      className={`sticky top-0 z-50 w-full border-b border-white/10 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50 transition-transform duration-300 ease-out ${
+        shown ? "translate-y-0" : "-translate-y-full"
+      }`}
+    >
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-20 items-center justify-between">
           <Link to="/" className="flex items-center">
@@ -84,7 +124,7 @@ export function Header() {
               <>
                 <Button variant="ghost" onClick={() => navigate("/auth?mode=login")}>Sign In</Button>
                 <Button
-                  className="bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold"
+                  className="bg-gradient-gold text-white hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold border-0"
                   onClick={() => navigate("/auth?mode=signup")}
                 >
                   Get Started Free
@@ -136,7 +176,7 @@ export function Header() {
                     Sign In
                   </Button>
                   <Button
-                    className="w-full bg-gradient-gold text-primary hover:shadow-glow-lg font-bold"
+                    className="w-full bg-gradient-gold text-white hover:shadow-glow-lg font-bold border-0"
                     onClick={() => navigate("/auth?mode=signup")}
                   >
                     Get Started Free

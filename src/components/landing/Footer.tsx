@@ -77,11 +77,9 @@ export function Footer() {
             </span>
           </div>
           <p className="text-[11px] text-primary-foreground/60 leading-relaxed max-w-4xl">
-            Paige provides financial education, credit monitoring, and business funding
-            intelligence. It is not a licensed financial advisor, credit repair organization, or
-            lender. Credit score projections are estimates based on general FICO scoring factors;
-            actual results may vary. Rate information is sourced from public Federal Reserve data
-            and is subject to change.
+            Paige is an AI business-operations platform for coaches, consultants, and agencies. It
+            brings client management, workflow automation, scheduling, and an AI assistant into a
+            single workspace so teams can run their practice more efficiently.
           </p>
           <p className="text-[11px] text-primary-foreground/50 leading-relaxed max-w-4xl">
             PaigeAgent AI LLC is a Wyoming limited liability company operating under license from

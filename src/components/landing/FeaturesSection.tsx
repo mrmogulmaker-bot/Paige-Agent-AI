@@ -14,35 +14,35 @@ const features = [
     title: "Real-Time Readiness Intelligence",
     body: undefined,
     description:
-      "One signal that tells you exactly where you stand to deploy capital — synthesized from credit, business bureaus, utilization, revenue, runway, and document health. Updates the moment your reality shifts.",
+      "One signal that tells you exactly where you stand with every client — synthesized from activity, pipeline stage, engagement, tasks, and document health. Updates the moment your reality shifts.",
     accent: true,
   },
   {
     icon: DollarSign,
-    title: "500+ Lender Match Engine",
+    title: "500+ Automation Match Engine",
     description:
-      "A live, bureau-aware capital marketplace — SBA, banks, credit unions, CDFIs, MCAs, equipment, DSCR. Paige surfaces only the lenders actually positioned to say yes to who you are right now.",
+      "A live, context-aware workflow marketplace — outreach, scheduling, onboarding, follow-ups, reporting, and integrations. Paige surfaces only the automations actually positioned to move your business right now.",
     accent: false,
   },
   {
     icon: FileText,
-    title: "The Capital Translator",
+    title: "The Operations Translator",
     description:
-      "\"Your 68% utilization is costing $75K of SBA capacity.\" Paige speaks in dollars and decisions, not scores — every variable mapped to the exact capital it unlocks or blocks.",
+      "\"Your 68% follow-up gap is costing $75K of pipeline.\" Paige speaks in outcomes and decisions, not vanity metrics — every variable mapped to the exact result it unlocks or blocks.",
     accent: false,
   },
   {
     icon: GraduationCap,
-    title: "Lender-Ready Capital Packages",
+    title: "Client-Ready Document Packages",
     description:
-      "Returns, P&L, balance sheet, statements, entity docs — assembled, validated, and packaged in the exact format each lender actually wants. No more last-minute scrambles before a deal.",
+      "Proposals, agreements, reports, statements, onboarding docs — assembled, validated, and packaged in the exact format each client actually wants. No more last-minute scrambles before a call.",
     accent: false,
   },
   {
     icon: Mic,
-    title: "Paige in Full Operator Mode",
+    title: "Paige on Full Autopilot",
     description:
-      "Voice or text. She maps your file, queues lender outreach, schedules paydowns, and pre-fills applications — you approve, Paige executes. An operator who works while you sleep.",
+      "Voice or text. She maps your workflow, queues client outreach, schedules reminders, and pre-fills documents — you approve, Paige executes. A teammate who works while you sleep.",
     accent: false,
   },
 ];
@@ -60,8 +60,8 @@ export function FeaturesSection() {
             <span className="text-accent font-extrabold">An Intelligent Ecosystem.</span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Other platforms hand you a number. Paige hands you the lender, the
-            structure, the move, and the leverage that gets you funded and
+            Other platforms hand you a dashboard. Paige hands you the client,
+            the structure, the move, and the leverage that gets you growing and
             scaling — this quarter, not someday.
           </p>
         </div>
