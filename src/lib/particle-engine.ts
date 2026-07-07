@@ -119,7 +119,7 @@ export class TravelingWaveOrb {
       speed: speed * (0.92 + Math.random() * 0.08),
       opacity: Math.pow(Math.random(), 2),
       size: 0.6 + Math.random() * 1.4,
-      trailLength: Math.floor(4 + Math.pow(Math.random(), 2) * 12),
+      trailLength: Math.floor(3 + Math.pow(Math.random(), 2) * 7),
       trail: [],
       isPrime: isPrime(index),
     };
@@ -170,8 +170,10 @@ export class TravelingWaveOrb {
 
           if (alpha < 0.01) continue;
 
-          // Render particle
-          if (p.isPrime && alpha > 0.1 && this.brightness > 0.2) {
+          // Render particle. The prime-glow arc and the white highlight are
+          // the two most expensive fills — restrict them to the trail head
+          // only (was every trail point), a large per-frame saving.
+          if (isHead && p.isPrime && alpha > 0.1 && this.brightness > 0.2) {
             ctx.fillStyle = `rgba(${this.color.r + 40}, ${this.color.g + 20}, ${this.color.b}, ${alpha * 0.9})`;
             ctx.beginPath();
             ctx.arc(sx, sy, size * 1.8, 0, Math.PI * 2);
@@ -183,8 +185,8 @@ export class TravelingWaveOrb {
           ctx.arc(sx, sy, size, 0, Math.PI * 2);
           ctx.fill();
 
-          // Highlight on bright particles
-          if (alpha > 0.1 && size > 0.8 && this.brightness > 0.1) {
+          // Highlight — head only.
+          if (isHead && alpha > 0.15 && size > 0.8 && this.brightness > 0.1) {
             ctx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.6})`;
             ctx.fillRect(sx - size * 0.3, sy - size * 0.3, size * 0.6, size * 0.6);
           }
@@ -250,7 +252,7 @@ export class ParticleEngine {
     this.scrollProgress = 0;
     this.width = window.innerWidth;
     this.height = window.innerHeight;
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     this.animFrameId = 0;
     this.isRunning = false;
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -267,9 +269,13 @@ export class ParticleEngine {
 
     this.resize();
 
-    // Create initial orb
+    // Create initial orb. Ring/particle counts tuned down from 60×240 for a
+    // smoother frame (esp. during the pinned scroll); mobile drops further.
+    const mobile = this.width < 768;
     const mainOrb = new TravelingWaveOrb(
-      this.ctx, 0.5, 0.4, 260, 60, 240,
+      this.ctx, 0.5, 0.4, 260,
+      mobile ? 28 : 42,
+      mobile ? 96 : 150,
       [0.0045, 0.009, 0.0135], 1.0, DEFAULT_COLORS[0]
     );
     mainOrb.init();
@@ -372,7 +378,8 @@ export class ParticleEngine {
             this.ctx,
             0.5, 0.4, // Start at center
             radius,
-            30, 120,  // Reduced particle count for satellites
+            isMobile ? 16 : 22,   // rings — tuned down from 30 for smoothness
+            isMobile ? 64 : 90,   // particles/ring — tuned down from 120
             [0.0045, 0.009, 0.0135],
             config.brightness,
             config.color
