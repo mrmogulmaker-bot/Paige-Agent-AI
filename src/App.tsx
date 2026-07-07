@@ -46,6 +46,7 @@ import { usePageView } from "./hooks/useAnalytics";
 // Eagerly load only the public landing + auth pages (likely first-paint)
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+const PaigeHome = lazyWithReload(() => import("./pages/PaigeHome"));
 const PremiumHero = lazyWithReload(() => import("./pages/PremiumHero"));
 const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
 const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
@@ -157,7 +158,9 @@ const App = () => (
           <MetaPixel />
           <ClientOnlyRouteGuard />
           <Routes>
-            <Route path="/" element={<PageSuspense><PremiumHero /></PageSuspense>} />
+            {/* Live homepage — the new gold+indigo Paige design */}
+            <Route path="/" element={<PageSuspense><PaigeHome /></PageSuspense>} />
+            {/* Parked prior designs (not linked): star-field orb + legacy site */}
             <Route path="/premium" element={<PageSuspense><PremiumHero /></PageSuspense>} />
             <Route path="/legacy" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
