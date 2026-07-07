@@ -47,3 +47,5 @@ export function Reveal({
     </div>
   );
 }
+
+/* redeploy nudge: force Vercel to build ca7d28e (hover-reveal header) */
