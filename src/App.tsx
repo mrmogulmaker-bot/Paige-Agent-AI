@@ -151,6 +151,9 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
+            {/* Member (consumer) entry via a coach's tenant-scoped link. Distinct
+                from /join/:token, which is staff/workspace invite acceptance. */}
+            <Route path="/start/:slug" element={<PageSuspense><PublicSignup /></PageSuspense>} />
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
             <Route path="/accept-invite" element={<PageSuspense><AcceptInvite /></PageSuspense>} />

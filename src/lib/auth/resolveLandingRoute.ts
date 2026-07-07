@@ -71,6 +71,14 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
       return "/app";
     }
 
+    // Business signups have no client row and no elevated role yet (their
+    // tenant + owner role are granted when their subscription provisions).
+    // Send them to plan selection rather than the empty consumer app.
+    const { data: { user } } = await supabase.auth.getUser();
+    if ((user?.user_metadata as Record<string, unknown> | null)?.signup_intent === "business") {
+      return "/pricing";
+    }
+
     return "/app";
   } catch {
     return "/app";

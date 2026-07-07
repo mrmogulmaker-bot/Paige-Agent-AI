@@ -2,7 +2,7 @@
 // No auth gate. SSO + email/password, then multi-step business data wizard.
 // On submit: client mirror + sales_dept.handle_new_lead via complete-signup edge function.
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
@@ -80,6 +80,9 @@ const STORAGE_KEY = "paige_signup_wizard_draft_v1";
 
 export default function PublicSignup() {
   const navigate = useNavigate();
+  // Members arrive through their coach's tenant-scoped link (/start/:slug).
+  // The slug scopes the signup to that tenant; plain /signup joins the default.
+  const { slug: joinTenantSlug } = useParams();
   const { toast } = useToast();
 
   // Phase: 'auth' (gate) → 'wizard' → 'submitting'
@@ -151,6 +154,12 @@ export default function PublicSignup() {
         const { error } = await signUpWithReferral({
           email, password, fullName,
           redirectTo: window.location.origin + "/signup",
+          extraData: {
+            // Member (consumer) entry — scoped to the coach's tenant when the
+            // link carries a slug, else the default tenant applies.
+            signup_intent: "member",
+            ...(joinTenantSlug ? { join_tenant_slug: joinTenantSlug } : {}),
+          },
         });
         if (error) throw error;
         if (fullName) setData((d) => ({ ...d, full_legal_name: d.full_legal_name || fullName }));

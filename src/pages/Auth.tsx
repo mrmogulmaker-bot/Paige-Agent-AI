@@ -157,6 +157,9 @@ const Auth = () => {
           fullName,
           redirectTo: `${window.location.origin}/app`,
           extraData: {
+            // Main front door is the BUSINESS/tenant entry. Members sign up via
+            // their coach's tenant-scoped link (/join/:slug), not here.
+            signup_intent: "business",
             consent_agreements: true,
             consent_data_usage: true,
             consent_marketing: consentMarketing,
