@@ -10,7 +10,7 @@ import { Loader2, ArrowLeft, Shield, TrendingUp, Zap, ChevronRight, Eye, EyeOff 
 import { z } from "zod";
 import type { User, Session } from "@supabase/supabase-js";
 import paigeLogo from "@/assets/paige-logo-transparent.png";
-import { lovable } from "@/integrations/lovable/index";
+import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
@@ -240,9 +240,7 @@ const Auth = () => {
     setIsLoading(true);
     try {
       void trackEvent("signup_cta_click", "acquisition", { method: "google" });
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: `${window.location.origin}/app`,
-      });
+      const result = await signInWithOAuth("google", `${window.location.origin}/app`);
       if (result.error) {
         toast({ title: "Google sign-in failed", description: String(result.error), variant: "destructive" });
       }
@@ -257,9 +255,7 @@ const Auth = () => {
   const handleAppleSignIn = async () => {
     setIsLoading(true);
     try {
-      const result = await lovable.auth.signInWithOAuth("apple", {
-        redirect_uri: `${window.location.origin}/app`,
-      });
+      const result = await signInWithOAuth("apple", `${window.location.origin}/app`);
       if (result.error) {
         toast({ title: "Apple sign-in failed", description: String(result.error), variant: "destructive" });
       }

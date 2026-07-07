@@ -33,7 +33,7 @@ const isInIframe = (() => {
 })();
 const isPreviewHost =
   window.location.hostname.includes("id-preview--") ||
-  window.location.hostname.includes("lovableproject.com");
+  window.location.hostname.endsWith(".vercel.app");
 
 async function cleanupServiceWorkers() {
   if (!("serviceWorker" in navigator)) return;

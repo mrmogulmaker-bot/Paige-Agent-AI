@@ -2,7 +2,6 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import fs from "fs";
-import { componentTagger } from "lovable-tagger";
 
 // Serve /.well-known/* JSON files (oauth-protected-resource,
 // oauth-authorization-server) in dev. Static dotfile dirs are otherwise
@@ -36,7 +35,7 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
-  plugins: [react(), wellKnownPlugin(), mode === "development" && componentTagger()].filter(Boolean),
+  plugins: [react(), wellKnownPlugin()],
 
   resolve: {
     alias: {

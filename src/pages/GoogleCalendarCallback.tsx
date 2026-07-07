@@ -15,9 +15,7 @@ function safeReturnOrigin(value: unknown): string | null {
       (url.protocol === "https:" && (
         host === "paigeagent.ai" ||
         host === "www.paigeagent.ai" ||
-        host === "portal.mogulmakeracademy.com" ||
-        host.endsWith(".lovable.app") ||
-        host.endsWith(".lovableproject.com")
+        host.endsWith(".vercel.app")
       ));
     return allowed ? url.origin : null;
   } catch {
