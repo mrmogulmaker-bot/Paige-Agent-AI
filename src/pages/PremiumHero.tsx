@@ -11,6 +11,11 @@ import {
   Check,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Suspense, lazy } from "react";
+
+// Native Spline embed (self-hosted .splinecode) — transparent canvas that
+// composites over the premium layout, controllable from code.
+const Spline = lazy(() => import("@splinetool/react-spline"));
 
 /**
  * PremiumHero — the full premium Paige landing (route /premium).
@@ -135,14 +140,12 @@ export default function PremiumHero() {
 
       {/* Hero — live Spline 3D scene (interactive parallax) */}
       <section className="relative z-10 h-screen w-full overflow-hidden">
-        <iframe
-          src="https://my.spline.design/interactive3dparallaxscene-EN4O75hknJYKy6Cb3Er88pIk/"
-          title="Paige — interactive 3D scene"
-          className="absolute inset-0 h-full w-full"
-          style={{ border: 0 }}
-          loading="eager"
-          allow="autoplay; fullscreen"
-        />
+        <Suspense fallback={<div className="absolute inset-0" />}>
+          <Spline
+            scene="/paige/paige-scene.splinecode"
+            className="!absolute inset-0 h-full w-full"
+          />
+        </Suspense>
         {/* Legibility scrim — fades the scene into the copy + the page below */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0a0510] via-[#0a0510]/10 to-[#0a0510]/30" />
 
