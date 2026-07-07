@@ -69,14 +69,96 @@
       window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{};
       plausible.init()
     </script>
+
+    <!-- Cinematic pre-hydration splash — paints before React boots so there
+         is no white flash on load. Removed by src/main.tsx once the app mounts. -->
+    <style>
+      #paige-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 30px;
+        background: radial-gradient(120% 90% at 50% 38%, #1b0f33 0%, #0b0710 62%);
+        transition: opacity 0.6s ease, visibility 0.6s ease;
+      }
+      #paige-splash.paige-splash--done {
+        opacity: 0;
+        visibility: hidden;
+      }
+      .paige-splash__stage {
+        position: relative;
+        width: 132px;
+        height: 132px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .paige-splash__glow {
+        position: absolute;
+        inset: -28%;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(168, 85, 247, 0.55), transparent 65%);
+        filter: blur(14px);
+        animation: paigePulse 2.4s ease-in-out infinite;
+      }
+      .paige-splash__ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: conic-gradient(from 0deg, transparent 0 68%, #c084fc 86%, #a855f7 100%);
+        -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+        mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+        animation: paigeSpin 1.1s linear infinite;
+      }
+      .paige-splash__bot {
+        position: relative;
+        width: 84px;
+        height: 84px;
+        object-fit: contain;
+        filter: drop-shadow(0 0 22px rgba(168, 85, 247, 0.7));
+        animation: paigeFloat 3s ease-in-out infinite;
+      }
+      .paige-splash__word {
+        font-family: system-ui, -apple-system, sans-serif;
+        font-weight: 800;
+        letter-spacing: 0.42em;
+        font-size: 13px;
+        color: #e9d5ff;
+        text-transform: uppercase;
+        padding-left: 0.42em;
+        animation: paigeFade 2.4s ease-in-out infinite;
+      }
+      @keyframes paigeSpin { to { transform: rotate(360deg); } }
+      @keyframes paigeFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+      @keyframes paigePulse { 0%, 100% { opacity: 0.5; transform: scale(0.92); } 50% { opacity: 0.9; transform: scale(1.06); } }
+      @keyframes paigeFade { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) {
+        .paige-splash__ring,
+        .paige-splash__bot,
+        .paige-splash__glow,
+        .paige-splash__word { animation: none; }
+      }
+    </style>
   </head>
 
   <body>
+    <div id="paige-splash" role="status" aria-label="Loading Paige">
+      <div class="paige-splash__stage">
+        <div class="paige-splash__glow"></div>
+        <div class="paige-splash__ring"></div>
+        <img class="paige-splash__bot" src="/paige/paige-bot-1.png" alt="" />
+      </div>
+      <div class="paige-splash__word">Paige</div>
+    </div>
     <div id="root">
       <!-- Static SEO content for crawlers that do not execute JavaScript -->
-      <main style="font-family:system-ui,-apple-system,sans-serif;background:#0a0e1a;color:#fff;padding:40px 24px;max-width:1200px;margin:0 auto;">
+      <main style="font-family:system-ui,-apple-system,sans-serif;background:#0b0710;color:#fff;padding:40px 24px;max-width:1200px;margin:0 auto;">
         <header style="margin-bottom:48px;">
-          <p style="color:#CFAE70;font-size:14px;font-weight:600;margin-bottom:12px;">Founding Beta — Limited Spots</p>
+          <p style="color:#c084fc;font-size:14px;font-weight:600;margin-bottom:12px;">Founding Beta — Limited Spots</p>
           <h1 style="font-size:42px;font-weight:800;line-height:1.15;margin-bottom:16px;color:#fff;">Your AI Business Operations Partner</h1>
           <p style="font-size:18px;color:#d1d5db;max-width:640px;line-height:1.6;margin-bottom:24px;">Built for coaches, consultants, and agencies who are serious about scaling. Paige manages your clients, automates your busywork, drafts your outreach, and keeps your entire operation moving — all in one conversation. Stop juggling tools. Start scaling.</p>
           <p style="font-size:14px;color:#9ca3af;">7-day free trial · No card required to start · Cancel anytime</p>
