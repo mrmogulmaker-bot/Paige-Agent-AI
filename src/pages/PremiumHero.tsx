@@ -228,21 +228,21 @@ const STEPS = [
 ];
 
 const PLANS = [
-  { name: "Starter", price: "$49", tagline: "For solo operators", features: ["Client CRM", "Core automations", "AI advisor", "Email support"], highlight: false },
-  { name: "Growth", price: "$149", tagline: "For growing teams", features: ["Everything in Starter", "Team collaboration", "Advanced analytics", "18 sub-agents", "Priority support"], highlight: true },
-  { name: "Scale", price: "Custom", tagline: "For agencies", features: ["Everything in Growth", "White-label workspace", "Custom sub-agents", "Dedicated success"], highlight: false },
+  { name: "Solo", price: "$58", tagline: "Just you, fully covered.", features: ["Paige runs your CRM & pipeline", "Auto-drafted follow-ups & recaps", "Client welcome sequences", "Cohort check-ins & at-risk flags"], highlight: false },
+  { name: "Practice", price: "$149", tagline: "Most coaches land here.", features: ["Everything in Solo", "Custom playbooks per coach", "Advanced analytics & signals", "Priority support"], highlight: true },
+  { name: "Studio", price: "$349", tagline: "For the coach running the whole show.", features: ["Everything in Practice", "Multi-coach roster & routing", "White-label workspace", "Dedicated success partner"], highlight: false },
 ];
 
 const QUOTES = [
-  { q: "Paige runs the parts of my business I used to dread. I got my evenings back.", a: "Fitness coach" },
-  { q: "It's like hiring an ops team overnight. Everything just… happens now.", a: "Business consultant" },
-  { q: "We white-labeled it for our whole agency. Clients think we built it.", a: "Agency owner" },
+  { q: "Paige runs the parts of my practice I used to dread. I got my evenings back — and my clients have never felt more looked-after.", a: "Business coach · Chicago" },
+  { q: "It's like hiring an ops team overnight. The follow-through happens whether I remember it or not.", a: "Executive coach · Austin" },
+  { q: "Every client gets the follow-up I could never keep up with. Retention's up and I'm doing a fraction of the admin.", a: "Fitness coach · Los Angeles" },
 ];
 
 const FAQS = [
-  { q: "Who is Paige for?", a: "Coaches, consultants, and agencies who want to run their entire client operation from one place — from solo to scaled." },
+  { q: "Who is Paige for?", a: "Coaches running a real practice — business, executive, fitness, life — who want the operations handled so they can focus on the work only they can do." },
   { q: "Do I need technical skills?", a: "No. Paige is conversational — you tell her what you want and she handles the workflows behind the scenes." },
-  { q: "Can I white-label it?", a: "Yes. On the Scale plan you get a fully white-labeled workspace with your own branding and sending domain." },
+  { q: "How fast can she start?", a: "Day one. Every plan comes with a 14-day pilot and no contract — Paige is running your operation the moment you connect her." },
 ];
 
 export default function PremiumHero() {
@@ -464,14 +464,19 @@ export default function PremiumHero() {
 
         {/* Pricing */}
         <Section id="pricing" className="py-24">
-          <motion.h2 variants={rise} className="mb-14 text-center text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
-            Simple, scale-ready pricing
+          <motion.h2 variants={rise} className="mb-3 text-center text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
+            Ready to <span className="bg-gradient-to-r from-[#e8c66a] to-[#d4af37] bg-clip-text text-transparent">hire me?</span>
           </motion.h2>
+          <motion.p variants={rise} className="mx-auto mb-14 max-w-md text-center text-white/60">
+            Every plan · 14-day pilot · no contract · Paige works on day one.
+          </motion.p>
           <div className="grid gap-6 md:grid-cols-3">
             {PLANS.map((p) => (
               <motion.div
                 key={p.name}
                 variants={rise}
+                whileHover={{ y: -6, rotateX: 3, rotateY: -3 }}
+                style={{ transformPerspective: 900 }}
                 className={`relative flex flex-col rounded-2xl border p-7 ${
                   p.highlight ? "border-[#d4af37]/45 bg-gradient-to-b from-[#a855f7]/[0.12] to-transparent shadow-[0_0_50px_rgba(124,58,237,0.25)]" : "border-white/10 bg-white/[0.03]"
                 }`}
@@ -501,7 +506,7 @@ export default function PremiumHero() {
                     p.highlight ? "bg-gradient-to-br from-[#a855f7] to-[#7c3aed] text-white" : "border border-white/20 bg-white/5 text-white"
                   }`}
                 >
-                  Get Started
+                  Hire Paige
                 </button>
               </motion.div>
             ))}
@@ -510,6 +515,9 @@ export default function PremiumHero() {
 
         {/* Testimonials */}
         <Section className="py-24">
+          <motion.h2 variants={rise} className="mb-12 text-center text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
+            Coaches who <span className="bg-gradient-to-r from-[#e8c66a] to-[#a855f7] bg-clip-text text-transparent">hired Paige.</span>
+          </motion.h2>
           <div className="grid gap-5 md:grid-cols-3">
             {QUOTES.map((t) => (
               <motion.blockquote key={t.a} variants={rise} className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
