@@ -4,7 +4,7 @@
 // Plausible is $9/mo and takes ~5 minutes to add — drop their <script> tag in
 // index.html (or here in a <Helmet>). Should be done before running paid
 // marketing so we can attribute traffic from each campaign.
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { Header } from "@/components/landing/Header";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { trackEvent } from "@/hooks/useAnalytics";
@@ -19,6 +19,10 @@ import { Footer } from "@/components/landing/Footer";
 import { IntegrationsSection } from "@/components/landing/IntegrationsSection";
 import { SiteBackground } from "@/components/landing/SiteBackground";
 import { Reveal } from "@/components/landing/Reveal";
+import { supportsWebGL } from "@/lib/webgl";
+
+// Persistent full-page 3D world (code-split so it never blocks first paint).
+const SiteScene = lazy(() => import("@/components/landing/three/SiteScene"));
 
 /** Light trim between the dark bands — a faint purple hairline. */
 const SectionDivider = () => (
@@ -27,7 +31,34 @@ const SectionDivider = () => (
   </div>
 );
 
+// When the 3D world is on, the page content floats over it: sections go
+// transparent and pointer events pass through empty space to the canvas so the
+// shards stay grabbable behind the copy. Interactive elements opt back in.
+const THREE_D_STYLE = `
+  .paige-3d section { background-color: transparent !important; }
+  .paige-3d .paige-content { pointer-events: none; }
+  .paige-3d .paige-content a,
+  .paige-3d .paige-content button,
+  .paige-3d .paige-content input,
+  .paige-3d .paige-content textarea,
+  .paige-3d .paige-content select,
+  .paige-3d .paige-content label,
+  .paige-3d .paige-content [role="button"],
+  .paige-3d .paige-content [role="tab"],
+  .paige-3d .paige-content summary { pointer-events: auto; }
+`;
+
 const Index = () => {
+  const [use3D, setUse3D] = useState(false);
+
+  useEffect(() => {
+    // Mount the 3D world whenever WebGL is available. (Previously this also
+    // gated on prefers-reduced-motion, which silently hid the whole scene for
+    // anyone with that OS setting on — accessibility damping belongs inside the
+    // scene, not an all-or-nothing switch.)
+    setUse3D(supportsWebGL());
+  }, []);
+
   useEffect(() => {
     trackEvent("landing_page_view", "acquisition");
     let firedPricing = false;
@@ -47,28 +78,46 @@ const Index = () => {
   }, []);
 
   return (
-    <div className="dark min-h-screen bg-background text-foreground">
-      <SiteBackground />
-      <Header autoHide />
-      <HeroSection />
-      <Reveal><ValuePropsSection /></Reveal>
-      <SectionDivider />
-      <Reveal><HowPaigeWorksSection /></Reveal>
-      <SectionDivider />
-      <div id="what-paige-knows">
-        <Reveal><WhatPaigeKnowsSection /></Reveal>
+    <div
+      className={`dark min-h-screen text-foreground ${
+        use3D ? "bg-transparent paige-3d" : "bg-background"
+      }`}
+    >
+      {use3D ? (
+        <>
+          <style>{THREE_D_STYLE}</style>
+          <Suspense fallback={<div className="fixed inset-0 -z-10 bg-background" />}>
+            <SiteScene />
+          </Suspense>
+        </>
+      ) : (
+        <SiteBackground />
+      )}
+
+      {/* Content floats over the 3D world; empty space lets pointer events
+          reach the canvas so the shards stay grabbable behind the copy. */}
+      <div className="paige-content relative z-10">
+        <Header autoHide />
+        <HeroSection />
+        <Reveal><ValuePropsSection /></Reveal>
+        <SectionDivider />
+        <Reveal><HowPaigeWorksSection /></Reveal>
+        <SectionDivider />
+        <div id="what-paige-knows">
+          <Reveal><WhatPaigeKnowsSection /></Reveal>
+        </div>
+        <SectionDivider />
+        <Reveal><PricingSection /></Reveal>
+        <SectionDivider />
+        <Reveal><IntegrationsSection /></Reveal>
+        <SectionDivider />
+        <Reveal><TestimonialsSection /></Reveal>
+        <SectionDivider />
+        <Reveal><TrustSecuritySection /></Reveal>
+        <SectionDivider />
+        <Reveal><FAQSection /></Reveal>
+        <Footer />
       </div>
-      <SectionDivider />
-      <Reveal><PricingSection /></Reveal>
-      <SectionDivider />
-      <Reveal><IntegrationsSection /></Reveal>
-      <SectionDivider />
-      <Reveal><TestimonialsSection /></Reveal>
-      <SectionDivider />
-      <Reveal><TrustSecuritySection /></Reveal>
-      <SectionDivider />
-      <Reveal><FAQSection /></Reveal>
-      <Footer />
     </div>
   );
 };
