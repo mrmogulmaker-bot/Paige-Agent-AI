@@ -113,7 +113,7 @@ export function HeroSection() {
             </div>
 
             <p className="text-[11px] text-white/70 pt-2">
-              The Operator Command Center for coaches, consultants, and
+              The Command Center for coaches, consultants, and
               agencies ·{" "}
               <span className="text-gold">From Solo to Scaled</span>
             </p>

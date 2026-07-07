@@ -34,7 +34,7 @@ const personas = [
   {
     icon: Users,
     badge: "Pro & Coach Tier",
-    title: "The Agency Operator",
+    title: "The Agency Owner",
     subtitle: "Managing multiple clients",
     description:
       "You're a coach, consultant, or agency owner managing a book of clients. Paige gives you a full client CRM, readiness pipeline, activity audit trail, and white-glove reporting — all built for how you actually work.",

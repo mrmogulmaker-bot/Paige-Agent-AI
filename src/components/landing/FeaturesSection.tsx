@@ -40,9 +40,9 @@ const features = [
   },
   {
     icon: Mic,
-    title: "Paige in Full Operator Mode",
+    title: "Paige on Full Autopilot",
     description:
-      "Voice or text. She maps your workflow, queues client outreach, schedules reminders, and pre-fills documents — you approve, Paige executes. An operator who works while you sleep.",
+      "Voice or text. She maps your workflow, queues client outreach, schedules reminders, and pre-fills documents — you approve, Paige executes. A teammate who works while you sleep.",
     accent: false,
   },
 ];

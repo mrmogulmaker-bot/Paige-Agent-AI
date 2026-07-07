@@ -51,7 +51,7 @@ export function WhatPaigeKnowsSection() {
           </h2>
           <p className="text-lg text-muted-foreground">
             Trained across the full spectrum of client management, workflow
-            automation, operations strategy, and operator psychology — so the
+            automation, operations strategy, and client psychology — so the
             answer you need is always inside the system, not somewhere on the internet.
           </p>
         </div>

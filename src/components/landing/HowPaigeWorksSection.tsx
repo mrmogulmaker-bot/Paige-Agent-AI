@@ -7,7 +7,7 @@ const steps = [
     icon: MessageCircle,
     n: "01",
     title: "Define the Mission",
-    body: "Every operator moves with intent. Paige starts by mapping your real objective — the clients you're serving, the offers you're launching, the workflows you're scaling — and aligns your entire operation to it.",
+    body: "Every business moves with intent. Paige starts by mapping your real objective — the clients you're serving, the offers you're launching, the workflows you're scaling — and aligns your entire operation to it.",
   },
   {
     icon: Search,
@@ -43,7 +43,7 @@ export function HowPaigeWorksSection() {
           </h2>
           <p className="text-lg text-muted-foreground">
             Paige isn't a chatbot answering questions. It's an intelligent
-            operating system engineered around how serious operators
+            operating system engineered around how serious coaches and consultants
             actually build, run, and scale their businesses.
           </p>
         </div>
