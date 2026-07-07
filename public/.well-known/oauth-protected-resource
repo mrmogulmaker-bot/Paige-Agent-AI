@@ -1,5 +1,5 @@
 {
-  "resource": "https://bfmyebsjyuoecmjskqhs.supabase.co/functions/v1/paige-mcp",
+  "resource": "https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/paige-mcp",
   "authorization_servers": ["https://paigeagent.ai"],
   "bearer_methods_supported": ["header"],
   "scopes_supported": ["crm.read", "crm.write", "crm.delete", "workflows.run", "btf.read", "btf.write", "admin.read", "admin.write", "admin.delete", "platform.read", "platform.write"],
