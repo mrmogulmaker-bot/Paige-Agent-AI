@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { gatewayCompat } from "../_shared/claude.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 
 const corsHeaders = {
@@ -160,7 +161,7 @@ serve(async (req) => {
     const reportId = inserted.id as string;
 
     // 3) Run AI extraction via Lovable AI Gateway
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    const lovableApiKey = "unused";
     if (!lovableApiKey) throw new Error("LOVABLE_API_KEY not configured");
 
     // Re-encode bytes to base64 for the Gateway image_url payload
@@ -175,7 +176,7 @@ serve(async (req) => {
     const b64 = btoa(binStr);
     const dataUrl = `data:${mimeType};base64,${b64}`;
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiRes = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${lovableApiKey}`,

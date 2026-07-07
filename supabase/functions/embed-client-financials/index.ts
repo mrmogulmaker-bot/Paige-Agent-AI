@@ -21,6 +21,7 @@
 // Auth: service-role only.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 
 const corsHeaders = {
@@ -45,7 +46,7 @@ const TABLE_TO_TYPE: Record<string, string> = {
 async function embed(text: string, key: string): Promise<number[] | null> {
   try {
     const trimmed = text.length > 8000 ? text.slice(0, 8000) : text;
-    const r = await fetch("https://api.openai.com/v1/embeddings", {
+    const r = await embeddingsCompat("voyage", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: "text-embedding-3-small", input: trimmed }),
@@ -257,7 +258,7 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const openaiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
+    const openaiKey = "unused" ?? "";
     const auth = req.headers.get("Authorization") ?? "";
 
     if (!auth.includes(serviceKey)) {

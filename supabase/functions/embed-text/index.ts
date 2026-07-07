@@ -1,7 +1,8 @@
 // Standalone embedding service used by Paige memory pipeline.
-// Uses OpenAI text-embedding-3-small (1536 dims) — matches the vector(1536) schema.
+// Uses OpenAI Voyage voyage-3 (1024 dims) — matches the vector(1536) schema.
 // Auth required; rate-limited per user.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 
 const corsHeaders = {
@@ -13,7 +14,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const OPENAI_API_KEY = "unused";
     if (!OPENAI_API_KEY) {
       return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
         status: 500,
@@ -47,7 +48,7 @@ serve(async (req) => {
     // Truncate each input to ~8000 chars (~2k tokens) to stay well under the 8192-token limit.
     const trimmed = inputs.map((t) => t.length > 8000 ? t.slice(0, 8000) : t);
 
-    const resp = await fetch("https://api.openai.com/v1/embeddings", {
+    const resp = await embeddingsCompat("voyage", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${OPENAI_API_KEY}`,

@@ -1,9 +1,10 @@
 // Ingest a tenant-private knowledge doc: chunk it, embed via Lovable AI
-// Gateway (google/gemini-embedding-001, 3072-dim), and write to
+// Gateway (Voyage voyage-3, 1024-dim), and write to
 // tenant_knowledge_docs + tenant_knowledge_chunks. Tenant-scoped via RLS on
 // the caller's JWT — the row's tenant_id is derived from the caller, not
 // trusted from the client payload.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 
@@ -42,7 +43,7 @@ function chunkText(text: string): string[] {
 }
 
 async function embed(text: string, apiKey: string): Promise<number[]> {
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+  const r = await embeddingsCompat("voyage", {
     method: "POST",
     headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: "google/gemini-embedding-001", input: text }),
@@ -130,7 +131,7 @@ serve(async (req) => {
       });
     }
 
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
+    const apiKey = "unused";
     if (!apiKey) {
       return new Response(JSON.stringify({
         ok: true, doc_id: doc.id, chunk_count: chunks.length,

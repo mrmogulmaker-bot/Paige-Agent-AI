@@ -27,7 +27,7 @@ INSERT INTO public.paige_journey_stages (id, slug, label, display_order, color_h
   (3, 'paid_tier',           'Paid Tier',            3, '#22C55E', 'Upgraded to Standard ($8), Premium ($44), or VIP ($97).'),
   (4, 'dfy_program',         'DFY Program',          4, '#A855F7', 'Engaged in a Done For You program ($10K–$100K).'),
   (5, 'post_dfy_monitoring', 'Post-DFY Monitoring',  5, '#F59E0B', 'DFY complete; continued progress tracking.'),
-  (6, 'ultimate_offer',      'Ultimate Offer',       6, '#EF4444', 'Scaled to high-tier partnership: investor capital, acquisitions, real estate, ABL, institutional offers. MMA acts as facilitator — never takes equity.')
+  (6, 'ultimate_offer',      'Ultimate Offer',       6, '#EF4444', 'Scaled to high-tier partnership: investor capital, acquisitions, real estate, ABL, institutional offers. The coach acts as facilitator — never takes equity.')
 ON CONFLICT (id) DO UPDATE SET
   slug = EXCLUDED.slug,
   label = EXCLUDED.label,

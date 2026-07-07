@@ -7,6 +7,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
 
+import { gatewayCompat } from "../_shared/claude.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-orchestrator-call",
@@ -15,7 +16,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const LOVABLE_API_KEY = "unused"!;
 
 const SYSTEM_PROMPT = `You are Paige's Problem Reverse-Engineer — a specialist sub-agent that decomposes a client's stated problem into root causes and concrete next actions.
 
@@ -107,7 +108,7 @@ Deno.serve(async (req) => {
       input.extra_context ? `\n\n# Extra context\n${input.extra_context.trim()}` : ""
     }${contactContext ? `\n\n${contactContext}` : ""}`;
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiResp = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,

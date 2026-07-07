@@ -132,8 +132,8 @@ Deno.serve(async (req) => {
         vendor_message_id = json?.sid ?? null;
         status = "sent";
       } else if (config?.ghl_fallback_enabled) {
-        const url = Deno.env.get("MMA_OS_BRIDGE_URL");
-        const key = Deno.env.get("MMA_OS_BRIDGE_API_KEY");
+        const url = Deno.env.get("PAIGE_OS_BRIDGE_URL");
+        const key = Deno.env.get("PAIGE_OS_BRIDGE_API_KEY");
         if (!url || !key) throw new Error("bridge_env_missing");
         const res = await fetch(url, {
           method: "POST",

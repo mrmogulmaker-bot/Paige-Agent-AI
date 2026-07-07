@@ -155,14 +155,14 @@ function isTransientStatus(status: number): boolean {
   return status === 408 || status === 429 || (status >= 500 && status <= 599);
 }
 
-const MMA_OS_MAX_ATTEMPTS = 4; // 1 initial + 3 retries
-const MMA_OS_BASE_DELAY_MS = 500;
-const MMA_OS_MAX_DELAY_MS = 8000;
-const MMA_OS_TIMEOUT_MS = 10_000;
+const PAIGE_OS_MAX_ATTEMPTS = 4; // 1 initial + 3 retries
+const PAIGE_OS_BASE_DELAY_MS = 500;
+const PAIGE_OS_MAX_DELAY_MS = 8000;
+const PAIGE_OS_TIMEOUT_MS = 10_000;
 
 function backoffDelay(attempt: number): number {
   // attempt is 1-indexed for retries (1 = first retry)
-  const exp = Math.min(MMA_OS_BASE_DELAY_MS * Math.pow(3, attempt - 1), MMA_OS_MAX_DELAY_MS);
+  const exp = Math.min(PAIGE_OS_BASE_DELAY_MS * Math.pow(3, attempt - 1), PAIGE_OS_MAX_DELAY_MS);
   const jitter = Math.floor(Math.random() * 250);
   return exp + jitter;
 }
@@ -174,10 +174,10 @@ async function fireMmaOsTierSync(payload: {
   stripeAccountId: string | null;
   eventId: string;
 }) {
-  const url = Deno.env.get("MMA_OS_EDGE_URL") || Deno.env.get("MMA_OS_BRIDGE_URL");
-  const key = Deno.env.get("MMA_OS_BRIDGE_API_KEY");
+  const url = Deno.env.get("PAIGE_OS_EDGE_URL") || Deno.env.get("PAIGE_OS_BRIDGE_URL");
+  const key = Deno.env.get("PAIGE_OS_BRIDGE_API_KEY");
   if (!url || !key) {
-    logStep("MMA OS short-hop skipped: missing MMA_OS_EDGE_URL or MMA_OS_BRIDGE_API_KEY");
+    logStep("MMA OS short-hop skipped: missing PAIGE_OS_EDGE_URL or PAIGE_OS_BRIDGE_API_KEY");
     return;
   }
 
@@ -194,9 +194,9 @@ async function fireMmaOsTierSync(payload: {
     },
   });
 
-  for (let attempt = 1; attempt <= MMA_OS_MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= PAIGE_OS_MAX_ATTEMPTS; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), MMA_OS_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), PAIGE_OS_TIMEOUT_MS);
     try {
       const res = await fetch(url, {
         method: "POST",
@@ -216,7 +216,7 @@ async function fireMmaOsTierSync(payload: {
       }
 
       const text = await res.text().catch(() => "");
-      if (!isTransientStatus(res.status) || attempt === MMA_OS_MAX_ATTEMPTS) {
+      if (!isTransientStatus(res.status) || attempt === PAIGE_OS_MAX_ATTEMPTS) {
         logStep("MMA OS short-hop failed (non-fatal, giving up)", {
           status: res.status,
           attempt,
@@ -233,7 +233,7 @@ async function fireMmaOsTierSync(payload: {
       await new Promise((r) => setTimeout(r, delay));
     } catch (e) {
       clearTimeout(timeout);
-      if (attempt === MMA_OS_MAX_ATTEMPTS) {
+      if (attempt === PAIGE_OS_MAX_ATTEMPTS) {
         logStep("MMA OS short-hop exception (non-fatal, giving up)", {
           error: String(e),
           attempt,
