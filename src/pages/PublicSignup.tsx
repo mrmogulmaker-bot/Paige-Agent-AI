@@ -416,22 +416,22 @@ export default function PublicSignup() {
 
               {step === 3 && (
                 <>
-                  <Field label="Personal credit — your honest read">
+                  <Field label="Where's your business today — your honest read">
                     <Select value={data.personal_credit_band} onValueChange={(v) => update("personal_credit_band", v as WizardData["personal_credit_band"])}>
                       <SelectTrigger><SelectValue placeholder="Choose one" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="excellent">Excellent (740+)</SelectItem>
-                        <SelectItem value="good">Good (680–739)</SelectItem>
-                        <SelectItem value="fair">Fair (620–679)</SelectItem>
-                        <SelectItem value="building">Building / under 620</SelectItem>
+                        <SelectItem value="excellent">Thriving</SelectItem>
+                        <SelectItem value="good">Growing steadily</SelectItem>
+                        <SelectItem value="fair">Finding footing</SelectItem>
+                        <SelectItem value="building">Just getting started</SelectItem>
                         <SelectItem value="unsure">Not sure</SelectItem>
                       </SelectContent>
                     </Select>
                   </Field>
-                  <Field label="How many active tradelines do you have?">
+                  <Field label="How many active client accounts do you have?">
                     <Input type="number" min={0} value={data.existing_tradelines_count} onChange={(e) => update("existing_tradelines_count", e.target.value)} />
                   </Field>
-                  <Field label="Got a credit partner / co-signer if needed?">
+                  <Field label="Have a partner / collaborator if needed?">
                     <Select value={data.credit_partner_available} onValueChange={(v) => update("credit_partner_available", v as WizardData["credit_partner_available"])}>
                       <SelectTrigger><SelectValue placeholder="Choose one" /></SelectTrigger>
                       <SelectContent>
@@ -447,7 +447,7 @@ export default function PublicSignup() {
               {step === 4 && (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Field label="Funding goal (USD)">
+                    <Field label="Growth goal (USD)">
                       <Input type="number" min={0} value={data.funding_goal_usd} onChange={(e) => update("funding_goal_usd", e.target.value)} placeholder="50000" />
                     </Field>
                     <Field label="Timeline">

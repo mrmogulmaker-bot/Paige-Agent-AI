@@ -44,7 +44,7 @@ const tenantTiers: TenantTier[] = [
     tagline: "For solo coaches launching a Paige-powered practice.",
     inclusions: {
       agents: "25 agents included",
-      creditInquiries: "100 credit inquiries / mo",
+      creditInquiries: "1,000 AI actions / mo",
       storage: "10 GB storage",
     },
     features: [
@@ -65,7 +65,7 @@ const tenantTiers: TenantTier[] = [
     tagline: "For coaching academies and broker shops scaling client volume.",
     inclusions: {
       agents: "100 agents included",
-      creditInquiries: "500 credit inquiries / mo",
+      creditInquiries: "5,000 AI actions / mo",
       storage: "50 GB storage",
     },
     features: [
@@ -73,7 +73,7 @@ const tenantTiers: TenantTier[] = [
       "White-label domain + branding",
       "Sub-agent factory (Paige Skills)",
       "MCP tools + n8n workflows",
-      "Reseller economics (monitoring, funding)",
+      "Reseller economics (analytics, automation)",
       "Priority support",
     ],
     popular: true,
@@ -88,7 +88,7 @@ const tenantTiers: TenantTier[] = [
     tagline: "For established firms running multi-brand or high-volume operations.",
     inclusions: {
       agents: "500 agents included",
-      creditInquiries: "2,500 credit inquiries / mo",
+      creditInquiries: "25,000 AI actions / mo",
       storage: "500 GB storage",
     },
     features: [
@@ -259,16 +259,16 @@ export default function Pricing() {
                 <li className="flex items-start gap-2">
                   <CheckCircle className="w-4 h-4 text-fundability-excellent flex-shrink-0 mt-0.5" />
                   <span>
-                    <strong>$5 per additional credit inquiry</strong> beyond your tier's monthly cap
+                    <strong>$5 per additional 1,000 AI actions</strong> beyond your tier's monthly cap
                   </span>
                 </li>
               </ul>
             </Card>
 
             <p className="text-center text-xs text-muted-foreground max-w-3xl mx-auto leading-relaxed mt-10">
-              Paige provides financial education, credit monitoring, and coaching workflow
-              infrastructure. It is not a licensed financial advisor, credit repair organization, or
-              lender. Service provided by <strong>PaigeAgent AI LLC</strong>.
+              Paige provides AI-powered business operations, client management, and coaching workflow
+              infrastructure for client-based businesses. Service provided by{" "}
+              <strong>PaigeAgent AI LLC</strong>.
             </p>
           </div>
         </section>

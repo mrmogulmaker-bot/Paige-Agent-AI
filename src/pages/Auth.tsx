@@ -398,7 +398,7 @@ const Auth = () => {
               <p className="text-muted-foreground text-sm">
                 {isLogin
                   ? "Enter your credentials to access your dashboard"
-                  : "14 days free — no credit card required"}
+                  : "14 days free — no card required"}
               </p>
             </div>
 
