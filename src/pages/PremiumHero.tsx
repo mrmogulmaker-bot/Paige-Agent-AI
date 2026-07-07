@@ -100,6 +100,8 @@ export default function PremiumHero() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#0a0510] text-white">
+      {/* Hide the Spline watermark / viewer chrome for a clean hero */}
+      <style>{`a[href*="spline.design"]{display:none!important;} .spline-watermark{display:none!important;}`}</style>
       {/* Ambient glow orbs (fixed, drift the whole page) */}
       <motion.div
         aria-hidden

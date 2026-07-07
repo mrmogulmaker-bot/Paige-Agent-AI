@@ -30,7 +30,7 @@ const lazyWithReload = <T extends React.ComponentType<any>>(
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { FloatingChatbot } from "./components/FloatingChatbot";
 import { MetaPixel } from "./components/seo/MetaPixel";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
@@ -127,6 +127,14 @@ const SuspenseFallback = () => (
 const PageSuspense = ({ children }: { children: React.ReactNode }) => (
   <React.Suspense fallback={<SuspenseFallback />}>{children}</React.Suspense>
 );
+
+// Keep the floating chat widget off the standalone premium landing preview.
+const CHATBOT_HIDDEN_ROUTES = ["/premium"];
+const GatedChatbot = () => {
+  const { pathname } = useLocation();
+  if (CHATBOT_HIDDEN_ROUTES.includes(pathname)) return null;
+  return <FloatingChatbot />;
+};
 
 const AppInner = () => {
   useReferralTracking();
@@ -245,7 +253,7 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-          <FloatingChatbot />
+          <GatedChatbot />
         </BrowserRouter>
         </ImpersonationProvider>
         </RoleLensProvider>
