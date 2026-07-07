@@ -1,5 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Globe, ArrowRight, Instagram, Twitter } from "lucide-react";
+
+// Spline background (code-split). Paste a Spline scene URL below to swap the
+// video for a live, editable 3D scene behind the glass — Paige + a swirl you
+// build/edit visually in Spline, no code. Empty string = keep the video.
+const SplineScene = lazy(() => import("@splinetool/react-spline"));
+const SPLINE_SCENE_URL = "";
 
 /**
  * GlassHero — liquid-glass hero over a full-screen cinematic loop.
@@ -123,17 +129,26 @@ export default function GlassHero() {
     <div className="min-h-screen bg-black overflow-hidden relative">
       <style>{GLASS_CSS}</style>
 
-      {/* Full-screen background video with custom rAF fade-loop */}
-      <video
-        ref={videoRef}
-        src={VIDEO_SRC}
-        muted
-        autoPlay
-        playsInline
-        preload="auto"
-        style={{ opacity: 0 }}
-        className="absolute inset-0 w-full h-full object-cover translate-y-[17%]"
-      />
+      {/* Background: live Spline 3D scene when a URL is set, else the video */}
+      {SPLINE_SCENE_URL ? (
+        <Suspense fallback={<div className="absolute inset-0 bg-black" />}>
+          <div className="absolute inset-0">
+            <SplineScene scene={SPLINE_SCENE_URL} className="!absolute inset-0 h-full w-full" />
+          </div>
+        </Suspense>
+      ) : (
+        /* Full-screen background video with custom rAF fade-loop */
+        <video
+          ref={videoRef}
+          src={VIDEO_SRC}
+          muted
+          autoPlay
+          playsInline
+          preload="auto"
+          style={{ opacity: 0 }}
+          className="absolute inset-0 w-full h-full object-cover translate-y-[17%]"
+        />
+      )}
 
       <div className="relative z-10 min-h-screen flex flex-col">
         {/* Navigation */}
