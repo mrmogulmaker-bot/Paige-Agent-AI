@@ -273,17 +273,18 @@ const Auth = () => {
   };
 
   const features = [
-    { icon: Shield, title: "Bank-Grade Security", desc: "256-bit encryption protects your data" },
-    { icon: TrendingUp, title: "Credit Intelligence", desc: "AI-powered insights across all 3 bureaus" },
-    { icon: Zap, title: "Funding Readiness", desc: "Real-time score banks actually use" },
+    { icon: TrendingUp, title: "Client follow-through", desc: "Every client gets the follow-up you'd never keep up with" },
+    { icon: Zap, title: "Works on day one", desc: "Paige runs your operation the moment you connect her" },
+    { icon: Shield, title: "Your practice, private", desc: "256-bit encryption keeps your client data secure" },
   ];
+  const HEAD = "'Bricolage Grotesque', 'Space Grotesk', sans-serif";
 
   return (
     <div className="min-h-screen flex bg-background">
       <ForgotPasswordDialog open={showForgotPassword} onOpenChange={setShowForgotPassword} />
 
       {/* Left Panel — Brand / Value Prop */}
-      <div className="hidden lg:flex lg:w-[48%] relative overflow-hidden bg-primary flex-col justify-between p-10">
+      <div className="hidden lg:flex lg:w-[48%] relative overflow-hidden bg-primary flex-col justify-between p-10 animate-in fade-in slide-in-from-left-8 duration-700">
         {/* Decorative Elements */}
         <div className="absolute inset-0">
           <div className="absolute inset-0 opacity-[0.04]" style={{
@@ -300,7 +301,7 @@ const Auth = () => {
         <div className="relative z-10">
           <Link to="/" className="inline-flex items-center gap-3 group">
             <img src={paigeLogo} alt="PaigeAgent.ai" className="h-10 w-auto" />
-            <span className="text-xl font-bold text-primary-foreground/90 tracking-tight">PaigeAgent.ai</span>
+            <span className="text-xl font-bold text-primary-foreground/90 tracking-tight" style={{ fontFamily: HEAD }}>PaigeAgent.ai</span>
           </Link>
         </div>
 
@@ -309,15 +310,15 @@ const Auth = () => {
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20">
               <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-              <span className="text-xs font-medium text-accent tracking-wide uppercase">AI-Powered Platform</span>
+              <span className="text-xs font-medium text-accent tracking-wide uppercase">Operations · Follow-ups · Follow-through</span>
             </div>
-            <h2 className="text-4xl xl:text-5xl font-bold text-primary-foreground leading-[1.1] tracking-tight">
-              Build credit that
+            <h2 className="text-4xl xl:text-5xl font-bold text-primary-foreground leading-[1.05] tracking-tight" style={{ fontFamily: HEAD }}>
+              She runs your
               <br />
-              <span className="text-accent">opens doors.</span>
+              <span style={{ color: "#e8c66a" }}>coaching business.</span>
             </h2>
             <p className="text-primary-foreground/60 text-base max-w-md leading-relaxed">
-              The intelligent platform that transforms your credit profile into a powerful financial asset.
+              You run the transformation. Paige handles the operations, follow-ups, and follow-through — so you deliver the outcomes only you can.
             </p>
           </div>
 
@@ -354,15 +355,15 @@ const Auth = () => {
               ))}
             </div>
             <div>
-              <p className="text-xs font-medium text-primary-foreground/70">Trusted by 2,400+ members</p>
-              <p className="text-[11px] text-primary-foreground/40">Average 47-point score increase</p>
+              <p className="text-xs font-medium text-primary-foreground/70">Trusted by coaches everywhere</p>
+              <p className="text-[11px] text-primary-foreground/40">38 hours reclaimed every week</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Right Panel — Auth Form */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150 fill-mode-both">
         {/* Top nav */}
         <div className="flex items-center justify-between px-6 sm:px-10 py-5">
           <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -389,13 +390,13 @@ const Auth = () => {
           <div className="w-full max-w-[400px] space-y-8">
             {/* Heading */}
             <div className="space-y-2">
-              <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-                {isLogin ? "Welcome back" : "Start your free trial"}
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight" style={{ fontFamily: HEAD }}>
+                {isLogin ? "Welcome back" : "Start with Paige"}
               </h1>
               <p className="text-muted-foreground text-sm">
                 {isLogin
-                  ? "Enter your credentials to access your dashboard"
-                  : "14 days free — no credit card required"}
+                  ? "Sign in to your workspace"
+                  : "14 days free · no card required · Paige works on day one"}
               </p>
             </div>
 
@@ -512,9 +513,9 @@ const Auth = () => {
                       aria-required
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
-                      I understand that my financial data is used exclusively to provide my
+                      I understand that my data is used exclusively to provide my
                       PaigeAgent services and is{" "}
-                      <strong>never sold to third parties, lenders, or advertisers</strong>.{" "}
+                      <strong>never sold to third parties or advertisers</strong>.{" "}
                       <span className="text-destructive">*</span>
                     </span>
                   </label>
