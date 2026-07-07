@@ -19,7 +19,7 @@ import { Footer } from "@/components/landing/Footer";
 import { IntegrationsSection } from "@/components/landing/IntegrationsSection";
 import { SiteBackground } from "@/components/landing/SiteBackground";
 import { Reveal } from "@/components/landing/Reveal";
-import { supportsWebGL, prefersReducedMotion } from "@/lib/webgl";
+import { supportsWebGL } from "@/lib/webgl";
 
 // Persistent full-page 3D world (code-split so it never blocks first paint).
 const SiteScene = lazy(() => import("@/components/landing/three/SiteScene"));
@@ -52,7 +52,11 @@ const Index = () => {
   const [use3D, setUse3D] = useState(false);
 
   useEffect(() => {
-    setUse3D(supportsWebGL() && !prefersReducedMotion());
+    // Mount the 3D world whenever WebGL is available. (Previously this also
+    // gated on prefers-reduced-motion, which silently hid the whole scene for
+    // anyone with that OS setting on — accessibility damping belongs inside the
+    // scene, not an all-or-nothing switch.)
+    setUse3D(supportsWebGL());
   }, []);
 
   useEffect(() => {
