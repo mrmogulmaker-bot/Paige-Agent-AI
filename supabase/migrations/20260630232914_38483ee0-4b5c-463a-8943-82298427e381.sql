@@ -29,7 +29,7 @@ Each channel (email marketing, SMS marketing, voice marketing) is a separate opt
 - **Email:** click "unsubscribe" in any marketing email, or update preferences in your profile.
 - **SMS:** reply **STOP** to any text message from us. We will send a single confirmation message.
 - **Voice:** ask the caller to remove your number, or email support to be added to our internal Do-Not-Call list.
-- **All channels:** email support@news.mrmogulmaker.com.
+- **All channels:** email support@paigeagent.ai.
 
 We will honor opt-out requests within ten (10) business days.
 
@@ -49,7 +49,7 @@ We keep a record of your consent (date, IP address, user agent, the form or surf
 
 This consent is governed by the federal TCPA, CAN-SPAM Act, FCC regulations, and applicable state telemarketing laws.
 
-For questions, contact: support@news.mrmogulmaker.com
+For questions, contact: support@paigeagent.ai
 $MD$,
   'all',
   false,

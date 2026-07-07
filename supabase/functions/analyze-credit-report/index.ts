@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { gatewayCompat } from "../_shared/claude.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { PME_KNOWLEDGE_BASE } from "../_shared/pme-knowledge-base.ts";
 
@@ -307,7 +308,7 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    const lovableApiKey = "unused";
 
     if (!lovableApiKey) {
       throw new Error("LOVABLE_API_KEY is not configured");
@@ -785,7 +786,7 @@ ${JSON.stringify(readCheck, null, 2)}
 }
 
 async function callAiJson(lovableApiKey: string, systemPrompt: string, userContent: any[], model: string) {
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const response = await gatewayCompat("anthropic", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${lovableApiKey}`,

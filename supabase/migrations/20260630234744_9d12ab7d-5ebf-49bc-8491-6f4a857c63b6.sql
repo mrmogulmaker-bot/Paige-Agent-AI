@@ -31,12 +31,12 @@ CREATE TRIGGER doctrine_120_cols_touch_updated_at
   BEFORE UPDATE ON public.doctrine_120_canonical_columns
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 2. Seed registry with the recent drift cases (Bradley onboarding + F2)
+-- 2. Seed registry with the recent drift cases (onboarding + F2)
 INSERT INTO public.doctrine_120_canonical_columns (domain, table_name, canonical_columns, notes)
 VALUES
   ('paige_audit_log_shape', 'paige_audit_log',
    ARRAY['target_type','target_id','payload'],
-   'Caused the Bradley onboarding RPC failure. Do NOT use entity_type/entity_id/metadata.'),
+   'Caused the onboarding RPC failure. Do NOT use entity_type/entity_id/metadata.'),
   ('paige_skills_flags', 'paige_skills',
    ARRAY['mutating','external_send'],
    'F2 audit fix. external_send was previously derived from a missing column.'),

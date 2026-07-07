@@ -26,18 +26,10 @@ CREATE POLICY "corp entities service manage"
 
 INSERT INTO public.corporate_entity_registry
   (slug, legal_name, entity_type, state_of_formation, role, parent_slug, ip_licensor_slug, lane, lane_separated, notes) VALUES
-  ('givalli_heritage_holdings', 'Givalli Heritage Holdings Inc.', 'C-Corp', 'Delaware', 'parent', NULL, NULL, NULL, false, 'Portfolio parent'),
-  ('aedis_brands', 'Aedis Brands LLC', 'LLC', 'Wyoming', 'ip_holder', 'givalli_heritage_holdings', NULL, NULL, false, 'IP holder; licenses marks/tech to operating subs'),
-  ('paigeagent_ai', 'PaigeAgent AI LLC', 'LLC', 'Wyoming', 'platform', 'givalli_heritage_holdings', 'aedis_brands', 'paige', false, 'Platform entity for Paige Agent AI'),
-  ('project_mogul_enterprise', 'Project Mogul Enterprise LLC', 'LLC', 'Wyoming', 'operating', 'givalli_heritage_holdings', 'aedis_brands', 'pme', false, 'Runs BTF $4,997 flagship'),
-  ('mogul_maker_academy', 'Mogul Maker Academy LLC', 'LLC', 'Wyoming', 'operating', 'givalli_heritage_holdings', 'aedis_brands', 'mma', false, 'Education only'),
-  ('mogul_credit_consulting', 'Mogul Credit Consulting LLC', 'LLC', 'Wyoming', 'operating', 'givalli_heritage_holdings', 'aedis_brands', 'mcc', true, 'CROA-regulated — LANE SEPARATED'),
-  ('treasury_media_group', 'Treasury Media Group LLC', 'LLC', 'Wyoming', 'operating', 'givalli_heritage_holdings', 'aedis_brands', 'tmg', false, NULL),
-  ('givalli_capital', 'Givalli Capital LLC', 'LLC', 'Wyoming', 'operating', 'givalli_heritage_holdings', 'aedis_brands', 'givalli_cap', false, NULL),
-  ('mr_mogul_maker', 'Mr. Mogul Maker LLC', 'LLC', 'Wyoming', 'operating', 'givalli_heritage_holdings', 'aedis_brands', 'mmm', false, NULL),
-  ('mogul_funding_solutions', 'Mogul Funding Solutions LLC', 'LLC', 'Wyoming', 'operating', 'givalli_heritage_holdings', 'aedis_brands', 'mfs', false, NULL),
-  ('coreconnect_technologies_llc', 'CoreConnect Technologies LLC', 'LLC', 'Wyoming', 'operating', 'givalli_heritage_holdings', 'aedis_brands', 'coreconnect', true, 'Runs Disputera — LANE SEPARATED'),
-  ('coreconnect_technologies_inc', 'CoreConnect Technologies Inc.', 'Corporation', 'Wyoming', 'sunset', 'givalli_heritage_holdings', NULL, 'coreconnect', false, 'Aged corp / liquidity vehicle, sunset planned. Distinct from CoreConnect Technologies LLC.');
+  -- [de-brand Task #46 / horizontal doctrine] Founder portfolio entities removed from the
+  -- global seed; only the platform's own operating entity remains. Tenants add their own
+  -- corporate structure to their tenant-scoped registry via the admin flow post-signup.
+  ('paigeagent_ai', 'PaigeAgent AI LLC', 'LLC', 'Wyoming', 'platform', NULL, NULL, 'paige', false, 'Platform entity for Paige Agent AI');
 
 UPDATE public.platform_legal_profile
 SET legal_entity_name = 'PaigeAgent AI LLC',

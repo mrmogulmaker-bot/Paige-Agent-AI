@@ -3,6 +3,7 @@
 // or coach nudge) for a client. Always marks requires_approval=true — the
 // draft routes through Approvals before sending.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { gatewayCompat } from "../_shared/claude.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const supabase = createClient(
@@ -10,7 +11,7 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   { auth: { persistSession: false } },
 );
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const LOVABLE_API_KEY = "unused";
 
 type Channel = "email" | "sms" | "lender_intro" | "coach_nudge";
 interface Input {
@@ -98,7 +99,7 @@ Lender: ${input.lender_name ?? "n/a"}
 Product: ${input.funding_product ?? "n/a"}
 Goal of message: ${goal}`;
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiRes = await gatewayCompat("anthropic", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
       body: JSON.stringify({

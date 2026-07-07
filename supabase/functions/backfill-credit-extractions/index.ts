@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { gatewayCompat } from "../_shared/claude.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 
 const corsHeaders = {
@@ -18,7 +19,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY")!;
+    const lovableApiKey = "unused"!;
 
     // Auth check - must be admin
     const authHeader = req.headers.get("Authorization");
@@ -355,7 +356,7 @@ Also extract scores: { equifax: number|null, experian: number|null, transunion: 
 
 Return valid JSON only.`;
 
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const response = await gatewayCompat("anthropic", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${lovableApiKey}`,

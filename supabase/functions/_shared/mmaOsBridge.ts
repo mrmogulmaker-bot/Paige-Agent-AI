@@ -143,8 +143,8 @@ export async function callMmaOsBridge(
   opts: { enqueueOnFailure?: boolean } = {},
 ): Promise<boolean> {
   const enqueueOnFailure = opts.enqueueOnFailure !== false;
-  const url = Deno.env.get("MMA_OS_BRIDGE_URL") || Deno.env.get("MMA_OS_EDGE_URL");
-  const key = Deno.env.get("MMA_OS_BRIDGE_API_KEY");
+  const url = Deno.env.get("PAIGE_OS_BRIDGE_URL") || Deno.env.get("PAIGE_OS_EDGE_URL");
+  const key = Deno.env.get("PAIGE_OS_BRIDGE_API_KEY");
 
   if (!url || !key) {
     log("skipped_missing_env", { hasUrl: !!url, hasKey: !!key });

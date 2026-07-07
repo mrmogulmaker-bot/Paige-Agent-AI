@@ -154,8 +154,8 @@ export async function dispatchWorkflowRun(opts: DispatchOpts): Promise<DispatchR
 
     // ---------- LangGraph via MMA OS bridge (Doctrine §117 Option 2) ----------
     if (provider === "langgraph_bridge") {
-      const bridgeUrl = Deno.env.get("MMA_OS_LANGGRAPH_BRIDGE_URL");
-      const bridgeKey = Deno.env.get("MMA_OS_LANGGRAPH_BRIDGE_KEY");
+      const bridgeUrl = Deno.env.get("PAIGE_OS_LANGGRAPH_BRIDGE_URL");
+      const bridgeKey = Deno.env.get("PAIGE_OS_LANGGRAPH_BRIDGE_KEY");
       if (!bridgeUrl || !bridgeKey) {
         const errText = "langgraph_bridge_not_configured";
         await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });

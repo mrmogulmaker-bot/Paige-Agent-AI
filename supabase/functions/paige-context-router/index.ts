@@ -5,13 +5,14 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+import { gatewayCompat } from "../_shared/claude.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const LOVABLE_API_KEY = "unused";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
@@ -290,7 +291,7 @@ Deno.serve(async (req) => {
   let tokensUsed: number | null = null;
 
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiRes = await gatewayCompat("anthropic", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
       body: JSON.stringify({

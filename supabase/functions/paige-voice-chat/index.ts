@@ -22,6 +22,15 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // [Phase 5 — voice deferred] paige-voice-chat is disabled during the Anthropic-only
+  // migration (formerly OpenAI gpt-4o-realtime, which is removed under Anthropic-only).
+  // Realtime voice returns as a Phase-5 feature via ElevenLabs + Claude. Kept deployed
+  // but inert so it never calls a removed provider.
+  return new Response(
+    JSON.stringify({ error: "Voice chat is temporarily unavailable (returning in Phase 5)." }),
+    { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+
   const { headers } = req;
   const upgradeHeader = headers.get("upgrade") || "";
 

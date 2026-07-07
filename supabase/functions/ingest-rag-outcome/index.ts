@@ -7,8 +7,9 @@
 //   trigger="coaching_insight"   → coaching_insight (from a chat session)
 //
 // Auth: must be the affected user OR an admin/coach OR the service role.
-// Embeddings: OpenAI text-embedding-3-small (1536 dims) — matches schema.
+// Embeddings: OpenAI Voyage voyage-3 (1024 dims) — matches schema.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 import { anonymize, scoreBand, amountBand, type AnonymizeIdentity } from "../_shared/rag-anonymize.ts";
@@ -37,7 +38,7 @@ const bodySchema = z.object({
 async function embed(text: string, openaiKey: string): Promise<number[] | null> {
   try {
     const trimmed = text.length > 8000 ? text.slice(0, 8000) : text;
-    const r = await fetch("https://api.openai.com/v1/embeddings", {
+    const r = await embeddingsCompat("voyage", {
       method: "POST",
       headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: "text-embedding-3-small", input: trimmed }),
@@ -85,7 +86,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const openaiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
+    const openaiKey = "unused" ?? "";
     const authHeader = req.headers.get("Authorization") ?? "";
 
     // Auth: accept either a user JWT or the service role key.

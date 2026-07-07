@@ -1,6 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
+import { gatewayCompat } from "../_shared/claude.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -8,7 +9,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const LOVABLE_API_KEY = "unused";
 
 interface RunRequest {
   skill_slug: string;
@@ -108,7 +109,7 @@ Deno.serve(async (req) => {
           // LLM synthesize
           if (LOVABLE_API_KEY) {
             const summary = sources.map((s: any, i: number) => `[${i + 1}] ${s.title ?? s.url}\n${(s.markdown ?? "").slice(0, 1500)}`).join("\n\n");
-            const ai = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            const ai = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
           const { data: memory } = await admin.from("client_memory").select("*").eq("client_id", contact_id).order("created_at", { ascending: false }).limit(10);
           stepsLog.push({ step: "context", memory_count: memory?.length ?? 0 });
           if (LOVABLE_API_KEY) {
-            const ai = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            const ai = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -167,7 +168,7 @@ Deno.serve(async (req) => {
           if (!contact?.email) throw new Error("contact has no email on file");
           if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY missing");
 
-          const ai = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          const ai = await gatewayCompat("anthropic", {
             method: "POST",
             headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({

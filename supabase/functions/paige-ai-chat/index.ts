@@ -1,4 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { gatewayCompat } from "../_shared/claude.ts";
+import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 import { PME_KNOWLEDGE_BASE } from "../_shared/pme-knowledge-base.ts";
@@ -165,13 +167,13 @@ Rules:
 
 // Lightweight embedding helper for memory writes. Returns null on any failure
 // so the caller can still persist the row without blocking the user-facing
-// response. Uses OpenAI text-embedding-3-small (1536 dims) to match schema.
+// response. Uses OpenAI Voyage voyage-3 (1024 dims) to match schema.
 async function embedText(text: string): Promise<number[] | null> {
   try {
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    const openaiKey = "unused";
     if (!openaiKey || !text) return null;
     const trimmed = text.length > 8000 ? text.slice(0, 8000) : text;
-    const r = await fetch("https://api.openai.com/v1/embeddings", {
+    const r = await embeddingsCompat("voyage", {
       method: "POST",
       headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: "text-embedding-3-small", input: trimmed }),
@@ -201,7 +203,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY")!;
+    const lovableApiKey = "unused"!;
 
     const supabaseClient = createClient(supabaseUrl, supabaseKey, {
       global: { headers: { Authorization: authHeader } }
@@ -290,17 +292,17 @@ ${transcript}
 JSON:`;
 
       const [summaryResponse, milestoneResponse, preferenceResponse] = await Promise.all([
-        fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        gatewayCompat("anthropic", {
           method: "POST",
           headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: summaryPrompt }] }),
         }),
-        fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        gatewayCompat("anthropic", {
           method: "POST",
           headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: milestonePrompt }] }),
         }),
-        fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        gatewayCompat("anthropic", {
           method: "POST",
           headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: preferencePrompt }] }),
@@ -3044,7 +3046,7 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
     }
 
     // Call AI
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${lovableApiKey}`,
@@ -3951,7 +3953,7 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
         ...toolResults,
       ];
 
-      const followUpResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      const followUpResponse = await gatewayCompat("anthropic", {
         method: "POST",
         headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -4097,7 +4099,7 @@ function extractKeywords(text: string): string {
 }
 
 async function runDocumentReadCheck(base64: string, lovableApiKey: string) {
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const response = await gatewayCompat("anthropic", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${lovableApiKey}`,
@@ -4157,7 +4159,7 @@ async function runStructuredExtractionAndSync(
 
   try {
     // Step 1: Extract structured JSON from the analysis via a second AI call
-    const extractionResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const extractionResponse = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${lovableApiKey}`,

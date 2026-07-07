@@ -29,15 +29,15 @@ Deno.serve(async (req) => {
       return json({ error: `Unknown verb: ${verb}` }, 400);
     }
 
-    const baseUrl = Deno.env.get("MMA_OS_BRIDGE_URL");
-    const apiKey = Deno.env.get("MMA_OS_BRIDGE_API_KEY");
+    const baseUrl = Deno.env.get("PAIGE_OS_BRIDGE_URL");
+    const apiKey = Deno.env.get("PAIGE_OS_BRIDGE_API_KEY");
 
     if (!baseUrl || !apiKey) {
       // Graceful fallback so UI can render shape even before MMA OS ships v15.
       return json({
         ok: true,
         stub: true,
-        message: "MMA_OS_BRIDGE_URL / MMA_OS_BRIDGE_API_KEY not configured yet",
+        message: "PAIGE_OS_BRIDGE_URL / PAIGE_OS_BRIDGE_API_KEY not configured yet",
         data: stubFor(verb),
       });
     }

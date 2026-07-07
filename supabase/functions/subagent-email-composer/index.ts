@@ -7,6 +7,7 @@
 // Doctrine §116: never name another specific client, coach, or customer of
 // the platform. Archetype phrasing only ("a client", "the contact").
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { gatewayCompat } from "../_shared/claude.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -14,7 +15,7 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+const LOVABLE_API_KEY = "unused";
 
 type Tone =
   | "professional"
@@ -204,7 +205,7 @@ Return STRICT JSON with this shape (no markdown, no code fences):
       input.subject_hint ? `Preferred subject: ${input.subject_hint}` : "",
     ].filter(Boolean).join("\n");
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const aiRes = await gatewayCompat("anthropic", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
       body: JSON.stringify({
