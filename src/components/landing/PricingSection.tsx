@@ -59,7 +59,7 @@ const businessTiers: BusinessTier[] = [
       "White-label domain + branding",
       "Sub-agent factory (Paige Skills)",
       "MCP tools + n8n workflows",
-      "Reseller economics (credit monitoring, funding)",
+      "Client analytics + reporting",
       "Priority support",
     ],
     cta: "Start Academy",
@@ -91,21 +91,21 @@ const tenantExamples = [
     archetype: "A Fitness Business Coaching Academy",
     program: "Included in $497 six-week program",
     price: "Free to clients",
-    what: "Bundles credit monitoring into the cohort price and uses it as a competitive weapon at enrollment.",
+    what: "Bundles the Paige client workspace into the cohort price and uses it as a competitive edge at enrollment.",
   },
   {
     model: "Markup Model",
-    archetype: "A Business Funding Brokerage",
+    archetype: "A Consulting Agency",
     program: "Standalone subscription",
     price: "$39/mo",
-    what: "Resells monitoring as a recurring revenue rail alongside placement fees.",
+    what: "Resells the client workspace as a recurring revenue rail alongside project fees.",
   },
   {
     model: "Bundled Model",
-    archetype: "A Credit Consultancy",
-    program: "Monitoring + monthly strategy session",
+    archetype: "A Business Consultancy",
+    program: "Client workspace + monthly strategy session",
     price: "$79/mo",
-    what: "Uses Paige as the whole client experience — monitoring, coaching notes, and check-ins in one place.",
+    what: "Uses Paige as the whole client experience — workspace, coaching notes, and check-ins in one place.",
   },
 ];
 
@@ -214,9 +214,8 @@ export function PricingSection() {
             <div className="flex items-start gap-3">
               <ShieldCheck className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
               <p className="text-sm leading-relaxed">
-                Paige gives you monitoring, prequalification, coaching workflows, and white-label
-                reseller economics —
-                <span className="font-bold"> with zero regulatory exposure.</span>
+                Paige gives you client management, automated workflows, and white-label branding —
+                <span className="font-bold"> so you can scale your practice with confidence.</span>
               </p>
             </div>
           </Card>
@@ -260,9 +259,9 @@ export function PricingSection() {
 
 
         <p className="text-center text-xs text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-          Paige provides financial education, credit monitoring, and coaching workflow
-          infrastructure. It is not a licensed financial advisor, credit repair organization, or
-          lender. Service provided by <strong>{platformName}</strong>.
+          Paige is an AI business-operations platform for coaches, consultants, and agencies —
+          client management, automation, and coaching workflow infrastructure in one workspace.
+          Service provided by <strong>{platformName}</strong>.
         </p>
       </div>
     </section>

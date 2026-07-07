@@ -1,15 +1,15 @@
 # PaigeAgent.ai
 
-> The Entrepreneurial Operating System — an AI-powered platform that turns credit, capital, and execution into one connected growth engine for serious entrepreneurs.
+> The AI operating system for client-based businesses — an AI-powered platform that turns client management, automation, and execution into one connected growth engine for coaches, consultants, and agencies.
 
-PaigeAgent.ai (by Mogul Maker Academy) is a financial intelligence and CRM platform. Paige is an AI advisor that reads all three credit bureaus, builds personalized funding roadmaps, matches entrepreneurs to lenders, and coaches business strategy. The platform is FCRA and CROA compliant and serves Premium, VIP, and BUILD-to-FUND cohort members.
+PaigeAgent.ai (by Mogul Maker Academy) is an AI business-operations and CRM platform. Paige is an AI teammate that manages client relationships, automates everyday workflows, drafts outreach, handles scheduling and reminders, organizes a knowledge base, and coaches business strategy. The platform serves coaches, consultants, and agencies running client-based businesses.
 
 ## Pages
 
 - [Home](/): Product overview, pricing, and signup.
 - [About](/about): Company mission, founder, and the 3M framework (Make / Manage / Multiply).
-- [Privacy Policy](/privacy): How PaigeAgent.ai collects, protects, and uses sensitive financial data.
+- [Privacy Policy](/privacy): How PaigeAgent.ai collects, protects, and uses your business data.
 - [Terms of Service](/terms): Platform terms, compliance disclosures, and acceptable use.
-- [Blog](/blog): Articles on credit building, funding strategy, and entrepreneurship.
+- [Blog](/blog): Articles on client management, workflow automation, and entrepreneurship.
 - [Affiliate Program](/affiliates): Apply to refer entrepreneurs and earn commissions.
 - [Broker Program](/broker): Apply to use Paige as a white-label workspace for your clients.

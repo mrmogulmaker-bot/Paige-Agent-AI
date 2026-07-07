@@ -8,27 +8,27 @@ import {
 
 const faqs = [
   {
-    q: "Is Paige a real financial advisor?",
-    a: "Paige is an AI-powered financial intelligence platform trained on credit, lending, real estate, and business strategy. She provides education, analysis, and strategy coaching. She is not a licensed financial advisor, attorney, or CPA. For legal and tax matters we always recommend working with licensed professionals — Paige will tell you the same thing.",
+    q: "What does Paige actually do?",
+    a: "Paige is an AI operating system for client-based businesses — coaches, consultants, and agencies. She handles client management, workflow automation, outreach and message drafting, scheduling, task tracking, and reporting, and acts as an AI advisor that helps you run and scale your operation. Think of her as an always-on AI teammate for the day-to-day work of running your business.",
   },
   {
-    q: "What is the difference between PaigeAgent and a credit repair company?",
-    a: "PaigeAgent is a credit building and funding intelligence platform — not a credit repair service. Paige helps you build positive credit, optimize your profile for funding, and access capital. Dispute services for negative items are handled separately by our Mogul Credit AI team.",
+    q: "How is my data kept secure?",
+    a: "Your data is encrypted in transit and at rest, and access is controlled by role-based permissions. We never sell your data or use it to train third-party AI models. Every integration is opt-in, disclosed in plain English, and can be disconnected from your account settings at any time.",
   },
   {
-    q: "Do I need good credit to start?",
-    a: "No. Paige works with clients at every credit starting point. Whether your score is 480 or 740 Paige builds a strategy from where you are today toward where you need to be for your specific goal.",
+    q: "Can my whole team use Paige?",
+    a: "Yes. Paige is built for teams. You can invite teammates, assign tasks and clients, set role-based permissions, and collaborate in a shared workspace — so everyone stays aligned on the same pipeline, playbooks, and priorities.",
   },
   {
-    q: "How is this different from Credit Karma or Nav?",
-    a: "Credit Karma shows you your score and recommends credit cards. Nav shows you business funding options. PaigeAgent gives you an AI advisor who connects your credit profile, your business structure, your funding strategy, and your operational health into one personalized roadmap — then searches for real lenders in real time, coaches your business fundamentals, and tracks your funding journey from first application to capital secured.",
+    q: "What can Paige connect to?",
+    a: "Paige connects to the tools you already use, including Google Calendar for scheduling, email and SMS for outreach and reminders, and accounting tools for performance insights. Every integration is opt-in and requests only the access a given feature requires. See our Integrations section for the full list and the exact scopes.",
   },
   {
-    q: "Can I use Paige if I am self-employed or a gig worker?",
-    a: "Absolutely — Paige has specific knowledge for self-employed borrowers including bank statement loan alternatives, quarterly tax planning, income documentation strategy, and lenders who work with non-traditional income. The gig economy creates unique funding challenges and Paige understands them.",
+    q: "Do I need to be technical to use Paige?",
+    a: "Not at all. Paige works through natural conversation and voice — just tell her what you need. She drafts messages, sets up workflows, tracks tasks, and surfaces the next best action, so you get the benefit of automation without building anything yourself.",
   },
   {
-    q: "What is the Beta founding rate?",
+    q: "Is there a trial, and what is the Beta founding rate?",
     a: "During Beta launch we are offering reduced pricing that locks in for life as long as your subscription stays active. This is our way of rewarding early members who help us build the best possible platform.",
   },
 ];
