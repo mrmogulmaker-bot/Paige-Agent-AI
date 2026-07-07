@@ -10,6 +10,8 @@ import {
   MessageSquare,
   Trophy,
   Receipt,
+  Sunrise,
+  Flag,
   Check,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -99,6 +101,80 @@ const PANELS: Panel[] = [
   { icon: Receipt, eyebrow: "Retainer · December", body: "Invoice sent · $4,200 · reminder scheduled for Friday.", tone: "violet", pos: "right-[3%] top-[76%]", depth: 0.4, dur: 8.5 },
   { icon: Workflow, eyebrow: "Welcome sequence", body: "Running for 3 new clients — recaps queued.", tone: "gold", pos: "right-[52%] top-[20%]", depth: 0.85, dur: 11 },
 ];
+
+/**
+ * Day in the Life — Paige narrates a full day of coaching operations, each line
+ * lighting a real artifact. Dawn-gold → dusk-violet "sun arc" runs top to bottom.
+ * Coaching only — invoicing here is billing coaching clients, not consumer finance.
+ */
+const DAY = [
+  { t: "6:47 AM", icon: Sunrise, line: "I'm drafting your morning brief.", tag: "Morning brief ready" },
+  { t: "8:15 AM", icon: Users, line: "I onboarded three new clients while you slept.", tag: "3 welcome sequences sent" },
+  { t: "10:30 AM", icon: MessageSquare, line: "I drafted the follow-ups from yesterday's session.", tag: "Session follow-ups drafted" },
+  { t: "12:00 PM", icon: Workflow, line: "I ran the check-in sequence for your Tier 2 cohort.", tag: "Tier 2 · check-ins sent" },
+  { t: "2:15 PM", icon: Flag, line: "I flagged two clients who need attention this week.", tag: "2 clients flagged" },
+  { t: "4:00 PM", icon: Receipt, line: "I sent this month's invoices and queued the reminders.", tag: "Retainer invoices sent" },
+  { t: "8:00 PM", icon: CalendarClock, line: "I prepared tomorrow's calendar with your talking points.", tag: "Tomorrow prepped" },
+];
+
+function DayInLife() {
+  return (
+    <section id="day" className="relative overflow-hidden py-28">
+      {/* Sun arc — dawn-gold (top) → dusk-violet (bottom) */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{ background: "linear-gradient(180deg, rgba(212,167,82,0.10) 0%, rgba(168,85,247,0.05) 48%, rgba(42,27,78,0.14) 100%)" }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-10 mx-auto h-72 max-w-4xl blur-3xl"
+        style={{ background: "radial-gradient(ellipse at 12% 0%, rgba(240,216,120,0.18), transparent 55%), radial-gradient(ellipse at 88% 100%, rgba(168,85,247,0.16), transparent 55%)" }}
+      />
+
+      <div className="relative mx-auto max-w-3xl px-6">
+        <motion.div initial="hidden" whileInView="show" viewport={{ once: true, margin: "-80px" }} variants={stagger} className="mb-16 text-center">
+          <motion.div variants={rise} className="font-mono-label mb-4 text-[#e8c66a]">A day with Paige</motion.div>
+          <motion.h2 variants={rise} className="text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
+            One day. <span className="bg-gradient-to-r from-[#e8c66a] to-[#a855f7] bg-clip-text text-transparent">Fully handled.</span>
+          </motion.h2>
+          <motion.p variants={rise} className="mx-auto mt-4 max-w-xl text-white/60">
+            From your first coffee to lights-out, Paige runs the operation in the background — you show up for the work only you can do.
+          </motion.p>
+        </motion.div>
+
+        <div className="relative">
+          {/* Timeline spine */}
+          <div aria-hidden className="absolute bottom-2 top-2 left-[76px] w-px bg-gradient-to-b from-[#d4af37]/50 via-white/15 to-[#a855f7]/50 sm:left-[92px]" />
+          <div className="space-y-7">
+            {DAY.map((d) => (
+              <motion.div
+                key={d.t}
+                initial={{ opacity: 0, x: -16 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.5 }}
+                className="relative flex items-start gap-5"
+              >
+                <div className="w-[52px] shrink-0 pt-1.5 text-right font-mono-label text-[11px] text-[#e8c66a] sm:w-[68px]">{d.t}</div>
+                <div className="relative mt-2 shrink-0">
+                  <span className="block h-3 w-3 rounded-full bg-[#e8c66a] shadow-[0_0_14px_3px_rgba(240,216,120,0.7)]" />
+                  <span className="absolute inset-0 animate-ping rounded-full bg-[#e8c66a]/60" style={{ animationDuration: "2.4s" }} />
+                </div>
+                <div className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] p-4 backdrop-blur-sm">
+                  <p className="text-lg font-medium text-white/90" style={{ fontFamily: HEAD }}>“{d.line}”</p>
+                  <div className="mt-2.5 inline-flex items-center gap-2 rounded-full border border-[#a855f7]/25 bg-[#a855f7]/10 px-3 py-1 text-[11px] text-[#c084fc]">
+                    <d.icon className="h-3.5 w-3.5" /> {d.tag}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function FloatingPanels() {
   return (
@@ -321,7 +397,7 @@ export default function PremiumHero() {
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </button>
             <button
-              onClick={() => scrollTo("pricing")}
+              onClick={() => scrollTo("day")}
               className="rounded-full border border-white/15 bg-white/[0.06] px-8 py-3.5 text-sm font-semibold text-white/90 backdrop-blur-md transition-colors hover:border-[#d4af37]/40 hover:bg-white/10"
             >
               See a day with Paige
@@ -338,6 +414,11 @@ export default function PremiumHero() {
           a lighter blur: backdrop-blur over an animating canvas is costly, so
           this trims per-frame compositing while scrolling. */}
       <div className="relative z-10 bg-[#07040d]/90 backdrop-blur-md">
+        {/* Day in the Life — the narrative that sells Paige as a character */}
+        <DayInLife />
+
+        <GoldRule />
+
         {/* Features */}
         <Section id="features" className="py-24">
           <motion.h2 variants={rise} className="mb-3 text-center text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
