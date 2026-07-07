@@ -49,7 +49,7 @@ export function Header() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50">
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-20 items-center justify-between">
           <Link to="/" className="flex items-center">
@@ -84,7 +84,7 @@ export function Header() {
               <>
                 <Button variant="ghost" onClick={() => navigate("/auth?mode=login")}>Sign In</Button>
                 <Button
-                  className="bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold"
+                  className="bg-gradient-gold text-white hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold border-0"
                   onClick={() => navigate("/auth?mode=signup")}
                 >
                   Get Started Free
@@ -136,7 +136,7 @@ export function Header() {
                     Sign In
                   </Button>
                   <Button
-                    className="w-full bg-gradient-gold text-primary hover:shadow-glow-lg font-bold"
+                    className="w-full bg-gradient-gold text-white hover:shadow-glow-lg font-bold border-0"
                     onClick={() => navigate("/auth?mode=signup")}
                   >
                     Get Started Free

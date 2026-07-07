@@ -115,10 +115,8 @@ export function HeroSection() {
             </span>
           </h1>
 
-          <p className="text-lg lg:text-xl text-white/80 leading-relaxed max-w-xl drop-shadow-[0_2px_12px_rgba(0,0,0,0.7)]">
-            Paige is the autonomous intelligence layer for coaches, consultants,
-            and agencies. White-label the workspace, automate your workflows, and
-            run your entire client roster from one engine.
+          <p className="text-lg lg:text-xl text-white/80 leading-relaxed max-w-md drop-shadow-[0_2px_12px_rgba(0,0,0,0.7)]">
+            The autonomous OS for coaches, consultants &amp; agencies.
           </p>
 
           <div className="flex flex-wrap gap-4 pt-1">
@@ -142,29 +140,6 @@ export function HeroSection() {
             >
               See How It Works
             </Button>
-          </div>
-
-          <div className="pt-6 flex items-center gap-8 border-t border-white/15">
-            <div>
-              <div className="text-2xl font-bold text-white tabular-nums">50K+</div>
-              <div className="text-xs text-white/70 uppercase tracking-widest">
-                Tasks Automated
-              </div>
-            </div>
-            <div className="w-px h-10 bg-white/15" />
-            <div>
-              <div className="text-2xl font-bold text-white tabular-nums">18</div>
-              <div className="text-xs text-white/70 uppercase tracking-widest">
-                Sub-Agents Live
-              </div>
-            </div>
-            <div className="w-px h-10 bg-white/15 hidden sm:block" />
-            <div className="hidden sm:block">
-              <div className="text-2xl font-bold text-white tabular-nums">360°</div>
-              <div className="text-xs text-white/70 uppercase tracking-widest">
-                Intelligence
-              </div>
-            </div>
           </div>
         </div>
       </div>
