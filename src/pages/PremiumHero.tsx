@@ -28,7 +28,7 @@ gsap.registerPlugin(ScrollTrigger);
  * over the living constellation for depth.
  */
 
-const HEAD = "'Space Grotesk', sans-serif";
+const HEAD = "'Bricolage Grotesque', 'Space Grotesk', sans-serif";
 
 const stagger: Variants = {
   hidden: {},
@@ -189,8 +189,8 @@ export default function PremiumHero() {
             style={{
               fontFamily: HEAD,
               fontSize: "clamp(42px, 7vw, 92px)",
-              letterSpacing: "-0.04em",
-              lineHeight: 1.05,
+              letterSpacing: "-0.03em",
+              lineHeight: 1.04,
               textShadow: "0 2px 40px rgba(0,0,0,0.85)",
             }}
           >
