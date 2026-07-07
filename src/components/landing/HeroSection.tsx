@@ -2,7 +2,6 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { HeroCanvas } from "./HeroCanvas";
 import { HeroAgentBoard } from "./HeroAgentBoard";
 import paigeLogo from "@/assets/paige-logo-transparent.png";
 
@@ -31,9 +30,7 @@ export function HeroSection() {
 
   return (
     <section className="relative overflow-hidden bg-primary py-24 lg:py-32 min-h-[92vh] flex items-center">
-      {/* GPU-rendered WebGL field (navy→gold, cursor-reactive) */}
-      <HeroCanvas />
-      {/* Background atmospherics — gold glows layered over the shader for depth */}
+      {/* Background atmospherics — subtle gold glows */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-24 -left-24 w-[28rem] h-[28rem] bg-gold/10 rounded-full blur-[120px]" />
         <div className="absolute -bottom-24 -right-24 w-[32rem] h-[32rem] bg-gold/[0.07] rounded-full blur-[140px]" />
