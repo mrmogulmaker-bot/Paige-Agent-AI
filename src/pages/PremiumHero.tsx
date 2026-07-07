@@ -13,9 +13,10 @@ import {
 import { useNavigate } from "react-router-dom";
 import { Suspense, lazy } from "react";
 
-// Native Spline embed (self-hosted .splinecode) — transparent canvas that
-// composites over the premium layout, controllable from code.
-const Spline = lazy(() => import("@splinetool/react-spline"));
+// Code-driven interactive 3D core — procedural, no external asset, transparent
+// canvas that composites over the premium layout. Lazy so the Three.js bundle
+// never blocks first paint.
+const PaigeCore = lazy(() => import("@/components/PaigeCore"));
 
 /**
  * PremiumHero — the full premium Paige landing (route /premium).
@@ -100,8 +101,6 @@ export default function PremiumHero() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#0a0510] text-white">
-      {/* Hide the Spline watermark / viewer chrome for a clean hero */}
-      <style>{`a[href*="spline.design"]{display:none!important;} .spline-watermark{display:none!important;}`}</style>
       {/* Ambient glow orbs (fixed, drift the whole page) */}
       <motion.div
         aria-hidden
@@ -140,16 +139,16 @@ export default function PremiumHero() {
         </div>
       </header>
 
-      {/* Hero — live Spline 3D scene (interactive parallax) */}
+      {/* Hero — code-driven interactive 3D core (drag to rotate, cursor parallax) */}
       <section className="relative z-10 h-screen w-full overflow-hidden">
-        <Suspense fallback={<div className="absolute inset-0" />}>
-          <Spline
-            scene="/paige/paige-scene.splinecode"
-            className="!absolute inset-0 h-full w-full"
-          />
-        </Suspense>
-        {/* Legibility scrim — fades the scene into the copy + the page below */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0a0510] via-[#0a0510]/10 to-[#0a0510]/30" />
+        <div className="absolute inset-0">
+          <Suspense fallback={<div className="absolute inset-0" />}>
+            <PaigeCore />
+          </Suspense>
+        </div>
+        {/* Legibility scrim — fades the scene into the copy + the page below.
+            Kept pointer-events-none so the core stays draggable. */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#0a0510] via-transparent to-[#0a0510]/20" />
 
         <motion.div
           variants={stagger}
