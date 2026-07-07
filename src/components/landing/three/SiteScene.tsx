@@ -79,6 +79,51 @@ function usePaigeModel(url: string, color: string, emissive: string) {
   }, [scene, color, emissive]);
 }
 
+// Per-part recolor for the segmented bot GLB (Meshy part-segmentation export).
+// Keyed by the original part material name; unmapped parts fall back to purple.
+type PartCfg = { color: string; emissive?: string; ei?: number };
+const BOT_PARTS: Record<string, PartCfg> = {
+  model_part5: { color: "#7c3aed", emissive: "#3b0764", ei: 0.35 }, // body / head
+  model_part3: { color: "#8b5cf6", emissive: "#3b0764", ei: 0.3 }, // arm
+  model_part4: { color: "#8b5cf6", emissive: "#3b0764", ei: 0.3 }, // arm
+  model_part1: { color: "#6d28d9", emissive: "#3b0764", ei: 0.3 }, // base
+  model_part0: { color: "#22d3ee", emissive: "#0891b2", ei: 0.7 }, // face plate → cyan
+  model_part2: { color: "#e0f2fe", emissive: "#67e8f9", ei: 0.9 }, // top light / "P"
+};
+
+/** Load the segmented bot, recolor each part, normalize scale + center. */
+function useSegmentedBot(url: string, parts: Record<string, PartCfg>) {
+  const { scene } = useGLTF(url);
+  return useMemo(() => {
+    const cloned = scene.clone(true);
+    cloned.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      if (!m.geometry.attributes.normal) m.geometry.computeVertexNormals();
+      const name = (m.material as THREE.Material | undefined)?.name ?? "";
+      const cfg = parts[name] ?? { color: "#7c3aed" };
+      m.material = new THREE.MeshStandardMaterial({
+        color: cfg.color,
+        emissive: cfg.emissive ?? "#3b0764",
+        emissiveIntensity: cfg.ei ?? 0.35,
+        metalness: 0.4,
+        roughness: 0.35,
+      });
+    });
+    // Normalize to ~1.9 units, centered at origin (export scale is arbitrary).
+    const box = new THREE.Box3().setFromObject(cloned);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    cloned.scale.setScalar(1.9 / maxDim);
+    cloned.updateMatrixWorld(true);
+    const c = new THREE.Box3().setFromObject(cloned).getCenter(new THREE.Vector3());
+    cloned.position.x -= c.x;
+    cloned.position.y -= c.y;
+    cloned.position.z -= c.z;
+    return cloned;
+  }, [scene, parts]);
+}
+
 function useScrollProgress() {
   const ref = useRef(0);
   useEffect(() => {
@@ -122,7 +167,7 @@ function botPos(p: number, out: THREE.Vector3) {
 }
 
 function Bot() {
-  const model = usePaigeModel("/paige/paige-bot.glb", "#8b5cf6", "#4c1d95");
+  const model = useSegmentedBot("/paige/paige-bot.glb", BOT_PARTS);
   const glow = useMemo(() => makeGlow("rgba(168,85,247,1)"), []);
   const group = useRef<THREE.Group>(null);
   const inner = useRef<THREE.Group>(null);
