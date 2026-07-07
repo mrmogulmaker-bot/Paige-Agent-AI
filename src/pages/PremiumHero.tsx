@@ -6,7 +6,10 @@ import {
   Brain,
   BarChart3,
   CalendarClock,
+  CalendarCheck,
   MessageSquare,
+  Trophy,
+  Receipt,
   Check,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -74,6 +77,65 @@ const GoldRule = () => (
   </div>
 );
 
+/**
+ * Floating workspace panels — the "operation running around Paige." Each is a
+ * glass card of real coaching work (drafts, kickoffs, milestones, retainers)
+ * that drifts slowly at its own depth. Coaching only — no finance language.
+ */
+type Panel = {
+  icon: typeof MessageSquare;
+  eyebrow: string;
+  body: string;
+  tone: "violet" | "gold";
+  pos: string; // absolute placement
+  depth: number; // 0 near … 1 far (smaller + fainter)
+  dur: number;
+};
+const PANELS: Panel[] = [
+  { icon: MessageSquare, eyebrow: "Paige · replying to Maya", body: "Rescheduled your 3:00 to Thursday — sent the prep doc and confirmed she got it.", tone: "violet", pos: "right-[6%] top-[16%]", depth: 0, dur: 7 },
+  { icon: CalendarCheck, eyebrow: "Kickoff booked · Wed 11:00", body: "New client onboarded while you slept.", tone: "gold", pos: "right-[30%] top-[30%]", depth: 0.5, dur: 9 },
+  { icon: Trophy, eyebrow: "Client milestone", body: "James hit week 12 — celebration prepped.", tone: "gold", pos: "right-[10%] top-[52%]", depth: 0.25, dur: 8 },
+  { icon: Users, eyebrow: "Priya S. · Growth cohort", body: "Engagement dipping — a nudge is queued for your review.", tone: "violet", pos: "right-[40%] top-[62%]", depth: 0.7, dur: 10 },
+  { icon: Receipt, eyebrow: "Retainer · December", body: "Invoice sent · $4,200 · reminder scheduled for Friday.", tone: "violet", pos: "right-[3%] top-[76%]", depth: 0.4, dur: 8.5 },
+  { icon: Workflow, eyebrow: "Welcome sequence", body: "Running for 3 new clients — recaps queued.", tone: "gold", pos: "right-[52%] top-[20%]", depth: 0.85, dur: 11 },
+];
+
+function FloatingPanels() {
+  return (
+    <>
+      {PANELS.map((p, i) => {
+        const scale = 1 - p.depth * 0.28;
+        const opacity = 1 - p.depth * 0.5;
+        const gold = p.tone === "gold";
+        return (
+          <motion.div
+            key={i}
+            aria-hidden
+            className={`absolute hidden w-[15rem] rounded-2xl border p-3.5 backdrop-blur-md lg:block ${p.pos} ${
+              gold ? "border-[#d4af37]/25 bg-[#d4af37]/[0.06]" : "border-white/12 bg-white/[0.05]"
+            }`}
+            style={{ scale, opacity, boxShadow: "0 18px 50px rgba(0,0,0,0.45)" }}
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity, y: [0, -12, 0] }}
+            transition={{
+              opacity: { delay: 0.6 + i * 0.15, duration: 0.8 },
+              y: { duration: p.dur, repeat: Infinity, ease: "easeInOut", delay: i * 0.4 },
+            }}
+          >
+            <div className="mb-1.5 flex items-center gap-2">
+              <span className={`flex h-6 w-6 items-center justify-center rounded-md ${gold ? "bg-[#d4af37]/20 text-[#e8c66a]" : "bg-[#a855f7]/20 text-[#c084fc]"}`}>
+                <p.icon className="h-3.5 w-3.5" />
+              </span>
+              <span className={`text-[11px] font-semibold ${gold ? "text-[#e8c66a]" : "text-[#c084fc]"}`}>{p.eyebrow}</span>
+            </div>
+            <p className="text-[12px] leading-snug text-white/75">{p.body}</p>
+          </motion.div>
+        );
+      })}
+    </>
+  );
+}
+
 const FEATURES = [
   { icon: Users, title: "Client Management", body: "Every client, conversation, and task in one place — Paige surfaces what needs attention today." },
   { icon: Workflow, title: "Workflow Automation", body: "Onboarding, follow-ups, reminders — the repetitive work runs itself in the background." },
@@ -112,6 +174,7 @@ export default function PremiumHero() {
   const { canvasRef, engineRef } = useParticleEngine();
   const heroRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const panelsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const hero = heroRef.current;
@@ -147,6 +210,16 @@ export default function PremiumHero() {
         ease: "power2.in",
         scrollTrigger: { trigger: hero, start: "top top", end: "+=200%", scrub: 1 },
       });
+
+      // Drift the workspace panels away a touch faster than the copy.
+      if (panelsRef.current) {
+        gsap.to(panelsRef.current, {
+          opacity: 0,
+          scale: 0.9,
+          ease: "power2.in",
+          scrollTrigger: { trigger: hero, start: "top top", end: "+=140%", scrub: 1 },
+        });
+      }
     });
 
     return () => ctx.revert();
@@ -200,46 +273,58 @@ export default function PremiumHero() {
         </div>
       </header>
 
-      {/* Hero — pinned; the orb powers up + splits as you scroll */}
+      {/* Hero — pinned; Paige (the orb) powers up + splits as you scroll, with
+          her workspace drifting around her */}
       <section ref={heroRef} className="relative z-10 h-screen w-full">
+        {/* Midground: floating workspace panels around Paige */}
+        <div ref={panelsRef} className="pointer-events-none absolute inset-0">
+          <FloatingPanels />
+        </div>
+
         <div
           ref={contentRef}
-          className="absolute left-6 top-[58%] w-[min(88%,620px)] -translate-y-1/2 sm:left-[8%]"
+          className="absolute left-6 top-[54%] w-[min(90%,640px)] -translate-y-1/2 sm:left-[8%]"
         >
-          <div className="mb-5 flex items-center gap-3">
-            <span className="font-mono-label text-[#22d3ee]">AI OPERATING SYSTEM</span>
-            <span aria-hidden className="h-px w-12 bg-gradient-to-r from-[#d4af37]/70 to-transparent" />
+          <div className="mb-6 flex items-center gap-3">
+            <span className="font-mono-label text-[#e8c66a]">Operations · Follow-ups · Follow-through</span>
+            <span aria-hidden className="h-px w-10 bg-gradient-to-r from-[#d4af37]/70 to-transparent" />
           </div>
           <h1
             className="font-bold tracking-tight"
             style={{
               fontFamily: HEAD,
-              fontSize: "clamp(42px, 7vw, 92px)",
+              fontSize: "clamp(44px, 7.5vw, 100px)",
               letterSpacing: "-0.03em",
-              lineHeight: 1.04,
+              lineHeight: 0.98,
               textShadow: "0 2px 40px rgba(0,0,0,0.85)",
             }}
           >
-            <span className="block">Your Business.</span>
-            <span className="block">Your Brand.</span>
-            <span className="block text-shimmer-purple">Your AI Agent.</span>
+            <span className="block text-shimmer-purple">Meet Paige.</span>
           </h1>
-          <p className="mt-6 max-w-lg text-lg leading-relaxed text-white/70 [text-shadow:0_2px_20px_rgba(0,0,0,0.7)]">
-            Paige gives coaches, consultants, and agencies their own branded AI operating system — trained on your business, running your clients and workflows around the clock.
+          <p className="mt-4 text-2xl font-semibold text-white/90 md:text-3xl" style={{ fontFamily: HEAD }}>
+            She runs your coaching business.
           </p>
-          <div className="mt-10 flex flex-wrap gap-4">
+          <p className="mt-1 text-2xl font-semibold md:text-3xl" style={{ fontFamily: HEAD }}>
+            <span className="bg-gradient-to-r from-[#e8c66a] to-[#d4af37] bg-clip-text text-transparent">
+              You run the transformation.
+            </span>
+          </p>
+          <p className="mt-6 max-w-lg text-lg leading-relaxed text-white/70 [text-shadow:0_2px_20px_rgba(0,0,0,0.7)]">
+            The operations, follow-ups, workflows, and follow-through — Paige handles it all, so you deliver the outcomes only you can.
+          </p>
+          <div className="mt-9 flex flex-wrap items-center gap-4">
             <button
-              onClick={() => scrollTo("final-cta")}
-              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-[#a855f7] to-[#7c3aed] px-8 py-3.5 text-sm font-bold shadow-[0_10px_40px_rgba(124,58,237,0.5)] transition-transform hover:scale-105"
+              onClick={() => navigate("/auth?mode=signup")}
+              className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-[#a855f7] to-[#7c3aed] px-8 py-3.5 text-sm font-bold shadow-[0_10px_40px_rgba(124,58,237,0.5)] ring-1 ring-[#d4af37]/30 transition-transform hover:scale-105"
             >
-              Launch Your Agent
-              <ArrowRight className="h-4 w-4" />
+              Start with Paige
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </button>
             <button
-              onClick={() => scrollTo("features")}
-              className="rounded-full border border-white/15 bg-white/[0.06] px-8 py-3.5 text-sm font-semibold text-white/90 backdrop-blur-md transition-colors hover:border-white/30 hover:bg-white/10"
+              onClick={() => scrollTo("pricing")}
+              className="rounded-full border border-white/15 bg-white/[0.06] px-8 py-3.5 text-sm font-semibold text-white/90 backdrop-blur-md transition-colors hover:border-[#d4af37]/40 hover:bg-white/10"
             >
-              See How It Works
+              See a day with Paige
             </button>
           </div>
         </div>
