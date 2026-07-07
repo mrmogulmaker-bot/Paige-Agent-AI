@@ -6,9 +6,9 @@ import { useEffect, useState } from "react";
 /**
  * Hero — Operator Command Center direction.
  *
- * B2B-first positioning: Paige is the operating system for coaching academies,
- * broker shops, and credit consultancies. Brand palette locked to black + gold
- * + white. Right column is a live "engine console" — not a consumer credit gauge.
+ * B2B-first positioning: Paige is the operating system for coaches,
+ * consultants, and agencies. Brand palette locked to black + gold
+ * + white. Right column is a live "engine console" — not a consumer gauge.
  */
 export function HeroSection() {
   const navigate = useNavigate();
@@ -20,10 +20,10 @@ export function HeroSection() {
   }, []);
 
   const feed = [
-    { t: "14:02:11", label: "New tenant lead · Brokerage_NYC", tone: "gold" },
-    { t: "14:02:12", label: "Auto-underwriting complete", tone: "muted" },
-    { t: "14:02:15", label: "Syncing to academy dashboard", tone: "gold" },
-    { t: "14:02:19", label: "Lender match · 87% confidence", tone: "muted" },
+    { t: "14:02:11", label: "New client lead · Agency_NYC", tone: "gold" },
+    { t: "14:02:12", label: "Workflow automation complete", tone: "muted" },
+    { t: "14:02:15", label: "Syncing to team dashboard", tone: "gold" },
+    { t: "14:02:19", label: "Task match · 87% confidence", tone: "muted" },
   ];
 
   return (
@@ -42,7 +42,7 @@ export function HeroSection() {
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10">
               <span className="flex h-2 w-2 rounded-full bg-gold animate-pulse" />
               <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/70">
-                The Operating System for Funding
+                The Operating System for Client Businesses
               </span>
             </div>
 
@@ -54,10 +54,10 @@ export function HeroSection() {
             </h1>
 
             <p className="text-xl text-white/70 leading-relaxed max-w-xl">
-              Paige is the autonomous intelligence layer for coaching
-              academies, broker shops, and credit consultancies. White-label
-              the workspace, automate underwriting, and run your entire client
-              roster from one engine.
+              Paige is the autonomous intelligence layer for coaches,
+              consultants, and agencies. White-label the workspace, automate
+              your workflows, and run your entire client roster from one
+              engine.
             </p>
 
             <div className="flex flex-wrap gap-4 pt-2">
@@ -104,7 +104,7 @@ export function HeroSection() {
               <div className="w-px h-10 bg-white/10 hidden sm:block" />
               <div className="hidden sm:block">
                 <div className="text-2xl font-bold text-white tabular-nums">
-                  3-Bureau
+                  360°
                 </div>
                 <div className="text-xs text-white/75 uppercase tracking-widest">
                   Intelligence
@@ -113,9 +113,9 @@ export function HeroSection() {
             </div>
 
             <p className="text-[11px] text-white/70 pt-2">
-              The Operator Command Center for coaching academies, brokerages, and
-              consultancies ·{" "}
-              <span className="text-gold">From Borrower to Banker</span>
+              The Operator Command Center for coaches, consultants, and
+              agencies ·{" "}
+              <span className="text-gold">From Solo to Scaled</span>
             </p>
           </div>
 
@@ -141,7 +141,7 @@ export function HeroSection() {
               <div className="grid grid-cols-2 gap-3 mb-5">
                 <div className="p-4 rounded-2xl bg-gold/[0.06] border border-gold/20">
                   <div className="text-[10px] text-gold font-bold uppercase tracking-widest mb-1">
-                    Underwriting
+                    Automation
                   </div>
                   <div className="text-2xl font-bold text-white tabular-nums">
                     98.4%

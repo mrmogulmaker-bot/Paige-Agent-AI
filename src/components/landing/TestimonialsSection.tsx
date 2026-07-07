@@ -5,23 +5,23 @@ import { Quote } from "lucide-react";
 const testimonials = [
   {
     quote:
-      "Paige helped me understand exactly what score I needed for my first DSCR loan and built me a 90-day roadmap to get there. I closed on my first rental property 4 months after joining.",
+      "Paige organized every client in one place and built me a 90-day onboarding workflow that runs itself. My follow-ups stopped slipping through the cracks and my calendar finally makes sense.",
     name: "[Client name]",
-    role: "Real Estate Investor",
+    role: "Business Coach",
     location: "Atlanta, GA",
   },
   {
     quote:
-      "I had no idea I qualified for the 8(a) program until Paige flagged it. That certification opened doors to federal contracts I never knew existed.",
+      "The automated reminders and outreach drafts save me hours every week. Paige flagged clients I hadn't touched in a while so I could re-engage them before they went cold.",
     name: "[Client name]",
-    role: "Business Owner",
+    role: "Agency Owner",
     location: "[City, State]",
   },
   {
     quote:
-      "The entity structure coaching alone was worth 10x the subscription price. Paige caught that I was concentrating too much debt in one LLC before it became a problem.",
+      "The AI advisor alone is worth 10x the subscription price. Paige keeps my client notes, tasks, and check-ins in sync so nothing falls apart as my practice grows.",
     name: "[Client name]",
-    role: "Entrepreneur",
+    role: "Consultant",
     location: "[City, State]",
   },
 ];

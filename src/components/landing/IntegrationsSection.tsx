@@ -10,14 +10,14 @@ const INTEGRATIONS = [
     icon: Calendar,
     title: "Google Calendar",
     purpose:
-      "With your permission, PaigeAgent connects to your Google Calendar so coaches and clients can schedule funding sessions, milestone check-ins, and application deadlines without leaving the platform. We request the calendar.events.owned scope solely to create and manage events on calendars you own. Your calendar data is never sold, shared, or used to train AI models, and you can disconnect at any time from Settings.",
+      "With your permission, PaigeAgent connects to your Google Calendar so coaches and clients can schedule sessions, milestone check-ins, and project deadlines without leaving the platform. We request the calendar.events.owned scope solely to create and manage events on calendars you own. Your calendar data is never sold, shared, or used to train AI models, and you can disconnect at any time from Settings.",
     scopes: "calendar.events.owned, userinfo.email",
   },
   {
     icon: FileSpreadsheet,
     title: "QuickBooks (Intuit)",
     purpose:
-      "Optional. When you connect QuickBooks, PaigeAgent reads revenue, expense, and account-balance data to improve the accuracy of your business fundability score. We do not write back to your books.",
+      "Optional. When you connect QuickBooks, PaigeAgent reads revenue, expense, and account-balance data to improve the accuracy of your business performance insights. We do not write back to your books.",
     scopes: "com.intuit.quickbooks.accounting (read-only)",
   },
   {
@@ -31,7 +31,7 @@ const INTEGRATIONS = [
     icon: MessageSquare,
     title: "Twilio & Resend",
     purpose:
-      "Deliver transactional SMS and email (credit alerts, session reminders, password resets). Only your phone number, email, and message content are shared.",
+      "Deliver transactional SMS and email (task alerts, session reminders, password resets). Only your phone number, email, and message content are shared.",
     scopes: "Notifications only",
   },
 ];

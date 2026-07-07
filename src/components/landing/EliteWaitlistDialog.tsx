@@ -116,7 +116,7 @@ export function EliteWaitlistDialog({
                 Join the Elite Waitlist
               </DialogTitle>
               <DialogDescription className="pt-1">
-                Done-with-you funding support for serious wealth builders.
+                Done-with-you onboarding and setup for serious business owners.
                 We'll review your application and reach out within 48 hours.
               </DialogDescription>
             </DialogHeader>
@@ -165,7 +165,7 @@ export function EliteWaitlistDialog({
 
               <div className="space-y-1.5">
                 <Label htmlFor="ew-notes">
-                  What is your funding goal? (optional)
+                  What is your business goal? (optional)
                 </Label>
                 <Textarea
                   id="ew-notes"
@@ -174,7 +174,7 @@ export function EliteWaitlistDialog({
                   onChange={(e) =>
                     setForm((f) => ({ ...f, notes: e.target.value }))
                   }
-                  placeholder="e.g. SBA 7(a) for acquisition, real estate portfolio, scale current business..."
+                  placeholder="e.g. onboard my client base, automate follow-ups, scale my coaching practice..."
                 />
               </div>
 

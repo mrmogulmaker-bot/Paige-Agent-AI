@@ -276,9 +276,9 @@ const Auth = () => {
   };
 
   const features = [
-    { icon: Shield, title: "Bank-Grade Security", desc: "256-bit encryption protects your data" },
-    { icon: TrendingUp, title: "Credit Intelligence", desc: "AI-powered insights across all 3 bureaus" },
-    { icon: Zap, title: "Funding Readiness", desc: "Real-time score banks actually use" },
+    { icon: Shield, title: "Enterprise Security", desc: "256-bit encryption protects your data" },
+    { icon: TrendingUp, title: "AI Advisor", desc: "AI-powered insights across your business" },
+    { icon: Zap, title: "Workflow Automation", desc: "Automate outreach, scheduling, and follow-ups" },
   ];
 
   return (
@@ -315,12 +315,12 @@ const Auth = () => {
               <span className="text-xs font-medium text-accent tracking-wide uppercase">AI-Powered Platform</span>
             </div>
             <h2 className="text-4xl xl:text-5xl font-bold text-primary-foreground leading-[1.1] tracking-tight">
-              Build credit that
+              Run the business that
               <br />
-              <span className="text-accent">opens doors.</span>
+              <span className="text-accent">runs itself.</span>
             </h2>
             <p className="text-primary-foreground/60 text-base max-w-md leading-relaxed">
-              The intelligent platform that transforms your credit profile into a powerful financial asset.
+              The intelligent AI operating system that turns your everyday client work into one connected, automated workflow.
             </p>
           </div>
 
@@ -358,7 +358,7 @@ const Auth = () => {
             </div>
             <div>
               <p className="text-xs font-medium text-primary-foreground/70">Trusted by 2,400+ members</p>
-              <p className="text-[11px] text-primary-foreground/40">Average 47-point score increase</p>
+              <p className="text-[11px] text-primary-foreground/40">Hours saved every week on busywork</p>
             </div>
           </div>
         </div>
@@ -515,9 +515,9 @@ const Auth = () => {
                       aria-required
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
-                      I understand that my financial data is used exclusively to provide my
+                      I understand that my business data is used exclusively to provide my
                       PaigeAgent services and is{" "}
-                      <strong>never sold to third parties, lenders, or advertisers</strong>.{" "}
+                      <strong>never sold to third parties or advertisers</strong>.{" "}
                       <span className="text-destructive">*</span>
                     </span>
                   </label>

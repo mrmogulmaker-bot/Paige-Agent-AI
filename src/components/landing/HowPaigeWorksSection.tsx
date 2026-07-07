@@ -7,25 +7,25 @@ const steps = [
     icon: MessageCircle,
     n: "01",
     title: "Define the Mission",
-    body: "Every founder moves with intent. Paige starts by mapping your real objective — the business you're scaling, the capital you need, the asset you're acquiring — and aligns the entire ecosystem to it.",
+    body: "Every operator moves with intent. Paige starts by mapping your real objective — the clients you're serving, the offers you're launching, the workflows you're scaling — and aligns your entire operation to it.",
   },
   {
     icon: Search,
     n: "02",
     title: "Read the Landscape",
-    body: "Credit profile, capital position, business signals, lender psychology — Paige analyzes the full operating picture across every data layer to surface what actually moves the needle.",
+    body: "Client activity, pipeline signals, team workload, engagement patterns — Paige analyzes the full operating picture across every data layer to surface what actually moves the needle.",
   },
   {
     icon: Map,
     n: "03",
     title: "Engineer the Path",
-    body: "Not generic advice. A precision roadmap — which scores to hit, which lenders to target, which structure to use, which actions in what order — built around how you actually operate.",
+    body: "Not generic advice. A precision playbook — which clients to prioritize, which messages to send, which processes to automate, which actions in what order — built around how you actually operate.",
   },
   {
     icon: ArrowRight,
     n: "04",
     title: "Execute With Momentum",
-    body: "Paige stays in motion with you — adapting strategy as your profile evolves, surfacing new capital opportunities, and keeping you accountable to the next move that compounds.",
+    body: "Paige stays in motion with you — adapting as your business evolves, surfacing new opportunities, and keeping you accountable to the next move that compounds.",
   },
 ];
 
@@ -43,8 +43,8 @@ export function HowPaigeWorksSection() {
           </h2>
           <p className="text-lg text-muted-foreground">
             Paige isn't a chatbot answering questions. It's an intelligent
-            operating system engineered around how serious entrepreneurs
-            actually build, fund, and scale.
+            operating system engineered around how serious operators
+            actually build, run, and scale their businesses.
           </p>
         </div>
 

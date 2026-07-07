@@ -189,11 +189,11 @@ export default function PublicSignup() {
 
   // ---------- WIZARD ----------
   const STEPS = useMemo(() => ([
-    { title: "About You", description: "The basics — used for credit and identity matching later." },
+    { title: "About You", description: "The basics — used for identity matching later." },
     { title: "Your Entity", description: "Tell us what's already in place." },
     { title: "Business Setup", description: "Where it operates and how it banks." },
-    { title: "Credit Snapshot", description: "A rough read so we don't waste your time." },
-    { title: "Funding & Goals", description: "What you're trying to unlock — and when." },
+    { title: "Business Snapshot", description: "A rough read so we don't waste your time." },
+    { title: "Goals", description: "What you're trying to unlock — and when." },
     { title: "How You Found Us", description: "Last one. Then we'll route you to the right place." },
   ]), []);
   const progress = Math.round(((step + 1) / STEPS.length) * 100);
@@ -233,7 +233,7 @@ export default function PublicSignup() {
     <div className="min-h-screen bg-background text-foreground">
       <PageHead
         title="Join Paige Agent AI — Let's see what's possible"
-        description="Self-serve signup for the entrepreneurial operating system. Credit, capital, and execution — one connected growth engine."
+        description="Self-serve signup for the AI operating system for client-based businesses. Client management, automation, and execution — one connected growth engine."
         path="/signup"
       />
       <div className="max-w-2xl mx-auto px-6 py-12">
@@ -405,7 +405,7 @@ export default function PublicSignup() {
                       <Input type="email" value={data.business_email} onChange={(e) => update("business_email", e.target.value)} />
                     </Field>
                     <Field label="Primary business bank">
-                      <Input value={data.banking_relationship} onChange={(e) => update("banking_relationship", e.target.value)} placeholder="Chase, BoA, local credit union…" />
+                      <Input value={data.banking_relationship} onChange={(e) => update("banking_relationship", e.target.value)} placeholder="Chase, BoA, local bank…" />
                     </Field>
                     <Field label="How old is that relationship (months)?">
                       <Input type="number" min={0} value={data.banking_age_months} onChange={(e) => update("banking_age_months", e.target.value)} />

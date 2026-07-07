@@ -4,12 +4,12 @@ const CARDS = [
   {
     icon: ShieldCheck,
     title: "Never Sold",
-    body: "Your financial data is never sold to lenders, advertisers, or data brokers. Ever.",
+    body: "Your data and your clients' data is never sold to advertisers or third parties. Ever.",
   },
   {
     icon: Lock,
     title: "Bank-Grade Encryption",
-    body: "AES-256 encryption protects your credit data, SSNs, and financial information at rest and in transit.",
+    body: "AES-256 encryption protects your data and your clients' data at rest and in transit.",
   },
   {
     icon: Server,
@@ -60,7 +60,7 @@ export function TrustSecuritySection() {
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3 mt-10">
-          {["256-bit Encrypted", "SOC 2 Infrastructure", "FCRA Compliant Use"].map((label) => (
+          {["256-bit Encrypted", "SOC 2 Infrastructure", "Privacy by Design"].map((label) => (
             <span
               key={label}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-background border border-border text-xs font-medium text-foreground/80"
