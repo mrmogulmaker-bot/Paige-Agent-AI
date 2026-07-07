@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
+import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -132,9 +132,7 @@ export default function PublicSignup() {
   const handleSso = async (provider: "google" | "apple") => {
     setAuthBusy(true);
     try {
-      const result = await lovable.auth.signInWithOAuth(provider, {
-        redirect_uri: window.location.origin + "/signup",
-      });
+      const result = await signInWithOAuth(provider, window.location.origin + "/signup");
       if (result.error) {
         toast({ title: "Sign-in failed", description: String(result.error.message || result.error), variant: "destructive" });
         setAuthBusy(false);

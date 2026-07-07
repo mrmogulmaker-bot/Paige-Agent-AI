@@ -3,26 +3,37 @@
 -- 1. Enables pgcrypto extension
 -- 2. Rewrites update_profile_ssn to accept the encryption key as a parameter
 --    (key is supplied by edge functions via Deno.env.get('SSN_ENCRYPTION_KEY'))
--- 3. Migrates any existing plaintext SSNs to encrypted form using the key
---    inline in this migration only — the key is never stored in the database
+-- 3. Migrates any existing plaintext SSNs to encrypted form (fresh installs
+--    have none — this is a guarded no-op unless a one-time key is supplied)
+--
+-- SECURITY: the key that was formerly hardcoded here has been ROTATED and
+-- removed from source (treated as compromised). Runtime encryption uses the
+-- SSN_ENCRYPTION_KEY edge-function secret. For the rare case of a project with
+-- legacy plaintext SSNs to convert, supply a one-time key out-of-band via
+--   SET app.ssn_migration_key = '<key>';
+-- before applying this migration. Absent that setting, the backfill is skipped.
 
 -- Enable pgcrypto for symmetric encryption
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- One-time backfill: encrypt any existing plaintext 9-digit SSNs.
--- The key is declared as a migration-local variable and used only within
--- this transaction. It is never written to any table or setting.
+-- One-time backfill: encrypt any existing plaintext 9-digit SSNs. No key is
+-- stored in source or in the database; it is read from a session setting and
+-- used only within this transaction. Safe no-op on fresh installs (no data).
 DO $$
 DECLARE
-  encryption_key TEXT := '6adf5ba3e07c89fa0ac8868bf3733a0c3bfbc608ddbfb15fb394e54d2bc2b3cc';
+  encryption_key TEXT := current_setting('app.ssn_migration_key', true);
 BEGIN
-  UPDATE public.profiles
-  SET ssn_encrypted = encode(
-    pgp_sym_encrypt(ssn_encrypted, encryption_key, 'cipher-algo=aes256'),
-    'base64'
-  )
-  WHERE ssn_encrypted IS NOT NULL
-    AND ssn_encrypted ~ '^\d{9}$';  -- only migrate plaintext 9-digit values
+  IF encryption_key IS NULL OR length(encryption_key) < 32 THEN
+    RAISE NOTICE 'SSN plaintext backfill skipped — no app.ssn_migration_key set (fresh install or already migrated).';
+  ELSE
+    UPDATE public.profiles
+    SET ssn_encrypted = encode(
+      pgp_sym_encrypt(ssn_encrypted, encryption_key, 'cipher-algo=aes256'),
+      'base64'
+    )
+    WHERE ssn_encrypted IS NOT NULL
+      AND ssn_encrypted ~ '^\d{9}$';  -- only migrate plaintext 9-digit values
+  END IF;
 END;
 $$;
 

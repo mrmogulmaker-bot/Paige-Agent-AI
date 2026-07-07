@@ -40,7 +40,7 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     let roles = (rolesRes.data || []).map((r: any) => r.role as string);
 
     // Staff routes take priority — but only for genuine staff roles.
-    if (roles.includes("admin") || roles.includes("coach")) {
+    if (roles.includes("super_admin") || roles.includes("admin") || roles.includes("coach")) {
       return "/admin";
     }
     if (roles.includes("broker") || roles.includes("broker_team_member")) {

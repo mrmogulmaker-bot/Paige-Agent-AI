@@ -38,7 +38,6 @@ type Counts = {
 const tiles = [
   { key: "n8n", icon: Workflow, title: "n8n Workflows", description: "Sync workflow inventory, trigger by ID, view recent executions.", href: "/admin/integrations/n8n" },
   { key: "stripe", icon: CreditCard, title: "Stripe Revenue", description: "Live subscription events, MRR delta and churn alerts.", href: "/admin/integrations/subscriptions" },
-  { key: "ghl", icon: Mail, title: "GoHighLevel Pipe", description: "Read legacy contacts. Email + SMS fallback for send-message.", href: "/admin/integrations/ghl" },
   { key: "zapier", icon: Zap, title: "Zapier MCP", description: "Expose thousands of apps to Paige via the MCP client.", href: "/admin/integrations/zapier" },
   { key: "telegram", icon: Send, title: "Telegram Alerts", description: "Bot channel for admin alerts and overdue approvals.", href: "/admin/integrations/telegram" },
   { key: "gmail", icon: MessageSquare, title: "Gmail (Founder Inbox)", description: "Deliverability-sensitive sends via OAuth.", href: "/admin/integrations/gmail" },

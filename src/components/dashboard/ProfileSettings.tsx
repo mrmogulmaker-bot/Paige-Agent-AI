@@ -22,7 +22,7 @@ import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle, Link2, Unli
 import { LiveSyncIndicator } from "@/components/ui/LiveSyncIndicator";
 import { DataPrivacyPanel } from "@/components/dashboard/DataPrivacyPanel";
 import { NotificationsSettings } from "@/components/dashboard/NotificationsSettings";
-import { lovable } from "@/integrations/lovable/index";
+import { linkOAuthIdentity } from "@/integrations/auth/oauth";
 import { z } from "zod";
 import { Switch } from "@/components/ui/switch";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
@@ -45,7 +45,7 @@ const ConnectedAccountsSection = () => {
   const linkGoogle = async () => {
     setIsLinking(true);
     try {
-      const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
+      const result = await linkOAuthIdentity("google", window.location.origin);
       if (result.error) toast({ title: "Linking failed", description: String(result.error), variant: "destructive" });
     } catch {
       toast({ title: "Error", description: "Failed to link Google account.", variant: "destructive" });

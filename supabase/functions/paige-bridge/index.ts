@@ -96,7 +96,7 @@ const UpdateWorkflowRunSchema = z.object({
 
 const LogMessageSendSchema = z.object({
   channel: z.enum(["email", "sms"]),
-  pipe_used: z.enum(["resend", "twilio", "ghl_fallback"]),
+  pipe_used: z.enum(["resend", "twilio"]),
   to: z.string().min(1).max(255),
   from: z.string().max(255).optional(),
   subject: z.string().max(500).optional(),
