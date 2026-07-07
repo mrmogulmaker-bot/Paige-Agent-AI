@@ -49,7 +49,7 @@ const Index = () => {
   return (
     <div className="dark min-h-screen bg-background text-foreground">
       <SiteBackground />
-      <Header />
+      <Header autoHide />
       <HeroSection />
       <Reveal><ValuePropsSection /></Reveal>
       <SectionDivider />
