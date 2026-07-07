@@ -1,5 +1,5 @@
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Billboard, Sparkles, useTexture } from "@react-three/drei";
+import { Billboard, Sparkles, useGLTF } from "@react-three/drei";
 import {
   Suspense,
   useEffect,
@@ -13,24 +13,26 @@ import * as THREE from "three";
 /**
  * SiteScene — the Paige-led 3D world behind the entire landing page.
  *
- * Narrative loop (the "movie"): Paige stands centre-right; her bot orbits her,
- * then flies into a procedural 3D computer, lights up its chips in a cascade,
- * and flies back out — "task done" — on a loop. Holographic OS panels drift in
- * the back. Everything reveals with a short cinematic intro and reacts to the
- * cursor; scroll flies the camera down through the world.
+ * Real Meshy 3D models: Paige (woman) stands centre-right; her bot orbits her,
+ * flies into a procedural 3D computer, lights up its chips in a cascade, and
+ * flies back out — "task done" — on an 11s loop. Holographic OS panels drift in
+ * the back; a purple particle field fills the depth. Scroll flies the camera
+ * down through the world; the cursor parallaxes it.
  *
- * NOTE: Paige + the bot are currently flat art composited into the scene
- * (stand-ins). They swap to real .glb 3D models (image-to-3D) with no change to
- * this choreography — the animation timeline stays identical.
+ * The GLBs are geometry-only (no texture/normals), so we compute normals and
+ * skin them in the brand purple. Swap-ready for textured re-exports.
  */
 
-const CYCLE = 11; // seconds per narrative loop
+const CYCLE = 11;
 const TAU = Math.PI * 2;
 const ease = (t: number) => 1 - Math.pow(1 - Math.min(Math.max(t, 0), 1), 3);
 const smooth = (a: number, b: number, t: number) => a + (b - a) * ease(t);
 
 const COMPUTER = new THREE.Vector3(-3.7, -0.5, 0.3);
-const PAIGE = new THREE.Vector3(3.0, -0.7, -0.4);
+const PAIGE = new THREE.Vector3(3.1, -1.4, -0.4);
+
+useGLTF.preload("/paige/paige-bot.glb");
+useGLTF.preload("/paige/paige-woman.glb");
 
 function makeGlow(hex: string): THREE.CanvasTexture {
   const c = document.createElement("canvas");
@@ -43,6 +45,29 @@ function makeGlow(hex: string): THREE.CanvasTexture {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 256, 256);
   return new THREE.CanvasTexture(c);
+}
+
+/** Load a geometry-only Meshy GLB, fix normals, skin it in brand purple. */
+function usePaigeModel(url: string, color: string, emissive: string) {
+  const { scene } = useGLTF(url);
+  return useMemo(() => {
+    const cloned = scene.clone(true);
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      emissive,
+      emissiveIntensity: 0.4,
+      metalness: 0.4,
+      roughness: 0.35,
+    });
+    cloned.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        if (!m.geometry.attributes.normal) m.geometry.computeVertexNormals();
+        m.material = mat;
+      }
+    });
+    return cloned;
+  }, [scene, color, emissive]);
 }
 
 function useScrollProgress() {
@@ -63,21 +88,20 @@ function useScrollProgress() {
   return ref;
 }
 
-/** Bot orbit anchor around Paige's upper body. */
 function orbitPoint(angle: number) {
   return new THREE.Vector3(
-    PAIGE.x + Math.cos(angle) * 1.8,
-    PAIGE.y + 1.1 + Math.sin(angle) * 0.8,
-    0.2 + Math.sin(angle) * 0.7,
+    PAIGE.x + Math.cos(angle) * 1.9,
+    PAIGE.y + 1.9 + Math.sin(angle) * 0.8,
+    0.2 + Math.sin(angle) * 0.8,
   );
 }
 
-/** The bot — flat art stand-in, choreographed through the narrative loop. */
+/** The bot — real 3D model, choreographed through the narrative loop. */
 function Bot() {
-  const tex = useTexture("/paige/paige-bot-1.png");
+  const model = usePaigeModel("/paige/paige-bot.glb", "#8b5cf6", "#4c1d95");
   const glow = useMemo(() => makeGlow("rgba(168,85,247,1)"), []);
   const group = useRef<THREE.Group>(null);
-  const mat = useRef<THREE.MeshBasicMaterial>(null);
+  const inner = useRef<THREE.Group>(null);
   const glowMat = useRef<THREE.SpriteMaterial>(null);
   const intro = useRef(0);
 
@@ -92,29 +116,28 @@ function Bot() {
     let pos: THREE.Vector3;
     let scale = 1;
     let vis = 1;
-
-    if (p < 0.34) {
-      pos = orbitPoint(angle);
-    } else if (p < 0.46) {
+    if (p < 0.34) pos = orbitPoint(angle);
+    else if (p < 0.46) {
       const u = (p - 0.34) / 0.12;
       pos = orbitPoint(angle).lerp(COMPUTER, ease(u));
-      scale = smooth(1, 0.06, u);
+      scale = smooth(1, 0.05, u);
     } else if (p < 0.7) {
       pos = COMPUTER.clone();
-      scale = 0.06;
-      vis = 0; // inside the computer
+      scale = 0.05;
+      vis = 0;
     } else if (p < 0.82) {
       const u = (p - 0.7) / 0.12;
       pos = COMPUTER.clone().lerp(orbitPoint(angle), ease(u));
-      scale = smooth(0.06, 1, u);
-    } else {
-      pos = orbitPoint(angle);
-    }
+      scale = smooth(0.05, 1, u);
+    } else pos = orbitPoint(angle);
 
     g.position.lerp(pos, 0.25);
     const introS = ease(intro.current);
     g.scale.setScalar(scale * introS);
-    if (mat.current) mat.current.opacity = vis * introS;
+    if (inner.current) {
+      inner.current.rotation.y += 0.012;
+      inner.current.visible = vis > 0.05;
+    }
     if (glowMat.current)
       glowMat.current.opacity = vis * introS * (0.7 + Math.sin(time * 3) * 0.15);
   });
@@ -122,7 +145,7 @@ function Bot() {
   return (
     <group ref={group} scale={0}>
       <Billboard>
-        <sprite scale={[2.6, 2.6, 1]} position={[0, 0, -0.3]}>
+        <sprite scale={[3.4, 3.4, 1]} position={[0, 0, -0.6]}>
           <spriteMaterial
             ref={glowMat}
             map={glow}
@@ -132,74 +155,35 @@ function Bot() {
             opacity={0}
           />
         </sprite>
-        <mesh>
-          <planeGeometry args={[1.5, 1.42]} />
-          <meshBasicMaterial
-            ref={mat}
-            map={tex}
-            transparent
-            opacity={0}
-            toneMapped={false}
-            depthWrite={false}
-            alphaTest={0.02}
-          />
-        </mesh>
       </Billboard>
+      <group ref={inner} scale={1.25}>
+        <primitive object={model} />
+      </group>
     </group>
   );
 }
 
-/** Paige's character, standing centre-right; click toggles her wave. */
+/** Paige (woman) — real 3D model, standing centre-right with a gentle sway. */
 function PaigeFigure() {
-  const [arms, wave] = useTexture(["/paige/paige-arms.png", "/paige/paige-wave.png"]);
-  const [waving, setWaving] = useState(false);
+  const model = usePaigeModel("/paige/paige-woman.glb", "#a78bfa", "#4c1d95");
   const group = useRef<THREE.Group>(null);
-  const mat = useRef<THREE.MeshBasicMaterial>(null);
   const intro = useRef(0);
 
   useFrame((state) => {
     const g = group.current;
     if (!g) return;
-    intro.current = Math.min(intro.current + 0.014, 1);
+    intro.current = Math.min(intro.current + 0.012, 1);
     const t = ease(intro.current);
-    g.position.y = PAIGE.y + Math.sin(state.clock.elapsedTime * 0.7) * 0.06;
-    g.position.x = PAIGE.x + (1 - t) * 1.4;
-    g.scale.setScalar(t);
-    // auto-wave when the bot returns ("task done"), else obey clicks
-    const p = (state.clock.elapsedTime % CYCLE) / CYCLE;
-    const autoWave = p > 0.72 && p < 0.86;
-    if (mat.current) {
-      mat.current.map = waving || autoWave ? wave : arms;
-      mat.current.opacity = t;
-    }
+    const time = state.clock.elapsedTime;
+    g.position.y = PAIGE.y + Math.sin(time * 0.7) * 0.05;
+    g.position.x = PAIGE.x + (1 - t) * 1.6;
+    g.rotation.y = Math.sin(time * 0.3) * 0.18;
+    g.scale.setScalar(t * 2.0);
   });
 
   return (
     <group ref={group} position={[PAIGE.x, PAIGE.y, PAIGE.z]} scale={0}>
-      <mesh
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          setWaving((w) => !w);
-        }}
-        onPointerOver={(e) => {
-          e.stopPropagation();
-          document.body.style.cursor = "pointer";
-        }}
-        onPointerOut={() => {
-          document.body.style.cursor = "";
-        }}
-      >
-        <planeGeometry args={[2.0, 4.0]} />
-        <meshBasicMaterial
-          ref={mat}
-          map={arms}
-          transparent
-          opacity={0}
-          toneMapped={false}
-          depthWrite={false}
-          alphaTest={0.02}
-        />
-      </mesh>
+      <primitive object={model} />
     </group>
   );
 }
@@ -207,13 +191,9 @@ function PaigeFigure() {
 /** Procedural 3D computer whose chips light up while the bot is inside. */
 function Computer() {
   const chips = useMemo(() => {
-    const arr: { pos: [number, number, number]; order: number }[] = [];
-    let k = 0;
-    for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 4; c++) {
-        arr.push({ pos: [-0.72 + c * 0.48, 0.42 - r * 0.44, 0.09], order: k++ });
-      }
-    }
+    const arr: [number, number, number][] = [];
+    for (let r = 0; r < 3; r++)
+      for (let c = 0; c < 4; c++) arr.push([-0.72 + c * 0.48, 0.42 - r * 0.44, 0.09]);
     return arr;
   }, []);
   const mats = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
@@ -223,22 +203,18 @@ function Computer() {
     const p = (state.clock.elapsedTime % CYCLE) / CYCLE;
     const inside = p >= 0.44 && p < 0.72;
     const u = inside ? (p - 0.44) / 0.28 : 0;
-    chips.forEach((chip, i) => {
+    chips.forEach((_, i) => {
       const m = mats.current[i];
       if (!m) return;
       const lit = inside && u > i / chips.length;
-      const target = lit ? 2.2 : 0.15;
-      m.emissiveIntensity += (target - m.emissiveIntensity) * 0.2;
+      m.emissiveIntensity += ((lit ? 2.2 : 0.15) - m.emissiveIntensity) * 0.2;
     });
-    if (screen.current) {
-      const target = inside ? 1.6 : 0.4;
-      screen.current.emissiveIntensity += (target - screen.current.emissiveIntensity) * 0.1;
-    }
+    if (screen.current)
+      screen.current.emissiveIntensity += ((inside ? 1.6 : 0.4) - screen.current.emissiveIntensity) * 0.1;
   });
 
   return (
     <group position={COMPUTER.toArray()} rotation={[0, 0.5, 0]}>
-      {/* board / screen */}
       <mesh>
         <boxGeometry args={[2.3, 1.7, 0.14]} />
         <meshStandardMaterial
@@ -250,7 +226,6 @@ function Computer() {
           metalness={0.5}
         />
       </mesh>
-      {/* glowing frame */}
       <mesh position={[0, 0, -0.08]}>
         <planeGeometry args={[2.55, 1.95]} />
         <meshBasicMaterial
@@ -261,9 +236,8 @@ function Computer() {
           depthWrite={false}
         />
       </mesh>
-      {/* chips */}
-      {chips.map((chip, i) => (
-        <mesh key={i} position={chip.pos}>
+      {chips.map((pos, i) => (
+        <mesh key={i} position={pos}>
           <boxGeometry args={[0.32, 0.28, 0.06]} />
           <meshStandardMaterial
             ref={(m) => (mats.current[i] = m)}
@@ -279,7 +253,7 @@ function Computer() {
   );
 }
 
-/** A holographic OS panel drifting in the background. */
+/** A holographic OS panel drifting in the background, grabbable. */
 function Panel({ index, count }: { index: number; count: number }) {
   const group = useRef<THREE.Group>(null);
   const back = useRef<THREE.MeshBasicMaterial>(null);
@@ -289,9 +263,9 @@ function Panel({ index, count }: { index: number; count: number }) {
   const home = useMemo(
     () =>
       new THREE.Vector3(
-        Math.cos(angle) * 5.2,
-        Math.sin(angle) * 2.6 + 0.5,
-        -3.2 + Math.sin(angle) * 1.2,
+        Math.cos(angle) * 5.4,
+        Math.sin(angle) * 2.7 + 0.5,
+        -3.4 + Math.sin(angle) * 1.2,
       ),
     [angle],
   );
@@ -383,9 +357,10 @@ function Scene({ progress }: { progress: MutableRefObject<number> }) {
     <>
       <color attach="background" args={["#0a0510"]} />
       <fog attach="fog" args={["#0a0510", 11, 32]} />
-      <ambientLight intensity={0.8} />
-      <pointLight position={[6, 5, 6]} intensity={70} color="#a855f7" decay={2} />
-      <pointLight position={[-6, 2, 5]} intensity={45} color="#6d28d9" decay={2} />
+      <ambientLight intensity={0.7} />
+      <pointLight position={[6, 5, 6]} intensity={80} color="#a855f7" decay={2} />
+      <pointLight position={[-6, 2, 5]} intensity={55} color="#6d28d9" decay={2} />
+      <pointLight position={[0, 3, 3]} intensity={30} color="#e9d5ff" decay={2} />
 
       <Suspense fallback={null}>
         <Computer />
