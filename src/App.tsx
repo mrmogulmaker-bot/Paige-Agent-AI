@@ -46,6 +46,7 @@ import { usePageView } from "./hooks/useAnalytics";
 // Eagerly load only the public landing + auth pages (likely first-paint)
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+const PremiumHero = lazyWithReload(() => import("./pages/PremiumHero"));
 const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
 const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
 const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
@@ -149,6 +150,7 @@ const App = () => (
           <ClientOnlyRouteGuard />
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/premium" element={<PageSuspense><PremiumHero /></PageSuspense>} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
