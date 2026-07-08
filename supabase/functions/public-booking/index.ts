@@ -1,0 +1,194 @@
+// Native booking engine — public availability + appointment creation.
+// Anon-callable (verify_jwt=false); all writes go through the service role after
+// server-side validation, so the public never touches tables directly.
+// Source of truth is internal_bookings + staff_calendar_settings — no external
+// provider required (Google/Cal.com/Apple sync is optional, layered on later).
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
+// --- Weekly availability contract -------------------------------------------
+interface DayWindow { day: number; start: string; end: string } // day 0=Sun..6=Sat, "HH:MM"
+const DEFAULT_AVAILABILITY: DayWindow[] = [1, 2, 3, 4, 5].map((day) => ({ day, start: "09:00", end: "17:00" }));
+
+function parseAvailability(raw: unknown): DayWindow[] {
+  if (!Array.isArray(raw)) return DEFAULT_AVAILABILITY;
+  const out = raw.filter(
+    (w): w is DayWindow =>
+      w && typeof w === "object" &&
+      typeof (w as DayWindow).day === "number" &&
+      /^\d{2}:\d{2}$/.test((w as DayWindow).start ?? "") &&
+      /^\d{2}:\d{2}$/.test((w as DayWindow).end ?? ""),
+  );
+  return out.length ? out : DEFAULT_AVAILABILITY;
+}
+
+// --- Timezone math (Intl-based; no external tz lib) -------------------------
+function offsetMin(atUtcMs: number, tz: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const p: Record<string, string> = {};
+  for (const part of dtf.formatToParts(new Date(atUtcMs))) p[part.type] = part.value;
+  const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour === 24 ? 0 : +p.hour, +p.minute, +p.second);
+  return (asUtc - atUtcMs) / 60000;
+}
+/** A wall-clock time in `tz` → the UTC instant (ms). */
+function zonedWallToUtcMs(y: number, mo: number, d: number, h: number, mi: number, tz: string): number {
+  const guess = Date.UTC(y, mo, d, h, mi);
+  return guess - offsetMin(guess, tz) * 60000;
+}
+/** The Y/M/D of a UTC instant as seen in `tz`. */
+function ymdInTz(ms: number, tz: string): { y: number; mo: number; d: number; wd: number } {
+  const dtf = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" });
+  const p: Record<string, string> = {};
+  for (const part of dtf.formatToParts(new Date(ms))) p[part.type] = part.value;
+  const wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday);
+  return { y: +p.year, mo: +p.month, d: +p.day, wd };
+}
+
+interface HostSettings {
+  user_id: string;
+  tenant_id: string | null;
+  availability: DayWindow[];
+  durationMin: number;
+  bufferBeforeMin: number;
+  bufferAfterMin: number;
+  timezone: string;
+  minNoticeMin: number;
+}
+
+interface Busy { start: number; end: number } // UTC ms
+
+/** Compute open slot start instants (UTC ms) over [fromMs, toMs]. */
+function computeSlots(h: HostSettings, busy: Busy[], fromMs: number, toMs: number, nowMs: number): number[] {
+  const slots: number[] = [];
+  const durMs = h.durationMin * 60000;
+  const earliest = nowMs + h.minNoticeMin * 60000;
+  const dayMs = 86_400_000;
+  // Walk each calendar day in the host's timezone across the window.
+  for (let cursor = fromMs - dayMs; cursor <= toMs + dayMs; cursor += dayMs) {
+    const { y, mo, d, wd } = ymdInTz(cursor, h.timezone);
+    const windows = h.availability.filter((w) => w.day === wd);
+    for (const w of windows) {
+      const [sh, sm] = w.start.split(":").map(Number);
+      const [eh, em] = w.end.split(":").map(Number);
+      const winStart = zonedWallToUtcMs(y, mo - 1, d, sh, sm, h.timezone);
+      const winEnd = zonedWallToUtcMs(y, mo - 1, d, eh, em, h.timezone);
+      for (let s = winStart; s + durMs <= winEnd; s += durMs) {
+        const e = s + durMs;
+        if (s < fromMs || s > toMs) continue;
+        if (s < earliest) continue;
+        // Buffer-padded conflict against existing bookings.
+        const blocked = busy.some(
+          (b) => s < b.end + h.bufferAfterMin * 60000 && e + h.bufferBeforeMin * 60000 > b.start,
+        );
+        if (!blocked) slots.push(s);
+      }
+    }
+  }
+  return Array.from(new Set(slots)).sort((a, b) => a - b);
+}
+
+async function loadHost(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
+  const { data } = await admin
+    .from("staff_calendar_settings")
+    .select("user_id, tenant_id, availability_json, default_meeting_duration_min, buffer_before_min, buffer_after_min, timezone, booking_page_enabled")
+    .eq("booking_page_slug", slug)
+    .maybeSingle();
+  if (!data || data.booking_page_enabled !== true) return null;
+  return {
+    user_id: data.user_id,
+    tenant_id: data.tenant_id ?? null,
+    availability: parseAvailability(data.availability_json),
+    durationMin: Math.max(5, data.default_meeting_duration_min ?? 30),
+    bufferBeforeMin: Math.max(0, data.buffer_before_min ?? 0),
+    bufferAfterMin: Math.max(0, data.buffer_after_min ?? 0),
+    timezone: data.timezone || "America/New_York",
+    minNoticeMin: 60,
+  };
+}
+
+async function loadBusy(admin: ReturnType<typeof createClient>, userId: string, fromMs: number, toMs: number): Promise<Busy[]> {
+  const { data } = await admin
+    .from("internal_bookings")
+    .select("start_at, end_at, status")
+    .eq("host_user_id", userId)
+    .neq("status", "cancelled")
+    .gte("start_at", new Date(fromMs - 86_400_000).toISOString())
+    .lte("start_at", new Date(toMs + 86_400_000).toISOString());
+  return (data ?? []).map((b) => ({ start: Date.parse(b.start_at), end: Date.parse(b.end_at) }));
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const body = await req.json().catch(() => ({}));
+    const action = body?.action;
+    const slug = typeof body?.slug === "string" ? body.slug.toLowerCase() : "";
+    if (!slug) return json({ error: "slug required" }, 400);
+
+    const host = await loadHost(admin, slug);
+    if (!host) return json({ error: "This booking page isn't available." }, 404);
+
+    const now = Date.now();
+
+    if (action === "availability") {
+      const fromMs = Math.max(now, Date.parse(body?.from) || now);
+      const toMs = Math.min(now + 30 * 86_400_000, Date.parse(body?.to) || now + 14 * 86_400_000);
+      const busy = await loadBusy(admin, host.user_id, fromMs, toMs);
+      const slots = computeSlots(host, busy, fromMs, toMs, now);
+      return json({
+        durationMin: host.durationMin,
+        timezone: host.timezone,
+        slots: slots.map((s) => new Date(s).toISOString()),
+      });
+    }
+
+    if (action === "create") {
+      const startMs = Date.parse(body?.start);
+      const name = String(body?.guest?.name ?? "").trim();
+      const email = String(body?.guest?.email ?? "").trim().toLowerCase();
+      const phone = String(body?.guest?.phone ?? "").trim() || null;
+      const notes = String(body?.notes ?? "").trim() || null;
+      if (!Number.isFinite(startMs)) return json({ error: "Invalid time." }, 400);
+      if (!name) return json({ error: "Name is required." }, 400);
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "A valid email is required." }, 400);
+
+      // Re-validate the slot server-side against live availability + bookings.
+      const busy = await loadBusy(admin, host.user_id, startMs - 86_400_000, startMs + 86_400_000);
+      const valid = computeSlots(host, busy, startMs - 60000, startMs + 60000, now).some((s) => s === startMs);
+      if (!valid) return json({ error: "That time is no longer available. Please pick another." }, 409);
+
+      const endMs = startMs + host.durationMin * 60000;
+      const { data, error } = await admin.from("internal_bookings").insert({
+        tenant_id: host.tenant_id,
+        host_user_id: host.user_id,
+        guest_name: name,
+        guest_email: email,
+        guest_phone: phone,
+        title: `Meeting with ${name}`,
+        notes,
+        start_at: new Date(startMs).toISOString(),
+        end_at: new Date(endMs).toISOString(),
+        timezone: host.timezone,
+        status: "confirmed",
+        source: "booking_page",
+      }).select("id, start_at, end_at, title").single();
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, booking: data });
+    }
+
+    return json({ error: "Unknown action" }, 400);
+  } catch (e) {
+    return json({ error: (e as Error).message }, 500);
+  }
+});

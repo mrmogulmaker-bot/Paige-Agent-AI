@@ -1,6 +1,8 @@
 project_id = "xygzykjyynhzqytbqnzu"
 
 [functions]
+  [functions.public-booking]
+    verify_jwt = false
   [functions.paige-bridge]
     verify_jwt = false
   [functions.sla-watcher]
