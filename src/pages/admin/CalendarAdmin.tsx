@@ -10,7 +10,7 @@
  * toggles calendars on/off (color legend). Bookings are the host's own
  * (internal_bookings, RLS: bookings_host_all); each calendar carries its color.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -71,6 +71,7 @@ export default function CalendarAdmin() {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [newOpen, setNewOpen] = useState(false);
+  const reqSeq = useRef(0);
 
   const colorFor = useCallback((calId: string | null) => {
     const c = calendars.find((x) => x.id === calId);
@@ -83,18 +84,21 @@ export default function CalendarAdmin() {
   }, []);
 
   const loadBookings = useCallback(async () => {
+    const seq = ++reqSeq.current; // guard against out-of-order responses
     setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData.user?.id;
-    if (!uid) { setLoading(false); return; }
+    if (!uid) { if (seq === reqSeq.current) setLoading(false); return; }
     const [from, to] = rangeFor(view, cursor);
+    // Overlap-aware: catch events that START before the window but run into it.
     const { data } = await supabase
       .from("internal_bookings")
       .select("id, title, start_at, end_at, status, source, guest_name, guest_email, calendar_id")
       .eq("host_user_id", uid)
-      .gte("start_at", from.toISOString())
       .lt("start_at", to.toISOString())
+      .gte("end_at", from.toISOString())
       .order("start_at", { ascending: true });
+    if (seq !== reqSeq.current) return; // a newer request superseded this one
     setBookings((data as BookingRow[]) ?? []);
     setLoading(false);
   }, [view, cursor]);
@@ -215,7 +219,11 @@ export default function CalendarAdmin() {
         onOpenChange={setNewOpen}
         calendars={calendars}
         activeTenantId={activeTenantId}
-        onCreated={() => { setNewOpen(false); void loadBookings(); }}
+        onCreated={(startedAt) => {
+          setNewOpen(false);
+          // Jump to the new appointment's date so it's actually visible.
+          if (startedAt) setCursor(startedAt); else void loadBookings();
+        }}
       />
     </div>
   );
@@ -276,7 +284,7 @@ function NewAppointmentDialog({ open, onOpenChange, calendars, activeTenantId, o
   onOpenChange: (v: boolean) => void;
   calendars: CalMeta[];
   activeTenantId: string | null;
-  onCreated: () => void;
+  onCreated: (startedAt: Date) => void;
 }) {
   const [title, setTitle] = useState("");
   const [calendarId, setCalendarId] = useState<string>(UNASSIGNED);
@@ -319,9 +327,14 @@ function NewAppointmentDialog({ open, onOpenChange, calendars, activeTenantId, o
       source: "manual",
     });
     setSaving(false);
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      if ((error as { code?: string }).code === "23505")
+        toast.error("You already have something at that time — pick another slot.");
+      else toast.error(error.message);
+      return;
+    }
     toast.success(blocked ? "Time blocked" : "Appointment added");
-    onCreated();
+    onCreated(start);
   };
 
   return (

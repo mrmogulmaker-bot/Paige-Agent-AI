@@ -6,7 +6,7 @@
  * "now" line marks the current time in Day/Week. Overlapping events split the
  * column into lanes so nothing is hidden.
  */
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 export interface GridEvent {
   id: string;
@@ -69,20 +69,25 @@ function layoutDay(events: GridEvent[]): Array<{ ev: GridEvent; lane: number; la
 
 function EventBlock({ ev, style }: { ev: GridEvent; style: React.CSSProperties }) {
   const cancelled = ev.status === "cancelled";
+  const blocked = ev.status === "blocked";
+  // Blocked time reads as unavailable (neutral, hatched), not a real appointment.
+  const hue = blocked ? "#94a3b8" : ev.color;
   return (
     <div
       className="absolute rounded-md px-1.5 py-1 overflow-hidden text-[11px] leading-tight cursor-default"
       style={{
         ...style,
-        backgroundColor: `${ev.color}22`,
-        borderLeft: `3px solid ${ev.color}`,
+        backgroundColor: blocked
+          ? "repeating-linear-gradient(45deg, #94a3b81f, #94a3b81f 6px, #94a3b833 6px, #94a3b833 12px)"
+          : `${ev.color}22`,
+        borderLeft: `3px solid ${hue}`,
         opacity: cancelled ? 0.5 : 1,
         textDecoration: cancelled ? "line-through" : "none",
       }}
       title={`${ev.title} · ${fmtTime(ev.start)}–${fmtTime(ev.end)}`}
     >
-      <div className="font-medium truncate" style={{ color: ev.color }}>{fmtTime(ev.start)}</div>
-      <div className="truncate text-foreground/80">{ev.title}</div>
+      <div className="font-medium truncate" style={{ color: hue }}>{blocked ? "Blocked" : fmtTime(ev.start)}</div>
+      {!blocked && <div className="truncate text-foreground/80">{ev.title}</div>}
     </div>
   );
 }
@@ -113,7 +118,9 @@ function DayColumn({ day, events, isToday }: { day: Date; events: GridEvent[]; i
       {/* events */}
       {laid.map(({ ev, lane, lanes }) => {
         const top = (minutesSince(ev.start, base) / 60) * HOUR_HEIGHT;
-        const height = Math.max(18, (minutesSince(ev.end, ev.start) / 60) * HOUR_HEIGHT - 2);
+        const rawHeight = Math.max(18, (minutesSince(ev.end, ev.start) / 60) * HOUR_HEIGHT - 2);
+        // Clamp so an event running past midnight doesn't overflow the 24h grid.
+        const height = Math.min(rawHeight, HOUR_HEIGHT * 24 - top - 2);
         const widthPct = 100 / lanes;
         return (
           <EventBlock key={ev.id} ev={ev} style={{
@@ -134,14 +141,17 @@ function DayColumn({ day, events, isToday }: { day: Date; events: GridEvent[]; i
   );
 }
 
-// Re-render the now-line roughly on mount; a light interval keeps it fresh.
+// Minutes-since-midnight for the now-line, refreshed every 60s so it tracks time.
 function useNowMinutes(active: boolean): number | null {
-  const ref = useRef<number | null>(null);
-  if (active && ref.current === null) {
-    const n = new Date();
-    ref.current = n.getHours() * 60 + n.getMinutes();
-  }
-  return active ? ref.current : null;
+  const [mins, setMins] = useState<number | null>(null);
+  useEffect(() => {
+    if (!active) { setMins(null); return; }
+    const tick = () => { const n = new Date(); setMins(n.getHours() * 60 + n.getMinutes()); };
+    tick();
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, [active]);
+  return mins;
 }
 
 export function CalendarGrid({ view, cursor, events }: { view: ViewMode; cursor: Date; events: GridEvent[] }) {
