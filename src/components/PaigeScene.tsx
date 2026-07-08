@@ -80,46 +80,49 @@ function supportsWebGL() {
 }
 
 /**
- * Saturn-style rings around Paige's head. Concentric, coplanar rings sharing a
- * single tilted plane (her head is the "planet"), each a slightly different gold
- * shade / brightness / thickness so no two read the same. The whole disc
- * precesses slowly so it reads as rotating. Parented to Paige (mounted at her
- * head), so it tracks her gaze, entrance and scroll and stays isolated to her
- * head rather than floating over the page.
+ * Delicate orbital rings around Paige's head — thin, faint elliptical orbits at
+ * several tilts (atomic/electron-shell look), larger than the head, crossing in
+ * front of and behind it, each a slightly different gold/cream shade and
+ * brightness. Each orbit slowly precesses so the set shimmers. Parented to Paige
+ * (mounted at her head), so it tracks her gaze, entrance and scroll.
+ *
+ * Structure per ring: an outer group precesses (spins on Y); an inner group
+ * holds the fixed tilt; a thin torus at a steep tilt reads as a slim ellipse.
  */
-const SATURN_RINGS = [
-  { r: 0.85, tube: 0.012, color: "#F7E7B0", emissive: 1.9, op: 0.85 }, // pale, bright
-  { r: 1.0, tube: 0.026, color: "#F0C86A", emissive: 1.3, op: 1 }, // core gold, thick
-  { r: 1.14, tube: 0.008, color: "#FFF3D0", emissive: 2.3, op: 0.8 }, // thin hot filament
-  { r: 1.28, tube: 0.03, color: "#C8912F", emissive: 0.7, op: 1 }, // deep amber, dim
-  { r: 1.44, tube: 0.01, color: "#D4A752", emissive: 1.1, op: 0.7 }, // outer, faint
+const ORBIT_RINGS = [
+  { r: 2.0, tilt: [1.42, 0, 0.12] as [number, number, number], tube: 0.006, color: "#F0C86A", emissive: 1.5, op: 0.55, spin: 0.22 },
+  { r: 2.18, tilt: [1.2, 0.6, 0] as [number, number, number], tube: 0.005, color: "#FFF3D0", emissive: 2.0, op: 0.5, spin: -0.16 },
+  { r: 1.78, tilt: [1.5, 0, 1.0] as [number, number, number], tube: 0.007, color: "#D4A752", emissive: 1.2, op: 0.5, spin: 0.3 },
 ];
-function SaturnRings({ reduced }: { reduced: boolean }) {
-  const spin = useRef<THREE.Group>(null);
+function OrbitRings({ reduced }: { reduced: boolean }) {
+  const spins = useRef<(THREE.Group | null)[]>([]);
   useFrame((s) => {
-    if (spin.current) spin.current.rotation.y = s.clock.elapsedTime * (reduced ? 0.06 : 0.32);
+    const t = s.clock.elapsedTime;
+    ORBIT_RINGS.forEach((r, i) => {
+      const g = spins.current[i];
+      if (g) g.rotation.y = t * (reduced ? 0.04 : r.spin);
+    });
   });
   return (
-    <group ref={spin}>
-      {/* the shared Saturn tilt */}
-      <group rotation={[0.42, 0, 0.08]}>
-        {SATURN_RINGS.map((r, i) => (
-          <mesh key={i} rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[r.r, r.tube, 16, 168]} />
-            <meshStandardMaterial
-              color={r.color}
-              emissive={r.color}
-              emissiveIntensity={r.emissive}
-              transparent
-              opacity={r.op}
-              toneMapped={false}
-              metalness={0.4}
-              roughness={0.35}
-              depthWrite={false}
-            />
-          </mesh>
-        ))}
-      </group>
+    <group>
+      {ORBIT_RINGS.map((r, i) => (
+        <group key={i} ref={(el) => (spins.current[i] = el)}>
+          <group rotation={r.tilt}>
+            <mesh>
+              <torusGeometry args={[r.r, r.tube, 12, 220]} />
+              <meshStandardMaterial
+                color={r.color}
+                emissive={r.color}
+                emissiveIntensity={r.emissive}
+                transparent
+                opacity={r.op}
+                toneMapped={false}
+                depthWrite={false}
+              />
+            </mesh>
+          </group>
+        </group>
+      ))}
     </group>
   );
 }
@@ -234,17 +237,21 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
   const { scene } = useGLTF("/paige/paige-central.glb");
   const model = useMemo(() => {
     const cloned = scene.clone(true);
-    // See-through "being of light" — translucent gold that glows, so the
-    // particles, rings and companion are faintly visible through the form.
-    const mat = new THREE.MeshStandardMaterial({
+    // Warm translucent "glass" — glossier and more polished than a flat surface
+    // (clearcoat sheen + low roughness + warm envMap) so she reads like the
+    // reference glass helmet rather than a flat gold form. A true face-inside-
+    // glass depth will land fully with the textured re-export.
+    const mat = new THREE.MeshPhysicalMaterial({
       color: GOLD,
       emissive: GOLD_HI,
-      emissiveIntensity: 0.4,
-      metalness: 0.4,
-      roughness: 0.3,
-      envMapIntensity: 2,
+      emissiveIntensity: 0.32,
+      metalness: 0.3,
+      roughness: 0.16,
+      clearcoat: 1,
+      clearcoatRoughness: 0.22,
+      envMapIntensity: 2.8,
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.5,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -309,9 +316,9 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
       <group ref={inner}>
         <primitive object={model} />
       </group>
-      {/* Saturn rings around her head (HEAD_Y ≈ head center in the centered model). */}
+      {/* Delicate orbital rings around her head (HEAD_Y ≈ head center). */}
       <group position={[0, HEAD_Y, 0]}>
-        <SaturnRings reduced={reduced} />
+        <OrbitRings reduced={reduced} />
       </group>
       <Sparkles count={40} scale={[2.6, 4, 2.6]} position={[0, 0.4, 0]} size={2} speed={reduced ? 0 : 0.25} color={GOLD_HI} opacity={0.7} />
     </group>
@@ -346,9 +353,12 @@ function Scene() {
         <PaigeCentral reduced={reduced} />
       </Float>
 
-      {/* Gold + indigo particle field */}
+      {/* Gold + indigo particle field (the star field) */}
       <Sparkles count={120} scale={[16, 10, 8]} size={2.4} speed={reduced ? 0 : 0.2} color={GOLD_HI} opacity={0.5} />
       <Sparkles count={60} scale={[14, 9, 7]} size={3.2} speed={reduced ? 0 : 0.15} color={VIOLET} opacity={0.4} />
+
+      {/* The companion — flies around the lower view like a little spaceship. */}
+      <Companion reduced={reduced} />
 
       <CameraRig />
     </>
@@ -368,48 +378,6 @@ export default function PaigeScene() {
     >
       <Suspense fallback={null}>
         <Scene />
-      </Suspense>
-    </Canvas>
-  );
-}
-
-/**
- * Foreground overlay scene — just the companion, flying around the lower part of
- * the page like a little spaceship, lit so the gold reads. Renders on a
- * transparent canvas layered IN FRONT of the page content (see PaigeHome); the
- * rings now live around Paige's head in the background scene.
- */
-function OverlayScene() {
-  const reduced = useMemo(prefersReducedMotion, []);
-  return (
-    <>
-      <ambientLight intensity={0.5} color={GOLD_HI} />
-      <pointLight position={[3, 3, 5]} intensity={22} color={GOLD_HI} decay={2} />
-      <Environment resolution={64}>
-        <Lightformer form="rect" intensity={2} color={GOLD_HI} scale={[5, 3, 1]} position={[3, 3, 3]} />
-        <Lightformer form="circle" intensity={1.2} color={OFFWHITE} scale={2} position={[0, 3, -3]} />
-      </Environment>
-      <Companion reduced={reduced} />
-    </>
-  );
-}
-
-/** The foreground layer's canvas. Transparent; mounted pointer-events-none above
- *  the page content by PaigeHome. Paige's own background canvas owns the shared
- *  `ptr` pointer listener, so this layer just reads it. */
-export function PaigeOverlay() {
-  const [ok] = useState(supportsWebGL);
-  usePointerTracking(); // also registered here so it survives a background unmount
-  if (!ok) return null;
-  return (
-    <Canvas
-      dpr={[1, 1.75]}
-      camera={{ position: [0, 0.3, 7], fov: 42 }}
-      gl={{ alpha: true, antialias: true }}
-      style={{ width: "100%", height: "100%" }}
-    >
-      <Suspense fallback={null}>
-        <OverlayScene />
       </Suspense>
     </Canvas>
   );
