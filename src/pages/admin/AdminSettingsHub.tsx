@@ -7,8 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe } from "lucide-react";
+import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe, CalendarCheck, Plug } from "lucide-react";
+import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
+import { CalendarConnectorsPanel } from "@/components/admin/settings/CalendarConnectorsPanel";
+const IntegrationsHub = lazy(() => import("@/pages/admin/IntegrationsHub"));
 // Team & Roles lives at /admin/members — the Settings tab was retired in Ship #3 (Task #15).
 // A transitional signpost card below the tab list points users to the canonical route.
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
@@ -92,6 +95,12 @@ export function AdminSettingsHub() {
           <TabsTrigger value="workspace" className="gap-2">
             <Building2 className="w-4 h-4" /> Workspace
           </TabsTrigger>
+          <TabsTrigger value="connectors" className="gap-2">
+            <CalendarCheck className="w-4 h-4" /> Connectors
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className="gap-2">
+            <Plug className="w-4 h-4" /> Integrations
+          </TabsTrigger>
           <TabsTrigger value="storefront" className="gap-2">
             <Store className="w-4 h-4" /> Storefront
           </TabsTrigger>
@@ -122,6 +131,16 @@ export function AdminSettingsHub() {
 
         <TabsContent value="workspace" className="space-y-4">
           <WorkspaceSettingsPanel />
+        </TabsContent>
+
+        <TabsContent value="connectors" className="space-y-4">
+          <CalendarConnectorsPanel />
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-4">
+          <Suspense fallback={<p className="text-sm text-muted-foreground">Loading integrations…</p>}>
+            <IntegrationsHub />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="storefront" className="space-y-4">
