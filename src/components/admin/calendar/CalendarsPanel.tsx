@@ -14,9 +14,10 @@
  * (null-tenant) calendars. On create we register the creator as a calendar_host
  * so the booking engine has an availability owner.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarDays, Plus, Copy, ExternalLink, Loader2, Trash2, Pencil, Palette, Globe, Check,
+  FolderPlus, Users, Folder,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -29,6 +30,9 @@ import { Switch } from "@/components/ui/switch";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter,
 } from "@/components/ui/sheet";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -56,7 +60,12 @@ export interface CalendarRow {
   timezone: string;
   availability_json: DayWindow[] | null;
   enabled: boolean;
+  group_id: string | null;
+  created_by: string | null;
 }
+
+export interface CalendarGroup { id: string; name: string; tenant_id: string | null; }
+interface PersonRow { user_id: string; full_name: string | null; avatar_url: string | null; count: number; }
 
 type DayWindow = { day: number; start: string; end: string };
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -65,7 +74,7 @@ const DEFAULT_AVAIL: AvailState = Object.fromEntries(
   [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { enabled: d >= 1 && d <= 5, start: "09:00", end: "17:00" }]),
 );
 
-const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled";
+const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, group_id, created_by";
 
 const TYPES = [
   { value: "personal", label: "One-on-one", hint: "A single host meets one guest at a time." },
@@ -89,6 +98,11 @@ const COMMON_TZ = [
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90];
 
+function initials(name: string | null): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
+}
 function slugify(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 }
@@ -158,20 +172,51 @@ type BuilderState = { mode: "create" } | { mode: "edit"; calendar: CalendarRow }
 export default function CalendarsPanel() {
   const { activeTenantId, isPlatformStaff } = useTenantContext();
   const [rows, setRows] = useState<CalendarRow[]>([]);
+  const [groups, setGroups] = useState<CalendarGroup[]>([]);
+  const [people, setPeople] = useState<PersonRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [builder, setBuilder] = useState<BuilderState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CalendarRow | null>(null);
+  const [groupOpen, setGroupOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("calendars").select(SELECT_COLS).order("created_at", { ascending: false });
+    const [{ data, error }, { data: grp }] = await Promise.all([
+      supabase.from("calendars").select(SELECT_COLS).order("created_at", { ascending: false }),
+      supabase.from("calendar_groups").select("id, name, tenant_id").order("name"),
+    ]);
     if (error) toast.error(error.message);
-    setRows((data as CalendarRow[]) ?? []);
+    const calRows = (data as CalendarRow[]) ?? [];
+    setRows(calRows);
+    setGroups((grp as CalendarGroup[]) ?? []);
+
+    // "Who has calendars" — resolve owner names for the calendars we can see.
+    const owners = Array.from(new Set(calRows.map((c) => c.created_by).filter(Boolean))) as string[];
+    if (owners.length) {
+      const { data: profs } = await supabase.from("profiles").select("user_id, full_name, avatar_url").in("user_id", owners);
+      type Prof = { user_id: string; full_name: string | null; avatar_url: string | null };
+      const nameMap = new Map(((profs as Prof[] | null) ?? []).map((p) => [p.user_id, p]));
+      const counts = new Map<string, number>();
+      for (const c of calRows) if (c.created_by) counts.set(c.created_by, (counts.get(c.created_by) ?? 0) + 1);
+      setPeople(owners.map((uid) => ({
+        user_id: uid,
+        full_name: (nameMap.get(uid)?.full_name as string | null) ?? null,
+        avatar_url: (nameMap.get(uid)?.avatar_url as string | null) ?? null,
+        count: counts.get(uid) ?? 0,
+      })).sort((a, b) => b.count - a.count));
+    } else {
+      setPeople([]);
+    }
     setLoading(false);
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  const assignGroup = async (calId: string, groupId: string | null) => {
+    const { error } = await supabase.from("calendars").update({ group_id: groupId }).eq("id", calId);
+    if (error) { toast.error(error.message); return; }
+    setRows((r) => r.map((x) => x.id === calId ? { ...x, group_id: groupId } : x));
+  };
 
   const bookingUrl = (slug: string) => `${window.location.origin}/book/${slug}`;
   const copyLink = async (slug: string) => {
@@ -181,6 +226,86 @@ export default function CalendarsPanel() {
 
   const upsertRow = (c: CalendarRow) =>
     setRows((r) => (r.some((x) => x.id === c.id) ? r.map((x) => x.id === c.id ? c : x) : [c, ...r]));
+
+  // Section the cards by group; groups with calendars first, then Ungrouped.
+  const sections = useMemo(() => {
+    const byGroup = new Map<string | null, CalendarRow[]>();
+    for (const c of rows) {
+      const k = c.group_id ?? null;
+      if (!byGroup.has(k)) byGroup.set(k, []);
+      byGroup.get(k)!.push(c);
+    }
+    const out: { group: CalendarGroup | null; cals: CalendarRow[] }[] = [];
+    for (const g of groups) { const cals = byGroup.get(g.id); if (cals?.length) out.push({ group: g, cals }); }
+    const ungrouped = byGroup.get(null); if (ungrouped?.length) out.push({ group: null, cals: ungrouped });
+    return out;
+  }, [rows, groups]);
+
+  const renderCard = (c: CalendarRow) => {
+    const color = c.color || c.accent || "#EBB94C";
+    return (
+      <div key={c.id} className="rounded-lg border overflow-hidden bg-card">
+        <div className="h-1.5" style={{ backgroundColor: color }} />
+        <div className="p-3.5 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                <span className="font-medium truncate">{c.title || "Untitled calendar"}</span>
+              </div>
+              <div className="mt-1 flex items-center gap-1.5">
+                <Badge variant="secondary" className="text-[10px]">{TYPE_LABEL[c.type] ?? c.type}</Badge>
+                <span className="text-[11px] text-muted-foreground">{c.duration_min} min</span>
+                {c.tenant_id === null && <Badge variant="outline" className="text-[10px]">Operator</Badge>}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <span className={`text-[10px] font-medium ${c.enabled ? "text-emerald-500" : "text-muted-foreground"}`}>
+                {c.enabled ? "Live" : "Draft"}
+              </span>
+              <Switch
+                checked={c.enabled}
+                onCheckedChange={async (v) => {
+                  const { error } = await supabase.from("calendars").update({ enabled: v }).eq("id", c.id);
+                  if (error) toast.error(error.message);
+                  else setRows((r) => r.map((x) => x.id === c.id ? { ...x, enabled: v } : x));
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Public web booking link — the URL that goes out to the world. */}
+          <div className="flex items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1.5">
+            <Globe className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+            <span className="text-[11px] text-muted-foreground truncate flex-1">/book/{c.slug}</span>
+            <button type="button" onClick={() => copyLink(c.slug)} className="p-1 hover:text-primary" title="Copy public link">
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+            <a href={bookingUrl(c.slug)} target="_blank" rel="noreferrer" className="p-1 hover:text-primary" title="Open booking page">
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="flex-1" onClick={() => setBuilder({ mode: "edit", calendar: c })}>
+              <Pencil className="h-3.5 w-3.5 mr-1.5" /> Customize
+            </Button>
+            {/* Quick move-to-group */}
+            <Select value={c.group_id ?? "__none__"} onValueChange={(v) => assignGroup(c.id, v === "__none__" ? null : v)}>
+              <SelectTrigger className="h-8 w-9 px-0 justify-center" aria-label="Move to group"><Folder className="h-3.5 w-3.5" /></SelectTrigger>
+              <SelectContent align="end">
+                <SelectItem value="__none__">No group</SelectItem>
+                {groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeleteTarget(c)}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <Card>
@@ -196,10 +321,37 @@ export default function CalendarsPanel() {
               </p>
             </div>
           </div>
-          <Button onClick={() => setBuilder({ mode: "create" })} size="sm">
-            <Plus className="h-4 w-4 mr-1.5" /> New calendar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={() => setGroupOpen(true)} size="sm" variant="outline">
+              <FolderPlus className="h-4 w-4 mr-1.5" /> New group
+            </Button>
+            <Button onClick={() => setBuilder({ mode: "create" })} size="sm">
+              <Plus className="h-4 w-4 mr-1.5" /> New calendar
+            </Button>
+          </div>
         </div>
+
+        {/* Who has calendars — owner roster */}
+        {people.length > 0 && (
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+              <Users className="h-3.5 w-3.5" /> Who has calendars
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {people.map((p) => (
+                <div key={p.user_id} className="flex items-center gap-2 rounded-full border bg-card pl-1 pr-2.5 py-1">
+                  <span className="h-6 w-6 rounded-full bg-primary/10 grid place-items-center overflow-hidden flex-shrink-0">
+                    {p.avatar_url
+                      ? <img src={p.avatar_url} alt="" className="h-full w-full object-cover" />
+                      : <span className="text-[10px] font-semibold text-primary">{initials(p.full_name)}</span>}
+                  </span>
+                  <span className="text-xs font-medium">{p.full_name || "Unnamed"}</span>
+                  <span className="text-[10px] text-muted-foreground tabular-nums">{p.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="py-10 flex items-center justify-center gap-2 text-muted-foreground text-sm">
@@ -217,64 +369,20 @@ export default function CalendarsPanel() {
             </Button>
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {rows.map((c) => {
-              const color = c.color || c.accent || "#EBB94C";
-              return (
-                <div key={c.id} className="rounded-lg border overflow-hidden bg-card">
-                  <div className="h-1.5" style={{ backgroundColor: color }} />
-                  <div className="p-3.5 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                          <span className="font-medium truncate">{c.title || "Untitled calendar"}</span>
-                        </div>
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <Badge variant="secondary" className="text-[10px]">{TYPE_LABEL[c.type] ?? c.type}</Badge>
-                          <span className="text-[11px] text-muted-foreground">{c.duration_min} min</span>
-                          {c.tenant_id === null && <Badge variant="outline" className="text-[10px]">Operator</Badge>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <span className={`text-[10px] font-medium ${c.enabled ? "text-emerald-500" : "text-muted-foreground"}`}>
-                          {c.enabled ? "Live" : "Draft"}
-                        </span>
-                        <Switch
-                          checked={c.enabled}
-                          onCheckedChange={async (v) => {
-                            const { error } = await supabase.from("calendars").update({ enabled: v }).eq("id", c.id);
-                            if (error) toast.error(error.message);
-                            else setRows((r) => r.map((x) => x.id === c.id ? { ...x, enabled: v } : x));
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Public web booking link — the URL that goes out to the world. */}
-                    <div className="flex items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1.5">
-                      <Globe className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                      <span className="text-[11px] text-muted-foreground truncate flex-1">/book/{c.slug}</span>
-                      <button type="button" onClick={() => copyLink(c.slug)} className="p-1 hover:text-primary" title="Copy public link">
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                      <a href={bookingUrl(c.slug)} target="_blank" rel="noreferrer" className="p-1 hover:text-primary" title="Open booking page">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" className="flex-1" onClick={() => setBuilder({ mode: "edit", calendar: c })}>
-                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> Customize
-                      </Button>
-                      <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeleteTarget(c)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+          <div className="space-y-5">
+            {sections.map(({ group, cals }) => (
+              <div key={group?.id ?? "__ungrouped__"} className="space-y-2">
+                {groups.length > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Folder className="h-3.5 w-3.5" /> {group ? group.name : "Ungrouped"}
+                    <span className="tabular-nums text-muted-foreground/60">({cals.length})</span>
                   </div>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {cals.map(renderCard)}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
       </CardContent>
@@ -284,9 +392,18 @@ export default function CalendarsPanel() {
         onOpenChange={(v) => !v && setBuilder(null)}
         tenantId={activeTenantId}
         isPlatformStaff={isPlatformStaff}
+        groups={groups}
         onSaved={(c, created) => { upsertRow(c); if (created) setBuilder({ mode: "edit", calendar: c }); }}
         bookingUrl={bookingUrl}
         copyLink={copyLink}
+      />
+
+      <NewGroupDialog
+        open={groupOpen}
+        onOpenChange={setGroupOpen}
+        tenantId={activeTenantId}
+        isPlatformStaff={isPlatformStaff}
+        onCreated={(g) => { setGroups((prev) => [...prev, g].sort((a, b) => a.name.localeCompare(b.name))); setGroupOpen(false); }}
       />
 
       <AlertDialog open={deleteTarget !== null} onOpenChange={(v) => !v && setDeleteTarget(null)}>
@@ -316,8 +433,55 @@ export default function CalendarsPanel() {
   );
 }
 
+function NewGroupDialog({ open, onOpenChange, tenantId, isPlatformStaff, onCreated }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  tenantId: string | null;
+  isPlatformStaff: boolean;
+  onCreated: (g: CalendarGroup) => void;
+}) {
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { if (open) setName(""); }, [open]);
+
+  const save = async () => {
+    const n = name.trim();
+    if (!n) { toast.error("Name your group"); return; }
+    if (!isPlatformStaff && !tenantId) { toast.error("No active workspace — pick a tenant first"); return; }
+    setSaving(true);
+    const slug = `${slugify(n) || "group"}-${randomSuffix()}`;
+    const { data, error } = await supabase
+      .from("calendar_groups").insert({ tenant_id: tenantId, name: n, slug }).select("id, name, tenant_id").single();
+    setSaving(false);
+    if (error || !data) { toast.error(error?.message ?? "Could not create the group"); return; }
+    toast.success("Group created");
+    onCreated(data as CalendarGroup);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>New calendar group</DialogTitle>
+          <DialogDescription>Organize related calendars — a team, a service line, a campaign.</DialogDescription>
+        </DialogHeader>
+        <div className="py-1 space-y-1.5">
+          <Label>Group name</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Sales team"
+            autoFocus onKeyDown={(e) => { if (e.key === "Enter") save(); }} />
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Create group</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Blank draft for create mode — every field the builder edits, with sane defaults.
-function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id"> {
+function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_by"> {
   return {
     type: "personal",
     title: "",
@@ -332,16 +496,18 @@ function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id"> {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
     availability_json: null,
     enabled: false,
+    group_id: null,
   };
 }
 
 function CalendarBuilderSheet({
-  state, onOpenChange, tenantId, isPlatformStaff, onSaved, bookingUrl, copyLink,
+  state, onOpenChange, tenantId, isPlatformStaff, groups, onSaved, bookingUrl, copyLink,
 }: {
   state: BuilderState | null;
   onOpenChange: (v: boolean) => void;
   tenantId: string | null;
   isPlatformStaff: boolean;
+  groups: CalendarGroup[];
   onSaved: (c: CalendarRow, created: boolean) => void;
   bookingUrl: (slug: string) => string;
   copyLink: (slug: string) => void;
@@ -364,7 +530,7 @@ function CalendarBuilderSheet({
         accent: c.accent, color: c.color, duration_min: c.duration_min,
         buffer_before_min: c.buffer_before_min, buffer_after_min: c.buffer_after_min,
         min_notice_min: c.min_notice_min, timezone: c.timezone, availability_json: c.availability_json,
-        enabled: c.enabled,
+        enabled: c.enabled, group_id: c.group_id,
       });
       setAvail(jsonToAvail(c.availability_json));
     } else {
@@ -392,6 +558,7 @@ function CalendarBuilderSheet({
       min_notice_min: Math.max(0, draft.min_notice_min || 0),
       timezone: draft.timezone,
       availability_json: availToJson(avail),
+      group_id: draft.group_id,
     };
 
     setSaving(true);
@@ -488,6 +655,18 @@ function CalendarBuilderSheet({
                 <ColorSwatches value={draft.color} onChange={(c) => { set("color", c); if (!draft.accent) set("accent", c); }} />
               </div>
             </div>
+            {groups.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1.5"><Folder className="h-3.5 w-3.5" /> Group</Label>
+                <Select value={draft.group_id ?? "__none__"} onValueChange={(v) => set("group_id", v === "__none__" ? null : v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No group</SelectItem>
+                    {groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Welcome message</Label>
               <Textarea rows={2} value={draft.description ?? ""} placeholder="Pick a time that works for you."
