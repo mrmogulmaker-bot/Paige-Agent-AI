@@ -10,25 +10,35 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { BarChart3, CreditCard, DollarSign, BookOpen, Building2, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye, Briefcase, LifeBuoy, Landmark, ListChecks } from "lucide-react";
+import { Home, BookOpen, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye, LifeBuoy, ListChecks } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { performSignOut } from "@/lib/auth/signOut";
 import { useUnreadSupportCount } from "@/hooks/useUnreadSupportCount";
+import { usePlaybook } from "@/lib/playbook";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
-const navItems = [
-  { label: "Dashboard", href: "/app", icon: BarChart3 },
-  { label: "Credit", href: "/app/credit", icon: CreditCard },
-  { label: "Business Profile", href: "/app/business-profile", icon: Building2 },
-  { label: "Financial Profile", href: "/app/financial-profile", icon: Landmark },
-  { label: "Funding", href: "/app/funding", icon: DollarSign },
-  { label: "Journey", href: "/app/funding-journey", icon: Briefcase },
-  { label: "Approvals", href: "/app/approvals", icon: ListChecks },
-  { label: "Learn", href: "/app/learn", icon: BookOpen },
-];
+// The client portal nav is driven by the active Playbook's portal.modules
+// (coaching default — no credit/funding language). Each module key is rendered
+// ONLY if it maps to a route that actually exists, so a module the app can't
+// route to is hidden rather than shipped as a dangling link. Credit / funding /
+// financial-profile / disputes are absent from the coaching module set, so a
+// coaching client never sees them.
+const MODULE_ROUTES: Record<string, { href: string; icon: LucideIcon }> = {
+  home: { href: "/app", icon: Home },
+  learn: { href: "/app/learn", icon: BookOpen },
+  resources: { href: "/app/learn", icon: BookOpen },
+  approvals: { href: "/app/approvals", icon: ListChecks },
+};
+
+interface NavItem {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+}
 
 interface AppNavProps {
   user: User;
@@ -42,6 +52,16 @@ export function AppNav({ user }: AppNavProps) {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const { isCoachOrAdmin, isAdmin, mode, setMode } = useDashboardMode();
   const { count: unreadSupport } = useUnreadSupportCount(user.id);
+  const pb = usePlaybook();
+
+  // Visible nav = the active Playbook's portal modules, filtered to those with a
+  // real route. Labels come straight from the Playbook (neutral coaching copy).
+  const navItems: NavItem[] = pb.portal.modules
+    .map((m) => {
+      const route = MODULE_ROUTES[m.key];
+      return route ? { label: m.label, href: route.href, icon: route.icon } : null;
+    })
+    .filter((item): item is NavItem => item !== null);
 
   const userRoleLabel = isAdmin ? "Admin" : isCoachOrAdmin ? "Coach" : "Client";
   const isViewingAsClient = isCoachOrAdmin && mode === "client";

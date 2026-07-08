@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyTile } from "@/components/client/EmptyTile";
 import { supabase } from "@/integrations/supabase/client";
+import { usePlaybook } from "@/lib/playbook";
 import {
   Target,
   TrendingUp,
@@ -11,6 +12,7 @@ import {
   FileText,
   MessageSquare,
   ListChecks,
+  CalendarCheck,
 } from "lucide-react";
 
 type Counts = {
@@ -39,6 +41,7 @@ const EMPTY: Counts = {
  */
 export function ClientHomeTiles({ userId }: { userId: string }) {
   const navigate = useNavigate();
+  const pb = usePlaybook();
   const [counts, setCounts] = useState<Counts>(EMPTY);
   const [loading, setLoading] = useState(true);
 
@@ -80,6 +83,16 @@ export function ClientHomeTiles({ userId }: { userId: string }) {
     window.dispatchEvent(new CustomEvent("paige:prefill", { detail: { prompt } }));
   };
 
+  // Coaching default shows coaching-only tiles. The credit/funding tiles render
+  // ONLY when the client actually has that data on file (the query-result signal
+  // already loaded above) — a coaching client never sees credit/funding copy.
+  const coachName = pb.persona.name;
+  const nextStepsPrompt = pb.quickActions[0]?.prompt ?? "What should I focus on next?";
+  const bookPrompt = pb.quickActions[1]?.prompt ?? "Help me schedule my next session";
+  const progressPrompt = pb.quickActions[2]?.prompt ?? "Show me how I'm progressing toward my goals";
+  const hasCredit = (counts.creditPulls ?? 0) > 0;
+  const hasFunding = (counts.applications ?? 0) > 0;
+
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -111,41 +124,41 @@ export function ClientHomeTiles({ userId }: { userId: string }) {
         />
       )}
 
-      {/* 2. Credit */}
-      {counts.creditPulls && counts.creditPulls > 0 ? (
+      {/* 2. Progress (coaching) — credit tile only when the client has credit data */}
+      {hasCredit ? (
         <FilledTile
           icon={<TrendingUp className="w-4 h-4" />}
           title="Credit"
-          count={counts.creditPulls}
+          count={counts.creditPulls as number}
           label="reports on file"
           onClick={() => navigate("/app/credit")}
         />
       ) : (
         <EmptyTile
           icon={<TrendingUp className="w-6 h-6" />}
-          title="No credit report yet"
-          description="Authorize a soft pull to unlock your FICO factor breakdown."
-          actionLabel="Pull my credit"
-          onAction={() => navigate("/app/credit")}
+          title="Your progress"
+          description={`See how you're tracking toward your goals — ask ${coachName} for a snapshot.`}
+          actionLabel="Show my progress"
+          onAction={() => askPaige(progressPrompt)}
         />
       )}
 
-      {/* 3. Funding */}
-      {counts.applications && counts.applications > 0 ? (
+      {/* 3. Sessions (coaching) — funding tile only when the client has applications */}
+      {hasFunding ? (
         <FilledTile
           icon={<DollarSign className="w-4 h-4" />}
           title="Funding"
-          count={counts.applications}
+          count={counts.applications as number}
           label="applications"
           onClick={() => navigate("/app/funding-journey")}
         />
       ) : (
         <EmptyTile
-          icon={<DollarSign className="w-6 h-6" />}
-          title="No applications yet"
-          description="Start your first funding application to see live match progress."
-          actionLabel="Start your first application"
-          onAction={() => navigate("/app/funding")}
+          icon={<CalendarCheck className="w-6 h-6" />}
+          title="Book a session"
+          description="Grab a time with your coach and keep your momentum going."
+          actionLabel="Book a session"
+          onAction={() => askPaige(bookPrompt)}
         />
       )}
 
@@ -162,7 +175,7 @@ export function ClientHomeTiles({ userId }: { userId: string }) {
         <EmptyTile
           icon={<FileText className="w-6 h-6" />}
           title="No documents yet"
-          description="Upload IDs, EIN letters, or statements to speed up underwriting."
+          description={`Keep your important files in one place so ${coachName} can reference them when you need them.`}
           actionLabel="Upload your first document"
           onAction={() => navigate("/app/business")}
         />
@@ -172,7 +185,7 @@ export function ClientHomeTiles({ userId }: { userId: string }) {
       {counts.messages && counts.messages > 0 ? (
         <FilledTile
           icon={<MessageSquare className="w-4 h-4" />}
-          title="Messages"
+          title={`Message ${coachName}`}
           count={counts.messages}
           label="in your thread"
           onClick={() => askPaige("Show me my recent messages.")}
@@ -180,10 +193,10 @@ export function ClientHomeTiles({ userId }: { userId: string }) {
       ) : (
         <EmptyTile
           icon={<MessageSquare className="w-6 h-6" />}
-          title="No messages yet"
-          description="Ask Paige a question or ping your coach to get the thread going."
+          title={`Message ${coachName}`}
+          description={`Ask ${coachName} a question or start a thread with your coach anytime.`}
           actionLabel="Send your first message"
-          onAction={() => askPaige("Hi Paige — I'd like to introduce myself.")}
+          onAction={() => askPaige(`Hi ${coachName} — I'd like to introduce myself.`)}
         />
       )}
 
@@ -191,18 +204,18 @@ export function ClientHomeTiles({ userId }: { userId: string }) {
       {counts.nextSteps && counts.nextSteps > 0 ? (
         <FilledTile
           icon={<ListChecks className="w-4 h-4" />}
-          title="Next Steps"
+          title="Your next steps"
           count={counts.nextSteps}
           label="open"
-          onClick={() => navigate("/app/funding-journey")}
+          onClick={() => askPaige(nextStepsPrompt)}
         />
       ) : (
         <EmptyTile
           icon={<ListChecks className="w-6 h-6" />}
-          title="No next steps yet"
-          description="Your action list populates as Paige assigns coached tasks."
-          actionLabel="Ask Paige what's next"
-          onAction={() => askPaige("What should I work on next?")}
+          title="Your next steps"
+          description={`Your action list fills in as ${coachName} assigns coached tasks.`}
+          actionLabel={`Ask ${coachName} what's next`}
+          onAction={() => askPaige(nextStepsPrompt)}
         />
       )}
     </div>

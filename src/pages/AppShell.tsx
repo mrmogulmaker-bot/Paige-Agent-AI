@@ -26,6 +26,7 @@ import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { setScopedUserId } from "@/lib/scopedUser";
 import { useQueryClient } from "@tanstack/react-query";
 import { ClientHomeTiles } from "@/components/client/ClientHomeTiles";
+import { usePlaybook } from "@/lib/playbook";
 
 // Map /app sub-routes to canonical feature names emitted as `feature_visit`.
 function routeToFeatureName(pathname: string): string | null {
@@ -324,17 +325,24 @@ const AppShell = () => {
 
 // Default home content when on /app
 function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }) {
+  const pb = usePlaybook();
+  // `factors` is a real credit_factor_scores row — it only exists for a
+  // credit-enabled tenant/client. It doubles as the "hasCreditData" signal, so
+  // the credit-only factor grid below stays gated behind it. Coaching clients
+  // (the neutral default) never have this row and see the neutral welcome area.
+  const hasCreditData = !!factors;
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       {userId && <OnboardingChecklist userId={userId} />}
       <div>
         <h1 className="text-3xl font-bold text-foreground">Welcome Back</h1>
         <p className="text-muted-foreground mt-1">
-          Ask Paige anything about your credit, funding, or next steps.
+          Ask {pb.persona.name} anything — she's here to keep you moving toward your goals.
         </p>
       </div>
 
-      {factors && (
+      {hasCreditData ? (
         <div className="grid grid-cols-5 gap-4">
           {[
             { label: "Payment History", score: factors.payment_history_score, weight: "35%" },
@@ -354,6 +362,13 @@ function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }
               <div className="text-[10px] text-muted-foreground/60">{f.weight}</div>
             </div>
           ))}
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-foreground">
+            {pb.persona.name} is here to help
+          </h2>
+          <p className="text-muted-foreground mt-2">{pb.persona.greeting}</p>
         </div>
       )}
 

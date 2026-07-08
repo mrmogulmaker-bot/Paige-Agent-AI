@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
+import { usePlaybook } from "@/lib/playbook";
 import type { OnboardClient } from "./useOnboardingClient";
 import { advanceOnboardingStage } from "./useOnboardingClient";
 
@@ -27,6 +28,7 @@ function ProgressHeader({ stepIndex, title, subtitle }: { stepIndex: number; tit
 export default function Step1Welcome() {
   const { client, refresh } = useOutletContext<Ctx>();
   const navigate = useNavigate();
+  const pb = usePlaybook();
   const [busy, setBusy] = useState(false);
 
   const [firstName, setFirstName] = useState(client.first_name ?? "");
@@ -76,7 +78,7 @@ export default function Step1Welcome() {
       <ProgressHeader
         stepIndex={0}
         title={`Welcome, ${client.first_name ?? "there"}.`}
-        subtitle="Just two quick steps: confirm your personal information, then sign your service agreement. That's it — you'll go straight into your workspace and Paige will take it from there."
+        subtitle={`Just two quick steps: confirm your personal information, then sign your service agreement. That's it — you'll go straight into your workspace and ${pb.persona.name} will take it from there.`}
       />
       <div className="onboard-card p-6 sm:p-8 space-y-6">
         <div>
@@ -118,8 +120,8 @@ export default function Step1Welcome() {
         <div className="rounded-lg p-4" style={{ background: "rgba(207,174,112,0.12)", border: "1px solid rgba(207,174,112,0.35)" }}>
           <div className="font-semibold mb-1">What happens next</div>
           <p className="text-sm" style={{ color: "rgba(8,20,40,0.78)" }}>
-            Once you sign your agreement you'll be taken straight into your workspace. Paige will walk you through
-            everything else — business info, credit uploads, and funding readiness — right inside your portal.
+            Once you sign your agreement you'll be taken straight into your workspace. {pb.persona.name} will walk you
+            through everything else — right inside your portal.
           </p>
         </div>
 
