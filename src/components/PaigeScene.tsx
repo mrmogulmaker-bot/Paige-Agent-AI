@@ -1,4 +1,4 @@
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { Sparkles, Float, Environment, Lightformer, useGLTF } from "@react-three/drei";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -28,6 +28,9 @@ function usePointerTracking() {
 // the free-floating rings form-fit over the page and read on mobile.
 const TOP_SCALE = 0.92;
 const MIN_SCALE = 0.5;
+// Local Y of her head in the centered model (normalized height 3.4 → top ≈ 1.7).
+// The Saturn rings sit here. Tune to raise/lower the ring plane on her head.
+const HEAD_Y = 0.9;
 
 useGLTF.preload("/paige/paige-central.glb");
 
@@ -77,59 +80,46 @@ function supportsWebGL() {
 }
 
 /**
- * Free-floating gyroscope of solid gold rings. Rendered on the FOREGROUND
- * overlay (in front of the page content), the three rings rotate continuously
- * on different axes and the set drifts slowly across the page. Scales to the
- * viewport so it form-fits on mobile, and fades in with Paige's entrance.
+ * Saturn-style rings around Paige's head. Concentric, coplanar rings sharing a
+ * single tilted plane (her head is the "planet"), each a slightly different gold
+ * shade / brightness / thickness so no two read the same. The whole disc
+ * precesses slowly so it reads as rotating. Parented to Paige (mounted at her
+ * head), so it tracks her gaze, entrance and scroll and stays isolated to her
+ * head rather than floating over the page.
  */
-function FloatingRings({ reduced }: { reduced: boolean }) {
-  const g = useRef<THREE.Group>(null);
-  const r1 = useRef<THREE.Mesh>(null);
-  const r2 = useRef<THREE.Mesh>(null);
-  const r3 = useRef<THREE.Mesh>(null);
-  const vis = useRef(0);
-  const firstFrame = useRef(true);
-  const { viewport } = useThree();
-  useFrame((s, dt) => {
-    const step = Math.min(dt, 0.05);
-    // Snap on the first frame / reduced motion so a returning visitor (entrance
-    // already 1) sees the rings already present, matching Paige.
-    if (reduced || firstFrame.current) vis.current = paigeAnim.entrance;
-    else vis.current += (paigeAnim.entrance - vis.current) * Math.min(1, step * 3);
-    firstFrame.current = false;
-    const v = Math.max(0.0001, vis.current);
-
-    const t = s.clock.elapsedTime;
-    const sp = reduced ? 0.12 : 1; // continuous rotation (slower for reduced motion)
-    if (r1.current) r1.current.rotation.z = t * 0.35 * sp;
-    if (r2.current) {
-      r2.current.rotation.x = t * 0.28 * sp;
-      r2.current.rotation.y = t * 0.14 * sp;
-    }
-    if (r3.current) r3.current.rotation.y = -t * 0.3 * sp;
-
-    if (g.current) {
-      // Fit to the viewport so the rings never overflow a narrow (mobile) screen.
-      const fit = Math.max(0.5, Math.min(1, viewport.width / 9));
-      g.current.scale.setScalar(v * fit);
-      g.current.position.x = Math.sin(t * 0.18) * 0.7;
-      g.current.position.y = 0.2 + Math.cos(t * 0.14) * 0.4;
-    }
+const SATURN_RINGS = [
+  { r: 0.85, tube: 0.012, color: "#F7E7B0", emissive: 1.9, op: 0.85 }, // pale, bright
+  { r: 1.0, tube: 0.026, color: "#F0C86A", emissive: 1.3, op: 1 }, // core gold, thick
+  { r: 1.14, tube: 0.008, color: "#FFF3D0", emissive: 2.3, op: 0.8 }, // thin hot filament
+  { r: 1.28, tube: 0.03, color: "#C8912F", emissive: 0.7, op: 1 }, // deep amber, dim
+  { r: 1.44, tube: 0.01, color: "#D4A752", emissive: 1.1, op: 0.7 }, // outer, faint
+];
+function SaturnRings({ reduced }: { reduced: boolean }) {
+  const spin = useRef<THREE.Group>(null);
+  useFrame((s) => {
+    if (spin.current) spin.current.rotation.y = s.clock.elapsedTime * (reduced ? 0.06 : 0.32);
   });
   return (
-    <group ref={g}>
-      <mesh ref={r1} rotation={[Math.PI / 2.3, 0, 0]}>
-        <torusGeometry args={[1.7, 0.022, 20, 140]} />
-        <meshStandardMaterial color={GOLD_HI} emissive={GOLD_HI} emissiveIntensity={1.1} toneMapped={false} metalness={0.3} roughness={0.4} />
-      </mesh>
-      <mesh ref={r2} rotation={[Math.PI / 3, 0.6, 0]}>
-        <torusGeometry args={[2.05, 0.02, 20, 140]} />
-        <meshStandardMaterial color={GOLD} emissive={GOLD} emissiveIntensity={0.9} toneMapped={false} metalness={0.3} roughness={0.4} />
-      </mesh>
-      <mesh ref={r3} rotation={[0.4, 0, Math.PI / 2.5]}>
-        <torusGeometry args={[1.4, 0.018, 20, 140]} />
-        <meshStandardMaterial color={GOLD_HI} emissive={GOLD_HI} emissiveIntensity={0.85} toneMapped={false} metalness={0.3} roughness={0.4} />
-      </mesh>
+    <group ref={spin}>
+      {/* the shared Saturn tilt */}
+      <group rotation={[0.42, 0, 0.08]}>
+        {SATURN_RINGS.map((r, i) => (
+          <mesh key={i} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[r.r, r.tube, 16, 168]} />
+            <meshStandardMaterial
+              color={r.color}
+              emissive={r.color}
+              emissiveIntensity={r.emissive}
+              transparent
+              opacity={r.op}
+              toneMapped={false}
+              metalness={0.4}
+              roughness={0.35}
+              depthWrite={false}
+            />
+          </mesh>
+        ))}
+      </group>
     </group>
   );
 }
@@ -319,6 +309,10 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
       <group ref={inner}>
         <primitive object={model} />
       </group>
+      {/* Saturn rings around her head (HEAD_Y ≈ head center in the centered model). */}
+      <group position={[0, HEAD_Y, 0]}>
+        <SaturnRings reduced={reduced} />
+      </group>
       <Sparkles count={40} scale={[2.6, 4, 2.6]} position={[0, 0.4, 0]} size={2} speed={reduced ? 0 : 0.25} color={GOLD_HI} opacity={0.7} />
     </group>
   );
@@ -380,10 +374,10 @@ export default function PaigeScene() {
 }
 
 /**
- * Foreground overlay scene — the free-floating rings + the companion, lit so the
- * gold reads. This renders on a transparent canvas layered IN FRONT of the page
- * content (see PaigeHome), so the rings and bot visibly fly over the page while
- * Paige stays in the background. Both fade in with the entrance.
+ * Foreground overlay scene — just the companion, flying around the lower part of
+ * the page like a little spaceship, lit so the gold reads. Renders on a
+ * transparent canvas layered IN FRONT of the page content (see PaigeHome); the
+ * rings now live around Paige's head in the background scene.
  */
 function OverlayScene() {
   const reduced = useMemo(prefersReducedMotion, []);
@@ -395,7 +389,6 @@ function OverlayScene() {
         <Lightformer form="rect" intensity={2} color={GOLD_HI} scale={[5, 3, 1]} position={[3, 3, 3]} />
         <Lightformer form="circle" intensity={1.2} color={OFFWHITE} scale={2} position={[0, 3, -3]} />
       </Environment>
-      <FloatingRings reduced={reduced} />
       <Companion reduced={reduced} />
     </>
   );
