@@ -168,20 +168,23 @@ const GOD_HUBS: Hub[] = [
     ],
     aliases: ["/admin/sub-agents", "/admin/skills", "/admin/integrations"],
   },
-  { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
 ];
-// God "More" menu — support, security, and the platform settings hub (comms/SMS,
-// providers, branding) the operator needs to run the platform.
+// God "More" menu — calendar setup, support, security, and the platform settings
+// hub (comms/SMS, providers, branding). Calendar lives here rather than a full
+// top-level tab: it's a setup tool, not a daily-driver, so the top bar stays
+// focused on the operational essentials.
 const GOD_MORE: MoreItem[] = [
+  { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
   { label: "Support", href: "/admin/support", icon: LifeBuoy },
   { label: "Security Canary", href: "/admin/security", icon: ShieldCheck },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
-// Scoped Platform Admins run the fleet + their own calendar — not the operator's
-// full business console (comms/campaigns/settings stay owner-only, matching RLS).
+// Scoped Platform Admins run the fleet — comms/campaigns/settings stay owner-only.
 const GOD_STAFF_HUBS: Hub[] = [
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
+];
+const GOD_STAFF_MORE: MoreItem[] = [
   { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
 ];
 
@@ -210,7 +213,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const effectiveRole: "admin" | "coach" =
     userRole === "admin" && canSwitch && lens === "coach" ? "coach" : userRole;
   const visibleMore = godMode
-    ? (isPlatformOwner ? GOD_MORE : [])
+    ? (isPlatformOwner ? GOD_MORE : GOD_STAFF_MORE)
     : moreNavItems.filter((i) => !i.adminOnly || effectiveRole === "admin");
 
   useEffect(() => {
