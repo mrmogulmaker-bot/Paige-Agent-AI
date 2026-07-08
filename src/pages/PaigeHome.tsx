@@ -23,8 +23,6 @@ import { paigeAnim } from "@/lib/paigeAnim";
  */
 
 const PaigeScene = lazy(() => import("@/components/PaigeScene"));
-// Foreground layer (rings + companion) — same module, so no extra 3D chunk.
-const PaigeOverlay = lazy(() => import("@/components/PaigeScene").then((m) => ({ default: m.PaigeOverlay })));
 
 // Palette
 const GOLD = "#D4A752";
@@ -488,16 +486,6 @@ export default function PaigeHome() {
         <SceneBoundary>
           <Suspense fallback={<div className="absolute inset-0" />}>
             <PaigeScene />
-          </Suspense>
-        </SceneBoundary>
-      </div>
-
-      {/* Foreground layer — the rings + companion fly OVER the page content
-          (in front of the text), click-through, while Paige stays behind. */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 z-40">
-        <SceneBoundary>
-          <Suspense fallback={null}>
-            <PaigeOverlay />
           </Suspense>
         </SceneBoundary>
       </div>
