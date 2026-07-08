@@ -31,6 +31,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+// Vercel Speed Insights — Core Web Vitals from real visitors. This is a Vite +
+// React SPA, so we use the framework-agnostic /react entry (NOT /next).
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { FloatingChatbot } from "./components/FloatingChatbot";
 import { MetaPixel } from "./components/seo/MetaPixel";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
@@ -156,6 +159,7 @@ const App = () => (
         <BrowserRouter>
           <AppInner />
           <MetaPixel />
+          <SpeedInsights />
           <ClientOnlyRouteGuard />
           <Routes>
             {/* Live homepage — the new gold+indigo Paige design */}
