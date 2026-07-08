@@ -67,7 +67,20 @@ export interface CalendarRow {
   show_company_name: boolean;
   location_type: string;
   location_value: string | null;
+  notify_config: NotifyConfig;
 }
+
+export interface NotifyReminder { channel: string; offset_min: number; }
+export interface NotifyConfig { confirm_guest: boolean; confirm_host: boolean; reminders: NotifyReminder[]; }
+const DEFAULT_NOTIFY: NotifyConfig = { confirm_guest: true, confirm_host: true, reminders: [{ channel: "email", offset_min: 1440 }] };
+const REMINDER_OFFSETS = [
+  { min: 15, label: "15 min before" },
+  { min: 60, label: "1 hour before" },
+  { min: 120, label: "2 hours before" },
+  { min: 1440, label: "1 day before" },
+  { min: 2880, label: "2 days before" },
+  { min: 10080, label: "1 week before" },
+];
 
 export interface CalendarGroup { id: string; name: string; tenant_id: string | null; }
 interface PersonRow { user_id: string; full_name: string | null; avatar_url: string | null; count: number; }
@@ -79,7 +92,7 @@ const DEFAULT_AVAIL: AvailState = Object.fromEntries(
   [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { enabled: d >= 1 && d <= 5, start: "09:00", end: "17:00" }]),
 );
 
-const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value";
+const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, notify_config";
 
 const LOCATIONS = [
   { value: "google_meet", label: "Google Meet", hint: "Video link sent after booking" },
@@ -112,6 +125,21 @@ const COMMON_TZ = [
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90];
 
+// Coerce a possibly-partial/legacy notify_config jsonb into a safe shape.
+function normalizeNotify(raw: unknown): NotifyConfig {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const reminders = Array.isArray(o.reminders)
+    ? (o.reminders as unknown[])
+        .map((r) => (r && typeof r === "object" ? r : {}) as Record<string, unknown>)
+        .filter((r) => typeof r.offset_min === "number")
+        .map((r) => ({ channel: typeof r.channel === "string" ? r.channel : "email", offset_min: r.offset_min as number }))
+    : [...DEFAULT_NOTIFY.reminders];
+  return {
+    confirm_guest: o.confirm_guest !== false,
+    confirm_host: o.confirm_host !== false,
+    reminders,
+  };
+}
 function initials(name: string | null): string {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/);
@@ -563,6 +591,7 @@ function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_
     show_company_name: true,
     location_type: "google_meet",
     location_value: "",
+    notify_config: { ...DEFAULT_NOTIFY, reminders: [...DEFAULT_NOTIFY.reminders] },
   };
 }
 
@@ -599,6 +628,7 @@ function CalendarBuilderSheet({
         enabled: c.enabled, group_id: c.group_id,
         theme: c.theme || "light", subtitle: c.subtitle ?? "", show_company_name: c.show_company_name !== false,
         location_type: c.location_type || "google_meet", location_value: c.location_value ?? "",
+        notify_config: normalizeNotify(c.notify_config),
       });
       setAvail(jsonToAvail(c.availability_json));
     } else {
@@ -632,6 +662,7 @@ function CalendarBuilderSheet({
       show_company_name: draft.show_company_name,
       location_type: draft.location_type,
       location_value: (draft.location_value ?? "").trim() || null,
+      notify_config: draft.notify_config,
     };
 
     setSaving(true);
@@ -891,6 +922,61 @@ function CalendarBuilderSheet({
               </div>
               <Switch checked={draft.show_company_name} onCheckedChange={(v) => set("show_company_name", v)} />
             </label>
+          </BuilderSection>
+
+          {/* 6 — Notifications */}
+          <BuilderSection title="Notifications" description="Confirmations and reminders sent around each booking.">
+            <label className="flex items-center justify-between gap-4 py-1 cursor-pointer">
+              <div>
+                <div className="text-sm font-medium">Email the guest a confirmation</div>
+                <div className="text-xs text-muted-foreground">Branded confirmation + calendar invite when they book.</div>
+              </div>
+              <Switch checked={draft.notify_config.confirm_guest}
+                onCheckedChange={(v) => set("notify_config", { ...draft.notify_config, confirm_guest: v })} />
+            </label>
+            <label className="flex items-center justify-between gap-4 py-1 cursor-pointer">
+              <div>
+                <div className="text-sm font-medium">Notify the host of new bookings</div>
+                <div className="text-xs text-muted-foreground">Email the assigned host when someone books.</div>
+              </div>
+              <Switch checked={draft.notify_config.confirm_host}
+                onCheckedChange={(v) => set("notify_config", { ...draft.notify_config, confirm_host: v })} />
+            </label>
+
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between">
+                <Label>Reminders</Label>
+                <Button type="button" variant="ghost" size="sm" className="h-7 text-xs"
+                  onClick={() => set("notify_config", { ...draft.notify_config, reminders: [...draft.notify_config.reminders, { channel: "email", offset_min: 60 }] })}>
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add reminder
+                </Button>
+              </div>
+              {draft.notify_config.reminders.length === 0 && (
+                <p className="text-xs text-muted-foreground">No reminders — add one to nudge guests before the session.</p>
+              )}
+              {draft.notify_config.reminders.map((rem, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-14">Email</span>
+                  <Select value={String(rem.offset_min)}
+                    onValueChange={(v) => {
+                      const next = draft.notify_config.reminders.map((r, j) => j === i ? { ...r, offset_min: Number(v) } : r);
+                      set("notify_config", { ...draft.notify_config, reminders: next });
+                    }}>
+                    <SelectTrigger className="h-8 flex-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {REMINDER_OFFSETS.map((o) => <SelectItem key={o.min} value={String(o.min)}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive"
+                    onClick={() => set("notify_config", { ...draft.notify_config, reminders: draft.notify_config.reminders.filter((_, j) => j !== i) })}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+              <p className="text-[11px] text-muted-foreground">
+                Delivery turns on once the platform email key is configured; settings are saved now.
+              </p>
+            </div>
           </BuilderSection>
         </div>
 

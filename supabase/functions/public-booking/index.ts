@@ -73,6 +73,13 @@ interface HostSettings {
   showCompanyName: boolean; // render the brand/company name next to the logo
   locationType: string; // in_person | phone | google_meet | zoom | custom | ask_invitee
   locationValue: string | null; // address / phone / link / instructions
+  confirmGuest: boolean; // send guest a confirmation
+  confirmHost: boolean; // notify the host of new bookings
+}
+
+function parseNotify(raw: unknown): { confirmGuest: boolean; confirmHost: boolean } {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return { confirmGuest: o.confirm_guest !== false, confirmHost: o.confirm_host !== false };
 }
 
 interface Busy { start: number; end: number } // UTC ms
@@ -113,7 +120,7 @@ function computeSlots(h: HostSettings, busy: Busy[], fromMs: number, toMs: numbe
 async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
   const { data: cal } = await admin
     .from("calendars")
-    .select("id, tenant_id, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value")
+    .select("id, tenant_id, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config")
     .eq("slug", slug)
     .maybeSingle();
   if (!cal || cal.enabled !== true) return null;
@@ -144,6 +151,7 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     showCompanyName: cal.show_company_name !== false,
     locationType: cal.location_type ?? "google_meet",
     locationValue: cal.location_value ?? null,
+    ...parseNotify(cal.notify_config),
   };
 }
 
@@ -174,6 +182,8 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     showCompanyName: true,
     locationType: "google_meet",
     locationValue: null,
+    confirmGuest: true,
+    confirmHost: true,
   };
 }
 
@@ -411,15 +421,20 @@ Deno.serve(async (req) => {
           uid: `${(data as { id: string }).id}@paigeagent.ai`, startMs, endMs, title,
           desc: host.description || "", location: loc, organizer: brand.name, attendee: email, attendeeName: name,
         });
-        const guestOk = await sendEmail(email, `Confirmed: ${title} · ${whenLabel}`,
-          guestEmailHtml(brand.name, brand.accent, title, whenLabel, loc, brand.name), ics);
+        const guestOk = host.confirmGuest
+          ? await sendEmail(email, `Confirmed: ${title} · ${whenLabel}`,
+              guestEmailHtml(brand.name, brand.accent, title, whenLabel, loc, brand.name), ics)
+          : false;
 
         let hostOk = false;
-        const { data: hostUser } = await admin.auth.admin.getUserById(host.user_id);
-        const hostEmail = (hostUser as { user?: { email?: string } } | null)?.user?.email;
-        if (hostEmail) {
-          hostOk = await sendEmail(hostEmail, `New booking: ${name} · ${whenLabel}`,
-            hostEmailHtml(brand.accent, title, whenLabel, name, email, phone, loc, notes), ics);
+        let hostEmail: string | undefined;
+        if (host.confirmHost) {
+          const { data: hostUser } = await admin.auth.admin.getUserById(host.user_id);
+          hostEmail = (hostUser as { user?: { email?: string } } | null)?.user?.email;
+          if (hostEmail) {
+            hostOk = await sendEmail(hostEmail, `New booking: ${name} · ${whenLabel}`,
+              hostEmailHtml(brand.accent, title, whenLabel, name, email, phone, loc, notes), ics);
+          }
         }
         await admin.from("email_send_log").insert([
           { template_name: "booking_confirmation", recipient_email: email, status: guestOk ? "sent" : "skipped", sender_account: "platform", metadata: { via: "public-booking", slug } },
