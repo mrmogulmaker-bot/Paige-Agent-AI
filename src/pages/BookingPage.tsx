@@ -28,14 +28,16 @@ type Phase = "loading" | "pick" | "form" | "done" | "error";
 const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+type LocationOption = { type: string; value: string | null };
 type Brand = {
   name: string; logoUrl: string | null; accent: string; title: string | null; description: string | null;
   theme: "light" | "dark"; subtitle: string | null; showCompanyName: boolean;
-  locationType: string; locationValue: string | null; durationMin?: number;
+  locationType: string; locationValue: string | null; locationOptions: LocationOption[]; durationMin?: number;
 };
 const DEFAULT_BRAND: Brand = {
   name: "Paige Agent AI", logoUrl: null, accent: "#EBB94C", title: null, description: null,
   theme: "light", subtitle: null, showCompanyName: true, locationType: "google_meet", locationValue: null,
+  locationOptions: [{ type: "google_meet", value: null }],
 };
 
 const LOCATION_META: Record<string, { label: string; icon: typeof Video }> = {
@@ -46,7 +48,6 @@ const LOCATION_META: Record<string, { label: string; icon: typeof Video }> = {
   custom: { label: "Details", icon: Link2 },
   ask_invitee: { label: "Choose how to meet", icon: HelpCircle },
 };
-const INVITEE_CHOICES = ["google_meet", "zoom", "phone"];
 
 /** Readable text color over an arbitrary brand accent. */
 function textOn(hex: string): string {
@@ -93,6 +94,12 @@ export default function BookingPage() {
 
   const c = palette(brand.theme);
   const accentText = textOn(brand.accent);
+  // Owner-offered meeting methods. One → fixed; several → the invitee chooses.
+  const meetOptions = brand.locationOptions?.length ? brand.locationOptions : [{ type: brand.locationType, value: brand.locationValue }];
+  const meetMulti = meetOptions.length > 1;
+  const fixedMeet = meetOptions[0];
+  const meetLabel = (o: LocationOption) => o.type === "custom" ? (o.value || "Details to follow")
+    : o.type === "in_person" ? (o.value || "In person") : (LOCATION_META[o.type]?.label ?? o.type);
 
   // Slot instants grouped by the visitor's local day; the set of bookable days.
   const byDay = useMemo(() => {
@@ -126,7 +133,7 @@ export default function BookingPage() {
       body: {
         action: "create", slug, start: selectedSlot,
         guest: { name: form.name, email: form.email, phone: form.phone }, notes: form.notes,
-        ...(brand.locationType === "ask_invitee" ? { location: inviteeLocation } : {}),
+        ...(meetMulti ? { location: inviteeLocation } : {}),
       },
     });
     setSubmitting(false);
@@ -158,12 +165,10 @@ export default function BookingPage() {
         <div className="flex items-center gap-2 text-sm" style={{ color: c.sub }}>
           <Clock className="h-4 w-4" style={{ color: brand.accent }} /> {durationMin >= 60 ? `${durationMin / 60} hr` : `${durationMin} min`}
         </div>
-        {(() => { const L = LOCATION_META[brand.locationType] ?? LOCATION_META.custom; const Icon = L.icon; return (
+        {(() => { const Icon = meetMulti ? HelpCircle : (LOCATION_META[fixedMeet.type]?.icon ?? Link2); return (
           <div className="flex items-center gap-2 text-sm" style={{ color: c.sub }}>
             <Icon className="h-4 w-4" style={{ color: brand.accent }} />
-            {brand.locationType === "custom" ? (brand.locationValue || "Details after booking")
-              : brand.locationType === "in_person" ? (brand.locationValue || "In person")
-              : L.label}
+            {meetMulti ? "Choose how to meet" : meetLabel(fixedMeet)}
           </div>
         ); })()}
         {selectedSlot && (
@@ -231,7 +236,7 @@ export default function BookingPage() {
             {selectedDay && (byDay.get(selectedDay) ?? []).length === 0 && <p className="text-sm" style={{ color: c.sub }}>No times.</p>}
             {(selectedDay ? byDay.get(selectedDay) ?? [] : []).map((t) => (
               <button key={t}
-                onClick={() => { setSelectedSlot(t); setErrorMsg(""); setInviteeLocation("google_meet"); setPhase("form"); }}
+                onClick={() => { setSelectedSlot(t); setErrorMsg(""); setInviteeLocation(meetOptions[0].type); setPhase("form"); }}
                 className="w-full rounded-lg py-2.5 text-sm font-semibold transition-colors"
                 style={{ border: `1px solid ${brand.accent}`, color: brand.accent, background: "transparent" }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = brand.accent; e.currentTarget.style.color = accentText; }}
@@ -258,22 +263,22 @@ export default function BookingPage() {
       <div className="space-y-3">
         <Field label="Name *" c={c}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={fieldStyle(c)} /></Field>
         <Field label="Email *" c={c}><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} style={fieldStyle(c)} /></Field>
-        <Field label={brand.locationType === "ask_invitee" && inviteeLocation === "phone" ? "Phone *" : "Phone"} c={c}>
+        <Field label={meetMulti && inviteeLocation === "phone" ? "Phone *" : "Phone"} c={c}>
           <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} style={fieldStyle(c)} />
         </Field>
 
-        {/* How to meet — invitee chooses when the calendar asks; otherwise shown fixed */}
-        {brand.locationType === "ask_invitee" ? (
+        {/* How to meet — the invitee chooses when the owner offers several methods */}
+        {meetMulti ? (
           <div className="space-y-1.5">
             <Label className="text-xs" style={{ color: c.sub }}>How would you like to meet?</Label>
             <div className="grid grid-cols-3 gap-2">
-              {INVITEE_CHOICES.map((opt) => {
-                const L = LOCATION_META[opt]; const Icon = L.icon; const on = inviteeLocation === opt;
+              {meetOptions.map((opt) => {
+                const Icon = LOCATION_META[opt.type]?.icon ?? Link2; const on = inviteeLocation === opt.type;
                 return (
-                  <button key={opt} type="button" onClick={() => setInviteeLocation(opt)}
+                  <button key={opt.type} type="button" onClick={() => setInviteeLocation(opt.type)}
                     className="rounded-lg py-2 text-xs font-medium flex flex-col items-center gap-1 transition-colors"
                     style={on ? { border: `1.5px solid ${brand.accent}`, color: brand.accent, background: brand.accent + "14" } : { border: `1px solid ${c.border}`, color: c.sub }}>
-                    <Icon className="h-4 w-4" /> {L.label}
+                    <Icon className="h-4 w-4" /> {meetLabel(opt)}
                   </button>
                 );
               })}
@@ -281,12 +286,12 @@ export default function BookingPage() {
           </div>
         ) : (
           <div className="rounded-lg px-3 py-2 text-sm flex items-center gap-2" style={{ background: c.panel, border: `1px solid ${c.border}`, color: c.text }}>
-            {(() => { const L = LOCATION_META[brand.locationType] ?? LOCATION_META.custom; const Icon = L.icon; return <Icon className="h-4 w-4" style={{ color: brand.accent }} />; })()}
+            {(() => { const Icon = LOCATION_META[fixedMeet.type]?.icon ?? Link2; return <Icon className="h-4 w-4" style={{ color: brand.accent }} />; })()}
             <span>
-              {brand.locationType === "custom" ? (brand.locationValue || "Details will be shared after booking")
-                : brand.locationType === "in_person" ? (brand.locationValue || "In person")
-                : brand.locationType === "phone" ? "We'll call the number you provide"
-                : `${LOCATION_META[brand.locationType]?.label} — link sent after you book`}
+              {fixedMeet.type === "custom" ? (fixedMeet.value || "Details will be shared after booking")
+                : fixedMeet.type === "in_person" ? (fixedMeet.value || "In person")
+                : fixedMeet.type === "phone" ? "We'll call the number you provide"
+                : `${LOCATION_META[fixedMeet.type]?.label ?? "Meeting"} — link sent after you book`}
             </span>
           </div>
         )}
@@ -295,7 +300,7 @@ export default function BookingPage() {
       </div>
       {errorMsg && <p className="text-sm mt-3" style={{ color: "#ef4444" }} aria-live="polite">{errorMsg}</p>}
       <button onClick={book}
-        disabled={submitting || !form.name.trim() || !form.email.trim() || (brand.locationType === "ask_invitee" && inviteeLocation === "phone" && !form.phone.trim())}
+        disabled={submitting || !form.name.trim() || !form.email.trim() || (meetMulti && inviteeLocation === "phone" && !form.phone.trim())}
         className="w-full mt-5 rounded-lg py-2.5 font-semibold transition-opacity disabled:opacity-50 inline-flex items-center justify-center gap-2"
         style={{ background: brand.accent, color: accentText }}>
         {submitting && <Loader2 className="h-4 w-4 animate-spin" />} Confirm booking

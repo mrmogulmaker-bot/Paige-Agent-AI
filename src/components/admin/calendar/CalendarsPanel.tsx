@@ -67,8 +67,11 @@ export interface CalendarRow {
   show_company_name: boolean;
   location_type: string;
   location_value: string | null;
+  location_options: LocationOption[];
   notify_config: NotifyConfig;
 }
+
+export interface LocationOption { type: string; value: string | null; }
 
 export interface NotifyReminder { channel: string; offset_min: number; }
 export interface NotifyConfig { confirm_guest: boolean; confirm_host: boolean; reminders: NotifyReminder[]; }
@@ -92,16 +95,25 @@ const DEFAULT_AVAIL: AvailState = Object.fromEntries(
   [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { enabled: d >= 1 && d <= 5, start: "09:00", end: "17:00" }]),
 );
 
-const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, notify_config";
+const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, notify_config";
 
-const LOCATIONS = [
-  { value: "google_meet", label: "Google Meet", hint: "Video link sent after booking" },
-  { value: "zoom", label: "Zoom", hint: "Video link sent after booking" },
-  { value: "phone", label: "Phone call", hint: "You call the invitee's number" },
-  { value: "in_person", label: "In person", hint: "Enter the address below" },
-  { value: "custom", label: "Custom", hint: "Your own link or instructions" },
-  { value: "ask_invitee", label: "Ask the invitee", hint: "Let them choose how to meet" },
+// Meeting methods the owner can offer. Enable one → fixed; enable several → the
+// invitee chooses on the booking page. in_person/custom carry a value field.
+const MEETING_METHODS = [
+  { type: "google_meet", label: "Google Meet", needsValue: false, placeholder: "" },
+  { type: "zoom", label: "Zoom", needsValue: false, placeholder: "" },
+  { type: "phone", label: "Phone call", needsValue: false, placeholder: "" },
+  { type: "in_person", label: "In person", needsValue: true, placeholder: "123 Main St, Suite 200" },
+  { type: "custom", label: "Custom", needsValue: true, placeholder: "https://… or instructions" },
 ];
+function normalizeLocationOptions(raw: unknown): LocationOption[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  const out = arr
+    .map((o) => (o && typeof o === "object" ? o : {}) as Record<string, unknown>)
+    .map((o) => ({ type: String(o.type ?? ""), value: typeof o.value === "string" ? o.value : null }))
+    .filter((o) => MEETING_METHODS.some((m) => m.type === o.type));
+  return out.length ? out : [{ type: "google_meet", value: null }];
+}
 
 const TYPES = [
   { value: "personal", label: "One-on-one", hint: "A single host meets one guest at a time." },
@@ -591,6 +603,7 @@ function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_
     show_company_name: true,
     location_type: "google_meet",
     location_value: "",
+    location_options: [{ type: "google_meet", value: null }],
     notify_config: { ...DEFAULT_NOTIFY, reminders: [...DEFAULT_NOTIFY.reminders] },
   };
 }
@@ -628,6 +641,7 @@ function CalendarBuilderSheet({
         enabled: c.enabled, group_id: c.group_id,
         theme: c.theme || "light", subtitle: c.subtitle ?? "", show_company_name: c.show_company_name !== false,
         location_type: c.location_type || "google_meet", location_value: c.location_value ?? "",
+        location_options: normalizeLocationOptions(c.location_options),
         notify_config: normalizeNotify(c.notify_config),
       });
       setAvail(jsonToAvail(c.availability_json));
@@ -660,8 +674,10 @@ function CalendarBuilderSheet({
       theme: draft.theme === "dark" ? "dark" : "light",
       subtitle: (draft.subtitle ?? "").trim() || null,
       show_company_name: draft.show_company_name,
-      location_type: draft.location_type,
-      location_value: (draft.location_value ?? "").trim() || null,
+      location_options: draft.location_options.length ? draft.location_options : [{ type: "google_meet", value: null }],
+      // Keep the legacy single columns in sync: 1 method → that method; several → ask_invitee.
+      location_type: draft.location_options.length > 1 ? "ask_invitee" : (draft.location_options[0]?.type ?? "google_meet"),
+      location_value: draft.location_options.length === 1 ? (draft.location_options[0]?.value ?? null) : null,
       notify_config: draft.notify_config,
     };
 
@@ -853,30 +869,34 @@ function CalendarBuilderSheet({
           </BuilderSection>
 
           {/* 4 — Meeting location (how the meeting happens) */}
-          <BuilderSection title="How to meet" description="Where this meeting takes place. Shown to the invitee after they pick a time.">
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Location</Label>
-                <Select value={draft.location_type} onValueChange={(v) => set("location_type", v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {LOCATIONS.map((l) => (
-                      <SelectItem key={l.value} value={l.value}>
-                        <span className="font-medium">{l.label}</span>
-                        <span className="text-muted-foreground ml-1.5 text-xs hidden sm:inline">— {l.hint}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {(draft.location_type === "in_person" || draft.location_type === "custom") && (
-                <div className="space-y-1.5">
-                  <Label>{draft.location_type === "in_person" ? "Address" : "Link or instructions"}</Label>
-                  <Input value={draft.location_value ?? ""}
-                    placeholder={draft.location_type === "in_person" ? "123 Main St, Suite 200" : "https://…"}
-                    onChange={(e) => set("location_value", e.target.value)} />
-                </div>
-              )}
+          <BuilderSection title="How to meet" description="Turn on every method you offer. Enable more than one and the invitee picks when they book.">
+            <div className="space-y-2">
+              {MEETING_METHODS.map((m) => {
+                const opt = draft.location_options.find((o) => o.type === m.type);
+                const on = !!opt;
+                const toggle = (v: boolean) => {
+                  const rest = draft.location_options.filter((o) => o.type !== m.type);
+                  // Keep at least one method enabled.
+                  const next = v ? [...rest, { type: m.type, value: null }] : (rest.length ? rest : draft.location_options);
+                  if (!v && rest.length === 0) { toast.error("Offer at least one meeting method"); return; }
+                  set("location_options", next);
+                };
+                return (
+                  <div key={m.type} className="rounded-lg border p-2.5">
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm font-medium">{m.label}</span>
+                      <Switch checked={on} onCheckedChange={toggle} />
+                    </label>
+                    {on && m.needsValue && (
+                      <Input className="mt-2 h-8" value={opt?.value ?? ""} placeholder={m.placeholder}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          set("location_options", draft.location_options.map((o) => o.type === m.type ? { ...o, value: val || null } : o));
+                        }} />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </BuilderSection>
 
