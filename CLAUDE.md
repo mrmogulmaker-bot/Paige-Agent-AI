@@ -86,3 +86,25 @@ portal is the product; the intelligence is the moat. It must be **tenant-authore
 each coach's Paige is native to *their* practice — persona, probing questions, journey,
 and templates configured per tenant (the "Playbook" model), never a hardcoded vertical.
 Every build decision serves this.
+
+## 8. Paige runs a team — AI orchestration of two coordinated departments.
+
+**Directive (owner: Antonio):** Paige is not a single agent; she is an **orchestrator**
+of her own AI team. The build requires real AI orchestration on her behalf, organized
+as **two coordinated teams**:
+
+- **Owner Ops team** — works for the business owner (coach / consultant / agency):
+  pipeline, follow-ups, retainers/dunning, content, campaigns, scheduling, at-risk
+  triage, the daily brief.
+- **Client Experience team** — works for each client: onboarding &amp; conversational
+  intake, domain-expert probing, answers, nurture, and the hyper-personalized portal.
+
+The two teams **communicate with one another and create actions amongst each other**
+(the "action bus"): the Client team detects a need → files an action to the Owner team →
+drafts the move → routes to the coach's approval; the Owner team sets a play → the Client
+team personalizes it per client. **That cross-team coordination is the product.**
+
+**Positioning:** people are not hiring a chatbot — *"they're hiring her entire team."*
+The substrate already exists (sub-agent forge, `delegate_to_subagent`, ~12 sub-agents,
+skills engine, approvals / propose→confirm); the work is formalizing it into two
+departments + the action bus under Paige's orchestration, tenant-authored per Playbook.
