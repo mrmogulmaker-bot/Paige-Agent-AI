@@ -154,6 +154,7 @@ const GOD_HUBS: Hub[] = [
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
   { label: "Contacts", href: "/admin/contacts", icon: Contact, aliases: ["/admin/leads"] },
+  { label: "Calendar", href: "/admin/calendar", icon: CalendarDays, aliases: ["/admin/bookings"] },
   { label: "Inbox", href: "/admin/communications", icon: Inbox },
   { label: "Campaigns", href: "/admin/campaigns", icon: Rocket, aliases: ["/admin/growth"] },
   {
@@ -174,7 +175,6 @@ const GOD_HUBS: Hub[] = [
 // top-level tab: it's a setup tool, not a daily-driver, so the top bar stays
 // focused on the operational essentials.
 const GOD_MORE: MoreItem[] = [
-  { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
   { label: "Support", href: "/admin/support", icon: LifeBuoy },
   { label: "Security Canary", href: "/admin/security", icon: ShieldCheck },
   { label: "Settings", href: "/admin/settings", icon: Settings },
@@ -183,10 +183,9 @@ const GOD_MORE: MoreItem[] = [
 const GOD_STAFF_HUBS: Hub[] = [
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
+  { label: "Calendar", href: "/admin/calendar", icon: CalendarDays, aliases: ["/admin/bookings"] },
 ];
-const GOD_STAFF_MORE: MoreItem[] = [
-  { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
-];
+const GOD_STAFF_MORE: MoreItem[] = [];
 
 interface AdminLayoutProps {
   children: React.ReactNode;

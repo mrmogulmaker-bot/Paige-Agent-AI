@@ -1,59 +1,233 @@
 /**
- * Calendar — the workspace's calendars + a live view of what's booked.
+ * Calendar — the independent, GHL-style calendar tab.
  *
- * Two things live here now:
- *  1. Calendars manager (CalendarsPanel) — create/customize many calendars, each
- *     with its own schedule, branding, color, and PUBLIC /book/:slug web link.
- *  2. Upcoming bookings — an internal, real-time view of what's on the schedule.
+ * Three views under one tab (mirrors GoHighLevel):
+ *  • Calendar view    — Day/Week/Month grid, color-coded by calendar, "now" line
+ *  • Appointment list — a chronological agenda of what's booked
+ *  • Calendar settings — the Calendars manager (create/customize calendars)
  *
- * Personal calendar CONNECTORS (Google/Apple sync) moved to Settings › Connectors
- * so account connections live in one organized place. Per-calendar availability
- * now lives inside each calendar's builder, not as a separate section here.
+ * Toolbar: Today · date nav · Day/Week/Month · New appointment. A filter rail
+ * toggles calendars on/off (color legend). Bookings are the host's own
+ * (internal_bookings, RLS: bookings_host_all); each calendar carries its color.
  */
-import { useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
-import { CalendarDays, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  CalendarDays, ChevronLeft, ChevronRight, Plus, Loader2, ListChecks, Settings2,
+} from "lucide-react";
 import CalendarsPanel from "@/components/admin/calendar/CalendarsPanel";
+import { CalendarGrid, type GridEvent, type ViewMode } from "@/components/admin/calendar/CalendarGrid";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
-type Booking = {
-  id: string;
-  title: string;
-  start_at: string;
-  end_at: string;
-  status: string;
-  source: string;
-  guest_name: string | null;
-  guest_email: string | null;
-};
+interface CalMeta { id: string; title: string | null; color: string | null; accent: string | null; tenant_id: string | null; }
+interface BookingRow {
+  id: string; title: string; start_at: string; end_at: string; status: string;
+  source: string; guest_name: string | null; guest_email: string | null; calendar_id: string | null;
+}
+
+const UNASSIGNED = "__unassigned__";
+const DEFAULT_COLOR = "#7A67E8";
+
+function startOfDay(d: Date) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+function addDays(d: Date, n: number) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function startOfWeek(d: Date) { const x = startOfDay(d); return addDays(x, -x.getDay()); }
+
+function rangeFor(view: ViewMode, cursor: Date): [Date, Date] {
+  if (view === "day") return [startOfDay(cursor), addDays(startOfDay(cursor), 1)];
+  if (view === "week") { const s = startOfWeek(cursor); return [s, addDays(s, 7)]; }
+  const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+  const s = startOfWeek(first);
+  return [s, addDays(s, 42)];
+}
+
+function headerLabel(view: ViewMode, cursor: Date): string {
+  if (view === "day") return cursor.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  if (view === "month") return cursor.toLocaleDateString([], { month: "long", year: "numeric" });
+  const s = startOfWeek(cursor); const e = addDays(s, 6);
+  const sameMonth = s.getMonth() === e.getMonth();
+  return `${s.toLocaleDateString([], { month: "short", day: "numeric" })} – ${e.toLocaleDateString([], { month: sameMonth ? undefined : "short", day: "numeric", year: "numeric" })}`;
+}
 
 export default function CalendarAdmin() {
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const { activeTenantId } = useTenantContext();
+  const [tab, setTab] = useState("calendar");
+  const [view, setView] = useState<ViewMode>("week");
+  const [cursor, setCursor] = useState<Date>(new Date());
+  const [calendars, setCalendars] = useState<CalMeta[]>([]);
+  const [bookings, setBookings] = useState<BookingRow[]>([]);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [newOpen, setNewOpen] = useState(false);
 
-  const load = async () => {
+  const colorFor = useCallback((calId: string | null) => {
+    const c = calendars.find((x) => x.id === calId);
+    return c?.color || c?.accent || DEFAULT_COLOR;
+  }, [calendars]);
+
+  const loadCalendars = useCallback(async () => {
+    const { data } = await supabase.from("calendars").select("id, title, color, accent, tenant_id");
+    setCalendars((data as CalMeta[]) ?? []);
+  }, []);
+
+  const loadBookings = useCallback(async () => {
     setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData.user?.id;
     if (!uid) { setLoading(false); return; }
+    const [from, to] = rangeFor(view, cursor);
     const { data } = await supabase
       .from("internal_bookings")
-      .select("id, title, start_at, end_at, status, source, guest_name, guest_email")
+      .select("id, title, start_at, end_at, status, source, guest_name, guest_email, calendar_id")
       .eq("host_user_id", uid)
-      .gte("start_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString())
-      .order("start_at", { ascending: true })
-      .limit(50);
-    setBookings((data as Booking[]) ?? []);
+      .gte("start_at", from.toISOString())
+      .lt("start_at", to.toISOString())
+      .order("start_at", { ascending: true });
+    setBookings((data as BookingRow[]) ?? []);
     setLoading(false);
+  }, [view, cursor]);
+
+  useEffect(() => { void loadCalendars(); }, [loadCalendars]);
+  useEffect(() => { if (tab === "calendar" || tab === "list") void loadBookings(); }, [loadBookings, tab]);
+
+  const events: GridEvent[] = useMemo(() => bookings
+    .filter((b) => !hidden.has(b.calendar_id ?? UNASSIGNED))
+    .map((b) => ({
+      id: b.id,
+      title: b.title || b.guest_name || "Appointment",
+      start: new Date(b.start_at),
+      end: new Date(b.end_at),
+      color: colorFor(b.calendar_id),
+      status: b.status,
+      subtitle: b.guest_name ?? b.guest_email,
+    })), [bookings, hidden, colorFor]);
+
+  const nav = (dir: -1 | 0 | 1) => {
+    if (dir === 0) { setCursor(new Date()); return; }
+    setCursor((c) => {
+      if (view === "day") return addDays(c, dir);
+      if (view === "week") return addDays(c, dir * 7);
+      return new Date(c.getFullYear(), c.getMonth() + dir, 1);
+    });
   };
 
-  useEffect(() => { void load(); }, []);
+  const toggleCal = (id: string) =>
+    setHidden((h) => { const n = new Set(h); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  return (
+    <div className="container mx-auto px-4 py-6 space-y-5 max-w-6xl">
+      <div className="flex items-center gap-2">
+        <CalendarDays className="size-5" />
+        <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
+      </div>
+
+      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="calendar" className="gap-1.5"><CalendarDays className="h-4 w-4" /> Calendar view</TabsTrigger>
+          <TabsTrigger value="list" className="gap-1.5"><ListChecks className="h-4 w-4" /> Appointment list</TabsTrigger>
+          <TabsTrigger value="settings" className="gap-1.5"><Settings2 className="h-4 w-4" /> Calendar settings</TabsTrigger>
+        </TabsList>
+
+        {/* CALENDAR VIEW */}
+        <TabsContent value="calendar" className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => nav(0)}>Today</Button>
+              <div className="flex items-center">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(-1)} aria-label="Previous"><ChevronLeft className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => nav(1)} aria-label="Next"><ChevronRight className="h-4 w-4" /></Button>
+              </div>
+              <span className="text-sm font-medium min-w-[180px]">{headerLabel(view, cursor)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select value={view} onValueChange={(v) => setView(v as ViewMode)}>
+                <SelectTrigger className="w-[130px] h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="day">Day view</SelectItem>
+                  <SelectItem value="week">Week view</SelectItem>
+                  <SelectItem value="month">Month view</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button size="sm" onClick={() => setNewOpen(true)}><Plus className="h-4 w-4 mr-1.5" /> New</Button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
+            <div className="min-w-0 relative">
+              {loading && (
+                <div className="absolute inset-0 z-20 grid place-items-center bg-background/50">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              )}
+              <CalendarGrid view={view} cursor={cursor} events={events} />
+            </div>
+
+            {/* Filter rail — color legend + calendar toggles */}
+            <Card className="h-fit">
+              <CardContent className="p-3.5 space-y-2.5">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Calendars</div>
+                {calendars.length === 0 && <p className="text-xs text-muted-foreground">No calendars yet.</p>}
+                {calendars.map((c) => {
+                  const on = !hidden.has(c.id);
+                  return (
+                    <label key={c.id} className="flex items-center gap-2 cursor-pointer text-sm">
+                      <input type="checkbox" checked={on} onChange={() => toggleCal(c.id)} className="rounded" />
+                      <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c.color || c.accent || DEFAULT_COLOR }} />
+                      <span className="truncate">{c.title || "Untitled"}</span>
+                    </label>
+                  );
+                })}
+                <label className="flex items-center gap-2 cursor-pointer text-sm pt-1 border-t border-border/60 mt-1">
+                  <input type="checkbox" checked={!hidden.has(UNASSIGNED)} onChange={() => toggleCal(UNASSIGNED)} className="rounded" />
+                  <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: DEFAULT_COLOR }} />
+                  <span className="text-muted-foreground">Other / manual</span>
+                </label>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* APPOINTMENT LIST */}
+        <TabsContent value="list" className="space-y-4">
+          <AppointmentList bookings={bookings} loading={loading} colorFor={colorFor} />
+        </TabsContent>
+
+        {/* CALENDAR SETTINGS */}
+        <TabsContent value="settings" className="space-y-4">
+          <CalendarsPanel />
+        </TabsContent>
+      </Tabs>
+
+      <NewAppointmentDialog
+        open={newOpen}
+        onOpenChange={setNewOpen}
+        calendars={calendars}
+        activeTenantId={activeTenantId}
+        onCreated={() => { setNewOpen(false); void loadBookings(); }}
+      />
+    </div>
+  );
+}
+
+function AppointmentList({ bookings, loading, colorFor }: {
+  bookings: BookingRow[]; loading: boolean; colorFor: (id: string | null) => string;
+}) {
   const grouped = useMemo(() => {
-    const m = new Map<string, Booking[]>();
+    const m = new Map<string, BookingRow[]>();
     for (const b of bookings) {
-      const k = new Date(b.start_at).toLocaleDateString();
+      const k = new Date(b.start_at).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
       if (!m.has(k)) m.set(k, []);
       m.get(k)!.push(b);
     }
@@ -61,55 +235,151 @@ export default function CalendarAdmin() {
   }, [bookings]);
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6 max-w-5xl">
-      <div className="flex items-center gap-2">
-        <CalendarDays className="size-5" />
-        <h1 className="text-2xl font-semibold tracking-tight">Calendars</h1>
-      </div>
-
-      {/* Multi-calendar manager (first-class `calendars` entity) — every tier. */}
-      <CalendarsPanel />
-
-      {/* Internal live schedule — what's actually booked. */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Upcoming bookings</CardTitle>
-          <CardDescription>What's on your schedule right now, across every calendar.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading schedule…
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {grouped.length === 0 && <p className="text-sm text-muted-foreground">No bookings yet.</p>}
-              {grouped.map(([date, items]) => (
-                <div key={date} className="space-y-2">
-                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{date}</div>
-                  {items.map((b) => (
-                    <div key={b.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{b.title}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {new Date(b.start_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          {" – "}
-                          {new Date(b.end_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          {b.guest_name ? ` · ${b.guest_name}` : b.guest_email ? ` · ${b.guest_email}` : ""}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="capitalize">{b.source.replace(/_/g, " ")}</Badge>
-                        <Badge variant={b.status === "scheduled" ? "default" : "secondary"} className="capitalize">{b.status}</Badge>
+    <Card>
+      <CardContent className="p-4 sm:p-6">
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground py-4"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
+        ) : grouped.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4">No appointments in this range.</p>
+        ) : (
+          <div className="space-y-5">
+            {grouped.map(([date, items]) => (
+              <div key={date} className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{date}</div>
+                {items.map((b) => (
+                  <div key={b.id} className="flex items-center gap-3 rounded-md border p-3 text-sm">
+                    <span className="h-8 w-1 rounded-full flex-shrink-0" style={{ backgroundColor: colorFor(b.calendar_id) }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{b.title || b.guest_name || "Appointment"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(b.start_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {" – "}
+                        {new Date(b.end_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {b.guest_name ? ` · ${b.guest_name}` : b.guest_email ? ` · ${b.guest_email}` : ""}
                       </div>
                     </div>
-                  ))}
-                </div>
-              ))}
+                    <Badge variant="secondary" className="capitalize flex-shrink-0">{b.source.replace(/_/g, " ")}</Badge>
+                    <Badge variant={b.status === "scheduled" ? "default" : "secondary"} className="capitalize flex-shrink-0">{b.status}</Badge>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function NewAppointmentDialog({ open, onOpenChange, calendars, activeTenantId, onCreated }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  calendars: CalMeta[];
+  activeTenantId: string | null;
+  onCreated: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [calendarId, setCalendarId] = useState<string>(UNASSIGNED);
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("09:00");
+  const [duration, setDuration] = useState(30);
+  const [guestName, setGuestName] = useState("");
+  const [blocked, setBlocked] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      const now = new Date();
+      setTitle(""); setCalendarId(UNASSIGNED);
+      setDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`);
+      setTime("09:00"); setDuration(30); setGuestName(""); setBlocked(false);
+    }
+  }, [open]);
+
+  const save = async () => {
+    if (!blocked && !title.trim()) { toast.error("Give the appointment a title"); return; }
+    if (!date) { toast.error("Pick a date"); return; }
+    const start = new Date(`${date}T${time}:00`);
+    if (isNaN(start.getTime())) { toast.error("Invalid date/time"); return; }
+    setSaving(true);
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData.user?.id;
+    if (!uid) { setSaving(false); toast.error("Session expired"); return; }
+    const cal = calendars.find((c) => c.id === calendarId);
+    const end = new Date(start.getTime() + Math.max(5, duration) * 60000);
+    const { error } = await supabase.from("internal_bookings").insert({
+      host_user_id: uid,
+      tenant_id: cal?.tenant_id ?? activeTenantId,
+      calendar_id: calendarId === UNASSIGNED ? null : calendarId,
+      title: blocked ? "Blocked" : title.trim(),
+      guest_name: guestName.trim() || null,
+      start_at: start.toISOString(),
+      end_at: end.toISOString(),
+      status: blocked ? "blocked" : "scheduled",
+      source: "manual",
+    });
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(blocked ? "Time blocked" : "Appointment added");
+    onCreated();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>New appointment</DialogTitle>
+          <DialogDescription>Add a booking or block time on your schedule.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setBlocked(false)}
+              className={`px-3 h-8 rounded-md border text-sm ${!blocked ? "border-primary bg-primary/10 text-primary font-medium" : "hover:bg-muted"}`}>Appointment</button>
+            <button type="button" onClick={() => setBlocked(true)}
+              className={`px-3 h-8 rounded-md border text-sm ${blocked ? "border-primary bg-primary/10 text-primary font-medium" : "hover:bg-muted"}`}>Block time</button>
+          </div>
+          {!blocked && (
+            <div className="space-y-1.5">
+              <Label>Title</Label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Strategy call" autoFocus />
             </div>
           )}
-        </CardContent>
-      </Card>
-    </div>
+          <div className="space-y-1.5">
+            <Label>Calendar</Label>
+            <Select value={calendarId} onValueChange={setCalendarId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNASSIGNED}>None (personal)</SelectItem>
+                {calendars.map((c) => <SelectItem key={c.id} value={c.id}>{c.title || "Untitled"}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-1.5 col-span-1">
+              <Label>Date</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Time</Label>
+              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Mins</Label>
+              <Input type="number" min={5} step={5} value={duration} onChange={(e) => setDuration(Math.max(5, Number(e.target.value) || 30))} />
+            </div>
+          </div>
+          {!blocked && (
+            <div className="space-y-1.5">
+              <Label>Guest name (optional)</Label>
+              <Input value={guestName} onChange={(e) => setGuestName(e.target.value)} placeholder="Jane Doe" />
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} {blocked ? "Block time" : "Add appointment"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
