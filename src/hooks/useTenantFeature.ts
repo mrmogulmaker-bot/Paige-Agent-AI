@@ -4,9 +4,9 @@
  * Features are stored on `tenants.features` as a JSONB object, e.g.
  *   { "btf_enabled": true, "products_enabled": true }
  *
- * BTF is intentionally locked to the Mogul Maker Academy tenant only;
- * every other tenant has `btf_enabled = false` by default and the UI
- * surfaces (Resend BTF Invite, Start Onboarding, etc.) are hidden.
+ * Feature flags are per-tenant: a flag defaults to `false` and is enabled only
+ * for the tenants whose plan/config turns it on, so the gated UI surfaces stay
+ * hidden for every other tenant. No feature is hardcoded to a specific tenant.
  */
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";

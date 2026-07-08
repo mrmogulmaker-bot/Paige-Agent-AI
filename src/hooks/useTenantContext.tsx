@@ -1,9 +1,9 @@
 /**
  * Tenant context — resolves which tenant the current user is "viewing".
  *
- * - Platform owner (Antonio): sees every tenant; switching writes
- *   `profiles.active_tenant_id` so `current_user_tenant_id()` SQL helper
- *   scopes all reads/writes to the chosen tenant.
+ * - Platform owner (Paige Agent AI master admin): sees every tenant; switching
+ *   writes `profiles.active_tenant_id` so the `current_user_tenant_id()` SQL
+ *   helper scopes all reads/writes to the chosen tenant.
  * - Tenant member: sees only their own tenant(s); switching also works
  *   when they belong to multiple.
  *

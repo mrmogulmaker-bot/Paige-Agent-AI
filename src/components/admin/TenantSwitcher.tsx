@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { PLATFORM } from "@/lib/platform/identity";
 
 export function TenantSwitcher() {
   const { loading, isPlatformOwner, tenants, activeTenant, activeTenantId, switchTenant } =
@@ -21,7 +22,8 @@ export function TenantSwitcher() {
   if (loading) return null;
   if (!isPlatformOwner && tenants.length <= 1) return null;
 
-  const label = activeTenant?.name ?? (isPlatformOwner ? "All tenants" : "Tenant");
+  // Platform owner with no tenant filter = the master account itself: Paige Agent AI.
+  const label = activeTenant?.name ?? (isPlatformOwner ? PLATFORM.allTenantsLabel : "Tenant");
 
   return (
     <DropdownMenu>
@@ -62,8 +64,13 @@ export function TenantSwitcher() {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => switchTenant(null)}>
               <Globe2 className="w-4 h-4 mr-2" />
-              View all tenants (no filter)
-              {activeTenantId === null && <Check className="w-4 h-4 ml-auto text-accent" />}
+              <div className="min-w-0">
+                <div className="truncate text-sm">{PLATFORM.allTenantsLabel}</div>
+                <div className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {PLATFORM.platformScopeLabel}
+                </div>
+              </div>
+              {activeTenantId === null && <Check className="w-4 h-4 ml-auto text-accent flex-shrink-0" />}
             </DropdownMenuItem>
           </>
         )}

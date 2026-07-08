@@ -24,7 +24,8 @@ import { useRoleLens } from "@/contexts/RoleLensContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
-import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
+import { PaigeMark } from "@/components/brand/PaigeMark";
+import { PLATFORM } from "@/lib/platform/identity";
 
 // 7-hub top bar. Each hub has a primary route and optional sub-routes
 // surfaced via a dropdown so power users can jump deep with one click.
@@ -198,8 +199,8 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         {/* Row 1: brand + utilities */}
         <div className="flex items-center justify-between gap-3 px-3 md:px-6 h-14">
           <Link to="/admin" className="flex items-center gap-2 min-w-0">
-            <img src={paigeLogoTransparent} alt="PaigeAgent" className="h-8 w-8 object-contain flex-shrink-0" />
-            <span className="font-bold text-sm tracking-tight truncate">PaigeAgent Admin</span>
+            <PaigeMark className="h-8 w-8 flex-shrink-0" />
+            <span className="font-bold text-sm tracking-tight truncate">{PLATFORM.adminName}</span>
             {canSwitch ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

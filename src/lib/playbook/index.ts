@@ -1,32 +1,46 @@
 // Playbook — public entry point.
 //
-// Surfaces read the ACTIVE playbook via usePlaybook() / getActivePlaybook()
-// instead of hardcoding vertical strings. Today it resolves to the neutral
-// coaching default; the seam below is where a later step loads the tenant's
-// authored playbook (by slug from tenant config) once the config table exists.
+// Surfaces read the ACTIVE playbook via usePlaybook() instead of hardcoding
+// vertical strings. It resolves per-tenant from the tenant's authored config
+// (see ./resolve), so each coach's Paige is native to their practice; an
+// unconfigured tenant (and the Paige Agent AI platform account itself) falls
+// back to the neutral coaching default.
 
-import { coachingDefault, PLAYBOOK_LIBRARY } from "./presets";
+import { useEffect, useState } from "react";
+import { coachingDefault } from "./presets";
+import { resolveActivePlaybook } from "./resolve";
 import type { Playbook } from "./types";
 
 export * from "./types";
 export { coachingDefault, fitnessCoach, businessConsultant, marketingAgency, PLAYBOOK_LIBRARY } from "./presets";
-
-/** Resolve a playbook by slug, falling back to the coaching default. */
-export function getPlaybookBySlug(slug?: string | null): Playbook {
-  if (!slug) return coachingDefault;
-  return PLAYBOOK_LIBRARY.find((p) => p.slug === slug) ?? coachingDefault;
-}
+export { getPlaybookBySlug, resolveActivePlaybook } from "./resolve";
 
 /**
- * The active playbook for the current tenant. Neutral coaching default for now;
- * this is the single place to swap in a per-tenant lookup (tenant config →
- * playbook slug or a fully authored playbook) without touching call sites.
+ * The synchronous neutral default. Use this only where a non-reactive default
+ * is needed before the tenant's authored playbook has resolved; live surfaces
+ * should use the usePlaybook() hook so they update once the tenant loads.
  */
 export function getActivePlaybook(): Playbook {
   return coachingDefault;
 }
 
-/** React hook form — same resolution, hook-shaped for components. */
+/**
+ * React hook — the active tenant's playbook. Starts at the neutral coaching
+ * default and updates once the tenant's authored config resolves, so call
+ * sites can treat the return as a ready Playbook without a loading branch.
+ */
 export function usePlaybook(): Playbook {
-  return getActivePlaybook();
+  const [playbook, setPlaybook] = useState<Playbook>(coachingDefault);
+
+  useEffect(() => {
+    let cancelled = false;
+    resolveActivePlaybook().then((pb) => {
+      if (!cancelled) setPlaybook(pb);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return playbook;
 }
