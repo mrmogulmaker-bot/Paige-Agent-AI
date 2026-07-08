@@ -12,7 +12,7 @@ import {
   Check,
   Sparkles as SparkIcon,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
 import { paigeAnim } from "@/lib/paigeAnim";
 
@@ -373,7 +373,7 @@ function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () 
                 transition={{ duration: INTRO_T, times: [0, 0.83, 0.92], ease: "easeIn" }}
               >
                 <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3.5 pt-7">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[11px] font-black text-[#2A1B4E]">P</span>
+                  <PaigeMark className="h-7 w-7" />
                   <div className="leading-tight">
                     <div className="text-[12px] font-semibold text-white" style={{ fontFamily: HEAD }}>Paige</div>
                     <div className="text-[9px] text-[#7ee0a8]">working your inbox…</div>
@@ -722,13 +722,24 @@ export default function PaigeHome() {
 
       {/* Footer */}
       <footer className="mx-auto w-full max-w-6xl px-6 py-12 text-sm text-white/40">
-        <div className="flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-8 sm:flex-row">
-          <div className="flex items-center gap-2 text-white/70">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-xs font-black text-[#241645]">P</span>
-            Paige Agent
-          </div>
-          <div>© 2026 Paige · The operating system for coaches</div>
+        <div className="flex flex-col items-center gap-6 border-t border-white/10 pt-8 sm:flex-row sm:justify-between">
+          <a href="#hero" className="flex items-center gap-2 text-white/70">
+            <PaigeMark className="h-6 w-6" />
+            <span className="font-semibold" style={{ fontFamily: HEAD }}>
+              Paige <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
+            </span>
+          </a>
+          {/* Social links + phone numbers slot in here once provided (no email). */}
+          <nav className="flex items-center gap-6">
+            <Link to="/terms" className="text-white/55 underline-offset-4 transition-colors hover:text-white/90 hover:underline">
+              Terms of Service
+            </Link>
+            <Link to="/privacy" className="text-white/55 underline-offset-4 transition-colors hover:text-white/90 hover:underline">
+              Privacy Policy
+            </Link>
+          </nav>
         </div>
+        <div className="mt-6 text-center text-white/35 sm:text-left">© 2026 Paige · The operating system for coaches</div>
       </footer>
       </div>{/* /frosted below-hero wrapper */}
       </div>{/* /z-10 content wrapper */}
