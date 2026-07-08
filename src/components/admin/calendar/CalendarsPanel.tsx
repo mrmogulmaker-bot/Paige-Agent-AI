@@ -576,8 +576,11 @@ function CalendarBuilderSheet({
     // Create.
     if (!isPlatformStaff && !tenantId) { setSaving(false); toast.error("No active workspace — pick a tenant first"); return; }
     const slug = `${slugify(title) || "calendar"}-${randomSuffix()}`;
+    // Go live on creation — a new calendar already has working defaults + weekly
+    // availability, so its public booking link should accept bookings right away
+    // (toggle it back to Draft on the card to unpublish).
     const { data, error } = await supabase
-      .from("calendars").insert({ tenant_id: tenantId, slug, enabled: false, ...patch }).select(SELECT_COLS).single();
+      .from("calendars").insert({ tenant_id: tenantId, slug, enabled: true, ...patch }).select(SELECT_COLS).single();
     if (error || !data) { setSaving(false); toast.error(error?.message ?? "Could not create the calendar"); return; }
     // Register the creator as a host (REQUIRED — a hostless calendar is unbookable
     // and unrecoverable today; roll back rather than leave a dead one behind).
@@ -593,7 +596,7 @@ function CalendarBuilderSheet({
       return;
     }
     setSaving(false);
-    toast.success("Calendar created — set it Live when you're ready");
+    toast.success("Calendar created and live — its booking link is ready to share");
     onSaved(data as CalendarRow, true);
   };
 
