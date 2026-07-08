@@ -365,7 +365,7 @@ const Auth = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-primary-foreground/90">{f.title}</p>
-                  <p className="text-xs text-primary-foreground/45 mt-0.5">{f.desc}</p>
+                  <p className="text-xs text-primary-foreground/60 mt-0.5">{f.desc}</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-primary-foreground/20 group-hover:text-accent/60 transition-colors" />
               </div>
@@ -373,21 +373,15 @@ const Auth = () => {
           </div>
         </div>
 
-        {/* Bottom — Social proof */}
+        {/* Bottom — trust badge (defensible; no fabricated testimonials) */}
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="flex -space-x-2">
-              {['bg-accent/60', 'bg-gold/60', 'bg-accent/40', 'bg-gold/40'].map((bg, i) => (
-                <div key={i} className={`w-8 h-8 rounded-full ${bg} border-2 border-primary flex items-center justify-center`}>
-                  <span className="text-[10px] font-bold text-primary-foreground/80">
-                    {['JD', 'AK', 'MR', 'TS'][i]}
-                  </span>
-                </div>
-              ))}
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/12 ring-1 ring-accent/25">
+              <Shield className="h-4 w-4 text-accent" />
             </div>
             <div>
-              <p className="text-xs font-medium text-primary-foreground/70">Trusted by coaches everywhere</p>
-              <p className="text-[11px] text-primary-foreground/40">38 hours reclaimed every week</p>
+              <p className="text-xs font-medium text-primary-foreground/85">Built for coaching &amp; consulting practices</p>
+              <p className="text-[11px] text-primary-foreground/55">256-bit encryption · your client data stays private</p>
             </div>
           </div>
         </div>
@@ -499,8 +493,8 @@ const Auth = () => {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                    tabIndex={-1}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -518,7 +512,7 @@ const Auth = () => {
                       aria-required
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
-                      I have read and agree to the PaigeAgent{" "}
+                      I have read and agree to the Paige Agent{" "}
                       <Link to="/legal/terms" target="_blank" className="underline text-accent hover:opacity-80">
                         Terms of Service
                       </Link>
@@ -532,7 +526,7 @@ const Auth = () => {
                       </Link>
                       , and{" "}
                       <Link to="/legal/ai-disclaimer" target="_blank" className="underline text-accent hover:opacity-80">
-                        AI Advisory Disclaimer
+                        AI Disclaimer
                       </Link>
                       .{" "}<span className="text-destructive">*</span>
                     </span>
@@ -547,7 +541,7 @@ const Auth = () => {
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
                       I understand that my data is used exclusively to provide my
-                      PaigeAgent services and is{" "}
+                      Paige Agent services and is{" "}
                       <strong>never sold to third parties or advertisers</strong>.{" "}
                       <span className="text-destructive">*</span>
                     </span>
@@ -560,7 +554,7 @@ const Auth = () => {
                       className="mt-0.5"
                     />
                     <span className="text-xs text-foreground/70 leading-relaxed">
-                      I agree to receive marketing communications about PaigeAgent products and
+                      I agree to receive marketing communications about Paige Agent products and
                       updates. <em>(Optional — uncheck to receive only service notifications)</em>
                     </span>
                   </label>
@@ -633,7 +627,7 @@ const Auth = () => {
               </div>
               <div className="relative flex justify-center">
                 <span className="bg-background px-4 text-xs text-muted-foreground/60">
-                  {isLogin ? "New to PaigeAgent?" : "Already have an account?"}
+                  {isLogin ? "New to Paige Agent?" : "Already have an account?"}
                 </span>
               </div>
             </div>
@@ -650,13 +644,13 @@ const Auth = () => {
             </Button>
 
             {/* Team Login hint */}
-            <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/40">
+            <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/70">
               <Shield className="w-3 h-3" />
               <span>Team member? Use your admin credentials above — you'll be routed automatically.</span>
             </div>
 
             {/* Legal */}
-            <p className="text-center text-[11px] text-muted-foreground/50 leading-relaxed">
+            <p className="text-center text-[11px] text-muted-foreground/70 leading-relaxed">
               By continuing you agree to our{" "}
               <Link to="/terms" className="underline hover:text-muted-foreground transition-colors">Terms</Link>
               {" "}and{" "}
