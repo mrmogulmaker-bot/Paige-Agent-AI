@@ -63,6 +63,9 @@ interface HostSettings {
   bufferAfterMin: number;
   timezone: string;
   minNoticeMin: number;
+  title: string | null;
+  description: string | null;
+  accent: string | null;
 }
 
 interface Busy { start: number; end: number } // UTC ms
@@ -100,7 +103,7 @@ function computeSlots(h: HostSettings, busy: Busy[], fromMs: number, toMs: numbe
 async function loadHost(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
   const { data } = await admin
     .from("staff_calendar_settings")
-    .select("user_id, tenant_id, availability_json, default_meeting_duration_min, buffer_before_min, buffer_after_min, timezone, booking_page_enabled")
+    .select("user_id, tenant_id, availability_json, default_meeting_duration_min, buffer_before_min, buffer_after_min, timezone, booking_page_enabled, booking_page_title, booking_page_description, booking_page_accent")
     .eq("booking_page_slug", slug)
     .maybeSingle();
   if (!data || data.booking_page_enabled !== true) return null;
@@ -113,6 +116,30 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     bufferAfterMin: Math.max(0, data.buffer_after_min ?? 0),
     timezone: data.timezone || "America/New_York",
     minNoticeMin: 60,
+    title: data.booking_page_title ?? null,
+    description: data.booking_page_description ?? null,
+    accent: data.booking_page_accent ?? null,
+  };
+}
+
+/** White-label branding for the booking page: tenant brand + host overrides. */
+async function loadBranding(admin: ReturnType<typeof createClient>, host: HostSettings) {
+  let name: string | null = null;
+  let logoUrl: string | null = null;
+  let accent = host.accent;
+  if (host.tenant_id) {
+    const { data: t } = await admin.from("tenants").select("name, brand").eq("id", host.tenant_id).maybeSingle();
+    const brand = (t?.brand ?? {}) as Record<string, string>;
+    name = brand.name ?? (t?.name as string | undefined) ?? null;
+    logoUrl = brand.logo_url ?? null;
+    accent = accent || brand.primary_color || brand.accent_color || null;
+  }
+  return {
+    name: name || "Paige Agent AI",
+    logoUrl,
+    accent: accent || "#EBB94C",
+    title: host.title,
+    description: host.description,
   };
 }
 
@@ -149,6 +176,7 @@ Deno.serve(async (req) => {
       return json({
         durationMin: host.durationMin,
         timezone: host.timezone,
+        branding: await loadBranding(admin, host),
         slots: slots.map((s) => new Date(s).toISOString()),
       });
     }

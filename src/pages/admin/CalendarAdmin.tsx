@@ -24,6 +24,11 @@ type Settings = {
   default_meeting_duration_min: number;
   timezone: string;
   availability_json: DayWindow[] | null;
+  booking_page_title: string | null;
+  booking_page_description: string | null;
+  booking_page_accent: string | null;
+  buffer_before_min: number;
+  buffer_after_min: number;
 };
 
 type Booking = {
@@ -53,12 +58,13 @@ export default function CalendarAdmin() {
     if (!uid) { setLoading(false); return; }
 
     const [{ data: s }, { data: b }] = await Promise.all([
-      supabase.from("staff_calendar_settings").select("google_calendar_connected, google_email, apple_caldav_connected, booking_page_slug, booking_page_enabled, default_meeting_duration_min, timezone, availability_json").eq("user_id", uid).maybeSingle(),
+      supabase.from("staff_calendar_settings").select("google_calendar_connected, google_email, apple_caldav_connected, booking_page_slug, booking_page_enabled, default_meeting_duration_min, timezone, availability_json, booking_page_title, booking_page_description, booking_page_accent, buffer_before_min, buffer_after_min").eq("user_id", uid).maybeSingle(),
       supabase.from("internal_bookings").select("id, title, start_at, end_at, status, source, guest_name, guest_email, meeting_link").eq("host_user_id", uid).gte("start_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString()).order("start_at", { ascending: true }).limit(50),
     ]);
     const settingsVal = (s as Settings | null) ?? {
       google_calendar_connected: false, google_email: null, apple_caldav_connected: false,
       booking_page_slug: null, booking_page_enabled: false, default_meeting_duration_min: 30, timezone: "America/New_York", availability_json: null,
+      booking_page_title: null, booking_page_description: null, booking_page_accent: null, buffer_before_min: 0, buffer_after_min: 0,
     };
     setSettings(settingsVal);
     // Hydrate the weekly-hours editor from availability_json (or the default).
@@ -262,6 +268,46 @@ export default function CalendarAdmin() {
                 onChange={(e) => setSettings((s) => s && { ...s, timezone: e.target.value })} />
             </div>
           </div>
+          <div className="border-t pt-3 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Your booking page uses your workspace logo &amp; colors by default — customize the copy and accent here.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <Label>Page title</Label>
+                <Input placeholder="Book a call" value={settings?.booking_page_title ?? ""}
+                  onChange={(e) => setSettings((s) => s && { ...s, booking_page_title: e.target.value })} />
+              </div>
+              <div>
+                <Label>Accent color</Label>
+                <div className="flex items-center gap-2">
+                  <Input type="color" value={settings?.booking_page_accent || "#EBB94C"}
+                    onChange={(e) => setSettings((s) => s && { ...s, booking_page_accent: e.target.value })}
+                    className="w-12 h-9 p-1 flex-shrink-0" />
+                  <Input placeholder="defaults to your brand" value={settings?.booking_page_accent ?? ""}
+                    onChange={(e) => setSettings((s) => s && { ...s, booking_page_accent: e.target.value })} />
+                </div>
+              </div>
+            </div>
+            <div>
+              <Label>Welcome message</Label>
+              <Input placeholder="Pick a time that works for you." value={settings?.booking_page_description ?? ""}
+                onChange={(e) => setSettings((s) => s && { ...s, booking_page_description: e.target.value })} />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <Label>Buffer before (min)</Label>
+                <Input type="number" min={0} value={settings?.buffer_before_min ?? 0}
+                  onChange={(e) => setSettings((s) => s && { ...s, buffer_before_min: Number(e.target.value) })} />
+              </div>
+              <div>
+                <Label>Buffer after (min)</Label>
+                <Input type="number" min={0} value={settings?.buffer_after_min ?? 0}
+                  onChange={(e) => setSettings((s) => s && { ...s, buffer_after_min: Number(e.target.value) })} />
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center gap-2">
             <Button onClick={() => saveSettings({})}>Save</Button>
             <Button variant={settings?.booking_page_enabled ? "outline" : "default"}

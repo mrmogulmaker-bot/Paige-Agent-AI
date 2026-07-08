@@ -19,12 +19,24 @@ import { PaigeMark } from "@/components/brand/PaigeMark";
 type Phase = "loading" | "pick" | "form" | "done" | "error";
 const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+type Brand = { name: string; logoUrl: string | null; accent: string; title: string | null; description: string | null };
+const DEFAULT_BRAND: Brand = { name: "Paige Agent AI", logoUrl: null, accent: "#EBB94C", title: null, description: null };
+
+/** Readable text color over an arbitrary brand accent. */
+function textOn(hex: string): string {
+  const h = (hex || "").replace("#", "");
+  if (h.length < 6) return "#1B1230";
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#1B1230" : "#FFFFFF";
+}
+
 export default function BookingPage() {
   const { slug } = useParams<{ slug: string }>();
   const [phase, setPhase] = useState<Phase>("loading");
   const [errorMsg, setErrorMsg] = useState("");
   const [slots, setSlots] = useState<string[]>([]);
   const [durationMin, setDurationMin] = useState(30);
+  const [brand, setBrand] = useState<Brand>(DEFAULT_BRAND);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", email: "", phone: "", notes: "" });
@@ -42,6 +54,7 @@ export default function BookingPage() {
       }
       setSlots((data as any).slots ?? []);
       setDurationMin((data as any).durationMin ?? 30);
+      setBrand({ ...DEFAULT_BRAND, ...((data as any).branding ?? {}) });
       setPhase("pick");
     })();
   }, [slug]);
@@ -88,8 +101,10 @@ export default function BookingPage() {
     <div className="min-h-dvh bg-gradient-to-b from-[#0B0912] to-[#140F22] text-[#EDE8F6] flex items-center justify-center px-5 py-12">
       <div className="w-full max-w-2xl">
         <div className="flex items-center gap-2.5 mb-6 justify-center">
-          <PaigeMark className="h-8 w-8" />
-          <span className="font-semibold tracking-tight">Paige Agent</span>
+          {brand.logoUrl
+            ? <img src={brand.logoUrl} alt={brand.name} className="h-8 w-auto max-w-[180px] object-contain" />
+            : <PaigeMark className="h-8 w-8" />}
+          <span className="font-semibold tracking-tight">{brand.name}</span>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8 shadow-2xl">{children}</div>
         <p className="text-center text-xs text-[#766E90] mt-4">Times shown in {browserTz}.</p>
@@ -122,11 +137,14 @@ export default function BookingPage() {
 
   return shell(
     <div>
-      <div className="flex items-center gap-2 mb-1 text-[#F0C86A]">
+      <div className="flex items-center gap-2 mb-1" style={{ color: brand.accent }}>
         <Clock className="h-4 w-4" />
         <span className="text-xs font-mono uppercase tracking-[0.16em]">{durationMin} min meeting</span>
       </div>
-      <h1 className="text-xl font-bold mb-5">Pick a time</h1>
+      <h1 className="text-xl font-bold mb-1">{brand.title || "Pick a time"}</h1>
+      {brand.description
+        ? <p className="text-sm text-[#A79EC2] mb-5">{brand.description}</p>
+        : <div className="mb-5" />}
 
       {days.length === 0 ? (
         <p className="text-sm text-[#A79EC2]">No open times in the next two weeks. Please check back soon.</p>
@@ -162,7 +180,8 @@ export default function BookingPage() {
           </div>
           {errorMsg && <p className="text-sm text-red-400 mt-3" aria-live="polite">{errorMsg}</p>}
           <Button onClick={book} disabled={submitting || !form.name.trim() || !form.email.trim()}
-            className="w-full mt-5 bg-gradient-to-r from-[#EBB94C] to-[#F2CE77] text-[#1B1230] font-semibold hover:opacity-95">
+            style={{ background: brand.accent, color: textOn(brand.accent) }}
+            className="w-full mt-5 font-semibold hover:opacity-95">
             {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Confirm booking
           </Button>
         </div>
@@ -175,8 +194,9 @@ export default function BookingPage() {
               const active = d === selectedDay;
               return (
                 <button key={d} onClick={() => setSelectedDay(d)}
+                  style={active ? { borderColor: brand.accent, backgroundColor: brand.accent + "22", color: brand.accent } : undefined}
                   className={`flex-shrink-0 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                    active ? "border-[#EBB94C]/60 bg-[#EBB94C]/10 text-[#F2CE77]" : "border-white/10 text-[#A79EC2] hover:border-white/25"}`}>
+                    active ? "" : "border-white/10 text-[#A79EC2] hover:border-white/25"}`}>
                   <div className="font-medium">{format(dt, "EEE, MMM d")}</div>
                   <div className="text-[11px] opacity-70">{(byDay.get(d) ?? []).length} open</div>
                 </button>
@@ -187,7 +207,7 @@ export default function BookingPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 content-start max-h-[360px] overflow-y-auto pr-1">
             {times.map((t) => (
               <button key={t} onClick={() => { setSelectedSlot(t); setErrorMsg(""); setPhase("form"); }}
-                className="rounded-lg border border-white/12 py-2 text-sm font-medium text-[#EDE8F6] hover:border-[#EBB94C]/60 hover:bg-[#EBB94C]/10 transition-colors">
+                className="rounded-lg border border-white/12 py-2 text-sm font-medium text-[#EDE8F6] hover:border-white/40 hover:bg-white/5 transition-colors">
                 {format(new Date(t), "h:mm a")}
               </button>
             ))}
