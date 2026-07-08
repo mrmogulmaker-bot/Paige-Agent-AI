@@ -3,7 +3,7 @@
 // IMPORTANT: This SW does NOT cache any app assets — Vite/CDN handles freshness.
 // Bumping SW_VERSION forces old workers to be replaced + clears any stray caches.
 
-const SW_VERSION = 'paige-sw-v3';
+const SW_VERSION = 'paige-sw-v4';
 
 self.addEventListener('install', (event) => {
   // Activate this SW immediately, replacing any older version
