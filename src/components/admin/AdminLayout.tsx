@@ -146,9 +146,40 @@ const adminNavItems = [
   ...moreNavItems,
 ];
 
-// The God console (platform staff) gets its own nav — fleet/platform concerns
-// only, never the agency CRM hubs above. Grows as blueprint sections land.
+// The God console (platform staff) gets its own nav: platform control (Fleet,
+// Team) + the operator's own business tools (contacts=agencies/prospects, comms,
+// campaigns, AI automation, calendar). It deliberately omits the client-servicing
+// hubs (Pipeline/Funding/credit) — those are agency-tier, not the platform's job.
 const GOD_HUBS: Hub[] = [
+  { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
+  { label: "Team", href: "/admin/platform/team", icon: UserCog },
+  { label: "Contacts", href: "/admin/contacts", icon: Contact, aliases: ["/admin/leads"] },
+  { label: "Inbox", href: "/admin/communications", icon: Inbox },
+  { label: "Campaigns", href: "/admin/campaigns", icon: Rocket, aliases: ["/admin/growth"] },
+  {
+    label: "Automation",
+    href: "/admin/workflows",
+    icon: Workflow,
+    children: [
+      { label: "Workflows", href: "/admin/workflows", icon: Workflow },
+      { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
+      { label: "Paige Skills", href: "/admin/skills", icon: Bot },
+      { label: "Integrations", href: "/admin/integrations", icon: Plug },
+    ],
+    aliases: ["/admin/sub-agents", "/admin/skills", "/admin/integrations"],
+  },
+  { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
+];
+// God "More" menu — support, security, and the platform settings hub (comms/SMS,
+// providers, branding) the operator needs to run the platform.
+const GOD_MORE: MoreItem[] = [
+  { label: "Support", href: "/admin/support", icon: LifeBuoy },
+  { label: "Security Canary", href: "/admin/security", icon: ShieldCheck },
+  { label: "Settings", href: "/admin/settings", icon: Settings },
+];
+// Scoped Platform Admins run the fleet + their own calendar — not the operator's
+// full business console (comms/campaigns/settings stay owner-only, matching RLS).
+const GOD_STAFF_HUBS: Hub[] = [
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
   { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
@@ -168,7 +199,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // Platform staff (owner + Platform Admin) run the God console — its own nav of
   // fleet/platform concerns, not the agency CRM hubs.
   const godMode = isPlatformStaff;
-  const activeHubs = godMode ? GOD_HUBS : hubs;
+  const activeHubs = godMode ? (isPlatformOwner ? GOD_HUBS : GOD_STAFF_HUBS) : hubs;
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -178,7 +209,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // even if their real role is admin. Real permissions still come from RLS.
   const effectiveRole: "admin" | "coach" =
     userRole === "admin" && canSwitch && lens === "coach" ? "coach" : userRole;
-  const visibleMore = moreNavItems.filter((i) => !i.adminOnly || effectiveRole === "admin");
+  const visibleMore = godMode
+    ? (isPlatformOwner ? GOD_MORE : [])
+    : moreNavItems.filter((i) => !i.adminOnly || effectiveRole === "admin");
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -200,7 +233,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   };
 
   const currentSection = godMode
-    ? (GOD_HUBS.find((i) => isActive(i.href))?.label ?? "Platform")
+    ? (activeHubs.find((i) => isActive(i.href))?.label ?? "Platform")
     : (adminNavItems.find((i) => isActive(i.href))?.label ?? "Admin");
 
   return (
@@ -357,7 +390,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             );
           })}
 
-          {!godMode && (
+          {visibleMore.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -385,7 +418,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                   {item.label}
                 </DropdownMenuItem>
               ))}
-              {isPlatformOwner && (
+              {isPlatformOwner && !godMode && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel>Platform</DropdownMenuLabel>
@@ -450,7 +483,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                 </div>
               ))}
 
-              {!godMode && (
+              {visibleMore.length > 0 && (
                 <>
                   <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
                     More
