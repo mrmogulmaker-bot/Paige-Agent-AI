@@ -479,12 +479,20 @@ export default function PaigeHome() {
             </a>
           ))}
         </nav>
-        <button
-          onClick={() => navigate("/auth?mode=signup")}
-          className="rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-4 py-2 text-sm font-bold text-[#241645] transition-transform hover:scale-105"
-        >
-          Hire Paige
-        </button>
+        <div className="flex items-center gap-3 sm:gap-4">
+          <button
+            onClick={() => navigate("/auth")}
+            className="text-sm font-medium text-white/70 transition-colors hover:text-white"
+          >
+            Log in
+          </button>
+          <button
+            onClick={() => navigate("/auth?mode=signup")}
+            className="rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-4 py-2 text-sm font-bold text-[#241645] transition-transform hover:scale-105"
+          >
+            Hire Paige
+          </button>
+        </div>
       </header>
 
       {/* HERO — transparent so the fixed Paige shows behind the copy */}

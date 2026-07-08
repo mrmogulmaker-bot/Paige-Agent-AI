@@ -170,6 +170,7 @@ const App = () => (
             <Route path="/premium" element={<PageSuspense><PremiumHero /></PageSuspense>} />
             <Route path="/legacy" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/login" element={<Navigate to="/auth" replace />} />
             <Route path="/operator" element={<PageSuspense><OperatorLogin /></PageSuspense>} />
             <Route path="/join-platform" element={<PageSuspense><JoinPlatform /></PageSuspense>} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
