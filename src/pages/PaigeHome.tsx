@@ -237,26 +237,30 @@ const INTRO_THREAD = [
   { who: "Paige", side: "out", text: "Moved Maya to Tuesday 10 AM, sent the invite, and carried her prep notes over. Drafted a warm reply so she doesn't feel like a bother." },
   { who: "Paige", side: "out", text: "Devin from last night's webinar — follow-up drafted before it goes cold. And Jordan's gone quiet 12 days: flagging at-risk." },
 ];
-// One cinematic beat, ~4.8s, in four acts:
-//   1. ASSEMBLE  — gold panel shards fly in from the dark and lock together to
-//                  form the phone (it is built, not popped-in).
+// One cinematic beat, ~5.4s, in four acts:
+//   1. ASSEMBLE  — gold panels fly in from the dark, staggered, and lock
+//                  together; the solid phone snaps in with a gold flash the
+//                  instant they meet (it builds itself, part by part).
 //   2. WORK      — the screen powers on and Paige runs a live client thread,
 //                  ending on "Approve all."
-//   3. BURST     — the phone opens: its shards detach and fling outward while a
+//   3. BURST     — the phone opens: its panels detach and fling outward while a
 //                  gold bloom swells to fill the frame.
 //   4. POP       — behind that bloom the 3D Paige springs out (onReveal) and
 //                  grows to fill the page; the overlay dissolves into her world.
-const INTRO_T = 4.8;
-const REVEAL_AT = 3.85; // seconds — when Paige pops out of the opening phone
+const INTRO_T = 5.4;
+const REVEAL_AT = 4.6; // seconds — when Paige pops out of the opening phone
 
-// Panel shards that converge to build the phone, then detach when it opens.
-// (dx,dy) is the scatter offset in px; r is the scatter rotation in deg.
+// Panels that fly in and lock together to build the phone, then detach when it
+// opens. (dx,dy) scatter offset in px; r scatter rotation in deg; a = normalized
+// arrival time (staggered so the phone assembles part by part, not all at once).
 const SHARDS = [
-  { dx: -260, dy: -150, r: -34, w: 150, h: 150, top: "6%", left: "12%" },
-  { dx: 250, dy: -120, r: 28, w: 150, h: 170, top: "4%", left: "44%" },
-  { dx: -230, dy: 140, r: 30, w: 150, h: 180, top: "44%", left: "12%" },
-  { dx: 240, dy: 170, r: -26, w: 150, h: 170, top: "42%", left: "44%" },
-  { dx: 0, dy: 260, r: 14, w: 150, h: 140, top: "70%", left: "28%" },
+  { dx: -280, dy: -180, r: -30, w: 130, h: 150, top: "2%",  left: "4%",  a: 0.12 },
+  { dx: 280,  dy: -160, r: 26,  w: 120, h: 140, top: "4%",  left: "52%", a: 0.16 },
+  { dx: -320, dy: 0,    r: -18, w: 130, h: 150, top: "34%", left: "2%",  a: 0.20 },
+  { dx: 320,  dy: 20,   r: 20,  w: 130, h: 150, top: "36%", left: "50%", a: 0.14 },
+  { dx: -260, dy: 200,  r: 28,  w: 130, h: 150, top: "66%", left: "6%",  a: 0.22 },
+  { dx: 260,  dy: 190,  r: -24, w: 120, h: 150, top: "64%", left: "50%", a: 0.18 },
+  { dx: 0,    dy: 300,  r: 12,  w: 120, h: 130, top: "40%", left: "26%", a: 0.24 },
 ];
 
 function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () => void }) {
@@ -290,7 +294,7 @@ function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () 
       className="fixed inset-0 z-[70] flex cursor-pointer items-center justify-center overflow-hidden [perspective:1400px]"
       initial={{ opacity: 1 }}
       animate={{ opacity: [1, 1, 1, 0] }}
-      transition={{ duration: INTRO_T, times: [0, 0.82, 0.95, 1], ease: "linear" }}
+      transition={{ duration: INTRO_T, times: [0, 0.84, 0.96, 1], ease: "linear" }}
       onAnimationComplete={onDone}
     >
       {/* Cinematic field — dark indigo that lifts as the phone opens, so the cut
@@ -299,7 +303,7 @@ function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () 
         aria-hidden
         className="pointer-events-none absolute inset-0"
         animate={{ opacity: [1, 1, 0.35] }}
-        transition={{ duration: INTRO_T, times: [0, 0.72, 1], ease: "easeIn" }}
+        transition={{ duration: INTRO_T, times: [0, 0.78, 1], ease: "easeIn" }}
         style={{ background: "radial-gradient(75% 60% at 50% 46%, #251743 0%, #160d2c 52%, #0a0518 100%)" }}
       />
       <span className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 text-[10px] uppercase tracking-[0.3em] text-white/40">
@@ -313,38 +317,41 @@ function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () 
         className="pointer-events-none absolute left-1/2 top-[46%] h-[26rem] w-[26rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#F0C86A] blur-[90px]"
         initial={{ opacity: 0, scale: 0.6 }}
         animate={{ opacity: [0, 0.16, 0.16, 0.95, 0], scale: [0.6, 0.85, 0.9, 3.6, 6] }}
-        transition={{ duration: INTRO_T, times: [0, 0.22, 0.72, 0.9, 1], ease: ["easeOut", "linear", "easeIn", "easeOut"] }}
+        transition={{ duration: INTRO_T, times: [0, 0.24, 0.78, 0.92, 1], ease: ["easeOut", "linear", "easeIn", "easeOut"] }}
       />
 
       {/* The staging box — the phone and its shards share this frame so they
           converge to, and detach from, the same center. */}
       <div className="relative h-[560px] w-[276px] [transform-style:preserve-3d]">
-        {/* Assembling / detaching panel shards. */}
+        {/* Assembling / detaching panels — each flies in on its own beat (sh.a)
+            and locks; they fade as the solid phone snaps in, then reappear and
+            fling outward when it bursts. */}
         {SHARDS.map((sh, i) => (
           <motion.div
             key={i}
             aria-hidden
-            className="pointer-events-none absolute rounded-[1.6rem] border border-[#F0C86A]/40 bg-gradient-to-br from-[#D4A752]/12 to-transparent"
-            style={{ width: sh.w, height: sh.h, top: sh.top, left: sh.left, boxShadow: "inset 0 0 20px rgba(240,200,106,0.12)" }}
-            initial={{ x: sh.dx, y: sh.dy, rotate: sh.r, opacity: 0, scale: 0.6 }}
+            className="pointer-events-none absolute rounded-[1.4rem] border border-[#F0C86A]/45 bg-gradient-to-br from-[#D4A752]/14 to-transparent"
+            style={{ width: sh.w, height: sh.h, top: sh.top, left: sh.left, boxShadow: "inset 0 0 22px rgba(240,200,106,0.14)" }}
+            initial={{ x: sh.dx, y: sh.dy, rotate: sh.r, opacity: 0, scale: 0.55 }}
             animate={{
               x: [sh.dx, 0, 0, 0, sh.dx * 1.7, sh.dx * 3],
               y: [sh.dy, 0, 0, 0, sh.dy * 1.7, sh.dy * 3],
               rotate: [sh.r, 0, 0, 0, sh.r * 1.3, sh.r * 2],
-              opacity: [0, 0.9, 0, 0, 0.9, 0],
-              scale: [0.6, 1, 1, 1, 1, 0.7],
+              opacity: [0, 1, 0, 0, 0.9, 0],
+              scale: [0.55, 1, 1, 1, 1, 0.7],
             }}
-            transition={{ duration: INTRO_T, times: [0, 0.2, 0.3, 0.72, 0.84, 0.94], ease: "easeInOut" }}
+            transition={{ duration: INTRO_T, times: [0, sh.a, 0.34, 0.78, 0.88, 0.96], ease: "easeInOut" }}
           />
         ))}
 
-        {/* The phone itself: fades up as the shards lock in, holds through the
-            work beat, then opens (scales up + fades) as it bursts. */}
+        {/* The phone itself: stays hidden while the panels converge, then SNAPS
+            in at lock (~0.30) with a settle overshoot, holds through the work
+            beat, and opens (scales up + fades) as it bursts. */}
         <motion.div
           className="absolute inset-0"
-          initial={{ opacity: 0, scale: 0.62, rotateX: 8 }}
-          animate={{ opacity: [0, 1, 1, 1, 0], scale: [0.62, 1, 1, 1.06, 1.5], rotateX: [8, 0, 0, 0, 0] }}
-          transition={{ duration: INTRO_T, times: [0, 0.22, 0.66, 0.74, 0.9], ease: ["backOut", "linear", "easeIn", "easeIn"] }}
+          initial={{ opacity: 0, scale: 0.94, rotateX: 6 }}
+          animate={{ opacity: [0, 0, 1, 1, 1, 0], scale: [0.94, 0.94, 1.03, 1, 1.06, 1.5], rotateX: [6, 6, 0, 0, 0, 0] }}
+          transition={{ duration: INTRO_T, times: [0, 0.26, 0.34, 0.78, 0.84, 0.92], ease: "easeOut" }}
           style={{ transformOrigin: "center 47%" }}
         >
           <div className="relative h-full w-full rounded-[2.75rem] border border-[#D4A752]/25 bg-[#120A24] p-3 shadow-[0_40px_120px_rgba(0,0,0,0.6),inset_0_0_0_1px_rgba(240,200,106,0.15)]">
@@ -356,14 +363,14 @@ function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () 
                 aria-hidden
                 className="pointer-events-none absolute inset-0"
                 animate={{ opacity: [0, 0, 0.6, 0.6] }}
-                transition={{ duration: INTRO_T, times: [0, 0.22, 0.32, 1], ease: "easeOut" }}
+                transition={{ duration: INTRO_T, times: [0, 0.34, 0.44, 1], ease: "easeOut" }}
                 style={{ background: "radial-gradient(120% 80% at 50% 30%, rgba(240,200,106,0.18), transparent 70%)" }}
               />
               {/* Screen contents drift up and past the lens as the phone opens. */}
               <motion.div
                 className="relative h-full w-full"
                 animate={{ opacity: [1, 1, 0], y: [0, 0, -40], scale: [1, 1, 1.15] }}
-                transition={{ duration: INTRO_T, times: [0, 0.74, 0.9], ease: "easeIn" }}
+                transition={{ duration: INTRO_T, times: [0, 0.83, 0.92], ease: "easeIn" }}
               >
                 <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3.5 pt-7">
                   <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[11px] font-black text-[#2A1B4E]">P</span>
@@ -378,7 +385,7 @@ function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () 
                       key={i}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 1.2 + i * 0.58, duration: 0.4 }}
+                      transition={{ delay: 2.0 + i * 0.6, duration: 0.4 }}
                       className={m.side === "out" ? "self-end" : "self-start"}
                     >
                       <div
@@ -395,7 +402,7 @@ function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () 
                   <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: [0.9, 1.04, 1] }}
-                    transition={{ delay: 2.95, duration: 0.4 }}
+                    transition={{ delay: 3.7, duration: 0.45 }}
                     className="mt-1 flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] py-2 text-[11px] font-bold text-[#2A1B4E]"
                   >
                     <Check className="h-3.5 w-3.5" /> Approve all
@@ -405,6 +412,16 @@ function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () 
             </div>
           </div>
         </motion.div>
+
+        {/* Lock flash — a brief gold pulse the instant the panels meet and the
+            phone snaps together. */}
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-[2.75rem]"
+          animate={{ opacity: [0, 0, 0.5, 0] }}
+          transition={{ duration: INTRO_T, times: [0, 0.28, 0.34, 0.44], ease: "easeOut" }}
+          style={{ background: "radial-gradient(60% 50% at 50% 47%, rgba(240,200,106,0.9), transparent 70%)", filter: "blur(6px)" }}
+        />
       </div>
     </motion.div>
   );
