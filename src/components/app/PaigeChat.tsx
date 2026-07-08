@@ -30,6 +30,7 @@ import { fieldToWriteBackUpdate } from "@/lib/extractionProposal";
 import { useProfileSnapshot } from "@/hooks/useProfileSnapshot";
 import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
 import { trackEvent } from "@/hooks/useAnalytics";
+import { usePlaybook } from "@/lib/playbook";
 
 type Message = {
   role: "user" | "assistant";
@@ -46,14 +47,12 @@ interface PaigeChatProps {
   clientId?: string;
 }
 
-const quickActions = [
-  { label: "My Credit Score", prompt: "Show me my credit factor breakdown" },
-  { label: "Run Funding Match", prompt: "Run a funding match search for me" },
-  { label: "Start a Dispute", prompt: "I need to dispute an item on my credit report" },
-  { label: "What Should I Do Next?", prompt: "What's the highest impact action I should take right now?" },
-];
-
 function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
+  // Persona + quick actions come from the tenant's active Playbook (doctrine
+  // §7/§8) so the client-facing Paige is native to the tenant's practice — not
+  // a hardcoded credit/funding script. Defaults to neutral coaching today.
+  const playbook = usePlaybook();
+  const quickActions = playbook.quickActions;
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   // Snapshot of profile/business fields used by the conversational extractor
   // to skip already-populated values. Refreshed after every successful save.
@@ -89,7 +88,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "What's good — I'm Paige, your AI credit strategist. Stop guessing. Let's look at the data. What do you want to hit today?",
+      content: playbook.persona.greeting,
     },
   ]);
   const [input, setInput] = useState("");
@@ -408,9 +407,10 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         ? `\n\nRECENT CHAT HISTORY (last ${recentChatMessages.length} turns — pick up from here):\n${recentChatMessages.map(m => `${m.role === "user" ? "Client" : "Paige"}: ${m.content}`).join("\n")}`
         : "";
 
+      const voicePersona = `You are ${playbook.persona.name}, ${playbook.persona.role} (${playbook.persona.domain}). Tone: ${playbook.persona.tone}.`;
       const voiceSystemPrompt = contextBlock
-        ? `You are Paige, the AI credit strategist for PaigeAgent.ai. You have full access to this client's credit file data. Use it to give specific, data-driven answers — never ask the client to share information you already have.\n\n${voicePageLine}\n\nCLIENT DATA:\n${contextBlock}${historyBlock}\n\nRULES:\n- Reference specific scores, accounts, and amounts from the client data above\n- The client is currently viewing the "${currentPageRef.current}" page — assume their questions relate to what they are seeing there\n- If the client has no credit data on file, say so clearly and direct them to upload a report\n- Never fabricate data\n- VOICE: Be conversational and concise (1-2 short sentences per turn). Use natural acknowledgments like "Got it", "Right", "Exactly". Never read bullet points aloud — convert to natural speech.\n- Connect insights to their funding goals when relevant`
-        : `You are Paige, the AI credit strategist for PaigeAgent.ai. ${voicePageLine}.${historyBlock}\n\nVOICE: Be conversational and concise. Use short sentences and natural acknowledgments.`;
+        ? `${voicePersona} You have this client's records on file — use them to give specific answers and never ask for information you already have.\n\n${voicePageLine}\n\nCLIENT DATA:\n${contextBlock}${historyBlock}\n\nRULES:\n- Reference specifics from the client data above\n- The client is currently viewing the "${currentPageRef.current}" page — assume their questions relate to what they are seeing there\n- Never fabricate data\n- VOICE: Be conversational and concise (1-2 short sentences per turn). Use natural acknowledgments like "Got it", "Right", "Exactly". Never read bullet points aloud — convert to natural speech.\n- Keep the client moving toward their goals`
+        : `${voicePersona} ${voicePageLine}.${historyBlock}\n\nVOICE: Be conversational and concise. Use short sentences and natural acknowledgments.`;
 
       // NOTE: ElevenLabs rejects `firstMessage` and `prompt` overrides unless
       // they are explicitly enabled in the agent dashboard config. Sending them
@@ -771,8 +771,8 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         <div className="flex items-center gap-2 sm:gap-3">
           <img src={paigeAvatar} alt="Paige" className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-accent" />
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-foreground text-sm">PaigeAgent.ai</h2>
-            <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">Your credit & funding strategist</p>
+            <h2 className="font-bold text-foreground text-sm capitalize">{playbook.persona.name}</h2>
+            <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate capitalize">{playbook.persona.role}</p>
           </div>
           {/* Voice status in header on mobile for visibility */}
           {isMobile && conversation.status === "connected" && (
