@@ -154,13 +154,19 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
   const { scene } = useGLTF("/paige/paige-central.glb");
   const [model, headY] = useMemo(() => {
     const cloned = scene.clone(true);
+    // See-through "being of light" — translucent gold that glows, so the
+    // particles, rings and companion are faintly visible through the form.
     const mat = new THREE.MeshStandardMaterial({
       color: GOLD,
       emissive: GOLD_HI,
-      emissiveIntensity: 0.12,
-      metalness: 1,
-      roughness: 0.28,
-      envMapIntensity: 2.2,
+      emissiveIntensity: 0.4,
+      metalness: 0.4,
+      roughness: 0.3,
+      envMapIntensity: 2,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+      side: THREE.DoubleSide,
     });
     cloned.traverse((o) => {
       const m = o as THREE.Mesh;
