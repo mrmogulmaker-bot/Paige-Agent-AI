@@ -123,7 +123,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       setMessages([
         {
           role: "assistant",
-          content: "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation.",
+          content: playbook.persona.greeting,
         },
       ]);
       return;
@@ -470,7 +470,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       setMessages([
         {
           role: "assistant",
-          content: "I don't see any credit data in your file yet. Upload your credit report and I will analyze it and give you a full picture of your credit situation.",
+          content: playbook.persona.greeting,
         },
       ]);
       if (conversation.status === "connected") {
@@ -942,7 +942,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         )}
 
         <div className="flex gap-1.5 sm:gap-2 items-center">
-          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach credit report or financial document (PDF)">
+          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach a document (PDF)">
             <Paperclip className="w-4 h-4" />
           </Button>
           {conversation.status !== "connected" && (
