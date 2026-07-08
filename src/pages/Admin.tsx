@@ -37,6 +37,21 @@ const AdminOnly = ({ children }: { children: React.ReactNode }) => (
   <RoleGate allow={["admin"]}>{children}</RoleGate>
 );
 
+/** God-tier gate: platform staff (owner or scoped Platform Admin) only. */
+const PlatformStaffOnly = ({ children }: { children: React.ReactNode }) => {
+  const { loading, isPlatformStaff } = useTenantContext();
+  if (loading) return <div className="p-6 text-sm text-muted-foreground animate-pulse">Checking access…</div>;
+  if (!isPlatformStaff) {
+    return (
+      <div className="max-w-md mx-auto mt-12 rounded-lg border border-border bg-card p-6 text-center">
+        <h2 className="text-lg font-semibold mb-1">Restricted area</h2>
+        <p className="text-sm text-muted-foreground">This area is for the platform team.</p>
+      </div>
+    );
+  }
+  return <>{children}</>;
+};
+
 
 // Lazy-load admin sub-pages
 const ClientManagementDashboard = lazy(() => import("@/components/dashboard/ClientManagementDashboard").then(m => ({ default: m.ClientManagementDashboard })));
@@ -193,14 +208,17 @@ const Admin = () => {
         const roleList = (roles || []).map((r: any) => r.role);
         const isAdmin = roleList.includes("admin");
         const isCoach = roleList.includes("coach");
+        // Platform staff (owner / scoped Platform Admin) run the God console and
+        // must clear this gate even without an agency admin/coach role.
+        const isPlatformStaffRole = roleList.includes("platform_admin") || roleList.includes("super_admin");
 
-        if (!isAdmin && !isCoach) {
-          toast.error("Access denied. Admin or coach privileges required.");
+        if (!isAdmin && !isCoach && !isPlatformStaffRole) {
+          toast.error("Access denied. Staff privileges required.");
           navigate("/app", { replace: true });
           return;
         }
 
-        setUserRole(isAdmin ? "admin" : "coach");
+        setUserRole(isAdmin || isPlatformStaffRole ? "admin" : "coach");
         // Don't fail the whole page if a stats query errors — render the
         // workspace anyway so the user is never bounced off /admin.
         fetchStats().catch((e) => console.error("[Admin] fetchStats:", e));
@@ -536,10 +554,10 @@ const Admin = () => {
           <Suspense fallback={<SuspenseFallback />}><FundingLensHub /></Suspense>
         } />
         <Route path="platform/tenants" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><PlatformTenants /></Suspense></AdminOnly>
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformTenants /></Suspense></PlatformStaffOnly>
         } />
         <Route path="platform/team" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><PlatformTeam /></Suspense></AdminOnly>
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformTeam /></Suspense></PlatformStaffOnly>
         } />
       </Routes>
 

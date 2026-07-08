@@ -34,7 +34,7 @@ function inviteLink(token: string) {
 }
 
 export default function PlatformTeam() {
-  const { isPlatformOwner, loading: ctxLoading } = useTenantContext();
+  const { isPlatformOwner, isPlatformStaff, loading: ctxLoading } = useTenantContext();
   const { toast } = useToast();
   const [staff, setStaff] = useState<StaffRow[]>([]);
   const [invites, setInvites] = useState<InviteRow[]>([]);
@@ -57,10 +57,10 @@ export default function PlatformTeam() {
   };
 
   useEffect(() => {
-    if (ctxLoading || !isPlatformOwner) return;
+    if (ctxLoading || !isPlatformStaff) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctxLoading, isPlatformOwner]);
+  }, [ctxLoading, isPlatformStaff]);
 
   const copyLink = async (token: string) => {
     try {
@@ -111,17 +111,17 @@ export default function PlatformTeam() {
 
   if (ctxLoading) return <div className="text-muted-foreground text-sm">Loading…</div>;
 
-  if (!isPlatformOwner) {
+  if (!isPlatformStaff) {
     return (
       <Card className="max-w-xl">
         <CardHeader>
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 text-destructive" />
-            <CardTitle>Platform owner only</CardTitle>
+            <CardTitle>Platform team only</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">Managing platform staff is restricted to the platform owner.</p>
+          <p className="text-sm text-muted-foreground">This area is restricted to the platform team.</p>
         </CardContent>
       </Card>
     );
@@ -137,7 +137,8 @@ export default function PlatformTeam() {
         </p>
       </div>
 
-      {/* Invite */}
+      {/* Invite (owner-only) */}
+      {isPlatformOwner && (
       <Card>
         <CardHeader><CardTitle className="text-base">Invite a Platform Admin</CardTitle></CardHeader>
         <CardContent>
@@ -159,6 +160,7 @@ export default function PlatformTeam() {
           </p>
         </CardContent>
       </Card>
+      )}
 
       {/* Pending invites */}
       {invites.length > 0 && (
@@ -227,11 +229,13 @@ export default function PlatformTeam() {
                         <TableCell className="text-right">
                           {isOwner ? (
                             <span className="text-xs text-muted-foreground pr-2">Protected</span>
-                          ) : (
+                          ) : isPlatformOwner ? (
                             <Button variant="ghost" size="sm" className="text-destructive"
                               onClick={() => setRevokeTarget(s)}>
                               <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Revoke
                             </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground pr-2">—</span>
                           )}
                         </TableCell>
                       </TableRow>
