@@ -155,13 +155,23 @@ Deno.serve(async (req) => {
 
     if (action === "create") {
       const startMs = Date.parse(body?.start);
-      const name = String(body?.guest?.name ?? "").trim();
-      const email = String(body?.guest?.email ?? "").trim().toLowerCase();
-      const phone = String(body?.guest?.phone ?? "").trim() || null;
-      const notes = String(body?.notes ?? "").trim() || null;
+      const name = String(body?.guest?.name ?? "").trim().slice(0, 120);
+      const email = String(body?.guest?.email ?? "").trim().toLowerCase().slice(0, 200);
+      const phone = String(body?.guest?.phone ?? "").trim().slice(0, 40) || null;
+      const notes = String(body?.notes ?? "").trim().slice(0, 1000) || null;
       if (!Number.isFinite(startMs)) return json({ error: "Invalid time." }, 400);
+      if (startMs > now + 60 * 86_400_000) return json({ error: "That time is too far out." }, 400);
       if (!name) return json({ error: "Name is required." }, 400);
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "A valid email is required." }, 400);
+
+      // Lightweight abuse control: cap booking_page creates per host per minute.
+      const { count: recent } = await admin
+        .from("internal_bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("host_user_id", host.user_id)
+        .eq("source", "booking_page")
+        .gte("created_at", new Date(now - 60_000).toISOString());
+      if ((recent ?? 0) >= 5) return json({ error: "Too many requests — please try again shortly." }, 429);
 
       // Re-validate the slot server-side against live availability + bookings.
       const busy = await loadBusy(admin, host.user_id, startMs - 86_400_000, startMs + 86_400_000);
@@ -180,10 +190,15 @@ Deno.serve(async (req) => {
         start_at: new Date(startMs).toISOString(),
         end_at: new Date(endMs).toISOString(),
         timezone: host.timezone,
-        status: "confirmed",
+        status: "scheduled",
         source: "booking_page",
       }).select("id, start_at, end_at, title").single();
-      if (error) return json({ error: error.message }, 500);
+      if (error) {
+        // Unique/exclusion violation = the slot was just taken in a race.
+        if ((error as { code?: string }).code === "23505")
+          return json({ error: "That time was just booked. Please pick another." }, 409);
+        return json({ error: error.message }, 500);
+      }
       return json({ ok: true, booking: data });
     }
 

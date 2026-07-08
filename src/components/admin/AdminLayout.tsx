@@ -151,6 +151,7 @@ const adminNavItems = [
 const GOD_HUBS: Hub[] = [
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
+  { label: "Calendar", href: "/admin/calendar", icon: CalendarDays },
 ];
 
 interface AdminLayoutProps {

@@ -114,7 +114,7 @@ export default function BookingPage() {
       </div>
       <h1 className="text-xl font-bold">You're booked</h1>
       <p className="text-[#EDE8F6] mt-2">{selectedSlot && format(new Date(selectedSlot), "EEEE, MMMM d 'at' h:mm a")}</p>
-      <p className="text-sm text-[#A79EC2] mt-1">A confirmation is on its way to {form.email}.</p>
+      <p className="text-sm text-[#A79EC2] mt-1">Your time is reserved — saved under {form.email}.</p>
     </div>,
   );
 
@@ -160,7 +160,7 @@ export default function BookingPage() {
                 className="bg-white/5 border-white/10 text-[#EDE8F6]" rows={2} />
             </div>
           </div>
-          {errorMsg && <p className="text-sm text-red-400 mt-3">{errorMsg}</p>}
+          {errorMsg && <p className="text-sm text-red-400 mt-3" aria-live="polite">{errorMsg}</p>}
           <Button onClick={book} disabled={submitting || !form.name.trim() || !form.email.trim()}
             className="w-full mt-5 bg-gradient-to-r from-[#EBB94C] to-[#F2CE77] text-[#1B1230] font-semibold hover:opacity-95">
             {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Confirm booking

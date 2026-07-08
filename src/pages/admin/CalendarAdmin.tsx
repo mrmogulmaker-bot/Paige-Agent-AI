@@ -8,6 +8,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CalendarDays, Plus, Link as LinkIcon, Unlink, Loader2 } from "lucide-react";
 
+type DayWindow = { day: number; start: string; end: string };
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+type AvailState = Record<number, { enabled: boolean; start: string; end: string }>;
+const DEFAULT_AVAIL: AvailState = Object.fromEntries(
+  [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { enabled: d >= 1 && d <= 5, start: "09:00", end: "17:00" }]),
+);
+
 type Settings = {
   google_calendar_connected: boolean;
   google_email: string | null;
@@ -16,6 +23,7 @@ type Settings = {
   booking_page_enabled: boolean;
   default_meeting_duration_min: number;
   timezone: string;
+  availability_json: DayWindow[] | null;
 };
 
 type Booking = {
@@ -35,6 +43,8 @@ export default function CalendarAdmin() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [avail, setAvail] = useState<AvailState>(DEFAULT_AVAIL);
+  const [savingAvail, setSavingAvail] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -43,13 +53,23 @@ export default function CalendarAdmin() {
     if (!uid) { setLoading(false); return; }
 
     const [{ data: s }, { data: b }] = await Promise.all([
-      supabase.from("staff_calendar_settings").select("google_calendar_connected, google_email, apple_caldav_connected, booking_page_slug, booking_page_enabled, default_meeting_duration_min, timezone").eq("user_id", uid).maybeSingle(),
+      supabase.from("staff_calendar_settings").select("google_calendar_connected, google_email, apple_caldav_connected, booking_page_slug, booking_page_enabled, default_meeting_duration_min, timezone, availability_json").eq("user_id", uid).maybeSingle(),
       supabase.from("internal_bookings").select("id, title, start_at, end_at, status, source, guest_name, guest_email, meeting_link").eq("host_user_id", uid).gte("start_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString()).order("start_at", { ascending: true }).limit(50),
     ]);
-    setSettings(s as Settings | null ?? {
+    const settingsVal = (s as Settings | null) ?? {
       google_calendar_connected: false, google_email: null, apple_caldav_connected: false,
-      booking_page_slug: null, booking_page_enabled: false, default_meeting_duration_min: 30, timezone: "America/New_York",
-    });
+      booking_page_slug: null, booking_page_enabled: false, default_meeting_duration_min: 30, timezone: "America/New_York", availability_json: null,
+    };
+    setSettings(settingsVal);
+    // Hydrate the weekly-hours editor from availability_json (or the default).
+    const next: AvailState = JSON.parse(JSON.stringify(DEFAULT_AVAIL));
+    if (Array.isArray(settingsVal.availability_json) && settingsVal.availability_json.length) {
+      for (const d of [0, 1, 2, 3, 4, 5, 6]) next[d].enabled = false;
+      for (const w of settingsVal.availability_json) {
+        if (w && typeof w.day === "number") next[w.day] = { enabled: true, start: w.start, end: w.end };
+      }
+    }
+    setAvail(next);
     setBookings((b as Booking[]) ?? []);
     setLoading(false);
   };
@@ -92,6 +112,15 @@ export default function CalendarAdmin() {
     }, { onConflict: "user_id" });
     if (error) toast.error(error.message);
     else { toast.success("Saved"); void load(); }
+  };
+
+  const saveAvailability = async () => {
+    setSavingAvail(true);
+    const json: DayWindow[] = [0, 1, 2, 3, 4, 5, 6]
+      .filter((d) => avail[d]?.enabled && avail[d].start < avail[d].end)
+      .map((d) => ({ day: d, start: avail[d].start, end: avail[d].end }));
+    await saveSettings({ availability_json: json });
+    setSavingAvail(false);
   };
 
   const grouped = useMemo(() => {
@@ -165,6 +194,38 @@ export default function CalendarAdmin() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Weekly availability</CardTitle>
+          <CardDescription>The hours you're open for bookings, in your calendar timezone. Default is Mon–Fri, 9–5.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+            <div key={d} className="flex items-center gap-3">
+              <label className="flex items-center gap-2 w-24 cursor-pointer">
+                <input type="checkbox" checked={avail[d]?.enabled ?? false}
+                  onChange={(e) => setAvail((a) => ({ ...a, [d]: { ...a[d], enabled: e.target.checked } }))} />
+                <span className="text-sm font-medium">{DAY_NAMES[d]}</span>
+              </label>
+              {avail[d]?.enabled ? (
+                <>
+                  <Input type="time" value={avail[d]?.start ?? "09:00"}
+                    onChange={(e) => setAvail((a) => ({ ...a, [d]: { ...a[d], start: e.target.value } }))} className="w-32" />
+                  <span className="text-muted-foreground text-sm">to</span>
+                  <Input type="time" value={avail[d]?.end ?? "17:00"}
+                    onChange={(e) => setAvail((a) => ({ ...a, [d]: { ...a[d], end: e.target.value } }))} className="w-32" />
+                </>
+              ) : (
+                <span className="text-sm text-muted-foreground">Unavailable</span>
+              )}
+            </div>
+          ))}
+          <Button size="sm" onClick={saveAvailability} disabled={savingAvail} className="mt-2">
+            {savingAvail && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Save availability
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Booking page</CardTitle>
           <CardDescription>Share a public URL so contacts can book time with you.</CardDescription>
         </CardHeader>
@@ -178,9 +239,16 @@ export default function CalendarAdmin() {
                 onChange={(e) => setSettings((s) => s && { ...s, booking_page_slug: e.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-") })}
               />
               {settings?.booking_page_slug && (
-                <p className="text-xs text-muted-foreground mt-1 truncate">
-                  {window.location.origin}/book/{settings.booking_page_slug}
-                </p>
+                <div className="mt-1 flex items-center gap-3">
+                  <p className="text-xs text-muted-foreground truncate">{window.location.origin}/book/{settings.booking_page_slug}</p>
+                  <button type="button" className="text-xs text-primary hover:underline flex-shrink-0"
+                    onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/book/${settings.booking_page_slug}`); toast.success("Link copied"); }}>
+                    Copy
+                  </button>
+                  <a href={`/book/${settings.booking_page_slug}`} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline flex-shrink-0">
+                    Preview
+                  </a>
+                </div>
               )}
             </div>
             <div>
