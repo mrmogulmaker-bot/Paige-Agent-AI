@@ -1,7 +1,24 @@
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Sparkles, Float, Environment, Lightformer } from "@react-three/drei";
+import { Sparkles, Float, Environment, Lightformer, useGLTF } from "@react-three/drei";
 import { Suspense, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+
+useGLTF.preload("/paige/paige-central.glb");
+
+/** Scale an object to a target height and center it at the origin; return top-y. */
+function normalize(obj: THREE.Object3D, targetHeight: number) {
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3());
+  const s = targetHeight / (size.y || 1);
+  obj.scale.setScalar(s);
+  obj.updateMatrixWorld(true);
+  const b2 = new THREE.Box3().setFromObject(obj);
+  const c = b2.getCenter(new THREE.Vector3());
+  obj.position.x -= c.x;
+  obj.position.y -= c.y;
+  obj.position.z -= c.z;
+  return b2.max.y - c.y; // top relative to new center
+}
 
 /**
  * PaigeScene — the new gold + indigo world (replaces the star-field particle
@@ -54,27 +71,25 @@ function OrbitRings({ reduced }: { reduced: boolean }) {
 }
 
 /**
- * The companion — a gold core + orbiting refracting plates that actually FLIES
- * a wide path across the whole scene. Plates tighten around the core as it
- * accelerates; a golden particle trail follows it. Fully procedural.
+ * The companion — a gold core + orbiting refracting plates. It circles in a
+ * tight ring just below the central character's head (parented to the character
+ * group, orbiting `headY`), with a short golden trail. Same gold aesthetic.
  */
 const PLATES = 6;
-const TRAIL = 7;
-function Companion({ reduced }: { reduced: boolean }) {
+const TRAIL = 5;
+function Companion({ reduced, headY }: { reduced: boolean; headY: number }) {
   const root = useRef<THREE.Group>(null);
   const core = useRef<THREE.Mesh>(null);
   const platesGroup = useRef<THREE.Group>(null);
-  const coreMat = useRef<THREE.MeshStandardMaterial>(null);
   const plateRefs = useRef<(THREE.Mesh | null)[]>([]);
   const trailRefs = useRef<(THREE.Mesh | null)[]>([]);
-  const prev = useRef(new THREE.Vector3(0, 0.85, 0));
-  const smoothSpeed = useRef(0);
+  const R = 0.62; // orbit radius below the head
 
   const plateEls = useMemo(
     () =>
       Array.from({ length: PLATES }).map((_, i) => (
         <mesh key={i} ref={(el) => (plateRefs.current[i] = el)} rotation={[0, -(i / PLATES) * Math.PI * 2, 0.32]}>
-          <boxGeometry args={[0.15, 0.02, 0.1]} />
+          <boxGeometry args={[0.13, 0.018, 0.085]} />
           <meshStandardMaterial color={GOLD} emissive={GOLD_HI} emissiveIntensity={0.4} metalness={1} roughness={0.22} envMapIntensity={2.2} />
         </mesh>
       )),
@@ -85,45 +100,34 @@ function Companion({ reduced }: { reduced: boolean }) {
     () =>
       Array.from({ length: TRAIL }).map((_, i) => (
         <mesh key={i} ref={(el) => (trailRefs.current[i] = el)}>
-          <sphereGeometry args={[0.05 * (1 - i / TRAIL) + 0.014, 12, 12]} />
-          <meshBasicMaterial color={GOLD_HI} transparent opacity={0.45 * (1 - i / TRAIL)} depthWrite={false} />
+          <sphereGeometry args={[0.04 * (1 - i / TRAIL) + 0.012, 12, 12]} />
+          <meshBasicMaterial color={GOLD_HI} transparent opacity={0.4 * (1 - i / TRAIL)} depthWrite={false} />
         </mesh>
       )),
     [],
   );
 
-  useFrame((s, dt) => {
-    const t = s.clock.elapsedTime * (reduced ? 0.12 : 0.35);
-    // Wide roaming flight path across the hero.
-    const x = Math.sin(t * 0.9) * 2.4 + Math.sin(t * 0.37) * 0.9;
-    const y = 0.85 + Math.sin(t * 1.3) * 0.85 + Math.cos(t * 0.5) * 0.3;
-    const z = Math.cos(t * 0.8) * 1.1 + Math.sin(t * 0.29) * 0.5;
+  useFrame((s) => {
+    const t = s.clock.elapsedTime * (reduced ? 0.18 : 0.6);
+    if (root.current) root.current.position.set(Math.cos(t) * R, headY + Math.sin(t * 1.4) * 0.07, Math.sin(t) * R);
 
-    if (root.current) {
-      root.current.position.set(x, y, z);
-      const inst = root.current.position.distanceTo(prev.current) / Math.max(dt, 0.001);
-      prev.current.copy(root.current.position);
-      smoothSpeed.current += (inst - smoothSpeed.current) * 0.15;
-    }
-    const sn = Math.min(1, smoothSpeed.current / 3.2); // 0 slow … 1 fast
-
-    // Plates tighten toward the core as it accelerates.
-    const r = 0.19 - sn * 0.09;
+    // Plates breathe gently in and out.
+    const pulse = reduced ? 0 : Math.sin(s.clock.elapsedTime * 1.8) * 0.5 + 0.5;
+    const r = 0.16 - pulse * 0.045;
     for (let i = 0; i < PLATES; i++) {
       const a = (i / PLATES) * Math.PI * 2;
       plateRefs.current[i]?.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
     }
-    if (platesGroup.current) platesGroup.current.rotation.y = -s.clock.elapsedTime * (0.8 + sn * 1.6);
+    if (platesGroup.current) platesGroup.current.rotation.y = -s.clock.elapsedTime * (reduced ? 0.3 : 1.2);
     if (core.current) core.current.rotation.y += reduced ? 0.003 : 0.02;
-    if (coreMat.current) coreMat.current.emissiveIntensity = 0.7 + sn * 0.9;
 
-    // Golden comet trail follows the core.
+    // Short golden trail follows the core.
     if (root.current) {
       let target: THREE.Vector3 = root.current.position;
       for (let i = 0; i < TRAIL; i++) {
         const tm = trailRefs.current[i];
         if (!tm) continue;
-        tm.position.lerp(target, reduced ? 1 : 0.35);
+        tm.position.lerp(target, reduced ? 1 : 0.4);
         target = tm.position;
       }
     }
@@ -133,57 +137,64 @@ function Companion({ reduced }: { reduced: boolean }) {
     <group>
       <group ref={root}>
         <mesh ref={core}>
-          <sphereGeometry args={[0.1, 32, 32]} />
-          <meshStandardMaterial ref={coreMat} color={GOLD_HI} emissive={GOLD_HI} emissiveIntensity={0.85} metalness={1} roughness={0.15} envMapIntensity={2.6} />
+          <sphereGeometry args={[0.09, 32, 32]} />
+          <meshStandardMaterial color={GOLD_HI} emissive={GOLD_HI} emissiveIntensity={0.85} metalness={1} roughness={0.15} envMapIntensity={2.6} />
         </mesh>
         <group ref={platesGroup}>{plateEls}</group>
-        <pointLight color={GOLD_HI} intensity={5} distance={3.5} decay={2} />
+        <pointLight color={GOLD_HI} intensity={4} distance={3} decay={2} />
       </group>
       {trailEls}
     </group>
   );
 }
 
-/** Placeholder Paige — a translucent gold robed figure of light. */
-function PaigeFigure({ reduced }: { reduced: boolean }) {
+/** Paige — the central character (Meshy GLB). Geometry-only export, so normals
+ *  are computed and it's skinned in gold metal to match the companion. */
+function PaigeCentral({ reduced }: { reduced: boolean }) {
+  const { scene } = useGLTF("/paige/paige-central.glb");
+  const [model, headY] = useMemo(() => {
+    const cloned = scene.clone(true);
+    const mat = new THREE.MeshStandardMaterial({
+      color: GOLD,
+      emissive: GOLD_HI,
+      emissiveIntensity: 0.12,
+      metalness: 1,
+      roughness: 0.28,
+      envMapIntensity: 2.2,
+    });
+    cloned.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        if (!m.geometry.attributes.normal) m.geometry.computeVertexNormals();
+        m.material = mat;
+      }
+    });
+    const top = normalize(cloned, 3.4);
+    return [cloned, top - 0.55] as const;
+  }, [scene]);
+
   const group = useRef<THREE.Group>(null);
-  const body = useRef<THREE.Mesh>(null);
-
-  const points = useMemo(
-    () =>
-      [
-        [0.001, 2.05], [0.16, 1.96], [0.2, 1.82], [0.1, 1.68], [0.34, 1.5],
-        [0.42, 1.15], [0.35, 0.65], [0.5, 0.15], [0.68, -0.45], [0.86, -1.05],
-        [0.99, -1.35], [0.001, -1.4],
-      ].map(([x, y]) => new THREE.Vector2(x, y)),
-    [],
-  );
-
+  const inner = useRef<THREE.Group>(null);
   useFrame((s) => {
     const t = s.clock.elapsedTime;
-    if (body.current) {
-      const b = reduced ? 1 : 1 + Math.sin(t * 1.1) * 0.014;
-      body.current.scale.set(1, b, 1);
+    if (inner.current) {
+      const b = reduced ? 1 : 1 + Math.sin(t * 1.1) * 0.012;
+      inner.current.scale.setScalar(b);
     }
     if (group.current) {
       group.current.rotation.y += (s.pointer.x * 0.4 - group.current.rotation.y) * 0.05;
-      group.current.rotation.x += (-s.pointer.y * 0.1 - group.current.rotation.x) * 0.05;
+      group.current.rotation.x += (-s.pointer.y * 0.08 - group.current.rotation.x) * 0.05;
     }
   });
 
   return (
-    <group ref={group} position={[1.75, -0.35, 0]}>
-      <mesh ref={body}>
-        <latheGeometry args={[points, 48]} />
-        <meshStandardMaterial color={GOLD} emissive={GOLD_HI} emissiveIntensity={0.6} roughness={0.3} metalness={0.2} transparent opacity={0.82} side={THREE.DoubleSide} />
-      </mesh>
-      {/* Head glow */}
-      <mesh position={[0, 1.9, 0]}>
-        <sphereGeometry args={[0.17, 24, 24]} />
-        <meshStandardMaterial color={GOLD_HI} emissive={GOLD_HI} emissiveIntensity={1.5} toneMapped={false} />
-      </mesh>
+    <group ref={group} position={[1.65, -0.4, 0]}>
+      <group ref={inner}>
+        <primitive object={model} />
+      </group>
       <OrbitRings reduced={reduced} />
-      <Sparkles count={40} scale={[2.2, 3.6, 2.2]} position={[0, 0.4, 0]} size={2} speed={reduced ? 0 : 0.25} color={GOLD_HI} opacity={0.7} />
+      <Sparkles count={40} scale={[2.6, 4, 2.6]} position={[0, 0.4, 0]} size={2} speed={reduced ? 0 : 0.25} color={GOLD_HI} opacity={0.7} />
+      <Companion reduced={reduced} headY={headY} />
     </group>
   );
 }
@@ -191,8 +202,8 @@ function PaigeFigure({ reduced }: { reduced: boolean }) {
 function CameraRig() {
   useFrame((s) => {
     s.camera.position.x += (s.pointer.x * 0.5 - s.camera.position.x) * 0.03;
-    s.camera.position.y += (0.3 + s.pointer.y * 0.25 - s.camera.position.y) * 0.03;
-    s.camera.lookAt(0.6, 0.1, 0);
+    s.camera.position.y += (0.35 + s.pointer.y * 0.25 - s.camera.position.y) * 0.03;
+    s.camera.lookAt(0.95, 0.15, 0);
   });
   return null;
 }
@@ -210,12 +221,9 @@ function Scene() {
         <Lightformer form="circle" intensity={1.6} color={OFFWHITE} scale={2} position={[0, 4, -3]} />
       </Environment>
 
-      <Float speed={reduced ? 0 : 1} rotationIntensity={reduced ? 0 : 0.14} floatIntensity={reduced ? 0 : 0.4}>
-        <PaigeFigure reduced={reduced} />
+      <Float speed={reduced ? 0 : 0.8} rotationIntensity={reduced ? 0 : 0.1} floatIntensity={reduced ? 0 : 0.35}>
+        <PaigeCentral reduced={reduced} />
       </Float>
-
-      {/* Companion flies the whole scene in world space (not parented to Paige) */}
-      <Companion reduced={reduced} />
 
       {/* Gold + indigo particle field */}
       <Sparkles count={120} scale={[16, 10, 8]} size={2.4} speed={reduced ? 0 : 0.2} color={GOLD_HI} opacity={0.5} />
