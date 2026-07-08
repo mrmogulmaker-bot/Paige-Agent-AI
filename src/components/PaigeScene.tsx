@@ -1,7 +1,12 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Sparkles, Float, Environment, Lightformer, useGLTF } from "@react-three/drei";
-import { Suspense, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+
+// Global pointer (normalized -1..1 from viewport center). Driven by a window
+// listener, so Paige tracks the cursor even though she's a fixed layer BEHIND
+// the page content (the content would otherwise swallow the canvas's events).
+const ptr = { x: 0, y: 0 };
 
 useGLTF.preload("/paige/paige-central.glb");
 
@@ -189,8 +194,8 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
     }
     if (group.current) {
       // Track the cursor across the whole screen (she's a fixed background now).
-      group.current.rotation.y += (s.pointer.x * 0.6 - group.current.rotation.y) * 0.06;
-      group.current.rotation.x += (-s.pointer.y * 0.14 - group.current.rotation.x) * 0.06;
+      group.current.rotation.y += (ptr.x * 0.6 - group.current.rotation.y) * 0.06;
+      group.current.rotation.x += (-ptr.y * 0.14 - group.current.rotation.x) * 0.06;
     }
   });
 
@@ -208,8 +213,8 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
 
 function CameraRig() {
   useFrame((s) => {
-    s.camera.position.x += (s.pointer.x * 0.5 - s.camera.position.x) * 0.03;
-    s.camera.position.y += (0.35 + s.pointer.y * 0.25 - s.camera.position.y) * 0.03;
+    s.camera.position.x += (ptr.x * 0.5 - s.camera.position.x) * 0.03;
+    s.camera.position.y += (0.35 + ptr.y * 0.25 - s.camera.position.y) * 0.03;
     s.camera.lookAt(0.95, 0.15, 0);
   });
   return null;
@@ -243,6 +248,14 @@ function Scene() {
 
 export default function PaigeScene() {
   const [ok] = useState(supportsWebGL);
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      ptr.x = (e.clientX / window.innerWidth) * 2 - 1;
+      ptr.y = (e.clientY / window.innerHeight) * 2 - 1;
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
   if (!ok) return <div className="absolute inset-0" />;
   return (
     <Canvas
