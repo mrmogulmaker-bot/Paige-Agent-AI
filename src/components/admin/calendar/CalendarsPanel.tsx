@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarDays, Plus, Copy, ExternalLink, Loader2, Trash2, Pencil, Palette, Globe, Check,
-  FolderPlus, Users, Folder,
+  FolderPlus, Users, Folder, UserRound, Repeat, GraduationCap, UsersRound,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -62,6 +62,11 @@ export interface CalendarRow {
   enabled: boolean;
   group_id: string | null;
   created_by: string | null;
+  theme: string;
+  subtitle: string | null;
+  show_company_name: boolean;
+  location_type: string;
+  location_value: string | null;
 }
 
 export interface CalendarGroup { id: string; name: string; tenant_id: string | null; }
@@ -74,7 +79,16 @@ const DEFAULT_AVAIL: AvailState = Object.fromEntries(
   [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { enabled: d >= 1 && d <= 5, start: "09:00", end: "17:00" }]),
 );
 
-const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, group_id, created_by";
+const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value";
+
+const LOCATIONS = [
+  { value: "google_meet", label: "Google Meet", hint: "Video link sent after booking" },
+  { value: "zoom", label: "Zoom", hint: "Video link sent after booking" },
+  { value: "phone", label: "Phone call", hint: "You call the invitee's number" },
+  { value: "in_person", label: "In person", hint: "Enter the address below" },
+  { value: "custom", label: "Custom", hint: "Your own link or instructions" },
+  { value: "ask_invitee", label: "Ask the invitee", hint: "Let them choose how to meet" },
+];
 
 const TYPES = [
   { value: "personal", label: "One-on-one", hint: "A single host meets one guest at a time." },
@@ -167,7 +181,7 @@ function BuilderSection({ title, description, children }: { title: string; descr
   );
 }
 
-type BuilderState = { mode: "create" } | { mode: "edit"; calendar: CalendarRow };
+type BuilderState = { mode: "create"; type?: string } | { mode: "edit"; calendar: CalendarRow };
 
 export default function CalendarsPanel() {
   const { activeTenantId, isPlatformStaff } = useTenantContext();
@@ -178,6 +192,7 @@ export default function CalendarsPanel() {
   const [builder, setBuilder] = useState<BuilderState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CalendarRow | null>(null);
   const [groupOpen, setGroupOpen] = useState(false);
+  const [typeChooser, setTypeChooser] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -325,7 +340,7 @@ export default function CalendarsPanel() {
             <Button onClick={() => setGroupOpen(true)} size="sm" variant="outline">
               <FolderPlus className="h-4 w-4 mr-1.5" /> New group
             </Button>
-            <Button onClick={() => setBuilder({ mode: "create" })} size="sm">
+            <Button onClick={() => setTypeChooser(true)} size="sm">
               <Plus className="h-4 w-4 mr-1.5" /> New calendar
             </Button>
           </div>
@@ -364,7 +379,7 @@ export default function CalendarsPanel() {
             <p className="text-xs text-muted-foreground mt-1 mb-3">
               Build your first calendar — set its schedule and branding, then share its booking link.
             </p>
-            <Button size="sm" onClick={() => setBuilder({ mode: "create" })}>
+            <Button size="sm" onClick={() => setTypeChooser(true)}>
               <Plus className="h-4 w-4 mr-1.5" /> Create a calendar
             </Button>
           </div>
@@ -404,6 +419,12 @@ export default function CalendarsPanel() {
         tenantId={activeTenantId}
         isPlatformStaff={isPlatformStaff}
         onCreated={(g) => { setGroups((prev) => [...prev, g].sort((a, b) => a.name.localeCompare(b.name))); setGroupOpen(false); }}
+      />
+
+      <CalendarTypeChooser
+        open={typeChooser}
+        onOpenChange={setTypeChooser}
+        onPick={(type) => { setTypeChooser(false); setBuilder({ mode: "create", type }); }}
       />
 
       <AlertDialog open={deleteTarget !== null} onOpenChange={(v) => !v && setDeleteTarget(null)}>
@@ -480,6 +501,46 @@ function NewGroupDialog({ open, onOpenChange, tenantId, isPlatformStaff, onCreat
   );
 }
 
+// GHL-style "Choose calendar type" step — opens on New calendar, then the builder.
+const TYPE_CARDS = [
+  { value: "personal", icon: UserRound, title: "Personal booking", desc: "Schedules one-on-one meetings with a specific team member.", eg: "Client meetings, private consultations." },
+  { value: "round_robin", icon: Repeat, title: "Round robin", desc: "Distributes appointments among team members in a rotating order.", eg: "Sales calls, onboarding sessions." },
+  { value: "event", icon: GraduationCap, title: "Class booking", desc: "One host meets with multiple participants.", eg: "Webinars, group training, online classes." },
+  { value: "collective", icon: UsersRound, title: "Collective booking", desc: "Multiple hosts meet with one participant.", eg: "Panel interviews, committee reviews." },
+];
+
+function CalendarTypeChooser({ open, onOpenChange, onPick }: {
+  open: boolean; onOpenChange: (v: boolean) => void; onPick: (type: string) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Choose calendar type</DialogTitle>
+          <DialogDescription>Select a calendar type to set up your calendar and customize how appointments are scheduled.</DialogDescription>
+        </DialogHeader>
+        <div className="grid sm:grid-cols-2 gap-3 py-1">
+          {TYPE_CARDS.map((t) => (
+            <button key={t.value} type="button" onClick={() => onPick(t.value)}
+              className="text-left rounded-xl border p-4 hover:border-primary hover:bg-primary/[0.03] transition-colors group">
+              <div className="flex items-start gap-3">
+                <span className="h-9 w-9 rounded-lg bg-primary/10 text-primary grid place-items-center flex-shrink-0 group-hover:bg-primary/15">
+                  <t.icon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <div className="font-semibold text-sm">{t.title}</div>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{t.desc}</p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">E.g.: {t.eg}</p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Blank draft for create mode — every field the builder edits, with sane defaults.
 function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_by"> {
   return {
@@ -497,6 +558,11 @@ function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_
     availability_json: null,
     enabled: false,
     group_id: null,
+    theme: "light",
+    subtitle: "",
+    show_company_name: true,
+    location_type: "google_meet",
+    location_value: "",
   };
 }
 
@@ -531,10 +597,12 @@ function CalendarBuilderSheet({
         buffer_before_min: c.buffer_before_min, buffer_after_min: c.buffer_after_min,
         min_notice_min: c.min_notice_min, timezone: c.timezone, availability_json: c.availability_json,
         enabled: c.enabled, group_id: c.group_id,
+        theme: c.theme || "light", subtitle: c.subtitle ?? "", show_company_name: c.show_company_name !== false,
+        location_type: c.location_type || "google_meet", location_value: c.location_value ?? "",
       });
       setAvail(jsonToAvail(c.availability_json));
     } else {
-      setDraft(blankDraft());
+      setDraft({ ...blankDraft(), type: state.type ?? "personal" });
       setAvail(DEFAULT_AVAIL);
     }
   }, [state]);
@@ -559,6 +627,11 @@ function CalendarBuilderSheet({
       timezone: draft.timezone,
       availability_json: availToJson(avail),
       group_id: draft.group_id,
+      theme: draft.theme === "dark" ? "dark" : "light",
+      subtitle: (draft.subtitle ?? "").trim() || null,
+      show_company_name: draft.show_company_name,
+      location_type: draft.location_type,
+      location_value: (draft.location_value ?? "").trim() || null,
     };
 
     setSaving(true);
@@ -748,8 +821,47 @@ function CalendarBuilderSheet({
             </div>
           </BuilderSection>
 
-          {/* 4 — Branding */}
-          <BuilderSection title="Branding" description="How the public booking page looks. Defaults to your workspace brand.">
+          {/* 4 — Meeting location (how the meeting happens) */}
+          <BuilderSection title="How to meet" description="Where this meeting takes place. Shown to the invitee after they pick a time.">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Location</Label>
+                <Select value={draft.location_type} onValueChange={(v) => set("location_type", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {LOCATIONS.map((l) => (
+                      <SelectItem key={l.value} value={l.value}>
+                        <span className="font-medium">{l.label}</span>
+                        <span className="text-muted-foreground ml-1.5 text-xs hidden sm:inline">— {l.hint}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {(draft.location_type === "in_person" || draft.location_type === "custom") && (
+                <div className="space-y-1.5">
+                  <Label>{draft.location_type === "in_person" ? "Address" : "Link or instructions"}</Label>
+                  <Input value={draft.location_value ?? ""}
+                    placeholder={draft.location_type === "in_person" ? "123 Main St, Suite 200" : "https://…"}
+                    onChange={(e) => set("location_value", e.target.value)} />
+                </div>
+              )}
+            </div>
+          </BuilderSection>
+
+          {/* 5 — Branding + booking-page look */}
+          <BuilderSection title="Booking page" description="How the public page looks. Defaults to your workspace brand.">
+            <div className="space-y-1.5">
+              <Label>Theme</Label>
+              <div className="flex items-center gap-2">
+                {(["light", "dark"] as const).map((th) => (
+                  <button key={th} type="button" onClick={() => set("theme", th)}
+                    className={`px-3 h-8 rounded-md border text-sm capitalize transition ${draft.theme === th ? "border-primary bg-primary/10 text-primary font-medium" : "hover:bg-muted"}`}>
+                    {th}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Booking accent</Label>
@@ -767,6 +879,18 @@ function CalendarBuilderSheet({
                   onChange={(e) => set("logo_url", e.target.value)} />
               </div>
             </div>
+            <div className="space-y-1.5">
+              <Label>Category / subtitle</Label>
+              <Input value={draft.subtitle ?? ""} placeholder="e.g. One-on-one coaching"
+                onChange={(e) => set("subtitle", e.target.value)} />
+            </div>
+            <label className="flex items-center justify-between gap-4 py-1 cursor-pointer">
+              <div>
+                <div className="text-sm font-medium">Show company name</div>
+                <div className="text-xs text-muted-foreground">Display your brand name next to the logo.</div>
+              </div>
+              <Switch checked={draft.show_company_name} onCheckedChange={(v) => set("show_company_name", v)} />
+            </label>
           </BuilderSection>
         </div>
 

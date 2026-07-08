@@ -68,6 +68,11 @@ interface HostSettings {
   description: string | null;
   accent: string | null;
   logoUrl: string | null; // per-calendar logo override (wins over tenant logo)
+  theme: string; // 'light' | 'dark' booking page
+  subtitle: string | null; // category line above the title
+  showCompanyName: boolean; // render the brand/company name next to the logo
+  locationType: string; // in_person | phone | google_meet | zoom | custom | ask_invitee
+  locationValue: string | null; // address / phone / link / instructions
 }
 
 interface Busy { start: number; end: number } // UTC ms
@@ -108,7 +113,7 @@ function computeSlots(h: HostSettings, busy: Busy[], fromMs: number, toMs: numbe
 async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
   const { data: cal } = await admin
     .from("calendars")
-    .select("id, tenant_id, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled")
+    .select("id, tenant_id, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value")
     .eq("slug", slug)
     .maybeSingle();
   if (!cal || cal.enabled !== true) return null;
@@ -134,6 +139,11 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     description: cal.description ?? null,
     accent: cal.accent ?? null,
     logoUrl: cal.logo_url ?? null,
+    theme: cal.theme === "dark" ? "dark" : "light",
+    subtitle: cal.subtitle ?? null,
+    showCompanyName: cal.show_company_name !== false,
+    locationType: cal.location_type ?? "google_meet",
+    locationValue: cal.location_value ?? null,
   };
 }
 
@@ -159,6 +169,11 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     description: data.booking_page_description ?? null,
     accent: data.booking_page_accent ?? null,
     logoUrl: null,
+    theme: "light",
+    subtitle: null,
+    showCompanyName: true,
+    locationType: "google_meet",
+    locationValue: null,
   };
 }
 
@@ -180,6 +195,12 @@ async function loadBranding(admin: ReturnType<typeof createClient>, host: HostSe
     accent: accent || "#EBB94C",
     title: host.title,
     description: host.description,
+    theme: host.theme,
+    subtitle: host.subtitle,
+    showCompanyName: host.showCompanyName,
+    durationMin: host.durationMin,
+    locationType: host.locationType,
+    locationValue: host.locationValue,
   };
 }
 
@@ -247,6 +268,20 @@ Deno.serve(async (req) => {
       const valid = computeSlots(host, busy, startMs - 60000, startMs + 60000, now).some((s) => s === startMs);
       if (!valid) return json({ error: "That time is no longer available. Please pick another." }, 409);
 
+      // Resolve the meeting location. When the calendar asks the invitee, take
+      // their validated choice (phone uses their number); otherwise the owner's
+      // fixed type/value travels onto the booking.
+      const INVITEE_CHOICES = ["phone", "google_meet", "zoom"];
+      let locationType = host.locationType;
+      let locationValue = host.locationValue;
+      if (host.locationType === "ask_invitee") {
+        const chosen = String(body?.location ?? "").trim();
+        locationType = INVITEE_CHOICES.includes(chosen) ? chosen : "phone";
+        locationValue = locationType === "phone" ? (phone ?? null) : null;
+      } else if (host.locationType === "phone" && !locationValue) {
+        locationValue = phone ?? null; // host wants a call but stored no number → use theirs
+      }
+
       const endMs = startMs + host.durationMin * 60000;
       const { data, error } = await admin.from("internal_bookings").insert({
         tenant_id: host.tenant_id,
@@ -262,6 +297,8 @@ Deno.serve(async (req) => {
         timezone: host.timezone,
         status: "scheduled",
         source: "booking_page",
+        location_type: locationType,
+        location_value: locationValue,
       }).select("id, start_at, end_at, title").single();
       if (error) {
         // Unique/exclusion violation = the slot was just taken in a race.
