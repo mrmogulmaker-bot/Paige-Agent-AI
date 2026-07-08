@@ -37,6 +37,10 @@ const isPreviewHost =
 
 async function cleanupServiceWorkers() {
   if (!("serviceWorker" in navigator)) return;
+  // Tracks whether we removed a stale worker/cache. If we did, this page was
+  // very likely served STALE by that old worker — so force one reload to pull
+  // the current build. Guarded so it can only happen once per tab.
+  let removedStale = false;
 
   try {
     const regs = await navigator.serviceWorker.getRegistrations();
@@ -51,6 +55,7 @@ async function cleanupServiceWorkers() {
       if (isPreviewHost || isInIframe) {
         // Preview: unregister everything.
         await reg.unregister();
+        removedStale = true;
         continue;
       }
 
@@ -59,6 +64,7 @@ async function cleanupServiceWorkers() {
       const isOurPushSW = /\/sw\.js(\?|$)/.test(scriptUrl);
       if (!isOurPushSW) {
         await reg.unregister();
+        removedStale = true;
       }
     }
   } catch (e) {
@@ -70,18 +76,24 @@ async function cleanupServiceWorkers() {
   try {
     if ("caches" in window) {
       const names = await caches.keys();
-      await Promise.all(
-        names
-          .filter((n) =>
-            n.startsWith("workbox-") ||
-            n.includes("precache") ||
-            n === "supabase-cache",
-          )
-          .map((n) => caches.delete(n)),
+      const stale = names.filter(
+        (n) => n.startsWith("workbox-") || n.includes("precache") || n === "supabase-cache",
       );
+      if (stale.length) removedStale = true;
+      await Promise.all(stale.map((n) => caches.delete(n)));
     }
   } catch (e) {
     console.warn("[sw-cleanup] cache purge failed:", e);
+  }
+
+  // Force returning visitors off a stale build — exactly once per tab.
+  try {
+    if (removedStale && !isPreviewHost && !isInIframe && !sessionStorage.getItem("__paige_forced_reload__")) {
+      sessionStorage.setItem("__paige_forced_reload__", "1");
+      location.reload();
+    }
+  } catch {
+    /* ignore */
   }
 }
 

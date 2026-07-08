@@ -236,46 +236,24 @@ const INTRO_THREAD = [
   { who: "Paige", side: "out", text: "Moved Maya to Tuesday 10 AM, sent the invite, and carried her prep notes over. Drafted a warm reply so she doesn't feel like a bother." },
   { who: "Paige", side: "out", text: "Devin from last night's webinar — follow-up drafted before it goes cold. And Jordan's gone quiet 12 days: flagging at-risk." },
 ];
-function IntroSequence({ reduced }: { reduced: boolean }) {
-  // Read reduced-motion synchronously here — the parent hook is false on first
-  // render (it flips in an effect), so we must check the media query directly
-  // or the intro would play for reduced-motion users.
-  const [done, setDone] = useState(() => {
-    try {
-      if (reduced || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return true;
-      return sessionStorage.getItem("paige_intro_v1") === "1";
-    } catch {
-      return true;
-    }
-  });
-  const finish = () => {
-    try {
-      sessionStorage.setItem("paige_intro_v1", "1");
-    } catch {
-      /* ignore */
-    }
-    setDone(true);
-  };
+function IntroSequence({ onDone }: { onDone: () => void }) {
   useEffect(() => {
-    if (done) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") finish();
+      if (e.key === "Escape") onDone();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [done]);
-  if (done) return null;
+  }, [onDone]);
   return (
     <motion.div
       role="presentation"
       aria-hidden
-      onClick={finish}
+      onClick={onDone}
       className="fixed inset-0 z-[70] flex cursor-pointer items-center justify-center overflow-hidden [perspective:1200px]"
       initial={{ opacity: 1 }}
       animate={{ opacity: [1, 1, 1, 0] }}
       transition={{ duration: 3.1, times: [0, 0.72, 0.92, 1] }}
-      onAnimationComplete={finish}
+      onAnimationComplete={onDone}
       style={{ background: "radial-gradient(90% 70% at 50% 42%, #3A2668 0%, #2A1B4E 46%, #120A24 100%)" }}
     >
       <span className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 text-[10px] uppercase tracking-[0.3em] text-white/40">
@@ -341,6 +319,25 @@ function IntroSequence({ reduced }: { reduced: boolean }) {
 export default function PaigeHome() {
   const navigate = useNavigate();
   const reduced = usePrefersReducedMotion();
+  // Auto-play the phone-opening on the first visit of a session; skip for
+  // reduced-motion; ?intro forces it. The "Watch the open" button replays it.
+  const [showIntro, setShowIntro] = useState(() => {
+    try {
+      if (new URLSearchParams(window.location.search).has("intro")) return true;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
+      return sessionStorage.getItem("paige_intro_v1") !== "1";
+    } catch {
+      return false;
+    }
+  });
+  const closeIntro = () => {
+    try {
+      sessionStorage.setItem("paige_intro_v1", "1");
+    } catch {
+      /* ignore */
+    }
+    setShowIntro(false);
+  };
 
   return (
     <div
@@ -357,7 +354,7 @@ export default function PaigeHome() {
         </SceneBoundary>
       </div>
 
-      <IntroSequence reduced={reduced} />
+      {showIntro && <IntroSequence onDone={closeIntro} />}
       {!reduced && <IdleNudge />}
 
       {/* All page content rides above the fixed Paige layer */}
@@ -433,6 +430,13 @@ export default function PaigeHome() {
               See a day with Paige
             </a>
           </motion.div>
+          <motion.button
+            variants={rise}
+            onClick={() => setShowIntro(true)}
+            className="mt-5 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-[#F0C86A]/80 transition-colors hover:text-[#F0C86A]"
+          >
+            ▶ Watch the open
+          </motion.button>
         </motion.div>
 
         <div className="pointer-events-none absolute bottom-7 left-1/2 -translate-x-1/2 text-[10px] font-medium uppercase tracking-[0.3em] text-white/40">
