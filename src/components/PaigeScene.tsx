@@ -29,8 +29,15 @@ function usePointerTracking() {
 const TOP_SCALE = 0.92;
 const MIN_SCALE = 0.5;
 // Local Y of her head in the centered model (normalized height 3.4 → top ≈ 1.7).
-// The Saturn rings sit here. Tune to raise/lower the ring plane on her head.
+// The orbital rings sit here. Tune to raise/lower the ring plane on her head.
 const HEAD_Y = 0.9;
+// On phones she's shrunk so she form-fits the narrow viewport instead of
+// filling it the way she does on a laptop.
+const MOBILE_SCALE = 0.66;
+function mobileFactor() {
+  if (typeof window === "undefined") return 1;
+  return window.innerWidth < 768 ? MOBILE_SCALE : 1;
+}
 
 useGLTF.preload("/paige/paige-central.glb");
 
@@ -89,10 +96,11 @@ function supportsWebGL() {
  * Structure per ring: an outer group precesses (spins on Y); an inner group
  * holds the fixed tilt; a thin torus at a steep tilt reads as a slim ellipse.
  */
+// Two wide, near-edge-on ellipses that cross symmetrically (mirror-tilted on Z),
+// matching the loader's clean two-ring look — one gold, one pale violet.
 const ORBIT_RINGS = [
-  { r: 2.0, tilt: [1.42, 0, 0.12] as [number, number, number], tube: 0.006, color: "#F0C86A", emissive: 1.5, op: 0.55, spin: 0.22 },
-  { r: 2.18, tilt: [1.2, 0.6, 0] as [number, number, number], tube: 0.005, color: "#FFF3D0", emissive: 2.0, op: 0.5, spin: -0.16 },
-  { r: 1.78, tilt: [1.5, 0, 1.0] as [number, number, number], tube: 0.007, color: "#D4A752", emissive: 1.2, op: 0.5, spin: 0.3 },
+  { r: 1.7, tilt: [1.5, 0, 0.34] as [number, number, number], tube: 0.006, color: "#F0C86A", emissive: 1.7, op: 0.65, spin: 0.1 },
+  { r: 1.7, tilt: [1.5, 0, -0.34] as [number, number, number], tube: 0.005, color: "#C9B8E8", emissive: 1.4, op: 0.55, spin: -0.1 },
 ];
 function OrbitRings({ reduced }: { reduced: boolean }) {
   const spins = useRef<(THREE.Group | null)[]>([]);
@@ -300,7 +308,7 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
       // gated by the entrance so she grows out of nothing when she pops. Floored
       // to a tiny epsilon (not 0) to avoid a degenerate zero-scale matrix while
       // she's still hidden behind the intro.
-      const size = Math.max(0.0001, e * (TOP_SCALE - (TOP_SCALE - MIN_SCALE) * paigeAnim.scroll));
+      const size = Math.max(0.0001, e * mobileFactor() * (TOP_SCALE - (TOP_SCALE - MIN_SCALE) * paigeAnim.scroll));
       group.current.scale.setScalar(size);
 
       // Gaze — only once she's out (rotation ramps in with the entrance), so the
