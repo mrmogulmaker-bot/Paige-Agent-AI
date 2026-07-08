@@ -375,6 +375,13 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                     <Building2 className="w-4 h-4 mr-2" />
                     Tenants
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => navigate("/admin/platform/team")}
+                    className={isActive("/admin/platform/team") ? "bg-muted" : ""}
+                  >
+                    <UserCog className="w-4 h-4 mr-2" />
+                    Team
+                  </DropdownMenuItem>
                 </>
               )}
             </DropdownMenuContent>
