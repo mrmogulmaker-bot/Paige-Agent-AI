@@ -67,3 +67,22 @@ From the landing page through the sign-up transition and into tenant/app onboard
 the imagery, quality, copy, voice, palette (gold + indigo), logo (the shared
 `PaigeMark`), and CTA style must feel like **one product** — no jarring hand-off. The
 compliance officer explicitly checks this continuity on every public-facing change.
+
+## 7. North star — Paige is the intelligent client portal (two-way).
+
+**Directive (owner: Antonio):** Every competitor sells a client portal; they are static
+filing cabinets. **Paige is the client portal that reasons, suggests, and acts.** She
+operates from the client/consumer standpoint — a **hyper-personalized assistant that
+feels like the coach's own**, under the coach's brand — while running **two directions
+at once**:
+
+- **For the client:** onboards, answers, probes like a domain expert, nurtures, and
+  acts on their behalf.
+- **For the staff/coach:** surfaces what each client needs, drafts the follow-up, flags
+  at-risk, proposes and (on approval or autonomously per policy) takes the next move.
+
+Two-way communication, two-way intelligence — **one brain facing both sides.** The
+portal is the product; the intelligence is the moat. It must be **tenant-authored** so
+each coach's Paige is native to *their* practice — persona, probing questions, journey,
+and templates configured per tenant (the "Playbook" model), never a hardcoded vertical.
+Every build decision serves this.
