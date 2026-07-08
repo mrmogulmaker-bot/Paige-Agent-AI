@@ -42,3 +42,28 @@ their time."
 Production ships to the live domain are the owner's call. Build on the working branch,
 verify, and merge to `main` to deploy; keep prior designs parked (not woven in) when a
 direction is fully replaced.
+
+## 5. Always run a compliance / standards officer.
+
+**Directive (owner: Antonio):** Beyond the bug-hunting verifier, every substantive
+shipment also gets a **compliance/standards officer** agent that goes behind the work
+and asks a different question than "is it broken?" — it asks *"is this done correctly,
+efficiently, and effectively, to the standard of the best-in-class platforms in our
+space, and is it fully compliant with our SOPs and quality bar?"*
+
+- **Two distinct passes.** The **verifier** catches defects (broken logic, off-voice
+  copy, content-rule violations, contrast/symmetry). The **compliance officer** judges
+  *quality and standards*: brand consistency end-to-end (landing → sign-up → app),
+  polish vs. top competitors, accessibility, performance, no placeholder/fake content
+  shipped, SOP adherence. Both run before a production merge.
+- **Take our time.** Speed is for manufacturing; we are *designing*. The compliance
+  pass is where we slow down and make sure it's genuinely excellent, not just working.
+- **Reports, doesn't rubber-stamp.** It returns concrete gaps ranked by severity; the
+  integrator fixes blocking items before shipping and logs the rest.
+
+## 6. Brand consistency is one continuous system.
+
+From the landing page through the sign-up transition and into tenant/app onboarding,
+the imagery, quality, copy, voice, palette (gold + indigo), logo (the shared
+`PaigeMark`), and CTA style must feel like **one product** — no jarring hand-off. The
+compliance officer explicitly checks this continuity on every public-facing change.

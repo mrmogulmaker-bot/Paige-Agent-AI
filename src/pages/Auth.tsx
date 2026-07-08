@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type CSSProperties } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { PaigeMark } from "@/components/brand/PaigeMark";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, Shield, TrendingUp, Zap, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
 import type { User, Session } from "@supabase/supabase-js";
-import paigeLogo from "@/assets/paige-logo-transparent.png";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
@@ -279,8 +279,37 @@ const Auth = () => {
   ];
   const HEAD = "'Bricolage Grotesque', 'Space Grotesk', sans-serif";
 
+  // Scoped gold+indigo brand palette — overrides the app's (legacy purple) theme
+  // tokens for THIS page only, so /auth matches the landing without recoloring
+  // the logged-in dashboard. Every child's bg-accent/text-accent/bg-gradient-gold
+  // etc. now resolves to gold, and background/foreground to indigo/offwhite.
+  const goldTheme = {
+    background: "radial-gradient(120% 90% at 70% 15%, #241645 0%, #140c27 55%, #0c0718 100%)",
+    ["--background" as string]: "257 45% 9%",
+    ["--foreground" as string]: "45 33% 95%",
+    ["--card" as string]: "258 42% 12%",
+    ["--card-foreground" as string]: "45 33% 95%",
+    ["--popover" as string]: "258 42% 12%",
+    ["--popover-foreground" as string]: "45 33% 95%",
+    ["--primary" as string]: "258 50% 15%",
+    ["--primary-foreground" as string]: "45 33% 95%",
+    ["--primary-light" as string]: "42 82% 68%",
+    ["--secondary" as string]: "258 30% 18%",
+    ["--secondary-foreground" as string]: "45 33% 95%",
+    ["--muted" as string]: "258 28% 16%",
+    ["--muted-foreground" as string]: "45 18% 72%",
+    ["--accent" as string]: "42 82% 68%",
+    ["--accent-foreground" as string]: "257 50% 12%",
+    ["--gold" as string]: "39 60% 58%",
+    ["--border" as string]: "258 22% 24%",
+    ["--input" as string]: "258 26% 20%",
+    ["--ring" as string]: "42 82% 68%",
+    ["--gradient-gold" as string]: "linear-gradient(135deg, #F0C86A, #D4A752)",
+    ["--shadow-glow" as string]: "0 0 40px rgba(240,200,106,0.35)",
+  } as CSSProperties;
+
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="relative min-h-screen flex text-[#F8F5EE]" style={goldTheme}>
       <ForgotPasswordDialog open={showForgotPassword} onOpenChange={setShowForgotPassword} />
 
       {/* Left Panel — Brand / Value Prop */}
@@ -299,9 +328,11 @@ const Auth = () => {
 
         {/* Top — Logo */}
         <div className="relative z-10">
-          <Link to="/" className="inline-flex items-center gap-3 group">
-            <img src={paigeLogo} alt="PaigeAgent.ai" className="h-10 w-auto" />
-            <span className="text-xl font-bold text-primary-foreground/90 tracking-tight" style={{ fontFamily: HEAD }}>PaigeAgent.ai</span>
+          <Link to="/" className="inline-flex items-center gap-2.5 group">
+            <PaigeMark className="h-9 w-9" />
+            <span className="text-xl font-semibold tracking-tight text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
+              Paige <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
+            </span>
           </Link>
         </div>
 
@@ -315,7 +346,7 @@ const Auth = () => {
             <h2 className="text-4xl xl:text-5xl font-bold text-primary-foreground leading-[1.05] tracking-tight" style={{ fontFamily: HEAD }}>
               She runs your
               <br />
-              <span style={{ color: "#e8c66a" }}>coaching business.</span>
+              <span style={{ color: "#F0C86A" }}>coaching business.</span>
             </h2>
             <p className="text-primary-foreground/60 text-base max-w-md leading-relaxed">
               You run the transformation. Paige handles the operations, follow-ups, and follow-through — so you deliver the outcomes only you can.
@@ -334,7 +365,7 @@ const Auth = () => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-primary-foreground/90">{f.title}</p>
-                  <p className="text-xs text-primary-foreground/45 mt-0.5">{f.desc}</p>
+                  <p className="text-xs text-primary-foreground/60 mt-0.5">{f.desc}</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-primary-foreground/20 group-hover:text-accent/60 transition-colors" />
               </div>
@@ -342,21 +373,15 @@ const Auth = () => {
           </div>
         </div>
 
-        {/* Bottom — Social proof */}
+        {/* Bottom — trust badge (defensible; no fabricated testimonials) */}
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="flex -space-x-2">
-              {['bg-accent/60', 'bg-gold/60', 'bg-accent/40', 'bg-gold/40'].map((bg, i) => (
-                <div key={i} className={`w-8 h-8 rounded-full ${bg} border-2 border-primary flex items-center justify-center`}>
-                  <span className="text-[10px] font-bold text-primary-foreground/80">
-                    {['JD', 'AK', 'MR', 'TS'][i]}
-                  </span>
-                </div>
-              ))}
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/12 ring-1 ring-accent/25">
+              <Shield className="h-4 w-4 text-accent" />
             </div>
             <div>
-              <p className="text-xs font-medium text-primary-foreground/70">Trusted by coaches everywhere</p>
-              <p className="text-[11px] text-primary-foreground/40">38 hours reclaimed every week</p>
+              <p className="text-xs font-medium text-primary-foreground/85">Built for coaching &amp; consulting practices</p>
+              <p className="text-[11px] text-primary-foreground/55">256-bit encryption · your client data stays private</p>
             </div>
           </div>
         </div>
@@ -371,8 +396,10 @@ const Auth = () => {
             <span className="hidden sm:inline">Back to home</span>
           </Link>
           <Link to="/" className="lg:hidden inline-flex items-center gap-2">
-            <img src={paigeLogo} alt="PaigeAgent.ai" className="h-8 w-auto" />
-            <span className="text-lg font-bold text-accent">PaigeAgent.ai</span>
+            <PaigeMark className="h-8 w-8" />
+            <span className="text-lg font-semibold text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
+              Paige <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
+            </span>
           </Link>
           <button
             type="button"
@@ -466,8 +493,8 @@ const Auth = () => {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                    tabIndex={-1}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -485,7 +512,7 @@ const Auth = () => {
                       aria-required
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
-                      I have read and agree to the PaigeAgent{" "}
+                      I have read and agree to the Paige Agent{" "}
                       <Link to="/legal/terms" target="_blank" className="underline text-accent hover:opacity-80">
                         Terms of Service
                       </Link>
@@ -499,7 +526,7 @@ const Auth = () => {
                       </Link>
                       , and{" "}
                       <Link to="/legal/ai-disclaimer" target="_blank" className="underline text-accent hover:opacity-80">
-                        AI Advisory Disclaimer
+                        AI Disclaimer
                       </Link>
                       .{" "}<span className="text-destructive">*</span>
                     </span>
@@ -514,7 +541,7 @@ const Auth = () => {
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
                       I understand that my data is used exclusively to provide my
-                      PaigeAgent services and is{" "}
+                      Paige Agent services and is{" "}
                       <strong>never sold to third parties or advertisers</strong>.{" "}
                       <span className="text-destructive">*</span>
                     </span>
@@ -527,7 +554,7 @@ const Auth = () => {
                       className="mt-0.5"
                     />
                     <span className="text-xs text-foreground/70 leading-relaxed">
-                      I agree to receive marketing communications about PaigeAgent products and
+                      I agree to receive marketing communications about Paige Agent products and
                       updates. <em>(Optional — uncheck to receive only service notifications)</em>
                     </span>
                   </label>
@@ -536,11 +563,7 @@ const Auth = () => {
 
               <Button
                 type="submit"
-                className={`w-full font-semibold text-sm h-12 rounded-xl transition-all duration-300 ${
-                  isLogin
-                    ? "bg-primary hover:bg-primary-light text-primary-foreground shadow-md hover:shadow-lg"
-                    : "bg-gradient-gold text-primary shadow-glow hover:shadow-glow-lg hover:scale-[1.01]"
-                }`}
+                className="w-full h-12 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[#241645] text-sm font-bold shadow-[0_12px_34px_rgba(240,200,106,0.28)] transition-transform duration-300 hover:scale-[1.01] disabled:opacity-60 disabled:hover:scale-100"
                 disabled={isLoading || (!isLogin && (!consentAgreements || !consentDataUsage))}
               >
                 {isLoading ? (
@@ -549,7 +572,7 @@ const Auth = () => {
                     {isLogin ? "Signing in..." : "Creating account..."}
                   </>
                 ) : (
-                  <>{isLogin ? "Sign In" : "Get Started Free"}</>
+                  <>{isLogin ? "Sign In" : "Start with Paige"}</>
                 )}
               </Button>
             </form>
@@ -604,7 +627,7 @@ const Auth = () => {
               </div>
               <div className="relative flex justify-center">
                 <span className="bg-background px-4 text-xs text-muted-foreground/60">
-                  {isLogin ? "New to PaigeAgent?" : "Already have an account?"}
+                  {isLogin ? "New to Paige Agent?" : "Already have an account?"}
                 </span>
               </div>
             </div>
@@ -621,13 +644,13 @@ const Auth = () => {
             </Button>
 
             {/* Team Login hint */}
-            <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/40">
+            <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/70">
               <Shield className="w-3 h-3" />
               <span>Team member? Use your admin credentials above — you'll be routed automatically.</span>
             </div>
 
             {/* Legal */}
-            <p className="text-center text-[11px] text-muted-foreground/50 leading-relaxed">
+            <p className="text-center text-[11px] text-muted-foreground/70 leading-relaxed">
               By continuing you agree to our{" "}
               <Link to="/terms" className="underline hover:text-muted-foreground transition-colors">Terms</Link>
               {" "}and{" "}
