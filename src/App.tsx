@@ -50,6 +50,7 @@ import { usePageView } from "./hooks/useAnalytics";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 const OperatorLogin = lazyWithReload(() => import("./pages/OperatorLogin"));
+const JoinPlatform = lazyWithReload(() => import("./pages/JoinPlatform"));
 const PaigeHome = lazyWithReload(() => import("./pages/PaigeHome"));
 const PremiumHero = lazyWithReload(() => import("./pages/PremiumHero"));
 const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
@@ -170,6 +171,7 @@ const App = () => (
             <Route path="/legacy" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/operator" element={<PageSuspense><OperatorLogin /></PageSuspense>} />
+            <Route path="/join-platform" element={<PageSuspense><JoinPlatform /></PageSuspense>} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
