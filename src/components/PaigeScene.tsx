@@ -2,11 +2,17 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { Sparkles, Float, Environment, Lightformer, useGLTF } from "@react-three/drei";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { paigeAnim } from "@/lib/paigeAnim";
 
 // Global pointer (normalized -1..1 from viewport center). Driven by a window
 // listener, so Paige tracks the cursor even though she's a fixed layer BEHIND
 // the page content (the content would otherwise swallow the canvas's events).
 const ptr = { x: 0, y: 0 };
+
+// Size envelope: Paige is large at the top of the hero and shrinks toward
+// MIN_SCALE as the page scrolls (paigeAnim.scroll 0→1).
+const TOP_SCALE = 1.12;
+const MIN_SCALE = 0.6;
 
 useGLTF.preload("/paige/paige-central.glb");
 
@@ -186,16 +192,46 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
 
   const group = useRef<THREE.Group>(null);
   const inner = useRef<THREE.Group>(null);
-  useFrame((s) => {
+  const ent = useRef(0); // displayed entrance value (spring)
+  const entVel = useRef(0);
+  const firstFrame = useRef(true);
+  useFrame((s, dt) => {
     const t = s.clock.elapsedTime;
+    const step = Math.min(dt, 0.05); // clamp for stability on frame hitches
+
+    // Entrance spring — when the phone intro hands off (paigeAnim.entrance → 1)
+    // she springs out with a slight overshoot (the "pop"). Reduced motion snaps;
+    // so does the very first frame, so a returning visitor who already has
+    // entrance=1 (intro skipped) is simply already out — no 0→1 pop on reload.
+    if (reduced || firstFrame.current) {
+      ent.current = paigeAnim.entrance;
+      entVel.current = 0;
+    } else {
+      const k = 120, c = 16; // underdamped: overshoots ~once, then settles
+      const a = (paigeAnim.entrance - ent.current) * k - entVel.current * c;
+      entVel.current += a * step;
+      ent.current += entVel.current * step;
+    }
+    firstFrame.current = false;
+    const e = Math.max(0, ent.current);
+
     if (inner.current) {
       const b = reduced ? 1 : 1 + Math.sin(t * 1.1) * 0.012;
       inner.current.scale.setScalar(b);
     }
     if (group.current) {
-      // Track the cursor across the whole screen (she's a fixed background now).
-      group.current.rotation.y += (ptr.x * 0.6 - group.current.rotation.y) * 0.06;
-      group.current.rotation.x += (-ptr.y * 0.14 - group.current.rotation.x) * 0.06;
+      // Size: large at the top of the hero, shrinking as the page scrolls, all
+      // gated by the entrance so she grows out of nothing when she pops. Floored
+      // to a tiny epsilon (not 0) to avoid a degenerate zero-scale matrix while
+      // she's still hidden behind the intro.
+      const size = Math.max(0.0001, e * (TOP_SCALE - (TOP_SCALE - MIN_SCALE) * paigeAnim.scroll));
+      group.current.scale.setScalar(size);
+
+      // Gaze — only once she's out (rotation ramps in with the entrance), so the
+      // cursor tracking "starts" after the pop, not during it.
+      const gaze = Math.max(0, Math.min(1, (e - 0.35) / 0.65));
+      group.current.rotation.y += (ptr.x * 0.6 * gaze - group.current.rotation.y) * 0.06;
+      group.current.rotation.x += (-ptr.y * 0.14 * gaze - group.current.rotation.x) * 0.06;
     }
   });
 

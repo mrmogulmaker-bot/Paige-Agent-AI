@@ -13,7 +13,8 @@ import {
   Sparkles as SparkIcon,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from "react";
+import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
+import { paigeAnim } from "@/lib/paigeAnim";
 
 /**
  * PaigeHome — the gold + indigo Paige landing (route "/"). A complete, from-
@@ -236,82 +237,175 @@ const INTRO_THREAD = [
   { who: "Paige", side: "out", text: "Moved Maya to Tuesday 10 AM, sent the invite, and carried her prep notes over. Drafted a warm reply so she doesn't feel like a bother." },
   { who: "Paige", side: "out", text: "Devin from last night's webinar — follow-up drafted before it goes cold. And Jordan's gone quiet 12 days: flagging at-risk." },
 ];
-function IntroSequence({ onDone }: { onDone: () => void }) {
+// One cinematic beat, ~4.8s, in four acts:
+//   1. ASSEMBLE  — gold panel shards fly in from the dark and lock together to
+//                  form the phone (it is built, not popped-in).
+//   2. WORK      — the screen powers on and Paige runs a live client thread,
+//                  ending on "Approve all."
+//   3. BURST     — the phone opens: its shards detach and fling outward while a
+//                  gold bloom swells to fill the frame.
+//   4. POP       — behind that bloom the 3D Paige springs out (onReveal) and
+//                  grows to fill the page; the overlay dissolves into her world.
+const INTRO_T = 4.8;
+const REVEAL_AT = 3.85; // seconds — when Paige pops out of the opening phone
+
+// Panel shards that converge to build the phone, then detach when it opens.
+// (dx,dy) is the scatter offset in px; r is the scatter rotation in deg.
+const SHARDS = [
+  { dx: -260, dy: -150, r: -34, w: 150, h: 150, top: "6%", left: "12%" },
+  { dx: 250, dy: -120, r: 28, w: 150, h: 170, top: "4%", left: "44%" },
+  { dx: -230, dy: 140, r: 30, w: 150, h: 180, top: "44%", left: "12%" },
+  { dx: 240, dy: 170, r: -26, w: 150, h: 170, top: "42%", left: "44%" },
+  { dx: 0, dy: 260, r: 14, w: 150, h: 140, top: "70%", left: "28%" },
+];
+
+function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () => void }) {
+  // Mount-scoped: the reveal timer must fire exactly once, REVEAL_AT after the
+  // intro mounts. onDone/onReveal are fresh closures each parent render, so we
+  // route them through a ref instead of listing them as deps — otherwise a
+  // re-render would clearTimeout and re-arm the pop, potentially pushing it past
+  // the overlay's dissolve. (They only mutate module/setState, so a fixed
+  // capture is safe.)
+  const cbRef = useRef({ onDone, onReveal });
+  cbRef.current = { onDone, onReveal };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onDone();
+      if (e.key === "Escape") cbRef.current.onDone();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onDone]);
+    // Fire the Paige pop just before the overlay dissolves, so she is already
+    // growing out of the gold bloom as the phone world clears.
+    const t = window.setTimeout(() => cbRef.current.onReveal(), REVEAL_AT * 1000);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <motion.div
       role="presentation"
       aria-hidden
       onClick={onDone}
-      className="fixed inset-0 z-[70] flex cursor-pointer items-center justify-center overflow-hidden [perspective:1200px]"
+      className="fixed inset-0 z-[70] flex cursor-pointer items-center justify-center overflow-hidden [perspective:1400px]"
       initial={{ opacity: 1 }}
       animate={{ opacity: [1, 1, 1, 0] }}
-      transition={{ duration: 3.1, times: [0, 0.72, 0.92, 1] }}
+      transition={{ duration: INTRO_T, times: [0, 0.82, 0.95, 1], ease: "linear" }}
       onAnimationComplete={onDone}
-      style={{ background: "radial-gradient(90% 70% at 50% 42%, #3A2668 0%, #2A1B4E 46%, #120A24 100%)" }}
     >
+      {/* Cinematic field — dark indigo that lifts as the phone opens, so the cut
+          into the gold Paige world reads as one continuous move. */}
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        animate={{ opacity: [1, 1, 0.35] }}
+        transition={{ duration: INTRO_T, times: [0, 0.72, 1], ease: "easeIn" }}
+        style={{ background: "radial-gradient(75% 60% at 50% 46%, #251743 0%, #160d2c 52%, #0a0518 100%)" }}
+      />
       <span className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 text-[10px] uppercase tracking-[0.3em] text-white/40">
         Click to skip
       </span>
-      {/* gold bloom behind the phone */}
-      <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 h-[42rem] w-[42rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#F0C86A]/15 blur-[120px]" />
+
+      {/* Gold bloom — dim under the built phone, then swells to fill the frame
+          as it bursts open, whiting the seam to gold before it clears. */}
       <motion.div
-        initial={{ y: 90, opacity: 0, scale: 0.92 }}
-        animate={{ y: [90, 0, 0, -20], opacity: [0, 1, 1, 0], scale: [0.92, 1, 1, 7] }}
-        transition={{ duration: 3.1, times: [0, 0.22, 0.72, 1], ease: ["easeOut", "linear", "easeIn"] }}
-        style={{ transformOrigin: "center 46%" }}
-        className="relative"
-      >
-        {/* Phone */}
-        <div className="relative h-[560px] w-[276px] rounded-[2.75rem] border border-[#D4A752]/25 bg-[#120A24] p-3 shadow-[0_40px_120px_rgba(0,0,0,0.6),inset_0_0_0_1px_rgba(240,200,106,0.15)]">
-          <div className="absolute left-1/2 top-3 z-10 h-6 w-24 -translate-x-1/2 rounded-full bg-black" />
-          {/* Screen */}
-          <div className="relative h-full w-full overflow-hidden rounded-[2.1rem] bg-gradient-to-b from-[#1a1338] to-[#0d0820]">
-            <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3.5 pt-7">
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[11px] font-black text-[#2A1B4E]">P</span>
-              <div className="leading-tight">
-                <div className="text-[12px] font-semibold text-white" style={{ fontFamily: HEAD }}>Paige</div>
-                <div className="text-[9px] text-[#7ee0a8]">working your inbox…</div>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2.5 px-3.5 py-4">
-              {INTRO_THREAD.map((m, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 + i * 0.55, duration: 0.4 }}
-                  className={m.side === "out" ? "self-end" : "self-start"}
-                >
-                  <div
-                    className={`max-w-[190px] rounded-2xl px-3 py-2 text-[11px] leading-snug ${
-                      m.side === "out"
-                        ? "rounded-br-sm bg-gradient-to-br from-[#D4A752]/25 to-[#F0C86A]/15 text-[#F8F5EE] ring-1 ring-[#F0C86A]/25"
-                        : "rounded-bl-sm bg-white/[0.06] text-white/85"
-                    }`}
-                  >
-                    {m.text}
-                  </div>
-                </motion.div>
-              ))}
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-[46%] h-[26rem] w-[26rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#F0C86A] blur-[90px]"
+        initial={{ opacity: 0, scale: 0.6 }}
+        animate={{ opacity: [0, 0.16, 0.16, 0.95, 0], scale: [0.6, 0.85, 0.9, 3.6, 6] }}
+        transition={{ duration: INTRO_T, times: [0, 0.22, 0.72, 0.9, 1], ease: ["easeOut", "linear", "easeIn", "easeOut"] }}
+      />
+
+      {/* The staging box — the phone and its shards share this frame so they
+          converge to, and detach from, the same center. */}
+      <div className="relative h-[560px] w-[276px] [transform-style:preserve-3d]">
+        {/* Assembling / detaching panel shards. */}
+        {SHARDS.map((sh, i) => (
+          <motion.div
+            key={i}
+            aria-hidden
+            className="pointer-events-none absolute rounded-[1.6rem] border border-[#F0C86A]/40 bg-gradient-to-br from-[#D4A752]/12 to-transparent"
+            style={{ width: sh.w, height: sh.h, top: sh.top, left: sh.left, boxShadow: "inset 0 0 20px rgba(240,200,106,0.12)" }}
+            initial={{ x: sh.dx, y: sh.dy, rotate: sh.r, opacity: 0, scale: 0.6 }}
+            animate={{
+              x: [sh.dx, 0, 0, 0, sh.dx * 1.7, sh.dx * 3],
+              y: [sh.dy, 0, 0, 0, sh.dy * 1.7, sh.dy * 3],
+              rotate: [sh.r, 0, 0, 0, sh.r * 1.3, sh.r * 2],
+              opacity: [0, 0.9, 0, 0, 0.9, 0],
+              scale: [0.6, 1, 1, 1, 1, 0.7],
+            }}
+            transition={{ duration: INTRO_T, times: [0, 0.2, 0.3, 0.72, 0.84, 0.94], ease: "easeInOut" }}
+          />
+        ))}
+
+        {/* The phone itself: fades up as the shards lock in, holds through the
+            work beat, then opens (scales up + fades) as it bursts. */}
+        <motion.div
+          className="absolute inset-0"
+          initial={{ opacity: 0, scale: 0.62, rotateX: 8 }}
+          animate={{ opacity: [0, 1, 1, 1, 0], scale: [0.62, 1, 1, 1.06, 1.5], rotateX: [8, 0, 0, 0, 0] }}
+          transition={{ duration: INTRO_T, times: [0, 0.22, 0.66, 0.74, 0.9], ease: ["backOut", "linear", "easeIn", "easeIn"] }}
+          style={{ transformOrigin: "center 47%" }}
+        >
+          <div className="relative h-full w-full rounded-[2.75rem] border border-[#D4A752]/25 bg-[#120A24] p-3 shadow-[0_40px_120px_rgba(0,0,0,0.6),inset_0_0_0_1px_rgba(240,200,106,0.15)]">
+            <div className="absolute left-1/2 top-3 z-10 h-6 w-24 -translate-x-1/2 rounded-full bg-black" />
+            {/* Screen */}
+            <div className="relative h-full w-full overflow-hidden rounded-[2.1rem] bg-gradient-to-b from-[#1a1338] to-[#0d0820]">
+              {/* Backlight — the screen "powers on" once the phone is built. */}
               <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 2.35, duration: 0.3 }}
-                className="mt-1 flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] py-2 text-[11px] font-bold text-[#2A1B4E]"
+                aria-hidden
+                className="pointer-events-none absolute inset-0"
+                animate={{ opacity: [0, 0, 0.6, 0.6] }}
+                transition={{ duration: INTRO_T, times: [0, 0.22, 0.32, 1], ease: "easeOut" }}
+                style={{ background: "radial-gradient(120% 80% at 50% 30%, rgba(240,200,106,0.18), transparent 70%)" }}
+              />
+              {/* Screen contents drift up and past the lens as the phone opens. */}
+              <motion.div
+                className="relative h-full w-full"
+                animate={{ opacity: [1, 1, 0], y: [0, 0, -40], scale: [1, 1, 1.15] }}
+                transition={{ duration: INTRO_T, times: [0, 0.74, 0.9], ease: "easeIn" }}
               >
-                <Check className="h-3.5 w-3.5" /> Approve all
+                <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3.5 pt-7">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[11px] font-black text-[#2A1B4E]">P</span>
+                  <div className="leading-tight">
+                    <div className="text-[12px] font-semibold text-white" style={{ fontFamily: HEAD }}>Paige</div>
+                    <div className="text-[9px] text-[#7ee0a8]">working your inbox…</div>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2.5 px-3.5 py-4">
+                  {INTRO_THREAD.map((m, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 1.2 + i * 0.58, duration: 0.4 }}
+                      className={m.side === "out" ? "self-end" : "self-start"}
+                    >
+                      <div
+                        className={`max-w-[190px] rounded-2xl px-3 py-2 text-[11px] leading-snug ${
+                          m.side === "out"
+                            ? "rounded-br-sm bg-gradient-to-br from-[#D4A752]/25 to-[#F0C86A]/15 text-[#F8F5EE] ring-1 ring-[#F0C86A]/25"
+                            : "rounded-bl-sm bg-white/[0.06] text-white/85"
+                        }`}
+                      >
+                        {m.text}
+                      </div>
+                    </motion.div>
+                  ))}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: [0.9, 1.04, 1] }}
+                    transition={{ delay: 2.95, duration: 0.4 }}
+                    className="mt-1 flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] py-2 text-[11px] font-bold text-[#2A1B4E]"
+                  >
+                    <Check className="h-3.5 w-3.5" /> Approve all
+                  </motion.div>
+                </div>
               </motion.div>
             </div>
           </div>
-        </div>
-      </motion.div>
+        </motion.div>
+      </div>
     </motion.div>
   );
 }
@@ -330,14 +424,39 @@ export default function PaigeHome() {
       return false;
     }
   });
+  // Paige "pops out" of the phone at the end of the intro; if there is no intro
+  // (returning session / reduced motion) she's simply already out on load.
+  const revealPaige = () => {
+    paigeAnim.entrance = 1;
+  };
   const closeIntro = () => {
     try {
       sessionStorage.setItem("paige_intro_v1", "1");
     } catch {
       /* ignore */
     }
+    revealPaige(); // safety: guarantees she's out even if the intro was skipped
     setShowIntro(false);
   };
+  const replayIntro = () => {
+    paigeAnim.entrance = 0; // reset so she pops out of the phone again
+    setShowIntro(true);
+  };
+
+  // If we're NOT playing the intro, Paige is already out. Also keep her sized to
+  // the scroll position for her full range of motion (large at the hero, smaller
+  // as the page scrolls down).
+  useEffect(() => {
+    if (!showIntro) paigeAnim.entrance = 1;
+    const onScroll = () => {
+      const span = window.innerHeight * 0.9 || 1;
+      paigeAnim.scroll = Math.min(1, Math.max(0, window.scrollY / span));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div
@@ -354,7 +473,7 @@ export default function PaigeHome() {
         </SceneBoundary>
       </div>
 
-      {showIntro && <IntroSequence onDone={closeIntro} />}
+      {showIntro && <IntroSequence onDone={closeIntro} onReveal={revealPaige} />}
       {!reduced && <IdleNudge />}
 
       {/* All page content rides above the fixed Paige layer */}
@@ -432,7 +551,7 @@ export default function PaigeHome() {
           </motion.div>
           <motion.button
             variants={rise}
-            onClick={() => setShowIntro(true)}
+            onClick={replayIntro}
             className="mt-5 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-[#F0C86A]/80 transition-colors hover:text-[#F0C86A]"
           >
             ▶ Watch the open
