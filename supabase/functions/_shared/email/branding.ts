@@ -29,7 +29,9 @@ export type EmailBranding = {
 // PLATFORM DEFAULT — Paige Agent AI's own brand (gold + indigo, doctrine §6).
 // This is what platform-originated mail wears, and the look a tenant inherits
 // until it sets its own brand tokens (its NAME is still merged in below).
-export const PLATFORM_DEFAULT_BRANDING: EmailBranding = {
+// `from` is injected by the resolver (platformDefaultFrom / tenant domain), so
+// it's deliberately omitted from the const.
+export const PLATFORM_DEFAULT_BRANDING: Omit<EmailBranding, "from"> = {
   brandName: "Paige Agent AI",
   wordmark: "PAIGE",
   tagline: null,
@@ -46,24 +48,63 @@ function platformDefaultFrom(): string {
   return Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <team@notify.paigeagent.ai>";
 }
 
+// --- Tenant-value hardening -------------------------------------------------
+// Brand tokens come from tenant-controlled `tenants.brand` jsonb and are
+// interpolated RAW into HTML style attributes by the shell. A tenant must never
+// be able to break out of a style/attr context (phishing markup under OUR
+// sending domain), so colors are validated against a strict hex allowlist and
+// anything else falls back to the platform value.
+function isHexColor(v: string | undefined): v is string {
+  return !!v && /^#[0-9a-fA-F]{3,8}$/.test(v.trim());
+}
+function safeColor(v: string | undefined, fallback: string): string {
+  return isHexColor(v) ? v.trim() : fallback;
+}
+// Relative luminance (WCAG) of a #hex color → pick a legible on-color so a
+// tenant that sets an accent but no on-accent never gets dark-on-dark text.
+function hexLuminance(hex: string): number {
+  let h = hex.replace("#", "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  if (h.length < 6) return 0.5;
+  const ch = (i: number) => parseInt(h.slice(i, i + 2), 16) / 255;
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  return 0.2126 * lin(ch(0)) + 0.7152 * lin(ch(2)) + 0.0722 * lin(ch(4));
+}
+function readableOn(bg: string): string {
+  return hexLuminance(bg) > 0.5 ? "#1B1230" : "#FFFFFF";
+}
+
 // Read the tenant brand jsonb defensively — any subset of keys may be present.
-function mergeBrand(base: EmailBranding, brand: Record<string, unknown> | null | undefined): EmailBranding {
+function mergeBrand(base: Omit<EmailBranding, "from">, brand: Record<string, unknown> | null | undefined): Omit<EmailBranding, "from"> {
   const b = brand ?? {};
   const str = (k: string) => (typeof b[k] === "string" && (b[k] as string).trim() ? (b[k] as string) : undefined);
   const brandName = str("brand_name") ?? str("display_name") ?? base.brandName;
+  const accentColor = safeColor(str("accent_color"), base.accentColor);
   return {
     brandName,
     wordmark: str("wordmark") ?? brandName.toUpperCase().slice(0, 18),
     tagline: str("tagline") ?? base.tagline,
     logoUrl: str("logo_url") ?? base.logoUrl,
-    primaryColor: str("primary_color") ?? base.primaryColor,
-    accentColor: str("accent_color") ?? base.accentColor,
-    onAccentColor: str("on_accent_color") ?? base.onAccentColor,
-    bgColor: str("bg_color") ?? base.bgColor,
+    primaryColor: safeColor(str("primary_color"), base.primaryColor),
+    accentColor,
+    // Explicit on-accent wins (if a valid hex); otherwise derive a legible one.
+    onAccentColor: isHexColor(str("on_accent_color")) ? (str("on_accent_color") as string).trim() : readableOn(accentColor),
+    bgColor: safeColor(str("bg_color"), base.bgColor),
     supportEmail: str("support_email") ?? base.supportEmail,
     siteUrl: str("site_url") ?? base.siteUrl,
-    from: base.from, // sender resolved separately from tenant_email_domains
   };
+}
+
+// A verified tenant domain proves DNS ownership of the DOMAIN, not that the
+// display name / local-part are header-safe. Sanitize before building `From`.
+function cleanDisplayName(v: unknown): string {
+  return String(v ?? "").replace(/[\r\n]+/g, " ").replace(/[<>"]/g, "").trim();
+}
+function isEmailLocal(v: string): boolean {
+  return /^[A-Za-z0-9._%+\-]+$/.test(v);
+}
+function isHostname(v: string): boolean {
+  return /^[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/.test(v);
 }
 
 export type EmailContext = {
@@ -81,7 +122,8 @@ export async function resolveTenantEmailContext(
   admin: SupabaseClient,
   tenantId: string | null,
 ): Promise<EmailContext> {
-  const base: EmailBranding = { ...PLATFORM_DEFAULT_BRANDING, from: platformDefaultFrom() };
+  const platformFrom = platformDefaultFrom();
+  const base: EmailBranding = { ...PLATFORM_DEFAULT_BRANDING, from: platformFrom };
   if (!tenantId) {
     return { branding: base, provider: buildProvider(null), tenantId: null };
   }
@@ -105,9 +147,16 @@ export async function resolveTenantEmailContext(
   });
 
   // Sending identity: a VERIFIED default tenant domain, else platform default.
+  // Sanitize every part — a verified domain proves DNS ownership, not that the
+  // display name / local-part are free of header-injection or null values.
   let from = base.from;
   if (domain && domain.status === "verified" && domain.verified_at) {
-    from = `${domain.from_name} <${domain.from_email_local}@${domain.domain}>`;
+    const fromName = cleanDisplayName(domain.from_name);
+    const local = String(domain.from_email_local ?? "").trim();
+    const dom = String(domain.domain ?? "").trim().toLowerCase();
+    if (fromName && isEmailLocal(local) && isHostname(dom)) {
+      from = `${fromName} <${local}@${dom}>`;
+    }
   }
 
   const providerConfig = (brand?.email_provider as TenantEmailProviderConfig | undefined) ?? null;

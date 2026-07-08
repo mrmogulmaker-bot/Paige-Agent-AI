@@ -80,7 +80,8 @@ class ResendProvider implements EmailProvider {
       }
       return { ok: true, provider: this.key, id: (body as { id?: string })?.id ?? null };
     } catch (e) {
-      return { ok: false, provider: this.key, error: (e as Error).message.slice(0, 300) };
+      const m = e instanceof Error ? e.message : String(e);
+      return { ok: false, provider: this.key, error: m.slice(0, 300) };
     }
   }
 }
@@ -108,7 +109,13 @@ export function buildProvider(config?: TenantEmailProviderConfig | null): EmailP
   const provider = (config?.provider ?? "resend").toLowerCase();
 
   // Per-tenant credential override: read the named secret from the env store.
-  const tenantKey = config?.api_key_secret ? (Deno.env.get(config.api_key_secret) ?? "") : "";
+  // SECURITY: the secret NAME is tenant-controlled, so it MUST be namespaced —
+  // a tenant may only reference platform-provisioned per-tenant secrets
+  // (TENANT_EMAIL_KEY_*), never an arbitrary env var like the service-role key.
+  // Anything outside the namespace is ignored → falls back to the platform key.
+  const rawSecret = config?.api_key_secret ?? "";
+  const secretAllowed = /^TENANT_EMAIL_KEY_[A-Z0-9_]+$/.test(rawSecret);
+  const tenantKey = secretAllowed ? (Deno.env.get(rawSecret) ?? "") : "";
 
   switch (provider) {
     case "resend":

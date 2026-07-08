@@ -38,7 +38,8 @@ export function authEmailContent(
     case "invite":
       return {
         subject: `You've been invited to ${brandName}`,
-        heading: `You've been invited to ${brand}`,
+        // heading is escaped once at render — pass raw brandName (not pre-esc'd).
+        heading: `You've been invited to ${brandName}`,
         paragraphs: [
           `You've been invited to join the ${brand} workspace. Accept your invitation to set up your account and get started with your team.`,
           `Your invitation is tied to ${email}:`,
@@ -105,7 +106,8 @@ export function renderAuthEmail(branding: EmailBranding, content: AuthEmailConte
   const {
     primaryColor, accentColor, onAccentColor, bgColor, wordmark, tagline, logoUrl,
   } = branding;
-  const safeUrl = esc(ctaUrl);
+  // Only allow http(s) CTA links (the Supabase verify URL). Anything else → "#".
+  const safeUrl = /^https?:\/\//i.test(ctaUrl) ? esc(ctaUrl) : "#";
 
   const header = logoUrl
     ? `<img src="${esc(logoUrl)}" alt="${esc(branding.brandName)}" height="40" style="display:block;margin:0 auto;max-height:40px;" />`
@@ -121,7 +123,14 @@ export function renderAuthEmail(branding: EmailBranding, content: AuthEmailConte
 
   const footerTagline = tagline ? `<br/>${esc(tagline)}` : "";
 
-  return `<div style="margin:0;padding:0;background-color:${bgColor};">
+  return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light only">
+<title>${esc(content.subject)}</title>
+</head><body style="margin:0;padding:0;">
+<div style="margin:0;padding:0;background-color:${bgColor};">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${bgColor};margin:0;padding:0;">
     <tr><td align="center" style="padding:32px 16px;">
       <div style="display:none;max-height:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px;color:${bgColor};">${esc(content.heading)}</div>
@@ -157,5 +166,6 @@ export function renderAuthEmail(branding: EmailBranding, content: AuthEmailConte
       </table>
     </td></tr>
   </table>
-</div>`;
+</div>
+</body></html>`;
 }
