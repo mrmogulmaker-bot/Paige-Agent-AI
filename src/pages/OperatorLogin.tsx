@@ -7,7 +7,7 @@
  * God surfaces are RLS-gated regardless — this page is isolation, not the
  * security boundary). Route: /operator.
  */
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,20 +28,33 @@ export default function OperatorLogin() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [routing, setRouting] = useState(false);
+  const handledRef = useRef(false);
 
   const routeAfterAuth = async (userId: string) => {
+    if (handledRef.current) return; // getSession + INITIAL_SESSION can both fire
+    handledRef.current = true;
     setRouting(true);
     try {
-      const { data: isOwner } = await supabase.rpc("is_platform_owner");
-      if (isOwner === true) {
+      // Race each Supabase call so a stalled network can never trap the operator
+      // on "Entering console…" — fall through to a sane default instead.
+      const isOwner = await Promise.race<boolean>([
+        supabase.rpc("is_platform_owner").then(({ data }) => data === true),
+        new Promise<boolean>((r) => setTimeout(() => r(false), 4000)),
+      ]);
+      if (isOwner) {
         navigate(GOD_CONSOLE, { replace: true });
         return;
       }
       // Authenticated, but not an operator — send them where they belong.
-      const target = await resolveLandingRoute(userId);
+      const target = await Promise.race<string>([
+        resolveLandingRoute(userId),
+        new Promise<string>((r) => setTimeout(() => r("/app"), 4000)),
+      ]);
       navigate(target, { replace: true });
     } catch {
-      navigate("/app", { replace: true });
+      handledRef.current = false;
+      setRouting(false);
+      toast({ title: "Couldn't route you in", description: "Please try again.", variant: "destructive" });
     }
   };
 
@@ -114,7 +127,7 @@ export default function OperatorLogin() {
             <Input
               id="op-email" type="email" autoComplete="email" value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="bg-white/5 border-white/10 text-[#EDE8F6] placeholder:text-[#766E90]"
+              className="bg-white/5 border-white/10 text-[#EDE8F6] placeholder:text-[#766E90] focus-visible:ring-2 focus-visible:ring-[#EBB94C] focus-visible:ring-offset-0"
               placeholder="you@paigeagent.ai" disabled={isLoading || routing}
             />
           </div>
@@ -123,14 +136,14 @@ export default function OperatorLogin() {
             <Input
               id="op-password" type="password" autoComplete="current-password" value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="bg-white/5 border-white/10 text-[#EDE8F6] placeholder:text-[#766E90]"
+              className="bg-white/5 border-white/10 text-[#EDE8F6] placeholder:text-[#766E90] focus-visible:ring-2 focus-visible:ring-[#EBB94C] focus-visible:ring-offset-0"
               placeholder="••••••••" disabled={isLoading || routing}
             />
           </div>
           <Button
             type="submit"
             disabled={isLoading || routing}
-            className="w-full bg-gradient-to-r from-[#EBB94C] to-[#F2CE77] text-[#1B1230] font-semibold hover:opacity-95"
+            className="w-full bg-gradient-to-r from-[#EBB94C] to-[#F2CE77] text-[#1B1230] font-semibold hover:opacity-95 focus-visible:ring-2 focus-visible:ring-[#F2CE77] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0912]"
           >
             {(isLoading || routing) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {routing ? "Entering console…" : "Sign in"}
@@ -138,7 +151,7 @@ export default function OperatorLogin() {
         </form>
 
         <div className="mt-6 text-center">
-          <a href="/auth" className="text-xs text-[#766E90] hover:text-[#A79EC2] transition-colors">
+          <a href="/auth" className="text-xs text-[#A79EC2] hover:text-[#EDE8F6] transition-colors underline underline-offset-2 decoration-transparent hover:decoration-current">
             Coaches &amp; clients sign in at the standard entrance →
           </a>
         </div>
