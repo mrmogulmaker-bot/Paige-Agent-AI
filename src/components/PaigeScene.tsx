@@ -1,4 +1,4 @@
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Sparkles, Float, Environment, Lightformer, useGLTF } from "@react-three/drei";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -9,10 +9,25 @@ import { paigeAnim } from "@/lib/paigeAnim";
 // the page content (the content would otherwise swallow the canvas's events).
 const ptr = { x: 0, y: 0 };
 
+/** Tracks the cursor (normalized -1..1) into the shared `ptr`. Registered by
+ *  BOTH canvases, so cursor tracking survives even if one of them unmounts or
+ *  its 3D content errors out. */
+function usePointerTracking() {
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      ptr.x = (e.clientX / window.innerWidth) * 2 - 1;
+      ptr.y = (e.clientY / window.innerHeight) * 2 - 1;
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onMove);
+  }, []);
+}
+
 // Size envelope: Paige is large at the top of the hero and shrinks toward
-// MIN_SCALE as the page scrolls (paigeAnim.scroll 0→1).
-const TOP_SCALE = 1.12;
-const MIN_SCALE = 0.6;
+// MIN_SCALE as the page scrolls (paigeAnim.scroll 0→1). Kept a touch smaller so
+// the free-floating rings form-fit over the page and read on mobile.
+const TOP_SCALE = 0.92;
+const MIN_SCALE = 0.5;
 
 useGLTF.preload("/paige/paige-central.glb");
 
@@ -61,21 +76,59 @@ function supportsWebGL() {
   }
 }
 
-/** Slow-orbiting light rings around Paige. */
-function OrbitRings({ reduced }: { reduced: boolean }) {
+/**
+ * Free-floating gyroscope of solid gold rings. Rendered on the FOREGROUND
+ * overlay (in front of the page content), the three rings rotate continuously
+ * on different axes and the set drifts slowly across the page. Scales to the
+ * viewport so it form-fits on mobile, and fades in with Paige's entrance.
+ */
+function FloatingRings({ reduced }: { reduced: boolean }) {
   const g = useRef<THREE.Group>(null);
-  useFrame((s) => {
-    if (g.current && !reduced) g.current.rotation.y = s.clock.elapsedTime * 0.22;
+  const r1 = useRef<THREE.Mesh>(null);
+  const r2 = useRef<THREE.Mesh>(null);
+  const r3 = useRef<THREE.Mesh>(null);
+  const vis = useRef(0);
+  const firstFrame = useRef(true);
+  const { viewport } = useThree();
+  useFrame((s, dt) => {
+    const step = Math.min(dt, 0.05);
+    // Snap on the first frame / reduced motion so a returning visitor (entrance
+    // already 1) sees the rings already present, matching Paige.
+    if (reduced || firstFrame.current) vis.current = paigeAnim.entrance;
+    else vis.current += (paigeAnim.entrance - vis.current) * Math.min(1, step * 3);
+    firstFrame.current = false;
+    const v = Math.max(0.0001, vis.current);
+
+    const t = s.clock.elapsedTime;
+    const sp = reduced ? 0.12 : 1; // continuous rotation (slower for reduced motion)
+    if (r1.current) r1.current.rotation.z = t * 0.35 * sp;
+    if (r2.current) {
+      r2.current.rotation.x = t * 0.28 * sp;
+      r2.current.rotation.y = t * 0.14 * sp;
+    }
+    if (r3.current) r3.current.rotation.y = -t * 0.3 * sp;
+
+    if (g.current) {
+      // Fit to the viewport so the rings never overflow a narrow (mobile) screen.
+      const fit = Math.max(0.5, Math.min(1, viewport.width / 9));
+      g.current.scale.setScalar(v * fit);
+      g.current.position.x = Math.sin(t * 0.18) * 0.7;
+      g.current.position.y = 0.2 + Math.cos(t * 0.14) * 0.4;
+    }
   });
   return (
-    <group ref={g} position={[0, 0.5, 0]}>
-      <mesh rotation={[Math.PI / 2.2, 0, 0]}>
-        <torusGeometry args={[1.15, 0.008, 12, 90]} />
-        <meshStandardMaterial color={GOLD_HI} emissive={GOLD_HI} emissiveIntensity={1.3} toneMapped={false} />
+    <group ref={g}>
+      <mesh ref={r1} rotation={[Math.PI / 2.3, 0, 0]}>
+        <torusGeometry args={[1.7, 0.022, 20, 140]} />
+        <meshStandardMaterial color={GOLD_HI} emissive={GOLD_HI} emissiveIntensity={1.1} toneMapped={false} metalness={0.3} roughness={0.4} />
       </mesh>
-      <mesh rotation={[Math.PI / 2.7, 0.7, 0]}>
-        <torusGeometry args={[1.4, 0.006, 12, 90]} />
-        <meshStandardMaterial color={GOLD} emissive={GOLD} emissiveIntensity={0.9} toneMapped={false} />
+      <mesh ref={r2} rotation={[Math.PI / 3, 0.6, 0]}>
+        <torusGeometry args={[2.05, 0.02, 20, 140]} />
+        <meshStandardMaterial color={GOLD} emissive={GOLD} emissiveIntensity={0.9} toneMapped={false} metalness={0.3} roughness={0.4} />
+      </mesh>
+      <mesh ref={r3} rotation={[0.4, 0, Math.PI / 2.5]}>
+        <torusGeometry args={[1.4, 0.018, 20, 140]} />
+        <meshStandardMaterial color={GOLD_HI} emissive={GOLD_HI} emissiveIntensity={0.85} toneMapped={false} metalness={0.3} roughness={0.4} />
       </mesh>
     </group>
   );
@@ -97,6 +150,7 @@ function Companion({ reduced }: { reduced: boolean }) {
   const plateRefs = useRef<(THREE.Mesh | null)[]>([]);
   const trailRefs = useRef<(THREE.Mesh | null)[]>([]);
   const vis = useRef(0); // eased visibility, gated on the entrance
+  const firstFrame = useRef(true);
 
   const plateEls = useMemo(
     () =>
@@ -122,9 +176,11 @@ function Companion({ reduced }: { reduced: boolean }) {
 
   useFrame((s, dt) => {
     const step = Math.min(dt, 0.05);
-    // Fade/scale in with Paige's entrance (reduced motion snaps).
-    if (reduced) vis.current = paigeAnim.entrance;
+    // Fade/scale in with Paige's entrance (reduced motion + first frame snap so
+    // returning visitors see the bot already present, matching Paige).
+    if (reduced || firstFrame.current) vis.current = paigeAnim.entrance;
     else vis.current += (paigeAnim.entrance - vis.current) * Math.min(1, step * 3);
+    firstFrame.current = false;
     const v = Math.max(0.0001, vis.current);
 
     const t = s.clock.elapsedTime * (reduced ? 0.15 : 0.5);
@@ -263,7 +319,6 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
       <group ref={inner}>
         <primitive object={model} />
       </group>
-      <OrbitRings reduced={reduced} />
       <Sparkles count={40} scale={[2.6, 4, 2.6]} position={[0, 0.4, 0]} size={2} speed={reduced ? 0 : 0.25} color={GOLD_HI} opacity={0.7} />
     </group>
   );
@@ -291,16 +346,15 @@ function Scene() {
         <Lightformer form="circle" intensity={1.6} color={OFFWHITE} scale={2} position={[0, 4, -3]} />
       </Environment>
 
-      <Float speed={reduced ? 0 : 0.8} rotationIntensity={reduced ? 0 : 0.1} floatIntensity={reduced ? 0 : 0.35}>
+      {/* rotationIntensity 0 — the only head rotation is the symmetric cursor
+          gaze, so she no longer drifts further to one side than the other. */}
+      <Float speed={reduced ? 0 : 0.8} rotationIntensity={0} floatIntensity={reduced ? 0 : 0.35}>
         <PaigeCentral reduced={reduced} />
       </Float>
 
       {/* Gold + indigo particle field */}
       <Sparkles count={120} scale={[16, 10, 8]} size={2.4} speed={reduced ? 0 : 0.2} color={GOLD_HI} opacity={0.5} />
       <Sparkles count={60} scale={[14, 9, 7]} size={3.2} speed={reduced ? 0 : 0.15} color={VIOLET} opacity={0.4} />
-
-      {/* The companion roams the lower view and follows the cursor. */}
-      <Companion reduced={reduced} />
 
       <CameraRig />
     </>
@@ -309,14 +363,7 @@ function Scene() {
 
 export default function PaigeScene() {
   const [ok] = useState(supportsWebGL);
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      ptr.x = (e.clientX / window.innerWidth) * 2 - 1;
-      ptr.y = (e.clientY / window.innerHeight) * 2 - 1;
-    };
-    window.addEventListener("pointermove", onMove, { passive: true });
-    return () => window.removeEventListener("pointermove", onMove);
-  }, []);
+  usePointerTracking();
   if (!ok) return <div className="absolute inset-0" />;
   return (
     <Canvas
@@ -327,6 +374,49 @@ export default function PaigeScene() {
     >
       <Suspense fallback={null}>
         <Scene />
+      </Suspense>
+    </Canvas>
+  );
+}
+
+/**
+ * Foreground overlay scene — the free-floating rings + the companion, lit so the
+ * gold reads. This renders on a transparent canvas layered IN FRONT of the page
+ * content (see PaigeHome), so the rings and bot visibly fly over the page while
+ * Paige stays in the background. Both fade in with the entrance.
+ */
+function OverlayScene() {
+  const reduced = useMemo(prefersReducedMotion, []);
+  return (
+    <>
+      <ambientLight intensity={0.5} color={GOLD_HI} />
+      <pointLight position={[3, 3, 5]} intensity={22} color={GOLD_HI} decay={2} />
+      <Environment resolution={64}>
+        <Lightformer form="rect" intensity={2} color={GOLD_HI} scale={[5, 3, 1]} position={[3, 3, 3]} />
+        <Lightformer form="circle" intensity={1.2} color={OFFWHITE} scale={2} position={[0, 3, -3]} />
+      </Environment>
+      <FloatingRings reduced={reduced} />
+      <Companion reduced={reduced} />
+    </>
+  );
+}
+
+/** The foreground layer's canvas. Transparent; mounted pointer-events-none above
+ *  the page content by PaigeHome. Paige's own background canvas owns the shared
+ *  `ptr` pointer listener, so this layer just reads it. */
+export function PaigeOverlay() {
+  const [ok] = useState(supportsWebGL);
+  usePointerTracking(); // also registered here so it survives a background unmount
+  if (!ok) return null;
+  return (
+    <Canvas
+      dpr={[1, 1.75]}
+      camera={{ position: [0, 0.3, 7], fov: 42 }}
+      gl={{ alpha: true, antialias: true }}
+      style={{ width: "100%", height: "100%" }}
+    >
+      <Suspense fallback={null}>
+        <OverlayScene />
       </Suspense>
     </Canvas>
   );
