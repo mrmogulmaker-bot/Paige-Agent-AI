@@ -79,13 +79,20 @@ export default function PlatformTeam() {
     }
     setInviting(true);
     try {
-      const { data, error } = await supabase.rpc("create_platform_invite", { _email: e });
-      if (error) throw new Error(error.message);
-      const token = (data as { token?: string })?.token;
+      const { data, error } = await supabase.functions.invoke("send-platform-invite", {
+        body: { email: e, origin: window.location.origin },
+      });
+      const res = data as { token?: string; emailed?: boolean; error?: string } | null;
+      if (error || res?.error) throw new Error(res?.error ?? error?.message ?? "Invite failed");
       setEmail("");
       await load();
-      if (token) await copyLink(token);
-      toast({ title: "Invite created", description: `Invite link for ${e} copied — send it over.` });
+      if (res?.token) await copyLink(res.token);
+      toast({
+        title: res?.emailed ? "Invite sent" : "Invite created",
+        description: res?.emailed
+          ? `Emailed ${e} — link also copied to your clipboard.`
+          : `Invite link for ${e} copied — send it over.`,
+      });
     } catch (err) {
       toast({ title: "Invite failed", description: (err as Error).message, variant: "destructive" });
     } finally {
