@@ -41,10 +41,11 @@ All colors MUST be HSL.
     --destructive-foreground: 0 0% 98%;
 
     --border: 265 14% 90%;
+    --border-strong: 265 13% 82%; /* table dividers, active outlines */
     --input: 265 14% 90%;
     --ring: 270 91% 65%;
 
-    --radius: 1rem;
+    --radius: 0.75rem; /* 12px base — tighter, gives a real hierarchy vs pills/inputs */
 
     --success: 142 76% 36%;
     --success-light: 142 69% 58%;
@@ -65,11 +66,13 @@ All colors MUST be HSL.
     --gradient-teal: linear-gradient(135deg, hsl(270 91% 62%), hsl(265 80% 45%));
     --gradient-surface: linear-gradient(180deg, hsl(210 20% 98%), hsl(0 0% 100%));
     
-    /* Premium Shadows */
-    --shadow-sm: 0 1px 2px 0 rgb(11 18 33 / 0.05);
-    --shadow-md: 0 4px 6px -1px rgb(11 18 33 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(11 18 33 / 0.1);
-    --shadow-card: 0 8px 24px rgba(11, 18, 33, 0.08);
+    /* Premium Shadows — two-layer, indigo-tinted, low-opacity (soft depth ladder) */
+    --shadow-xs: 0 1px 2px hsl(255 40% 12% / 0.04);
+    --shadow-sm: 0 1px 2px hsl(255 40% 12% / 0.05), 0 1px 3px hsl(255 40% 12% / 0.06);
+    --shadow-md: 0 2px 4px hsl(255 40% 12% / 0.05), 0 4px 12px hsl(255 40% 12% / 0.08);
+    --shadow-lg: 0 8px 16px hsl(255 40% 12% / 0.08), 0 2px 6px hsl(255 40% 12% / 0.06);
+    --shadow-xl: 0 24px 48px hsl(255 40% 12% / 0.14), 0 8px 16px hsl(255 40% 12% / 0.08);
+    --shadow-card: 0 1px 2px hsl(255 40% 12% / 0.05), 0 1px 3px hsl(255 40% 12% / 0.06);
     --shadow-glow: 0 0 30px hsl(270 91% 65% / 0.35);
     --shadow-glow-lg: 0 0 50px hsl(270 91% 65% / 0.45);
     --shadow-glow-teal: 0 0 30px hsl(270 91% 65% / 0.3);
@@ -115,6 +118,22 @@ All colors MUST be HSL.
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;
   }
+
+  /* Wire the loaded webfonts (were loaded in index.html but never applied — the
+     app rendered in the browser's default system font). Inter for UI/body,
+     Bricolage Grotesque for headings — the single biggest "premium" lift. */
+  body {
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    font-feature-settings: "cv05" 1, "ss01" 1;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, .font-display {
+    font-family: "Bricolage Grotesque", "Inter", system-ui, sans-serif;
+    letter-spacing: -0.01em;
+  }
+  /* Line up digits in tables/metrics */
+  .tabular-nums, [class*="tabular"] { font-variant-numeric: tabular-nums; }
 
   body {
     /* Smooth iOS momentum scrolling on the page */
