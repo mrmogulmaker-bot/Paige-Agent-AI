@@ -188,8 +188,9 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
       inner.current.scale.setScalar(b);
     }
     if (group.current) {
-      group.current.rotation.y += (s.pointer.x * 0.4 - group.current.rotation.y) * 0.05;
-      group.current.rotation.x += (-s.pointer.y * 0.08 - group.current.rotation.x) * 0.05;
+      // Track the cursor across the whole screen (she's a fixed background now).
+      group.current.rotation.y += (s.pointer.x * 0.6 - group.current.rotation.y) * 0.06;
+      group.current.rotation.x += (-s.pointer.y * 0.14 - group.current.rotation.x) * 0.06;
     }
   });
 
