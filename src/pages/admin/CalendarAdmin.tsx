@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CalendarDays, Plus, Link as LinkIcon, Unlink, Loader2 } from "lucide-react";
+import CalendarsPanel from "@/components/admin/calendar/CalendarsPanel";
 
 type DayWindow = { day: number; start: string; end: string };
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -147,7 +148,17 @@ export default function CalendarAdmin() {
     <div className="container mx-auto px-4 py-6 space-y-6 max-w-5xl">
       <div className="flex items-center gap-2">
         <CalendarDays className="size-5" />
-        <h1 className="text-2xl font-semibold tracking-tight">My Calendar</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Calendars</h1>
+      </div>
+
+      {/* Multi-calendar manager (first-class `calendars` entity) — every tier. */}
+      <CalendarsPanel />
+
+      <div className="pt-2">
+        <h2 className="text-lg font-semibold tracking-tight">Connections &amp; personal defaults</h2>
+        <p className="text-sm text-muted-foreground">
+          Sync your own Google/Apple calendar and set your personal booking defaults.
+        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

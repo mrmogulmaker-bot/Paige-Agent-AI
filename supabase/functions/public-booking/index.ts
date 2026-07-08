@@ -57,6 +57,7 @@ function ymdInTz(ms: number, tz: string): { y: number; mo: number; d: number; wd
 interface HostSettings {
   user_id: string;
   tenant_id: string | null;
+  calendarId: string | null; // set when the page is backed by a first-class calendar
   availability: DayWindow[];
   durationMin: number;
   bufferBeforeMin: number;
@@ -66,6 +67,7 @@ interface HostSettings {
   title: string | null;
   description: string | null;
   accent: string | null;
+  logoUrl: string | null; // per-calendar logo override (wins over tenant logo)
 }
 
 interface Busy { start: number; end: number } // UTC ms
@@ -100,6 +102,42 @@ function computeSlots(h: HostSettings, busy: Busy[], fromMs: number, toMs: numbe
   return Array.from(new Set(slots)).sort((a, b) => a - b);
 }
 
+// First-class calendar (the `calendars` entity) resolved by slug. This is the
+// path created via the Calendars manager — many branded calendars per tenant.
+// The availability owner is the calendar's top-priority host.
+async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
+  const { data: cal } = await admin
+    .from("calendars")
+    .select("id, tenant_id, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (!cal || cal.enabled !== true) return null;
+  const { data: hosts } = await admin
+    .from("calendar_hosts")
+    .select("user_id, priority")
+    .eq("calendar_id", cal.id)
+    .order("priority", { ascending: true })
+    .limit(1);
+  const hostId = hosts?.[0]?.user_id as string | undefined;
+  if (!hostId) return null; // no host = nobody to book with yet
+  return {
+    user_id: hostId,
+    tenant_id: cal.tenant_id ?? null,
+    calendarId: cal.id,
+    availability: parseAvailability(cal.availability_json),
+    durationMin: Math.max(5, cal.duration_min ?? 30),
+    bufferBeforeMin: Math.max(0, cal.buffer_before_min ?? 0),
+    bufferAfterMin: Math.max(0, cal.buffer_after_min ?? 0),
+    timezone: cal.timezone || "America/New_York",
+    minNoticeMin: Math.max(0, cal.min_notice_min ?? 60),
+    title: cal.title ?? null,
+    description: cal.description ?? null,
+    accent: cal.accent ?? null,
+    logoUrl: cal.logo_url ?? null,
+  };
+}
+
+// Legacy per-staff booking page (staff_calendar_settings) — kept for back-compat.
 async function loadHost(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
   const { data } = await admin
     .from("staff_calendar_settings")
@@ -110,6 +148,7 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
   return {
     user_id: data.user_id,
     tenant_id: data.tenant_id ?? null,
+    calendarId: null,
     availability: parseAvailability(data.availability_json),
     durationMin: Math.max(5, data.default_meeting_duration_min ?? 30),
     bufferBeforeMin: Math.max(0, data.buffer_before_min ?? 0),
@@ -119,20 +158,21 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     title: data.booking_page_title ?? null,
     description: data.booking_page_description ?? null,
     accent: data.booking_page_accent ?? null,
+    logoUrl: null,
   };
 }
 
 /** White-label branding for the booking page: tenant brand + host overrides. */
 async function loadBranding(admin: ReturnType<typeof createClient>, host: HostSettings) {
   let name: string | null = null;
-  let logoUrl: string | null = null;
+  let logoUrl: string | null = host.logoUrl; // per-calendar logo wins
   let accent = host.accent;
   if (host.tenant_id) {
     const { data: t } = await admin.from("tenants").select("name, brand").eq("id", host.tenant_id).maybeSingle();
     const brand = (t?.brand ?? {}) as Record<string, string>;
-    name = brand.name ?? (t?.name as string | undefined) ?? null;
-    logoUrl = brand.logo_url ?? null;
-    accent = accent || brand.primary_color || brand.accent_color || null;
+    name = brand.brand_name ?? brand.display_name ?? brand.name ?? (t?.name as string | undefined) ?? null;
+    logoUrl = logoUrl || brand.logo_url || null;
+    accent = accent || brand.accent_color || brand.primary_color || null;
   }
   return {
     name: name || "Paige Agent AI",
@@ -163,7 +203,8 @@ Deno.serve(async (req) => {
     const slug = typeof body?.slug === "string" ? body.slug.toLowerCase() : "";
     if (!slug) return json({ error: "slug required" }, 400);
 
-    const host = await loadHost(admin, slug);
+    // Prefer a first-class calendar; fall back to the legacy per-staff page.
+    const host = (await loadCalendar(admin, slug)) ?? (await loadHost(admin, slug));
     if (!host) return json({ error: "This booking page isn't available." }, 404);
 
     const now = Date.now();
@@ -210,6 +251,7 @@ Deno.serve(async (req) => {
       const { data, error } = await admin.from("internal_bookings").insert({
         tenant_id: host.tenant_id,
         host_user_id: host.user_id,
+        calendar_id: host.calendarId,
         guest_name: name,
         guest_email: email,
         guest_phone: phone,
