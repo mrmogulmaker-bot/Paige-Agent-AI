@@ -215,6 +215,96 @@ async function loadBusy(admin: ReturnType<typeof createClient>, userId: string, 
   return (data ?? []).map((b) => ({ start: Date.parse(b.start_at), end: Date.parse(b.end_at) }));
 }
 
+// --- Confirmation emails (guest + host) + .ics invite -----------------------
+const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+const EMAIL_FROM = Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <team@notify.paigeagent.ai>";
+function esc(s: string): string {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function textOn(hex: string): string {
+  const h = (hex || "").replace("#", "");
+  if (h.length < 6) return "#1B1230";
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#1B1230" : "#FFFFFF";
+}
+function locationLabel(type: string, value: string | null): string {
+  switch (type) {
+    case "google_meet": return "Google Meet — link to follow";
+    case "zoom": return "Zoom — link to follow";
+    case "phone": return value ? `Phone call: ${value}` : "Phone call";
+    case "in_person": return value ? `In person: ${value}` : "In person";
+    case "custom": return value || "Details to follow";
+    default: return "To be confirmed";
+  }
+}
+function icsStamp(ms: number): string {
+  return new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+function buildIcs(o: { uid: string; startMs: number; endMs: number; title: string; desc: string; location: string; organizer: string; attendee: string; attendeeName: string }): string {
+  const clean = (s: string) => String(s ?? "").replace(/([,;\\])/g, "\\$1").replace(/\r?\n/g, "\\n");
+  return [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Paige Agent AI//Booking//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "BEGIN:VEVENT", `UID:${o.uid}`, `DTSTAMP:${icsStamp(Date.now())}`, `DTSTART:${icsStamp(o.startMs)}`, `DTEND:${icsStamp(o.endMs)}`,
+    `SUMMARY:${clean(o.title)}`, `DESCRIPTION:${clean(o.desc)}`, `LOCATION:${clean(o.location)}`,
+    `ORGANIZER;CN=${clean(o.organizer)}:mailto:noreply@notify.paigeagent.ai`,
+    `ATTENDEE;CN=${clean(o.attendeeName)};RSVP=TRUE:mailto:${o.attendee}`,
+    "END:VEVENT", "END:VCALENDAR",
+  ].join("\r\n");
+}
+async function sendEmail(to: string, subject: string, html: string, ics?: string): Promise<boolean> {
+  if (!RESEND_KEY) return false;
+  const body: Record<string, unknown> = { from: EMAIL_FROM, to: [to], subject, html };
+  if (ics) body.attachments = [{ filename: "invite.ics", content: btoa(ics) }];
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+function guestEmailHtml(brandName: string, accent: string, title: string, whenLabel: string, location: string, host: string | null): string {
+  const on = textOn(accent);
+  return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:28px 0;"><tr><td align="center">
+    <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#fff;border:1px solid #e7e8ec;border-radius:14px;overflow:hidden;">
+      <tr><td style="height:5px;background:${esc(accent)};"></td></tr>
+      <tr><td style="padding:28px 32px 8px;">
+        <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#98a0ae;font-weight:bold;">${esc(brandName)}</div>
+        <h1 style="color:#101828;font-size:20px;margin:10px 0 4px;">You're booked</h1>
+        <p style="color:#667085;font-size:14px;margin:0 0 18px;">Your time is reserved. Details are below and an invite is attached.</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#101828;">
+          <tr><td style="padding:6px 0;color:#98a0ae;width:88px;">Session</td><td style="padding:6px 0;font-weight:600;">${esc(title)}</td></tr>
+          <tr><td style="padding:6px 0;color:#98a0ae;">When</td><td style="padding:6px 0;font-weight:600;">${esc(whenLabel)}</td></tr>
+          <tr><td style="padding:6px 0;color:#98a0ae;">Where</td><td style="padding:6px 0;">${esc(location)}</td></tr>
+          ${host ? `<tr><td style="padding:6px 0;color:#98a0ae;">With</td><td style="padding:6px 0;">${esc(host)}</td></tr>` : ""}
+        </table>
+      </td></tr>
+      <tr><td style="padding:18px 32px 26px;border-top:1px solid #eef0f3;">
+        <p style="color:#98a0ae;font-size:12px;margin:0;">Need to make a change? Just reply to this email.</p>
+      </td></tr>
+    </table></td></tr></table></body></html>`;
+}
+function hostEmailHtml(accent: string, title: string, whenLabel: string, guestName: string, guestEmail: string, guestPhone: string | null, location: string, notes: string | null): string {
+  return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:28px 0;"><tr><td align="center">
+    <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#fff;border:1px solid #e7e8ec;border-radius:14px;overflow:hidden;">
+      <tr><td style="height:5px;background:${esc(accent)};"></td></tr>
+      <tr><td style="padding:28px 32px;">
+        <h1 style="color:#101828;font-size:19px;margin:0 0 14px;">New booking</h1>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#101828;">
+          <tr><td style="padding:6px 0;color:#98a0ae;width:88px;">Session</td><td style="padding:6px 0;font-weight:600;">${esc(title)}</td></tr>
+          <tr><td style="padding:6px 0;color:#98a0ae;">When</td><td style="padding:6px 0;font-weight:600;">${esc(whenLabel)}</td></tr>
+          <tr><td style="padding:6px 0;color:#98a0ae;">Guest</td><td style="padding:6px 0;">${esc(guestName)} &lt;${esc(guestEmail)}&gt;</td></tr>
+          ${guestPhone ? `<tr><td style="padding:6px 0;color:#98a0ae;">Phone</td><td style="padding:6px 0;">${esc(guestPhone)}</td></tr>` : ""}
+          <tr><td style="padding:6px 0;color:#98a0ae;">Where</td><td style="padding:6px 0;">${esc(location)}</td></tr>
+          ${notes ? `<tr><td style="padding:6px 0;color:#98a0ae;vertical-align:top;">Notes</td><td style="padding:6px 0;">${esc(notes)}</td></tr>` : ""}
+        </table>
+      </td></tr>
+    </table></td></tr></table></body></html>`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -306,6 +396,37 @@ Deno.serve(async (req) => {
           return json({ error: "That time was just booked. Please pick another." }, 409);
         return json({ error: error.message }, 500);
       }
+
+      // Confirmation emails (guest + host) with an .ics invite — non-blocking:
+      // a mail failure must never fail a booking that's already committed.
+      try {
+        const brand = await loadBranding(admin, host);
+        const whenLabel = new Intl.DateTimeFormat("en-US", {
+          timeZone: host.timezone, weekday: "long", month: "long", day: "numeric", year: "numeric",
+          hour: "numeric", minute: "2-digit", timeZoneName: "short",
+        }).format(new Date(startMs));
+        const loc = locationLabel(locationType, locationValue);
+        const title = host.title || "Your session";
+        const ics = buildIcs({
+          uid: `${(data as { id: string }).id}@paigeagent.ai`, startMs, endMs, title,
+          desc: host.description || "", location: loc, organizer: brand.name, attendee: email, attendeeName: name,
+        });
+        const guestOk = await sendEmail(email, `Confirmed: ${title} · ${whenLabel}`,
+          guestEmailHtml(brand.name, brand.accent, title, whenLabel, loc, brand.name), ics);
+
+        let hostOk = false;
+        const { data: hostUser } = await admin.auth.admin.getUserById(host.user_id);
+        const hostEmail = (hostUser as { user?: { email?: string } } | null)?.user?.email;
+        if (hostEmail) {
+          hostOk = await sendEmail(hostEmail, `New booking: ${name} · ${whenLabel}`,
+            hostEmailHtml(brand.accent, title, whenLabel, name, email, phone, loc, notes), ics);
+        }
+        await admin.from("email_send_log").insert([
+          { template_name: "booking_confirmation", recipient_email: email, status: guestOk ? "sent" : "skipped", sender_account: "platform", metadata: { via: "public-booking", slug } },
+          ...(hostEmail ? [{ template_name: "booking_host_notify", recipient_email: hostEmail, status: hostOk ? "sent" : "skipped", sender_account: "platform", metadata: { via: "public-booking", slug } }] : []),
+        ]).then(() => {}, () => {});
+      } catch (_e) { /* email is best-effort */ }
+
       return json({ ok: true, booking: data });
     }
 
