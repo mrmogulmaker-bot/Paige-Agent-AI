@@ -26,6 +26,8 @@ export interface TenantSummary {
 interface TenantContextState {
   loading: boolean;
   isPlatformOwner: boolean;
+  /** Owner OR scoped Platform Admin — sees the God console instead of the agency CRM. */
+  isPlatformStaff: boolean;
   tenants: TenantSummary[];
   activeTenantId: string | null;
   activeTenant: TenantSummary | null;
@@ -36,6 +38,7 @@ interface TenantContextState {
 export function useTenantContext(): TenantContextState {
   const [loading, setLoading] = useState(true);
   const [isPlatformOwner, setIsPlatformOwner] = useState(false);
+  const [isPlatformStaff, setIsPlatformStaff] = useState(false);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
 
@@ -48,13 +51,15 @@ export function useTenantContext(): TenantContextState {
         setTenants([]);
         setActiveTenantId(null);
         setIsPlatformOwner(false);
+        setIsPlatformStaff(false);
         return;
       }
 
-      const [{ data: ownerFlag }, { data: profile }, { data: tenantRows }] = await Promise.all([
+      const [{ data: ownerFlag }, { data: staffFlag }, { data: profile }, { data: tenantRows }] = await Promise.all([
         supabase.rpc("is_platform_owner"),
+        supabase.rpc("is_platform_admin"),
         supabase.from("profiles").select("active_tenant_id").eq("user_id", uid).maybeSingle(),
-        // RLS already filters: platform owner sees all, members see their own.
+        // RLS already filters: platform staff see all, members see their own.
         supabase
           .from("tenants")
           .select("id, slug, name, status, plan_offer, seat_limit, customer_limit, owner_user_id")
@@ -62,9 +67,13 @@ export function useTenantContext(): TenantContextState {
       ]);
 
       setIsPlatformOwner(Boolean(ownerFlag));
+      setIsPlatformStaff(Boolean(staffFlag));
       setTenants((tenantRows ?? []) as TenantSummary[]);
+      // Platform staff must NOT be auto-scoped into a tenant just because RLS
+      // lets them read all of them — they operate at the God tier by default.
       setActiveTenantId(
-        profile?.active_tenant_id ?? (tenantRows?.[0] as TenantSummary | undefined)?.id ?? null,
+        profile?.active_tenant_id ??
+          (staffFlag ? null : (tenantRows?.[0] as TenantSummary | undefined)?.id ?? null),
       );
     } finally {
       setLoading(false);
@@ -86,6 +95,7 @@ export function useTenantContext(): TenantContextState {
   return {
     loading,
     isPlatformOwner,
+    isPlatformStaff,
     tenants,
     activeTenantId,
     activeTenant,

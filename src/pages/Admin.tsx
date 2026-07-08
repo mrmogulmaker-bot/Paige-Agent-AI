@@ -30,6 +30,7 @@ import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsB
 import { toast } from "sonner";
 import { RoleGate } from "@/components/auth/RoleGate";
 import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 /** Wraps a route element so it's only visible to admins (or platform owner). */
 const AdminOnly = ({ children }: { children: React.ReactNode }) => (
@@ -140,6 +141,7 @@ const Admin = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<"admin" | "coach">("admin");
+  const { isPlatformStaff } = useTenantContext();
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeSubscriptions: 0,
@@ -263,7 +265,7 @@ const Admin = () => {
     <AdminLoaderBoundary>
     <AdminLayout userRole={userRole}>
       <Routes>
-        <Route index element={<AdminOverview stats={stats} />} />
+        <Route index element={isPlatformStaff ? <Navigate to="/admin/platform/tenants" replace /> : <AdminOverview stats={stats} />} />
         <Route path="contacts" element={
           <Suspense fallback={<SuspenseFallback />}><ContactsAdmin /></Suspense>
         } />

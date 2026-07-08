@@ -146,6 +146,13 @@ const adminNavItems = [
   ...moreNavItems,
 ];
 
+// The God console (platform staff) gets its own nav — fleet/platform concerns
+// only, never the agency CRM hubs above. Grows as blueprint sections land.
+const GOD_HUBS: Hub[] = [
+  { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
+  { label: "Team", href: "/admin/platform/team", icon: UserCog },
+];
+
 interface AdminLayoutProps {
   children: React.ReactNode;
   userRole: "admin" | "coach";
@@ -156,7 +163,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const navigate = useNavigate();
   const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
-  const { isPlatformOwner } = useTenantContext();
+  const { isPlatformOwner, isPlatformStaff } = useTenantContext();
+  // Platform staff (owner + Platform Admin) run the God console — its own nav of
+  // fleet/platform concerns, not the agency CRM hubs.
+  const godMode = isPlatformStaff;
+  const activeHubs = godMode ? GOD_HUBS : hubs;
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -187,8 +198,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     return location.pathname.startsWith(href);
   };
 
-  const currentSection =
-    adminNavItems.find((i) => isActive(i.href))?.label ?? "Admin";
+  const currentSection = godMode
+    ? (GOD_HUBS.find((i) => isActive(i.href))?.label ?? "Platform")
+    : (adminNavItems.find((i) => isActive(i.href))?.label ?? "Admin");
 
   return (
     <div className="min-h-dvh flex flex-col bg-background overflow-x-hidden">
@@ -198,10 +210,17 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
       <header className="sticky top-0 z-40 bg-primary text-primary-foreground border-b border-sidebar-border">
         {/* Row 1: brand + utilities */}
         <div className="flex items-center justify-between gap-3 px-3 md:px-6 h-14">
-          <Link to="/admin" className="flex items-center gap-2 min-w-0">
+          <Link to={godMode ? "/admin/platform/tenants" : "/admin"} className="flex items-center gap-2 min-w-0">
             <PaigeMark className="h-8 w-8 flex-shrink-0" />
             <span className="font-bold text-sm tracking-tight truncate">{PLATFORM.adminName}</span>
-            {canSwitch ? (
+            {godMode ? (
+              <Badge
+                variant="outline"
+                className="hidden sm:inline-flex ml-2 text-[10px] font-medium uppercase tracking-wide border-accent/40 text-accent bg-transparent"
+              >
+                {isPlatformOwner ? "Operator" : "Platform Admin"}
+              </Badge>
+            ) : canSwitch ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -269,7 +288,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
         {/* Row 2: 7-hub primary nav (desktop) */}
         <div className="hidden md:flex items-center gap-1 px-3 md:px-6 h-11 overflow-x-auto scrollbar-none border-t border-sidebar-border/60">
-          {hubs.map((hub) => {
+          {activeHubs.map((hub) => {
             const hubActive =
               isActive(hub.href) ||
               (hub.children?.some((c) => isActive(c.href)) ?? false) ||
@@ -337,6 +356,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             );
           })}
 
+          {!godMode && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -386,6 +406,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
         </div>
       </header>
 
@@ -405,7 +426,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               </button>
             </div>
             <div className="p-2">
-              {hubs.map((hub) => (
+              {activeHubs.map((hub) => (
                 <div key={hub.href}>
                   <div className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
                     {hub.label}
@@ -428,24 +449,28 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                 </div>
               ))}
 
-              <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
-                More
-              </div>
-              {visibleMore.map((item) => (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  onClick={() => setMobileNavOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm ${
-                    isActive(item.href)
-                      ? "bg-sidebar-accent text-accent font-medium"
-                      : "text-primary-foreground/70 hover:bg-sidebar-accent/50"
-                  }`}
-                >
-                  <item.icon className="w-4 h-4" />
-                  {item.label}
-                </Link>
-              ))}
+              {!godMode && (
+                <>
+                  <div className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
+                    More
+                  </div>
+                  {visibleMore.map((item) => (
+                    <Link
+                      key={item.href}
+                      to={item.href}
+                      onClick={() => setMobileNavOpen(false)}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm ${
+                        isActive(item.href)
+                          ? "bg-sidebar-accent text-accent font-medium"
+                          : "text-primary-foreground/70 hover:bg-sidebar-accent/50"
+                      }`}
+                    >
+                      <item.icon className="w-4 h-4" />
+                      {item.label}
+                    </Link>
+                  ))}
+                </>
+              )}
 
 
               <div className="mt-2 pt-2 border-t border-sidebar-border space-y-1">
