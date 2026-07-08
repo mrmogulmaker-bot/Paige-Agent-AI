@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type CSSProperties } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { PaigeMark } from "@/components/brand/PaigeMark";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, Shield, TrendingUp, Zap, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { z } from "zod";
 import type { User, Session } from "@supabase/supabase-js";
-import paigeLogo from "@/assets/paige-logo-transparent.png";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
@@ -279,8 +279,37 @@ const Auth = () => {
   ];
   const HEAD = "'Bricolage Grotesque', 'Space Grotesk', sans-serif";
 
+  // Scoped gold+indigo brand palette — overrides the app's (legacy purple) theme
+  // tokens for THIS page only, so /auth matches the landing without recoloring
+  // the logged-in dashboard. Every child's bg-accent/text-accent/bg-gradient-gold
+  // etc. now resolves to gold, and background/foreground to indigo/offwhite.
+  const goldTheme = {
+    background: "radial-gradient(120% 90% at 70% 15%, #241645 0%, #140c27 55%, #0c0718 100%)",
+    ["--background" as string]: "257 45% 9%",
+    ["--foreground" as string]: "45 33% 95%",
+    ["--card" as string]: "258 42% 12%",
+    ["--card-foreground" as string]: "45 33% 95%",
+    ["--popover" as string]: "258 42% 12%",
+    ["--popover-foreground" as string]: "45 33% 95%",
+    ["--primary" as string]: "258 50% 15%",
+    ["--primary-foreground" as string]: "45 33% 95%",
+    ["--primary-light" as string]: "42 82% 68%",
+    ["--secondary" as string]: "258 30% 18%",
+    ["--secondary-foreground" as string]: "45 33% 95%",
+    ["--muted" as string]: "258 28% 16%",
+    ["--muted-foreground" as string]: "45 18% 72%",
+    ["--accent" as string]: "42 82% 68%",
+    ["--accent-foreground" as string]: "257 50% 12%",
+    ["--gold" as string]: "39 60% 58%",
+    ["--border" as string]: "258 22% 24%",
+    ["--input" as string]: "258 26% 20%",
+    ["--ring" as string]: "42 82% 68%",
+    ["--gradient-gold" as string]: "linear-gradient(135deg, #F0C86A, #D4A752)",
+    ["--shadow-glow" as string]: "0 0 40px rgba(240,200,106,0.35)",
+  } as CSSProperties;
+
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="relative min-h-screen flex text-[#F8F5EE]" style={goldTheme}>
       <ForgotPasswordDialog open={showForgotPassword} onOpenChange={setShowForgotPassword} />
 
       {/* Left Panel — Brand / Value Prop */}
@@ -299,9 +328,11 @@ const Auth = () => {
 
         {/* Top — Logo */}
         <div className="relative z-10">
-          <Link to="/" className="inline-flex items-center gap-3 group">
-            <img src={paigeLogo} alt="PaigeAgent.ai" className="h-10 w-auto" />
-            <span className="text-xl font-bold text-primary-foreground/90 tracking-tight" style={{ fontFamily: HEAD }}>PaigeAgent.ai</span>
+          <Link to="/" className="inline-flex items-center gap-2.5 group">
+            <PaigeMark className="h-9 w-9" />
+            <span className="text-xl font-semibold tracking-tight text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
+              Paige <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
+            </span>
           </Link>
         </div>
 
@@ -315,7 +346,7 @@ const Auth = () => {
             <h2 className="text-4xl xl:text-5xl font-bold text-primary-foreground leading-[1.05] tracking-tight" style={{ fontFamily: HEAD }}>
               She runs your
               <br />
-              <span style={{ color: "#e8c66a" }}>coaching business.</span>
+              <span style={{ color: "#F0C86A" }}>coaching business.</span>
             </h2>
             <p className="text-primary-foreground/60 text-base max-w-md leading-relaxed">
               You run the transformation. Paige handles the operations, follow-ups, and follow-through — so you deliver the outcomes only you can.
@@ -371,8 +402,10 @@ const Auth = () => {
             <span className="hidden sm:inline">Back to home</span>
           </Link>
           <Link to="/" className="lg:hidden inline-flex items-center gap-2">
-            <img src={paigeLogo} alt="PaigeAgent.ai" className="h-8 w-auto" />
-            <span className="text-lg font-bold text-accent">PaigeAgent.ai</span>
+            <PaigeMark className="h-8 w-8" />
+            <span className="text-lg font-semibold text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
+              Paige <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
+            </span>
           </Link>
           <button
             type="button"
@@ -536,11 +569,7 @@ const Auth = () => {
 
               <Button
                 type="submit"
-                className={`w-full font-semibold text-sm h-12 rounded-xl transition-all duration-300 ${
-                  isLogin
-                    ? "bg-primary hover:bg-primary-light text-primary-foreground shadow-md hover:shadow-lg"
-                    : "bg-gradient-gold text-primary shadow-glow hover:shadow-glow-lg hover:scale-[1.01]"
-                }`}
+                className="w-full h-12 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[#241645] text-sm font-bold shadow-[0_12px_34px_rgba(240,200,106,0.28)] transition-transform duration-300 hover:scale-[1.01] disabled:opacity-60 disabled:hover:scale-100"
                 disabled={isLoading || (!isLogin && (!consentAgreements || !consentDataUsage))}
               >
                 {isLoading ? (
@@ -549,7 +578,7 @@ const Auth = () => {
                     {isLogin ? "Signing in..." : "Creating account..."}
                   </>
                 ) : (
-                  <>{isLogin ? "Sign In" : "Get Started Free"}</>
+                  <>{isLogin ? "Sign In" : "Start with Paige"}</>
                 )}
               </Button>
             </form>
