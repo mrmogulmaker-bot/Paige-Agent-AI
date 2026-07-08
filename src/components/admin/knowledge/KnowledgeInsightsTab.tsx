@@ -188,7 +188,7 @@ export function KnowledgeInsightsTab({ docs, typeColors }: Props) {
                         {d.document_type.replace(/_/g, " ")}
                       </Badge>
                     </div>
-                    <div className="text-sm font-bold tabular-nums text-accent">{d.usage_count}</div>
+                    <div className="text-sm font-bold tabular-nums text-gold-dark">{d.usage_count}</div>
                   </li>
                 ))}
               </ul>

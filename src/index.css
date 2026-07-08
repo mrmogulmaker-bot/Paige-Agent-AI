@@ -19,8 +19,8 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 222 87% 12%;
 
-    --primary: 264 68% 11%; /* Deep Violet-Black */
-    --primary-light: 264 52% 22%;
+    --primary: 255 60% 12%; /* Deep indigo (was violet-black) — brand ink */
+    --primary-light: 255 50% 22%;
     --primary-foreground: 0 0% 98%;
 
     --secondary: 264 40% 11%;
@@ -29,13 +29,13 @@ All colors MUST be HSL.
     --muted: 265 16% 95%;
     --muted-foreground: 264 12% 45%;
 
-    --accent: 270 91% 65%; /* Paige Purple */
-    --accent-glow: 273 95% 76%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 41 82% 61%; /* Paige Gold #EBB94C — brand accent (doctrine §6) */
+    --accent-glow: 41 90% 70%;
+    --accent-foreground: 258 70% 12%; /* deep indigo — dark text ON gold fills (~9.6:1) */
 
-    --gold: 270 91% 65%; /* Legacy accent token → Paige Purple */
-    --gold-light: 273 95% 78%;
-    --gold-dark: 265 80% 55%;
+    --gold: 41 82% 61%;
+    --gold-light: 41 90% 72%;
+    --gold-dark: 36 70% 32%; /* AA-safe gold for TEXT on light (5.7:1 on white) */
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
@@ -43,7 +43,7 @@ All colors MUST be HSL.
     --border: 265 14% 90%;
     --border-strong: 265 13% 82%; /* table dividers, active outlines */
     --input: 265 14% 90%;
-    --ring: 270 91% 65%;
+    --ring: 258 70% 50%; /* indigo focus ring — 7.7:1 on white (gold ring fails 3:1) */
 
     --radius: 0.75rem; /* 12px base — tighter, gives a real hierarchy vs pills/inputs */
 
@@ -59,11 +59,11 @@ All colors MUST be HSL.
     --fundability-poor: 0 72% 51%;
 
     /* Premium Gradients */
-    --gradient-hero: linear-gradient(135deg, hsl(264 68% 11%) 0%, hsl(270 91% 55%) 55%, hsl(273 95% 72%) 100%);
-    --gradient-primary: linear-gradient(135deg, hsl(264 68% 11%), hsl(264 52% 22%));
-    --gradient-accent: linear-gradient(135deg, hsl(270 91% 62%), hsl(273 95% 74%));
-    --gradient-gold: linear-gradient(135deg, hsl(273 95% 72%), hsl(270 91% 58%));
-    --gradient-teal: linear-gradient(135deg, hsl(270 91% 62%), hsl(265 80% 45%));
+    --gradient-hero: linear-gradient(135deg, hsl(258 70% 12%) 0%, hsl(255 55% 30%) 45%, hsl(41 82% 61%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(258 70% 12%), hsl(255 50% 24%));
+    --gradient-accent: linear-gradient(135deg, hsl(41 82% 61%), hsl(41 90% 70%));
+    --gradient-gold: linear-gradient(135deg, hsl(41 90% 68%), hsl(38 82% 55%));
+    --gradient-teal: linear-gradient(135deg, hsl(258 60% 22%), hsl(255 55% 34%));
     --gradient-surface: linear-gradient(180deg, hsl(210 20% 98%), hsl(0 0% 100%));
     
     /* Premium Shadows — two-layer, indigo-tinted, low-opacity (soft depth ladder) */
@@ -73,9 +73,9 @@ All colors MUST be HSL.
     --shadow-lg: 0 8px 16px hsl(255 40% 12% / 0.08), 0 2px 6px hsl(255 40% 12% / 0.06);
     --shadow-xl: 0 24px 48px hsl(255 40% 12% / 0.14), 0 8px 16px hsl(255 40% 12% / 0.08);
     --shadow-card: 0 1px 2px hsl(255 40% 12% / 0.05), 0 1px 3px hsl(255 40% 12% / 0.06);
-    --shadow-glow: 0 0 30px hsl(270 91% 65% / 0.35);
-    --shadow-glow-lg: 0 0 50px hsl(270 91% 65% / 0.45);
-    --shadow-glow-teal: 0 0 30px hsl(270 91% 65% / 0.3);
+    --shadow-glow: 0 0 30px hsl(41 82% 61% / 0.35);
+    --shadow-glow-lg: 0 0 50px hsl(41 82% 61% / 0.45);
+    --shadow-glow-teal: 0 0 30px hsl(258 60% 30% / 0.3);
 
     /* Sidebar */
     --sidebar-background: 222 87% 12%;

@@ -29,7 +29,7 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
     >
       <button
         onClick={() => navigate("/app/credit")}
-        className="flex items-center gap-1.5 hover:text-accent transition-colors whitespace-nowrap flex-shrink-0"
+        className="flex items-center gap-1.5 hover:text-gold-dark transition-colors whitespace-nowrap flex-shrink-0"
       >
         <span className="text-muted-foreground">Fundability:</span>
         <span className={`font-bold ${getScoreColor(score)}`}>
@@ -39,7 +39,7 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
 
       <button
         onClick={() => navigate("/app/credit")}
-        className="flex items-center gap-1.5 hover:text-accent transition-colors whitespace-nowrap flex-shrink-0"
+        className="flex items-center gap-1.5 hover:text-gold-dark transition-colors whitespace-nowrap flex-shrink-0"
       >
         <span className="text-muted-foreground">Util:</span>
         <span className={`font-bold ${utilization != null && utilization > 30 ? "text-fundability-fair" : "text-fundability-excellent"}`}>
@@ -49,7 +49,7 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
 
       <button
         onClick={() => navigate("/app/credit")}
-        className="flex items-center gap-1.5 hover:text-accent transition-colors whitespace-nowrap flex-shrink-0"
+        className="flex items-center gap-1.5 hover:text-gold-dark transition-colors whitespace-nowrap flex-shrink-0"
       >
         <span className="text-muted-foreground">Negatives:</span>
         <span className={`font-bold ${negatives != null && negatives > 0 ? "text-fundability-poor" : "text-fundability-excellent"}`}>
@@ -59,10 +59,10 @@ export function QuickStatsBar({ factors }: QuickStatsBarProps) {
 
       <button
         onClick={() => navigate("/app/credit")}
-        className="flex items-center gap-1.5 hover:text-accent transition-colors whitespace-nowrap flex-shrink-0"
+        className="flex items-center gap-1.5 hover:text-gold-dark transition-colors whitespace-nowrap flex-shrink-0"
       >
         <span className="text-muted-foreground">Next:</span>
-        <span className="font-medium text-accent">
+        <span className="font-medium text-gold-dark">
           {getNextAction(hasStatsData ? factors : null)}
         </span>
       </button>

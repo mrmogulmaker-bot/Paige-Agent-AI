@@ -249,7 +249,7 @@ export default function SupportAdmin() {
             <TableCell>
               {t.assigned_to ? (
                 <div className="flex items-center gap-1.5">
-                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/20 text-accent text-[10px] font-bold">
+                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/20 text-gold-dark text-[10px] font-bold">
                     {initials(t.assigned_to)}
                   </span>
                   <span className="text-xs">{t.assigned_to}</span>
@@ -429,7 +429,7 @@ export default function SupportAdmin() {
                     <div className="flex-1 min-w-0">
                       <button
                         onClick={() => setActiveFeatureId(f.id)}
-                        className="font-medium text-left hover:text-accent line-clamp-2"
+                        className="font-medium text-left hover:text-gold-dark line-clamp-2"
                       >
                         {f.title}
                       </button>
@@ -437,7 +437,7 @@ export default function SupportAdmin() {
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                           {featureCategoryLabel(f.category)}
                         </Badge>
-                        <span className="text-xs font-bold text-accent">{f.vote_count} votes</span>
+                        <span className="text-xs font-bold text-gold-dark">{f.vote_count} votes</span>
                       </div>
                     </div>
                   </li>

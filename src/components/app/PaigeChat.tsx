@@ -864,7 +864,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
               key={action.label}
               onClick={() => handleSend(action.prompt)}
               disabled={isLoading || conversation.status === "connected"}
-              className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full border border-border bg-background hover:bg-accent/10 hover:border-accent/40 text-muted-foreground hover:text-accent transition-colors disabled:opacity-50 whitespace-nowrap flex-shrink-0"
+              className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full border border-border bg-background hover:bg-accent/10 hover:border-accent/40 text-muted-foreground hover:text-gold-dark transition-colors disabled:opacity-50 whitespace-nowrap flex-shrink-0"
             >
               {action.label}
             </button>

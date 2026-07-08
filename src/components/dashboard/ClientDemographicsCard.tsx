@@ -190,7 +190,7 @@ export function ClientDemographicsCard({ clientUserId }: Props) {
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {programs.map((p) => (
-                    <Badge key={p.key} className="bg-gradient-gold text-white text-[11px] border-0">
+                    <Badge key={p.key} className="bg-gradient-gold text-accent-foreground text-[11px] border-0">
                       {p.name}
                     </Badge>
                   ))}

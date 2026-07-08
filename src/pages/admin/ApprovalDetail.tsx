@@ -335,7 +335,7 @@ export default function ApprovalDetail() {
                       <><EyeOff className="w-3 h-3 text-muted-foreground" /><span className="text-muted-foreground">Client has no portal login — internal only</span></>
                     )}
                   </div>
-                  <Link to={`/admin/contacts/${contact.id}`} className="text-xs text-accent hover:underline block pt-2">
+                  <Link to={`/admin/contacts/${contact.id}`} className="text-xs text-primary hover:underline block pt-2">
                     Open full profile →
                   </Link>
                 </>

@@ -96,7 +96,7 @@ export function AILearningOverview() {
         </Card>
       </div>
 
-      <p className="text-sm italic text-accent text-center pt-1">
+      <p className="text-sm italic text-gold-dark text-center pt-1">
         Paige learns from every client outcome. The more clients we serve, the smarter she gets.
       </p>
     </div>

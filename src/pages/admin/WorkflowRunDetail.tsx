@@ -61,7 +61,7 @@ export default function WorkflowRunDetail() {
           {run.status}
         </Badge>
         {registry && (
-          <Link to={`/admin/workflows/${registry.key}`} className="text-sm text-accent hover:underline">
+          <Link to={`/admin/workflows/${registry.key}`} className="text-sm text-primary hover:underline">
             {registry.label}
           </Link>
         )}

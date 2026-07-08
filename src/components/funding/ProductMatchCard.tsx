@@ -84,7 +84,7 @@ export function ProductMatchCard({ match, onAskPaige }: { match: ProductMatch; o
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Badge className="text-[10px] bg-gradient-gold text-white border-0 cursor-help font-semibold tracking-wide">
+                    <Badge className="text-[10px] bg-gradient-gold text-accent-foreground border-0 cursor-help font-semibold tracking-wide">
                       ★ Matched for You
                     </Badge>
                   </TooltipTrigger>

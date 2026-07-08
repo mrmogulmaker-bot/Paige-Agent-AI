@@ -694,7 +694,7 @@ export function DataMaintenancePanel() {
           </p>
           <p className="text-sm text-muted-foreground mt-2">
             Get a free key at{" "}
-            <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" rel="noopener noreferrer" className="text-accent underline">
+            <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" rel="noopener noreferrer" className="text-primary underline">
               fred.stlouisfed.org/docs/api/api_key.html
             </a>
             . Without this key Paige will fall back to static rate estimates and rate-aware lender cards will be hidden.

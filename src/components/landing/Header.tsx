@@ -124,7 +124,7 @@ export function Header({ autoHide = false }: { autoHide?: boolean }) {
               <>
                 <Button variant="ghost" onClick={() => navigate("/auth?mode=login")}>Sign In</Button>
                 <Button
-                  className="bg-gradient-gold text-white hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold border-0"
+                  className="bg-gradient-gold text-accent-foreground hover:shadow-glow-lg hover:scale-105 transition-all duration-300 font-bold border-0"
                   onClick={() => navigate("/auth?mode=signup")}
                 >
                   Get Started Free
@@ -176,7 +176,7 @@ export function Header({ autoHide = false }: { autoHide?: boolean }) {
                     Sign In
                   </Button>
                   <Button
-                    className="w-full bg-gradient-gold text-white hover:shadow-glow-lg font-bold border-0"
+                    className="w-full bg-gradient-gold text-accent-foreground hover:shadow-glow-lg font-bold border-0"
                     onClick={() => navigate("/auth?mode=signup")}
                   >
                     Get Started Free

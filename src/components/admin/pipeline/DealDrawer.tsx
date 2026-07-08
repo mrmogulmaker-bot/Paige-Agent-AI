@@ -261,7 +261,7 @@ export function DealDrawer({ deal, stages, open, onOpenChange, onChanged }: Prop
                     <div className="text-sm font-medium">{contact.first_name} {contact.last_name}</div>
                     {contact.entity_name && <div className="text-xs text-muted-foreground">{contact.entity_name}</div>}
                   </div>
-                  <Link to={`/admin/contacts/${contact.id}`} className="text-xs text-accent flex items-center gap-1 hover:underline">
+                  <Link to={`/admin/contacts/${contact.id}`} className="text-xs text-primary flex items-center gap-1 hover:underline">
                     Open <ExternalLink className="w-3 h-3" />
                   </Link>
                 </div>

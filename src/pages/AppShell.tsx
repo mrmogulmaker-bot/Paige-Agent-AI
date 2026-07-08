@@ -391,7 +391,7 @@ function QuickActionCard({ title, description, icon, href }: {
       className="bg-card border border-border rounded-lg p-5 text-left hover:border-accent/50 hover:shadow-glow-teal transition-all group"
     >
       <span className="text-2xl">{icon}</span>
-      <h3 className="font-semibold mt-2 group-hover:text-accent transition-colors">{title}</h3>
+      <h3 className="font-semibold mt-2 group-hover:text-gold-dark transition-colors">{title}</h3>
       <p className="text-sm text-muted-foreground mt-1">{description}</p>
     </button>
   );

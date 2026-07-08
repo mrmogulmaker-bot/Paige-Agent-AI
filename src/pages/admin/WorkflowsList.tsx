@@ -186,7 +186,7 @@ export default function WorkflowsList() {
                   ) : w.provider === "cron_only" ? (
                     <span className="text-muted-foreground">Scheduled</span>
                   ) : (
-                    <span className="text-accent flex items-center gap-1"><Play className="w-3 h-3" /> Run</span>
+                    <span className="text-gold-dark flex items-center gap-1"><Play className="w-3 h-3" /> Run</span>
                   )}
                 </div>
               </Link>
