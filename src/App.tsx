@@ -49,6 +49,7 @@ import { usePageView } from "./hooks/useAnalytics";
 // Eagerly load only the public landing + auth pages (likely first-paint)
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+const OperatorLogin = lazyWithReload(() => import("./pages/OperatorLogin"));
 const PaigeHome = lazyWithReload(() => import("./pages/PaigeHome"));
 const PremiumHero = lazyWithReload(() => import("./pages/PremiumHero"));
 const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
@@ -168,6 +169,7 @@ const App = () => (
             <Route path="/premium" element={<PageSuspense><PremiumHero /></PageSuspense>} />
             <Route path="/legacy" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/operator" element={<PageSuspense><OperatorLogin /></PageSuspense>} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
