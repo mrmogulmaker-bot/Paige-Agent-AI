@@ -58,6 +58,7 @@ export interface CalendarRow {
   buffer_after_min: number;
   min_notice_min: number;
   booking_horizon_days: number;
+  capacity: number;
   redirect_url: string;
   timezone: string;
   availability_json: DayWindow[] | null;
@@ -187,7 +188,7 @@ const DEFAULT_AVAIL: AvailState = Object.fromEntries(
   [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { enabled: d >= 1 && d <= 5, start: "09:00", end: "17:00" }]),
 );
 
-const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config";
+const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, capacity, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config";
 
 // Meeting methods the owner can offer. Enable one → fixed; enable several → the
 // invitee chooses on the booking page. in_person/custom carry a value field.
@@ -828,8 +829,8 @@ interface HostRow { user_id: string; full_name: string | null; }
 // Team roster for a calendar. Hosts live in calendar_hosts (priority-ordered).
 // Managing them is a direct DB op (RLS: can_manage_calendar). The top-priority
 // host currently takes bookings; round-robin distribution is a follow-up.
-function CalendarHostsSection({ calendarId, roundRobin }: {
-  calendarId: string; roundRobin: boolean;
+function CalendarHostsSection({ calendarId, roundRobin, multiHost }: {
+  calendarId: string; roundRobin: boolean; multiHost: boolean;
 }) {
   const [hosts, setHosts] = useState<HostRow[]>([]);
   const [candidates, setCandidates] = useState<HostRow[]>([]);
@@ -892,10 +893,15 @@ function CalendarHostsSection({ calendarId, roundRobin }: {
                   <button type="button" onClick={() => move(i, 1)} disabled={i === hosts.length - 1} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move down"><ChevronDown className="h-3.5 w-3.5" /></button>
                 </>
               )}
-              <button type="button" onClick={() => removeHost(h.user_id)} className="p-1 text-destructive hover:opacity-70" aria-label="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
+              {multiHost && (
+                <button type="button" onClick={() => removeHost(h.user_id)} className="p-1 text-destructive hover:opacity-70" aria-label="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
+              )}
             </div>
           ))}
-          {candidates.length > 0 && (
+          {/* Adding a 2nd host only does something for round-robin/collective —
+              personal and class calendars book a single host, so a 2nd host
+              added here would silently never get a booking. */}
+          {multiHost && candidates.length > 0 && (
             <div className="flex items-center gap-2 pt-1">
               <Select value={adding} onValueChange={setAdding}>
                 <SelectTrigger className="h-8 flex-1"><SelectValue placeholder="Add a team member…" /></SelectTrigger>
@@ -906,10 +912,11 @@ function CalendarHostsSection({ calendarId, roundRobin }: {
               <Button type="button" size="sm" variant="outline" onClick={addHost} disabled={!adding}><Plus className="h-3.5 w-3.5 mr-1" /> Add</Button>
             </div>
           )}
-          <p className="text-[11px] text-muted-foreground">
-            {roundRobin ? "Bookings rotate by this order (top = primary). " : "The primary host takes bookings. "}
-            {candidates.length === 0 && hosts.length <= 1 && "Invite teammates to your workspace to add more hosts."}
-          </p>
+          {multiHost && (
+            <p className="text-[11px] text-muted-foreground">
+              {roundRobin ? "Bookings rotate by this order (top = primary). " : "Every host above must be free for a slot to open."}
+            </p>
+          )}
         </>
       )}
     </div>
@@ -970,6 +977,7 @@ function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_
     buffer_after_min: 0,
     min_notice_min: 60,
     booking_horizon_days: 60,
+    capacity: 8,
     redirect_url: "",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
     availability_json: null,
@@ -1019,7 +1027,7 @@ function CalendarBuilderSheet({
         accent: c.accent, color: c.color, duration_min: c.duration_min,
         buffer_before_min: c.buffer_before_min, buffer_after_min: c.buffer_after_min,
         min_notice_min: c.min_notice_min, timezone: c.timezone, availability_json: c.availability_json,
-        booking_horizon_days: c.booking_horizon_days ?? 60, redirect_url: c.redirect_url ?? "",
+        booking_horizon_days: c.booking_horizon_days ?? 60, capacity: c.capacity ?? 8, redirect_url: c.redirect_url ?? "",
         enabled: c.enabled, group_id: c.group_id,
         theme: c.theme || "light", subtitle: c.subtitle ?? "", show_company_name: c.show_company_name !== false,
         location_type: c.location_type || "phone", location_value: c.location_value ?? "",
@@ -1056,6 +1064,7 @@ function CalendarBuilderSheet({
       buffer_after_min: Math.max(0, draft.buffer_after_min || 0),
       min_notice_min: Math.max(0, draft.min_notice_min || 0),
       booking_horizon_days: Math.min(730, Math.max(1, draft.booking_horizon_days || 60)),
+      capacity: Math.max(1, draft.capacity || 8),
       redirect_url: (draft.redirect_url ?? "").trim() || null,
       timezone: draft.timezone,
       availability_json: availToJson(avail),
@@ -1355,24 +1364,43 @@ function CalendarBuilderSheet({
               </select>
               <p className="text-xs text-muted-foreground">How far ahead guests can book — keep it tight for a busy calendar, or open it wide.</p>
             </div>
+            {draft.type === "event" && (
+              <div className="space-y-1.5">
+                <Label>Capacity</Label>
+                <Input type="number" min={1} value={draft.capacity} className="w-24"
+                  onChange={(e) => set("capacity", Math.max(1, Number(e.target.value) || 8))} />
+                <p className="text-xs text-muted-foreground">How many guests can register for the same time slot.</p>
+              </div>
+            )}
           </BuilderSection>
 
-          {/* 3¼ — Service menu (appointment types) */}
-          <BuilderSection title="Service menu" description="Offer more than one kind of meeting on this page. Add two or more and guests pick a service first — each with its own length. Leave empty for a single meeting at the duration above.">
-            <AppointmentTypesEditor
-              types={draft.appointment_types}
-              onChange={(t) => set("appointment_types", t)}
-            />
-          </BuilderSection>
+          {/* 3¼ — Service menu (appointment types) — a class shares one fixed
+              slot + capacity across every registrant, so a per-guest service
+              pick with its own length doesn't apply here. */}
+          {draft.type !== "event" && (
+            <BuilderSection title="Service menu" description="Offer more than one kind of meeting on this page. Add two or more and guests pick a service first — each with its own length. Leave empty for a single meeting at the duration above.">
+              <AppointmentTypesEditor
+                types={draft.appointment_types}
+                onChange={(t) => set("appointment_types", t)}
+              />
+            </BuilderSection>
+          )}
 
           {/* 3½ — Team / hosts (edit-only: needs a saved calendar id to attach hosts) */}
           {isEdit && existing && (
             <BuilderSection
               title="Team / hosts"
-              description={draft.type === "round_robin"
-                ? "Bookings rotate through these members in order."
-                : "Who this calendar books for. The primary host takes bookings."}>
-              <CalendarHostsSection calendarId={existing.id} roundRobin={draft.type === "round_robin"} />
+              description={
+                draft.type === "round_robin" ? "Bookings rotate through these members in order." :
+                draft.type === "collective" ? "Every host below must be free for a slot to open — the booking includes all of them." :
+                draft.type === "event" ? "A class has one host. Every registered guest meets with them at the same time." :
+                "The one host this calendar books."
+              }>
+              <CalendarHostsSection
+                calendarId={existing.id}
+                roundRobin={draft.type === "round_robin"}
+                multiHost={draft.type === "round_robin" || draft.type === "collective"}
+              />
             </BuilderSection>
           )}
 

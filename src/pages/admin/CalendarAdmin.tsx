@@ -40,7 +40,13 @@ interface BookingRow {
   location_type: string | null; location_value: string | null;
   guest_phone: string | null; notes: string | null;
   intake_answers: Record<string, string | string[]> | null;
+  booking_kind: string; class_session_id: string | null; capacity: number | null;
 }
+// A class_session tile carries a live "booked/capacity" readout computed
+// from its sibling class_seat rows — the seats themselves are hidden from
+// the grid/list (one row per registrant would otherwise draw N duplicate,
+// fully-overlapping tiles for a single shared time slot).
+type DisplayBooking = BookingRow & { seatLabel?: string };
 
 const UNASSIGNED = "__unassigned__";
 const DEFAULT_COLOR = "#7A67E8";
@@ -75,7 +81,7 @@ export default function CalendarAdmin() {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [newOpen, setNewOpen] = useState(false);
-  const [detail, setDetail] = useState<BookingRow | null>(null);
+  const [detail, setDetail] = useState<DisplayBooking | null>(null);
   const reqSeq = useRef(0);
 
   const setBookingStatus = async (id: string, status: string) => {
@@ -106,7 +112,7 @@ export default function CalendarAdmin() {
     // Overlap-aware: catch events that START before the window but run into it.
     const { data } = await supabase
       .from("internal_bookings")
-      .select("id, title, start_at, end_at, status, source, guest_name, guest_email, calendar_id, location_type, location_value, guest_phone, notes, intake_answers")
+      .select("id, title, start_at, end_at, status, source, guest_name, guest_email, calendar_id, location_type, location_value, guest_phone, notes, intake_answers, booking_kind, class_session_id, capacity")
       .eq("host_user_id", uid)
       .lt("start_at", to.toISOString())
       .gte("end_at", from.toISOString())
@@ -119,17 +125,33 @@ export default function CalendarAdmin() {
   useEffect(() => { void loadCalendars(); }, [loadCalendars]);
   useEffect(() => { if (tab === "calendar" || tab === "list") void loadBookings(); }, [loadBookings, tab]);
 
-  const events: GridEvent[] = useMemo(() => bookings
+  // class_seat rows (one per registrant) are folded into their class_session's
+  // live "booked/capacity" count rather than rendered as their own tiles.
+  const visibleBookings: DisplayBooking[] = useMemo(() => {
+    const seatCounts = new Map<string, number>();
+    for (const b of bookings) {
+      if (b.booking_kind === "class_seat" && b.class_session_id && b.status !== "cancelled") {
+        seatCounts.set(b.class_session_id, (seatCounts.get(b.class_session_id) ?? 0) + 1);
+      }
+    }
+    return bookings
+      .filter((b) => b.booking_kind !== "class_seat")
+      .map((b) => b.booking_kind === "class_session"
+        ? { ...b, seatLabel: `${seatCounts.get(b.id) ?? 0}/${b.capacity ?? "?"} booked` }
+        : b);
+  }, [bookings]);
+
+  const events: GridEvent[] = useMemo(() => visibleBookings
     .filter((b) => !hidden.has(b.calendar_id ?? UNASSIGNED))
     .map((b) => ({
       id: b.id,
-      title: b.title || b.guest_name || "Appointment",
+      title: b.seatLabel ? `${b.title || "Class"} · ${b.seatLabel}` : (b.title || b.guest_name || "Appointment"),
       start: new Date(b.start_at),
       end: new Date(b.end_at),
       color: colorFor(b.calendar_id),
       status: b.status,
-      subtitle: b.guest_name ?? b.guest_email,
-    })), [bookings, hidden, colorFor]);
+      subtitle: b.seatLabel ?? (b.guest_name ?? b.guest_email),
+    })), [visibleBookings, hidden, colorFor]);
 
   const nav = (dir: -1 | 0 | 1) => {
     if (dir === 0) { setCursor(new Date()); return; }
@@ -189,7 +211,7 @@ export default function CalendarAdmin() {
                 </div>
               )}
               <CalendarGrid view={view} cursor={cursor} events={events}
-                onEventClick={(id) => setDetail(bookings.find((b) => b.id === id) ?? null)} />
+                onEventClick={(id) => setDetail(visibleBookings.find((b) => b.id === id) ?? null)} />
             </div>
 
             {/* Filter rail — color legend + calendar toggles */}
@@ -219,7 +241,7 @@ export default function CalendarAdmin() {
 
         {/* APPOINTMENT LIST */}
         <TabsContent value="list" className="space-y-4">
-          <AppointmentList bookings={bookings} loading={loading} colorFor={colorFor} onSelect={setDetail} />
+          <AppointmentList bookings={visibleBookings} loading={loading} colorFor={colorFor} onSelect={setDetail} />
         </TabsContent>
 
         {/* CALENDAR SETTINGS */}
@@ -256,7 +278,7 @@ const LOC_LABEL: Record<string, string> = {
   google_meet: "Google Meet", zoom: "Zoom", phone: "Phone call", in_person: "In person", custom: "Custom",
 };
 function BookingDetailDialog({ booking, calendars, onOpenChange, colorFor, onCancelBooking, onNoShow }: {
-  booking: BookingRow | null;
+  booking: DisplayBooking | null;
   calendars: CalMeta[];
   onOpenChange: (v: boolean) => void;
   colorFor: (id: string | null) => string;
@@ -291,6 +313,9 @@ function BookingDetailDialog({ booking, calendars, onOpenChange, colorFor, onCan
               </DialogDescription>
             </DialogHeader>
             <div className="text-sm space-y-1.5 py-1">
+              {b.seatLabel && (
+                <div className="flex gap-2"><span className="text-muted-foreground w-16">Seats</span><span className="font-medium">{b.seatLabel}</span></div>
+              )}
               {(b.guest_name || b.guest_email) && (
                 <div className="flex gap-2"><span className="text-muted-foreground w-16">Guest</span><span>{b.guest_name}{b.guest_email ? ` · ${b.guest_email}` : ""}</span></div>
               )}
@@ -319,7 +344,9 @@ function BookingDetailDialog({ booking, calendars, onOpenChange, colorFor, onCan
               {b.status !== "cancelled" && (
                 <Button variant="outline" size="sm" onClick={() => onCancelBooking(b.id)}>Cancel booking</Button>
               )}
-              {b.status !== "no_show" && b.status !== "cancelled" && (
+              {/* A class_session is a shared container, not a person — "no-show"
+                  only makes sense per registrant (their own seat), not the slot. */}
+              {b.status !== "no_show" && b.status !== "cancelled" && b.booking_kind !== "class_session" && (
                 <Button variant="outline" size="sm" onClick={() => onNoShow(b.id)}>Mark no-show</Button>
               )}
             </DialogFooter>
@@ -331,10 +358,10 @@ function BookingDetailDialog({ booking, calendars, onOpenChange, colorFor, onCan
 }
 
 function AppointmentList({ bookings, loading, colorFor, onSelect }: {
-  bookings: BookingRow[]; loading: boolean; colorFor: (id: string | null) => string; onSelect: (b: BookingRow) => void;
+  bookings: DisplayBooking[]; loading: boolean; colorFor: (id: string | null) => string; onSelect: (b: DisplayBooking) => void;
 }) {
   const grouped = useMemo(() => {
-    const m = new Map<string, BookingRow[]>();
+    const m = new Map<string, DisplayBooking[]>();
     for (const b of bookings) {
       const k = new Date(b.start_at).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
       if (!m.has(k)) m.set(k, []);
@@ -365,7 +392,7 @@ function AppointmentList({ bookings, loading, colorFor, onSelect }: {
                         {new Date(b.start_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         {" – "}
                         {new Date(b.end_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        {b.guest_name ? ` · ${b.guest_name}` : b.guest_email ? ` · ${b.guest_email}` : ""}
+                        {b.seatLabel ? ` · ${b.seatLabel}` : b.guest_name ? ` · ${b.guest_name}` : b.guest_email ? ` · ${b.guest_email}` : ""}
                       </div>
                     </div>
                     <Badge variant="secondary" className="capitalize flex-shrink-0">{b.source.replace(/_/g, " ")}</Badge>
