@@ -58,6 +58,15 @@ Production ships to the live domain are the owner's call. Build on the working b
 verify, and merge to `main` to deploy; keep prior designs parked (not woven in) when a
 direction is fully replaced.
 
+**Pre-launch shipping stance (owner: Antonio, 2026-07-09).** The platform is not yet
+public — no real customers, nobody knows the site exists. Until that changes, finished,
+verified work goes **straight to live production** (merge to `main`); the owner reviews
+in **live view**, not preview. Preview/Vercel runs are fine for a quick self-check
+before shipping, but don't park work in preview waiting for sign-off. **This flips the
+moment real customers start onboarding** — the owner will say so, and shipping reverts to
+preview-first + explicit approval before each production merge. Always verify before the
+merge regardless of stance.
+
 ## 5. Always run a compliance / standards officer.
 
 **Directive (owner: Antonio):** Beyond the bug-hunting verifier, every substantive

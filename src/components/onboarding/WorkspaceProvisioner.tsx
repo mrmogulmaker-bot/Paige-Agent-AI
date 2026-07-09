@@ -27,6 +27,22 @@ import { cn } from "@/lib/utils";
 
 const TEAM_SIZES = ["Just me", "2–5", "6–20", "21+"] as const;
 
+// Curated, inclusive industry list (§2: broad audience, never coaching-only).
+// "Other" reveals a write-in so no one is boxed out. The chosen value is stored
+// on the tenant (brand.industry) so it's segmentable and Paige can tailor per
+// vertical — while the free-text "who do you help" line captures the nuance.
+const INDUSTRIES = [
+  "Coaching",
+  "Consulting",
+  "Agency / Marketing",
+  "Advisory / Professional services",
+  "Course creator / Thought leader",
+  "Real estate",
+  "Fitness & wellness",
+  "Creative / Design",
+  "Other",
+] as const;
+
 type AccountType = "standalone" | "agency" | "enterprise";
 
 const ACCOUNT_TYPES: {
@@ -69,6 +85,7 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
   const [accountType, setAccountType] = useState<AccountType>("standalone");
   const [businessName, setBusinessName] = useState("");
   const [industry, setIndustry] = useState("");
+  const [industryOther, setIndustryOther] = useState("");
   const [teamSize, setTeamSize] = useState<string>("");
   const [about, setAbout] = useState("");
   const [creating, setCreating] = useState(false);
@@ -85,9 +102,12 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
         toast({ title: "Session expired", description: "Sign back in to finish.", variant: "destructive" });
         return;
       }
+      // Structured category, with the free-text write-in when they pick "Other".
+      const resolvedIndustry =
+        industry === "Other" ? (industryOther.trim() || null) : (industry || null);
       const { error } = await supabase.rpc("provision_tenant", {
         _name: businessName.trim(),
-        _industry: industry.trim() || null,
+        _industry: resolvedIndustry,
         _team_size: teamSize || null,
         _description: about.trim() || null,
         _account_type: accountType,
@@ -150,7 +170,21 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label>What do you do?</Label>
-            <Input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Consulting, agency, advisory…" />
+            <Select value={industry} onValueChange={setIndustry}>
+              <SelectTrigger><SelectValue placeholder="Choose your field" /></SelectTrigger>
+              <SelectContent>
+                {INDUSTRIES.map((i) => <SelectItem key={i} value={i}>{i}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {industry === "Other" && (
+              <Input
+                className="mt-2"
+                value={industryOther}
+                onChange={(e) => setIndustryOther(e.target.value)}
+                placeholder="Tell us what you do"
+                autoFocus
+              />
+            )}
           </div>
           <div className="space-y-1.5">
             <Label>Team size</Label>
