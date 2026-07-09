@@ -15,6 +15,7 @@ import {
 import { useNavigate, Link } from "react-router-dom";
 import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
 import { paigeAnim } from "@/lib/paigeAnim";
+import { appUrl } from "@/lib/hostRouting";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 
 /**
@@ -398,6 +399,10 @@ function IntroSequence({ onDone, onReveal }: { onDone: () => void; onReveal: () 
 
 export default function PaigeHome() {
   const navigate = useNavigate();
+  // Auth lives on app.paigeagent.ai — cross-navigate there directly so the login
+  // moment is born on the app origin (falls back to a relative path when the
+  // host split is off). See src/lib/hostRouting.ts.
+  const goAuth = (path: string) => window.location.assign(appUrl(path));
   const reduced = usePrefersReducedMotion();
   // Auto-play the phone-opening on the first visit of a session; skip for
   // reduced-motion; ?intro forces it. The "Watch the open" button replays it.
@@ -481,13 +486,13 @@ export default function PaigeHome() {
         </nav>
         <div className="flex items-center gap-3 sm:gap-4">
           <button
-            onClick={() => navigate("/auth")}
+            onClick={() => goAuth("/auth")}
             className="text-sm font-medium text-white/70 transition-colors hover:text-white"
           >
             Log in
           </button>
           <button
-            onClick={() => navigate("/auth?mode=signup")}
+            onClick={() => goAuth("/auth?mode=signup")}
             className="rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-4 py-2 text-sm font-bold text-[#241645] transition-transform hover:scale-105"
           >
             Hire Paige
@@ -533,7 +538,7 @@ export default function PaigeHome() {
           </motion.p>
           <motion.div variants={rise} className="mt-8 flex flex-col gap-3 sm:mt-9 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
             <button
-              onClick={() => navigate("/auth?mode=signup")}
+              onClick={() => goAuth("/auth?mode=signup")}
               className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-8 py-3.5 text-sm font-bold text-[#2A1B4E] shadow-[0_10px_40px_rgba(212,167,82,0.4)] transition-transform hover:scale-105 sm:w-auto"
             >
               Start with Paige
@@ -675,7 +680,7 @@ export default function PaigeHome() {
                 ))}
               </ul>
               <button
-                onClick={() => navigate("/auth?mode=signup")}
+                onClick={() => goAuth("/auth?mode=signup")}
                 className={`rounded-full px-6 py-3 text-sm font-bold transition-transform hover:scale-105 ${p.highlight ? "bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[#241645]" : "border border-white/20 bg-white/5 text-white"}`}
               >
                 Hire Paige
@@ -691,7 +696,7 @@ export default function PaigeHome() {
           <div aria-hidden className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-[#F0C86A]/60 to-transparent" />
           <h2 className="mx-auto max-w-2xl text-4xl font-black md:text-5xl" style={{ fontFamily: HEAD }}>Give yourself back your time.</h2>
           <p className="mx-auto mt-4 max-w-lg text-white/70">Start free. No card required. Paige is running your operation the moment you connect her.</p>
-          <button onClick={() => navigate("/auth?mode=signup")} className="mt-8 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-8 py-3 font-bold text-[#241645] transition-transform hover:scale-105">
+          <button onClick={() => goAuth("/auth?mode=signup")} className="mt-8 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-8 py-3 font-bold text-[#241645] transition-transform hover:scale-105">
             Start with Paige <ArrowRight className="h-4 w-4" />
           </button>
         </motion.div>

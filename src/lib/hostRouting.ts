@@ -19,7 +19,7 @@ export const MARKETING_HOST = "paigeagent.ai";
 export const APP_HOST = "app.paigeagent.ai";
 
 // Flip to true once app.paigeagent.ai is live + auth redirect URLs updated.
-export const HOST_SPLIT_ENABLED = false;
+export const HOST_SPLIT_ENABLED = true;
 
 // Routes that belong on app.paigeagent.ai (product + auth). Hit on the apex → 301.
 const APP_PREFIXES = [
