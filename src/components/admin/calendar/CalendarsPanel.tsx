@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarDays, Plus, Copy, ExternalLink, Loader2, Trash2, Pencil, Palette, Globe, Check,
-  FolderPlus, Users, Folder, UserRound, Repeat, GraduationCap, UsersRound,
+  FolderPlus, Users, Folder, UserRound, Repeat, GraduationCap, UsersRound, ChevronUp, ChevronDown,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -74,8 +74,15 @@ export interface CalendarRow {
 export interface LocationOption { type: string; value: string | null; }
 
 export interface NotifyReminder { channel: string; offset_min: number; }
-export interface NotifyConfig { confirm_guest: boolean; confirm_host: boolean; reminders: NotifyReminder[]; }
-const DEFAULT_NOTIFY: NotifyConfig = { confirm_guest: true, confirm_host: true, reminders: [{ channel: "email", offset_min: 1440 }] };
+// followup_offset_min = minutes AFTER the meeting ends to send the follow-up.
+export interface NotifyConfig {
+  confirm_guest: boolean; confirm_host: boolean; reminders: NotifyReminder[];
+  followup_guest: boolean; followup_offset_min: number;
+}
+const DEFAULT_NOTIFY: NotifyConfig = {
+  confirm_guest: true, confirm_host: true, reminders: [{ channel: "email", offset_min: 1440 }],
+  followup_guest: false, followup_offset_min: 60,
+};
 const REMINDER_OFFSETS = [
   { min: 15, label: "15 min before" },
   { min: 60, label: "1 hour before" },
@@ -83,6 +90,14 @@ const REMINDER_OFFSETS = [
   { min: 1440, label: "1 day before" },
   { min: 2880, label: "2 days before" },
   { min: 10080, label: "1 week before" },
+];
+const FOLLOWUP_OFFSETS = [
+  { min: 0, label: "Right after it ends" },
+  { min: 60, label: "1 hour after" },
+  { min: 180, label: "3 hours after" },
+  { min: 1440, label: "1 day after" },
+  { min: 2880, label: "2 days after" },
+  { min: 10080, label: "1 week after" },
 ];
 
 export interface CalendarGroup { id: string; name: string; tenant_id: string | null; }
@@ -150,6 +165,8 @@ function normalizeNotify(raw: unknown): NotifyConfig {
     confirm_guest: o.confirm_guest !== false,
     confirm_host: o.confirm_host !== false,
     reminders,
+    followup_guest: o.followup_guest === true,
+    followup_offset_min: typeof o.followup_offset_min === "number" ? o.followup_offset_min : DEFAULT_NOTIFY.followup_offset_min,
   };
 }
 function initials(name: string | null): string {
@@ -541,6 +558,98 @@ function NewGroupDialog({ open, onOpenChange, tenantId, isPlatformStaff, onCreat
   );
 }
 
+interface HostRow { user_id: string; full_name: string | null; }
+// Team roster for a calendar. Hosts live in calendar_hosts (priority-ordered).
+// Managing them is a direct DB op (RLS: can_manage_calendar). The top-priority
+// host currently takes bookings; round-robin distribution is a follow-up.
+function CalendarHostsSection({ calendarId, roundRobin }: {
+  calendarId: string; roundRobin: boolean;
+}) {
+  const [hosts, setHosts] = useState<HostRow[]>([]);
+  const [candidates, setCandidates] = useState<HostRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    // One authoritative call: hosts + candidate pool with names, manager-scoped.
+    // (profiles RLS is own-row-only, so teammate names come through this RPC.)
+    const { data, error } = await supabase.rpc("list_calendar_host_candidates", { _cal: calendarId });
+    if (error) { toast.error(error.message); setLoading(false); return; }
+    const rows = (data as { user_id: string; full_name: string | null; is_host: boolean; priority: number | null }[]) ?? [];
+    setHosts(rows.filter((r) => r.is_host).map((r) => ({ user_id: r.user_id, full_name: r.full_name })));
+    setCandidates(rows.filter((r) => !r.is_host).map((r) => ({ user_id: r.user_id, full_name: r.full_name })));
+    setLoading(false);
+  }, [calendarId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  // Rewrite priorities 0..n-1 from the given order.
+  const persistOrder = async (ordered: HostRow[]) => {
+    await Promise.all(ordered.map((h, i) =>
+      supabase.from("calendar_hosts").update({ priority: i }).eq("calendar_id", calendarId).eq("user_id", h.user_id)));
+  };
+  const addHost = async () => {
+    if (!adding) return;
+    const { error } = await supabase.from("calendar_hosts").insert({ calendar_id: calendarId, user_id: adding, priority: hosts.length });
+    if (error) { toast.error(error.message); return; }
+    setAdding(""); await load();
+  };
+  const removeHost = async (uid: string) => {
+    if (hosts.length <= 1) { toast.error("A calendar needs at least one host"); return; }
+    const { error } = await supabase.from("calendar_hosts").delete().eq("calendar_id", calendarId).eq("user_id", uid);
+    if (error) { toast.error(error.message); return; }
+    const next = hosts.filter((h) => h.user_id !== uid);
+    setHosts(next); await persistOrder(next);
+  };
+  const move = async (idx: number, dir: -1 | 1) => {
+    const j = idx + dir;
+    if (j < 0 || j >= hosts.length) return;
+    const next = [...hosts];
+    [next[idx], next[j]] = [next[j], next[idx]];
+    setHosts(next); await persistOrder(next);
+  };
+
+  return (
+    <div className="space-y-2">
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading team…</div>
+      ) : (
+        <>
+          {hosts.map((h, i) => (
+            <div key={h.user_id} className="flex items-center gap-2 rounded-lg border p-2">
+              <span className="h-7 w-7 rounded-full bg-primary/10 grid place-items-center text-[10px] font-semibold text-primary flex-shrink-0">{initials(h.full_name)}</span>
+              <span className="text-sm flex-1 truncate">{h.full_name || "Member"}{i === 0 && <span className="text-[10px] text-muted-foreground ml-1.5">Primary</span>}</span>
+              {roundRobin && (
+                <>
+                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move up"><ChevronUp className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => move(i, 1)} disabled={i === hosts.length - 1} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move down"><ChevronDown className="h-3.5 w-3.5" /></button>
+                </>
+              )}
+              <button type="button" onClick={() => removeHost(h.user_id)} className="p-1 text-destructive hover:opacity-70" aria-label="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
+            </div>
+          ))}
+          {candidates.length > 0 && (
+            <div className="flex items-center gap-2 pt-1">
+              <Select value={adding} onValueChange={setAdding}>
+                <SelectTrigger className="h-8 flex-1"><SelectValue placeholder="Add a team member…" /></SelectTrigger>
+                <SelectContent>
+                  {candidates.map((c) => <SelectItem key={c.user_id} value={c.user_id}>{c.full_name || "Member"}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Button type="button" size="sm" variant="outline" onClick={addHost} disabled={!adding}><Plus className="h-3.5 w-3.5 mr-1" /> Add</Button>
+            </div>
+          )}
+          <p className="text-[11px] text-muted-foreground">
+            {roundRobin ? "Bookings rotate by this order (top = primary). " : "The primary host takes bookings. "}
+            {candidates.length === 0 && hosts.length <= 1 && "Invite teammates to your workspace to add more hosts."}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 // GHL-style "Choose calendar type" step — opens on New calendar, then the builder.
 const TYPE_CARDS = [
   { value: "personal", icon: UserRound, title: "Personal booking", desc: "Schedules one-on-one meetings with a specific team member.", eg: "Client meetings, private consultations." },
@@ -910,6 +1019,17 @@ function CalendarBuilderSheet({
             </div>
           </BuilderSection>
 
+          {/* 3½ — Team / hosts (edit-only: needs a saved calendar id to attach hosts) */}
+          {isEdit && existing && (
+            <BuilderSection
+              title="Team / hosts"
+              description={draft.type === "round_robin"
+                ? "Bookings rotate through these members in order."
+                : "Who this calendar books for. The primary host takes bookings."}>
+              <CalendarHostsSection calendarId={existing.id} roundRobin={draft.type === "round_robin"} />
+            </BuilderSection>
+          )}
+
           {/* 4 — Meeting location (how the meeting happens) */}
           <BuilderSection title="How to meet" description="Turn on every method you offer. Enable more than one and the invitee picks when they book.">
             <div className="space-y-2">
@@ -1035,6 +1155,30 @@ function CalendarBuilderSheet({
                   </Button>
                 </div>
               ))}
+            </div>
+
+            {/* Post-meeting follow-up — nurture after the session ends. */}
+            <div className="space-y-2 pt-1 border-t border-border/60 mt-1">
+              <label className="flex items-center justify-between gap-4 pt-2 cursor-pointer">
+                <div>
+                  <div className="text-sm font-medium">Follow up after the meeting</div>
+                  <div className="text-xs text-muted-foreground">Email the guest once the session ends — recap, next steps, or a nudge to rebook.</div>
+                </div>
+                <Switch checked={draft.notify_config.followup_guest}
+                  onCheckedChange={(v) => set("notify_config", { ...draft.notify_config, followup_guest: v })} />
+              </label>
+              {draft.notify_config.followup_guest && (
+                <div className="flex items-center gap-2 pl-1">
+                  <span className="text-xs text-muted-foreground w-14">Send</span>
+                  <Select value={String(draft.notify_config.followup_offset_min)}
+                    onValueChange={(v) => set("notify_config", { ...draft.notify_config, followup_offset_min: Number(v) })}>
+                    <SelectTrigger className="h-8 flex-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {FOLLOWUP_OFFSETS.map((o) => <SelectItem key={o.min} value={String(o.min)}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <p className="text-[11px] text-muted-foreground">
                 Delivery turns on once the platform email key is configured; settings are saved now.
               </p>
