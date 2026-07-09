@@ -5,8 +5,11 @@
  *   1. Look up branding via peek_tenant_invite (public RPC, no consumption).
  *   2. If not signed in → bounce to /auth?next=/join/:token; after auth the
  *      user lands back here.
- *   3. Signed in → call accept_tenant_invite RPC, which adds tenant_members
- *      row + sets active_tenant_id. Route to /app.
+ *   3. Signed in → call accept_tenant_invite RPC, which branches on the token's
+ *      kind: kind='consumer' → link/create a tenant-scoped CLIENTS row + grant
+ *      the 'client' role (a customer); kind='team' → add a tenant_members row
+ *      (staff). Either way it sets active_tenant_id, then resolveLandingRoute
+ *      sends the customer to their portal/onboarding and staff to /admin.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -17,10 +20,7 @@ import { Helmet } from "react-helmet-async";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ContextualConsentDialog } from "@/components/legal/ContextualConsentDialog";
-
-const STAFF_ROLES = new Set([
-  "admin","owner","super_admin","moderator","coach","sales_rep","broker","cs_rep","finance","viewer"
-]);
+import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 
 interface PeekRow {
   tenant_id: string;
@@ -48,7 +48,12 @@ export default function JoinWorkspace() {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id));
   }, []);
 
-  const isStaffInvite = !!info && STAFF_ROLES.has(info.default_role);
+  // Staff vs. customer is decided by the token's KIND (the same field
+  // accept_tenant_invite branches on) — never by default_role, whose values
+  // (a tenant_role like 'member') don't line up with the app-role STAFF_ROLES
+  // set and would misclassify a member-level staff invite as a customer.
+  const isConsumerInvite = !!info && info.kind === "consumer";
+  const isStaffInvite = !!info && !isConsumerInvite;
 
   useEffect(() => {
     let cancelled = false;
@@ -93,7 +98,12 @@ export default function JoinWorkspace() {
       const { error: e } = await supabase.rpc("accept_tenant_invite", { _token: token });
       if (e) throw e;
       toast.success(`Welcome to ${info?.tenant_name ?? "your workspace"}`);
-      navigate("/app");
+      // accept_tenant_invite just granted a role (client or member) + set the
+      // active tenant mid-session. Hard-navigate via resolveLandingRoute so a
+      // customer lands in their portal/onboarding and staff land in /admin,
+      // with route guards + role reads refreshed.
+      const target = await resolveLandingRoute(auth.user.id);
+      window.location.assign(target);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not accept invite");
     } finally {
@@ -136,7 +146,9 @@ export default function JoinWorkspace() {
             {error
               ? error
               : info
-                ? `You've been invited to join as a ${info.default_role}. Accept to access the workspace.`
+                ? isConsumerInvite
+                  ? `Accept to open your private client portal with ${info.tenant_name}.`
+                  : `You've been invited to join the ${info.tenant_name} team as a ${info.default_role}. Accept to access the workspace.`
                 : "Checking your invitation…"}
           </CardDescription>
         </CardHeader>
@@ -155,8 +167,9 @@ export default function JoinWorkspace() {
               <div className="flex items-start gap-2 text-sm text-muted-foreground">
                 <ShieldCheck className="w-4 h-4 mt-0.5 text-green-600 flex-shrink-0" />
                 <span>
-                  By accepting you agree to the workspace's terms and grant the admin access to
-                  manage your membership.
+                  {isConsumerInvite
+                    ? `By continuing you agree to ${info?.tenant_name ?? "the workspace"}'s terms and to work with them through your client portal.`
+                    : "By accepting you agree to the workspace's terms and grant the admin access to manage your membership."}
                 </span>
               </div>
               <Button

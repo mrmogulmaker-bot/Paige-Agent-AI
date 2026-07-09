@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { callAdminAccountAction } from "@/lib/functions/adminAccountActions";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 type Invite = {
   id: string;
@@ -56,6 +57,7 @@ export function ContactPortalPanel({
   email: string | null;
   linkedUserId: string | null;
 }) {
+  const { activeTenantId } = useTenantContext();
   const [invites, setInvites] = useState<Invite[]>([]);
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [busy, setBusy] = useState<"invite" | "revoke" | "agreement" | "signout" | "reset" | null>(null);
@@ -66,37 +68,96 @@ export function ContactPortalPanel({
   useEffect(() => { setLocalLinkedUserId(linkedUserId); }, [linkedUserId]);
 
   const load = async () => {
-    // btf_workspace_invites table was dropped in Sprint 211.b, and the
-    // invite-btf-client edge function was retired in Commit N+1. Both
-    // the send path and the historical list here are stubbed until the
-    // replacement client-program invite flow lands in a follow-up ship.
-    const { data: env } = await supabase
-      .from("paige_signature_envelopes")
-      .select("*")
-      .eq("contact_id", contactId)
-      .order("sent_at", { ascending: false });
-    setInvites([]);
+    // Invites are now bound to this contact at mint (tenant_invite_tokens.contact_id),
+    // so the outstanding/pending state is real: read this contact's consumer tokens.
+    const [{ data: toks }, { data: env }] = await Promise.all([
+      supabase
+        .from("tenant_invite_tokens")
+        .select("id, email, expires_at, last_used_at, created_at, revoked_at")
+        .eq("contact_id", contactId)
+        .eq("kind", "consumer")
+        .is("revoked_at", null)
+        .order("created_at", { ascending: false })
+        .limit(5),
+      supabase
+        .from("paige_signature_envelopes")
+        .select("*")
+        .eq("contact_id", contactId)
+        .order("sent_at", { ascending: false }),
+    ]);
+    setInvites(
+      ((toks as Array<{ id: string; email: string | null; expires_at: string; last_used_at: string | null; created_at: string }>) || []).map((t) => ({
+        id: t.id,
+        email: t.email ?? email ?? "",
+        expires_at: t.expires_at,
+        used_at: t.last_used_at,
+        created_at: t.created_at,
+        created_via: "portal_invite",
+      })),
+    );
     setEnvelopes((env as Envelope[]) || []);
   };
 
   useEffect(() => { load(); }, [contactId]);
 
+  // Live: mint a consumer invite token BOUND to this contact + email, email the
+  // customer a tenant-branded link to their portal, and copy the link as a
+  // fallback. On accept, accept_tenant_invite links them to THIS exact contact
+  // (via the bound contact_id), and the token can only ever email this address.
   const sendInvite = async () => {
     if (!email) return toast.error("Contact needs an email address first");
-    // invite-btf-client edge function was retired in Commit N+1 (Sprint
-    // 211.b close-out). Both the send path and the read-side list are
-    // stubbed until the replacement client-program invite flow lands in
-    // a follow-up ship. Preserving the button binding + busy-state
-    // handoff so the surrounding portal UI keeps working.
-    toast.info(
-      "Client program invite send is temporarily unavailable — reach out to platform admin if needed.",
-    );
+    if (!activeTenantId) return toast.error("No active workspace to invite into");
+    setBusy("invite");
+    try {
+      const { data: tokRes, error: mintErr } = await supabase.rpc("create_tenant_invite_token", {
+        _tenant_id: activeTenantId,
+        _kind: "consumer",
+        _default_role: "member",
+        _expires_in_days: 30,
+        _max_uses: null,
+        _contact_id: contactId,
+        _email: email,
+      });
+      if (mintErr) throw mintErr;
+      const row = Array.isArray(tokRes) ? tokRes[0] : tokRes;
+      const token = (row as { token?: string } | null)?.token;
+      if (!token) throw new Error("Could not create the invite");
+
+      const joinUrl = `${window.location.origin}/join/${token}`;
+      const { data: sent } = await supabase.functions.invoke("send-portal-invite", {
+        body: { token, email },
+      });
+      try { await navigator.clipboard.writeText(joinUrl); } catch { /* clipboard optional */ }
+      const emailed = (sent as { emailed?: boolean } | null)?.emailed;
+      toast.success(emailed ? `Invite emailed to ${email} — link also copied` : `Invite link copied — send it to ${email}`);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not send the invite");
+    } finally {
+      setBusy(null);
+    }
   };
 
   const cancelPendingInvites = async () => {
-    // Historical invite-cancel path targeted btf_workspace_invites, which
-    // was dropped in Sprint 211.b. Replacement wiring lands in follow-up.
-    toast.info("Invite cancel is temporarily unavailable — reach out to platform admin if needed.");
+    // Revoke every outstanding (unaccepted, non-revoked) consumer token for this
+    // contact so the /join link stops working.
+    setBusy("invite");
+    try {
+      const { error } = await supabase
+        .from("tenant_invite_tokens")
+        .update({ revoked_at: new Date().toISOString() })
+        .eq("contact_id", contactId)
+        .eq("kind", "consumer")
+        .is("revoked_at", null)
+        .is("last_used_at", null);
+      if (error) throw error;
+      toast.success("Pending invite canceled");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not cancel the invite");
+    } finally {
+      setBusy(null);
+    }
   };
 
 
@@ -264,7 +325,7 @@ export function ContactPortalPanel({
         <CardContent>
           {envelopes.length === 0 ? (
             <div className="text-sm text-muted-foreground text-center py-4">
-              No agreements sent yet. (Send-agreement flow wires into PaigeSign envelopes — coming next.)
+              No agreements sent yet.
             </div>
           ) : (
             <div className="space-y-2">

@@ -7,6 +7,10 @@ project_id = "xygzykjyynhzqytbqnzu"
   # role (email verification not wired yet). Must be reachable pre-auth.
   [functions.tenant-signup]
     verify_jwt = false
+  # Emails a customer their tenant-branded client-portal invite. Validates the
+  # token server-side; safe to call with the anon key.
+  [functions.send-portal-invite]
+    verify_jwt = false
   # Internal-only notifier — self-gates on the service-role key in-function;
   # verify_jwt=true is a redundant gateway layer (both callers present it).
   [functions.notify-team-event]

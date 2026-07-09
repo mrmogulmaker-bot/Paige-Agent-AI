@@ -1,0 +1,131 @@
+// send-portal-invite — emails a customer their branded invite to a tenant's
+// client portal (roadmap #2). The token is minted by create_tenant_invite_token
+// (admin-gated RPC) on the client; this function validates it server-side, reads
+// the TENANT's brand (the tenant is inviting their own customer, so the email
+// wears the tenant's brand, not Paige's — §6), and sends via Resend.
+//
+// Anti-relay: it only sends for a real, non-revoked, unexpired token, and only
+// to the address that token was bound to at mint time (create_tenant_invite_token,
+// admin-gated) — a token holder cannot spray arbitrary recipients.
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+const EMAIL_FROM = Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <hello@paigeagent.ai>";
+const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai").replace(/\/$/, "");
+
+function json(d: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(d), { status, headers: { ...cors, "Content-Type": "application/json" } });
+}
+function esc(s: string): string {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function textOn(hex: string): string {
+  const h = (hex || "").replace("#", "");
+  if (h.length < 6) return "#FFFFFF";
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#1B1230" : "#FFFFFF";
+}
+// §6/§9: the email must wear the TENANT's brand, so the visible sender is the
+// tenant's name — never "Paige Agent AI" — over the platform's verified domain.
+// Strip anything that could break an RFC-5322 display-name / header-inject.
+function senderFrom(tenantName: string, fallbackFrom: string): string {
+  const addr = (fallbackFrom.match(/<([^>]+)>/)?.[1] ?? fallbackFrom).trim();
+  const name = String(tenantName ?? "").replace(/[<>",\r\n]/g, " ").replace(/\s+/g, " ").trim();
+  return name ? `${name} <${addr}>` : fallbackFrom;
+}
+
+function inviteHtml(tenantName: string, accent: string, logo: string | null, joinUrl: string, firstName: string): string {
+  const on = textOn(accent);
+  const hi = firstName ? `Hi ${esc(firstName)},` : "Hi there,";
+  const header = logo
+    ? `<img src="${esc(logo)}" alt="${esc(tenantName)}" height="40" style="max-height:40px;display:inline-block;" />`
+    : `<div style="font-size:18px;font-weight:bold;color:#fff;">${esc(tenantName)}</div>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+  <body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:28px 0;"><tr><td align="center">
+    <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#fff;border:1px solid #e7e8ec;border-radius:14px;overflow:hidden;">
+      <tr><td style="background:${esc(accent)};padding:24px 32px;text-align:center;">${header}</td></tr>
+      <tr><td style="padding:30px 32px 6px;">
+        <h1 style="color:#101828;font-size:21px;margin:0 0 8px;">${hi}</h1>
+        <p style="color:#475467;font-size:14px;line-height:1.6;margin:0 0 18px;">
+          ${esc(tenantName)} invited you to your private client portal. It's where you'll work with
+          the team, track your progress, and chat with your assistant — all in one place.
+        </p>
+      </td></tr>
+      <tr><td style="padding:2px 32px 28px;">
+        <a href="${esc(joinUrl)}" style="display:inline-block;background:${esc(accent)};color:${on};font-weight:bold;font-size:14px;text-decoration:none;padding:13px 26px;border-radius:9999px;">
+          Open my portal
+        </a>
+        <p style="color:#98a0ae;font-size:12px;margin:14px 0 0;word-break:break-all;">Or paste this link: ${esc(joinUrl)}</p>
+      </td></tr>
+    </table>
+  </td></tr></table></body></html>`;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+  if (req.method !== "POST") return json({ ok: false, error: "POST only" }, 405);
+
+  let body: { token?: string; email?: string; first_name?: string };
+  try { body = await req.json(); } catch { return json({ ok: false, error: "bad request" }, 400); }
+  const token = String(body.token ?? "").trim();
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const firstName = body.first_name ? String(body.first_name).trim() : "";
+  if (!token || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return json({ ok: false, error: "token and a valid email are required" }, 400);
+  }
+
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) return json({ ok: false, error: "server not configured" }, 500);
+  const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
+
+  // Validate the token + load the tenant brand.
+  const { data: tok } = await admin
+    .from("tenant_invite_tokens")
+    .select("tenant_id, revoked_at, expires_at, email")
+    .eq("token", token)
+    .maybeSingle();
+  if (!tok || tok.revoked_at || new Date(tok.expires_at as string) <= new Date()) {
+    return json({ ok: false, error: "invite is not valid" }, 400);
+  }
+
+  // Anti-relay: a token bound to a recipient at mint time can ONLY email that
+  // address. This stops a token holder from POSTing arbitrary victim addresses
+  // and having the platform emit tenant-branded links to them.
+  const boundEmail = (tok.email as string | null)?.trim().toLowerCase() || null;
+  if (boundEmail && boundEmail !== email) {
+    return json({ ok: false, error: "this invite is bound to a different address" }, 400);
+  }
+  const recipient = boundEmail ?? email;
+
+  const { data: tenant } = await admin
+    .from("tenants").select("name, brand").eq("id", tok.tenant_id).maybeSingle();
+
+  const brand = (tenant?.brand ?? {}) as { primary_color?: string; logo_url?: string };
+  const accent = brand.primary_color || "#241645";
+  const joinUrl = `${PUBLIC_BASE}/join/${token}`;
+  const tenantName = tenant?.name || "Your workspace";
+
+  if (!RESEND_KEY) return json({ ok: true, join_url: joinUrl, emailed: false });
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: senderFrom(tenantName, EMAIL_FROM),
+        to: [recipient],
+        subject: `${tenantName} invited you to your client portal`,
+        html: inviteHtml(tenantName, accent, brand.logo_url ?? null, joinUrl, firstName),
+        text: `${firstName ? `Hi ${firstName},` : "Hi there,"}\n\n${tenantName} invited you to your private client portal.\n\nOpen it: ${joinUrl}\n`,
+      }),
+    });
+    return json({ ok: true, join_url: joinUrl, emailed: res.ok });
+  } catch (_e) {
+    return json({ ok: true, join_url: joinUrl, emailed: false });
+  }
+});
