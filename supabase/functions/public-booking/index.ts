@@ -55,7 +55,9 @@ function ymdInTz(ms: number, tz: string): { y: number; mo: number; d: number; wd
 }
 
 interface HostSettings {
-  user_id: string;
+  user_id: string; // primary / fallback host (top priority)
+  hosts: string[]; // full host pool, priority-ordered (single-host = [user_id])
+  roundRobin: boolean; // distribute bookings across hosts instead of always the primary
   tenant_id: string | null;
   calendarId: string | null; // set when the page is backed by a first-class calendar
   availability: DayWindow[];
@@ -97,9 +99,9 @@ function parseLocationOptions(raw: unknown, fallbackType: string, fallbackValue:
 
 interface Busy { start: number; end: number } // UTC ms
 
-/** Compute open slot start instants (UTC ms) over [fromMs, toMs]. */
-function computeSlots(h: HostSettings, busy: Busy[], fromMs: number, toMs: number, nowMs: number): number[] {
-  const slots: number[] = [];
+/** All candidate slot starts in the availability windows (busy-agnostic). */
+function windowStarts(h: HostSettings, fromMs: number, toMs: number, nowMs: number): number[] {
+  const starts: number[] = [];
   const durMs = h.durationMin * 60000;
   const earliest = nowMs + h.minNoticeMin * 60000;
   const dayMs = 86_400_000;
@@ -113,18 +115,26 @@ function computeSlots(h: HostSettings, busy: Busy[], fromMs: number, toMs: numbe
       const winStart = zonedWallToUtcMs(y, mo - 1, d, sh, sm, h.timezone);
       const winEnd = zonedWallToUtcMs(y, mo - 1, d, eh, em, h.timezone);
       for (let s = winStart; s + durMs <= winEnd; s += durMs) {
-        const e = s + durMs;
         if (s < fromMs || s > toMs) continue;
         if (s < earliest) continue;
-        // Buffer-padded conflict against existing bookings.
-        const blocked = busy.some(
-          (b) => s < b.end + h.bufferAfterMin * 60000 && e + h.bufferBeforeMin * 60000 > b.start,
-        );
-        if (!blocked) slots.push(s);
+        starts.push(s);
       }
     }
   }
-  return Array.from(new Set(slots)).sort((a, b) => a - b);
+  return Array.from(new Set(starts)).sort((a, b) => a - b);
+}
+/** Is [s, s+dur] free of buffer-padded conflicts against `busy`? */
+function isFree(h: HostSettings, busy: Busy[], s: number): boolean {
+  const e = s + h.durationMin * 60000;
+  return !busy.some((b) => s < b.end + h.bufferAfterMin * 60000 && e + h.bufferBeforeMin * 60000 > b.start);
+}
+/** Single-host open slots (window ∧ that host free). */
+function computeSlots(h: HostSettings, busy: Busy[], fromMs: number, toMs: number, nowMs: number): number[] {
+  return windowStarts(h, fromMs, toMs, nowMs).filter((s) => isFree(h, busy, s));
+}
+/** Round-robin open slots: a slot is bookable if AT LEAST ONE host is free. */
+function roundRobinSlots(h: HostSettings, busyByHost: Record<string, Busy[]>, fromMs: number, toMs: number, nowMs: number): number[] {
+  return windowStarts(h, fromMs, toMs, nowMs).filter((s) => h.hosts.some((uid) => isFree(h, busyByHost[uid] ?? [], s)));
 }
 
 // First-class calendar (the `calendars` entity) resolved by slug. This is the
@@ -133,20 +143,23 @@ function computeSlots(h: HostSettings, busy: Busy[], fromMs: number, toMs: numbe
 async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
   const { data: cal } = await admin
     .from("calendars")
-    .select("id, tenant_id, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options")
+    .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options")
     .eq("slug", slug)
     .maybeSingle();
   if (!cal || cal.enabled !== true) return null;
+  // Load the FULL host pool (priority-ordered). Single-host calendars book the
+  // primary; round-robin calendars distribute across the whole pool.
   const { data: hosts } = await admin
     .from("calendar_hosts")
     .select("user_id, priority")
     .eq("calendar_id", cal.id)
-    .order("priority", { ascending: true })
-    .limit(1);
-  const hostId = hosts?.[0]?.user_id as string | undefined;
-  if (!hostId) return null; // no host = nobody to book with yet
+    .order("priority", { ascending: true });
+  const hostIds = (hosts ?? []).map((h) => h.user_id as string);
+  if (!hostIds.length) return null; // no host = nobody to book with yet
   return {
-    user_id: hostId,
+    user_id: hostIds[0],
+    hosts: hostIds,
+    roundRobin: cal.type === "round_robin" && hostIds.length > 1,
     tenant_id: cal.tenant_id ?? null,
     calendarId: cal.id,
     availability: parseAvailability(cal.availability_json),
@@ -179,6 +192,8 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
   if (!data || data.booking_page_enabled !== true) return null;
   return {
     user_id: data.user_id,
+    hosts: [data.user_id],
+    roundRobin: false,
     tenant_id: data.tenant_id ?? null,
     calendarId: null,
     availability: parseAvailability(data.availability_json),
@@ -349,8 +364,16 @@ Deno.serve(async (req) => {
     if (action === "availability") {
       const fromMs = Math.max(now, Date.parse(body?.from) || now);
       const toMs = Math.min(now + 30 * 86_400_000, Date.parse(body?.to) || now + 14 * 86_400_000);
-      const busy = await loadBusy(admin, host.user_id, fromMs, toMs);
-      const slots = computeSlots(host, busy, fromMs, toMs, now);
+      let slots: number[];
+      if (host.roundRobin) {
+        // Combined team availability: a slot shows if any host is free for it.
+        const busyByHost: Record<string, Busy[]> = {};
+        for (const uid of host.hosts) busyByHost[uid] = await loadBusy(admin, uid, fromMs, toMs);
+        slots = roundRobinSlots(host, busyByHost, fromMs, toMs, now);
+      } else {
+        const busy = await loadBusy(admin, host.user_id, fromMs, toMs);
+        slots = computeSlots(host, busy, fromMs, toMs, now);
+      }
       return json({
         durationMin: host.durationMin,
         timezone: host.timezone,
@@ -379,10 +402,33 @@ Deno.serve(async (req) => {
         .gte("created_at", new Date(now - 60_000).toISOString());
       if ((recent ?? 0) >= 5) return json({ error: "Too many requests — please try again shortly." }, 429);
 
-      // Re-validate the slot server-side against live availability + bookings.
-      const busy = await loadBusy(admin, host.user_id, startMs - 86_400_000, startMs + 86_400_000);
-      const valid = computeSlots(host, busy, startMs - 60000, startMs + 60000, now).some((s) => s === startMs);
-      if (!valid) return json({ error: "That time is no longer available. Please pick another." }, 409);
+      // Re-validate the slot is a real window start, then assign the host.
+      const winValid = windowStarts(host, startMs - 60000, startMs + 60000, now).some((s) => s === startMs);
+      if (!winValid) return json({ error: "That time is no longer available. Please pick another." }, 409);
+      let chosenHost = host.user_id;
+      if (host.roundRobin) {
+        // Free hosts at this slot, then fair rotation: fewest upcoming bookings,
+        // tie-broken by priority order. The unique (host, start) index still
+        // guards against a race on the specific host we land on.
+        const free: string[] = [];
+        for (const uid of host.hosts) {
+          const b = await loadBusy(admin, uid, startMs - 86_400_000, startMs + 86_400_000);
+          if (isFree(host, b, startMs)) free.push(uid);
+        }
+        if (!free.length) return json({ error: "That time is no longer available. Please pick another." }, 409);
+        const loads = await Promise.all(free.map(async (uid) => {
+          const { count } = await admin.from("internal_bookings")
+            .select("id", { count: "exact", head: true })
+            .eq("host_user_id", uid).neq("status", "cancelled")
+            .gte("start_at", new Date(now).toISOString());
+          return { uid, count: count ?? 0 };
+        }));
+        loads.sort((a, b) => a.count - b.count || host.hosts.indexOf(a.uid) - host.hosts.indexOf(b.uid));
+        chosenHost = loads[0].uid;
+      } else {
+        const busy = await loadBusy(admin, host.user_id, startMs - 86_400_000, startMs + 86_400_000);
+        if (!isFree(host, busy, startMs)) return json({ error: "That time is no longer available. Please pick another." }, 409);
+      }
 
       // Resolve the meeting method from the owner's offered options. One option →
       // fixed; several → the invitee's validated choice. Phone uses their number.
@@ -395,7 +441,7 @@ Deno.serve(async (req) => {
       const endMs = startMs + host.durationMin * 60000;
       const { data, error } = await admin.from("internal_bookings").insert({
         tenant_id: host.tenant_id,
-        host_user_id: host.user_id,
+        host_user_id: chosenHost,
         calendar_id: host.calendarId,
         guest_name: name,
         guest_email: email,
@@ -439,7 +485,7 @@ Deno.serve(async (req) => {
         let hostOk = false;
         let hostEmail: string | undefined;
         if (host.confirmHost) {
-          const { data: hostUser } = await admin.auth.admin.getUserById(host.user_id);
+          const { data: hostUser } = await admin.auth.admin.getUserById(chosenHost);
           hostEmail = (hostUser as { user?: { email?: string } } | null)?.user?.email;
           if (hostEmail) {
             hostOk = await sendEmail(hostEmail, `New booking: ${name} · ${whenLabel}`,
