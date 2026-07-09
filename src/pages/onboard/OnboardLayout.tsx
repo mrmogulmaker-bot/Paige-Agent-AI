@@ -133,7 +133,7 @@ export default function OnboardLayout() {
           <div className="onboard-card p-10 text-center space-y-3">
             <h1 className="text-xl font-semibold">Please sign in</h1>
             <p className="text-sm" style={{ color: "rgba(8,20,40,0.7)" }}>
-              Use the magic link in the welcome email Antonio sent you.
+              Use the magic link in the welcome email your coach sent you.
             </p>
             <a className="underline" href="/auth">Go to sign in</a>
           </div>
