@@ -17504,7 +17504,12 @@ export type Database = {
         }
       }
       set_tenant_playbook: {
-        Args: { _config?: Json; _slug?: string; _tenant_id: string }
+        Args: {
+          _config?: Json
+          _only_if_unset?: boolean
+          _slug?: string
+          _tenant_id: string
+        }
         Returns: {
           account_number_prefix: string
           account_type: string

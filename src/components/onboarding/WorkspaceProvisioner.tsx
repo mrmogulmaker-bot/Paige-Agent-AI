@@ -54,8 +54,10 @@ const INDUSTRY_TO_PLAYBOOK: Record<string, string> = {
   "Real estate": "consultant",
   "Agency / Marketing": "agency",
   "Creative / Design": "agency",
-  "Course creator / Thought leader": "coaching-default",
-  "Other": "coaching-default",
+  // Creators / thought leaders and anything unlisted get the vertical-NEUTRAL
+  // baseline, not a coaching-voiced one (§2).
+  "Course creator / Thought leader": "general",
+  "Other": "general",
 };
 
 type AccountType = "standalone" | "agency" | "enterprise";
@@ -133,9 +135,11 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
       // editor can re-author it, and resolveActivePlaybook falls back to a neutral
       // default if this doesn't land).
       const tenantId = (provisioned as { id?: string } | null)?.id;
-      const slug = INDUSTRY_TO_PLAYBOOK[industry] ?? "coaching-default";
+      const slug = INDUSTRY_TO_PLAYBOOK[industry] ?? "general";
       if (tenantId) {
-        await supabase.rpc("set_tenant_playbook", { _tenant_id: tenantId, _slug: slug });
+        // _only_if_unset: never clobber an already-authored playbook if
+        // provision_tenant returned a pre-existing tenant (idempotent).
+        await supabase.rpc("set_tenant_playbook", { _tenant_id: tenantId, _slug: slug, _only_if_unset: true });
       }
 
       toast({ title: "Workspace ready", description: "Welcome to Paige — this is yours to run." });

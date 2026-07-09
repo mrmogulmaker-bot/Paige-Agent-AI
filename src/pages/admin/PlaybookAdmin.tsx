@@ -64,17 +64,41 @@ export default function PlaybookAdmin() {
   // Generic patch helpers keep the JSX terse.
   const patch = (fn: (d: Playbook) => void) => setPb((prev) => { if (!prev) return prev; const next = structuredClone(prev); fn(next); return next; });
 
+  // Guarantee unique, non-empty keys/ids at save time — labels are edited freely
+  // (and slugified on keystroke), so two rows can collide or be blank.
+  const uniqueKeyed = <T extends Record<string, unknown>>(items: T[], field: "key" | "id", base: string): T[] => {
+    const seen = new Set<string>();
+    return items.map((it, i) => {
+      let k = slugify(String(it[field] ?? "") || String((it as { label?: string }).label ?? "") || `${base}_${i + 1}`);
+      let uniq = k, n = 1;
+      while (seen.has(uniq)) uniq = `${k}_${++n}`;
+      seen.add(uniq);
+      return { ...it, [field]: uniq };
+    });
+  };
+
   const save = async () => {
-    if (!activeTenantId || !pb) return;
+    if (!pb) return;
+    if (!activeTenantId) {
+      toast.error("Switch into a workspace first — there's no tenant to save this to.");
+      return;
+    }
     if (!pb.persona.name.trim() || !pb.persona.greeting.trim()) {
       toast.error("Paige needs at least a name and a greeting.");
       return;
     }
+    const config = {
+      ...pb,
+      probingQuestions: uniqueKeyed(pb.probingQuestions, "id", "q"),
+      journey: uniqueKeyed(pb.journey, "key", "stage"),
+      intake: uniqueKeyed(pb.intake, "key", "field"),
+      portal: { ...pb.portal, modules: uniqueKeyed(pb.portal.modules, "key", "module") },
+    };
     setSaving(true);
     try {
       const { error } = await supabase.rpc("set_tenant_playbook", {
         _tenant_id: activeTenantId,
-        _config: pb as unknown as Record<string, never>,
+        _config: config as unknown as Record<string, never>,
       });
       if (error) throw error;
       toast.success("Paige's playbook saved — she's now native to your practice.");
@@ -89,6 +113,19 @@ export default function PlaybookAdmin() {
     return (
       <div className="flex items-center gap-3 text-muted-foreground p-8 justify-center">
         <Loader2 className="w-5 h-5 animate-spin" /> Loading your Paige…
+      </div>
+    );
+  }
+
+  // Platform staff at the God tier have no active tenant to author against.
+  if (!activeTenantId) {
+    return (
+      <div className="max-w-lg mx-auto p-10 text-center space-y-2">
+        <Sparkles className="w-6 h-6 text-primary mx-auto" />
+        <h2 className="text-lg font-semibold">Pick a workspace first</h2>
+        <p className="text-sm text-muted-foreground">
+          You're at the platform level. Switch into a tenant workspace to author its Paige.
+        </p>
       </div>
     );
   }
@@ -145,8 +182,8 @@ export default function PlaybookAdmin() {
           {pb.quickActions.map((q, i) => (
             <RowShell key={i} onRemove={() => patch((d) => { d.quickActions.splice(i, 1); })}>
               <div className="grid sm:grid-cols-2 gap-2">
-                <Input value={q.label} placeholder="Button label" onChange={(e) => patch((d) => { d.quickActions[i].label = e.target.value; })} />
-                <Input value={q.prompt} placeholder="What it asks Paige" onChange={(e) => patch((d) => { d.quickActions[i].prompt = e.target.value; })} />
+                <Input aria-label="Quick action label" value={q.label} placeholder="Button label" onChange={(e) => patch((d) => { d.quickActions[i].label = e.target.value; })} />
+                <Input aria-label="Quick action prompt" value={q.prompt} placeholder="What it asks Paige" onChange={(e) => patch((d) => { d.quickActions[i].prompt = e.target.value; })} />
               </div>
             </RowShell>
           ))}
@@ -163,8 +200,8 @@ export default function PlaybookAdmin() {
         <CardContent className="space-y-2">
           {pb.probingQuestions.map((q, i) => (
             <RowShell key={i} onRemove={() => patch((d) => { d.probingQuestions.splice(i, 1); })}>
-              <Input value={q.ask} placeholder="How she asks it" onChange={(e) => patch((d) => { d.probingQuestions[i].ask = e.target.value; })} />
-              <Input value={q.captures} placeholder="What it captures (e.g. primary_goal)" onChange={(e) => patch((d) => { d.probingQuestions[i].captures = e.target.value; })} />
+              <Input aria-label="How Paige asks it" value={q.ask} placeholder="How she asks it" onChange={(e) => patch((d) => { d.probingQuestions[i].ask = e.target.value; })} />
+              <Input aria-label="What this question captures" value={q.captures} placeholder="What it captures (e.g. primary_goal)" onChange={(e) => patch((d) => { d.probingQuestions[i].captures = e.target.value; })} />
             </RowShell>
           ))}
           <Button variant="outline" size="sm" onClick={() => patch((d) => { d.probingQuestions.push({ id: slugify(String(d.probingQuestions.length + 1)), ask: "", captures: "" }); })}>
@@ -181,8 +218,8 @@ export default function PlaybookAdmin() {
           {pb.journey.map((s, i) => (
             <RowShell key={i} onRemove={() => patch((d) => { d.journey.splice(i, 1); })}>
               <div className="grid sm:grid-cols-2 gap-2">
-                <Input value={s.label} placeholder="Stage name" onChange={(e) => patch((d) => { d.journey[i].label = e.target.value; d.journey[i].key = slugify(e.target.value); })} />
-                <Input value={s.description} placeholder="What happens here" onChange={(e) => patch((d) => { d.journey[i].description = e.target.value; })} />
+                <Input aria-label="Journey stage name" value={s.label} placeholder="Stage name" onChange={(e) => patch((d) => { d.journey[i].label = e.target.value; d.journey[i].key = slugify(e.target.value); })} />
+                <Input aria-label="Journey stage description" value={s.description} placeholder="What happens here" onChange={(e) => patch((d) => { d.journey[i].description = e.target.value; })} />
               </div>
             </RowShell>
           ))}
@@ -200,14 +237,14 @@ export default function PlaybookAdmin() {
           {pb.intake.map((f, i) => (
             <RowShell key={i} onRemove={() => patch((d) => { d.intake.splice(i, 1); })}>
               <div className="grid sm:grid-cols-[1fr_140px] gap-2">
-                <Input value={f.label} placeholder="Question label" onChange={(e) => patch((d) => { d.intake[i].label = e.target.value; if (!d.intake[i].key) d.intake[i].key = slugify(e.target.value); })} />
+                <Input aria-label="Intake field label" value={f.label} placeholder="Question label" onChange={(e) => patch((d) => { d.intake[i].label = e.target.value; if (!d.intake[i].key) d.intake[i].key = slugify(e.target.value); })} />
                 <Select value={f.type} onValueChange={(v) => patch((d) => { d.intake[i].type = v as IntakeField["type"]; })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Intake field type"><SelectValue /></SelectTrigger>
                   <SelectContent>{INTAKE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               {f.type === "select" && (
-                <Input value={(f.options ?? []).join(", ")} placeholder="Options, comma-separated"
+                <Input aria-label="Select options, comma-separated" value={(f.options ?? []).join(", ")} placeholder="Options, comma-separated"
                   onChange={(e) => patch((d) => { d.intake[i].options = e.target.value.split(",").map((o) => o.trim()).filter(Boolean); })} />
               )}
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -228,7 +265,7 @@ export default function PlaybookAdmin() {
         <CardContent className="space-y-2">
           {pb.portal.modules.map((m, i) => (
             <RowShell key={i} onRemove={() => patch((d) => { d.portal.modules.splice(i, 1); })}>
-              <Input value={m.label} placeholder="Module name" onChange={(e) => patch((d) => { d.portal.modules[i].label = e.target.value; d.portal.modules[i].key = slugify(e.target.value); })} />
+              <Input aria-label="Portal module name" value={m.label} placeholder="Module name" onChange={(e) => patch((d) => { d.portal.modules[i].label = e.target.value; d.portal.modules[i].key = slugify(e.target.value); })} />
             </RowShell>
           ))}
           <Button variant="outline" size="sm" onClick={() => patch((d) => { d.portal.modules.push({ key: "", label: "" }); })}>

@@ -17,13 +17,13 @@
 // so it simply resolves to the coaching default.
 
 import { supabase } from "@/integrations/supabase/client";
-import { coachingDefault, PLAYBOOK_LIBRARY } from "./presets";
+import { generalDefault, PLAYBOOK_LIBRARY } from "./presets";
 import type { IntakeField, JourneyStage, Playbook, ProbingQuestion, QuickAction } from "./types";
 
 /** Resolve a playbook by slug, falling back to the coaching default. */
 export function getPlaybookBySlug(slug?: string | null): Playbook {
-  if (!slug) return coachingDefault;
-  return PLAYBOOK_LIBRARY.find((p) => p.slug === slug) ?? coachingDefault;
+  if (!slug) return generalDefault;
+  return PLAYBOOK_LIBRARY.find((p) => p.slug === slug) ?? generalDefault;
 }
 
 // --- Shape guards for a tenant-authored playbook stored as JSON data ---------
@@ -43,27 +43,27 @@ function coercePlaybook(raw: unknown): Playbook | null {
   // Merge over the coaching default so a partial authored playbook still yields
   // a complete, renderable Playbook (missing sections inherit sane neutral copy).
   return {
-    slug: typeof raw.slug === "string" ? raw.slug : coachingDefault.slug,
-    name: typeof raw.name === "string" ? raw.name : coachingDefault.name,
-    vertical: typeof raw.vertical === "string" ? raw.vertical : coachingDefault.vertical,
+    slug: typeof raw.slug === "string" ? raw.slug : generalDefault.slug,
+    name: typeof raw.name === "string" ? raw.name : generalDefault.name,
+    vertical: typeof raw.vertical === "string" ? raw.vertical : generalDefault.vertical,
     persona: {
       name: persona.name,
-      role: typeof persona.role === "string" ? persona.role : coachingDefault.persona.role,
+      role: typeof persona.role === "string" ? persona.role : generalDefault.persona.role,
       greeting: persona.greeting,
-      tone: typeof persona.tone === "string" ? persona.tone : coachingDefault.persona.tone,
-      domain: typeof persona.domain === "string" ? persona.domain : coachingDefault.persona.domain,
+      tone: typeof persona.tone === "string" ? persona.tone : generalDefault.persona.tone,
+      domain: typeof persona.domain === "string" ? persona.domain : generalDefault.persona.domain,
     },
     quickActions: arr<QuickAction>(raw.quickActions, 1).length
       ? arr<QuickAction>(raw.quickActions)
-      : coachingDefault.quickActions,
+      : generalDefault.quickActions,
     probingQuestions: arr<ProbingQuestion>(raw.probingQuestions),
     journey: arr<JourneyStage>(raw.journey, 1).length
       ? arr<JourneyStage>(raw.journey)
-      : coachingDefault.journey,
-    intake: arr<IntakeField>(raw.intake, 1).length ? arr<IntakeField>(raw.intake) : coachingDefault.intake,
+      : generalDefault.journey,
+    intake: arr<IntakeField>(raw.intake, 1).length ? arr<IntakeField>(raw.intake) : generalDefault.intake,
     portal: isRecord(raw.portal) && Array.isArray((raw.portal as { modules?: unknown }).modules)
       ? (raw.portal as Playbook["portal"])
-      : coachingDefault.portal,
+      : generalDefault.portal,
   };
 }
 
@@ -77,7 +77,7 @@ export async function resolveActivePlaybook(): Promise<Playbook> {
   try {
     const { data: auth } = await supabase.auth.getUser();
     const uid = auth.user?.id;
-    if (!uid) return coachingDefault;
+    if (!uid) return generalDefault;
 
     const { data: profile } = await supabase
       .from("profiles")
@@ -85,7 +85,7 @@ export async function resolveActivePlaybook(): Promise<Playbook> {
       .eq("user_id", uid)
       .maybeSingle();
     const tenantId = profile?.active_tenant_id;
-    if (!tenantId) return coachingDefault;
+    if (!tenantId) return generalDefault;
 
     const { data: tenant } = await supabase
       .from("tenants")
@@ -100,6 +100,6 @@ export async function resolveActivePlaybook(): Promise<Playbook> {
     const slug = typeof features.playbook === "string" ? features.playbook : null;
     return getPlaybookBySlug(slug);
   } catch {
-    return coachingDefault;
+    return generalDefault;
   }
 }
