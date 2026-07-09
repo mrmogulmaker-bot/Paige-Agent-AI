@@ -14,7 +14,8 @@ const APP_BASE = "https://paigeagent.ai";
 type Event =
   | "task_assigned"
   | "form_submission"
-  | "contact_assigned";
+  | "contact_assigned"
+  | "booking_created";
 
 interface Payload {
   event: Event;
@@ -27,6 +28,9 @@ interface Payload {
   contact_id?: string;
   coach_user_id?: string;
   tenant_id?: string;
+  // Booking created
+  booking_id?: string;
+  host_user_ids?: string[];
 }
 
 function json(data: Record<string, unknown>, status = 200): Response {
@@ -41,6 +45,16 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  // Internal-only. Both legitimate callers — the public-booking edge function
+  // and the fire_team_event() Postgres trigger — present the service-role key
+  // as their bearer. This function runs as service-role and does NO per-row
+  // tenant/ownership check, so without this gate a public caller could pass a
+  // guessed booking_id/contact_id + their own user_id and have another tenant's
+  // guest PII delivered to them (or spam-notify an arbitrary user).
+  const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (bearer !== serviceKey) return json({ error: "forbidden" }, 403);
+
   const supabase = createClient(supabaseUrl, serviceKey);
 
   let body: Payload;
@@ -149,6 +163,30 @@ Deno.serve(async (req) => {
     link = `/admin/contacts/${body.contact_id}`;
     const r = await resolveUser(body.coach_user_id);
     if (r) recipients.push(r);
+  } else if (body.event === "booking_created") {
+    if (!body.booking_id || !body.host_user_ids?.length) {
+      return json({ error: "booking_id and host_user_ids required" }, 400);
+    }
+    const { data: booking } = await supabase
+      .from("internal_bookings")
+      .select("id,title,guest_name,start_at,timezone,contact_id")
+      .eq("id", body.booking_id)
+      .maybeSingle();
+    if (!booking) return json({ error: "booking not found" }, 404);
+    contactId = booking.contact_id ?? null;
+    const whenLabel = new Intl.DateTimeFormat("en-US", {
+      timeZone: booking.timezone || "America/New_York", weekday: "short", month: "short", day: "numeric",
+      hour: "numeric", minute: "2-digit", timeZoneName: "short",
+    }).format(new Date(booking.start_at));
+    title = `New booking: ${booking.guest_name ?? "a guest"}`;
+    bodyText = `${booking.title ?? "Session"} — ${whenLabel}`;
+    link = "/admin/calendar";
+    // Every host in the group (round-robin picks one; collective attends all;
+    // class always has exactly one) gets their own in-app + email notice.
+    for (const uid of Array.from(new Set(body.host_user_ids))) {
+      const r = await resolveUser(uid);
+      if (r) recipients.push(r);
+    }
   } else {
     return json({ error: `unknown event: ${body.event}` }, 400);
   }
@@ -162,7 +200,7 @@ Deno.serve(async (req) => {
     source_workflow_key: workflowKey,
     contact_id: contactId,
     assigned_user_id: r.user_id,
-    scope: "user",
+    scope: "assigned_user",
   }));
   if (notifRows.length) {
     const { error: nErr } = await supabase.from("paige_admin_notifications").insert(notifRows);
@@ -179,7 +217,9 @@ Deno.serve(async (req) => {
           ? `task-${body.task_id}-${r.user_id}`
           : body.event === "form_submission"
             ? `submission-${body.submission_id}-${r.user_id}`
-            : `contact-${body.contact_id}-${body.coach_user_id}`;
+            : body.event === "booking_created"
+              ? `booking-${body.booking_id}-${r.user_id}`
+              : `contact-${body.contact_id}-${body.coach_user_id}`;
       const res = await fetch(`${supabaseUrl}/functions/v1/send-transactional-email`, {
         method: "POST",
         headers: {

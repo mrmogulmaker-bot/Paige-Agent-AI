@@ -14,6 +14,7 @@ interface Booking {
   id: string; title: string; start_at: string; status: string;
   guest_name: string | null; timezone: string; slug: string | null;
   accent: string; durationMin: number; canModify: boolean;
+  with?: string; // Collective only: every attending host's name.
 }
 
 const GOLD = "#EBB94C";
@@ -111,7 +112,10 @@ export default function ManageBooking() {
           {!loading && booking && (
             <>
               <h1 style={{ color: "#101828", fontSize: 22, margin: "0 0 6px" }}>{booking.title}</h1>
-              <p style={{ color: "#475467", fontSize: 15, margin: "0 0 20px" }}>{fmtWhen(booking.start_at, booking.timezone)}</p>
+              <p style={{ color: "#475467", fontSize: 15, margin: booking.with ? "0 0 4px" : "0 0 20px" }}>{fmtWhen(booking.start_at, booking.timezone)}</p>
+              {booking.with && (
+                <p style={{ color: "#667085", fontSize: 13, margin: "0 0 20px" }}>With {booking.with}</p>
+              )}
 
               {mode === "cancelled" && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#fef3f2", color: "#b42318", padding: "12px 14px", borderRadius: 10, fontSize: 14 }}>

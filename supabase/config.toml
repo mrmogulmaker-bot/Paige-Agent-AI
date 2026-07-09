@@ -3,6 +3,14 @@ project_id = "xygzykjyynhzqytbqnzu"
 [functions]
   [functions.public-booking]
     verify_jwt = false
+  # Public front-door signup — creates a pre-confirmed account via the service
+  # role (email verification not wired yet). Must be reachable pre-auth.
+  [functions.tenant-signup]
+    verify_jwt = false
+  # Internal-only notifier — self-gates on the service-role key in-function;
+  # verify_jwt=true is a redundant gateway layer (both callers present it).
+  [functions.notify-team-event]
+    verify_jwt = true
   [functions.paige-bridge]
     verify_jwt = false
   [functions.sla-watcher]

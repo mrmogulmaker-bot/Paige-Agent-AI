@@ -23,6 +23,15 @@ successful, rich, or made money without a team."*
   team — spinning up five agents to flip a boolean is theater. Everything else: team.
 - Orchestrate teams via the Workflow tool (parallel specialists → verify → integrate).
 
+**MANDATORY — no exceptions (owner: Antonio).** This is not a preference; it is the
+operating standard on *every* substantive task, every single time. Before starting any
+build, research, design, review, or debugging effort, the FIRST move is to convene a
+right-sized team via the Workflow tool — the conductor never builds or diagnoses alone.
+The only work exempt is the genuinely trivial (a one-liner, a status check). If in doubt,
+convene the team. The conductor may delegate freely and decide who is on the crew, but a
+crew there must be — with a verifier and (per §5) a compliance officer on anything that
+ships. Catching yourself mid-solo is the signal to stop and staff the team.
+
 ## 2. Content rule — client-based service businesses, never consumer finance.
 
 The product and all marketing are for **client-based service businesses** —

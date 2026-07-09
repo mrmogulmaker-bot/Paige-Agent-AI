@@ -84,13 +84,30 @@ Deno.serve(async (req) => {
   // Candidate window: reminders up to a week ahead, follow-ups up to 2 days back.
   const { data: rows } = await admin
     .from("internal_bookings")
-    .select("id, guest_email, guest_name, title, start_at, end_at, timezone, location_type, location_value, status, calendar_id")
+    .select("id, guest_email, guest_name, title, start_at, end_at, timezone, location_type, location_value, status, calendar_id, collective_group_id")
     .not("calendar_id", "is", null)
     .neq("status", "cancelled")
     .neq("status", "no_show")
     .gte("start_at", new Date(now - 2 * DAY).toISOString())
     .lte("start_at", new Date(now + 8 * DAY).toISOString());
-  const bookings = rows ?? [];
+  const allRows = rows ?? [];
+  // Collective bookings write one symmetric row per host, all sharing the same
+  // guest_email/start_at/collective_group_id — without this, the shared guest
+  // gets one duplicate reminder/follow-up per attending host. Keep a single
+  // deterministic representative per group (lowest id) so repeated cron runs
+  // always claim against the same booking_id and the unique claim table below
+  // dedupes across runs, not just within one. class_seat rows need no such
+  // dedup — each seat is already a different guest, by design (§ one row =
+  // one person's relationship to one interval).
+  const byGroupRep = new Map<string, (typeof allRows)[number]>();
+  const singles: typeof allRows = [];
+  for (const b of allRows) {
+    const gid = b.collective_group_id as string | null;
+    if (!gid) { singles.push(b); continue; }
+    const cur = byGroupRep.get(gid);
+    if (!cur || (b.id as string) < (cur.id as string)) byGroupRep.set(gid, b);
+  }
+  const bookings = [...singles, ...byGroupRep.values()];
 
   // Load the calendars referenced by these bookings (notify_config + branding).
   const calIds = Array.from(new Set(bookings.map((b) => b.calendar_id as string)));

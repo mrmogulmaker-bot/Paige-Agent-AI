@@ -16,7 +16,7 @@ import {
 } from "date-fns";
 import {
   Clock, Loader2, Check, ArrowLeft, ChevronLeft, ChevronRight, CalendarDays,
-  Video, Phone, MapPin, Link2, HelpCircle,
+  Video, Phone, MapPin, Link2, HelpCircle, Users,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -75,6 +75,11 @@ export default function BookingPage() {
   const [slots, setSlots] = useState<string[]>([]);
   const [durationMin, setDurationMin] = useState(30);
   const [brand, setBrand] = useState<Brand>(DEFAULT_BRAND);
+  // Class only: remaining seats per slot, so a slot reads "3 of 10 left"
+  // instead of just vanishing at zero. Collective only: who the guest is
+  // meeting, shown before they book — not just after, in the confirmation email.
+  const [classSpots, setClassSpots] = useState<Record<string, { capacity: number; remaining: number }>>({});
+  const [withHosts, setWithHosts] = useState<string | null>(null);
   const [monthCursor, setMonthCursor] = useState<Date>(startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
@@ -102,12 +107,17 @@ export default function BookingPage() {
     const { data, error } = await supabase.functions.invoke("public-booking", {
       body: { action: "availability", slug, ...(toIso ? { to: toIso } : {}), ...(typeId ? { appointmentTypeId: typeId } : {}) },
     });
-    const res = data as (Partial<Brand> & { error?: string; slots?: string[]; durationMin?: number; branding?: Partial<Brand> }) | null;
+    const res = data as (Partial<Brand> & {
+      error?: string; slots?: string[]; durationMin?: number; branding?: Partial<Brand>;
+      classSpots?: Record<string, { capacity: number; remaining: number }>; withHosts?: string;
+    }) | null;
     if (error || res?.error) { setErrorMsg(res?.error ?? "This booking page isn't available."); setPhase("error"); return; }
     const b = { ...DEFAULT_BRAND, ...(res?.branding ?? {}) } as Brand;
     setSlots(res?.slots ?? []);
     setDurationMin(res?.durationMin ?? b.durationMin ?? 30);
     setBrand(b);
+    setClassSpots(res?.classSpots ?? {});
+    setWithHosts(res?.withHosts ?? null);
     loadedToRef.current = Date.parse(toIso ?? "") || (Date.now() + 92 * 86_400_000);
     setPhase((b.appointmentTypes?.length && !selectedTypeRef.current) ? "service" : "pick");
   }, [slug]);
@@ -243,6 +253,11 @@ export default function BookingPage() {
             {meetMulti ? "Choose how to meet" : meetLabel(fixedMeet)}
           </div>
         ); })()}
+        {withHosts && (
+          <div className="flex items-center gap-2 text-sm" style={{ color: c.sub }}>
+            <Users className="h-4 w-4" style={{ color: brand.accent }} /> With {withHosts}
+          </div>
+        )}
         {selectedSlot && (
           <div className="flex items-center gap-2 text-sm font-medium" style={{ color: c.text }}>
             <CalendarDays className="h-4 w-4" style={{ color: brand.accent }} />
@@ -340,16 +355,26 @@ export default function BookingPage() {
           {/* Time slots */}
           <div className="max-h-[360px] overflow-y-auto pr-1 space-y-2">
             {selectedDay && (byDay.get(selectedDay) ?? []).length === 0 && <p className="text-sm" style={{ color: c.sub }}>No times.</p>}
-            {(selectedDay ? byDay.get(selectedDay) ?? [] : []).map((t) => (
-              <button key={t}
-                onClick={() => { setSelectedSlot(t); setErrorMsg(""); setInviteeLocation(meetOptions[0].type); setPhase("form"); }}
-                className="w-full rounded-lg py-2.5 text-sm font-semibold transition-colors"
-                style={{ border: `1px solid ${brand.accent}`, color: brand.accent, background: "transparent" }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = brand.accent; e.currentTarget.style.color = accentText; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = brand.accent; }}>
-                {format(new Date(t), "h:mm a")}
-              </button>
-            ))}
+            {(selectedDay ? byDay.get(selectedDay) ?? [] : []).map((t) => {
+              // Class only: seats left at this slot, so it reads "3 left"
+              // instead of the slot just vanishing once it's full.
+              const spot = classSpots[t];
+              return (
+                <button key={t}
+                  onClick={() => { setSelectedSlot(t); setErrorMsg(""); setInviteeLocation(meetOptions[0].type); setPhase("form"); }}
+                  className="w-full rounded-lg py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                  style={{ border: `1px solid ${brand.accent}`, color: brand.accent, background: "transparent" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = brand.accent; e.currentTarget.style.color = accentText; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = brand.accent; }}>
+                  {format(new Date(t), "h:mm a")}
+                  {spot && (
+                    <span className="text-xs font-normal opacity-80">
+                      · {spot.remaining} {spot.remaining === 1 ? "seat" : "seats"} left
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

@@ -58,6 +58,9 @@ interface HostSettings {
   user_id: string; // primary / fallback host (top priority)
   hosts: string[]; // full host pool, priority-ordered (single-host = [user_id])
   roundRobin: boolean; // distribute bookings across hosts instead of always the primary
+  collective: boolean; // every host must attend — slot needs ALL hosts free, booking records every host
+  isClass: boolean; // one host, many guests share a slot up to capacity
+  capacity: number; // Class-only ceiling per session (irrelevant otherwise)
   tenant_id: string | null;
   calendarId: string | null; // set when the page is backed by a first-class calendar
   availability: DayWindow[];
@@ -251,6 +254,48 @@ function computeSlots(h: HostSettings, busy: Busy[], fromMs: number, toMs: numbe
 function roundRobinSlots(h: HostSettings, busyByHost: Record<string, Busy[]>, fromMs: number, toMs: number, nowMs: number): number[] {
   return windowStarts(h, fromMs, toMs, nowMs).filter((s) => h.hosts.some((uid) => isFree(h, busyByHost[uid] ?? [], s)));
 }
+/** Collective open slots: a slot is bookable only if EVERY host is free (intersection, not union) — everyone must attend. */
+function collectiveSlots(h: HostSettings, busyByHost: Record<string, Busy[]>, fromMs: number, toMs: number, nowMs: number): number[] {
+  return windowStarts(h, fromMs, toMs, nowMs).filter((s) => h.hosts.every((uid) => isFree(h, busyByHost[uid] ?? [], s)));
+}
+/** Class open slots: a slot with an existing session is open while it has room;
+ *  a slot with none yet is open if the host has no OTHER conflict (`busy` must
+ *  already exclude this host's own class_seat rows via loadBusy's filter, else
+ *  a class's own seats would "conflict" with its own session and hide every
+ *  one of its own slots). */
+function classSlots(h: HostSettings, busy: Busy[], sessions: Map<number, { capacity: number; booked: number }>, fromMs: number, toMs: number, nowMs: number): number[] {
+  return windowStarts(h, fromMs, toMs, nowMs).filter((s) => {
+    const sess = sessions.get(s);
+    return sess ? sess.booked < sess.capacity : isFree(h, busy, s);
+  });
+}
+/** Existing (non-cancelled) class sessions in the window + their live seat
+ *  counts — two queries total regardless of session count, not one-per-session. */
+async function loadClassSessions(admin: ReturnType<typeof createClient>, calendarId: string, fromMs: number, toMs: number): Promise<Map<number, { capacity: number; booked: number }>> {
+  const { data: sessions } = await admin
+    .from("internal_bookings")
+    .select("id, start_at, capacity")
+    .eq("calendar_id", calendarId).eq("booking_kind", "class_session").neq("status", "cancelled")
+    .gte("start_at", new Date(fromMs - 86_400_000).toISOString())
+    .lte("start_at", new Date(toMs + 86_400_000).toISOString());
+  const out = new Map<number, { capacity: number; booked: number }>();
+  const list = sessions ?? [];
+  if (!list.length) return out;
+  const ids = list.map((s) => s.id as string);
+  const { data: seats } = await admin
+    .from("internal_bookings")
+    .select("class_session_id")
+    .in("class_session_id", ids).neq("status", "cancelled");
+  const counts = new Map<string, number>();
+  for (const s of seats ?? []) {
+    const sid = s.class_session_id as string;
+    counts.set(sid, (counts.get(sid) ?? 0) + 1);
+  }
+  for (const s of list) {
+    out.set(Date.parse(s.start_at as string), { capacity: s.capacity as number, booked: counts.get(s.id as string) ?? 0 });
+  }
+  return out;
+}
 
 // First-class calendar (the `calendars` entity) resolved by slug. This is the
 // path created via the Calendars manager — many branded calendars per tenant.
@@ -258,12 +303,12 @@ function roundRobinSlots(h: HostSettings, busyByHost: Record<string, Busy[]>, fr
 async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
   const { data: cal } = await admin
     .from("calendars")
-    .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options, booking_horizon_days, redirect_url, intake_questions, appointment_types, date_overrides")
+    .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options, booking_horizon_days, redirect_url, intake_questions, appointment_types, date_overrides, capacity")
     .eq("slug", slug)
     .maybeSingle();
   if (!cal || cal.enabled !== true) return null;
   // Load the FULL host pool (priority-ordered). Single-host calendars book the
-  // primary; round-robin calendars distribute across the whole pool.
+  // primary; round-robin/collective calendars use the whole pool.
   const { data: hosts } = await admin
     .from("calendar_hosts")
     .select("user_id, priority")
@@ -275,6 +320,9 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     user_id: hostIds[0],
     hosts: hostIds,
     roundRobin: cal.type === "round_robin" && hostIds.length > 1,
+    collective: cal.type === "collective" && hostIds.length > 1,
+    isClass: cal.type === "event",
+    capacity: Math.max(1, cal.capacity ?? 8),
     tenant_id: cal.tenant_id ?? null,
     calendarId: cal.id,
     availability: parseAvailability(cal.availability_json),
@@ -314,6 +362,9 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     user_id: data.user_id,
     hosts: [data.user_id],
     roundRobin: false,
+    collective: false,
+    isClass: false,
+    capacity: 1,
     tenant_id: data.tenant_id ?? null,
     calendarId: null,
     availability: parseAvailability(data.availability_json),
@@ -373,15 +424,82 @@ async function loadBranding(admin: ReturnType<typeof createClient>, host: HostSe
   };
 }
 
+/** Comma-joined display names for a host roster (full_name, falling back to
+ *  their auth email) — used so a Collective guest sees who's on the panel
+ *  before booking, not just after (in the confirmation email). */
+async function resolveHostNames(admin: ReturnType<typeof createClient>, hostIds: string[]): Promise<string | null> {
+  const { data: profs } = await admin.from("profiles").select("user_id, full_name").in("user_id", hostIds);
+  const nameByUid = new Map((profs ?? []).map((p) => [p.user_id as string, p.full_name as string | null]));
+  const names = (await Promise.all(hostIds.map(async (uid) => {
+    const { data: u } = await admin.auth.admin.getUserById(uid);
+    return nameByUid.get(uid) || (u as { user?: { email?: string } } | null)?.user?.email || null;
+  }))).filter((n): n is string => !!n);
+  return names.length ? names.join(", ") : null;
+}
+
 async function loadBusy(admin: ReturnType<typeof createClient>, userId: string, fromMs: number, toMs: number): Promise<Busy[]> {
   const { data } = await admin
     .from("internal_bookings")
     .select("start_at, end_at, status")
     .eq("host_user_id", userId)
     .neq("status", "cancelled")
+    // class_seat rows are redundant with their one class_session row (which
+    // already carries the host's real busy interval) — including them here
+    // would return one duplicate "busy" entry per registrant on a popular
+    // class, unbounded at scale. Duplicates don't change isFree()'s verdict,
+    // but there's no reason to pay the cost.
+    .neq("booking_kind", "class_seat")
     .gte("start_at", new Date(fromMs - 86_400_000).toISOString())
     .lte("start_at", new Date(toMs + 86_400_000).toISOString());
   return (data ?? []).map((b) => ({ start: Date.parse(b.start_at), end: Date.parse(b.end_at) }));
+}
+
+// --- On-booking CRM linkage --------------------------------------------------
+// internal_bookings.contact_id already exists as an FK into clients, but
+// nothing populates it — a booking was a CRM dead end. Tenant-scoped
+// (or operator-scoped, for a null-tenant calendar) find-or-create by email,
+// so the same guest booking twice links to one contact instead of two.
+// Never throws: a CRM hiccup must not block a guest's booking from
+// succeeding — the caller treats a null return as "no contact, proceed anyway."
+async function findOrCreateContact(
+  admin: ReturnType<typeof createClient>,
+  tenantId: string | null,
+  createdBy: string,
+  name: string,
+  email: string,
+  phone: string | null,
+): Promise<string | null> {
+  try {
+    // Escape LIKE wildcards before the case-insensitive lookup: a perfectly
+    // ordinary address like a_b@x.com would otherwise let "_" match any single
+    // char and misattribute this booking to a DIFFERENT existing contact (or
+    // match 2+ rows, which maybeSingle() silently reports as "none" — leading
+    // to a needless duplicate). "%" and "\" get the same treatment.
+    const emailPattern = email.replace(/([\\%_])/g, "\\$1");
+    const findExisting = async (): Promise<string | null> => {
+      const base = admin.from("clients").select("id").ilike("email", emailPattern);
+      const { data } = await (tenantId ? base.eq("tenant_id", tenantId) : base.is("tenant_id", null)).maybeSingle();
+      return (data as { id: string } | null)?.id ?? null;
+    };
+
+    const existing = await findExisting();
+    if (existing) return existing;
+
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    const { data: created, error } = await admin.from("clients").insert({
+      tenant_id: tenantId, created_by: createdBy,
+      first_name: parts[0] || "Guest", last_name: parts.slice(1).join(" "),
+      email, phone, source: "booking_page",
+    }).select("id").single();
+    if (!error) return (created as { id: string }).id;
+
+    // Unique-violation race: a concurrent request for the same guest+host
+    // just created the row we were about to — go find it instead of failing.
+    if ((error as { code?: string }).code === "23505") return await findExisting();
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // --- Confirmation emails (guest + host) + .ics invite -----------------------
@@ -394,6 +512,12 @@ const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai")
 function b64url(bytes: Uint8Array): string {
   let s = ""; for (const c of bytes) s += String.fromCharCode(c);
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+// btoa() only accepts Latin1 — any em dash, curly quote, or non-ASCII guest/tenant
+// content throws InvalidCharacterError. Encode as UTF-8 bytes first.
+function b64utf8(s: string): string {
+  let bin = ""; for (const b of new TextEncoder().encode(s)) bin += String.fromCharCode(b);
+  return btoa(bin);
 }
 async function manageUrl(bookingId: string): Promise<string> {
   const payload = b64url(new TextEncoder().encode(JSON.stringify({ b: bookingId })));
@@ -437,7 +561,7 @@ function buildIcs(o: { uid: string; startMs: number; endMs: number; title: strin
 async function sendEmail(to: string, subject: string, html: string, ics?: string): Promise<boolean> {
   if (!RESEND_KEY) return false;
   const body: Record<string, unknown> = { from: EMAIL_FROM, to: [to], subject, html };
-  if (ics) body.attachments = [{ filename: "invite.ics", content: btoa(ics) }];
+  if (ics) body.attachments = [{ filename: "invite.ics", content: b64utf8(ics) }];
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -527,7 +651,28 @@ Deno.serve(async (req) => {
       const defaultToMs = now + Math.min(host.horizonDays, 92) * 86_400_000;
       const toMs = Math.min(horizonMs, Date.parse(body?.to) || defaultToMs);
       let slots: number[];
-      if (effHost.roundRobin) {
+      // Populated only for Class: spots remaining per slot, so the guest sees
+      // "3 of 10 left" rather than a slot just vanishing at zero.
+      let classSpots: Record<string, { capacity: number; remaining: number }> | undefined;
+      if (effHost.isClass) {
+        // A slot with an existing session is open while it has room; a slot
+        // with none yet is open if the host has no OTHER conflict.
+        const busy = await loadBusy(admin, effHost.user_id, fromMs, toMs);
+        const sessions = await loadClassSessions(admin, host.calendarId as string, fromMs, toMs);
+        slots = classSlots(effHost, busy, sessions, fromMs, toMs, now);
+        classSpots = {};
+        for (const s of slots) {
+          const sess = sessions.get(s);
+          classSpots[new Date(s).toISOString()] = sess
+            ? { capacity: sess.capacity, remaining: sess.capacity - sess.booked }
+            : { capacity: effHost.capacity, remaining: effHost.capacity };
+        }
+      } else if (effHost.collective) {
+        // Everyone must attend: a slot shows only if EVERY host is free for it.
+        const busyByHost: Record<string, Busy[]> = {};
+        for (const uid of effHost.hosts) busyByHost[uid] = await loadBusy(admin, uid, fromMs, toMs);
+        slots = collectiveSlots(effHost, busyByHost, fromMs, toMs, now);
+      } else if (effHost.roundRobin) {
         // Combined team availability: a slot shows if any host is free for it.
         const busyByHost: Record<string, Busy[]> = {};
         for (const uid of effHost.hosts) busyByHost[uid] = await loadBusy(admin, uid, fromMs, toMs);
@@ -536,11 +681,19 @@ Deno.serve(async (req) => {
         const busy = await loadBusy(admin, effHost.user_id, fromMs, toMs);
         slots = computeSlots(effHost, busy, fromMs, toMs, now);
       }
+      // Collective only: who the guest is meeting, shown before they book (the
+      // confirmation email already names hosts — this is the same info surfaced
+      // one step earlier, on the picker itself).
+      const withHosts = effHost.collective && effHost.hosts.length > 1
+        ? await resolveHostNames(admin, effHost.hosts)
+        : null;
       return json({
         durationMin: effHost.durationMin,
         timezone: host.timezone,
         branding: await loadBranding(admin, host),
         slots: slots.map((s) => new Date(s).toISOString()),
+        ...(classSpots ? { classSpots } : {}),
+        ...(withHosts ? { withHosts } : {}),
       });
     }
 
@@ -569,43 +722,30 @@ Deno.serve(async (req) => {
       const intake = collectAnswers(host.intakeQuestions, body?.answers);
       if ("error" in intake) return json({ error: intake.error }, 400);
 
-      // Lightweight abuse control: cap booking_page creates per host per minute.
-      const { count: recent } = await admin
-        .from("internal_bookings")
-        .select("id", { count: "exact", head: true })
-        .eq("host_user_id", host.user_id)
-        .eq("source", "booking_page")
-        .gte("created_at", new Date(now - 60_000).toISOString());
-      if ((recent ?? 0) >= 5) return json({ error: "Too many requests — please try again shortly." }, 429);
+      // Abuse control: class registration bursts are legitimate (many guests
+      // signing up for one popular session inside a minute is normal, not
+      // abuse) — scope that check per-calendar with a much higher ceiling
+      // instead of the tight per-host counter used for everything else.
+      if (effHost.isClass) {
+        const { count: recentClass } = await admin
+          .from("internal_bookings")
+          .select("id", { count: "exact", head: true })
+          .eq("calendar_id", host.calendarId).eq("booking_kind", "class_seat")
+          .gte("created_at", new Date(now - 60_000).toISOString());
+        if ((recentClass ?? 0) >= 30) return json({ error: "Too many requests — please try again shortly." }, 429);
+      } else {
+        const { count: recent } = await admin
+          .from("internal_bookings")
+          .select("id", { count: "exact", head: true })
+          .eq("host_user_id", host.user_id)
+          .eq("source", "booking_page")
+          .gte("created_at", new Date(now - 60_000).toISOString());
+        if ((recent ?? 0) >= 5) return json({ error: "Too many requests — please try again shortly." }, 429);
+      }
 
-      // Re-validate the slot is a real window start (for the selected duration),
-      // then assign the host.
+      // Re-validate the slot is a real window start (for the selected duration).
       const winValid = windowStarts(effHost, startMs - 60000, startMs + 60000, now).some((s) => s === startMs);
       if (!winValid) return json({ error: "That time is no longer available. Please pick another." }, 409);
-      let chosenHost = host.user_id;
-      if (effHost.roundRobin) {
-        // Free hosts at this slot, then fair rotation: fewest upcoming bookings,
-        // tie-broken by priority order. The unique (host, start) index still
-        // guards against a race on the specific host we land on.
-        const free: string[] = [];
-        for (const uid of effHost.hosts) {
-          const b = await loadBusy(admin, uid, startMs - 86_400_000, startMs + 86_400_000);
-          if (isFree(effHost, b, startMs)) free.push(uid);
-        }
-        if (!free.length) return json({ error: "That time is no longer available. Please pick another." }, 409);
-        const loads = await Promise.all(free.map(async (uid) => {
-          const { count } = await admin.from("internal_bookings")
-            .select("id", { count: "exact", head: true })
-            .eq("host_user_id", uid).neq("status", "cancelled")
-            .gte("start_at", new Date(now).toISOString());
-          return { uid, count: count ?? 0 };
-        }));
-        loads.sort((a, b) => a.count - b.count || effHost.hosts.indexOf(a.uid) - effHost.hosts.indexOf(b.uid));
-        chosenHost = loads[0].uid;
-      } else {
-        const busy = await loadBusy(admin, host.user_id, startMs - 86_400_000, startMs + 86_400_000);
-        if (!isFree(effHost, busy, startMs)) return json({ error: "That time is no longer available. Please pick another." }, 409);
-      }
 
       // Resolve the meeting method from the owner's offered options. One option →
       // fixed; several → the invitee's validated choice. Phone uses their number.
@@ -614,41 +754,140 @@ Deno.serve(async (req) => {
       const picked = opts.length === 1 ? opts[0] : (opts.find((o) => o.type === chosenType) ?? opts[0]);
       const locationType = picked.type;
       const locationValue = picked.type === "phone" ? (picked.value ?? phone ?? null) : (picked.value ?? null);
-
       const endMs = startMs + effHost.durationMin * 60000;
-      const { data, error } = await admin.from("internal_bookings").insert({
-        tenant_id: host.tenant_id,
-        host_user_id: chosenHost,
-        calendar_id: host.calendarId,
-        guest_name: name,
-        guest_email: email,
-        guest_phone: phone,
-        title: selType ? `${selType.name} with ${name}` : `Meeting with ${name}`,
-        notes,
-        start_at: new Date(startMs).toISOString(),
-        end_at: new Date(endMs).toISOString(),
-        timezone: host.timezone,
-        status: "scheduled",
-        source: "booking_page",
-        location_type: locationType,
-        location_value: locationValue,
-        intake_answers: Object.keys(intake.answers).length ? intake.answers : null,
-        appointment_type: selType ? { id: selType.id, name: selType.name, duration_min: selType.duration_min } : null,
-      }).select("id, start_at, end_at, title").single();
-      if (error) {
-        // 23505 = exact-start unique violation; 23P01 = the GiST exclusion
-        // constraint (overlapping time range for this host) — both mean the
-        // slot was just taken in a race. The exclusion constraint is what
-        // actually closes the mixed-duration overlap gap the app-level
-        // isFree() check can't (read-then-insert can't see a concurrent insert).
-        const code = (error as { code?: string }).code;
-        if (code === "23505" || code === "23P01")
-          return json({ error: "That time was just booked. Please pick another." }, 409);
-        return json({ error: error.message }, 500);
+
+      // On-booking CRM linkage (§7/§8): resolve or create the guest's CRM
+      // contact before writing the booking, so it's never a dead end. One
+      // contact per guest regardless of booking type — a collective booking's
+      // N host-leg rows all point at the same contact.
+      const contactId = await findOrCreateContact(admin, host.tenant_id, host.user_id, name, email, phone);
+
+      // Assign host(s) + write the booking. Each branch produces the same
+      // shape (a row with id/start_at/end_at/title, plus which host(s) to
+      // notify) so the confirmation-email tail below runs unchanged for all three.
+      let bookingRow: { id: string; start_at: string; end_at: string; title: string };
+      let hostsToNotify: string[];
+
+      if (effHost.isClass) {
+        // Race-safe capacity: lock/find-or-create the session, count, insert
+        // the seat — all inside one Postgres function call (an EXCLUDE
+        // constraint can't express "≤ N rows share this key", only pairwise
+        // overlap, so this needs its own atomic lock→count→insert).
+        const { data: seat, error } = await admin.rpc("create_class_booking", {
+          _calendar_id: host.calendarId, _host_user_id: host.user_id, _tenant_id: host.tenant_id,
+          _start_at: new Date(startMs).toISOString(), _end_at: new Date(endMs).toISOString(),
+          _timezone: host.timezone, _capacity: effHost.capacity,
+          _title: selType ? `${selType.name} — ${name}` : `${host.title || "Class"} — ${name}`,
+          _guest_name: name, _guest_email: email, _guest_phone: phone, _notes: notes,
+          _location_type: locationType, _location_value: locationValue,
+          _intake_answers: Object.keys(intake.answers).length ? intake.answers : null,
+          _source: "booking_page", _contact_id: contactId,
+        });
+        if (error) {
+          if ((error as { message?: string }).message === "sold_out")
+            return json({ error: "This class is full. Please pick another time." }, 409);
+          const code = (error as { code?: string }).code;
+          if (code === "23P01" || code === "23505")
+            return json({ error: "That time was just booked. Please pick another." }, 409);
+          return json({ error: error.message }, 500);
+        }
+        // The RPC's RETURNING * hands back every internal_bookings column
+        // (host_user_id, tenant_id, calendar_id, reminder_state, ...) — narrow
+        // to the same public shape the other two branches already return via
+        // an explicit .select(), so a class booking doesn't leak internal
+        // identifiers the single/round-robin/collective paths withhold.
+        const seatRow = seat as { id: string; start_at: string; end_at: string; title: string };
+        bookingRow = { id: seatRow.id, start_at: seatRow.start_at, end_at: seatRow.end_at, title: seatRow.title };
+        hostsToNotify = [host.user_id];
+      } else if (effHost.collective) {
+        // Everyone must attend: one symmetric row per host, sharing a group id.
+        // Every row is independently protected by the (rescoped) EXCLUDE
+        // constraint — this is the direct fix for a host's busy time being
+        // invisible to the DB when only one row recorded one chosen host.
+        const groupId = crypto.randomUUID();
+        const title = selType ? `${selType.name} with ${name}` : `Meeting with ${name}`;
+        const rows = effHost.hosts.map((uid) => ({
+          tenant_id: host.tenant_id, host_user_id: uid, calendar_id: host.calendarId,
+          booking_kind: "collective", collective_group_id: groupId, contact_id: contactId,
+          guest_name: name, guest_email: email, guest_phone: phone, notes, title,
+          start_at: new Date(startMs).toISOString(), end_at: new Date(endMs).toISOString(),
+          timezone: host.timezone, status: "scheduled", source: "booking_page",
+          location_type: locationType, location_value: locationValue,
+          intake_answers: Object.keys(intake.answers).length ? intake.answers : null,
+          appointment_type: selType ? { id: selType.id, name: selType.name, duration_min: selType.duration_min } : null,
+        }));
+        const { data: rowsInserted, error } = await admin.from("internal_bookings").insert(rows).select("id, start_at, end_at, title");
+        if (error) {
+          const code = (error as { code?: string }).code;
+          if (code === "23505" || code === "23P01")
+            return json({ error: "That time was just booked. Please pick another." }, 409);
+          return json({ error: error.message }, 500);
+        }
+        bookingRow = (rowsInserted as (typeof bookingRow)[])[0];
+        hostsToNotify = effHost.hosts;
+      } else {
+        // Single / round-robin — unchanged.
+        let chosenHost = host.user_id;
+        if (effHost.roundRobin) {
+          // Free hosts at this slot, then fair rotation: fewest upcoming bookings,
+          // tie-broken by priority order. The unique (host, start) index still
+          // guards against a race on the specific host we land on.
+          const free: string[] = [];
+          for (const uid of effHost.hosts) {
+            const b = await loadBusy(admin, uid, startMs - 86_400_000, startMs + 86_400_000);
+            if (isFree(effHost, b, startMs)) free.push(uid);
+          }
+          if (!free.length) return json({ error: "That time is no longer available. Please pick another." }, 409);
+          const loads = await Promise.all(free.map(async (uid) => {
+            const { count } = await admin.from("internal_bookings")
+              .select("id", { count: "exact", head: true })
+              .eq("host_user_id", uid).neq("status", "cancelled")
+              .gte("start_at", new Date(now).toISOString());
+            return { uid, count: count ?? 0 };
+          }));
+          loads.sort((a, b) => a.count - b.count || effHost.hosts.indexOf(a.uid) - effHost.hosts.indexOf(b.uid));
+          chosenHost = loads[0].uid;
+        } else {
+          const busy = await loadBusy(admin, host.user_id, startMs - 86_400_000, startMs + 86_400_000);
+          if (!isFree(effHost, busy, startMs)) return json({ error: "That time is no longer available. Please pick another." }, 409);
+        }
+
+        const { data, error } = await admin.from("internal_bookings").insert({
+          tenant_id: host.tenant_id,
+          host_user_id: chosenHost,
+          calendar_id: host.calendarId,
+          contact_id: contactId,
+          guest_name: name,
+          guest_email: email,
+          guest_phone: phone,
+          title: selType ? `${selType.name} with ${name}` : `Meeting with ${name}`,
+          notes,
+          start_at: new Date(startMs).toISOString(),
+          end_at: new Date(endMs).toISOString(),
+          timezone: host.timezone,
+          status: "scheduled",
+          source: "booking_page",
+          location_type: locationType,
+          location_value: locationValue,
+          intake_answers: Object.keys(intake.answers).length ? intake.answers : null,
+          appointment_type: selType ? { id: selType.id, name: selType.name, duration_min: selType.duration_min } : null,
+        }).select("id, start_at, end_at, title").single();
+        if (error) {
+          // 23505 = exact-start unique violation; 23P01 = the GiST exclusion
+          // constraint (overlapping time range for this host) — both mean the
+          // slot was just taken in a race.
+          const code = (error as { code?: string }).code;
+          if (code === "23505" || code === "23P01")
+            return json({ error: "That time was just booked. Please pick another." }, 409);
+          return json({ error: error.message }, 500);
+        }
+        bookingRow = data as typeof bookingRow;
+        hostsToNotify = [chosenHost];
       }
 
-      // Confirmation emails (guest + host) with an .ics invite — non-blocking:
-      // a mail failure must never fail a booking that's already committed.
+      // Confirmation emails (guest + every host to notify) with an .ics invite
+      // — non-blocking: a mail failure must never fail a booking that's
+      // already committed.
       try {
         const brand = await loadBranding(admin, host);
         const whenLabel = new Intl.DateTimeFormat("en-US", {
@@ -658,7 +897,7 @@ Deno.serve(async (req) => {
         const loc = locationLabel(locationType, locationValue);
         const title = selType?.name || host.title || "Your session";
         const ics = buildIcs({
-          uid: `${(data as { id: string }).id}@paigeagent.ai`, startMs, endMs, title,
+          uid: `${bookingRow.id}@paigeagent.ai`, startMs, endMs, title,
           desc: host.description || "", location: loc, organizer: brand.name, attendee: email, attendeeName: name,
         });
         // Owner-facing: render each answered intake question as a labeled row.
@@ -669,29 +908,59 @@ Deno.serve(async (req) => {
             return v ? { label: q.label, value: v } : null;
           })
           .filter((r): r is { label: string; value: string } => r !== null);
-        const mUrl = await manageUrl((data as { id: string }).id);
+        const mUrl = await manageUrl(bookingRow.id);
+
+        const hostInfos = await Promise.all(hostsToNotify.map(async (uid) => {
+          const { data: hostUser } = await admin.auth.admin.getUserById(uid);
+          return { uid, email: (hostUser as { user?: { email?: string } } | null)?.user?.email };
+        }));
+        // Collective only: name every attending host in the guest's email
+        // ("With: Jane Doe, Sam Lee") instead of just the brand name — the
+        // same names the availability step already showed before they booked.
+        let withLine = brand.name;
+        if (effHost.collective && hostsToNotify.length > 1) {
+          withLine = (await resolveHostNames(admin, hostsToNotify)) || withLine;
+        }
+
         const guestOk = host.confirmGuest
           ? await sendEmail(email, `Confirmed: ${title} · ${whenLabel}`,
-              guestEmailHtml(brand.name, brand.accent, title, whenLabel, loc, brand.name, mUrl), ics)
+              guestEmailHtml(brand.name, brand.accent, title, whenLabel, loc, withLine, mUrl), ics)
           : false;
 
-        let hostOk = false;
-        let hostEmail: string | undefined;
+        const hostSendResults: { email: string; ok: boolean }[] = [];
         if (host.confirmHost) {
-          const { data: hostUser } = await admin.auth.admin.getUserById(chosenHost);
-          hostEmail = (hostUser as { user?: { email?: string } } | null)?.user?.email;
-          if (hostEmail) {
-            hostOk = await sendEmail(hostEmail, `New booking: ${name} · ${whenLabel}`,
+          for (const info of hostInfos) {
+            if (!info.email) continue;
+            const ok = await sendEmail(info.email, `New booking: ${name} · ${whenLabel}`,
               hostEmailHtml(brand.accent, title, whenLabel, name, email, phone, loc, notes, intakeRows), ics);
+            hostSendResults.push({ email: info.email, ok });
           }
         }
         await admin.from("email_send_log").insert([
           { template_name: "booking_confirmation", recipient_email: email, status: guestOk ? "sent" : "skipped", sender_account: "platform", metadata: { via: "public-booking", slug } },
-          ...(hostEmail ? [{ template_name: "booking_host_notify", recipient_email: hostEmail, status: hostOk ? "sent" : "skipped", sender_account: "platform", metadata: { via: "public-booking", slug } }] : []),
+          ...hostSendResults.map((r) => ({ template_name: "booking_host_notify", recipient_email: r.email, status: r.ok ? "sent" : "skipped", sender_account: "platform", metadata: { via: "public-booking", slug } })),
         ]).then(() => {}, () => {});
-      } catch (_e) { /* email is best-effort */ }
 
-      return json({ ok: true, booking: data });
+        // Surface the booking to staff as an actionable in-app notification
+        // (§8) — same best-effort tail as the emails above; a notifier hiccup
+        // must never fail a booking that's already committed.
+        await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-team-event`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+          body: JSON.stringify({ event: "booking_created", booking_id: bookingRow.id, host_user_ids: hostsToNotify }),
+        }).catch((e) => console.error("public-booking: notify-team-event dispatch failed", { bookingId: bookingRow.id, err: (e as Error)?.message }));
+      } catch (e) {
+        // Best-effort: a mail/notify failure must never fail a committed
+        // booking — but log it (visible in Supabase edge logs). Two real bugs
+        // (a scope CHECK violation, a btoa Latin1 crash) hid behind this exact
+        // silent catch; a trace here is the difference between a log line and
+        // an hour of forensic debugging.
+        console.error("public-booking: post-booking email/notify tail failed", {
+          bookingId: bookingRow.id, slug, err: (e as Error)?.message, stack: (e as Error)?.stack,
+        });
+      }
+
+      return json({ ok: true, booking: bookingRow });
     }
 
     return json({ error: "Unknown action" }, 400);
