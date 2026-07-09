@@ -259,6 +259,20 @@ async function loadBusy(admin: ReturnType<typeof createClient>, userId: string, 
 // --- Confirmation emails (guest + host) + .ics invite -----------------------
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_FROM = Deno.env.get("CALENDAR_EMAIL_FROM") ?? Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <calendar@paigeagent.ai>";
+// Signed self-serve link (matches booking-manage's verifier: HMAC over the
+// base64url payload, keyed by the service-role key).
+const SIGN_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai").replace(/\/$/, "");
+function b64url(bytes: Uint8Array): string {
+  let s = ""; for (const c of bytes) s += String.fromCharCode(c);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+async function manageUrl(bookingId: string): Promise<string> {
+  const payload = b64url(new TextEncoder().encode(JSON.stringify({ b: bookingId })));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(SIGN_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload))));
+  return `${PUBLIC_BASE}/booking/manage?token=${payload}.${sig}`;
+}
 function esc(s: string): string {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -305,7 +319,7 @@ async function sendEmail(to: string, subject: string, html: string, ics?: string
     return res.ok;
   } catch { return false; }
 }
-function guestEmailHtml(brandName: string, accent: string, title: string, whenLabel: string, location: string, host: string | null): string {
+function guestEmailHtml(brandName: string, accent: string, title: string, whenLabel: string, location: string, host: string | null, manageLink: string): string {
   const on = textOn(accent);
   return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:28px 0;"><tr><td align="center">
@@ -323,7 +337,8 @@ function guestEmailHtml(brandName: string, accent: string, title: string, whenLa
         </table>
       </td></tr>
       <tr><td style="padding:18px 32px 26px;border-top:1px solid #eef0f3;">
-        <p style="color:#98a0ae;font-size:12px;margin:0;">Need to make a change? Just reply to this email.</p>
+        <p style="color:#667085;font-size:13px;margin:0 0 4px;">Need to make a change? <a href="${esc(manageLink)}" style="color:#7A67E8;font-weight:600;text-decoration:none;">Reschedule or cancel</a>.</p>
+        <p style="color:#98a0ae;font-size:12px;margin:0;">Or just reply to this email.</p>
       </td></tr>
     </table></td></tr></table></body></html>`;
 }
@@ -477,9 +492,10 @@ Deno.serve(async (req) => {
           uid: `${(data as { id: string }).id}@paigeagent.ai`, startMs, endMs, title,
           desc: host.description || "", location: loc, organizer: brand.name, attendee: email, attendeeName: name,
         });
+        const mUrl = await manageUrl((data as { id: string }).id);
         const guestOk = host.confirmGuest
           ? await sendEmail(email, `Confirmed: ${title} · ${whenLabel}`,
-              guestEmailHtml(brand.name, brand.accent, title, whenLabel, loc, brand.name), ics)
+              guestEmailHtml(brand.name, brand.accent, title, whenLabel, loc, brand.name, mUrl), ics)
           : false;
 
         let hostOk = false;

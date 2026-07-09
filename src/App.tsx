@@ -53,6 +53,7 @@ import Auth from "./pages/Auth";
 const OperatorLogin = lazyWithReload(() => import("./pages/OperatorLogin"));
 const JoinPlatform = lazyWithReload(() => import("./pages/JoinPlatform"));
 const BookingPage = lazyWithReload(() => import("./pages/BookingPage"));
+const ManageBooking = lazyWithReload(() => import("./pages/ManageBooking"));
 const PaigeHome = lazyWithReload(() => import("./pages/PaigeHome"));
 const PremiumHero = lazyWithReload(() => import("./pages/PremiumHero"));
 const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
@@ -177,6 +178,7 @@ const App = () => (
             <Route path="/operator" element={<PageSuspense><OperatorLogin /></PageSuspense>} />
             <Route path="/join-platform" element={<PageSuspense><JoinPlatform /></PageSuspense>} />
             <Route path="/book/:slug" element={<PageSuspense><BookingPage /></PageSuspense>} />
+            <Route path="/booking/manage" element={<PageSuspense><ManageBooking /></PageSuspense>} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
