@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, Copy, Link2, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { SubAccountsPanel } from "@/components/admin/SubAccountsPanel";
 import { toast } from "sonner";
 
 interface InviteRow {
@@ -325,6 +326,9 @@ export function WorkspaceSettingsPanel() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Owner-only: create + manage child workspaces (renders null otherwise). */}
+      <SubAccountsPanel />
     </div>
   );
 }
