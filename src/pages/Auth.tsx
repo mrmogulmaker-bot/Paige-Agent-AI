@@ -317,6 +317,9 @@ const Auth = () => {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
+      // A non-invite OAuth signup must not inherit a stale pending-invite stash
+      // from an earlier visitor on this browser (§9).
+      if (!isClientInvite) { try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ } }
       void trackEvent("signup_cta_click", "acquisition", { method: "google" });
       const result = await signInWithOAuth("google", oauthRedirectTo);
       if (result.error) {
@@ -333,6 +336,7 @@ const Auth = () => {
   const handleAppleSignIn = async () => {
     setIsLoading(true);
     try {
+      if (!isClientInvite) { try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ } }
       const result = await signInWithOAuth("apple", oauthRedirectTo);
       if (result.error) {
         toast({ title: "Apple sign-in failed", description: String(result.error), variant: "destructive" });
