@@ -34,6 +34,10 @@ const EMAIL_FROM =
   Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <hello@paigeagent.ai>";
 const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai").replace(/\/$/, "");
 const GOLD = "#D4A752";
+const INK = "#241645";
+const LOGO_URL = `${PUBLIC_BASE}/pwa-512x512.png`;
+const REPLY_TO = Deno.env.get("PLATFORM_SUPPORT_EMAIL") ?? "hello@paigeagent.ai";
+const UNSUB_URL = `${PUBLIC_BASE}/unsubscribe`;
 
 function esc(s: string): string {
   return String(s ?? "")
@@ -42,13 +46,17 @@ function esc(s: string): string {
 
 function welcomeHtml(firstName: string): string {
   const hi = firstName ? `Welcome, ${esc(firstName)}.` : "Welcome to Paige.";
-  return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"></head>
+  <body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Your Paige account is live — set up your workspace.</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:28px 0;"><tr><td align="center">
     <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#fff;border:1px solid #e7e8ec;border-radius:14px;overflow:hidden;">
-      <tr><td style="height:5px;background:${GOLD};"></td></tr>
+      <tr><td style="background:${INK};padding:24px 32px;text-align:center;">
+        <img src="${LOGO_URL}" alt="Paige Agent AI" width="46" height="46" style="display:inline-block;border-radius:11px;" />
+        <div style="font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#c9b6f0;font-weight:bold;margin-top:10px;">Paige Agent AI</div>
+      </td></tr>
       <tr><td style="padding:30px 32px 6px;">
-        <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#98a0ae;font-weight:bold;">Paige Agent AI</div>
-        <h1 style="color:#101828;font-size:22px;margin:12px 0 6px;">${hi}</h1>
+        <h1 style="color:#101828;font-size:22px;margin:0 0 6px;">${hi}</h1>
         <p style="color:#475467;font-size:14px;line-height:1.6;margin:0 0 16px;">
           Your account is live. Paige is your team — she runs the follow-ups, onboarding, and the
           daily brief so you get your time back. One more step: name your workspace and tell Paige
@@ -57,15 +65,31 @@ function welcomeHtml(firstName: string): string {
       </td></tr>
       <tr><td style="padding:2px 32px 26px;">
         <a href="${PUBLIC_BASE}/onboarding"
-           style="display:inline-block;background:${GOLD};color:#241645;font-weight:bold;font-size:14px;text-decoration:none;padding:12px 22px;border-radius:9999px;">
+           style="display:inline-block;background:${GOLD};color:${INK};font-weight:bold;font-size:14px;text-decoration:none;padding:12px 22px;border-radius:9999px;">
           Set up your workspace
         </a>
       </td></tr>
       <tr><td style="padding:16px 32px 26px;border-top:1px solid #eef0f3;">
-        <p style="color:#98a0ae;font-size:12px;margin:0;">You're receiving this because an account was created with this email. If that wasn't you, just ignore it.</p>
+        <p style="color:#98a0ae;font-size:12px;margin:0 0 6px;">You're receiving this because an account was created with this email at Paige Agent AI.</p>
+        <p style="color:#98a0ae;font-size:12px;margin:0;"><a href="${UNSUB_URL}" style="color:#98a0ae;">Unsubscribe</a></p>
       </td></tr>
     </table>
   </td></tr></table></body></html>`;
+}
+
+function welcomeText(firstName: string): string {
+  const hi = firstName ? `Welcome, ${firstName}.` : "Welcome to Paige.";
+  return [
+    hi,
+    "",
+    "Your account is live. Paige is your team — she runs the follow-ups, onboarding, and the daily brief so you get your time back.",
+    "",
+    "One more step: name your workspace and tell Paige what you do.",
+    `Set up your workspace: ${PUBLIC_BASE}/onboarding`,
+    "",
+    "You're receiving this because an account was created with this email at Paige Agent AI.",
+    `Unsubscribe: ${UNSUB_URL}`,
+  ].join("\n");
 }
 
 async function sendWelcome(to: string, firstName: string): Promise<void> {
@@ -77,8 +101,16 @@ async function sendWelcome(to: string, firstName: string): Promise<void> {
       body: JSON.stringify({
         from: EMAIL_FROM,
         to: [to],
+        reply_to: REPLY_TO,
         subject: "Welcome to Paige — your workspace is ready to build",
         html: welcomeHtml(firstName),
+        text: welcomeText(firstName),
+        // Deliverability: a text/plain part + List-Unsubscribe are two of the
+        // biggest inbox-placement signals for transactional mail.
+        headers: {
+          "List-Unsubscribe": `<${UNSUB_URL}>, <mailto:unsubscribe@paigeagent.ai>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
       }),
     });
   } catch {
