@@ -9,10 +9,10 @@
  * Google Meet / Zoom / in-person / custom / ask-the-invitee). No login, no
  * external provider required — booking creates an internal_bookings appointment.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
-  format, startOfMonth, addMonths, startOfWeek, addDays, isSameMonth, isSameDay, parseISO,
+  format, startOfMonth, endOfMonth, addMonths, startOfWeek, addDays, isSameMonth, isSameDay, parseISO,
 } from "date-fns";
 import {
   Clock, Loader2, Check, ArrowLeft, ChevronLeft, ChevronRight, CalendarDays,
@@ -33,11 +33,12 @@ type Brand = {
   name: string; logoUrl: string | null; accent: string; title: string | null; description: string | null;
   theme: "light" | "dark"; subtitle: string | null; showCompanyName: boolean;
   locationType: string; locationValue: string | null; locationOptions: LocationOption[]; durationMin?: number;
+  redirectUrl?: string | null;
 };
 const DEFAULT_BRAND: Brand = {
   name: "Paige Agent AI", logoUrl: null, accent: "#EBB94C", title: null, description: null,
   theme: "light", subtitle: null, showCompanyName: true, locationType: "google_meet", locationValue: null,
-  locationOptions: [{ type: "google_meet", value: null }],
+  locationOptions: [{ type: "google_meet", value: null }], redirectUrl: null,
 };
 
 const LOCATION_META: Record<string, { label: string; icon: typeof Video }> = {
@@ -78,19 +79,42 @@ export default function BookingPage() {
   const [form, setForm] = useState({ name: "", email: "", phone: "", notes: "" });
   const [inviteeLocation, setInviteeLocation] = useState("google_meet");
   const [submitting, setSubmitting] = useState(false);
+  // Furthest date we've fetched slots through, so paging the calendar forward
+  // can pull more (honoring a long booking window) without refetching per view.
+  const loadedToRef = useRef<number>(0);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase.functions.invoke("public-booking", { body: { action: "availability", slug } });
-      const res = data as (Partial<Brand> & { error?: string; slots?: string[]; durationMin?: number; branding?: Partial<Brand> }) | null;
-      if (error || res?.error) { setErrorMsg(res?.error ?? "This booking page isn't available."); setPhase("error"); return; }
-      const b = { ...DEFAULT_BRAND, ...(res?.branding ?? {}) } as Brand;
-      setSlots(res?.slots ?? []);
-      setDurationMin(res?.durationMin ?? b.durationMin ?? 30);
-      setBrand(b);
-      setPhase("pick");
-    })();
+  // Fetch availability up to `toIso` (omitted = the calendar's default window).
+  // The edge function always serves from "now" and caps at the booking horizon,
+  // so a wider `to` simply returns a superset — we replace, never merge stale.
+  const fetchAvailability = useCallback(async (toIso?: string) => {
+    const { data, error } = await supabase.functions.invoke("public-booking", {
+      body: { action: "availability", slug, ...(toIso ? { to: toIso } : {}) },
+    });
+    const res = data as (Partial<Brand> & { error?: string; slots?: string[]; durationMin?: number; branding?: Partial<Brand> }) | null;
+    if (error || res?.error) { setErrorMsg(res?.error ?? "This booking page isn't available."); setPhase("error"); return; }
+    const b = { ...DEFAULT_BRAND, ...(res?.branding ?? {}) } as Brand;
+    setSlots(res?.slots ?? []);
+    setDurationMin(res?.durationMin ?? b.durationMin ?? 30);
+    setBrand(b);
+    loadedToRef.current = Date.parse(toIso ?? "") || (Date.now() + 92 * 86_400_000);
+    setPhase("pick");
   }, [slug]);
+
+  useEffect(() => { void fetchAvailability(); }, [fetchAvailability]);
+
+  // Page the month forward; if we scroll past what's loaded, pull more (the edge
+  // function caps at the horizon, so an empty result means we've hit the window).
+  const goMonth = (delta: number) => {
+    setMonthCursor((m) => {
+      const next = addMonths(m, delta);
+      if (delta > 0 && endOfMonth(next).getTime() > loadedToRef.current) {
+        setLoadingMore(true);
+        void fetchAvailability(endOfMonth(next).toISOString()).finally(() => setLoadingMore(false));
+      }
+      return next;
+    });
+  };
 
   const c = palette(brand.theme);
   const accentText = textOn(brand.accent);
@@ -147,6 +171,10 @@ export default function BookingPage() {
       }
       return;
     }
+    // Owner-set redirect: send the guest to their own thank-you / community page.
+    // Only http(s) — never javascript: or other schemes from tenant-authored input.
+    const redirect = (brand.redirectUrl ?? "").trim();
+    if (/^https?:\/\//i.test(redirect)) { window.location.assign(redirect); return; }
     setPhase("done");
   };
 
@@ -197,9 +225,12 @@ export default function BookingPage() {
           {/* Month grid */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <button onClick={() => setMonthCursor((m) => addMonths(m, -1))} className="h-8 w-8 grid place-items-center rounded-full" style={{ color: c.sub }} aria-label="Previous month"><ChevronLeft className="h-4 w-4" /></button>
-              <span className="text-sm font-semibold" style={{ color: c.text }}>{format(monthCursor, "MMMM yyyy")}</span>
-              <button onClick={() => setMonthCursor((m) => addMonths(m, 1))} className="h-8 w-8 grid place-items-center rounded-full" style={{ color: c.sub }} aria-label="Next month"><ChevronRight className="h-4 w-4" /></button>
+              <button onClick={() => goMonth(-1)} className="h-8 w-8 grid place-items-center rounded-full" style={{ color: c.sub }} aria-label="Previous month"><ChevronLeft className="h-4 w-4" /></button>
+              <span className="text-sm font-semibold inline-flex items-center gap-1.5" style={{ color: c.text }}>
+                {format(monthCursor, "MMMM yyyy")}
+                {loadingMore && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: c.sub }} />}
+              </span>
+              <button onClick={() => goMonth(1)} className="h-8 w-8 grid place-items-center rounded-full" style={{ color: c.sub }} aria-label="Next month"><ChevronRight className="h-4 w-4" /></button>
             </div>
             <div className="grid grid-cols-7 mb-1">
               {WEEKDAYS.map((d) => <div key={d} className="text-center text-[11px] font-medium py-1" style={{ color: c.sub }}>{d}</div>)}

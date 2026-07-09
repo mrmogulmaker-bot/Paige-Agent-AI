@@ -66,6 +66,8 @@ interface HostSettings {
   bufferAfterMin: number;
   timezone: string;
   minNoticeMin: number;
+  horizonDays: number; // how far ahead guests may book (rolling window)
+  redirectUrl: string | null; // where to send the guest after booking
   title: string | null;
   description: string | null;
   accent: string | null;
@@ -94,7 +96,7 @@ function parseLocationOptions(raw: unknown, fallbackType: string, fallbackValue:
   if (out.length) return out;
   // Legacy fallback: a single method (or the old ask_invitee triple).
   if (fallbackType === "ask_invitee") return [{ type: "google_meet", value: null }, { type: "zoom", value: null }, { type: "phone", value: null }];
-  return [{ type: KNOWN_LOCATIONS.includes(fallbackType) ? fallbackType : "google_meet", value: fallbackValue }];
+  return [{ type: KNOWN_LOCATIONS.includes(fallbackType) ? fallbackType : "phone", value: fallbackValue }];
 }
 
 interface Busy { start: number; end: number } // UTC ms
@@ -143,7 +145,7 @@ function roundRobinSlots(h: HostSettings, busyByHost: Record<string, Busy[]>, fr
 async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
   const { data: cal } = await admin
     .from("calendars")
-    .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options")
+    .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options, booking_horizon_days, redirect_url")
     .eq("slug", slug)
     .maybeSingle();
   if (!cal || cal.enabled !== true) return null;
@@ -168,6 +170,8 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     bufferAfterMin: Math.max(0, cal.buffer_after_min ?? 0),
     timezone: cal.timezone || "America/New_York",
     minNoticeMin: Math.max(0, cal.min_notice_min ?? 60),
+    horizonDays: Math.max(1, cal.booking_horizon_days ?? 60),
+    redirectUrl: (cal.redirect_url as string) || null,
     title: cal.title ?? null,
     description: cal.description ?? null,
     accent: cal.accent ?? null,
@@ -175,9 +179,9 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     theme: cal.theme === "dark" ? "dark" : "light",
     subtitle: cal.subtitle ?? null,
     showCompanyName: cal.show_company_name !== false,
-    locationType: cal.location_type ?? "google_meet",
+    locationType: cal.location_type ?? "phone",
     locationValue: cal.location_value ?? null,
-    locationOptions: parseLocationOptions(cal.location_options, cal.location_type ?? "google_meet", cal.location_value ?? null),
+    locationOptions: parseLocationOptions(cal.location_options, cal.location_type ?? "phone", cal.location_value ?? null),
     ...parseNotify(cal.notify_config),
   };
 }
@@ -202,6 +206,8 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     bufferAfterMin: Math.max(0, data.buffer_after_min ?? 0),
     timezone: data.timezone || "America/New_York",
     minNoticeMin: 60,
+    horizonDays: 60,
+    redirectUrl: null,
     title: data.booking_page_title ?? null,
     description: data.booking_page_description ?? null,
     accent: data.booking_page_accent ?? null,
@@ -209,9 +215,9 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     theme: "light",
     subtitle: null,
     showCompanyName: true,
-    locationType: "google_meet",
+    locationType: "phone",
     locationValue: null,
-    locationOptions: [{ type: "google_meet", value: null }],
+    locationOptions: [{ type: "phone", value: null }],
     confirmGuest: true,
     confirmHost: true,
   };
@@ -242,6 +248,7 @@ async function loadBranding(admin: ReturnType<typeof createClient>, host: HostSe
     locationType: host.locationType,
     locationValue: host.locationValue,
     locationOptions: host.locationOptions,
+    redirectUrl: host.redirectUrl,
   };
 }
 
@@ -378,7 +385,12 @@ Deno.serve(async (req) => {
 
     if (action === "availability") {
       const fromMs = Math.max(now, Date.parse(body?.from) || now);
-      const toMs = Math.min(now + 30 * 86_400_000, Date.parse(body?.to) || now + 14 * 86_400_000);
+      // Cap the window at the calendar's booking horizon (how far ahead guests may book).
+      // With no explicit `to`, serve up to the horizon but bound the first payload to
+      // ~92 days; the page refetches with an explicit `to` as the guest pages forward.
+      const horizonMs = now + host.horizonDays * 86_400_000;
+      const defaultToMs = now + Math.min(host.horizonDays, 92) * 86_400_000;
+      const toMs = Math.min(horizonMs, Date.parse(body?.to) || defaultToMs);
       let slots: number[];
       if (host.roundRobin) {
         // Combined team availability: a slot shows if any host is free for it.
@@ -404,7 +416,7 @@ Deno.serve(async (req) => {
       const phone = String(body?.guest?.phone ?? "").trim().slice(0, 40) || null;
       const notes = String(body?.notes ?? "").trim().slice(0, 1000) || null;
       if (!Number.isFinite(startMs)) return json({ error: "Invalid time." }, 400);
-      if (startMs > now + 60 * 86_400_000) return json({ error: "That time is too far out." }, 400);
+      if (startMs > now + host.horizonDays * 86_400_000) return json({ error: "That time is too far out." }, 400);
       if (!name) return json({ error: "Name is required." }, 400);
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "A valid email is required." }, 400);
 

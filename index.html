@@ -188,7 +188,7 @@
   </head>
 
   <body>
-    <div id="paige-splash" role="status" aria-label="Loading Paige">
+    <div id="paige-splash" role="status" aria-label="Loading">
       <div class="psx-stage">
         <div class="psx-ring psx-ring--violet"></div>
         <div class="psx-ring psx-ring--gold"></div>
@@ -196,6 +196,26 @@
       </div>
       <div class="psx-word">Paige<i></i></div>
     </div>
+    <script>
+      // Tenant-facing public pages (a coach's booking page) must NOT show the
+      // Paige-branded boot splash — their customers shouldn't meet our brand on
+      // the way in. Strip the branding to a quiet neutral cover (kept in place
+      // so the SEO marketing markup in #root never flashes) for a fast, dull
+      // transition into the tenant's own booking card. Marketing + app keep the
+      // cinematic splash. Runs synchronously before first paint.
+      (function () {
+        if (/^\/(book|booking)(\/|$)/.test(window.location.pathname)) {
+          var el = document.getElementById("paige-splash");
+          if (el) {
+            el.innerHTML = "";
+            el.style.background = "#F4F5F7";
+            el.style.gap = "0";
+            el.style.perspective = "none";
+            el.setAttribute("aria-label", "Loading");
+          }
+        }
+      })();
+    </script>
     <div id="root">
       <!-- Static SEO content for crawlers that do not execute JavaScript -->
       <main style="font-family:system-ui,-apple-system,sans-serif;background:#0b0710;color:#fff;padding:40px 24px;max-width:1200px;margin:0 auto;">

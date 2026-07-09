@@ -57,6 +57,8 @@ export interface CalendarRow {
   buffer_before_min: number;
   buffer_after_min: number;
   min_notice_min: number;
+  booking_horizon_days: number;
+  redirect_url: string;
   timezone: string;
   availability_json: DayWindow[] | null;
   enabled: boolean;
@@ -110,7 +112,7 @@ const DEFAULT_AVAIL: AvailState = Object.fromEntries(
   [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { enabled: d >= 1 && d <= 5, start: "09:00", end: "17:00" }]),
 );
 
-const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, notify_config";
+const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, notify_config";
 
 // Meeting methods the owner can offer. Enable one → fixed; enable several → the
 // invitee chooses on the booking page. in_person/custom carry a value field.
@@ -151,6 +153,17 @@ const COMMON_TZ = [
 ];
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90];
+// How far out guests may book. Tenant-authored per calendar (§9).
+const BOOKING_HORIZON_PRESETS: { days: number; label: string }[] = [
+  { days: 7, label: "1 week out" },
+  { days: 14, label: "2 weeks out" },
+  { days: 30, label: "1 month out" },
+  { days: 60, label: "2 months out" },
+  { days: 90, label: "3 months out" },
+  { days: 180, label: "6 months out" },
+  { days: 365, label: "1 year out" },
+  { days: 730, label: "Open — 2 years out" },
+];
 
 // Coerce a possibly-partial/legacy notify_config jsonb into a safe shape.
 function normalizeNotify(raw: unknown): NotifyConfig {
@@ -703,6 +716,8 @@ function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_
     buffer_before_min: 0,
     buffer_after_min: 0,
     min_notice_min: 60,
+    booking_horizon_days: 60,
+    redirect_url: "",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
     availability_json: null,
     enabled: false,
@@ -710,9 +725,9 @@ function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_
     theme: "light",
     subtitle: "",
     show_company_name: true,
-    location_type: "google_meet",
+    location_type: "phone",
     location_value: "",
-    location_options: [{ type: "google_meet", value: null }],
+    location_options: [{ type: "phone", value: null }],
     notify_config: { ...DEFAULT_NOTIFY, reminders: [...DEFAULT_NOTIFY.reminders] },
   };
 }
@@ -748,9 +763,10 @@ function CalendarBuilderSheet({
         accent: c.accent, color: c.color, duration_min: c.duration_min,
         buffer_before_min: c.buffer_before_min, buffer_after_min: c.buffer_after_min,
         min_notice_min: c.min_notice_min, timezone: c.timezone, availability_json: c.availability_json,
+        booking_horizon_days: c.booking_horizon_days ?? 60, redirect_url: c.redirect_url ?? "",
         enabled: c.enabled, group_id: c.group_id,
         theme: c.theme || "light", subtitle: c.subtitle ?? "", show_company_name: c.show_company_name !== false,
-        location_type: c.location_type || "google_meet", location_value: c.location_value ?? "",
+        location_type: c.location_type || "phone", location_value: c.location_value ?? "",
         location_options: normalizeLocationOptions(c.location_options),
         notify_config: normalizeNotify(c.notify_config),
       });
@@ -780,15 +796,17 @@ function CalendarBuilderSheet({
       buffer_before_min: Math.max(0, draft.buffer_before_min || 0),
       buffer_after_min: Math.max(0, draft.buffer_after_min || 0),
       min_notice_min: Math.max(0, draft.min_notice_min || 0),
+      booking_horizon_days: Math.min(730, Math.max(1, draft.booking_horizon_days || 60)),
+      redirect_url: (draft.redirect_url ?? "").trim() || null,
       timezone: draft.timezone,
       availability_json: availToJson(avail),
       group_id: draft.group_id,
       theme: draft.theme === "dark" ? "dark" : "light",
       subtitle: (draft.subtitle ?? "").trim() || null,
       show_company_name: draft.show_company_name,
-      location_options: draft.location_options.length ? draft.location_options : [{ type: "google_meet", value: null }],
+      location_options: draft.location_options.length ? draft.location_options : [{ type: "phone", value: null }],
       // Keep the legacy single columns in sync: 1 method → that method; several → ask_invitee.
-      location_type: draft.location_options.length > 1 ? "ask_invitee" : (draft.location_options[0]?.type ?? "google_meet"),
+      location_type: draft.location_options.length > 1 ? "ask_invitee" : (draft.location_options[0]?.type ?? "phone"),
       location_value: draft.location_options.length === 1 ? (draft.location_options[0]?.value ?? null) : null,
       notify_config: draft.notify_config,
     };
@@ -1017,6 +1035,18 @@ function CalendarBuilderSheet({
                   onChange={(e) => set("buffer_after_min", Math.max(0, Number(e.target.value) || 0))} />
               </div>
             </div>
+            <div className="space-y-1.5">
+              <Label>Booking window</Label>
+              <select
+                value={String(draft.booking_horizon_days)}
+                onChange={(e) => set("booking_horizon_days", Number(e.target.value) || 60)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                {BOOKING_HORIZON_PRESETS.map((p) => (
+                  <option key={p.days} value={String(p.days)}>{p.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">How far ahead guests can book — keep it tight for a busy calendar, or open it wide.</p>
+            </div>
           </BuilderSection>
 
           {/* 3½ — Team / hosts (edit-only: needs a saved calendar id to attach hosts) */}
@@ -1104,6 +1134,12 @@ function CalendarBuilderSheet({
               </div>
               <Switch checked={draft.show_company_name} onCheckedChange={(v) => set("show_company_name", v)} />
             </label>
+            <div className="space-y-1.5">
+              <Label>Redirect after booking</Label>
+              <Input value={draft.redirect_url ?? ""} placeholder="https://yoursite.com/thank-you"
+                onChange={(e) => set("redirect_url", e.target.value)} />
+              <p className="text-xs text-muted-foreground">Send guests here once they book — your community, a thank-you page, wherever you want. Leave blank to show the built-in confirmation.</p>
+            </div>
           </BuilderSection>
 
           {/* 6 — Notifications */}
