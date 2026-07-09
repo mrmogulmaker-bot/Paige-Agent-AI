@@ -470,8 +470,14 @@ async function findOrCreateContact(
   phone: string | null,
 ): Promise<string | null> {
   try {
+    // Escape LIKE wildcards before the case-insensitive lookup: a perfectly
+    // ordinary address like a_b@x.com would otherwise let "_" match any single
+    // char and misattribute this booking to a DIFFERENT existing contact (or
+    // match 2+ rows, which maybeSingle() silently reports as "none" — leading
+    // to a needless duplicate). "%" and "\" get the same treatment.
+    const emailPattern = email.replace(/([\\%_])/g, "\\$1");
     const findExisting = async (): Promise<string | null> => {
-      const base = admin.from("clients").select("id").ilike("email", email);
+      const base = admin.from("clients").select("id").ilike("email", emailPattern);
       const { data } = await (tenantId ? base.eq("tenant_id", tenantId) : base.is("tenant_id", null)).maybeSingle();
       return (data as { id: string } | null)?.id ?? null;
     };
@@ -942,8 +948,17 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
           body: JSON.stringify({ event: "booking_created", booking_id: bookingRow.id, host_user_ids: hostsToNotify }),
-        }).catch(() => {});
-      } catch (_e) { /* email is best-effort */ }
+        }).catch((e) => console.error("public-booking: notify-team-event dispatch failed", { bookingId: bookingRow.id, err: (e as Error)?.message }));
+      } catch (e) {
+        // Best-effort: a mail/notify failure must never fail a committed
+        // booking — but log it (visible in Supabase edge logs). Two real bugs
+        // (a scope CHECK violation, a btoa Latin1 crash) hid behind this exact
+        // silent catch; a trace here is the difference between a log line and
+        // an hour of forensic debugging.
+        console.error("public-booking: post-booking email/notify tail failed", {
+          bookingId: bookingRow.id, slug, err: (e as Error)?.message, stack: (e as Error)?.stack,
+        });
+      }
 
       return json({ ok: true, booking: bookingRow });
     }

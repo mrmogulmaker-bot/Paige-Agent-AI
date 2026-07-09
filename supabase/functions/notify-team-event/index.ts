@@ -45,6 +45,16 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  // Internal-only. Both legitimate callers — the public-booking edge function
+  // and the fire_team_event() Postgres trigger — present the service-role key
+  // as their bearer. This function runs as service-role and does NO per-row
+  // tenant/ownership check, so without this gate a public caller could pass a
+  // guessed booking_id/contact_id + their own user_id and have another tenant's
+  // guest PII delivered to them (or spam-notify an arbitrary user).
+  const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (bearer !== serviceKey) return json({ error: "forbidden" }, 403);
+
   const supabase = createClient(supabaseUrl, serviceKey);
 
   let body: Payload;
