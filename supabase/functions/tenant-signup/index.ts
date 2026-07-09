@@ -1,4 +1,5 @@
-// tenant-signup — public front-door signup that creates a PRE-CONFIRMED account.
+// tenant-signup — public front-door signup that creates a PRE-CONFIRMED account
+// and sends a branded welcome email.
 //
 // Why this exists: Supabase Auth on this project requires email confirmation,
 // but the confirmation-email delivery isn't wired yet (Task #52), so the normal
@@ -7,9 +8,12 @@
 // we create the user with email_confirm:true via the service role so signup
 // works immediately; the client then signs in and is routed into onboarding.
 //
+// The sign-up email is a WELCOME (not a verification link), sent through Resend
+// with the same sender + brand styling the booking flow uses (§6 continuity).
+// It's fire-and-forget: a mail failure never blocks account creation.
+//
 // To restore real email verification later: wire Auth SMTP (Resend), drop the
-// email_confirm flag (or move it behind a config check), and let auth.signUp
-// send the confirmation link again.
+// email_confirm flag, and let auth.signUp send the confirmation link again.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -22,6 +26,64 @@ function json(data: Record<string, unknown>, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+// --- Welcome email (Resend) -------------------------------------------------
+const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+const EMAIL_FROM =
+  Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <hello@paigeagent.ai>";
+const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai").replace(/\/$/, "");
+const GOLD = "#D4A752";
+
+function esc(s: string): string {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function welcomeHtml(firstName: string): string {
+  const hi = firstName ? `Welcome, ${esc(firstName)}.` : "Welcome to Paige.";
+  return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:28px 0;"><tr><td align="center">
+    <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#fff;border:1px solid #e7e8ec;border-radius:14px;overflow:hidden;">
+      <tr><td style="height:5px;background:${GOLD};"></td></tr>
+      <tr><td style="padding:30px 32px 6px;">
+        <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#98a0ae;font-weight:bold;">Paige Agent AI</div>
+        <h1 style="color:#101828;font-size:22px;margin:12px 0 6px;">${hi}</h1>
+        <p style="color:#475467;font-size:14px;line-height:1.6;margin:0 0 16px;">
+          Your account is live. Paige is your team — she runs the follow-ups, onboarding, and the
+          daily brief so you get your time back. One more step: name your workspace and tell Paige
+          what you do, and she starts working.
+        </p>
+      </td></tr>
+      <tr><td style="padding:2px 32px 26px;">
+        <a href="${PUBLIC_BASE}/onboarding"
+           style="display:inline-block;background:${GOLD};color:#241645;font-weight:bold;font-size:14px;text-decoration:none;padding:12px 22px;border-radius:9999px;">
+          Set up your workspace
+        </a>
+      </td></tr>
+      <tr><td style="padding:16px 32px 26px;border-top:1px solid #eef0f3;">
+        <p style="color:#98a0ae;font-size:12px;margin:0;">You're receiving this because an account was created with this email. If that wasn't you, just ignore it.</p>
+      </td></tr>
+    </table>
+  </td></tr></table></body></html>`;
+}
+
+async function sendWelcome(to: string, firstName: string): Promise<void> {
+  if (!RESEND_KEY) return;
+  try {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: EMAIL_FROM,
+        to: [to],
+        subject: "Welcome to Paige — your workspace is ready to build",
+        html: welcomeHtml(firstName),
+      }),
+    });
+  } catch {
+    /* email never blocks signup */
+  }
 }
 
 Deno.serve(async (req) => {
@@ -80,6 +142,9 @@ Deno.serve(async (req) => {
     }
     return json({ ok: false, reason: "error", message: error.message || "Could not create your account." });
   }
+
+  // Sign-up email — a branded welcome, sent through Resend. Fire-and-forget.
+  await sendWelcome(email, (fullName ?? "").split(/\s+/)[0] ?? "");
 
   return json({ ok: true, user_id: data.user?.id ?? null });
 });
