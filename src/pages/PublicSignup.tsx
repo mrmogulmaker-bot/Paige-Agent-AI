@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
-import { signUpWithReferral } from "@/lib/signUpWithReferral";
+import { signUpTenant } from "@/lib/auth/signUpTenant";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,17 +76,12 @@ export default function PublicSignup() {
     setAuthBusy(true);
     try {
       if (authMode === "signup") {
-        const { error } = await signUpWithReferral({
-          email, password, fullName, redirectTo: window.location.origin + "/signup",
-        });
-        if (error) throw error;
+        // Creates a pre-confirmed account and signs in (email verification isn't
+        // wired yet — see the tenant-signup edge function), then straight to
+        // onboarding. The "sent" phase stays for when real confirmation returns.
+        await signUpTenant({ email, password, fullName });
         await recordCommsConsent({ email, source: "tenant_signup", consent: commsConsent });
-        const { data: sess } = await supabase.auth.getSession();
-        if (sess.session?.user) {
-          goOnboarding(); // confirmations disabled → straight to onboarding
-        } else {
-          setPhase("sent"); // confirmation required → show "check your email"
-        }
+        goOnboarding();
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;

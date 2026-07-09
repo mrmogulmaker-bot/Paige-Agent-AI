@@ -13,7 +13,7 @@ import type { User, Session } from "@supabase/supabase-js";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import { ForgotPasswordDialog } from "@/components/auth/ForgotPasswordDialog";
-import { signUpWithReferral } from "@/lib/signUpWithReferral";
+import { signUpTenant } from "@/lib/auth/signUpTenant";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
 import { isSafeRedirectPath } from "@/lib/auth/safeRedirect";
@@ -151,27 +151,27 @@ const Auth = () => {
 
         const consentTimestamp = new Date().toISOString();
 
-        const { data: signUpData, error } = await signUpWithReferral({
-          email,
-          password,
-          fullName,
-          redirectTo: `${window.location.origin}/app`,
-          extraData: {
-            consent_agreements: true,
-            consent_data_usage: true,
-            consent_marketing: consentMarketing,
-            consent_timestamp: consentTimestamp,
-            accepted_doc_versions: requiredDocs.map((d) => ({ slug: d.slug, version: d.version })),
-          },
-        });
-
-        if (error) {
+        // Create a PRE-CONFIRMED account (email verification isn't wired yet —
+        // see tenant-signup edge function) and sign in, so the new owner is
+        // routed straight into onboarding instead of hitting the broken
+        // confirmation-email path.
+        let newUserId: string | null = null;
+        try {
+          const res = await signUpTenant({
+            email,
+            password,
+            fullName,
+            marketingOptIn: consentMarketing,
+          });
+          newUserId = res.userId;
+        } catch (e) {
+          const emsg = (e as Error).message || "";
           let title = "Error";
-          let description = error.message;
-          if (error.message.includes("User already registered")) {
+          let description = emsg || "Couldn't create your account. Please try again.";
+          if (/already exists|already registered/i.test(emsg)) {
             title = "Account exists";
-            description = "An account with this email already exists. Please login instead.";
-          } else if (error.message.includes("password") && error.message.includes("breach")) {
+            description = "An account with this email already exists. Please sign in instead.";
+          } else if (/breach/i.test(emsg)) {
             title = "Unsafe password";
             description = "This password has appeared in a known data breach. Please choose a stronger, unique password.";
           }
@@ -182,8 +182,8 @@ const Auth = () => {
         void trackEvent("signup_complete", "activation", { method: "email" });
 
         // Persist consent on the profile (non-blocking)
-        if (signUpData?.user?.id) {
-          const userId = signUpData.user.id;
+        if (newUserId) {
+          const userId = newUserId;
           supabase
             .from("profiles")
             .update({
@@ -503,12 +503,12 @@ const Auth = () => {
               </div>
 
               {!isLogin && (
-                <div className="space-y-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+                <div className="space-y-3 rounded-lg border border-primary-foreground/25 bg-primary-foreground/[0.07] p-4 ring-1 ring-inset ring-primary-foreground/10">
                   <label className="flex items-start gap-2.5 cursor-pointer">
                     <Checkbox
                       checked={consentAgreements}
                       onCheckedChange={(v) => setConsentAgreements(!!v)}
-                      className="mt-0.5"
+                      className="mt-0.5 h-5 w-5 border-2 border-primary-foreground/60 bg-primary-foreground/10 data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=checked]:text-[#241645]"
                       aria-required
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
@@ -536,7 +536,7 @@ const Auth = () => {
                     <Checkbox
                       checked={consentDataUsage}
                       onCheckedChange={(v) => setConsentDataUsage(!!v)}
-                      className="mt-0.5"
+                      className="mt-0.5 h-5 w-5 border-2 border-primary-foreground/60 bg-primary-foreground/10 data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=checked]:text-[#241645]"
                       aria-required
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
@@ -551,7 +551,7 @@ const Auth = () => {
                     <Checkbox
                       checked={consentMarketing}
                       onCheckedChange={(v) => setConsentMarketing(!!v)}
-                      className="mt-0.5"
+                      className="mt-0.5 h-5 w-5 border-2 border-primary-foreground/60 bg-primary-foreground/10 data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=checked]:text-[#241645]"
                     />
                     <span className="text-xs text-foreground/70 leading-relaxed">
                       I agree to receive marketing communications about Paige Agent products and
