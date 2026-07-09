@@ -1280,22 +1280,22 @@ function mdToHtml(md: string): string {
 
 // Per-product_scope sender map. Each `from` must be on a domain verified in the Resend
 // account that holds RESEND_API_KEY. All scopes route through Paige's verified
-// notify.paigeagent.ai subdomain post-Ship #2 (MMA sender identities retired).
+// paigeagent.ai subdomain post-Ship #2 (MMA sender identities retired).
 // btf/mma reply_to temporarily routes to coach@mogulmakeracademy.com until a
 // dedicated Paige support inbox is provisioned (follow-up ship).
 const SCOPE_SENDERS: Record<string, { from: string; name: string; reply_to: string }> = {
   btf: {
-    from: "alerts@notify.paigeagent.ai",
+    from: "alerts@paigeagent.ai",
     name: "Paige",
     reply_to: "coach@mogulmakeracademy.com",
   },
   mma: {
-    from: "alerts@notify.paigeagent.ai",
+    from: "alerts@paigeagent.ai",
     name: "Paige",
     reply_to: "coach@mogulmakeracademy.com",
   },
   paige: {
-    from: "hello@notify.paigeagent.ai",
+    from: "hello@paigeagent.ai",
     name: "Paige",
     reply_to: "support@paigeagent.ai",
   },
@@ -1304,14 +1304,14 @@ const DEFAULT_SCOPE_SENDER = SCOPE_SENDERS.paige;
 
 mcp.tool("send_btf_template_email", {
   description:
-    "Look up an email_templates row by template_key, render {{vars}}, and send via Resend. From-address is auto-selected by the template's product_scope; all scopes currently route through notify.paigeagent.ai. Override with `from_override` for one-off sends. Sends real customer email — use idempotency in the caller.",
+    "Look up an email_templates row by template_key, render {{vars}}, and send via Resend. From-address is auto-selected by the template's product_scope; all scopes currently route through paigeagent.ai. Override with `from_override` for one-off sends. Sends real customer email — use idempotency in the caller.",
   inputSchema: z.object({
     to_email: z.string().describe("Recipient email"),
     template_key: z.string().describe("public.email_templates.template_key"),
     vars: z.record(z.any()).optional().describe("Variable values for {{var}} substitution"),
     from_name: z.string().optional(),
     from_override: z.string().email().optional()
-      .describe("Full from address (e.g. 'alerts@notify.paigeagent.ai'). Must be a domain verified in Resend. Overrides product_scope default."),
+      .describe("Full from address (e.g. 'alerts@paigeagent.ai'). Must be a domain verified in Resend. Overrides product_scope default."),
     reply_to: z.string().optional(),
   }),
   annotations: { destructiveHint: true },
@@ -1348,7 +1348,7 @@ mcp.tool("send_btf_template_email", {
     const fromAddr = `${fromName} <${fromEmail}>`;
     const replyTo = args.reply_to ?? scopeCfg.reply_to;
 
-    // Single shared Resend account authenticates all sends from notify.paigeagent.ai.
+    // Single shared Resend account authenticates all sends from paigeagent.ai.
     // sender_account label retained as a constant for historical audit continuity.
     const apiKey = RESEND_API_KEY;
     const senderAccount = "mma_os_shared" as const;

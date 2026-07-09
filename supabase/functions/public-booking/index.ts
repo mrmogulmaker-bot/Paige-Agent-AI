@@ -243,7 +243,7 @@ async function loadBusy(admin: ReturnType<typeof createClient>, userId: string, 
 
 // --- Confirmation emails (guest + host) + .ics invite -----------------------
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
-const EMAIL_FROM = Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <team@notify.paigeagent.ai>";
+const EMAIL_FROM = Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <team@paigeagent.ai>";
 function esc(s: string): string {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -272,7 +272,7 @@ function buildIcs(o: { uid: string; startMs: number; endMs: number; title: strin
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Paige Agent AI//Booking//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
     "BEGIN:VEVENT", `UID:${o.uid}`, `DTSTAMP:${icsStamp(Date.now())}`, `DTSTART:${icsStamp(o.startMs)}`, `DTEND:${icsStamp(o.endMs)}`,
     `SUMMARY:${clean(o.title)}`, `DESCRIPTION:${clean(o.desc)}`, `LOCATION:${clean(o.location)}`,
-    `ORGANIZER;CN=${clean(o.organizer)}:mailto:noreply@notify.paigeagent.ai`,
+    `ORGANIZER;CN=${clean(o.organizer)}:mailto:noreply@paigeagent.ai`,
     `ATTENDEE;CN=${clean(o.attendeeName)};RSVP=TRUE:mailto:${o.attendee}`,
     "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");

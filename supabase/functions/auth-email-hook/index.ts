@@ -37,9 +37,9 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 
 // Configuration
 const SITE_NAME = "paige-agent-ai"
-const SENDER_DOMAIN = "notify.paigeagent.ai"
+const SENDER_DOMAIN = "paigeagent.ai"
 const ROOT_DOMAIN = "paigeagent.ai"
-const FROM_DOMAIN = "notify.paigeagent.ai" // Domain shown in From address (aligned with SENDER_DOMAIN)
+const FROM_DOMAIN = "paigeagent.ai" // Domain shown in From address (aligned with SENDER_DOMAIN)
 
 // Sample data for preview mode ONLY (not used in actual email sending).
 // URLs are baked in at scaffold time from the project's real data.

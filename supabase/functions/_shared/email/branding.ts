@@ -45,7 +45,7 @@ export const PLATFORM_DEFAULT_BRANDING: Omit<EmailBranding, "from"> = {
 };
 
 function platformDefaultFrom(): string {
-  return Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <team@notify.paigeagent.ai>";
+  return Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <team@paigeagent.ai>";
 }
 
 // --- Tenant-value hardening -------------------------------------------------

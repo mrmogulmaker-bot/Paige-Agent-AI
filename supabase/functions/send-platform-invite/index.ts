@@ -11,7 +11,7 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-const FROM = "Paige Agent AI <team@notify.paigeagent.ai>";
+const FROM = "Paige Agent AI <team@paigeagent.ai>";
 
 function inviteHtml(link: string): string {
   return `<!doctype html><html><body style="margin:0;background:#0B0912;font-family:Arial,Helvetica,sans-serif;">

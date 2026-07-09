@@ -9,11 +9,11 @@ const SITE_NAME = "Paige Agent AI"
 // SENDER_DOMAIN is the verified sender subdomain FQDN (e.g., "notify.example.com").
 // It MUST match the subdomain delegated to Lovable's nameservers — never the root domain.
 // The email API looks up this exact domain; a mismatch causes "No email domain record found".
-const SENDER_DOMAIN = "notify.paigeagent.ai"
+const SENDER_DOMAIN = "paigeagent.ai"
 // FROM_DOMAIN is the domain shown in the From: header. It MUST align with SENDER_DOMAIN
 // (same subdomain, or the SENDER_ROOT). A different subdomain (e.g., mail.example.com while
 // SENDER_DOMAIN is notify.example.com) triggers a provider 400 sender_domain_mismatch.
-const FROM_DOMAIN = "notify.paigeagent.ai"
+const FROM_DOMAIN = "paigeagent.ai"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -264,10 +264,10 @@ Deno.serve(async (req) => {
   // SENDER-DOMAIN ALIGNMENT GUARD: the Lovable Email API rejects sends whose
   // From-address domain does not align with the verified sender_domain. A
   // tenant override pointing at an unregistered domain (e.g. portal.mogulmakeracademy.com
-  // while sender_domain is notify.paigeagent.ai) used to silently fail with
+  // while sender_domain is paigeagent.ai) used to silently fail with
   // sender_domain_mismatch. We now validate alignment and fall back to the
   // safe default rather than enqueue a doomed send.
-  const SENDER_ROOT = SENDER_DOMAIN.split('.').slice(-2).join('.') // notify.paigeagent.ai -> paigeagent.ai
+  const SENDER_ROOT = SENDER_DOMAIN.split('.').slice(-2).join('.') // paigeagent.ai -> paigeagent.ai
   const fromAddressAligns = (addr: string): boolean => {
     const m = addr.match(/<([^>]+)>|([^\s]+@[^\s]+)/)
     const email = (m?.[1] ?? m?.[2] ?? addr).trim()

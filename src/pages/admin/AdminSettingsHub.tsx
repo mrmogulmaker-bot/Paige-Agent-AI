@@ -303,12 +303,12 @@ function NotificationsCommsPanel() {
             <Mail className="w-4 h-4" /> Email Infrastructure
           </CardTitle>
           <CardDescription>
-            Branded emails sent from notify.paigeagent.ai via the queue dispatcher.
+            Branded emails sent from paigeagent.ai via the queue dispatcher.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2">
-            <Badge variant="secondary">notify.paigeagent.ai</Badge>
+            <Badge variant="secondary">paigeagent.ai</Badge>
             <Badge variant="outline" className="text-xs">Queue: pgmq</Badge>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -417,7 +417,7 @@ function PlatformPipesPanel() {
         <div className="flex items-start justify-between gap-4 py-1">
           <div>
             <Label className="text-sm font-medium">Resend domain verified</Label>
-            <p className="text-xs text-muted-foreground mt-1">notify.paigeagent.ai DKIM/SPF passing.</p>
+            <p className="text-xs text-muted-foreground mt-1">paigeagent.ai DKIM/SPF passing.</p>
           </div>
           <Switch
             checked={!!config.resend_domain_verified}
@@ -432,7 +432,7 @@ function PlatformPipesPanel() {
             <Input
               value={config.default_from_email ?? ""}
               onChange={(e) => setConfig({ ...config, default_from_email: e.target.value })}
-              placeholder="paige@notify.paigeagent.ai"
+              placeholder="paige@paigeagent.ai"
             />
           </div>
           <div className="space-y-1.5">
