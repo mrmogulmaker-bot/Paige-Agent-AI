@@ -42,9 +42,28 @@ consultants, agencies, and thought leaders feel excluded — the audience is bro
 prefer inclusive words like *practice · business · clients · work · team* over
 "coaching" in shared/platform copy. **Never** mention credit, credit repair, funding,
 lending, loans, financing, readiness or funding scores, lender products, or anything
-that reads as consumer finance/credit — anywhere on the site, in copy, or in code.
-The review agent explicitly checks for both: the finance prohibition AND
-over-narrowing to "coaching."
+that reads as consumer finance/credit **in the platform defaults** — the marketing
+site, the shared/platform copy, the coaching-generic default sets, the Super Admin /
+God-level account, or any code path that ships to *every* tenant. The review agent
+explicitly checks for both: the platform-default finance prohibition AND over-narrowing
+to "coaching."
+
+**Clarification (owner: Antonio, 2026-07-09) — funding/credit is an allowed *offer*,
+never a *default*.** Credit and funding coaching is one of the real coaching offers the
+platform supports (it's what the owner does). The rule was never "the product can't do
+funding"; it is **"funding/credit must not be hardcoded into every tenant or into the
+platform/God defaults."** So:
+- **Allowed:** a credit/funding **Playbook preset** a tenant can *choose*, and
+  funding-specific surfaces (e.g. the "Funding Readiness" tab) gated behind a per-tenant
+  feature flag that the preset turns on. If offering it as a selectable preset requires
+  "hardcoding" the preset itself, that's fine — it lives as an **opt-in option**, off by
+  default.
+- **Not allowed:** funding/credit wording or surfaces shown to *all* tenants by default,
+  seeded into the coaching-generic platform default registry, or living in the Super
+  Admin / God account (§9). Generic coaching/consulting/agency tenants must never see it
+  unless they opt in.
+- **The test:** *"Is this funding/credit content a default everyone gets, or an option a
+  tenant chose?"* Default → prohibited. Chosen preset/flag → allowed.
 
 ## 3. Voice.
 

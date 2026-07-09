@@ -98,10 +98,16 @@ export default function JoinWorkspace() {
       const { error: e } = await supabase.rpc("accept_tenant_invite", { _token: token });
       if (e) throw e;
       toast.success(`Welcome to ${info?.tenant_name ?? "your workspace"}`);
-      // accept_tenant_invite just granted a role (client or member) + set the
-      // active tenant mid-session. Hard-navigate via resolveLandingRoute so a
-      // customer lands in their portal/onboarding and staff land in /admin,
-      // with route guards + role reads refreshed.
+      // A CONSUMER accept is an explicit "join as this tenant's customer" — send
+      // them straight into their portal onboarding, even if this user also holds
+      // a staff role elsewhere (resolveLandingRoute gives staff roles priority and
+      // would otherwise divert them to /admin, stranding them out of the portal).
+      // OnboardLayout self-heals /onboard to the correct stage for their client row.
+      if (isConsumerInvite) {
+        window.location.assign("/onboard");
+        return;
+      }
+      // Staff/team accept → normal role-based landing.
       const target = await resolveLandingRoute(auth.user.id);
       window.location.assign(target);
     } catch (err) {

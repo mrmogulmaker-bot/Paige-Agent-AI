@@ -157,6 +157,11 @@ export default function ContactDetail() {
 
   const fullName = useMemo(() => client ? `${client.first_name} ${client.last_name}`.trim() : "", [client]);
   const { enabled: btfEnabled } = useTenantFeature("btf_enabled");
+  // "Funding Readiness" is a vertical-specific surface (credit/funding coaching).
+  // It is NOT a platform default (§2/§9): the tab shows only for tenants whose
+  // config turns it on — the credit/funding Playbook enables it; generic
+  // coaching/consulting/agency tenants never see it.
+  const { enabled: fundingReadinessEnabled } = useTenantFeature("funding_readiness");
   const coachName = (uid: string | null) => uid ? (coaches.find((c) => c.user_id === uid)?.name || "Coach") : "Unassigned";
 
   const sendClientProgramInvite = async () => {
@@ -340,7 +345,9 @@ export default function ContactDetail() {
           <TabsTrigger value="notes"><StickyNote className="h-4 w-4 mr-1" /> Notes</TabsTrigger>
           <TabsTrigger value="files"><FileText className="h-4 w-4 mr-1" /> Files</TabsTrigger>
           <TabsTrigger value="business"><Building2 className="h-4 w-4 mr-1" /> Business</TabsTrigger>
-          <TabsTrigger value="funding-lens"><TrendingUp className="h-4 w-4 mr-1" /> Funding Readiness</TabsTrigger>
+          {fundingReadinessEnabled && (
+            <TabsTrigger value="funding-lens"><TrendingUp className="h-4 w-4 mr-1" /> Funding Readiness</TabsTrigger>
+          )}
           <TabsTrigger value="portal"><User className="h-4 w-4 mr-1" /> Portal & Agreements</TabsTrigger>
           <TabsTrigger value="approvals">
             <ClipboardCheck className="h-4 w-4 mr-1" /> Approvals
@@ -445,7 +452,9 @@ export default function ContactDetail() {
           )}
         </TabsContent>
 
-        <TabsContent value="funding-lens"><FundingReadinessLens contactId={client.id} mode="admin" /></TabsContent>
+        {fundingReadinessEnabled && (
+          <TabsContent value="funding-lens"><FundingReadinessLens contactId={client.id} mode="admin" /></TabsContent>
+        )}
 
         <TabsContent value="portal">
           <div className="space-y-4">
