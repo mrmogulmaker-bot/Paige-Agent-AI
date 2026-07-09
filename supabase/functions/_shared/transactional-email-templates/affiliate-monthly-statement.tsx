@@ -87,7 +87,7 @@ const StatRow = ({ label, value, highlight }: { label: string; value: string; hi
     }}>{label}</td>
     <td style={{
       fontSize: '15px',
-      color: highlight ? '#CFAE70' : '#0a1628',
+      color: highlight ? '#EBB94C' : '#0a1628',
       fontWeight: 700,
       textAlign: 'right' as const,
       padding: '10px 12px',
@@ -119,7 +119,7 @@ export const template = {
 const main = { backgroundColor: '#ffffff', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }
 const container = { maxWidth: '600px', margin: '0 auto' }
 const headerBar = { backgroundColor: '#0a1628', padding: '32px 40px 28px', borderRadius: '8px 8px 0 0', textAlign: 'center' as const }
-const logoText = { fontSize: '26px', fontWeight: 'bold' as const, color: '#CFAE70', margin: '0', letterSpacing: '0.5px' }
+const logoText = { fontSize: '26px', fontWeight: 'bold' as const, color: '#EBB94C', margin: '0', letterSpacing: '0.5px' }
 const tagline = { fontSize: '12px', color: '#9ca3af', margin: '6px 0 0', textTransform: 'uppercase' as const, letterSpacing: '2px' }
 const contentSection = { padding: '36px 40px 24px' }
 const h2 = { fontSize: '22px', fontWeight: 'bold' as const, color: '#0a1628', margin: '0 0 18px' }
@@ -128,6 +128,6 @@ const statsTable = { width: '100%', borderCollapse: 'collapse' as const, margin:
 const linkWrapper = { margin: '0 0 18px', padding: '14px 16px', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }
 const linkLabel = { fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '2px', margin: '0 0 6px', fontWeight: '600' as const }
 const linkValue = { fontSize: '13px', color: '#0a1628', margin: '0', wordBreak: 'break-all' as const, fontFamily: 'monospace' }
-const button = { backgroundColor: '#CFAE70', color: '#0a1628', padding: '14px 36px', borderRadius: '6px', fontSize: '15px', fontWeight: '700' as const, textDecoration: 'none', display: 'block' as const, textAlign: 'center' as const, margin: '0 auto', maxWidth: '240px' }
+const button = { backgroundColor: '#EBB94C', color: '#0a1628', padding: '14px 36px', borderRadius: '6px', fontSize: '15px', fontWeight: '700' as const, textDecoration: 'none', display: 'block' as const, textAlign: 'center' as const, margin: '0 auto', maxWidth: '240px' }
 const hr = { borderColor: '#e5e7eb', margin: '24px 40px' }
 const footer = { fontSize: '12px', color: '#9ca3af', textAlign: 'center' as const, margin: '0', padding: '0 40px 32px' }

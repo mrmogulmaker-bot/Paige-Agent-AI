@@ -4,7 +4,7 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = 'PaigeAgent.ai'
+const SITE_NAME = 'Paige Agent AI'
 const LOGO_URL =
   'https://bfmyebsjyuoecmjskqhs.supabase.co/storage/v1/object/public/email-assets/paige-logo-transparent.png'
 
@@ -15,12 +15,12 @@ interface BetaLaunchProps {
 const BetaLaunchEmail = ({ name }: BetaLaunchProps) => (
   <Html lang="en" dir="ltr">
     <Head />
-    <Preview>You are in — PaigeAgent AI Beta is officially live 🎉</Preview>
+    <Preview>You are in — the Paige Agent AI Beta is officially live 🎉</Preview>
     <Body style={main}>
       {/* Navy header */}
       <Section style={header}>
         <Img src={LOGO_URL} alt={SITE_NAME} width="200" height="auto" style={logo} />
-        <Text style={headerTagline}>Mogul Maker Academy</Text>
+        <Text style={headerTagline}>Paige Agent AI</Text>
       </Section>
 
       <Container style={container}>
@@ -29,7 +29,7 @@ const BetaLaunchEmail = ({ name }: BetaLaunchProps) => (
           {name ? `Welcome to the Beta, ${name} 🎉` : 'Welcome to the Beta 🎉'}
         </Heading>
         <Text style={text}>
-          Welcome to the PaigeAgent Beta — and thank you for being one of our founding members.
+          Welcome to the Paige Agent AI Beta — and thank you for being one of our founding members.
         </Text>
         <Text style={text}>
           You signed up early and that means something. Everything we are about to share — you get to experience first.
@@ -43,27 +43,27 @@ const BetaLaunchEmail = ({ name }: BetaLaunchProps) => (
         </Heading>
 
         <Text style={text}>
-          <strong style={strongNavy}>Paige now knows your full financial story.</strong> Connect QuickBooks and she pulls your real banking data — account balances, average deposits, monthly revenue — and uses it to calculate how lenders actually see you. No more estimates.
+          <strong style={strongNavy}>Paige now runs your practice end-to-end.</strong> She lives inside your business — your clients, your pipeline, your calendar — and works both sides at once: onboarding new clients while surfacing exactly what your existing ones need next. One teammate, no busywork.
         </Text>
 
         <Text style={text}>
-          <strong style={strongNavy}>Three fundability scores instead of one.</strong> Your Personal Fundability, Small Business Fundability, and Commercial EIN-Only scores now calculate separately — because a no-doc business card approval works completely differently than an SBA loan. Each score shows exactly what is unlocked and what is blocking you.
+          <strong style={strongNavy}>Every new client onboards themselves.</strong> Paige greets each client under your brand, runs the intake conversation, asks the right follow-up questions, and hands you a clean, complete profile — so no one falls through the cracks in their first week.
         </Text>
 
         <Text style={text}>
-          <strong style={strongNavy}>Product Approval Readiness.</strong> Open your Credit Intelligence tab and see which credit products you qualify for right now — from secured cards to DSCR loans to commercial lines — with your actual approval likelihood and the specific blockers holding you back.
+          <strong style={strongNavy}>She drafts every follow-up for you.</strong> Open a client and Paige has already written the next message — check-in, nudge, or answer — in your voice, ready to send or approve. The follow-ups you kept meaning to send now send themselves.
         </Text>
 
         <Text style={text}>
-          <strong style={strongNavy}>Your negative accounts now have grades.</strong> A collection from 3 months ago hits completely differently than one from 4 years ago. Paige now shows you exactly how each negative is weighted by lenders — and when it crosses out of the critical zone.
+          <strong style={strongNavy}>At-risk clients get flagged before they slip.</strong> Paige watches for the quiet signals — gone quiet, missed a session, stalled in the journey — and puts the at-risk list in front of you with the recovery move already drafted.
         </Text>
 
         <Text style={text}>
-          <strong style={strongNavy}>Bureau-specific funding strategy.</strong> Your Experian score may be 15 points higher than your Equifax. Paige now shows you which bureau is your strongest and which lenders to approach first based on your real bureau profile.
+          <strong style={strongNavy}>Your daily brief is ready every morning.</strong> Who needs attention, what closed, what is stuck, what to do first. Paige preps it so you open your day already knowing where to spend it — instead of digging through your inbox to find out.
         </Text>
 
         <Text style={text}>
-          <strong style={strongNavy}>Your credit story by product.</strong> Paige now analyzes whether your credit history actually matches what lenders want to see for each specific product — and tells you exactly how they will read your file before you apply.
+          <strong style={strongNavy}>Your pipeline keeps moving on its own.</strong> Paige tracks every client and prospect through your stages, chases the ones that go cold, and keeps retainers and renewals from quietly lapsing — so revenue does not leak while you are doing the actual work.
         </Text>
 
         <Hr style={hr} />
@@ -86,13 +86,13 @@ const BetaLaunchEmail = ({ name }: BetaLaunchProps) => (
           What To Do Now
         </Heading>
 
-        <Button style={button} href="https://paigeagent.ai/app/financial-profile">
-          Complete Your Financial Profile
+        <Button style={button} href="https://app.paigeagent.ai/onboarding">
+          Set Up Your Paige Workspace
         </Button>
-        <Button style={button} href="https://paigeagent.ai/app/credit">
-          See Your Product Approval Readiness
+        <Button style={button} href="https://app.paigeagent.ai/clients">
+          Add Your First Clients
         </Button>
-        <Button style={button} href="https://paigeagent.ai/app">
+        <Button style={button} href="https://app.paigeagent.ai">
           Ask Paige Anything
         </Button>
 
@@ -100,16 +100,14 @@ const BetaLaunchEmail = ({ name }: BetaLaunchProps) => (
 
         {/* Closing */}
         <Text style={text}>
-          We are building PaigeAgent to be the most complete financial intelligence platform available to entrepreneurs. You are not just a user — you are part of that story.
+          We are building Paige Agent AI to be the intelligent client portal that actually runs the business behind it — for coaches, consultants, agencies, and advisors alike. You are not just a user — you are part of that story.
         </Text>
         <Text style={text}>
           If you run into anything, have a question, or want to share feedback — hit the Support tab inside the app. We read every ticket personally.
         </Text>
 
-        <Text style={signoff}>To making it,</Text>
-        <Text style={signature}>Antonio Cook</Text>
-        <Text style={signatureMeta}>Founder, PaigeAgent AI</Text>
-        <Text style={signatureMeta}>Project Mogul Enterprise</Text>
+        <Text style={signoff}>To your growth,</Text>
+        <Text style={signature}>The Paige Agent AI team</Text>
 
         <Hr style={hr} />
         <Text style={footer}>
@@ -122,12 +120,12 @@ const BetaLaunchEmail = ({ name }: BetaLaunchProps) => (
 
 export const template = {
   component: BetaLaunchEmail,
-  subject: 'You are in — PaigeAgent AI Beta is officially live 🎉',
+  subject: 'You are in — the Paige Agent AI Beta is officially live 🎉',
   displayName: 'Beta Launch Welcome',
-  previewData: { name: 'Antonio' },
+  previewData: { name: 'Jordan' },
 } satisfies TemplateEntry
 
-// Brand: Navy #0a1628, Gold #CFAE70, White #ffffff
+// Brand: Navy #0a1628, Gold #EBB94C, White #ffffff
 const main = {
   backgroundColor: '#ffffff',
   fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
@@ -142,7 +140,7 @@ const header = {
 const logo = { display: 'block' as const, margin: '0 auto 8px' }
 const headerTagline = {
   fontSize: '13px',
-  color: '#CFAE70',
+  color: '#EBB94C',
   letterSpacing: '2px',
   textTransform: 'uppercase' as const,
   textAlign: 'center' as const,
@@ -159,10 +157,10 @@ const h1 = {
 const h2Gold = {
   fontSize: '20px',
   fontWeight: 'bold' as const,
-  color: '#CFAE70',
+  color: '#EBB94C',
   margin: '28px 0 16px',
   lineHeight: '1.3',
-  borderBottom: '2px solid #CFAE70',
+  borderBottom: '2px solid #EBB94C',
   paddingBottom: '8px',
 }
 const h3Gold = {
@@ -181,7 +179,7 @@ const strongNavy = { color: '#0a1628', fontWeight: 700 as const }
 const hr = { borderColor: '#e5e7eb', margin: '28px 0' }
 const foundingCard = {
   backgroundColor: '#fdfaf3',
-  border: '2px solid #CFAE70',
+  border: '2px solid #EBB94C',
   borderRadius: '8px',
   padding: '24px',
   margin: '24px 0',
@@ -193,7 +191,7 @@ const cardText = {
   margin: '0 0 12px',
 }
 const button = {
-  backgroundColor: '#CFAE70',
+  backgroundColor: '#EBB94C',
   color: '#ffffff',
   padding: '14px 24px',
   borderRadius: '6px',

@@ -109,7 +109,7 @@ const cardPrice = { fontSize: '32px', fontWeight: 'bold', color: '#000000', marg
 const cardFooter = { fontSize: '12px', color: '#6b5a35', lineHeight: '1.5', margin: 0 }
 const button = {
   background: '#000000',
-  color: '#CFAE70',
+  color: '#EBB94C',
   borderRadius: '8px',
   padding: '13px 28px',
   fontSize: '15px',

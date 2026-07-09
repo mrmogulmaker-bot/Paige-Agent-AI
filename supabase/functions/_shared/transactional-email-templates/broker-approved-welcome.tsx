@@ -118,7 +118,7 @@ const container: React.CSSProperties = { padding: '32px 24px', maxWidth: '600px'
 const brand: React.CSSProperties = {
   fontSize: '14px',
   fontWeight: 700,
-  color: '#CFAE70',
+  color: '#EBB94C',
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
   margin: '0 0 18px',
@@ -138,7 +138,7 @@ const text: React.CSSProperties = {
 }
 const cardGold: React.CSSProperties = {
   background: '#FBF6E9',
-  border: '1px solid #CFAE70',
+  border: '1px solid #EBB94C',
   borderRadius: '10px',
   padding: '18px 20px',
   margin: '8px 0 14px',
@@ -181,7 +181,7 @@ const smallLink: React.CSSProperties = {
 }
 const btnPrimary: React.CSSProperties = {
   background: '#0B1B2B',
-  color: '#CFAE70',
+  color: '#EBB94C',
   padding: '14px 28px',
   borderRadius: '6px',
   fontWeight: 700,

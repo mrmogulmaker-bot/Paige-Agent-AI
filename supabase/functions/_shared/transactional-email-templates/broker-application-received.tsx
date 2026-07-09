@@ -138,7 +138,7 @@ const container: React.CSSProperties = { padding: '32px 24px', maxWidth: '560px'
 const brand: React.CSSProperties = {
   fontSize: '14px',
   fontWeight: 700,
-  color: '#CFAE70',
+  color: '#EBB94C',
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
   margin: '0 0 18px',
@@ -183,7 +183,7 @@ const ctaWrap: React.CSSProperties = {
   margin: '8px 0 22px',
 }
 const ctaButton: React.CSSProperties = {
-  background: '#CFAE70',
+  background: '#EBB94C',
   color: '#0B1B2B',
   fontSize: '14px',
   fontWeight: 700,

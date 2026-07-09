@@ -47,5 +47,5 @@ const hr = { borderColor: '#e5e7eb', margin: '24px 0' }
 const h2 = { fontSize: '22px', fontWeight: 'bold' as const, color: '#0a1628', margin: '0 0 16px', textAlign: 'center' as const }
 const text = { fontSize: '14px', color: '#6b7280', lineHeight: '1.6', margin: '16px 0 0', textAlign: 'center' as const }
 const codeBox = { backgroundColor: '#0a1628', padding: '24px', borderRadius: '8px', textAlign: 'center' as const, margin: '16px 0' }
-const codeText = { fontSize: '40px', fontWeight: 'bold' as const, color: '#CFAE70', letterSpacing: '12px', margin: '0', fontFamily: "'Courier New', monospace" }
+const codeText = { fontSize: '40px', fontWeight: 'bold' as const, color: '#EBB94C', letterSpacing: '12px', margin: '0', fontFamily: "'Courier New', monospace" }
 const footer = { fontSize: '12px', color: '#9ca3af', textAlign: 'center' as const, margin: '0' }
