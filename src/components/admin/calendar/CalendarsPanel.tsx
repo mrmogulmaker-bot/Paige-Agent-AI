@@ -893,7 +893,11 @@ function CalendarHostsSection({ calendarId, roundRobin, multiHost }: {
                   <button type="button" onClick={() => move(i, 1)} disabled={i === hosts.length - 1} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move down"><ChevronDown className="h-3.5 w-3.5" /></button>
                 </>
               )}
-              {multiHost && (
+              {/* Shown whenever there's more than one host, even on a
+                  personal/class calendar — a calendar can carry a stray 2nd
+                  host from before this type could only ever book its
+                  primary, and there must be a way back down to one. */}
+              {hosts.length > 1 && (
                 <button type="button" onClick={() => removeHost(h.user_id)} className="p-1 text-destructive hover:opacity-70" aria-label="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
             </div>
@@ -1064,7 +1068,7 @@ function CalendarBuilderSheet({
       buffer_after_min: Math.max(0, draft.buffer_after_min || 0),
       min_notice_min: Math.max(0, draft.min_notice_min || 0),
       booking_horizon_days: Math.min(730, Math.max(1, draft.booking_horizon_days || 60)),
-      capacity: Math.max(1, draft.capacity || 8),
+      capacity: Math.max(1, Math.round(draft.capacity) || 8),
       redirect_url: (draft.redirect_url ?? "").trim() || null,
       timezone: draft.timezone,
       availability_json: availToJson(avail),
@@ -1368,7 +1372,7 @@ function CalendarBuilderSheet({
               <div className="space-y-1.5">
                 <Label>Capacity</Label>
                 <Input type="number" min={1} value={draft.capacity} className="w-24"
-                  onChange={(e) => set("capacity", Math.max(1, Number(e.target.value) || 8))} />
+                  onChange={(e) => set("capacity", Math.max(1, Math.round(Number(e.target.value)) || 8))} />
                 <p className="text-xs text-muted-foreground">How many guests can register for the same time slot.</p>
               </div>
             )}

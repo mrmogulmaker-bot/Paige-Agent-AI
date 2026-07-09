@@ -33,7 +33,7 @@ import { CalendarGrid, type GridEvent, type ViewMode } from "@/components/admin/
 import { useTenantContext } from "@/hooks/useTenantContext";
 
 interface IntakeQ { id: string; label: string; type: string; }
-interface CalMeta { id: string; title: string | null; color: string | null; accent: string | null; tenant_id: string | null; intake_questions?: IntakeQ[]; }
+interface CalMeta { id: string; title: string | null; color: string | null; accent: string | null; tenant_id: string | null; type?: string; intake_questions?: IntakeQ[]; }
 interface BookingRow {
   id: string; title: string; start_at: string; end_at: string; status: string;
   source: string; guest_name: string | null; guest_email: string | null; calendar_id: string | null;
@@ -98,7 +98,7 @@ export default function CalendarAdmin() {
   }, [calendars]);
 
   const loadCalendars = useCallback(async () => {
-    const { data } = await supabase.from("calendars").select("id, title, color, accent, tenant_id, intake_questions");
+    const { data } = await supabase.from("calendars").select("id, title, color, accent, tenant_id, type, intake_questions");
     setCalendars((data as CalMeta[]) ?? []);
   }, []);
 
@@ -457,7 +457,11 @@ function NewAppointmentDialog({ open, onOpenChange, calendars, activeTenantId, o
     });
     setSaving(false);
     if (error) {
-      if ((error as { code?: string }).code === "23505")
+      // 23505 = exact-start clash; 23P01 = the GiST exclusion constraint
+      // (overlapping time range, e.g. a mixed-duration booking) — both mean
+      // the same thing: something's already on your schedule at that time.
+      const code = (error as { code?: string }).code;
+      if (code === "23505" || code === "23P01")
         toast.error("You already have something at that time — pick another slot.");
       else toast.error(error.message);
       return;
@@ -492,9 +496,19 @@ function NewAppointmentDialog({ open, onOpenChange, calendars, activeTenantId, o
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={UNASSIGNED}>None (personal)</SelectItem>
-                {calendars.map((c) => <SelectItem key={c.id} value={c.id}>{c.title || "Untitled"}</SelectItem>)}
+                {/* Collective (every host must attend) and Class (shared capacity)
+                    calendars aren't supported by this quick-add — it always writes
+                    a plain single booking under you as the sole host, which would
+                    silently ignore the calendar's real host roster or capacity. */}
+                {calendars.filter((c) => c.type !== "collective" && c.type !== "event")
+                  .map((c) => <SelectItem key={c.id} value={c.id}>{c.title || "Untitled"}</SelectItem>)}
               </SelectContent>
             </Select>
+            {calendars.some((c) => c.type === "collective" || c.type === "event") && (
+              <p className="text-[11px] text-muted-foreground">
+                Collective and Class calendars aren't listed here yet — book those from the calendar's own public page.
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div className="space-y-1.5 col-span-1">

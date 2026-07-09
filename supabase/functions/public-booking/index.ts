@@ -424,6 +424,19 @@ async function loadBranding(admin: ReturnType<typeof createClient>, host: HostSe
   };
 }
 
+/** Comma-joined display names for a host roster (full_name, falling back to
+ *  their auth email) — used so a Collective guest sees who's on the panel
+ *  before booking, not just after (in the confirmation email). */
+async function resolveHostNames(admin: ReturnType<typeof createClient>, hostIds: string[]): Promise<string | null> {
+  const { data: profs } = await admin.from("profiles").select("user_id, full_name").in("user_id", hostIds);
+  const nameByUid = new Map((profs ?? []).map((p) => [p.user_id as string, p.full_name as string | null]));
+  const names = (await Promise.all(hostIds.map(async (uid) => {
+    const { data: u } = await admin.auth.admin.getUserById(uid);
+    return nameByUid.get(uid) || (u as { user?: { email?: string } } | null)?.user?.email || null;
+  }))).filter((n): n is string => !!n);
+  return names.length ? names.join(", ") : null;
+}
+
 async function loadBusy(admin: ReturnType<typeof createClient>, userId: string, fromMs: number, toMs: number): Promise<Busy[]> {
   const { data } = await admin
     .from("internal_bookings")
@@ -614,12 +627,19 @@ Deno.serve(async (req) => {
         const busy = await loadBusy(admin, effHost.user_id, fromMs, toMs);
         slots = computeSlots(effHost, busy, fromMs, toMs, now);
       }
+      // Collective only: who the guest is meeting, shown before they book (the
+      // confirmation email already names hosts — this is the same info surfaced
+      // one step earlier, on the picker itself).
+      const withHosts = effHost.collective && effHost.hosts.length > 1
+        ? await resolveHostNames(admin, effHost.hosts)
+        : null;
       return json({
         durationMin: effHost.durationMin,
         timezone: host.timezone,
         branding: await loadBranding(admin, host),
         slots: slots.map((s) => new Date(s).toISOString()),
         ...(classSpots ? { classSpots } : {}),
+        ...(withHosts ? { withHosts } : {}),
       });
     }
 
@@ -834,13 +854,11 @@ Deno.serve(async (req) => {
           return { uid, email: (hostUser as { user?: { email?: string } } | null)?.user?.email };
         }));
         // Collective only: name every attending host in the guest's email
-        // ("With: Jane Doe, Sam Lee") instead of just the brand name.
+        // ("With: Jane Doe, Sam Lee") instead of just the brand name — the
+        // same names the availability step already showed before they booked.
         let withLine = brand.name;
         if (effHost.collective && hostsToNotify.length > 1) {
-          const { data: profs } = await admin.from("profiles").select("user_id, full_name").in("user_id", hostsToNotify);
-          const nameByUid = new Map((profs ?? []).map((p) => [p.user_id as string, p.full_name as string | null]));
-          const names = hostInfos.map((h) => nameByUid.get(h.uid) || h.email).filter((n): n is string => !!n);
-          if (names.length) withLine = names.join(", ");
+          withLine = (await resolveHostNames(admin, hostsToNotify)) || withLine;
         }
 
         const guestOk = host.confirmGuest
