@@ -87,6 +87,28 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
       return "/admin";
     }
 
+    // Signed in with no role/client/tenant. If they came in to accept a customer
+    // invite but didn't finish (created a login, closed the tab), resume them at
+    // /join instead of the tenant "create a workspace" screen. The stash is a
+    // {token, ts} JSON written by JoinWorkspace ONLY for a valid invite; it
+    // expires quickly so a stale/abandoned invite can't hijack a later, unrelated
+    // signup on the same browser.
+    try {
+      const raw = localStorage.getItem("paige_pending_invite");
+      if (raw) {
+        const parsed = JSON.parse(raw) as { token?: unknown; ts?: unknown };
+        const token = typeof parsed?.token === "string" ? parsed.token : null;
+        const ts = typeof parsed?.ts === "number" ? parsed.ts : 0;
+        const FRESH_MS = 30 * 60 * 1000; // 30 minutes
+        if (token && /^[A-Za-z0-9_-]+$/.test(token) && Date.now() - ts < FRESH_MS) {
+          return `/join/${token}`;
+        }
+        localStorage.removeItem("paige_pending_invite"); // stale/garbage → drop it
+      }
+    } catch {
+      try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ }
+    }
+
     // Signed in, but no workspace yet → stand one up.
     return "/onboarding";
   } catch {

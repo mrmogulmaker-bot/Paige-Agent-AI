@@ -21,6 +21,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ContextualConsentDialog } from "@/components/legal/ContextualConsentDialog";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
+import { readableTextOn } from "@/lib/brand/contrast";
 
 interface PeekRow {
   tenant_id: string;
@@ -67,7 +68,17 @@ export default function JoinWorkspace() {
           setError("This invite link is not valid.");
         } else {
           setInfo(row);
-          if (!row.is_valid) setError("This invite has expired or been revoked.");
+          if (!row.is_valid) {
+            setError("This invite has expired or been revoked.");
+            try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ }
+          } else {
+            // Stash the VALID invite (with a timestamp) so a customer who creates
+            // a login but doesn't finish accepting this session is resumed here by
+            // resolveLandingRoute, not dropped on the "create a workspace" screen.
+            try {
+              localStorage.setItem("paige_pending_invite", JSON.stringify({ token, ts: Date.now() }));
+            } catch { /* ignore */ }
+          }
         }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load invite");
@@ -97,6 +108,7 @@ export default function JoinWorkspace() {
       }
       const { error: e } = await supabase.rpc("accept_tenant_invite", { _token: token });
       if (e) throw e;
+      try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ }
       toast.success(`Welcome to ${info?.tenant_name ?? "your workspace"}`);
       // A CONSUMER accept is an explicit "join as this tenant's customer" — send
       // them straight into their portal onboarding, even if this user also holds
@@ -135,8 +147,8 @@ export default function JoinWorkspace() {
             />
           ) : (
             <div
-              className="h-12 w-12 rounded-lg mx-auto mb-3 flex items-center justify-center text-white text-xl font-semibold"
-              style={{ backgroundColor: brandColor }}
+              className="h-12 w-12 rounded-lg mx-auto mb-3 flex items-center justify-center text-xl font-semibold"
+              style={{ backgroundColor: brandColor, color: readableTextOn(brandColor) }}
             >
               {(info?.tenant_name ?? "?").charAt(0).toUpperCase()}
             </div>
@@ -182,7 +194,7 @@ export default function JoinWorkspace() {
                 onClick={accept}
                 disabled={accepting || !info?.is_valid}
                 className="w-full"
-                style={{ backgroundColor: brandColor }}
+                style={{ backgroundColor: brandColor, color: readableTextOn(brandColor) }}
               >
                 {accepting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                 Accept invitation

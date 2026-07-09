@@ -134,6 +134,10 @@ Deno.serve(async (req) => {
   const fullName = body.fullName ? String(body.fullName).trim() : null;
   const referralCode = body.referralCode ? String(body.referralCode) : null;
   const marketingOptIn = body.marketingOptIn === true;
+  // A tenant's CUSTOMER accepting a portal invite already got the tenant's
+  // branded invite email — suppress the platform (Paige) welcome so the
+  // customer never sees the platform brand (§9).
+  const suppressWelcome = body.suppressWelcome === true;
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return json({ ok: false, reason: "invalid", message: "Enter a valid email address." });
@@ -175,8 +179,11 @@ Deno.serve(async (req) => {
     return json({ ok: false, reason: "error", message: error.message || "Could not create your account." });
   }
 
-  // Sign-up email — a branded welcome, sent through Resend. Fire-and-forget.
-  await sendWelcome(email, (fullName ?? "").split(/\s+/)[0] ?? "");
+  // Sign-up email — the platform welcome, sent through Resend. Fire-and-forget.
+  // Skipped for a client-invite signup (they got the tenant's branded invite).
+  if (!suppressWelcome) {
+    await sendWelcome(email, (fullName ?? "").split(/\s+/)[0] ?? "");
+  }
 
   return json({ ok: true, user_id: data.user?.id ?? null });
 });
