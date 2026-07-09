@@ -4,7 +4,9 @@
 // the TENANT's brand (the tenant is inviting their own customer, so the email
 // wears the tenant's brand, not Paige's — §6), and sends via Resend.
 //
-// Abuse-limited: it only sends for a real, non-revoked, unexpired token.
+// Anti-relay: it only sends for a real, non-revoked, unexpired token, and only
+// to the address that token was bound to at mint time (create_tenant_invite_token,
+// admin-gated) — a token holder cannot spray arbitrary recipients.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const cors = {
@@ -26,6 +28,14 @@ function textOn(hex: string): string {
   if (h.length < 6) return "#FFFFFF";
   const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
   return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? "#1B1230" : "#FFFFFF";
+}
+// §6/§9: the email must wear the TENANT's brand, so the visible sender is the
+// tenant's name — never "Paige Agent AI" — over the platform's verified domain.
+// Strip anything that could break an RFC-5322 display-name / header-inject.
+function senderFrom(tenantName: string, fallbackFrom: string): string {
+  const addr = (fallbackFrom.match(/<([^>]+)>/)?.[1] ?? fallbackFrom).trim();
+  const name = String(tenantName ?? "").replace(/[<>",\r\n]/g, " ").replace(/\s+/g, " ").trim();
+  return name ? `${name} <${addr}>` : fallbackFrom;
 }
 
 function inviteHtml(tenantName: string, accent: string, logo: string | null, joinUrl: string, firstName: string): string {
@@ -77,12 +87,22 @@ Deno.serve(async (req) => {
   // Validate the token + load the tenant brand.
   const { data: tok } = await admin
     .from("tenant_invite_tokens")
-    .select("tenant_id, revoked_at, expires_at")
+    .select("tenant_id, revoked_at, expires_at, email")
     .eq("token", token)
     .maybeSingle();
   if (!tok || tok.revoked_at || new Date(tok.expires_at as string) <= new Date()) {
     return json({ ok: false, error: "invite is not valid" }, 400);
   }
+
+  // Anti-relay: a token bound to a recipient at mint time can ONLY email that
+  // address. This stops a token holder from POSTing arbitrary victim addresses
+  // and having the platform emit tenant-branded links to them.
+  const boundEmail = (tok.email as string | null)?.trim().toLowerCase() || null;
+  if (boundEmail && boundEmail !== email) {
+    return json({ ok: false, error: "this invite is bound to a different address" }, 400);
+  }
+  const recipient = boundEmail ?? email;
+
   const { data: tenant } = await admin
     .from("tenants").select("name, brand").eq("id", tok.tenant_id).maybeSingle();
 
@@ -97,8 +117,8 @@ Deno.serve(async (req) => {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: EMAIL_FROM,
-        to: [email],
+        from: senderFrom(tenantName, EMAIL_FROM),
+        to: [recipient],
         subject: `${tenantName} invited you to your client portal`,
         html: inviteHtml(tenantName, accent, brand.logo_url ?? null, joinUrl, firstName),
         text: `${firstName ? `Hi ${firstName},` : "Hi there,"}\n\n${tenantName} invited you to your private client portal.\n\nOpen it: ${joinUrl}\n`,
