@@ -19,7 +19,13 @@ export const MARKETING_HOST = "paigeagent.ai";
 export const APP_HOST = "app.paigeagent.ai";
 
 // Flip to true once app.paigeagent.ai is live + auth redirect URLs updated.
-export const HOST_SPLIT_ENABLED = true;
+// TEMPORARILY REVERTED TO DORMANT: activating this before app.paigeagent.ai
+// resolves and app.* is registered in Supabase Auth + Google OAuth redirect
+// URLs breaks navigation — on the app host every in-app nav to "/" was 301'd to
+// /auth (logo/"back to home" loop) and auth/admin routes bounced toward a host
+// that isn't wired yet, locking the operator out of the God console. Re-enable
+// only as a deliberate cutover once those preconditions are confirmed live.
+export const HOST_SPLIT_ENABLED = false;
 
 // Routes that belong on app.paigeagent.ai (product + auth). Hit on the apex → 301.
 const APP_PREFIXES = [
