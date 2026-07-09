@@ -15,6 +15,7 @@ function safeReturnOrigin(value: unknown): string | null {
       (url.protocol === "https:" && (
         host === "paigeagent.ai" ||
         host === "www.paigeagent.ai" ||
+        host === "app.paigeagent.ai" ||
         host.endsWith(".vercel.app")
       ));
     return allowed ? url.origin : null;

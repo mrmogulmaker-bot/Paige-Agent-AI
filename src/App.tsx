@@ -42,6 +42,7 @@ import { RoleLensProvider } from "./contexts/RoleLensContext";
 import { BusinessProvider } from "./contexts/BusinessContext";
 import { ImpersonationProvider } from "./contexts/ImpersonationContext";
 import { ClientOnlyRouteGuard } from "./components/auth/ClientOnlyRouteGuard";
+import { useHostRouting } from "./lib/hostRouting";
 import { useReferralTracking } from "./hooks/useReferralTracking";
 import { GlobalAuthSessionManager } from "./lib/auth/GlobalAuthSessionManager";
 import { usePageView } from "./hooks/useAnalytics";
@@ -144,6 +145,7 @@ const GatedChatbot = () => {
 };
 
 const AppInner = () => {
+  useHostRouting();
   useReferralTracking();
   usePageView();
   return <GlobalAuthSessionManager />;
