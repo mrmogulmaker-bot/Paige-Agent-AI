@@ -20,7 +20,7 @@ import { toast } from "sonner";
 interface SubAccount { id: string; slug: string; name: string; status: string; }
 
 export function SubAccountsPanel() {
-  const { activeTenant, activeTenantId, switchTenant, refresh } = useTenantContext();
+  const { activeTenant, activeTenantId, switchTenant } = useTenantContext();
   const [uid, setUid] = useState<string | null>(null);
   const [subs, setSubs] = useState<SubAccount[]>([]);
   const [loading, setLoading] = useState(false);
@@ -77,9 +77,12 @@ export function SubAccountsPanel() {
   };
 
   const openSub = async (id: string) => {
+    // useTenantContext is a plain hook (per-component state), so a soft switch
+    // wouldn't reach the header switcher or the CRM data pages. Persist the
+    // active tenant, then hard-navigate so every consumer re-reads it fresh
+    // (same pattern the signup flow uses after provisioning).
     await switchTenant(id);
-    await refresh();
-    toast.message("Switched into sub-account — use the workspace switcher to return.");
+    window.location.assign("/admin");
   };
 
   if (!activeTenantId || !isOwner) return null;
@@ -103,7 +106,7 @@ export function SubAccountsPanel() {
           </div>
           <div className="space-y-1.5">
             <Label>What they do (optional)</Label>
-            <Input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Coaching, agency…" />
+            <Input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Coaching, consulting, agency…" />
           </div>
           <Button onClick={create} disabled={creating || name.trim().length < 2}>
             {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
