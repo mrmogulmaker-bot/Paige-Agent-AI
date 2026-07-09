@@ -142,3 +142,25 @@ question is non-negotiable and gets asked *every* time.
   Archive vertical content for reuse by the tenant it belongs to; keep the platform
   default coaching-generic. This reinforces §7 (tenant-authored portal) and §8
   (per-tenant Playbook).
+
+## 10. Everything must stay Paige-governable — never close a feature off.
+
+**Directive (owner: Antonio):** The end state is a **single Paige Agent AI section**
+in the menu where the operator or a tenant can, by **voice or typing**, tell Paige to
+run *any* part of the platform — *"create a new form," "build a web page," "schedule a
+calendar meeting," "add a contact,"* and so on — and she does it. That one chat governs
+the whole company. We are not building that surface yet, but **every section we build
+must leave the door open for it.**
+
+- **Callable seam, always.** No feature's logic may live only inside a React component
+  where a human clicking is the only way to drive it. Each create/update/delete action
+  needs a clean, programmatic entry point — a Supabase table/RPC or an edge function —
+  that Paige's agent can invoke. The UI is one caller of that seam; Paige is another.
+- **Data over hardcoding.** Prefer config-as-data (JSONB/rows) the agent can read and
+  rewrite (e.g. a calendar's intake questions are a `jsonb` column, not hardwired
+  markup) so Paige can author it end-to-end without a code change.
+- **The test, every time:** *"Could Paige do this from the chat, by voice or text, with
+  no human in the UI?"* If not, expose a tool/RPC/function so she can. Don't ship a
+  dead end.
+- This serves §7 (Paige is the intelligent portal) and §8 (Paige orchestrates the
+  teams): the moat is that she can **operate** the platform, not just answer about it.

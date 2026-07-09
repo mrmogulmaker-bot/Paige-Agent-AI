@@ -78,6 +78,7 @@ interface HostSettings {
   locationType: string; // legacy single (fallback) — chosen method stored on booking
   locationValue: string | null;
   locationOptions: { type: string; value: string | null }[]; // owner-offered methods
+  intakeQuestions: IntakeQuestion[]; // owner-authored booking-form questions
   confirmGuest: boolean; // send guest a confirmation
   confirmHost: boolean; // notify the host of new bookings
 }
@@ -97,6 +98,59 @@ function parseLocationOptions(raw: unknown, fallbackType: string, fallbackValue:
   // Legacy fallback: a single method (or the old ask_invitee triple).
   if (fallbackType === "ask_invitee") return [{ type: "google_meet", value: null }, { type: "zoom", value: null }, { type: "phone", value: null }];
   return [{ type: KNOWN_LOCATIONS.includes(fallbackType) ? fallbackType : "phone", value: fallbackValue }];
+}
+
+// --- Custom intake questions (tenant-authored per calendar) -----------------
+interface IntakeQuestion {
+  id: string; label: string; type: string; required: boolean;
+  options: string[]; placeholder: string | null;
+}
+const INTAKE_TYPES = ["text", "textarea", "select", "radio", "checkbox", "phone", "url", "number"];
+const INTAKE_CHOICE_TYPES = ["select", "radio", "checkbox"];
+function parseIntakeQuestions(raw: unknown): IntakeQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((q) => (q && typeof q === "object" ? q : {}) as Record<string, unknown>)
+    .map((q, i) => ({
+      id: String(q.id ?? `q${i}`).slice(0, 64),
+      label: String(q.label ?? "").trim().slice(0, 240),
+      type: INTAKE_TYPES.includes(String(q.type)) ? String(q.type) : "text",
+      required: q.required === true,
+      options: Array.isArray(q.options) ? q.options.map((o) => String(o).slice(0, 200)).filter(Boolean).slice(0, 40) : [],
+      placeholder: typeof q.placeholder === "string" ? q.placeholder.slice(0, 200) : null,
+    }))
+    // Drop blank-labeled questions and choice questions with no options — a
+    // required choice with zero options is unanswerable and would silently
+    // make the whole booking page unbookable (guards Paige-authored config too).
+    .filter((q) => q.label.length > 0 && !(INTAKE_CHOICE_TYPES.includes(q.type) && q.options.length === 0))
+    .slice(0, 30);
+}
+/** Validate + sanitize guest answers against the question set. Returns the
+ *  stored answer map, or an error string naming the first missing required. */
+function collectAnswers(questions: IntakeQuestion[], raw: unknown): { answers: Record<string, string | string[]> } | { error: string } {
+  const provided = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const out: Record<string, string | string[]> = {};
+  for (const q of questions) {
+    const v = provided[q.id];
+    if (q.type === "checkbox") {
+      const arr = Array.isArray(v) ? v.map((x) => String(x).slice(0, 500)).filter(Boolean) : [];
+      // Only keep known options; de-dupe and cap length so a crafted payload
+      // can't balloon the stored answer / notification email.
+      const filtered = q.options.length ? arr.filter((x) => q.options.includes(x)) : arr;
+      const kept = Array.from(new Set(filtered)).slice(0, q.options.length || 40);
+      if (q.required && kept.length === 0) return { error: `Please answer: ${q.label}` };
+      if (kept.length) out[q.id] = kept;
+    } else {
+      const s = (v == null ? "" : String(v)).trim().slice(0, 2000);
+      if (q.required && !s) return { error: `Please answer: ${q.label}` };
+      // For choice types, only accept an offered option.
+      if (s && (q.type === "select" || q.type === "radio") && q.options.length && !q.options.includes(s)) {
+        return { error: `Please pick a valid option for: ${q.label}` };
+      }
+      if (s) out[q.id] = s;
+    }
+  }
+  return { answers: out };
 }
 
 interface Busy { start: number; end: number } // UTC ms
@@ -145,7 +199,7 @@ function roundRobinSlots(h: HostSettings, busyByHost: Record<string, Busy[]>, fr
 async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
   const { data: cal } = await admin
     .from("calendars")
-    .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options, booking_horizon_days, redirect_url")
+    .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options, booking_horizon_days, redirect_url, intake_questions")
     .eq("slug", slug)
     .maybeSingle();
   if (!cal || cal.enabled !== true) return null;
@@ -182,6 +236,7 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     locationType: cal.location_type ?? "phone",
     locationValue: cal.location_value ?? null,
     locationOptions: parseLocationOptions(cal.location_options, cal.location_type ?? "phone", cal.location_value ?? null),
+    intakeQuestions: parseIntakeQuestions(cal.intake_questions),
     ...parseNotify(cal.notify_config),
   };
 }
@@ -218,6 +273,7 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     locationType: "phone",
     locationValue: null,
     locationOptions: [{ type: "phone", value: null }],
+    intakeQuestions: [],
     confirmGuest: true,
     confirmHost: true,
   };
@@ -249,6 +305,7 @@ async function loadBranding(admin: ReturnType<typeof createClient>, host: HostSe
     locationValue: host.locationValue,
     locationOptions: host.locationOptions,
     redirectUrl: host.redirectUrl,
+    intakeQuestions: host.intakeQuestions,
   };
 }
 
@@ -349,7 +406,10 @@ function guestEmailHtml(brandName: string, accent: string, title: string, whenLa
       </td></tr>
     </table></td></tr></table></body></html>`;
 }
-function hostEmailHtml(accent: string, title: string, whenLabel: string, guestName: string, guestEmail: string, guestPhone: string | null, location: string, notes: string | null): string {
+function hostEmailHtml(accent: string, title: string, whenLabel: string, guestName: string, guestEmail: string, guestPhone: string | null, location: string, notes: string | null, intakeRows: { label: string; value: string }[]): string {
+  const intakeHtml = intakeRows.length
+    ? intakeRows.map((r) => `<tr><td style="padding:6px 0;color:#98a0ae;vertical-align:top;">${esc(r.label)}</td><td style="padding:6px 0;">${esc(r.value)}</td></tr>`).join("")
+    : "";
   return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:28px 0;"><tr><td align="center">
     <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#fff;border:1px solid #e7e8ec;border-radius:14px;overflow:hidden;">
@@ -363,6 +423,7 @@ function hostEmailHtml(accent: string, title: string, whenLabel: string, guestNa
           ${guestPhone ? `<tr><td style="padding:6px 0;color:#98a0ae;">Phone</td><td style="padding:6px 0;">${esc(guestPhone)}</td></tr>` : ""}
           <tr><td style="padding:6px 0;color:#98a0ae;">Where</td><td style="padding:6px 0;">${esc(location)}</td></tr>
           ${notes ? `<tr><td style="padding:6px 0;color:#98a0ae;vertical-align:top;">Notes</td><td style="padding:6px 0;">${esc(notes)}</td></tr>` : ""}
+          ${intakeHtml}
         </table>
       </td></tr>
     </table></td></tr></table></body></html>`;
@@ -419,6 +480,11 @@ Deno.serve(async (req) => {
       if (startMs > now + host.horizonDays * 86_400_000) return json({ error: "That time is too far out." }, 400);
       if (!name) return json({ error: "Name is required." }, 400);
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "A valid email is required." }, 400);
+
+      // Owner-authored intake questions: validate required, keep only known
+      // options, cap lengths. A missing required answer blocks the booking.
+      const intake = collectAnswers(host.intakeQuestions, body?.answers);
+      if ("error" in intake) return json({ error: intake.error }, 400);
 
       // Lightweight abuse control: cap booking_page creates per host per minute.
       const { count: recent } = await admin
@@ -482,6 +548,7 @@ Deno.serve(async (req) => {
         source: "booking_page",
         location_type: locationType,
         location_value: locationValue,
+        intake_answers: Object.keys(intake.answers).length ? intake.answers : null,
       }).select("id, start_at, end_at, title").single();
       if (error) {
         // Unique/exclusion violation = the slot was just taken in a race.
@@ -504,6 +571,14 @@ Deno.serve(async (req) => {
           uid: `${(data as { id: string }).id}@paigeagent.ai`, startMs, endMs, title,
           desc: host.description || "", location: loc, organizer: brand.name, attendee: email, attendeeName: name,
         });
+        // Owner-facing: render each answered intake question as a labeled row.
+        const intakeRows = host.intakeQuestions
+          .map((q) => {
+            const a = intake.answers[q.id];
+            const v = Array.isArray(a) ? a.join(", ") : (a ?? "");
+            return v ? { label: q.label, value: v } : null;
+          })
+          .filter((r): r is { label: string; value: string } => r !== null);
         const mUrl = await manageUrl((data as { id: string }).id);
         const guestOk = host.confirmGuest
           ? await sendEmail(email, `Confirmed: ${title} · ${whenLabel}`,
@@ -517,7 +592,7 @@ Deno.serve(async (req) => {
           hostEmail = (hostUser as { user?: { email?: string } } | null)?.user?.email;
           if (hostEmail) {
             hostOk = await sendEmail(hostEmail, `New booking: ${name} · ${whenLabel}`,
-              hostEmailHtml(brand.accent, title, whenLabel, name, email, phone, loc, notes), ics);
+              hostEmailHtml(brand.accent, title, whenLabel, name, email, phone, loc, notes, intakeRows), ics);
           }
         }
         await admin.from("email_send_log").insert([

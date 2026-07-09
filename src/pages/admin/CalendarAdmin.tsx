@@ -32,11 +32,14 @@ import CalendarsPanel from "@/components/admin/calendar/CalendarsPanel";
 import { CalendarGrid, type GridEvent, type ViewMode } from "@/components/admin/calendar/CalendarGrid";
 import { useTenantContext } from "@/hooks/useTenantContext";
 
-interface CalMeta { id: string; title: string | null; color: string | null; accent: string | null; tenant_id: string | null; }
+interface IntakeQ { id: string; label: string; type: string; }
+interface CalMeta { id: string; title: string | null; color: string | null; accent: string | null; tenant_id: string | null; intake_questions?: IntakeQ[]; }
 interface BookingRow {
   id: string; title: string; start_at: string; end_at: string; status: string;
   source: string; guest_name: string | null; guest_email: string | null; calendar_id: string | null;
   location_type: string | null; location_value: string | null;
+  guest_phone: string | null; notes: string | null;
+  intake_answers: Record<string, string | string[]> | null;
 }
 
 const UNASSIGNED = "__unassigned__";
@@ -89,7 +92,7 @@ export default function CalendarAdmin() {
   }, [calendars]);
 
   const loadCalendars = useCallback(async () => {
-    const { data } = await supabase.from("calendars").select("id, title, color, accent, tenant_id");
+    const { data } = await supabase.from("calendars").select("id, title, color, accent, tenant_id, intake_questions");
     setCalendars((data as CalMeta[]) ?? []);
   }, []);
 
@@ -103,7 +106,7 @@ export default function CalendarAdmin() {
     // Overlap-aware: catch events that START before the window but run into it.
     const { data } = await supabase
       .from("internal_bookings")
-      .select("id, title, start_at, end_at, status, source, guest_name, guest_email, calendar_id, location_type, location_value")
+      .select("id, title, start_at, end_at, status, source, guest_name, guest_email, calendar_id, location_type, location_value, guest_phone, notes, intake_answers")
       .eq("host_user_id", uid)
       .lt("start_at", to.toISOString())
       .gte("end_at", from.toISOString())
@@ -227,6 +230,7 @@ export default function CalendarAdmin() {
 
       <BookingDetailDialog
         booking={detail}
+        calendars={calendars}
         onOpenChange={(v) => !v && setDetail(null)}
         colorFor={colorFor}
         onCancelBooking={(id) => setBookingStatus(id, "cancelled")}
@@ -251,14 +255,25 @@ export default function CalendarAdmin() {
 const LOC_LABEL: Record<string, string> = {
   google_meet: "Google Meet", zoom: "Zoom", phone: "Phone call", in_person: "In person", custom: "Custom",
 };
-function BookingDetailDialog({ booking, onOpenChange, colorFor, onCancelBooking, onNoShow }: {
+function BookingDetailDialog({ booking, calendars, onOpenChange, colorFor, onCancelBooking, onNoShow }: {
   booking: BookingRow | null;
+  calendars: CalMeta[];
   onOpenChange: (v: boolean) => void;
   colorFor: (id: string | null) => string;
   onCancelBooking: (id: string) => void;
   onNoShow: (id: string) => void;
 }) {
   const b = booking;
+  // Map the booking's intake answers (id→value) to the calendar's question labels.
+  const intakeRows: { label: string; value: string }[] = (() => {
+    if (!b?.intake_answers) return [];
+    const qs = calendars.find((c) => c.id === b.calendar_id)?.intake_questions ?? [];
+    const labelById = new Map(qs.map((q) => [q.id, q.label]));
+    return Object.entries(b.intake_answers).map(([id, val]) => ({
+      label: labelById.get(id) || id,
+      value: Array.isArray(val) ? val.join(", ") : String(val),
+    })).filter((r) => r.value);
+  })();
   return (
     <Dialog open={b !== null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -279,8 +294,21 @@ function BookingDetailDialog({ booking, onOpenChange, colorFor, onCancelBooking,
               {(b.guest_name || b.guest_email) && (
                 <div className="flex gap-2"><span className="text-muted-foreground w-16">Guest</span><span>{b.guest_name}{b.guest_email ? ` · ${b.guest_email}` : ""}</span></div>
               )}
+              {b.guest_phone && (
+                <div className="flex gap-2"><span className="text-muted-foreground w-16">Phone</span><span>{b.guest_phone}</span></div>
+              )}
               {b.location_type && (
                 <div className="flex gap-2"><span className="text-muted-foreground w-16">Where</span><span>{LOC_LABEL[b.location_type] ?? b.location_type}{b.location_value ? ` · ${b.location_value}` : ""}</span></div>
+              )}
+              {b.notes && (
+                <div className="flex gap-2"><span className="text-muted-foreground w-16 shrink-0">Notes</span><span className="whitespace-pre-line">{b.notes}</span></div>
+              )}
+              {intakeRows.length > 0 && (
+                <div className="pt-1.5 mt-1.5 border-t space-y-1.5">
+                  {intakeRows.map((r, i) => (
+                    <div key={i} className="flex gap-2"><span className="text-muted-foreground w-16 shrink-0">{r.label}</span><span className="whitespace-pre-line">{r.value}</span></div>
+                  ))}
+                </div>
               )}
               <div className="flex gap-2 items-center"><span className="text-muted-foreground w-16">Status</span>
                 <Badge variant={b.status === "scheduled" ? "default" : "secondary"} className="capitalize">{b.status.replace(/_/g, " ")}</Badge>

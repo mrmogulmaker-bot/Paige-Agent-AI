@@ -29,16 +29,17 @@ const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type LocationOption = { type: string; value: string | null };
+type IntakeQuestion = { id: string; label: string; type: string; required: boolean; options: string[]; placeholder: string | null };
 type Brand = {
   name: string; logoUrl: string | null; accent: string; title: string | null; description: string | null;
   theme: "light" | "dark"; subtitle: string | null; showCompanyName: boolean;
   locationType: string; locationValue: string | null; locationOptions: LocationOption[]; durationMin?: number;
-  redirectUrl?: string | null;
+  redirectUrl?: string | null; intakeQuestions?: IntakeQuestion[];
 };
 const DEFAULT_BRAND: Brand = {
   name: "Paige Agent AI", logoUrl: null, accent: "#EBB94C", title: null, description: null,
   theme: "light", subtitle: null, showCompanyName: true, locationType: "google_meet", locationValue: null,
-  locationOptions: [{ type: "google_meet", value: null }], redirectUrl: null,
+  locationOptions: [{ type: "google_meet", value: null }], redirectUrl: null, intakeQuestions: [],
 };
 
 const LOCATION_META: Record<string, { label: string; icon: typeof Video }> = {
@@ -77,6 +78,8 @@ export default function BookingPage() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", email: "", phone: "", notes: "" });
+  // Answers to the owner's custom intake questions, keyed by question id.
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [inviteeLocation, setInviteeLocation] = useState("google_meet");
   const [submitting, setSubmitting] = useState(false);
   // Furthest date we've fetched slots through, so paging the calendar forward
@@ -125,6 +128,19 @@ export default function BookingPage() {
   const meetLabel = (o: LocationOption) => o.type === "custom" ? (o.value || "Details to follow")
     : o.type === "in_person" ? (o.value || "In person") : (LOCATION_META[o.type]?.label ?? o.type);
 
+  // Owner's custom intake questions + whether every required one is answered.
+  const intakeQuestions = brand.intakeQuestions ?? [];
+  const setAnswer = (id: string, v: string | string[]) => setAnswers((a) => ({ ...a, [id]: v }));
+  const toggleChoice = (id: string, opt: string) => setAnswers((a) => {
+    const cur = Array.isArray(a[id]) ? (a[id] as string[]) : [];
+    return { ...a, [id]: cur.includes(opt) ? cur.filter((x) => x !== opt) : [...cur, opt] };
+  });
+  const requiredAnswered = intakeQuestions.every((q) => {
+    if (!q.required) return true;
+    const v = answers[q.id];
+    return Array.isArray(v) ? v.length > 0 : !!(v && String(v).trim());
+  });
+
   // Slot instants grouped by the visitor's local day; the set of bookable days.
   const byDay = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -158,6 +174,7 @@ export default function BookingPage() {
         action: "create", slug, start: selectedSlot,
         guest: { name: form.name, email: form.email, phone: form.phone }, notes: form.notes,
         ...(meetMulti ? { location: inviteeLocation } : {}),
+        ...(intakeQuestions.length ? { answers } : {}),
       },
     });
     setSubmitting(false);
@@ -328,10 +345,71 @@ export default function BookingPage() {
         )}
 
         <Field label="Anything to share?" c={c}><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} style={fieldStyle(c)} /></Field>
+
+        {/* Owner's custom intake questions */}
+        {intakeQuestions.map((q) => {
+          const val = answers[q.id];
+          const label = q.label + (q.required ? " *" : "");
+          if (q.type === "textarea") {
+            return <Field key={q.id} label={label} c={c}><Textarea rows={2} required={q.required} aria-required={q.required} value={(val as string) ?? ""} placeholder={q.placeholder ?? ""} onChange={(e) => setAnswer(q.id, e.target.value)} style={fieldStyle(c)} /></Field>;
+          }
+          if (q.type === "select") {
+            return (
+              <Field key={q.id} label={label} c={c}>
+                <select value={(val as string) ?? ""} required={q.required} aria-required={q.required} onChange={(e) => setAnswer(q.id, e.target.value)}
+                  className="flex h-9 w-full rounded-md border px-3 py-1 text-sm" style={fieldStyle(c)}>
+                  <option value="">Select…</option>
+                  {q.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </Field>
+            );
+          }
+          if (q.type === "radio") {
+            return (
+              <div key={q.id} className="space-y-1.5" role="radiogroup" aria-required={q.required} aria-label={q.label}>
+                <Label className="text-xs" style={{ color: c.sub }}>{label}</Label>
+                <div className="flex flex-wrap gap-2">
+                  {q.options.map((o) => {
+                    const on = val === o;
+                    return (
+                      <button key={o} type="button" role="radio" aria-checked={on} onClick={() => setAnswer(q.id, o)}
+                        className="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+                        style={on ? { border: `1.5px solid ${brand.accent}`, color: brand.accent, background: brand.accent + "14" } : { border: `1px solid ${c.border}`, color: c.sub }}>
+                        {o}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
+          if (q.type === "checkbox") {
+            const arr = Array.isArray(val) ? val : [];
+            return (
+              <div key={q.id} className="space-y-1.5" role="group" aria-required={q.required} aria-label={q.label}>
+                <Label className="text-xs" style={{ color: c.sub }}>{label}</Label>
+                <div className="flex flex-wrap gap-2">
+                  {q.options.map((o) => {
+                    const on = arr.includes(o);
+                    return (
+                      <button key={o} type="button" role="checkbox" aria-checked={on} onClick={() => toggleChoice(q.id, o)}
+                        className="rounded-full px-3 py-1.5 text-xs font-medium transition-colors"
+                        style={on ? { border: `1.5px solid ${brand.accent}`, color: brand.accent, background: brand.accent + "14" } : { border: `1px solid ${c.border}`, color: c.sub }}>
+                        {o}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
+          const inputType = q.type === "url" ? "url" : q.type === "phone" ? "tel" : q.type === "number" ? "number" : "text";
+          return <Field key={q.id} label={label} c={c}><Input type={inputType} required={q.required} aria-required={q.required} value={(val as string) ?? ""} placeholder={q.placeholder ?? ""} onChange={(e) => setAnswer(q.id, e.target.value)} style={fieldStyle(c)} /></Field>;
+        })}
       </div>
       {errorMsg && <p className="text-sm mt-3" style={{ color: "#ef4444" }} aria-live="polite">{errorMsg}</p>}
       <button onClick={book}
-        disabled={submitting || !form.name.trim() || !form.email.trim() || (meetMulti && inviteeLocation === "phone" && !form.phone.trim())}
+        disabled={submitting || !form.name.trim() || !form.email.trim() || !requiredAnswered || (meetMulti && inviteeLocation === "phone" && !form.phone.trim())}
         className="w-full mt-5 rounded-lg py-2.5 font-semibold transition-opacity disabled:opacity-50 inline-flex items-center justify-center gap-2"
         style={{ background: brand.accent, color: accentText }}>
         {submitting && <Loader2 className="h-4 w-4 animate-spin" />} Confirm booking

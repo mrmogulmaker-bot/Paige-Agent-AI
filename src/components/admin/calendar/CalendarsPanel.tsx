@@ -70,10 +70,45 @@ export interface CalendarRow {
   location_type: string;
   location_value: string | null;
   location_options: LocationOption[];
+  intake_questions: IntakeQuestion[];
   notify_config: NotifyConfig;
 }
 
 export interface LocationOption { type: string; value: string | null; }
+
+// Owner-authored booking-form questions (tenant-scoped, §9).
+export interface IntakeQuestion {
+  id: string; label: string; type: string; required: boolean;
+  options: string[]; placeholder: string | null;
+}
+export const INTAKE_TYPES: { type: string; label: string; hasOptions?: boolean }[] = [
+  { type: "text", label: "Short answer" },
+  { type: "textarea", label: "Paragraph" },
+  { type: "select", label: "Dropdown", hasOptions: true },
+  { type: "radio", label: "Single choice", hasOptions: true },
+  { type: "checkbox", label: "Multiple choice", hasOptions: true },
+  { type: "phone", label: "Phone" },
+  { type: "url", label: "Website / URL" },
+  { type: "number", label: "Number" },
+];
+function normalizeIntake(raw: unknown): IntakeQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((q, i) => {
+    const o = (q && typeof q === "object" ? q : {}) as Record<string, unknown>;
+    return {
+      id: String(o.id ?? `q${i}`),
+      label: String(o.label ?? ""),
+      type: INTAKE_TYPES.some((t) => t.type === o.type) ? String(o.type) : "text",
+      required: o.required === true,
+      options: Array.isArray(o.options) ? o.options.map((x) => String(x)) : [],
+      placeholder: typeof o.placeholder === "string" ? o.placeholder : null,
+    };
+  });
+}
+// Stable-ish id for a new question without pulling in a uuid dep.
+function newQuestionId(): string {
+  return `q_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`;
+}
 
 export interface NotifyReminder { channel: string; offset_min: number; }
 // followup_offset_min = minutes AFTER the meeting ends to send the follow-up.
@@ -112,7 +147,7 @@ const DEFAULT_AVAIL: AvailState = Object.fromEntries(
   [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { enabled: d >= 1 && d <= 5, start: "09:00", end: "17:00" }]),
 );
 
-const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, notify_config";
+const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, notify_config";
 
 // Meeting methods the owner can offer. Enable one → fixed; enable several → the
 // invitee chooses on the booking page. in_person/custom carry a value field.
@@ -248,6 +283,85 @@ function BuilderSection({ title, description, children }: { title: string; descr
       </div>
       {children}
     </section>
+  );
+}
+
+// Owner-facing editor for the booking form's custom questions. Each row edits
+// one question inline; choice types (dropdown/single/multiple) reveal an
+// options field. Reorder + delete per row. Kept dependency-free (§9 tenant-scoped).
+function IntakeQuestionsEditor({ questions, onChange }: { questions: IntakeQuestion[]; onChange: (q: IntakeQuestion[]) => void }) {
+  const patch = (i: number, up: Partial<IntakeQuestion>) =>
+    onChange(questions.map((q, idx) => (idx === i ? { ...q, ...up } : q)));
+  const remove = (i: number) => onChange(questions.filter((_, idx) => idx !== i));
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= questions.length) return;
+    const next = [...questions];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  };
+  const add = () =>
+    onChange([...questions, { id: newQuestionId(), label: "", type: "text", required: false, options: [], placeholder: null }]);
+
+  return (
+    <div className="space-y-3">
+      {questions.length === 0 && (
+        <p className="text-xs text-muted-foreground">No extra questions yet — guests just give their name, email, and phone.</p>
+      )}
+      {questions.map((q, i) => {
+        const hasOptions = INTAKE_TYPES.find((t) => t.type === q.type)?.hasOptions;
+        return (
+          <div key={q.id} className="rounded-lg border p-3 space-y-2.5">
+            <div className="flex items-start gap-2">
+              <Input
+                value={q.label}
+                placeholder="Question (e.g. What's your biggest challenge right now?)"
+                onChange={(e) => patch(i, { label: e.target.value })}
+                className="h-8"
+              />
+              <div className="flex items-center gap-0.5 flex-shrink-0">
+                <button type="button" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}
+                  className="h-8 w-7 grid place-items-center rounded-md hover:bg-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
+                <button type="button" aria-label="Move down" disabled={i === questions.length - 1} onClick={() => move(i, 1)}
+                  className="h-8 w-7 grid place-items-center rounded-md hover:bg-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
+                <button type="button" aria-label="Remove question" onClick={() => remove(i)}
+                  className="h-8 w-7 grid place-items-center rounded-md hover:bg-destructive/10 text-destructive"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={q.type} onValueChange={(v) => patch(i, { type: v, options: INTAKE_TYPES.find((t) => t.type === v)?.hasOptions ? q.options : [] })}>
+                <SelectTrigger className="h-8 w-40"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {INTAKE_TYPES.map((t) => <SelectItem key={t.type} value={t.type}>{t.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Switch checked={q.required} onCheckedChange={(v) => patch(i, { required: v })} />
+                Required
+              </label>
+            </div>
+            {hasOptions && (
+              <div className="space-y-1">
+                <Label className="text-xs">Options (one per line)</Label>
+                <Textarea
+                  rows={3}
+                  value={q.options.join("\n")}
+                  placeholder={"Option A\nOption B\nOption C"}
+                  onChange={(e) => patch(i, { options: e.target.value.split("\n").map((s) => s.replace(/\r$/, "")) })}
+                  className="text-sm"
+                />
+                {q.options.filter((o) => o.trim()).length === 0 && (
+                  <p className="text-xs text-amber-600">Add at least one option — a choice question with none is dropped on save.</p>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <Button type="button" variant="outline" size="sm" onClick={add} className="gap-1.5">
+        <Plus className="h-4 w-4" /> Add question
+      </Button>
+    </div>
   );
 }
 
@@ -728,6 +842,7 @@ function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_
     location_type: "phone",
     location_value: "",
     location_options: [{ type: "phone", value: null }],
+    intake_questions: [],
     notify_config: { ...DEFAULT_NOTIFY, reminders: [...DEFAULT_NOTIFY.reminders] },
   };
 }
@@ -768,6 +883,7 @@ function CalendarBuilderSheet({
         theme: c.theme || "light", subtitle: c.subtitle ?? "", show_company_name: c.show_company_name !== false,
         location_type: c.location_type || "phone", location_value: c.location_value ?? "",
         location_options: normalizeLocationOptions(c.location_options),
+        intake_questions: normalizeIntake(c.intake_questions),
         notify_config: normalizeNotify(c.notify_config),
       });
       setAvail(jsonToAvail(c.availability_json));
@@ -808,6 +924,22 @@ function CalendarBuilderSheet({
       // Keep the legacy single columns in sync: 1 method → that method; several → ask_invitee.
       location_type: draft.location_options.length > 1 ? "ask_invitee" : (draft.location_options[0]?.type ?? "phone"),
       location_value: draft.location_options.length === 1 ? (draft.location_options[0]?.value ?? null) : null,
+      // Drop blank-labeled questions; trim options; choice types keep only real
+      // options. A choice question with no options is unanswerable (would make
+      // the page unbookable), so drop it rather than persist a dead field.
+      intake_questions: draft.intake_questions
+        .map((q) => {
+          const isChoice = !!INTAKE_TYPES.find((t) => t.type === q.type)?.hasOptions;
+          return {
+            ...q,
+            label: q.label.trim(),
+            options: isChoice ? q.options.map((o) => o.trim()).filter(Boolean) : [],
+            placeholder: (q.placeholder ?? "").trim() || null,
+            _isChoice: isChoice,
+          };
+        })
+        .filter((q) => q.label.length > 0 && !(q._isChoice && q.options.length === 0))
+        .map(({ _isChoice, ...q }) => q),
       notify_config: draft.notify_config,
     };
 
@@ -1140,6 +1272,14 @@ function CalendarBuilderSheet({
                 onChange={(e) => set("redirect_url", e.target.value)} />
               <p className="text-xs text-muted-foreground">Send guests here once they book — your community, a thank-you page, wherever you want. Leave blank to show the built-in confirmation.</p>
             </div>
+          </BuilderSection>
+
+          {/* 5½ — Custom intake questions */}
+          <BuilderSection title="Intake questions" description="Ask what you need to know before the meeting. Answers arrive with each booking.">
+            <IntakeQuestionsEditor
+              questions={draft.intake_questions}
+              onChange={(qs) => set("intake_questions", qs)}
+            />
           </BuilderSection>
 
           {/* 6 — Notifications */}
