@@ -17,6 +17,7 @@ import { Helmet } from "react-helmet-async";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { ContextualConsentDialog } from "@/components/legal/ContextualConsentDialog";
+import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
 
 const STAFF_ROLES = new Set([
   "admin","owner","super_admin","moderator","coach","sales_rep","broker","cs_rep","finance","viewer"
@@ -93,7 +94,12 @@ export default function JoinWorkspace() {
       const { error: e } = await supabase.rpc("accept_tenant_invite", { _token: token });
       if (e) throw e;
       toast.success(`Welcome to ${info?.tenant_name ?? "your workspace"}`);
-      navigate("/app");
+      // accept_tenant_invite just granted a role (client or member) + set the
+      // active tenant mid-session. Hard-navigate via resolveLandingRoute so a
+      // customer lands in their portal/onboarding and staff land in /admin,
+      // with route guards + role reads refreshed.
+      const target = await resolveLandingRoute(auth.user.id);
+      window.location.assign(target);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not accept invite");
     } finally {
