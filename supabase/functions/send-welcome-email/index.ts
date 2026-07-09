@@ -4,6 +4,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
+// Welcome / onboarding email — sends from hello@ on the verified domain.
+const FROM = Deno.env.get("WELCOME_EMAIL_FROM") ?? "Paige Agent AI <hello@paigeagent.ai>";
+const APP_URL = "https://app.paigeagent.ai";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -12,7 +16,11 @@ const corsHeaders = {
 interface WelcomeEmailRequest {
   fullName: string;
   email: string;
-  goals: string[];
+  goals?: string[];
+}
+
+function esc(s: string): string {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -23,7 +31,6 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     console.log("Welcome email function invoked");
 
-    // Authenticate user
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? ""
@@ -34,98 +41,66 @@ const handler = async (req: Request): Promise<Response> => {
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
-    
+
     if (userError || !user) {
       console.error("Authentication error:", userError);
       throw new Error("User not authenticated");
     }
 
-    const { fullName, email, goals }: WelcomeEmailRequest = await req.json();
+    const { fullName, email }: WelcomeEmailRequest = await req.json();
     console.log("Sending welcome email to:", email);
-
-    const goalsText = goals.map(g => {
-      switch(g) {
-        case 'repair': return '🎯 Repair & Optimize Personal Credit';
-        case 'build': return '📈 Build Business Credit';
-        case 'funding': return '💰 Access Funding & Financing';
-        default: return g;
-      }
-    }).join('<br/>');
+    const name = esc(fullName || "there");
 
     const emailResponse = await resend.emails.send({
-      from: "PaigeAgent.ai <onboarding@resend.dev>",
+      from: FROM,
       to: [email],
-      subject: "Welcome to PaigeAgent.ai! 🎉",
-      html: `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background: linear-gradient(135deg, #CFAE70 0%, #B8944D 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-              .content { background: #ffffff; padding: 30px; border: 1px solid #e5e5e5; border-top: none; }
-              .goals { background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #CFAE70; }
-              .cta { text-align: center; margin: 30px 0; }
-              .button { background: linear-gradient(135deg, #CFAE70 0%, #B8944D 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold; }
-              .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1 style="margin: 0;">Welcome to PaigeAgent.ai!</h1>
-                <p style="margin: 10px 0 0 0; opacity: 0.9;">Your AI-Powered Credit & Business Finance Companion</p>
+      subject: "Welcome to Paige Agent AI",
+      html: `<!doctype html><html><head><meta charset="utf-8"></head>
+        <body style="margin:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:28px 0;"><tr><td align="center">
+          <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#fff;border:1px solid #e7e8ec;border-radius:16px;overflow:hidden;">
+            <tr><td style="height:5px;background:linear-gradient(90deg,#EBB94C,#7A67E8);"></td></tr>
+            <tr><td style="padding:32px 36px 8px;">
+              <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#98a0ae;font-weight:bold;">Paige Agent AI</div>
+              <h1 style="color:#101828;font-size:23px;margin:12px 0 6px;">Welcome, ${name}.</h1>
+              <p style="color:#475467;font-size:15px;line-height:1.65;margin:0 0 18px;">
+                You just hired Paige. She runs the parts of your coaching practice you used to dread —
+                client management, follow-ups, onboarding, scheduling, and the daily brief — so you get
+                your time back and every client feels looked after.
+              </p>
+              <div style="background:#faf7ef;border-left:4px solid #EBB94C;border-radius:8px;padding:18px 20px;margin:18px 0;">
+                <div style="font-size:13px;font-weight:700;color:#101828;margin-bottom:10px;">Get started in three moves</div>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#344054;line-height:1.6;">
+                  <tr><td style="padding:4px 0;"><strong>1. Set up your workspace</strong> — your brand, voice, and the way you work.</td></tr>
+                  <tr><td style="padding:4px 0;"><strong>2. Connect your calendar</strong> — Paige books, confirms, and reminds for you.</td></tr>
+                  <tr><td style="padding:4px 0;"><strong>3. Let Paige take the first pass</strong> — she drafts your follow-ups and welcome sequences for your approval.</td></tr>
+                </table>
               </div>
-              <div class="content">
-                <h2>Hi ${fullName},</h2>
-                <p>Thank you for joining PaigeAgent.ai! We're excited to help you achieve your financial goals.</p>
-                
-                <div class="goals">
-                  <h3 style="margin-top: 0;">Your Selected Goals:</h3>
-                  <p style="margin: 0;">${goalsText}</p>
-                </div>
-
-                <h3>What's Next?</h3>
-                <ul>
-                  <li><strong>Connect Your Bank Accounts</strong> - Link your accounts for personalized insights</li>
-                  <li><strong>Review Your Credit</strong> - Get started with our A.C.C.E.L. credit repair program</li>
-                  <li><strong>Explore B.U.I.L.D.</strong> - Begin building your business credit profile</li>
-                  <li><strong>Chat with PaigeAgent</strong> - Get AI-powered guidance anytime</li>
-                </ul>
-
-                <div class="cta">
-                  <a href="${Deno.env.get('SUPABASE_URL')?.replace('supabase.co', 'lovable.app') || 'https://paige-ai.lovable.app'}/dashboard" class="button">
-                    Go to Dashboard
-                  </a>
-                </div>
-
-                <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e5e5;">
-                  Need help? Reply to this email or visit our Learning Vault for guides and resources.
-                </p>
+              <div style="text-align:center;margin:26px 0 8px;">
+                <a href="${APP_URL}/app" style="display:inline-block;background:linear-gradient(90deg,#EBB94C,#F2CE77);color:#241645;font-weight:bold;text-decoration:none;padding:13px 30px;border-radius:999px;font-size:15px;">
+                  Open your workspace
+                </a>
               </div>
-              <div class="footer">
-                <p>© 2025 PaigeAgent.ai - Mogul Maker Academy<br/>
-                Empowering your credit and business success</p>
-              </div>
-            </div>
-          </body>
-        </html>
-      `,
+            </td></tr>
+            <tr><td style="padding:18px 36px 28px;border-top:1px solid #eef0f3;">
+              <p style="color:#98a0ae;font-size:12.5px;margin:0;">Questions? Just reply to this email — it comes straight to the team.</p>
+            </td></tr>
+          </table>
+          <p style="color:#b3b8c2;font-size:11px;margin:16px 0 0;">© 2026 Paige Agent AI</p>
+        </td></tr></table></body></html>`,
     });
 
     console.log("Email sent successfully:", emailResponse);
 
-    // Create in-app notification
+    // Create in-app notification (coaching-only).
     const { error: notifError } = await supabaseClient
       .from("notifications")
       .insert({
         user_id: user.id,
         type: "welcome",
-        title: "Welcome to PaigeAgent.ai! 🎉",
-        message: `Hi ${fullName}! We're excited to help you achieve your financial goals. Check out your dashboard to get started.`,
-        action_url: "/dashboard",
+        title: "Welcome to Paige Agent AI",
+        message: `Hi ${fullName || "there"} — Paige is ready. Open your workspace to set up your brand and let her take the first pass at your follow-ups.`,
+        action_url: "/app",
       });
 
     if (notifError) {

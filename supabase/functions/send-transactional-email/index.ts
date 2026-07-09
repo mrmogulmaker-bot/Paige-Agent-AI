@@ -314,7 +314,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  let resolvedFrom = `${SITE_NAME} <noreply@${FROM_DOMAIN}>`
+  let resolvedFrom = `${SITE_NAME} <notifications@${FROM_DOMAIN}>`
   let resolvedReplyTo: string | null = null
   if (tenantId) {
     const { data: senderRow } = await supabase.rpc('tenant_sender_identity', {
@@ -332,7 +332,7 @@ Deno.serve(async (req) => {
         // Address domain isn't verified for sending, but we can still honor
         // the tenant's display name by swapping in the aligned fallback address.
         const displayName = sender.from_name || sender.tenant_name || SITE_NAME
-        resolvedFrom = `${displayName} <noreply@${FROM_DOMAIN}>`
+        resolvedFrom = `${displayName} <notifications@${FROM_DOMAIN}>`
         resolvedReplyTo = sender.reply_to ?? null
         console.warn('tenant from-address unaligned — kept tenant display name with default address', {
           tenant_id: tenantId,

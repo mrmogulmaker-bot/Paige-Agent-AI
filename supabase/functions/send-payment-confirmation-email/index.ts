@@ -4,6 +4,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
+// Billing / receipts — sends from billing@ on the verified domain.
+const FROM = Deno.env.get("BILLING_EMAIL_FROM") ?? "Paige Agent AI <billing@paigeagent.ai>";
+const APP_URL = "https://app.paigeagent.ai";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -13,6 +17,10 @@ interface PaymentConfirmationRequest {
   planName: string;
   amount: number;
   subscriptionEnd?: string;
+}
+
+function esc(s: string): string {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -33,7 +41,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
-    
+
     if (userError || !user) {
       console.error("Authentication error:", userError);
       throw new Error("User not authenticated");
@@ -42,7 +50,6 @@ const handler = async (req: Request): Promise<Response> => {
     const { planName, amount, subscriptionEnd }: PaymentConfirmationRequest = await req.json();
     console.log("Sending payment confirmation to:", user.email);
 
-    // Get user profile
     const { data: profile } = await supabaseClient
       .from("profiles")
       .select("full_name")
@@ -53,79 +60,48 @@ const handler = async (req: Request): Promise<Response> => {
       style: 'currency',
       currency: 'USD'
     }).format(amount / 100);
+    const name = esc(profile?.full_name || "there");
+    const nextDate = subscriptionEnd
+      ? new Date(subscriptionEnd).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : null;
 
     const emailResponse = await resend.emails.send({
-      from: "PaigeAgent.ai <billing@resend.dev>",
+      from: FROM,
       to: [user.email!],
-      subject: "Payment Confirmed - PaigeAgent.ai",
-      html: `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <style>
-              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { background: linear-gradient(135deg, #CFAE70 0%, #B8944D 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-              .content { background: #ffffff; padding: 30px; border: 1px solid #e5e5e5; border-top: none; }
-              .payment-summary { background: #f9f9f9; padding: 20px; border-radius: 8px; margin: 20px 0; }
-              .amount { font-size: 32px; font-weight: bold; color: #22c55e; text-align: center; margin: 20px 0; }
-              .cta { text-align: center; margin: 30px 0; }
-              .button { background: linear-gradient(135deg, #CFAE70 0%, #B8944D 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold; }
-              .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
-              .checkmark { width: 60px; height: 60px; background: #22c55e; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1 style="margin: 0;">Payment Successful!</h1>
+      subject: "Payment confirmed — Paige Agent AI",
+      html: `<!doctype html><html><head><meta charset="utf-8"></head>
+        <body style="margin:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:28px 0;"><tr><td align="center">
+          <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#fff;border:1px solid #e7e8ec;border-radius:16px;overflow:hidden;">
+            <tr><td style="height:5px;background:linear-gradient(90deg,#EBB94C,#7A67E8);"></td></tr>
+            <tr><td style="padding:32px 36px 8px;">
+              <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#98a0ae;font-weight:bold;">Paige Agent AI</div>
+              <h1 style="color:#101828;font-size:22px;margin:12px 0 4px;">Payment confirmed</h1>
+              <p style="color:#475467;font-size:15px;line-height:1.6;margin:0 0 20px;">Thanks, ${name} — your subscription is active.</p>
+              <div style="font-size:34px;font-weight:800;color:#101828;text-align:center;margin:8px 0 20px;">${formattedAmount}</div>
+              <div style="background:#f7f8fa;border:1px solid #eef0f3;border-radius:10px;padding:18px 20px;margin:0 0 20px;font-size:14px;color:#344054;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr><td style="padding:5px 0;color:#98a0ae;width:130px;">Plan</td><td style="padding:5px 0;font-weight:600;">${esc(planName)}</td></tr>
+                  <tr><td style="padding:5px 0;color:#98a0ae;">Amount</td><td style="padding:5px 0;font-weight:600;">${formattedAmount}</td></tr>
+                  ${nextDate ? `<tr><td style="padding:5px 0;color:#98a0ae;">Next billing date</td><td style="padding:5px 0;">${esc(nextDate)}</td></tr>` : ""}
+                </table>
               </div>
-              <div class="content">
-                <div class="checkmark">
-                  <span style="color: white; font-size: 36px;">✓</span>
-                </div>
-
-                <h2 style="text-align: center;">Thank you for your payment</h2>
-                <p style="text-align: center;">Hi ${profile?.full_name || 'there'}, your subscription has been confirmed.</p>
-                
-                <div class="amount">${formattedAmount}</div>
-
-                <div class="payment-summary">
-                  <p style="margin: 0 0 10px 0;"><strong>Plan:</strong> ${planName}</p>
-                  <p style="margin: 0 0 10px 0;"><strong>Amount:</strong> ${formattedAmount}</p>
-                  ${subscriptionEnd ? `<p style="margin: 0;"><strong>Next billing date:</strong> ${new Date(subscriptionEnd).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>` : ''}
-                </div>
-
-                <div style="background: #e0f2fe; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 4px;">
-                  <p style="margin: 0; color: #1e40af;"><strong>What's included:</strong></p>
-                  <ul style="margin: 10px 0 0 0; color: #1e40af;">
-                    <li>Full access to A.C.C.E.L. credit repair program</li>
-                    <li>B.U.I.L.D. business credit building tools</li>
-                    <li>Unlimited AI chat with PaigeAgent</li>
-                    <li>Bank account integration & insights</li>
-                    <li>Document management & storage</li>
-                  </ul>
-                </div>
-
-                <div class="cta">
-                  <a href="${Deno.env.get('SUPABASE_URL')?.replace('supabase.co', 'lovable.app') || 'https://paige-ai.lovable.app'}/dashboard" class="button">
-                    Go to Dashboard
-                  </a>
-                </div>
-
-                <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e5e5; font-size: 14px; color: #666;">
-                  You can manage your subscription anytime from your account settings. Need help? Contact our support team.
-                </p>
+              <p style="color:#475467;font-size:14px;line-height:1.6;margin:0 0 8px;">
+                Your full workspace is unlocked — Paige is running your pipeline, follow-ups, onboarding,
+                scheduling, and the daily brief.
+              </p>
+              <div style="text-align:center;margin:24px 0 8px;">
+                <a href="${APP_URL}/app" style="display:inline-block;background:linear-gradient(90deg,#EBB94C,#F2CE77);color:#241645;font-weight:bold;text-decoration:none;padding:13px 30px;border-radius:999px;font-size:15px;">
+                  Open your workspace
+                </a>
               </div>
-              <div class="footer">
-                <p>© 2025 PaigeAgent.ai - Mogul Maker Academy<br/>
-                This email confirms your payment. Keep it for your records.</p>
-              </div>
-            </div>
-          </body>
-        </html>
-      `,
+            </td></tr>
+            <tr><td style="padding:18px 36px 28px;border-top:1px solid #eef0f3;">
+              <p style="color:#98a0ae;font-size:12.5px;margin:0;">Manage your subscription anytime in account settings. Keep this email for your records — reply if anything looks off.</p>
+            </td></tr>
+          </table>
+          <p style="color:#b3b8c2;font-size:11px;margin:16px 0 0;">© 2026 Paige Agent AI</p>
+        </td></tr></table></body></html>`,
     });
 
     console.log("Payment confirmation email sent successfully:", emailResponse);
