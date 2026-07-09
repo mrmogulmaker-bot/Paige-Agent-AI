@@ -568,6 +568,41 @@ export type Database = {
           },
         ]
       }
+      booking_notifications_sent: {
+        Row: {
+          booking_id: string
+          id: string
+          notif_key: string
+          recipient_email: string | null
+          sent_at: string
+          status: string
+        }
+        Insert: {
+          booking_id: string
+          id?: string
+          notif_key: string
+          recipient_email?: string | null
+          sent_at?: string
+          status?: string
+        }
+        Update: {
+          booking_id?: string
+          id?: string
+          notif_key?: string
+          recipient_email?: string | null
+          sent_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_notifications_sent_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "internal_bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       broker_client_relationships: {
         Row: {
           added_at: string
@@ -2127,6 +2162,205 @@ export type Database = {
             columns: ["parent_business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendar_groups: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          enabled: boolean
+          id: string
+          name: string
+          slug: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          name: string
+          slug: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          name?: string
+          slug?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_groups_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendar_hosts: {
+        Row: {
+          calendar_id: string
+          created_at: string
+          priority: number
+          user_id: string
+        }
+        Insert: {
+          calendar_id: string
+          created_at?: string
+          priority?: number
+          user_id: string
+        }
+        Update: {
+          calendar_id?: string
+          created_at?: string
+          priority?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_hosts_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "calendars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendars: {
+        Row: {
+          accent: string | null
+          appointment_types: Json
+          availability_json: Json | null
+          booking_horizon_days: number
+          buffer_after_min: number
+          buffer_before_min: number
+          capacity: number
+          color: string | null
+          cover_url: string | null
+          created_at: string
+          created_by: string | null
+          date_overrides: Json
+          description: string | null
+          duration_min: number
+          enabled: boolean
+          group_id: string | null
+          id: string
+          intake_questions: Json
+          location_options: Json | null
+          location_type: string
+          location_value: string | null
+          logo_url: string | null
+          min_notice_min: number
+          notify_config: Json
+          redirect_url: string | null
+          show_company_name: boolean
+          slug: string
+          subtitle: string | null
+          tenant_id: string | null
+          theme: string
+          timezone: string
+          title: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          accent?: string | null
+          appointment_types?: Json
+          availability_json?: Json | null
+          booking_horizon_days?: number
+          buffer_after_min?: number
+          buffer_before_min?: number
+          capacity?: number
+          color?: string | null
+          cover_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          date_overrides?: Json
+          description?: string | null
+          duration_min?: number
+          enabled?: boolean
+          group_id?: string | null
+          id?: string
+          intake_questions?: Json
+          location_options?: Json | null
+          location_type?: string
+          location_value?: string | null
+          logo_url?: string | null
+          min_notice_min?: number
+          notify_config?: Json
+          redirect_url?: string | null
+          show_company_name?: boolean
+          slug: string
+          subtitle?: string | null
+          tenant_id?: string | null
+          theme?: string
+          timezone?: string
+          title?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          accent?: string | null
+          appointment_types?: Json
+          availability_json?: Json | null
+          booking_horizon_days?: number
+          buffer_after_min?: number
+          buffer_before_min?: number
+          capacity?: number
+          color?: string | null
+          cover_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          date_overrides?: Json
+          description?: string | null
+          duration_min?: number
+          enabled?: boolean
+          group_id?: string | null
+          id?: string
+          intake_questions?: Json
+          location_options?: Json | null
+          location_type?: string
+          location_value?: string | null
+          logo_url?: string | null
+          min_notice_min?: number
+          notify_config?: Json
+          redirect_url?: string | null
+          show_company_name?: boolean
+          slug?: string
+          subtitle?: string | null
+          tenant_id?: string | null
+          theme?: string
+          timezone?: string
+          title?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendars_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "calendar_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendars_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -6223,9 +6457,15 @@ export type Database = {
       }
       internal_bookings: {
         Row: {
+          appointment_type: Json | null
+          booking_kind: string
+          calendar_id: string | null
           cancellation_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null
+          capacity: number | null
+          class_session_id: string | null
+          collective_group_id: string | null
           contact_id: string | null
           created_at: string
           end_at: string
@@ -6236,9 +6476,13 @@ export type Database = {
           guest_phone: string | null
           host_user_id: string
           id: string
+          intake_answers: Json | null
           location: string | null
+          location_type: string | null
+          location_value: string | null
           meeting_link: string | null
           notes: string | null
+          reminder_state: Json
           source: string
           start_at: string
           status: string
@@ -6248,9 +6492,15 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          appointment_type?: Json | null
+          booking_kind?: string
+          calendar_id?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
+          capacity?: number | null
+          class_session_id?: string | null
+          collective_group_id?: string | null
           contact_id?: string | null
           created_at?: string
           end_at: string
@@ -6261,9 +6511,13 @@ export type Database = {
           guest_phone?: string | null
           host_user_id: string
           id?: string
+          intake_answers?: Json | null
           location?: string | null
+          location_type?: string | null
+          location_value?: string | null
           meeting_link?: string | null
           notes?: string | null
+          reminder_state?: Json
           source?: string
           start_at: string
           status?: string
@@ -6273,9 +6527,15 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          appointment_type?: Json | null
+          booking_kind?: string
+          calendar_id?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
+          capacity?: number | null
+          class_session_id?: string | null
+          collective_group_id?: string | null
           contact_id?: string | null
           created_at?: string
           end_at?: string
@@ -6286,9 +6546,13 @@ export type Database = {
           guest_phone?: string | null
           host_user_id?: string
           id?: string
+          intake_answers?: Json | null
           location?: string | null
+          location_type?: string | null
+          location_value?: string | null
           meeting_link?: string | null
           notes?: string | null
+          reminder_state?: Json
           source?: string
           start_at?: string
           status?: string
@@ -6298,6 +6562,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "internal_bookings_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "calendars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_bookings_class_session_id_fkey"
+            columns: ["class_session_id"]
+            isOneToOne: false
+            referencedRelation: "internal_bookings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "internal_bookings_contact_id_fkey"
             columns: ["contact_id"]
@@ -11334,6 +11612,45 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_user_id: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          token: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          token?: string
+        }
+        Relationships: []
+      }
       platform_invoices: {
         Row: {
           created_at: string
@@ -13386,8 +13703,11 @@ export type Database = {
           apple_caldav_username: string | null
           apple_last_sync_at: string | null
           availability_json: Json
+          booking_page_accent: string | null
+          booking_page_description: string | null
           booking_page_enabled: boolean
           booking_page_slug: string | null
+          booking_page_title: string | null
           buffer_after_min: number
           buffer_before_min: number
           created_at: string
@@ -13411,8 +13731,11 @@ export type Database = {
           apple_caldav_username?: string | null
           apple_last_sync_at?: string | null
           availability_json?: Json
+          booking_page_accent?: string | null
+          booking_page_description?: string | null
           booking_page_enabled?: boolean
           booking_page_slug?: string | null
+          booking_page_title?: string | null
           buffer_after_min?: number
           buffer_before_min?: number
           created_at?: string
@@ -13436,8 +13759,11 @@ export type Database = {
           apple_caldav_username?: string | null
           apple_last_sync_at?: string | null
           availability_json?: Json
+          booking_page_accent?: string | null
+          booking_page_description?: string | null
           booking_page_enabled?: boolean
           booking_page_slug?: string | null
+          booking_page_title?: string | null
           buffer_after_min?: number
           buffer_before_min?: number
           created_at?: string
@@ -15014,6 +15340,7 @@ export type Database = {
       tenants: {
         Row: {
           account_number_prefix: string
+          account_type: string
           automation_webhook_url_encrypted: string | null
           brand: Json
           created_at: string
@@ -15036,6 +15363,7 @@ export type Database = {
         }
         Insert: {
           account_number_prefix: string
+          account_type?: string
           automation_webhook_url_encrypted?: string | null
           brand?: Json
           created_at?: string
@@ -15058,6 +15386,7 @@ export type Database = {
         }
         Update: {
           account_number_prefix?: string
+          account_type?: string
           automation_webhook_url_encrypted?: string | null
           brand?: Json
           created_at?: string
@@ -16057,6 +16386,7 @@ export type Database = {
         Args: { _token: string; _user_id: string }
         Returns: Json
       }
+      accept_platform_invite: { Args: { _token: string }; Returns: Json }
       accept_tenant_invite: { Args: { _token: string }; Returns: string }
       admin_bulk_assign_coach: {
         Args: { _client_ids: string[]; _coach: string }
@@ -16150,6 +16480,7 @@ export type Database = {
         Args: { _contact_id: string; _user_id: string }
         Returns: boolean
       }
+      can_manage_calendar: { Args: { _cal: string }; Returns: boolean }
       change_user_role: {
         Args: {
           _from_role: Database["public"]["Enums"]["app_role"]
@@ -16231,6 +16562,129 @@ export type Database = {
       compute_contact_readiness: {
         Args: { _contact_id: string }
         Returns: number
+      }
+      create_class_booking: {
+        Args: {
+          _calendar_id: string
+          _capacity: number
+          _contact_id?: string
+          _end_at: string
+          _guest_email: string
+          _guest_name: string
+          _guest_phone: string
+          _host_user_id: string
+          _intake_answers: Json
+          _location_type: string
+          _location_value: string
+          _notes: string
+          _source: string
+          _start_at: string
+          _tenant_id: string
+          _timezone: string
+          _title: string
+        }
+        Returns: {
+          appointment_type: Json | null
+          booking_kind: string
+          calendar_id: string | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          capacity: number | null
+          class_session_id: string | null
+          collective_group_id: string | null
+          contact_id: string | null
+          created_at: string
+          end_at: string
+          external_calendar_id: string | null
+          external_event_id: string | null
+          guest_email: string | null
+          guest_name: string | null
+          guest_phone: string | null
+          host_user_id: string
+          id: string
+          intake_answers: Json | null
+          location: string | null
+          location_type: string | null
+          location_value: string | null
+          meeting_link: string | null
+          notes: string | null
+          reminder_state: Json
+          source: string
+          start_at: string
+          status: string
+          tenant_id: string | null
+          timezone: string
+          title: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "internal_bookings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_platform_invite: {
+        Args: {
+          _email: string
+          _role?: Database["public"]["Enums"]["app_role"]
+        }
+        Returns: {
+          accepted_at: string | null
+          accepted_user_id: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          token: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "platform_invites"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_subaccount: {
+        Args: {
+          _description?: string
+          _industry?: string
+          _name: string
+          _parent_tenant_id?: string
+        }
+        Returns: {
+          account_number_prefix: string
+          account_type: string
+          automation_webhook_url_encrypted: string | null
+          brand: Json
+          created_at: string
+          customer_limit: number
+          features: Json
+          id: string
+          name: string
+          owner_user_id: string | null
+          parent_tenant_id: string | null
+          plan_offer: string | null
+          platform_fee_bps: number
+          seat_limit: number
+          slug: string
+          status: Database["public"]["Enums"]["tenant_status"]
+          storefront_enabled: boolean
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       create_tenant_invite_token: {
         Args: {
@@ -16644,6 +17098,7 @@ export type Database = {
         Args: { _broker_id: string }
         Returns: boolean
       }
+      is_calendar_host: { Args: { _cal: string }; Returns: boolean }
       is_platform_admin: { Args: never; Returns: boolean }
       is_platform_owner:
         | { Args: never; Returns: boolean }
@@ -16666,9 +17121,27 @@ export type Database = {
         Args: { _tenant_id?: string; _user_id: string }
         Returns: boolean
       }
+      list_calendar_host_candidates: {
+        Args: { _cal: string }
+        Returns: {
+          full_name: string
+          is_host: boolean
+          priority: number
+          user_id: string
+        }[]
+      }
       list_pending_customer_actions: {
         Args: { p_contact_id: string }
         Returns: Json
+      }
+      list_platform_staff: {
+        Args: never
+        Returns: {
+          email: string
+          full_name: string
+          role: string
+          user_id: string
+        }[]
       }
       load_contact_context: {
         Args: { p_contact_id: string; p_scopes?: string[] }
@@ -16852,6 +17325,44 @@ export type Database = {
           picked: number
         }[]
       }
+      provision_tenant: {
+        Args: {
+          _account_type?: string
+          _description?: string
+          _industry?: string
+          _name: string
+          _team_size?: string
+        }
+        Returns: {
+          account_number_prefix: string
+          account_type: string
+          automation_webhook_url_encrypted: string | null
+          brand: Json
+          created_at: string
+          customer_limit: number
+          features: Json
+          id: string
+          name: string
+          owner_user_id: string | null
+          parent_tenant_id: string | null
+          plan_offer: string | null
+          platform_fee_bps: number
+          seat_limit: number
+          slug: string
+          status: Database["public"]["Enums"]["tenant_status"]
+          storefront_enabled: boolean
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       qb_decrypt_token: { Args: { _ciphertext: string }; Returns: string }
       qb_encrypt_token: { Args: { _plaintext: string }; Returns: string }
       rag_recalibrate_quality: {
@@ -16896,10 +17407,55 @@ export type Database = {
         Returns: Json
       }
       require_tenant_brand: { Args: { p_tenant_id: string }; Returns: Json }
+      reschedule_class_booking: {
+        Args: { _new_end_at: string; _new_start_at: string; _seat_id: string }
+        Returns: {
+          appointment_type: Json | null
+          booking_kind: string
+          calendar_id: string | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          capacity: number | null
+          class_session_id: string | null
+          collective_group_id: string | null
+          contact_id: string | null
+          created_at: string
+          end_at: string
+          external_calendar_id: string | null
+          external_event_id: string | null
+          guest_email: string | null
+          guest_name: string | null
+          guest_phone: string | null
+          host_user_id: string
+          id: string
+          intake_answers: Json | null
+          location: string | null
+          location_type: string | null
+          location_value: string | null
+          meeting_link: string | null
+          notes: string | null
+          reminder_state: Json
+          source: string
+          start_at: string
+          status: string
+          tenant_id: string | null
+          timezone: string
+          title: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "internal_bookings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       resolve_client_id_by_email: { Args: { _email: string }; Returns: string }
       revoke_platform_access:
         | { Args: { _user_id: string }; Returns: undefined }
         | { Args: { _reason?: string; _user_id: string }; Returns: undefined }
+      revoke_platform_admin: { Args: { _user_id: string }; Returns: undefined }
       scan_soft_subagents_for_tool_refs: {
         Args: never
         Returns: {
@@ -16914,6 +17470,38 @@ export type Database = {
           _stage_slug: string
         }
         Returns: Json
+      }
+      set_tenant_account_type: {
+        Args: { _account_type: string; _tenant_id: string }
+        Returns: {
+          account_number_prefix: string
+          account_type: string
+          automation_webhook_url_encrypted: string | null
+          brand: Json
+          created_at: string
+          customer_limit: number
+          features: Json
+          id: string
+          name: string
+          owner_user_id: string | null
+          parent_tenant_id: string | null
+          plan_offer: string | null
+          platform_fee_bps: number
+          seat_limit: number
+          slug: string
+          status: Database["public"]["Enums"]["tenant_status"]
+          storefront_enabled: boolean
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       ship_26_check_dependencies: { Args: never; Returns: Json }
       ship_26_drop_legacy_tables: { Args: { _force?: boolean }; Returns: Json }

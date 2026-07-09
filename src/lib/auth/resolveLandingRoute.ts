@@ -24,17 +24,26 @@ const PRE_PORTAL_STAGES = new Set(Object.keys(STAGE_TO_PATH));
  *   1. admin / coach   → /admin
  *   2. broker / broker_team_member → /broker/app
  *   3. linked client (clients.linked_user_id = user.id) → /onboard/<stage> or /workspace
- *   4. fallback → /app
+ *   4. tenant owner/member with no synced role yet → /admin
+ *   5. fallback (signed in, no role, no client link, no tenant) → /onboarding
+ *
+ * The front door provisions TENANTS now, and a tenant's own customers arrive
+ * only via invite (which links them as a `clients` row). So a signed-in user
+ * with no staff role, no client linkage, and no tenant membership is someone
+ * who created an account but hasn't stood up their workspace yet — send them
+ * to the onboarding gate to provision one, not into the consumer portal.
  */
 export async function resolveLandingRoute(userId: string): Promise<string> {
   try {
-    const [rolesRes, clientRes] = await Promise.all([
+    const [rolesRes, clientRes, ownedTenantRes, memberTenantRes] = await Promise.all([
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase
         .from("clients")
         .select("id, onboarding_stage")
         .eq("linked_user_id", userId)
         .maybeSingle(),
+      supabase.from("tenants").select("id").eq("owner_user_id", userId).limit(1).maybeSingle(),
+      supabase.from("tenant_members").select("tenant_id").eq("user_id", userId).limit(1).maybeSingle(),
     ]);
 
     let roles = (rolesRes.data || []).map((r: any) => r.role as string);
@@ -71,9 +80,19 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
       return "/app";
     }
 
-    return "/app";
+    // Owns or belongs to a tenant but the app_role sync hasn't landed yet
+    // (defensive — the provision trigger normally grants 'admin'): still a
+    // tenant operator, so send them to the tenant admin, not the consumer app.
+    if (ownedTenantRes.data?.id || memberTenantRes.data?.tenant_id) {
+      return "/admin";
+    }
+
+    // Signed in, but no workspace yet → stand one up.
+    return "/onboarding";
   } catch {
-    return "/app";
+    // On any failure, don't strand them in the consumer portal — the onboarding
+    // gate itself re-checks and forwards anyone who already has a workspace.
+    return "/onboarding";
   }
 }
 

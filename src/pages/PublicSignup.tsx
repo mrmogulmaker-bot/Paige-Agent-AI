@@ -1,11 +1,17 @@
 // Front-door signup — /signup
 //
 // This is where a NEW business owner (coach · consultant · agency · advisor)
-// starts their own Paige workspace. Signup provisions a brand-new TENANT and
-// makes the signer its owner (provision_tenant RPC), then drops them into their
-// own tenant admin. It is deliberately NOT the consumer/client intake — a
-// tenant's own customers join only through an invite link their tenant sends.
+// creates their account. Its ONLY job is authentication; the moment a session
+// exists it hands off to the /onboarding gate, which decides whether to
+// provision a workspace (tenant-less user) or forward an existing owner into
+// /admin. Keeping provisioning in exactly one place (Onboarding) means a
+// signed-in owner who revisits /signup can never be dropped back into the
+// "name your workspace" form or re-run provisioning.
+//
+// Phases: 'auth' (create account / sign in) → 'sent' (confirm your email, when
+// email confirmation is required). A confirmed session routes to /onboarding.
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { signUpWithReferral } from "@/lib/signUpWithReferral";
@@ -13,50 +19,39 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { PageHead } from "@/components/seo/PageHead";
 import {
   CommunicationsConsent, EMPTY_COMMS_CONSENT, type CommsConsentState,
 } from "@/components/legal/CommunicationsConsent";
 import { recordCommsConsent } from "@/lib/legal/recordCommsConsent";
-import { Loader2 } from "lucide-react";
-
-const TEAM_SIZES = ["Just me", "2–5", "6–20", "21+"] as const;
+import { MailCheck } from "lucide-react";
 
 export default function PublicSignup() {
   const { toast } = useToast();
+  const navigate = useNavigate();
 
-  // Phase: 'auth' (create account) → 'profile' (name the business) → provisioning.
-  const [phase, setPhase] = useState<"auth" | "profile">("auth");
+  const [phase, setPhase] = useState<"auth" | "sent">("auth");
   const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
   const [commsConsent, setCommsConsent] = useState<CommsConsentState>(EMPTY_COMMS_CONSENT);
 
-  // Business profile — the seed of the new tenant.
-  const [businessName, setBusinessName] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [teamSize, setTeamSize] = useState<string>("");
-  const [about, setAbout] = useState("");
-  const [creating, setCreating] = useState(false);
+  // Once authenticated, hand off to the onboarding gate (provision or forward).
+  const goOnboarding = () => navigate("/onboarding", { replace: true });
 
-  // If already signed in, skip straight to naming the workspace.
   useEffect(() => {
     let mounted = true;
     supabase.auth.getSession().then(({ data: s }) => {
       if (!mounted) return;
-      if (s.session?.user) {
-        setPhase("profile");
-        if (s.session.user.email && !email) setEmail(s.session.user.email);
-      }
+      if (s.session?.user) goOnboarding();
+      else if (s.session?.user?.email && !email) setEmail(s.session.user.email);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (session?.user) setPhase("profile");
+      // The confirmation-link click (or OAuth return) arrives here with a session.
+      if (session?.user) goOnboarding();
     });
     return () => { mounted = false; sub.subscription.unsubscribe(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -70,7 +65,7 @@ export default function PublicSignup() {
         toast({ title: "Sign-in failed", description: String(result.error.message || result.error), variant: "destructive" });
         setAuthBusy(false);
       }
-      // On redirect the browser leaves; the auth listener returns us to 'profile'.
+      // On redirect the browser leaves; the auth listener returns us to /onboarding.
     } catch (e) {
       toast({ title: "Sign-in failed", description: (e as Error).message, variant: "destructive" });
       setAuthBusy(false);
@@ -88,17 +83,14 @@ export default function PublicSignup() {
         await recordCommsConsent({ email, source: "tenant_signup", consent: commsConsent });
         const { data: sess } = await supabase.auth.getSession();
         if (sess.session?.user) {
-          setPhase("profile");
+          goOnboarding(); // confirmations disabled → straight to onboarding
         } else {
-          toast({
-            title: "Check your email",
-            description: "We sent a confirmation link. Click it, then come back to name your workspace.",
-          });
+          setPhase("sent"); // confirmation required → show "check your email"
         }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        setPhase("profile");
+        goOnboarding();
       }
     } catch (e) {
       toast({ title: "Couldn't continue", description: (e as Error).message, variant: "destructive" });
@@ -107,37 +99,32 @@ export default function PublicSignup() {
     }
   };
 
-  const createWorkspace = async () => {
-    if (businessName.trim().length < 2) {
-      toast({ title: "Name your business", description: "This becomes your workspace.", variant: "destructive" });
-      return;
-    }
-    setCreating(true);
+  const resendConfirmation = async () => {
+    setResendBusy(true);
     try {
-      const { data: sess } = await supabase.auth.getSession();
-      if (!sess.session) {
-        toast({ title: "Session expired", description: "Sign back in to finish.", variant: "destructive" });
-        setPhase("auth");
-        return;
-      }
-      const { error } = await supabase.rpc("provision_tenant", {
-        _name: businessName.trim(),
-        _industry: industry.trim() || null,
-        _team_size: teamSize || null,
-        _description: about.trim() || null,
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: { emailRedirectTo: window.location.origin + "/signup" },
       });
       if (error) throw error;
-      toast({ title: "Workspace ready", description: "Welcome to Paige — this is yours to run." });
-      // The owner was just granted the admin role + active tenant mid-session.
-      // Hard-navigate so the route guards and tenant context reload fresh and
-      // see them (a client-side navigate could read a login-time role cache).
-      window.location.assign("/admin");
+      toast({ title: "Sent again", description: `We re-sent the confirmation to ${email}.` });
     } catch (e) {
-      toast({ title: "Couldn't create your workspace", description: (e as Error).message, variant: "destructive" });
+      toast({ title: "Couldn't resend", description: (e as Error).message, variant: "destructive" });
     } finally {
-      setCreating(false);
+      setResendBusy(false);
     }
   };
+
+  const header = phase === "auth"
+    ? {
+        title: "Give your practice its own Paige.",
+        sub: "One workspace to run your clients — onboarding, follow-ups, and the daily brief. Set it up in under two minutes.",
+      }
+    : {
+        title: "Check your email.",
+        sub: "One click to confirm and you're in.",
+      };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -148,14 +135,8 @@ export default function PublicSignup() {
       />
       <div className="max-w-xl mx-auto px-6 py-12">
         <header className="mb-8">
-          <h1 className="font-[Playfair_Display] text-4xl md:text-5xl tracking-tight">
-            {phase === "auth" ? "Give your practice its own Paige." : "Name your workspace."}
-          </h1>
-          <p className="mt-3 text-muted-foreground">
-            {phase === "auth"
-              ? "One workspace to run your clients — onboarding, follow-ups, and the daily brief. Set it up in under two minutes."
-              : "This is the business Paige runs for you. You can invite your team and add sub-accounts once you're in."}
-          </p>
+          <h1 className="font-[Playfair_Display] text-4xl md:text-5xl tracking-tight">{header.title}</h1>
+          <p className="mt-3 text-muted-foreground">{header.sub}</p>
         </header>
 
         {phase === "auth" && (
@@ -214,37 +195,27 @@ export default function PublicSignup() {
           </div>
         )}
 
-        {phase === "profile" && (
-          <div className="rounded-xl border border-border bg-card p-6 md:p-8 space-y-5">
-            <div className="space-y-1.5">
-              <Label>Business / practice name *</Label>
-              <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Acme Advisory" autoFocus />
-              <p className="text-xs text-muted-foreground">This names your workspace and your clients' portal.</p>
+        {phase === "sent" && (
+          <div className="rounded-xl border border-border bg-card p-6 md:p-8 space-y-5 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <MailCheck className="h-7 w-7 text-primary" />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>What do you do?</Label>
-                <Input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="Coaching, consulting, agency…" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Team size</Label>
-                <Select value={teamSize} onValueChange={setTeamSize}>
-                  <SelectTrigger><SelectValue placeholder="Choose one" /></SelectTrigger>
-                  <SelectContent>
-                    {TEAM_SIZES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <p className="text-base">
+                We sent a confirmation link to <span className="font-medium text-foreground">{email || "your email"}</span>.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Click it to verify your account. This page picks up the moment you're confirmed — then you'll set up your workspace.
+              </p>
             </div>
-            <div className="space-y-1.5">
-              <Label>In a sentence, who do you help? (optional)</Label>
-              <Textarea rows={2} value={about} onChange={(e) => setAbout(e.target.value)}
-                placeholder="I help early-stage founders build repeatable sales systems." />
-              <p className="text-xs text-muted-foreground">Paige uses this to tailor your workspace. You can refine it later.</p>
+            <div className="space-y-2 pt-1">
+              <Button variant="outline" className="w-full h-11" onClick={resendConfirmation} disabled={resendBusy || !email}>
+                {resendBusy ? "Sending…" : "Resend confirmation email"}
+              </Button>
+              <button className="text-sm text-muted-foreground underline" onClick={() => setPhase("auth")}>
+                Use a different email
+              </button>
             </div>
-            <Button onClick={createWorkspace} disabled={creating || businessName.trim().length < 2} className="w-full h-11">
-              {creating ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating your workspace…</> : "Create my workspace"}
-            </Button>
           </div>
         )}
 

@@ -21,6 +21,9 @@ export interface TenantSummary {
   seat_limit: number;
   customer_limit: number;
   owner_user_id: string | null;
+  /** Capability flag: 'standalone' | 'agency' | 'enterprise'. Gates sub-accounts. */
+  account_type: string;
+  parent_tenant_id: string | null;
 }
 
 interface TenantContextState {
@@ -62,7 +65,7 @@ export function useTenantContext(): TenantContextState {
         // RLS already filters: platform staff see all, members see their own.
         supabase
           .from("tenants")
-          .select("id, slug, name, status, plan_offer, seat_limit, customer_limit, owner_user_id")
+          .select("id, slug, name, status, plan_offer, seat_limit, customer_limit, owner_user_id, account_type, parent_tenant_id")
           .order("created_at", { ascending: true }),
       ]);
 

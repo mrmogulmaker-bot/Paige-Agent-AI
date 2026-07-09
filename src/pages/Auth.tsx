@@ -346,7 +346,7 @@ const Auth = () => {
             <h2 className="text-4xl xl:text-5xl font-bold text-primary-foreground leading-[1.05] tracking-tight" style={{ fontFamily: HEAD }}>
               She runs your
               <br />
-              <span style={{ color: "#F0C86A" }}>coaching business.</span>
+              <span style={{ color: "#F0C86A" }}>business.</span>
             </h2>
             <p className="text-primary-foreground/60 text-base max-w-md leading-relaxed">
               You run the transformation. Paige handles the operations, follow-ups, and follow-through — so you deliver the outcomes only you can.
@@ -380,7 +380,7 @@ const Auth = () => {
               <Shield className="h-4 w-4 text-accent" />
             </div>
             <div>
-              <p className="text-xs font-medium text-primary-foreground/85">Built for coaching &amp; consulting practices</p>
+              <p className="text-xs font-medium text-primary-foreground/85">Built for coaches, consultants, agencies &amp; thought leaders</p>
               <p className="text-[11px] text-primary-foreground/55">256-bit encryption · your client data stays private</p>
             </div>
           </div>

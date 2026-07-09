@@ -57,6 +57,7 @@ const ManageBooking = lazyWithReload(() => import("./pages/ManageBooking"));
 const PaigeHome = lazyWithReload(() => import("./pages/PaigeHome"));
 const PremiumHero = lazyWithReload(() => import("./pages/PremiumHero"));
 const PublicSignup = lazyWithReload(() => import("./pages/PublicSignup"));
+const Onboarding = lazyWithReload(() => import("./pages/Onboarding"));
 const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
 const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
 const JoinWorkspace = lazyWithReload(() => import("./pages/JoinWorkspace"));
@@ -180,6 +181,7 @@ const App = () => (
             <Route path="/book/:slug" element={<PageSuspense><BookingPage /></PageSuspense>} />
             <Route path="/booking/manage" element={<PageSuspense><ManageBooking /></PageSuspense>} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
+            <Route path="/onboarding" element={<PageSuspense><Onboarding /></PageSuspense>} />
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
             <Route path="/accept-invite" element={<PageSuspense><AcceptInvite /></PageSuspense>} />
