@@ -42,6 +42,7 @@ type Hub = {
 
 const hubs: Hub[] = [
   { label: "Dashboard", href: "/admin", icon: BarChart3 },
+  { label: "Your Paige", href: "/admin/playbook", icon: Bot },
   {
     label: "Contacts",
     href: "/admin/contacts",

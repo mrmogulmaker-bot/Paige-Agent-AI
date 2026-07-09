@@ -43,6 +43,21 @@ const INDUSTRIES = [
   "Other",
 ] as const;
 
+// Seed each new tenant's Paige with the closest starter Playbook preset
+// (src/lib/playbook/presets.ts) from the industry they pick — so Paige is native
+// to their practice on day one. They can fully re-author it later in the editor.
+const INDUSTRY_TO_PLAYBOOK: Record<string, string> = {
+  "Coaching": "coaching-default",
+  "Fitness & wellness": "fitness",
+  "Consulting": "consultant",
+  "Advisory / Professional services": "consultant",
+  "Real estate": "consultant",
+  "Agency / Marketing": "agency",
+  "Creative / Design": "agency",
+  "Course creator / Thought leader": "coaching-default",
+  "Other": "coaching-default",
+};
+
 type AccountType = "standalone" | "agency" | "enterprise";
 
 const ACCOUNT_TYPES: {
@@ -105,7 +120,7 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
       // Structured category, with the free-text write-in when they pick "Other".
       const resolvedIndustry =
         industry === "Other" ? (industryOther.trim() || null) : (industry || null);
-      const { error } = await supabase.rpc("provision_tenant", {
+      const { data: provisioned, error } = await supabase.rpc("provision_tenant", {
         _name: businessName.trim(),
         _industry: resolvedIndustry,
         _team_size: teamSize || null,
@@ -113,6 +128,16 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
         _account_type: accountType,
       });
       if (error) throw error;
+
+      // Seed Paige's Playbook from the chosen industry (non-blocking — the admin
+      // editor can re-author it, and resolveActivePlaybook falls back to a neutral
+      // default if this doesn't land).
+      const tenantId = (provisioned as { id?: string } | null)?.id;
+      const slug = INDUSTRY_TO_PLAYBOOK[industry] ?? "coaching-default";
+      if (tenantId) {
+        await supabase.rpc("set_tenant_playbook", { _tenant_id: tenantId, _slug: slug });
+      }
+
       toast({ title: "Workspace ready", description: "Welcome to Paige — this is yours to run." });
       if (onProvisioned) onProvisioned();
       else window.location.assign("/admin");

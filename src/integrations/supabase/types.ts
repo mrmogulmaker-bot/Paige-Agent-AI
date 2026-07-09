@@ -17503,6 +17503,38 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      set_tenant_playbook: {
+        Args: { _config?: Json; _slug?: string; _tenant_id: string }
+        Returns: {
+          account_number_prefix: string
+          account_type: string
+          automation_webhook_url_encrypted: string | null
+          brand: Json
+          created_at: string
+          customer_limit: number
+          features: Json
+          id: string
+          name: string
+          owner_user_id: string | null
+          parent_tenant_id: string | null
+          plan_offer: string | null
+          platform_fee_bps: number
+          seat_limit: number
+          slug: string
+          status: Database["public"]["Enums"]["tenant_status"]
+          storefront_enabled: boolean
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       ship_26_check_dependencies: { Args: never; Returns: Json }
       ship_26_drop_legacy_tables: { Args: { _force?: boolean }; Returns: Json }
       ship_26_freeze_legacy_tables: { Args: never; Returns: Json }
