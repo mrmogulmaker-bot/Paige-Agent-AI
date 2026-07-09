@@ -454,6 +454,48 @@ async function loadBusy(admin: ReturnType<typeof createClient>, userId: string, 
   return (data ?? []).map((b) => ({ start: Date.parse(b.start_at), end: Date.parse(b.end_at) }));
 }
 
+// --- On-booking CRM linkage --------------------------------------------------
+// internal_bookings.contact_id already exists as an FK into clients, but
+// nothing populates it — a booking was a CRM dead end. Tenant-scoped
+// (or operator-scoped, for a null-tenant calendar) find-or-create by email,
+// so the same guest booking twice links to one contact instead of two.
+// Never throws: a CRM hiccup must not block a guest's booking from
+// succeeding — the caller treats a null return as "no contact, proceed anyway."
+async function findOrCreateContact(
+  admin: ReturnType<typeof createClient>,
+  tenantId: string | null,
+  createdBy: string,
+  name: string,
+  email: string,
+  phone: string | null,
+): Promise<string | null> {
+  try {
+    const findExisting = async (): Promise<string | null> => {
+      const base = admin.from("clients").select("id").ilike("email", email);
+      const { data } = await (tenantId ? base.eq("tenant_id", tenantId) : base.is("tenant_id", null)).maybeSingle();
+      return (data as { id: string } | null)?.id ?? null;
+    };
+
+    const existing = await findExisting();
+    if (existing) return existing;
+
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    const { data: created, error } = await admin.from("clients").insert({
+      tenant_id: tenantId, created_by: createdBy,
+      first_name: parts[0] || "Guest", last_name: parts.slice(1).join(" "),
+      email, phone, source: "booking_page",
+    }).select("id").single();
+    if (!error) return (created as { id: string }).id;
+
+    // Unique-violation race: a concurrent request for the same guest+host
+    // just created the row we were about to — go find it instead of failing.
+    if ((error as { code?: string }).code === "23505") return await findExisting();
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // --- Confirmation emails (guest + host) + .ics invite -----------------------
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_FROM = Deno.env.get("CALENDAR_EMAIL_FROM") ?? Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <calendar@paigeagent.ai>";
@@ -464,6 +506,12 @@ const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai")
 function b64url(bytes: Uint8Array): string {
   let s = ""; for (const c of bytes) s += String.fromCharCode(c);
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+// btoa() only accepts Latin1 — any em dash, curly quote, or non-ASCII guest/tenant
+// content throws InvalidCharacterError. Encode as UTF-8 bytes first.
+function b64utf8(s: string): string {
+  let bin = ""; for (const b of new TextEncoder().encode(s)) bin += String.fromCharCode(b);
+  return btoa(bin);
 }
 async function manageUrl(bookingId: string): Promise<string> {
   const payload = b64url(new TextEncoder().encode(JSON.stringify({ b: bookingId })));
@@ -507,7 +555,7 @@ function buildIcs(o: { uid: string; startMs: number; endMs: number; title: strin
 async function sendEmail(to: string, subject: string, html: string, ics?: string): Promise<boolean> {
   if (!RESEND_KEY) return false;
   const body: Record<string, unknown> = { from: EMAIL_FROM, to: [to], subject, html };
-  if (ics) body.attachments = [{ filename: "invite.ics", content: btoa(ics) }];
+  if (ics) body.attachments = [{ filename: "invite.ics", content: b64utf8(ics) }];
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -702,6 +750,12 @@ Deno.serve(async (req) => {
       const locationValue = picked.type === "phone" ? (picked.value ?? phone ?? null) : (picked.value ?? null);
       const endMs = startMs + effHost.durationMin * 60000;
 
+      // On-booking CRM linkage (§7/§8): resolve or create the guest's CRM
+      // contact before writing the booking, so it's never a dead end. One
+      // contact per guest regardless of booking type — a collective booking's
+      // N host-leg rows all point at the same contact.
+      const contactId = await findOrCreateContact(admin, host.tenant_id, host.user_id, name, email, phone);
+
       // Assign host(s) + write the booking. Each branch produces the same
       // shape (a row with id/start_at/end_at/title, plus which host(s) to
       // notify) so the confirmation-email tail below runs unchanged for all three.
@@ -721,7 +775,7 @@ Deno.serve(async (req) => {
           _guest_name: name, _guest_email: email, _guest_phone: phone, _notes: notes,
           _location_type: locationType, _location_value: locationValue,
           _intake_answers: Object.keys(intake.answers).length ? intake.answers : null,
-          _source: "booking_page",
+          _source: "booking_page", _contact_id: contactId,
         });
         if (error) {
           if ((error as { message?: string }).message === "sold_out")
@@ -748,7 +802,7 @@ Deno.serve(async (req) => {
         const title = selType ? `${selType.name} with ${name}` : `Meeting with ${name}`;
         const rows = effHost.hosts.map((uid) => ({
           tenant_id: host.tenant_id, host_user_id: uid, calendar_id: host.calendarId,
-          booking_kind: "collective", collective_group_id: groupId,
+          booking_kind: "collective", collective_group_id: groupId, contact_id: contactId,
           guest_name: name, guest_email: email, guest_phone: phone, notes, title,
           start_at: new Date(startMs).toISOString(), end_at: new Date(endMs).toISOString(),
           timezone: host.timezone, status: "scheduled", source: "booking_page",
@@ -796,6 +850,7 @@ Deno.serve(async (req) => {
           tenant_id: host.tenant_id,
           host_user_id: chosenHost,
           calendar_id: host.calendarId,
+          contact_id: contactId,
           guest_name: name,
           guest_email: email,
           guest_phone: phone,
@@ -879,6 +934,15 @@ Deno.serve(async (req) => {
           { template_name: "booking_confirmation", recipient_email: email, status: guestOk ? "sent" : "skipped", sender_account: "platform", metadata: { via: "public-booking", slug } },
           ...hostSendResults.map((r) => ({ template_name: "booking_host_notify", recipient_email: r.email, status: r.ok ? "sent" : "skipped", sender_account: "platform", metadata: { via: "public-booking", slug } })),
         ]).then(() => {}, () => {});
+
+        // Surface the booking to staff as an actionable in-app notification
+        // (§8) — same best-effort tail as the emails above; a notifier hiccup
+        // must never fail a booking that's already committed.
+        await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/notify-team-event`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+          body: JSON.stringify({ event: "booking_created", booking_id: bookingRow.id, host_user_ids: hostsToNotify }),
+        }).catch(() => {});
       } catch (_e) { /* email is best-effort */ }
 
       return json({ ok: true, booking: bookingRow });
