@@ -3,10 +3,11 @@ import type { Playbook } from "./types";
 // ---------------------------------------------------------------------------
 // Playbook presets — the starter vertical library.
 // ---------------------------------------------------------------------------
-// coachingDefault is the neutral, de-credited baseline every tenant inherits
-// until they pick or author their own. The vertical presets (fitness, consult,
-// agency) show how one product goes native to many niches — this is the seed of
-// the Playbook library a new tenant picks from at onboarding (doctrine §7/§8).
+// generalDefault is the truly vertical-NEUTRAL baseline every tenant inherits
+// until they pick or author their own — it never says "coach" (§2: don't
+// over-narrow to coaching). coachingDefault is one preset among the verticals
+// (fitness, consult, agency) that show how one product goes native to many
+// niches — the seed of the library a new tenant picks from at onboarding (§7/§8).
 //
 // Coaching/consulting-ops voice only (§2/§3): no credit / funding / finance
 // language anywhere.
@@ -20,6 +21,52 @@ const GENERIC_MODULES = [
   { key: "resources", label: "Resources" },
   { key: "billing", label: "Billing" },
 ];
+
+/**
+ * The vertical-neutral baseline. This is what a tenant inherits before they pick
+ * or author a Playbook, and the fallback for any unconfigured/malformed case —
+ * so no tenant ever ships a client-facing Paige that calls their business a
+ * "coach" (§2). Consultants, agencies, advisors, creators all read cleanly.
+ */
+export const generalDefault: Playbook = {
+  slug: "general",
+  name: "General Practice",
+  vertical: "Client-based practice",
+  persona: {
+    name: "Paige",
+    role: "your team's assistant",
+    greeting:
+      "Hi — I'm Paige, and I work alongside your team to keep things moving between touchpoints. What can I help you with today?",
+    tone: "warm, direct, professional",
+    domain: "your practice",
+  },
+  quickActions: [
+    { label: "My next steps", prompt: "What should I focus on next?" },
+    { label: "Book a time", prompt: "Help me schedule my next session" },
+    { label: "My progress", prompt: "Show me where things stand" },
+    { label: "Ask a question", prompt: "I have a question about my account" },
+  ],
+  probingQuestions: [
+    { id: "goal", ask: "What's the main outcome you're working toward right now?", captures: "primary_goal" },
+    { id: "timeline", ask: "What timeline are you hoping to hit that on?", captures: "timeline" },
+    { id: "obstacle", ask: "What's the biggest thing getting in your way?", captures: "biggest_obstacle" },
+  ],
+  journey: [
+    { key: "onboarding", label: "Onboarding", description: "Getting set up and aligned." },
+    { key: "getting_started", label: "Getting Started", description: "First steps and quick wins." },
+    { key: "in_progress", label: "In Progress", description: "Doing the work between touchpoints." },
+    { key: "milestone", label: "Milestone", description: "A meaningful result reached." },
+    { key: "ongoing", label: "Ongoing", description: "Sustained progress and renewal." },
+  ],
+  intake: [
+    { key: "full_name", label: "Full name", type: "text", required: true },
+    { key: "email", label: "Email", type: "text", required: true },
+    { key: "phone", label: "Phone", type: "phone" },
+    { key: "primary_goal", label: "What are you hoping to achieve?", type: "longtext", required: true },
+    { key: "timeline", label: "Timeline", type: "select", options: ["ASAP", "1–3 months", "3–6 months", "6+ months"] },
+  ],
+  portal: { modules: GENERIC_MODULES },
+};
 
 export const coachingDefault: Playbook = {
   slug: "coaching-default",
@@ -219,6 +266,7 @@ export const marketingAgency: Playbook = {
 
 /** The starter Playbook library a tenant picks from at onboarding. */
 export const PLAYBOOK_LIBRARY: Playbook[] = [
+  generalDefault,
   coachingDefault,
   fitnessCoach,
   businessConsultant,

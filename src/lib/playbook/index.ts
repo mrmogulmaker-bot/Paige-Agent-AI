@@ -4,15 +4,15 @@
 // vertical strings. It resolves per-tenant from the tenant's authored config
 // (see ./resolve), so each coach's Paige is native to their practice; an
 // unconfigured tenant (and the Paige Agent AI platform account itself) falls
-// back to the neutral coaching default.
+// back to the neutral, vertical-agnostic default.
 
 import { useEffect, useState } from "react";
-import { coachingDefault } from "./presets";
+import { generalDefault } from "./presets";
 import { resolveActivePlaybook } from "./resolve";
 import type { Playbook } from "./types";
 
 export * from "./types";
-export { coachingDefault, fitnessCoach, businessConsultant, marketingAgency, PLAYBOOK_LIBRARY } from "./presets";
+export { generalDefault, coachingDefault, fitnessCoach, businessConsultant, marketingAgency, PLAYBOOK_LIBRARY } from "./presets";
 export { getPlaybookBySlug, resolveActivePlaybook } from "./resolve";
 
 /**
@@ -21,7 +21,7 @@ export { getPlaybookBySlug, resolveActivePlaybook } from "./resolve";
  * should use the usePlaybook() hook so they update once the tenant loads.
  */
 export function getActivePlaybook(): Playbook {
-  return coachingDefault;
+  return generalDefault;
 }
 
 /**
@@ -30,7 +30,7 @@ export function getActivePlaybook(): Playbook {
  * sites can treat the return as a ready Playbook without a loading branch.
  */
 export function usePlaybook(): Playbook {
-  const [playbook, setPlaybook] = useState<Playbook>(coachingDefault);
+  const [playbook, setPlaybook] = useState<Playbook>(generalDefault);
 
   useEffect(() => {
     let cancelled = false;
