@@ -15,7 +15,7 @@ const AffiliateApplicationReceivedEmail = ({ name, tierKey }: Props) => {
   const isCoach = tierKey === 'coach'
   const tierLabel = isCoach ? 'Coach Partner' : 'Affiliate'
   const timeline = isCoach
-    ? 'A PME team member will personally review your Coach Partner application within 24 hours.'
+    ? 'A Paige Agent AI team member will personally review your Coach Partner application within 24 hours.'
     : 'Affiliate accounts are activated instantly. Watch your inbox for your welcome email and unique referral link in the next few minutes.'
 
   return (
@@ -34,7 +34,7 @@ const AffiliateApplicationReceivedEmail = ({ name, tierKey }: Props) => {
               {name ? `Thank you, ${name}!` : 'Thank you!'}
             </Heading>
             <Text style={text}>
-              We received your application to join the PME Partner Program as a{' '}
+              We received your application to join the Paige Agent AI Partner Program as a{' '}
               <strong>{tierLabel}</strong>. Our team has it in front of them now.
             </Text>
 
@@ -55,7 +55,7 @@ const AffiliateApplicationReceivedEmail = ({ name, tierKey }: Props) => {
 
           <Hr style={hr} />
           <Text style={footer}>
-            © {new Date().getFullYear()} {SITE_NAME} · Project Mogul Enterprise Inc.
+            © {new Date().getFullYear()} {SITE_NAME}
           </Text>
         </Container>
       </Body>

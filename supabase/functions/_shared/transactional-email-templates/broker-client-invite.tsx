@@ -1,5 +1,6 @@
 // Sent when a broker adds a client from the Broker Workspace.
 // Invites the client to sign up at the broker's $17/mo Beta Starter rate.
+// Paige runs the client's practice — clients, follow-ups, onboarding, scheduling, pipeline.
 
 import * as React from 'npm:react@18.3.1'
 import {
@@ -15,7 +16,7 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = 'PaigeAgent'
+const SITE_NAME = 'Paige Agent AI'
 
 interface Props {
   firstName?: string
@@ -43,16 +44,16 @@ const BrokerClientInviteEmail = ({
           <Heading style={h1}>You’re invited to {SITE_NAME}</Heading>
           <Text style={text}>{greeting}</Text>
           <Text style={text}>
-            <strong>{broker}</strong> has invited you to join {SITE_NAME} — the AI funding
-            coach that helps you build credit, organize your finances, and qualify for
-            the funding you need.
+            <strong>{broker}</strong> has invited you to join {SITE_NAME} — the AI
+            teammate that runs your practice: clients, follow-ups, onboarding,
+            scheduling, retainers, and pipeline, all in one place.
           </Text>
 
           <Section style={card}>
             <Text style={cardLabel}>Your exclusive broker rate</Text>
             <Text style={cardPrice}>$17 / month</Text>
             <Text style={cardFooter}>
-              Locked in for life. Standard PaigeAgent pricing is $49/month — your broker
+              Locked in for life. Standard {SITE_NAME} pricing is $49/month — your broker
               partnership unlocks a $32 forever discount.
             </Text>
           </Section>
@@ -84,7 +85,7 @@ export const template = {
   displayName: 'Broker → client invite',
   previewData: {
     firstName: 'Alex',
-    brokerBusinessName: 'Acme Credit Coaching',
+    brokerBusinessName: 'Summit Advisory',
     brokerReferralCode: 'BROK-A1B2C3',
     signupLink: 'https://paigeagent.ai/auth?ref=BROK-A1B2C3&mode=signup',
   },

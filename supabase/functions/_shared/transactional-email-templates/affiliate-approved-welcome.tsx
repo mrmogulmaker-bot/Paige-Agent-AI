@@ -4,7 +4,7 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = 'PaigeAgent.ai'
+const SITE_NAME = 'Paige Agent AI'
 
 interface Props {
   firstName?: string
@@ -21,7 +21,7 @@ const AffiliateApprovedWelcomeEmail = ({ firstName, referralCode, referralLink, 
   const tierTerms = isCoach
     ? '30% lifetime commission on every paying subscriber you refer'
     : '25% commission for the first 12 months on every paying subscriber you refer'
-  const social = `I use PaigeAgent AI to help my clients build credit, access capital, and structure their businesses for wealth. If you are serious about your financial future check it out here: ${link}`
+  const social = `I use Paige Agent AI to run my whole practice — she handles client onboarding, follow-ups, scheduling, and retainers so nothing slips through the cracks. If you run a client-based business and want your time back, check it out here: ${link}`
 
   return (
     <Html lang="en" dir="ltr">
@@ -31,7 +31,7 @@ const AffiliateApprovedWelcomeEmail = ({ firstName, referralCode, referralLink, 
         <Container style={container}>
           <Section style={headerBar}>
             <Heading style={logoText}>{SITE_NAME}</Heading>
-            <Text style={tagline}>PME Partner Program</Text>
+            <Text style={tagline}>Paige Agent AI Partner Program</Text>
           </Section>
 
           <Section style={contentSection}>
@@ -39,8 +39,8 @@ const AffiliateApprovedWelcomeEmail = ({ firstName, referralCode, referralLink, 
               {firstName ? `Welcome aboard, ${firstName}!` : 'Welcome aboard!'}
             </Heading>
             <Text style={text}>
-              I'm Antonio Cook, founder of Project Mogul Enterprise. Thank you for joining
-              the PME Partner Program — you are now an official <strong>{tierLabel}</strong>.
+              Thank you for joining the Paige Agent AI Partner Program — you are now an
+              official <strong>{tierLabel}</strong>.
             </Text>
             <Text style={text}>
               You earn <strong>{tierTerms}</strong>. Commissions are tracked automatically
@@ -74,7 +74,7 @@ const AffiliateApprovedWelcomeEmail = ({ firstName, referralCode, referralLink, 
 
           <Hr style={hr} />
           <Text style={footer}>
-            © {new Date().getFullYear()} {SITE_NAME} · Project Mogul Enterprise Inc.
+            © {new Date().getFullYear()} {SITE_NAME}
           </Text>
         </Container>
       </Body>
@@ -84,7 +84,7 @@ const AffiliateApprovedWelcomeEmail = ({ firstName, referralCode, referralLink, 
 
 export const template = {
   component: AffiliateApprovedWelcomeEmail,
-  subject: 'Welcome to the PME Partner Program — Your Referral Link is Ready',
+  subject: 'Welcome to the Paige Agent AI Partner Program — Your Referral Link is Ready',
   displayName: 'Affiliate Approved Welcome',
   previewData: {
     firstName: 'Jane',
@@ -97,7 +97,7 @@ export const template = {
 const main = { backgroundColor: '#ffffff', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }
 const container = { maxWidth: '600px', margin: '0 auto' }
 const headerBar = { backgroundColor: '#0a1628', padding: '32px 40px 28px', borderRadius: '8px 8px 0 0', textAlign: 'center' as const }
-const logoText = { fontSize: '26px', fontWeight: 'bold' as const, color: '#CFAE70', margin: '0', letterSpacing: '0.5px' }
+const logoText = { fontSize: '26px', fontWeight: 'bold' as const, color: '#EBB94C', margin: '0', letterSpacing: '0.5px' }
 const tagline = { fontSize: '12px', color: '#9ca3af', margin: '6px 0 0', textTransform: 'uppercase' as const, letterSpacing: '2px' }
 const contentSection = { padding: '36px 40px 24px' }
 const h2 = { fontSize: '24px', fontWeight: 'bold' as const, color: '#0a1628', margin: '0 0 16px' }
@@ -110,7 +110,7 @@ const codeValue = { fontSize: '28px', fontWeight: '700' as const, color: '#0a162
 const linkWrapper = { margin: '0 0 22px', padding: '14px 16px', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }
 const linkLabel = { fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '2px', margin: '0 0 6px', fontWeight: '600' as const }
 const linkValue = { fontSize: '13px', color: '#0a1628', margin: '0', wordBreak: 'break-all' as const, fontFamily: 'monospace' }
-const button = { backgroundColor: '#CFAE70', color: '#0a1628', padding: '14px 36px', borderRadius: '6px', fontSize: '16px', fontWeight: '700' as const, textDecoration: 'none', display: 'block' as const, textAlign: 'center' as const, margin: '8px auto 16px', maxWidth: '260px' }
+const button = { backgroundColor: '#EBB94C', color: '#0a1628', padding: '14px 36px', borderRadius: '6px', fontSize: '16px', fontWeight: '700' as const, textDecoration: 'none', display: 'block' as const, textAlign: 'center' as const, margin: '8px auto 16px', maxWidth: '260px' }
 const socialBox = { padding: '16px 18px', backgroundColor: '#0a1628', borderRadius: '6px', margin: '0 0 8px' }
 const socialText = { fontSize: '14px', color: '#f3f4f6', lineHeight: '1.6', margin: '0', fontStyle: 'italic' as const }
 const hr = { borderColor: '#e5e7eb', margin: '24px 40px' }

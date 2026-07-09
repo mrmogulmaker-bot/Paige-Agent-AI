@@ -4,7 +4,7 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = "PaigeAgent.ai"
+const SITE_NAME = "Paige Agent AI"
 
 interface AffiliateInvitationProps {
   name?: string
@@ -37,7 +37,7 @@ const AffiliateInvitationEmail = ({
           <Section style={contentSection}>
             <Heading as="h2" style={h2}>{greeting}</Heading>
             <Text style={text}>
-              {invitedBy ? `${invitedBy} has enrolled you` : `You've been enrolled`} in the {SITE_NAME} affiliate program as a <strong>{tierLabel}</strong>. Share your unique link with anyone who needs help building credit or securing funding — you earn a commission on every paying customer.
+              {invitedBy ? `${invitedBy} has enrolled you` : `You've been enrolled`} in the {SITE_NAME} affiliate program as a <strong>{tierLabel}</strong>. Share your unique link with any service professional who wants Paige running their business — clients, follow-ups, onboarding, scheduling, and retainers handled. You earn a commission on every paying customer.
             </Text>
 
             <Section style={codeWrapper}>
@@ -68,7 +68,7 @@ const AffiliateInvitationEmail = ({
           </Section>
 
           <Hr style={hr} />
-          <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME} · Project Mogul Enterprise Inc. All rights reserved.</Text>
+          <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME} All rights reserved.</Text>
         </Container>
       </Body>
     </Html>
@@ -93,7 +93,7 @@ export const template = {
 const main = { backgroundColor: '#ffffff', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }
 const container = { maxWidth: '600px', margin: '0 auto' }
 const headerBar = { backgroundColor: '#0a1628', padding: '32px 40px 28px', borderRadius: '8px 8px 0 0', textAlign: 'center' as const }
-const logoText = { fontSize: '26px', fontWeight: 'bold' as const, color: '#CFAE70', margin: '0', letterSpacing: '0.5px' }
+const logoText = { fontSize: '26px', fontWeight: 'bold' as const, color: '#EBB94C', margin: '0', letterSpacing: '0.5px' }
 const tagline = { fontSize: '12px', color: '#9ca3af', margin: '6px 0 0', textTransform: 'uppercase' as const, letterSpacing: '2px' }
 const contentSection = { padding: '36px 40px 24px' }
 const h2 = { fontSize: '24px', fontWeight: 'bold' as const, color: '#0a1628', margin: '0 0 16px' }
@@ -104,7 +104,7 @@ const codeValue = { fontSize: '28px', fontWeight: '700' as const, color: '#0a162
 const linkWrapper = { margin: '0 0 24px', padding: '14px 16px', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }
 const linkLabel = { fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '2px', margin: '0 0 6px', fontWeight: '600' as const }
 const linkValue = { fontSize: '13px', color: '#0a1628', margin: '0', wordBreak: 'break-all' as const, fontFamily: 'monospace' }
-const button = { backgroundColor: '#CFAE70', color: '#0a1628', padding: '14px 36px', borderRadius: '6px', fontSize: '16px', fontWeight: '700' as const, textDecoration: 'none', display: 'block' as const, textAlign: 'center' as const, margin: '12px auto 16px' }
+const button = { backgroundColor: '#EBB94C', color: '#0a1628', padding: '14px 36px', borderRadius: '6px', fontSize: '16px', fontWeight: '700' as const, textDecoration: 'none', display: 'block' as const, textAlign: 'center' as const, margin: '12px auto 16px' }
 const helperText = { fontSize: '13px', color: '#6b7280', lineHeight: '1.5', margin: '0', textAlign: 'center' as const }
 const featureSection = { backgroundColor: '#f9fafb', padding: '24px 40px', margin: '8px 0 0', borderRadius: '0 0 8px 8px' }
 const featureTitle = { fontSize: '14px', fontWeight: '600' as const, color: '#0a1628', margin: '0 0 14px' }

@@ -4,62 +4,65 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = "PaigeAgent.ai"
+const SITE_NAME = "Paige Agent AI"
 const LOGO_URL = 'https://bfmyebsjyuoecmjskqhs.supabase.co/storage/v1/object/public/email-assets/paige-logo-transparent.png'
 
 interface WeeklySummaryProps {
   name?: string
-  scoreChange?: number
-  currentScore?: number
-  alertCount?: number
-  fundingMatchCount?: number
+  newClients?: number
+  followUpsSent?: number
+  sessionsHeld?: number
+  atRiskCount?: number
   topRecommendation?: string
 }
 
 const WeeklySummaryEmail = ({
   name,
-  scoreChange = 0,
-  currentScore,
-  alertCount = 0,
-  fundingMatchCount = 0,
-  topRecommendation = 'Keep your utilization below 30% on each card to support continued score growth.',
+  newClients = 0,
+  followUpsSent = 0,
+  sessionsHeld = 0,
+  atRiskCount = 0,
+  topRecommendation = 'Two clients have gone quiet for over a week — Paige has drafted check-in notes for each, ready for your approval.',
 }: WeeklySummaryProps) => {
-  const arrow = scoreChange > 0 ? '↑' : scoreChange < 0 ? '↓' : '→'
-  const arrowColor = scoreChange > 0 ? '#16a34a' : scoreChange < 0 ? '#dc2626' : '#6b7280'
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>Your weekly PME progress report</Preview>
+      <Preview>Your weekly practice summary from Paige</Preview>
       <Body style={main}>
         <Container style={container}>
           <Img src={LOGO_URL} alt={SITE_NAME} width="160" height="auto" style={logo} />
-          <Text style={subheading}>Weekly Progress Report</Text>
+          <Text style={subheading}>Weekly Practice Summary</Text>
           <Hr style={hr} />
           <Heading as="h2" style={h2}>{name ? `${name}'s week at a glance` : 'Your week at a glance'}</Heading>
           <Section style={statsRow}>
             <Row>
               <Column style={statCol}>
-                <Text style={statLabel}>Score Change</Text>
-                <Text style={{ ...statValue, color: arrowColor }}>{arrow} {Math.abs(scoreChange)}</Text>
-                {currentScore && <Text style={statSubLabel}>Now {currentScore}</Text>}
-              </Column>
-              <Column style={statCol}>
-                <Text style={statLabel}>Alerts</Text>
-                <Text style={statValue}>{alertCount}</Text>
+                <Text style={statLabel}>New Clients</Text>
+                <Text style={statValue}>{newClients}</Text>
                 <Text style={statSubLabel}>This week</Text>
               </Column>
               <Column style={statCol}>
-                <Text style={statLabel}>Matches</Text>
-                <Text style={statValue}>{fundingMatchCount}</Text>
-                <Text style={statSubLabel}>New funding</Text>
+                <Text style={statLabel}>Follow-ups</Text>
+                <Text style={statValue}>{followUpsSent}</Text>
+                <Text style={statSubLabel}>Sent</Text>
+              </Column>
+              <Column style={statCol}>
+                <Text style={statLabel}>Sessions</Text>
+                <Text style={statValue}>{sessionsHeld}</Text>
+                <Text style={statSubLabel}>Held</Text>
+              </Column>
+              <Column style={statCol}>
+                <Text style={statLabel}>At-Risk</Text>
+                <Text style={{ ...statValue, color: atRiskCount > 0 ? '#dc2626' : '#0a1628' }}>{atRiskCount}</Text>
+                <Text style={statSubLabel}>Flagged</Text>
               </Column>
             </Row>
           </Section>
           <Heading as="h3" style={h3}>Paige's recommendation this week</Heading>
           <Text style={text}>{topRecommendation}</Text>
-          <Text style={motivational}>Every week of progress compounds. Keep showing up.</Text>
-          <Button style={button} href="https://paigeagent.ai/app">
-            Open PaigeAgent
+          <Text style={motivational}>Every week you show up for your clients compounds. Keep it moving.</Text>
+          <Button style={button} href="https://app.paigeagent.ai">
+            Open Paige
           </Button>
           <Hr style={hr} />
           <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME}. You received this because the weekly summary is enabled in your notification preferences.</Text>
@@ -71,15 +74,15 @@ const WeeklySummaryEmail = ({
 
 export const template = {
   component: WeeklySummaryEmail,
-  subject: '📊 Your Weekly PME Progress Report',
+  subject: '📊 Your Weekly Practice Summary from Paige',
   displayName: 'Weekly Summary',
   previewData: {
     name: 'Antonio',
-    scoreChange: 12,
-    currentScore: 712,
-    alertCount: 2,
-    fundingMatchCount: 3,
-    topRecommendation: 'Pay down the Discover balance to drop utilization under 10% — that single move could lift your score 8-15 points before next month.',
+    newClients: 4,
+    followUpsSent: 18,
+    sessionsHeld: 9,
+    atRiskCount: 2,
+    topRecommendation: 'Two retainers renew in the next ten days. Paige has prepped the renewal notes and a recap of each client\'s recent wins — review and send before Friday to lock them in early.',
   },
 } satisfies TemplateEntry
 

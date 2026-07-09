@@ -26,7 +26,7 @@ const AffiliateMonthlyStatementEmail = ({
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>Your {monthLabel || 'monthly'} PME Partner statement</Preview>
+      <Preview>Your {monthLabel || 'monthly'} Paige Agent AI Partner statement</Preview>
       <Body style={main}>
         <Container style={container}>
           <Section style={headerBar}>
@@ -68,7 +68,7 @@ const AffiliateMonthlyStatementEmail = ({
 
           <Hr style={hr} />
           <Text style={footer}>
-            © {new Date().getFullYear()} {SITE_NAME} · Project Mogul Enterprise Inc.
+            © {new Date().getFullYear()} {SITE_NAME}
           </Text>
         </Container>
       </Body>
@@ -100,7 +100,7 @@ const StatRow = ({ label, value, highlight }: { label: string; value: string; hi
 export const template = {
   component: AffiliateMonthlyStatementEmail,
   subject: (data: Record<string, any>) =>
-    `Your ${data.monthLabel || 'Monthly'} PME Partner Statement`,
+    `Your ${data.monthLabel || 'Monthly'} Paige Agent AI Partner Statement`,
   displayName: 'Affiliate Monthly Statement',
   previewData: {
     monthLabel: 'March 2026',

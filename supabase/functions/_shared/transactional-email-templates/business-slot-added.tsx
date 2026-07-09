@@ -4,7 +4,7 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = 'PaigeAgent.ai'
+const SITE_NAME = 'Paige Agent AI'
 
 interface Props {
   effectiveLimit?: number
@@ -13,12 +13,12 @@ interface Props {
 const BusinessSlotAddedEmail = ({ effectiveLimit }: Props) => (
   <Html lang="en" dir="ltr">
     <Head />
-    <Preview>Business slot added — you can now add another entity to your portfolio</Preview>
+    <Preview>Workspace slot added — you can now run another business under Paige</Preview>
     <Body style={main}>
       <Container style={container}>
         <Section style={headerBar}>
           <Heading style={logoText}>{SITE_NAME}</Heading>
-          <Text style={tagline}>Multi-Business Portfolio</Text>
+          <Text style={tagline}>Multi-Business Workspace</Text>
         </Section>
 
         <Section style={contentSection}>
@@ -26,31 +26,31 @@ const BusinessSlotAddedEmail = ({ effectiveLimit }: Props) => (
             Your business slot is live.
           </Heading>
           <Text style={text}>
-            Thanks for expanding your portfolio. Your additional business slot is active and you can add another entity to PaigeAgent right now.
+            Thanks for growing with Paige. Your additional business slot is active, and you can stand up another practice under Paige right now — its own clients, pipeline, and workflows, all under your brand.
           </Text>
 
           {effectiveLimit ? (
             <Section style={infoBox}>
               <Text style={infoLabel}>NEW LIMIT</Text>
               <Text style={infoText}>
-                You can now manage up to <strong>{effectiveLimit}</strong> businesses on your account — each with its own fundability scores, business credit reports, and Paige strategy context.
+                You can now run up to <strong>{effectiveLimit}</strong> businesses on your account — each with its own clients, pipeline, retainers, and Paige playbook.
               </Text>
             </Section>
           ) : null}
 
           <Heading as="h3" style={h3}>What's next</Heading>
-          <Text style={listItem}>• Add the new entity in your Business Profile</Text>
-          <Text style={listItem}>• Upload its D&amp;B, Experian Business, or Equifax SBFE report</Text>
-          <Text style={listItem}>• Ask Paige for portfolio-level capital strategy across all your entities</Text>
+          <Text style={listItem}>• Set up the new business in your Business Profile</Text>
+          <Text style={listItem}>• Bring over its clients and configure its Paige playbook</Text>
+          <Text style={listItem}>• Ask Paige to run pipeline, follow-ups, and at-risk triage across every business you manage</Text>
 
-          <Button style={button} href="https://paigeagent.ai/app/business-profile">
-            Add Your Next Business
+          <Button style={button} href="https://app.paigeagent.ai/business-profile">
+            Set Up Your Next Business
           </Button>
         </Section>
 
         <Hr style={hr} />
         <Text style={footer}>
-          © {new Date().getFullYear()} {SITE_NAME} · Project Mogul Enterprise Inc.
+          © {new Date().getFullYear()} {SITE_NAME}
         </Text>
       </Container>
     </Body>
@@ -59,7 +59,7 @@ const BusinessSlotAddedEmail = ({ effectiveLimit }: Props) => (
 
 export const template = {
   component: BusinessSlotAddedEmail,
-  subject: 'Business Slot Added — You can now add another business to PaigeAgent',
+  subject: 'Business Slot Added — You can now run another business under Paige',
   displayName: 'Business Slot Added',
   previewData: { effectiveLimit: 4 },
 } satisfies TemplateEntry

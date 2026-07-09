@@ -5,7 +5,7 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = 'PaigeAgent'
+const SITE_NAME = 'Paige Agent AI'
 
 interface BrokerTeamInvitationProps {
   firstName?: string
@@ -20,11 +20,11 @@ const roleAccessCopy = (role?: string) => {
     case 'Lead Broker':
       return 'Full workspace access — add clients, run Paige sessions, manage the team, and view all client activity.'
     case 'Advisor':
-      return 'Run Paige sessions with clients and share AI summaries — without team-management or billing access.'
+      return 'Run Paige sessions with clients and share Paige summaries — without team-management or billing access.'
     case 'Assistant':
       return 'Read-only access — view the client roster and session history to support the team.'
     default:
-      return 'Collaborate with your team in PaigeAgent.'
+      return `Collaborate with your team in ${SITE_NAME}.`
   }
 }
 
@@ -75,7 +75,7 @@ const BrokerTeamInvitationEmail = ({
 
         <Section style={footer}>
           <Text style={footerText}>
-            {SITE_NAME} · The AI Funding &amp; Credit Coach
+            {SITE_NAME} · The AI teammate that runs your practice
           </Text>
         </Section>
       </Container>
@@ -90,7 +90,7 @@ export const template = {
   displayName: 'Broker team invitation',
   previewData: {
     firstName: 'Jordan',
-    brokerBusinessName: 'Mogul Capital Group',
+    brokerBusinessName: 'Meridian Consulting Group',
     roleLabel: 'Advisor',
     signupLink: 'https://paigeagent.ai/broker/accept-invite?token=preview',
     expiresInDays: 7,

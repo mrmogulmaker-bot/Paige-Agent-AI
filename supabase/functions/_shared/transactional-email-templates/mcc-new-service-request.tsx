@@ -19,11 +19,11 @@ interface Props {
 }
 
 const SERVICE_LABELS: Record<string, string> = {
-  entity_setup: 'Entity setup',
-  business_credit_build: 'Business credit build',
-  funding_prep: 'Funding prep',
-  dispute_handling: 'Dispute handling',
-  tradeline_strategy: 'Tradeline strategy',
+  workspace_setup: 'Workspace setup',
+  client_onboarding: 'Client onboarding setup',
+  pipeline_automation: 'Pipeline & follow-up automation',
+  at_risk_outreach: 'At-risk client outreach',
+  campaign_strategy: 'Campaign & nurture strategy',
   compliance_review: 'Compliance review',
   other: 'Other',
 }
@@ -53,7 +53,7 @@ const McuNewServiceRequestEmail = ({
         <Heading as="h2" style={h2}>Notes</Heading>
         <Text style={notesBlock}>{notes || '—'}</Text>
 
-        <Text style={footer}>— PaigeAgent Broker Workspace</Text>
+        <Text style={footer}>— Paige Agent AI Broker Workspace</Text>
       </Container>
     </Body>
   </Html>
@@ -71,13 +71,13 @@ export const template = {
     `[MCC] ${(data?.priority ?? 'standard').toUpperCase()} — ${data?.brokerBusinessName ?? 'Broker'} → ${SERVICE_LABELS[data?.serviceType] ?? data?.serviceType ?? 'request'}`,
   displayName: 'MCC → new service request',
   previewData: {
-    brokerBusinessName: 'Acme Credit Coaching',
+    brokerBusinessName: 'Apex Consulting Group',
     brokerEmail: 'broker@example.com',
     clientName: 'Jane Doe',
     clientEmail: 'jane@example.com',
-    serviceType: 'business_credit_build',
+    serviceType: 'client_onboarding',
     priority: 'rush',
-    notes: 'Client just formed LLC, wants to start tier 1 vendors immediately.',
+    notes: 'New client just signed on — wants their onboarding sequence and first follow-ups set up right away.',
     requestId: 'abc-123',
   },
 } satisfies TemplateEntry

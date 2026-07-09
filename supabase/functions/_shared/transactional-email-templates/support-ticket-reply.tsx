@@ -47,7 +47,7 @@ const SupportTicketReplyEmail = ({ ticketNumber, subject, replyPreview }: Props)
 
         <Hr style={hr} />
         <Text style={footer}>
-          © {new Date().getFullYear()} {SITE_NAME} · Project Mogul Enterprise Inc.
+          © {new Date().getFullYear()} {SITE_NAME}
         </Text>
       </Container>
     </Body>

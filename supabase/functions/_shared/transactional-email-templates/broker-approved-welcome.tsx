@@ -12,7 +12,7 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = 'PaigeAgent.ai'
+const SITE_NAME = 'Paige Agent AI'
 
 interface BrokerApprovedWelcomeProps {
   firstName?: string
@@ -41,10 +41,10 @@ const BrokerApprovedWelcomeEmail = ({
           {firstName ? `Welcome aboard, ${firstName}.` : "You're approved."}
         </Heading>
         <Text style={text}>
-          Congratulations — your PaigeAgent Broker Workspace is live
-          {businessName ? ` for ${businessName}` : ''}. You now have a private AI
-          strategy room for every client you bring on, plus commission on every
-          client subscription that flows through your code.
+          Congratulations — your {SITE_NAME} Broker Workspace is live
+          {businessName ? ` for ${businessName}` : ''}. You now have a private
+          Paige workspace for every client you bring on, plus commission on
+          every client subscription that flows through your code.
         </Text>
 
         <Section style={cardGold}>
@@ -86,9 +86,9 @@ const BrokerApprovedWelcomeEmail = ({
         <Text style={signature}>
           Welcome to the program,
           <br />
-          <strong>Antonio Cook</strong>
+          <strong>the Paige Agent AI team</strong>
           <br />
-          Founder, PaigeAgent.ai
+          Founder, Paige Agent AI
         </Text>
       </Container>
     </Body>
@@ -97,11 +97,11 @@ const BrokerApprovedWelcomeEmail = ({
 
 export const template = {
   component: BrokerApprovedWelcomeEmail,
-  subject: 'Welcome to the PaigeAgent Broker Program — Your Workspace Is Ready',
+  subject: 'Welcome to the Paige Agent AI Broker Program — Your Workspace Is Ready',
   displayName: 'Broker — Approved welcome',
   previewData: {
     firstName: 'Jordan',
-    businessName: 'Apex Credit Advisors',
+    businessName: 'Apex Consulting Group',
     referralCode: 'BROK-AB12CD',
     brokerReferralLink: 'https://paigeagent.ai/broker?ref=BROK-AB12CD',
     clientSignupLink: 'https://paigeagent.ai/auth?broker=BROK-AB12CD',

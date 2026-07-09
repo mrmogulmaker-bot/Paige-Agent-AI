@@ -23,19 +23,17 @@ interface NotifyRequest {
   channels?: ('email' | 'sms')[] // restrict to specific channels (default: both)
 }
 
+// credit_alert / funding_alert / score_milestone removed — those templates are
+// archived to _shared/transactional-email-templates/_archive-mma/ (§2 + §9). Any
+// legacy credit subsystem still emitting those types is MMA-only and handled in
+// the broader credit-subsystem de-brand.
 const EMAIL_TEMPLATE_BY_TYPE: Record<string, string> = {
-  credit_alert: 'credit-alert',
-  funding_alert: 'funding-opportunity',
-  score_milestone: 'score-milestone',
   coaching_reminder: 'coaching-reminder',
   weekly_summary: 'weekly-summary',
   onboarding: 'onboarding-welcome',
 }
 
 const EMAIL_PREF_FLAG_BY_TYPE: Record<string, string> = {
-  credit_alert: 'email_credit_alerts',
-  funding_alert: 'email_funding_alerts',
-  score_milestone: 'email_score_milestones',
   coaching_reminder: 'email_coaching_reminders',
   weekly_summary: 'email_weekly_summary',
   onboarding: 'email_onboarding',

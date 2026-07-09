@@ -4,7 +4,7 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = 'PaigeAgent.ai'
+const SITE_NAME = 'Paige Agent AI'
 
 interface Props {
   amount?: string
@@ -27,8 +27,8 @@ const AffiliateCommissionPaidEmail = ({ amount, paymentMethod, periodLabel, ytdT
         <Section style={contentSection}>
           <Heading as="h2" style={h2}>✅ Payment sent</Heading>
           <Text style={text}>
-            We just sent your latest PME Partner commission. Thanks for everything you do
-            to help business owners build credit and access capital.
+            We just sent your latest Paige Agent AI Partner commission. Thanks for everything you do
+            to bring more service professionals to Paige.
           </Text>
 
           <Section style={amountBox}>
@@ -49,7 +49,7 @@ const AffiliateCommissionPaidEmail = ({ amount, paymentMethod, periodLabel, ytdT
 
         <Hr style={hr} />
         <Text style={footer}>
-          © {new Date().getFullYear()} {SITE_NAME} · Project Mogul Enterprise Inc.
+          © {new Date().getFullYear()} {SITE_NAME}
         </Text>
       </Container>
     </Body>
@@ -83,7 +83,7 @@ export const template = {
 const main = { backgroundColor: '#ffffff', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }
 const container = { maxWidth: '600px', margin: '0 auto' }
 const headerBar = { backgroundColor: '#0a1628', padding: '32px 40px 28px', borderRadius: '8px 8px 0 0', textAlign: 'center' as const }
-const logoText = { fontSize: '26px', fontWeight: 'bold' as const, color: '#CFAE70', margin: '0', letterSpacing: '0.5px' }
+const logoText = { fontSize: '26px', fontWeight: 'bold' as const, color: '#EBB94C', margin: '0', letterSpacing: '0.5px' }
 const tagline = { fontSize: '12px', color: '#9ca3af', margin: '6px 0 0', textTransform: 'uppercase' as const, letterSpacing: '2px' }
 const contentSection = { padding: '36px 40px 24px' }
 const h2 = { fontSize: '24px', fontWeight: 'bold' as const, color: '#0a1628', margin: '0 0 16px', textAlign: 'center' as const }
@@ -92,6 +92,6 @@ const amountBox = { textAlign: 'center' as const, margin: '20px 0', padding: '24
 const amountLabel = { fontSize: '11px', color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '2px', margin: '0 0 8px', fontWeight: '600' as const }
 const amountValue = { fontSize: '36px', fontWeight: '800' as const, color: '#0a1628', margin: '0', lineHeight: '1.1' }
 const detailsBox = { padding: '18px 20px', backgroundColor: '#fafafa', borderRadius: '6px', margin: '0 0 24px' }
-const button = { backgroundColor: '#CFAE70', color: '#0a1628', padding: '14px 36px', borderRadius: '6px', fontSize: '15px', fontWeight: '700' as const, textDecoration: 'none', display: 'block' as const, textAlign: 'center' as const, margin: '0 auto', maxWidth: '240px' }
+const button = { backgroundColor: '#EBB94C', color: '#0a1628', padding: '14px 36px', borderRadius: '6px', fontSize: '15px', fontWeight: '700' as const, textDecoration: 'none', display: 'block' as const, textAlign: 'center' as const, margin: '0 auto', maxWidth: '240px' }
 const hr = { borderColor: '#e5e7eb', margin: '24px 40px' }
 const footer = { fontSize: '12px', color: '#9ca3af', textAlign: 'center' as const, margin: '0', padding: '0 40px 32px' }

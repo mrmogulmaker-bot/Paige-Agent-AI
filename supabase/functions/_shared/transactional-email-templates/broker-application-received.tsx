@@ -12,7 +12,7 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = 'PaigeAgent.ai'
+const SITE_NAME = 'Paige Agent AI'
 const SUPPORT_EMAIL = 'support@paigeagent.ai'
 
 interface BrokerApplicationReceivedProps {
@@ -42,7 +42,7 @@ const BrokerApplicationReceivedEmail = ({
               {firstName ? `Hi ${firstName},` : 'Update on your application'}
             </Heading>
             <Text style={text}>
-              Thank you for applying to the PaigeAgent Broker Program
+              Thank you for applying to the {SITE_NAME} Broker Program
               {businessName ? ` on behalf of ${businessName}` : ''}. After
               reviewing your application, we are not able to approve your
               broker workspace at this time.
@@ -59,8 +59,8 @@ const BrokerApplicationReceivedEmail = ({
               This is not the end of the road. You're welcome to reapply in
               <strong> 90 days</strong>, especially after building more
               client volume, completing additional credentials, or expanding
-              your services. If you believe this was a mistake or want to
-              discuss your application, please reach out to our team.
+              your services. If you believe this was a mistake or want
+              to discuss your application, please reach out to our team.
             </Text>
 
             <Section style={ctaWrap}>
@@ -70,9 +70,9 @@ const BrokerApplicationReceivedEmail = ({
             </Section>
 
             <Text style={text}>
-              You can still use PaigeAgent as a standard client to build
-              your own credit, funding, and business profile. Your account
-              remains active.
+              You can still use {SITE_NAME} to run your own practice — clients,
+              follow-ups, onboarding, and scheduling. Your account remains
+              active.
             </Text>
 
             <Text style={footer}>— The {SITE_NAME} Partnerships Team</Text>
@@ -93,18 +93,18 @@ const BrokerApplicationReceivedEmail = ({
             {firstName ? `Welcome, ${firstName}.` : 'Your Broker application is in.'}
           </Heading>
           <Text style={text}>
-            Thanks for applying to the PaigeAgent Broker Program
+            Thanks for applying to the {SITE_NAME} Broker Program
             {businessName ? ` on behalf of ${businessName}` : ''}. Your application
             is being processed automatically — most brokers are approved instantly
             and will receive a follow-up welcome email with their referral code,
-            client discount link, and dashboard access within the next minute.
+            client invite link, and dashboard access within the next minute.
           </Text>
 
           <Section style={card}>
             <Text style={cardLabel}>What happens next</Text>
             <Text style={cardItem}>1. You'll receive an approval email with your unique broker code.</Text>
             <Text style={cardItem}>2. Activate your $197/mo Broker Workspace from the dashboard.</Text>
-            <Text style={cardItem}>3. Start inviting clients — they sign up at your $17/mo broker rate.</Text>
+            <Text style={cardItem}>3. Start inviting clients — they onboard at your $17/mo broker rate.</Text>
           </Section>
 
           <Text style={text}>
@@ -123,10 +123,10 @@ export const template = {
   component: BrokerApplicationReceivedEmail,
   subject: (data: Record<string, any> = {}) =>
     data.declineNotice
-      ? 'Update on Your PaigeAgent Broker Application'
-      : 'Your PaigeAgent Broker Application is Received',
+      ? 'Update on Your Paige Agent AI Broker Application'
+      : 'Your Paige Agent AI Broker Application is Received',
   displayName: 'Broker — Application received / declined',
-  previewData: { firstName: 'Jordan', businessName: 'Apex Credit Advisors' },
+  previewData: { firstName: 'Jordan', businessName: 'Apex Consulting Group' },
 } satisfies TemplateEntry
 
 const main: React.CSSProperties = {

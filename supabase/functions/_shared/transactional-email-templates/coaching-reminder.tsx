@@ -4,7 +4,7 @@ import {
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
 
-const SITE_NAME = "PaigeAgent.ai"
+const SITE_NAME = "Paige Agent AI"
 const LOGO_URL = 'https://bfmyebsjyuoecmjskqhs.supabase.co/storage/v1/object/public/email-assets/paige-logo-transparent.png'
 
 interface CoachingReminderProps {
@@ -21,10 +21,10 @@ const CoachingReminderEmail = ({
   name,
   sessionDate = 'Tomorrow',
   sessionTime = '10:00 AM EST',
-  coachName = 'Your PME coach',
-  joinUrl = 'https://paigeagent.ai/app',
-  rescheduleUrl = 'https://paigeagent.ai/app',
-  agenda = 'Review of your current funding plan and next-step actions.',
+  coachName = 'Your coach',
+  joinUrl = 'https://app.paigeagent.ai',
+  rescheduleUrl = 'https://app.paigeagent.ai',
+  agenda = 'Review your progress, work through your current goals, and set the next steps.',
 }: CoachingReminderProps) => (
   <Html lang="en" dir="ltr">
     <Head />
@@ -32,7 +32,7 @@ const CoachingReminderEmail = ({
     <Body style={main}>
       <Container style={container}>
         <Img src={LOGO_URL} alt={SITE_NAME} width="160" height="auto" style={logo} />
-        <Text style={subheading}>Coaching Reminder</Text>
+        <Text style={subheading}>Session Reminder</Text>
         <Hr style={hr} />
         <Heading as="h2" style={h2}>{name ? `${name}, your session is ${sessionDate}` : `Your session is ${sessionDate}`}</Heading>
         <Section style={detailBox}>
@@ -46,8 +46,8 @@ const CoachingReminderEmail = ({
           <Text style={detailValue}>{agenda}</Text>
         </Section>
         <Heading as="h3" style={h3}>How to prepare</Heading>
-        <Text style={text}>• Open your latest credit summary in PaigeAgent</Text>
-        <Text style={text}>• Review your current funding goals and timeline</Text>
+        <Text style={text}>• Open your latest progress notes and action items in Paige</Text>
+        <Text style={text}>• Review your current goals and where you left off last session</Text>
         <Text style={text}>• Have your top 2-3 questions ready</Text>
         <Button style={button} href={joinUrl}>
           Join Session
@@ -56,7 +56,7 @@ const CoachingReminderEmail = ({
           Need to reschedule? <a href={rescheduleUrl} style={link}>Pick a new time</a>
         </Text>
         <Hr style={hr} />
-        <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME}. You received this because coaching reminders are enabled in your notification preferences.</Text>
+        <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME}. You received this because session reminders are enabled in your notification preferences.</Text>
       </Container>
     </Body>
   </Html>
@@ -65,13 +65,13 @@ const CoachingReminderEmail = ({
 export const template = {
   component: CoachingReminderEmail,
   subject: '📅 Reminder — Your Strategy Session is Tomorrow',
-  displayName: 'Coaching Reminder',
+  displayName: 'Session Reminder',
   previewData: {
     name: 'Antonio',
     sessionDate: 'Tomorrow',
     sessionTime: '10:00 AM EST',
     coachName: 'Coach Candace',
-    agenda: 'Review your funding readiness score and finalize your top 3 lender targets.',
+    agenda: 'Review last month\'s wins, work through your current goals, and lock in your next three action items.',
   },
 } satisfies TemplateEntry
 

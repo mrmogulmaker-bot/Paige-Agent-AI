@@ -12,9 +12,9 @@ export interface TemplateEntry {
 import { template as roleInvitation } from './role-invitation.tsx'
 import { template as welcomeEmail } from './welcome.tsx'
 import { template as affiliateInvitation } from './affiliate-invitation.tsx'
-import { template as creditAlert } from './credit-alert.tsx'
-import { template as scoreMilestone } from './score-milestone.tsx'
-import { template as fundingOpportunity } from './funding-opportunity.tsx'
+// credit-alert / score-milestone / funding-opportunity archived to ./_archive-mma/
+// (§2 finance prohibition + §9 platform-vs-tenant separation). Reusable by future
+// MMA / Project Mogul Enterprise tenant accounts as THEIR templates — never here.
 import { template as weeklySummary } from './weekly-summary.tsx'
 import { template as onboardingWelcome } from './onboarding-welcome.tsx'
 import { template as coachingReminder } from './coaching-reminder.tsx'
@@ -45,9 +45,6 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'role-invitation': roleInvitation,
   'welcome': welcomeEmail,
   'affiliate-invitation': affiliateInvitation,
-  'credit-alert': creditAlert,
-  'score-milestone': scoreMilestone,
-  'funding-opportunity': fundingOpportunity,
   'weekly-summary': weeklySummary,
   'onboarding-welcome': onboardingWelcome,
   'coaching-reminder': coachingReminder,
