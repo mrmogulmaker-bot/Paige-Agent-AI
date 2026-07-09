@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     if (!bookingId) return json({ error: "This link is invalid or has expired." }, 401);
 
     const { data: b } = await admin.from("internal_bookings")
-      .select("id, calendar_id, host_user_id, guest_name, guest_email, title, start_at, end_at, timezone, status, location_type, location_value")
+      .select("id, calendar_id, host_user_id, guest_name, guest_email, title, start_at, end_at, timezone, status, location_type, location_value, booking_kind, collective_group_id")
       .eq("id", bookingId).maybeSingle();
     if (!b) return json({ error: "Booking not found." }, 404);
 
@@ -94,11 +94,29 @@ Deno.serve(async (req) => {
     }
 
     if (action === "manage") {
+      // Collective only: tell the guest who they're actually meeting with —
+      // every row in the group is a symmetric leg for one attending host.
+      let withNames: string | null = null;
+      if (b.collective_group_id) {
+        const { data: siblings } = await admin.from("internal_bookings")
+          .select("host_user_id").eq("collective_group_id", b.collective_group_id).neq("status", "cancelled");
+        const hostIds = Array.from(new Set((siblings ?? []).map((s) => s.host_user_id as string)));
+        if (hostIds.length > 1) {
+          const { data: profs } = await admin.from("profiles").select("user_id, full_name").in("user_id", hostIds);
+          const nameByUid = new Map((profs ?? []).map((p) => [p.user_id as string, p.full_name as string | null]));
+          const names = (await Promise.all(hostIds.map(async (uid) => {
+            const { data: u } = await admin.auth.admin.getUserById(uid);
+            return nameByUid.get(uid) || (u as { user?: { email?: string } } | null)?.user?.email || null;
+          }))).filter((n): n is string => !!n);
+          if (names.length) withNames = names.join(", ");
+        }
+      }
       return json({
         booking: {
           id: b.id, title: (cal?.title as string) || b.title, start_at: b.start_at, status: b.status,
           guest_name: b.guest_name, timezone: b.timezone, slug, accent: (cal?.accent as string) || "#EBB94C",
           durationMin, canModify: b.status === "scheduled",
+          ...(withNames ? { with: withNames } : {}),
         },
       });
     }
@@ -118,9 +136,59 @@ Deno.serve(async (req) => {
       if (!isWindowStart(avail, tz, durationMin, minNotice, newStart, now)) {
         return json({ error: "That time isn't open. Please pick another." }, 409);
       }
-      // Host must be free at the new time (buffers ignored here — the window grid
-      // already respects duration; a same-host clash is caught by the unique index).
       const newEnd = newStart + durationMin * 60000;
+
+      // Class: the host is SUPPOSED to be busy with other guests' seats at an
+      // existing session, so the single-host "is free" check below is the
+      // wrong tool entirely — this needs the same lock/find-or-create/count
+      // shape create_class_booking uses, ending in a move instead of an insert.
+      if (b.booking_kind === "class_seat") {
+        const { data: seat, error } = await admin.rpc("reschedule_class_booking", {
+          _seat_id: b.id,
+          _new_start_at: new Date(newStart).toISOString(),
+          _new_end_at: new Date(newEnd).toISOString(),
+        });
+        if (error) {
+          if ((error as { message?: string }).message === "sold_out")
+            return json({ error: "That class is full. Please pick another time." }, 409);
+          const code = (error as { code?: string }).code;
+          if (code === "23P01" || code === "23505")
+            return json({ error: "That time was just taken. Please pick another." }, 409);
+          return json({ error: error.message }, 500);
+        }
+        return json({ ok: true, status: "scheduled", start_at: (seat as { start_at: string }).start_at });
+      }
+
+      // Collective: every attending host must be free at the new time, and
+      // every symmetric leg moves together — moving only the token's own row
+      // would leave the group split across two different times.
+      if (b.collective_group_id) {
+        const { data: siblings } = await admin.from("internal_bookings")
+          .select("id, host_user_id").eq("collective_group_id", b.collective_group_id).neq("status", "cancelled");
+        const group = siblings?.length ? siblings : [{ id: b.id, host_user_id: b.host_user_id }];
+        const groupIds = new Set(group.map((m) => m.id as string));
+        for (const member of group) {
+          const { data: clash } = await admin.from("internal_bookings")
+            .select("id, start_at, end_at").eq("host_user_id", member.host_user_id).neq("status", "cancelled")
+            .gte("start_at", new Date(newStart - 86_400_000).toISOString()).lte("start_at", new Date(newStart + 86_400_000).toISOString());
+          const busy = (clash ?? []).some((x) => !groupIds.has(x.id as string) && newStart < Date.parse(x.end_at) && newEnd > Date.parse(x.start_at));
+          if (busy) return json({ error: "That time was just taken. Please pick another." }, 409);
+        }
+        const { error } = await admin.from("internal_bookings")
+          .update({ start_at: new Date(newStart).toISOString(), end_at: new Date(newEnd).toISOString() })
+          .eq("collective_group_id", b.collective_group_id).neq("status", "cancelled");
+        if (error) {
+          const code = (error as { code?: string }).code;
+          if (code === "23505" || code === "23P01") return json({ error: "That time was just taken. Please pick another." }, 409);
+          return json({ error: error.message }, 500);
+        }
+        return json({ ok: true, status: "scheduled", start_at: new Date(newStart).toISOString() });
+      }
+
+      // Single / round-robin — unchanged, except 23P01 (the GiST exclusion
+      // constraint, e.g. a mixed-duration overlap) now maps to the same clean
+      // 409 23505 (exact-start clash) already got; previously it fell through
+      // to a raw 500.
       const { data: clash } = await admin.from("internal_bookings")
         .select("id, start_at, end_at").eq("host_user_id", b.host_user_id).neq("status", "cancelled").neq("id", b.id)
         .gte("start_at", new Date(newStart - 86_400_000).toISOString()).lte("start_at", new Date(newStart + 86_400_000).toISOString());
@@ -131,7 +199,8 @@ Deno.serve(async (req) => {
         .update({ start_at: new Date(newStart).toISOString(), end_at: new Date(newEnd).toISOString() })
         .eq("id", b.id);
       if (error) {
-        if ((error as { code?: string }).code === "23505") return json({ error: "That time was just taken. Please pick another." }, 409);
+        const code = (error as { code?: string }).code;
+        if (code === "23505" || code === "23P01") return json({ error: "That time was just taken. Please pick another." }, 409);
         return json({ error: error.message }, 500);
       }
       return json({ ok: true, status: "scheduled", start_at: new Date(newStart).toISOString() });
