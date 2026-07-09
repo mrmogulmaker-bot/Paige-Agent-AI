@@ -425,7 +425,7 @@ function AppointmentTypesEditor({ types, onChange }: { types: AppointmentType[];
       {types.map((t, i) => (
         <div key={t.id} className="rounded-lg border p-3 space-y-2.5">
           <div className="flex items-start gap-2">
-            <Input value={t.name} placeholder="Service name (e.g. 15-min intro call)" onChange={(e) => patch(i, { name: e.target.value })} className="h-8" />
+            <Input value={t.name} aria-label="Service name" placeholder="Service name (e.g. 15-min intro call)" onChange={(e) => patch(i, { name: e.target.value })} className="h-8" />
             <div className="flex items-center gap-0.5 flex-shrink-0">
               <button type="button" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)} className="h-8 w-7 grid place-items-center rounded-md hover:bg-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
               <button type="button" aria-label="Move down" disabled={i === types.length - 1} onClick={() => move(i, 1)} className="h-8 w-7 grid place-items-center rounded-md hover:bg-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
@@ -440,10 +440,10 @@ function AppointmentTypesEditor({ types, onChange }: { types: AppointmentType[];
                 {m}m
               </button>
             ))}
-            <Input type="number" min={5} step={5} value={t.duration_min} className="w-16 h-7"
+            <Input type="number" min={5} step={5} value={t.duration_min} aria-label="Custom length in minutes" className="w-16 h-7"
               onChange={(e) => patch(i, { duration_min: Math.max(5, Number(e.target.value) || 30) })} />
           </div>
-          <Input value={t.description} placeholder="Short blurb (optional)" onChange={(e) => patch(i, { description: e.target.value })} className="h-8 text-sm" />
+          <Input value={t.description} aria-label="Service description" placeholder="Short blurb (optional)" onChange={(e) => patch(i, { description: e.target.value })} className="h-8 text-sm" />
         </div>
       ))}
       <Button type="button" variant="outline" size="sm" onClick={add} className="gap-1.5">
@@ -471,7 +471,7 @@ function DateOverridesEditor({ overrides, onChange }: { overrides: DateOverride[
       {overrides.map((o, i) => (
         <div key={i} className="rounded-lg border p-3 space-y-2.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <Input type="date" value={o.date} onChange={(e) => patch(i, { date: e.target.value })} className="h-8 w-40" />
+            <Input type="date" value={o.date} aria-label="Override date" onChange={(e) => patch(i, { date: e.target.value })} className="h-8 w-40" />
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => patch(i, { blocked: true, windows: [] })}
                 className={`px-2.5 h-8 rounded-md border text-xs transition ${o.blocked ? "border-primary bg-primary/10 text-primary font-medium" : "hover:bg-muted"}`}>Blocked (day off)</button>
@@ -484,9 +484,9 @@ function DateOverridesEditor({ overrides, onChange }: { overrides: DateOverride[
             <div className="space-y-1.5">
               {o.windows.map((w, wi) => (
                 <div key={wi} className="flex items-center gap-2">
-                  <Input type="time" value={w.start} onChange={(e) => setWindow(i, wi, { start: e.target.value })} className="w-28 h-8" />
+                  <Input type="time" value={w.start} aria-label="Start time" onChange={(e) => setWindow(i, wi, { start: e.target.value })} className="w-28 h-8" />
                   <span className="text-muted-foreground text-sm">to</span>
-                  <Input type="time" value={w.end} onChange={(e) => setWindow(i, wi, { end: e.target.value })} className="w-28 h-8" />
+                  <Input type="time" value={w.end} aria-label="End time" onChange={(e) => setWindow(i, wi, { end: e.target.value })} className="w-28 h-8" />
                   <button type="button" aria-label="Remove window" onClick={() => removeWindow(i, wi)} className="h-8 w-7 grid place-items-center rounded-md hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               ))}
@@ -1223,6 +1223,9 @@ function CalendarBuilderSheet({
                   className="flex-1 bg-transparent px-2 py-2 text-sm outline-none" />
               </div>
               <p className="text-[11px] text-muted-foreground">The public booking link. Leave blank to auto-generate. Letters, numbers, and dashes only.</p>
+              {isEdit && existing?.enabled && slugify(slugInput) && slugify(slugInput) !== existing.slug && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-500">Changing this breaks any link or embed you've already shared at the old address.</p>
+              )}
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">

@@ -263,10 +263,12 @@ export default function BookingPage() {
       <div className="space-y-2.5">
         {(brand.appointmentTypes ?? []).map((t) => (
           <button key={t.id} onClick={() => chooseService(t)}
-            className="w-full text-left rounded-xl p-4 transition-colors"
+            className="w-full text-left rounded-xl p-4 transition-colors outline-none"
             style={{ border: `1px solid ${c.border}`, background: c.panel }}
             onMouseEnter={(e) => { e.currentTarget.style.borderColor = brand.accent; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = c.border; }}>
+            onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderColor = c.border; }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = brand.accent; e.currentTarget.style.boxShadow = `0 0 0 3px ${brand.accent}33`; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = c.border; e.currentTarget.style.boxShadow = "none"; }}>
             <div className="flex items-center justify-between gap-3">
               <span className="font-semibold text-sm" style={{ color: c.text }}>{t.name}</span>
               <span className="inline-flex items-center gap-1.5 text-xs font-medium flex-shrink-0" style={{ color: brand.accent }}>
