@@ -66,6 +66,7 @@ interface HostSettings {
   bufferAfterMin: number;
   timezone: string;
   minNoticeMin: number;
+  dateOverrides: DateOverride[]; // per-date block-outs / special hours
   horizonDays: number; // how far ahead guests may book (rolling window)
   redirectUrl: string | null; // where to send the guest after booking
   title: string | null;
@@ -79,6 +80,7 @@ interface HostSettings {
   locationValue: string | null;
   locationOptions: { type: string; value: string | null }[]; // owner-offered methods
   intakeQuestions: IntakeQuestion[]; // owner-authored booking-form questions
+  appointmentTypes: AppointmentType[]; // owner-authored service menu
   confirmGuest: boolean; // send guest a confirmation
   confirmHost: boolean; // notify the host of new bookings
 }
@@ -153,6 +155,45 @@ function collectAnswers(questions: IntakeQuestion[], raw: unknown): { answers: R
   return { answers: out };
 }
 
+// --- Date overrides / block-out days ----------------------------------------
+// Per-date exceptions to the weekly pattern: block a whole day, or set special
+// hours for one date. Tenant-authored per calendar (§9).
+interface DateOverride { date: string; blocked: boolean; windows: { start: string; end: string }[] }
+function parseDateOverrides(raw: unknown): DateOverride[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((o) => (o && typeof o === "object" ? o : {}) as Record<string, unknown>)
+    .map((o) => ({
+      date: String(o.date ?? ""),
+      blocked: o.blocked === true,
+      windows: Array.isArray(o.windows)
+        ? (o.windows as unknown[])
+            .map((w) => (w && typeof w === "object" ? w : {}) as Record<string, unknown>)
+            .filter((w) => /^\d{2}:\d{2}$/.test(String(w.start)) && /^\d{2}:\d{2}$/.test(String(w.end)))
+            .map((w) => ({ start: String(w.start), end: String(w.end) }))
+            .slice(0, 6)
+        : [],
+    }))
+    .filter((o) => /^\d{4}-\d{2}-\d{2}$/.test(o.date))
+    .slice(0, 366);
+}
+
+// --- Appointment types (a "service menu" on one page) -----------------------
+interface AppointmentType { id: string; name: string; description: string | null; duration_min: number; }
+function parseAppointmentTypes(raw: unknown): AppointmentType[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((t) => (t && typeof t === "object" ? t : {}) as Record<string, unknown>)
+    .map((t, i) => ({
+      id: String(t.id ?? `t${i}`).slice(0, 64),
+      name: String(t.name ?? "").trim().slice(0, 120),
+      description: typeof t.description === "string" ? t.description.slice(0, 500) : null,
+      duration_min: Math.max(5, Math.min(1440, Number(t.duration_min) || 30)),
+    }))
+    .filter((t) => t.name.length > 0)
+    .slice(0, 20);
+}
+
 interface Busy { start: number; end: number } // UTC ms
 
 /** All candidate slot starts in the availability windows (busy-agnostic). */
@@ -161,10 +202,17 @@ function windowStarts(h: HostSettings, fromMs: number, toMs: number, nowMs: numb
   const durMs = h.durationMin * 60000;
   const earliest = nowMs + h.minNoticeMin * 60000;
   const dayMs = 86_400_000;
+  const pad = (n: number) => String(n).padStart(2, "0");
   // Walk each calendar day in the host's timezone across the window.
   for (let cursor = fromMs - dayMs; cursor <= toMs + dayMs; cursor += dayMs) {
     const { y, mo, d, wd } = ymdInTz(cursor, h.timezone);
-    const windows = h.availability.filter((w) => w.day === wd);
+    // Date overrides win over the weekly pattern: a blocked date yields nothing;
+    // a date with custom windows uses those; otherwise fall back to the week.
+    const override = h.dateOverrides.find((o) => o.date === `${y}-${pad(mo)}-${pad(d)}`);
+    if (override?.blocked) continue;
+    const windows = override
+      ? override.windows.map((w) => ({ day: wd, start: w.start, end: w.end }))
+      : h.availability.filter((w) => w.day === wd);
     for (const w of windows) {
       const [sh, sm] = w.start.split(":").map(Number);
       const [eh, em] = w.end.split(":").map(Number);
@@ -199,7 +247,7 @@ function roundRobinSlots(h: HostSettings, busyByHost: Record<string, Busy[]>, fr
 async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
   const { data: cal } = await admin
     .from("calendars")
-    .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options, booking_horizon_days, redirect_url, intake_questions")
+    .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options, booking_horizon_days, redirect_url, intake_questions, appointment_types, date_overrides")
     .eq("slug", slug)
     .maybeSingle();
   if (!cal || cal.enabled !== true) return null;
@@ -224,6 +272,7 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     bufferAfterMin: Math.max(0, cal.buffer_after_min ?? 0),
     timezone: cal.timezone || "America/New_York",
     minNoticeMin: Math.max(0, cal.min_notice_min ?? 60),
+    dateOverrides: parseDateOverrides(cal.date_overrides),
     horizonDays: Math.max(1, cal.booking_horizon_days ?? 60),
     redirectUrl: (cal.redirect_url as string) || null,
     title: cal.title ?? null,
@@ -237,6 +286,7 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     locationValue: cal.location_value ?? null,
     locationOptions: parseLocationOptions(cal.location_options, cal.location_type ?? "phone", cal.location_value ?? null),
     intakeQuestions: parseIntakeQuestions(cal.intake_questions),
+    appointmentTypes: parseAppointmentTypes(cal.appointment_types),
     ...parseNotify(cal.notify_config),
   };
 }
@@ -261,6 +311,7 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     bufferAfterMin: Math.max(0, data.buffer_after_min ?? 0),
     timezone: data.timezone || "America/New_York",
     minNoticeMin: 60,
+    dateOverrides: [],
     horizonDays: 60,
     redirectUrl: null,
     title: data.booking_page_title ?? null,
@@ -274,6 +325,7 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     locationValue: null,
     locationOptions: [{ type: "phone", value: null }],
     intakeQuestions: [],
+    appointmentTypes: [],
     confirmGuest: true,
     confirmHost: true,
   };
@@ -306,6 +358,7 @@ async function loadBranding(admin: ReturnType<typeof createClient>, host: HostSe
     locationOptions: host.locationOptions,
     redirectUrl: host.redirectUrl,
     intakeQuestions: host.intakeQuestions,
+    appointmentTypes: host.appointmentTypes,
   };
 }
 
@@ -444,7 +497,17 @@ Deno.serve(async (req) => {
 
     const now = Date.now();
 
+    // Selected appointment type (service menu). When types exist, the chosen
+    // one's duration drives the slot grid; default to the first if none sent.
+    const selectType = (id: unknown): AppointmentType | null => {
+      if (!host.appointmentTypes.length) return null;
+      const wanted = typeof id === "string" ? id : "";
+      return host.appointmentTypes.find((t) => t.id === wanted) ?? host.appointmentTypes[0];
+    };
+
     if (action === "availability") {
+      const selType = selectType(body?.appointmentTypeId);
+      const effHost = selType ? { ...host, durationMin: selType.duration_min } : host;
       const fromMs = Math.max(now, Date.parse(body?.from) || now);
       // Cap the window at the calendar's booking horizon (how far ahead guests may book).
       // With no explicit `to`, serve up to the horizon but bound the first payload to
@@ -453,17 +516,17 @@ Deno.serve(async (req) => {
       const defaultToMs = now + Math.min(host.horizonDays, 92) * 86_400_000;
       const toMs = Math.min(horizonMs, Date.parse(body?.to) || defaultToMs);
       let slots: number[];
-      if (host.roundRobin) {
+      if (effHost.roundRobin) {
         // Combined team availability: a slot shows if any host is free for it.
         const busyByHost: Record<string, Busy[]> = {};
-        for (const uid of host.hosts) busyByHost[uid] = await loadBusy(admin, uid, fromMs, toMs);
-        slots = roundRobinSlots(host, busyByHost, fromMs, toMs, now);
+        for (const uid of effHost.hosts) busyByHost[uid] = await loadBusy(admin, uid, fromMs, toMs);
+        slots = roundRobinSlots(effHost, busyByHost, fromMs, toMs, now);
       } else {
-        const busy = await loadBusy(admin, host.user_id, fromMs, toMs);
-        slots = computeSlots(host, busy, fromMs, toMs, now);
+        const busy = await loadBusy(admin, effHost.user_id, fromMs, toMs);
+        slots = computeSlots(effHost, busy, fromMs, toMs, now);
       }
       return json({
-        durationMin: host.durationMin,
+        durationMin: effHost.durationMin,
         timezone: host.timezone,
         branding: await loadBranding(admin, host),
         slots: slots.map((s) => new Date(s).toISOString()),
@@ -481,6 +544,15 @@ Deno.serve(async (req) => {
       if (!name) return json({ error: "Name is required." }, 400);
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "A valid email is required." }, 400);
 
+      // Appointment type (service menu): if the calendar offers types, require a
+      // valid pick — its duration drives the meeting length and is stored.
+      let selType: AppointmentType | null = null;
+      if (host.appointmentTypes.length) {
+        selType = host.appointmentTypes.find((t) => t.id === body?.appointmentTypeId) ?? null;
+        if (!selType) return json({ error: "Please choose a service." }, 400);
+      }
+      const effHost = selType ? { ...host, durationMin: selType.duration_min } : host;
+
       // Owner-authored intake questions: validate required, keep only known
       // options, cap lengths. A missing required answer blocks the booking.
       const intake = collectAnswers(host.intakeQuestions, body?.answers);
@@ -495,18 +567,19 @@ Deno.serve(async (req) => {
         .gte("created_at", new Date(now - 60_000).toISOString());
       if ((recent ?? 0) >= 5) return json({ error: "Too many requests — please try again shortly." }, 429);
 
-      // Re-validate the slot is a real window start, then assign the host.
-      const winValid = windowStarts(host, startMs - 60000, startMs + 60000, now).some((s) => s === startMs);
+      // Re-validate the slot is a real window start (for the selected duration),
+      // then assign the host.
+      const winValid = windowStarts(effHost, startMs - 60000, startMs + 60000, now).some((s) => s === startMs);
       if (!winValid) return json({ error: "That time is no longer available. Please pick another." }, 409);
       let chosenHost = host.user_id;
-      if (host.roundRobin) {
+      if (effHost.roundRobin) {
         // Free hosts at this slot, then fair rotation: fewest upcoming bookings,
         // tie-broken by priority order. The unique (host, start) index still
         // guards against a race on the specific host we land on.
         const free: string[] = [];
-        for (const uid of host.hosts) {
+        for (const uid of effHost.hosts) {
           const b = await loadBusy(admin, uid, startMs - 86_400_000, startMs + 86_400_000);
-          if (isFree(host, b, startMs)) free.push(uid);
+          if (isFree(effHost, b, startMs)) free.push(uid);
         }
         if (!free.length) return json({ error: "That time is no longer available. Please pick another." }, 409);
         const loads = await Promise.all(free.map(async (uid) => {
@@ -516,11 +589,11 @@ Deno.serve(async (req) => {
             .gte("start_at", new Date(now).toISOString());
           return { uid, count: count ?? 0 };
         }));
-        loads.sort((a, b) => a.count - b.count || host.hosts.indexOf(a.uid) - host.hosts.indexOf(b.uid));
+        loads.sort((a, b) => a.count - b.count || effHost.hosts.indexOf(a.uid) - effHost.hosts.indexOf(b.uid));
         chosenHost = loads[0].uid;
       } else {
         const busy = await loadBusy(admin, host.user_id, startMs - 86_400_000, startMs + 86_400_000);
-        if (!isFree(host, busy, startMs)) return json({ error: "That time is no longer available. Please pick another." }, 409);
+        if (!isFree(effHost, busy, startMs)) return json({ error: "That time is no longer available. Please pick another." }, 409);
       }
 
       // Resolve the meeting method from the owner's offered options. One option →
@@ -531,7 +604,7 @@ Deno.serve(async (req) => {
       const locationType = picked.type;
       const locationValue = picked.type === "phone" ? (picked.value ?? phone ?? null) : (picked.value ?? null);
 
-      const endMs = startMs + host.durationMin * 60000;
+      const endMs = startMs + effHost.durationMin * 60000;
       const { data, error } = await admin.from("internal_bookings").insert({
         tenant_id: host.tenant_id,
         host_user_id: chosenHost,
@@ -539,7 +612,7 @@ Deno.serve(async (req) => {
         guest_name: name,
         guest_email: email,
         guest_phone: phone,
-        title: `Meeting with ${name}`,
+        title: selType ? `${selType.name} with ${name}` : `Meeting with ${name}`,
         notes,
         start_at: new Date(startMs).toISOString(),
         end_at: new Date(endMs).toISOString(),
@@ -549,6 +622,7 @@ Deno.serve(async (req) => {
         location_type: locationType,
         location_value: locationValue,
         intake_answers: Object.keys(intake.answers).length ? intake.answers : null,
+        appointment_type: selType ? { id: selType.id, name: selType.name, duration_min: selType.duration_min } : null,
       }).select("id, start_at, end_at, title").single();
       if (error) {
         // Unique/exclusion violation = the slot was just taken in a race.
@@ -566,7 +640,7 @@ Deno.serve(async (req) => {
           hour: "numeric", minute: "2-digit", timeZoneName: "short",
         }).format(new Date(startMs));
         const loc = locationLabel(locationType, locationValue);
-        const title = host.title || "Your session";
+        const title = selType?.name || host.title || "Your session";
         const ics = buildIcs({
           uid: `${(data as { id: string }).id}@paigeagent.ai`, startMs, endMs, title,
           desc: host.description || "", location: loc, organizer: brand.name, attendee: email, attendeeName: name,

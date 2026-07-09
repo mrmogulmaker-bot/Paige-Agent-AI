@@ -24,22 +24,23 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 
-type Phase = "loading" | "pick" | "form" | "done" | "error";
+type Phase = "loading" | "service" | "pick" | "form" | "done" | "error";
 const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type LocationOption = { type: string; value: string | null };
 type IntakeQuestion = { id: string; label: string; type: string; required: boolean; options: string[]; placeholder: string | null };
+type AppointmentType = { id: string; name: string; description: string | null; duration_min: number };
 type Brand = {
   name: string; logoUrl: string | null; accent: string; title: string | null; description: string | null;
   theme: "light" | "dark"; subtitle: string | null; showCompanyName: boolean;
   locationType: string; locationValue: string | null; locationOptions: LocationOption[]; durationMin?: number;
-  redirectUrl?: string | null; intakeQuestions?: IntakeQuestion[];
+  redirectUrl?: string | null; intakeQuestions?: IntakeQuestion[]; appointmentTypes?: AppointmentType[];
 };
 const DEFAULT_BRAND: Brand = {
   name: "Paige Agent AI", logoUrl: null, accent: "#EBB94C", title: null, description: null,
   theme: "light", subtitle: null, showCompanyName: true, locationType: "google_meet", locationValue: null,
-  locationOptions: [{ type: "google_meet", value: null }], redirectUrl: null, intakeQuestions: [],
+  locationOptions: [{ type: "google_meet", value: null }], redirectUrl: null, intakeQuestions: [], appointmentTypes: [],
 };
 
 const LOCATION_META: Record<string, { label: string; icon: typeof Video }> = {
@@ -82,6 +83,10 @@ export default function BookingPage() {
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [inviteeLocation, setInviteeLocation] = useState("google_meet");
   const [submitting, setSubmitting] = useState(false);
+  // The chosen service (appointment type). Null until picked / when the calendar
+  // offers no menu. Its id + duration drive the slot grid.
+  const [selectedType, setSelectedType] = useState<AppointmentType | null>(null);
+  const selectedTypeRef = useRef<AppointmentType | null>(null);
   // Furthest date we've fetched slots through, so paging the calendar forward
   // can pull more (honoring a long booking window) without refetching per view.
   const loadedToRef = useRef<number>(0);
@@ -90,9 +95,12 @@ export default function BookingPage() {
   // Fetch availability up to `toIso` (omitted = the calendar's default window).
   // The edge function always serves from "now" and caps at the booking horizon,
   // so a wider `to` simply returns a superset — we replace, never merge stale.
+  // On the first load, if the calendar offers a service menu and none is picked
+  // yet, land on the service step instead of the date picker.
   const fetchAvailability = useCallback(async (toIso?: string) => {
+    const typeId = selectedTypeRef.current?.id;
     const { data, error } = await supabase.functions.invoke("public-booking", {
-      body: { action: "availability", slug, ...(toIso ? { to: toIso } : {}) },
+      body: { action: "availability", slug, ...(toIso ? { to: toIso } : {}), ...(typeId ? { appointmentTypeId: typeId } : {}) },
     });
     const res = data as (Partial<Brand> & { error?: string; slots?: string[]; durationMin?: number; branding?: Partial<Brand> }) | null;
     if (error || res?.error) { setErrorMsg(res?.error ?? "This booking page isn't available."); setPhase("error"); return; }
@@ -101,10 +109,26 @@ export default function BookingPage() {
     setDurationMin(res?.durationMin ?? b.durationMin ?? 30);
     setBrand(b);
     loadedToRef.current = Date.parse(toIso ?? "") || (Date.now() + 92 * 86_400_000);
-    setPhase("pick");
+    setPhase((b.appointmentTypes?.length && !selectedTypeRef.current) ? "service" : "pick");
   }, [slug]);
 
   useEffect(() => { void fetchAvailability(); }, [fetchAvailability]);
+
+  // Guest picks a service → remember it, reset the date selection, refetch slots
+  // at that service's duration, then continue to the date/time step.
+  const chooseService = (t: AppointmentType) => {
+    selectedTypeRef.current = t;
+    setSelectedType(t);
+    setSelectedDay(null); setSelectedSlot(null);
+    setPhase("loading");
+    void fetchAvailability();
+  };
+  const backToServices = () => {
+    selectedTypeRef.current = null;
+    setSelectedType(null);
+    setSelectedDay(null); setSelectedSlot(null);
+    setPhase("service");
+  };
 
   // Page the month forward; if we scroll past what's loaded, pull more (the edge
   // function caps at the horizon, so an empty result means we've hit the window).
@@ -174,6 +198,7 @@ export default function BookingPage() {
         action: "create", slug, start: selectedSlot,
         guest: { name: form.name, email: form.email, phone: form.phone }, notes: form.notes,
         ...(meetMulti ? { location: inviteeLocation } : {}),
+        ...(selectedType ? { appointmentTypeId: selectedType.id } : {}),
         ...(intakeQuestions.length ? { answers } : {}),
       },
     });
@@ -205,10 +230,10 @@ export default function BookingPage() {
         {brand.showCompanyName && <span className="font-semibold tracking-tight" style={{ color: c.text }}>{brand.name}</span>}
       </div>
       {brand.subtitle && <div className="text-xs font-medium uppercase tracking-wide mb-1.5" style={{ color: c.sub }}>{brand.subtitle}</div>}
-      <h1 className="text-2xl font-bold leading-tight mb-4" style={{ color: c.text }}>{brand.title || "Book a time"}</h1>
+      <h1 className="text-2xl font-bold leading-tight mb-4" style={{ color: c.text }}>{selectedType?.name || brand.title || "Book a time"}</h1>
       <div className="space-y-2 mb-4">
         <div className="flex items-center gap-2 text-sm" style={{ color: c.sub }}>
-          <Clock className="h-4 w-4" style={{ color: brand.accent }} /> {durationMin >= 60 ? `${durationMin / 60} hr` : `${durationMin} min`}
+          <Clock className="h-4 w-4" style={{ color: brand.accent }} /> {durationMin >= 60 ? `${durationMin % 60 === 0 ? durationMin / 60 : (durationMin / 60).toFixed(1)} hr` : `${durationMin} min`}
         </div>
         {(() => { const Icon = meetMulti ? HelpCircle : (LOCATION_META[fixedMeet.type]?.icon ?? Link2); return (
           <div className="flex items-center gap-2 text-sm" style={{ color: c.sub }}>
@@ -231,9 +256,38 @@ export default function BookingPage() {
     </div>
   );
 
+  // ---- Right: service menu (only when the calendar offers appointment types) ----
+  const serviceStep = (
+    <div className="p-6 sm:p-7">
+      <h2 className="text-base font-semibold mb-4" style={{ color: c.text }}>Choose a service</h2>
+      <div className="space-y-2.5">
+        {(brand.appointmentTypes ?? []).map((t) => (
+          <button key={t.id} onClick={() => chooseService(t)}
+            className="w-full text-left rounded-xl p-4 transition-colors"
+            style={{ border: `1px solid ${c.border}`, background: c.panel }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = brand.accent; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = c.border; }}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-semibold text-sm" style={{ color: c.text }}>{t.name}</span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium flex-shrink-0" style={{ color: brand.accent }}>
+                <Clock className="h-3.5 w-3.5" /> {t.duration_min >= 60 ? `${t.duration_min % 60 === 0 ? t.duration_min / 60 : (t.duration_min / 60).toFixed(1)} hr` : `${t.duration_min} min`}
+              </span>
+            </div>
+            {t.description && <p className="text-xs mt-1.5" style={{ color: c.sub }}>{t.description}</p>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   // ---- Right: date+time picker ----
   const picker = (
     <div className="p-6 sm:p-7">
+      {selectedType && (
+        <button onClick={backToServices} className="inline-flex items-center gap-1.5 text-sm mb-3" style={{ color: c.sub }}>
+          <ArrowLeft className="h-4 w-4" /> Services
+        </button>
+      )}
       <h2 className="text-base font-semibold mb-4" style={{ color: c.text }}>Select Date &amp; Time</h2>
       {days.length === 0 ? (
         <p className="text-sm" style={{ color: c.sub }}>No open times in the next two weeks. Please check back soon.</p>
@@ -439,6 +493,7 @@ export default function BookingPage() {
       </div>
     )
     : phase === "done" ? confirmation
+    : phase === "service" ? serviceStep
     : phase === "form" ? detailsForm
     : picker;
 

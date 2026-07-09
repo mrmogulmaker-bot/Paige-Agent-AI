@@ -71,6 +71,8 @@ export interface CalendarRow {
   location_value: string | null;
   location_options: LocationOption[];
   intake_questions: IntakeQuestion[];
+  appointment_types: AppointmentType[];
+  date_overrides: DateOverride[];
   notify_config: NotifyConfig;
 }
 
@@ -108,6 +110,44 @@ function normalizeIntake(raw: unknown): IntakeQuestion[] {
 // Stable-ish id for a new question without pulling in a uuid dep.
 function newQuestionId(): string {
   return `q_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`;
+}
+function newId(prefix: string): string {
+  return `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`;
+}
+
+// Appointment types — a "service menu" on one booking page (tenant-scoped, §9).
+export interface AppointmentType { id: string; name: string; description: string; duration_min: number; }
+function normalizeAppointmentTypes(raw: unknown): AppointmentType[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((t, i) => {
+    const o = (t && typeof t === "object" ? t : {}) as Record<string, unknown>;
+    return {
+      id: String(o.id ?? `t${i}`),
+      name: String(o.name ?? ""),
+      description: typeof o.description === "string" ? o.description : "",
+      duration_min: Math.max(5, Math.min(1440, Number(o.duration_min) || 30)),
+    };
+  });
+}
+
+// Date-specific overrides — block a day, or set special hours (tenant-scoped, §9).
+export interface DateWindow { start: string; end: string; }
+export interface DateOverride { date: string; blocked: boolean; windows: DateWindow[]; }
+function normalizeDateOverrides(raw: unknown): DateOverride[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((o) => {
+    const r = (o && typeof o === "object" ? o : {}) as Record<string, unknown>;
+    return {
+      date: String(r.date ?? ""),
+      blocked: r.blocked === true,
+      windows: Array.isArray(r.windows)
+        ? r.windows.map((w) => {
+            const ww = (w && typeof w === "object" ? w : {}) as Record<string, unknown>;
+            return { start: String(ww.start ?? "09:00"), end: String(ww.end ?? "17:00") };
+          })
+        : [],
+    };
+  }).filter((o) => /^\d{4}-\d{2}-\d{2}$/.test(o.date));
 }
 
 export interface NotifyReminder { channel: string; offset_min: number; }
@@ -147,7 +187,7 @@ const DEFAULT_AVAIL: AvailState = Object.fromEntries(
   [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { enabled: d >= 1 && d <= 5, start: "09:00", end: "17:00" }]),
 );
 
-const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, notify_config";
+const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config";
 
 // Meeting methods the owner can offer. Enable one → fixed; enable several → the
 // invitee chooses on the booking page. in_person/custom carry a value field.
@@ -360,6 +400,105 @@ function IntakeQuestionsEditor({ questions, onChange }: { questions: IntakeQuest
       })}
       <Button type="button" variant="outline" size="sm" onClick={add} className="gap-1.5">
         <Plus className="h-4 w-4" /> Add question
+      </Button>
+    </div>
+  );
+}
+
+// Owner-facing editor for the service menu. Each row is a bookable service with
+// its own name, length, and blurb; the guest picks one before choosing a time.
+const DURATION_CHOICES = [15, 30, 45, 60, 90, 120];
+function AppointmentTypesEditor({ types, onChange }: { types: AppointmentType[]; onChange: (t: AppointmentType[]) => void }) {
+  const patch = (i: number, up: Partial<AppointmentType>) => onChange(types.map((t, idx) => (idx === i ? { ...t, ...up } : t)));
+  const remove = (i: number) => onChange(types.filter((_, idx) => idx !== i));
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= types.length) return;
+    const next = [...types]; [next[i], next[j]] = [next[j], next[i]]; onChange(next);
+  };
+  const add = () => onChange([...types, { id: newId("t"), name: "", description: "", duration_min: 30 }]);
+  return (
+    <div className="space-y-3">
+      {types.length === 0 && (
+        <p className="text-xs text-muted-foreground">No services yet — the page books a single meeting at the calendar's duration. Add two or more to offer a menu (guests pick a service first).</p>
+      )}
+      {types.map((t, i) => (
+        <div key={t.id} className="rounded-lg border p-3 space-y-2.5">
+          <div className="flex items-start gap-2">
+            <Input value={t.name} placeholder="Service name (e.g. 15-min intro call)" onChange={(e) => patch(i, { name: e.target.value })} className="h-8" />
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              <button type="button" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)} className="h-8 w-7 grid place-items-center rounded-md hover:bg-muted disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
+              <button type="button" aria-label="Move down" disabled={i === types.length - 1} onClick={() => move(i, 1)} className="h-8 w-7 grid place-items-center rounded-md hover:bg-muted disabled:opacity-30"><ChevronDown className="h-4 w-4" /></button>
+              <button type="button" aria-label="Remove service" onClick={() => remove(i)} className="h-8 w-7 grid place-items-center rounded-md hover:bg-destructive/10 text-destructive"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-muted-foreground mr-1">Length</span>
+            {DURATION_CHOICES.map((m) => (
+              <button key={m} type="button" onClick={() => patch(i, { duration_min: m })}
+                className={`px-2.5 h-7 rounded-md border text-xs transition ${t.duration_min === m ? "border-primary bg-primary/10 text-primary font-medium" : "hover:bg-muted"}`}>
+                {m}m
+              </button>
+            ))}
+            <Input type="number" min={5} step={5} value={t.duration_min} className="w-16 h-7"
+              onChange={(e) => patch(i, { duration_min: Math.max(5, Number(e.target.value) || 30) })} />
+          </div>
+          <Input value={t.description} placeholder="Short blurb (optional)" onChange={(e) => patch(i, { description: e.target.value })} className="h-8 text-sm" />
+        </div>
+      ))}
+      <Button type="button" variant="outline" size="sm" onClick={add} className="gap-1.5">
+        <Plus className="h-4 w-4" /> Add service
+      </Button>
+    </div>
+  );
+}
+
+// Owner-facing editor for date-specific exceptions: block a day off, or set
+// special hours for one date (overrides the weekly pattern).
+function DateOverridesEditor({ overrides, onChange }: { overrides: DateOverride[]; onChange: (o: DateOverride[]) => void }) {
+  const patch = (i: number, up: Partial<DateOverride>) => onChange(overrides.map((o, idx) => (idx === i ? { ...o, ...up } : o)));
+  const remove = (i: number) => onChange(overrides.filter((_, idx) => idx !== i));
+  const addBlock = () => onChange([...overrides, { date: "", blocked: true, windows: [] }]);
+  const setWindow = (i: number, wi: number, up: Partial<DateWindow>) =>
+    patch(i, { windows: overrides[i].windows.map((w, idx) => (idx === wi ? { ...w, ...up } : w)) });
+  const addWindow = (i: number) => patch(i, { windows: [...overrides[i].windows, { start: "09:00", end: "17:00" }] });
+  const removeWindow = (i: number, wi: number) => patch(i, { windows: overrides[i].windows.filter((_, idx) => idx !== wi) });
+  return (
+    <div className="space-y-3">
+      {overrides.length === 0 && (
+        <p className="text-xs text-muted-foreground">No exceptions — the weekly hours apply every week. Add a date to block a day off (holiday, vacation) or set special hours for one day.</p>
+      )}
+      {overrides.map((o, i) => (
+        <div key={i} className="rounded-lg border p-3 space-y-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Input type="date" value={o.date} onChange={(e) => patch(i, { date: e.target.value })} className="h-8 w-40" />
+            <div className="flex items-center gap-1">
+              <button type="button" onClick={() => patch(i, { blocked: true, windows: [] })}
+                className={`px-2.5 h-8 rounded-md border text-xs transition ${o.blocked ? "border-primary bg-primary/10 text-primary font-medium" : "hover:bg-muted"}`}>Blocked (day off)</button>
+              <button type="button" onClick={() => patch(i, { blocked: false, windows: o.windows.length ? o.windows : [{ start: "09:00", end: "17:00" }] })}
+                className={`px-2.5 h-8 rounded-md border text-xs transition ${!o.blocked ? "border-primary bg-primary/10 text-primary font-medium" : "hover:bg-muted"}`}>Special hours</button>
+            </div>
+            <button type="button" aria-label="Remove exception" onClick={() => remove(i)} className="h-8 w-7 grid place-items-center rounded-md hover:bg-destructive/10 text-destructive ml-auto"><Trash2 className="h-4 w-4" /></button>
+          </div>
+          {!o.blocked && (
+            <div className="space-y-1.5">
+              {o.windows.map((w, wi) => (
+                <div key={wi} className="flex items-center gap-2">
+                  <Input type="time" value={w.start} onChange={(e) => setWindow(i, wi, { start: e.target.value })} className="w-28 h-8" />
+                  <span className="text-muted-foreground text-sm">to</span>
+                  <Input type="time" value={w.end} onChange={(e) => setWindow(i, wi, { end: e.target.value })} className="w-28 h-8" />
+                  <button type="button" aria-label="Remove window" onClick={() => removeWindow(i, wi)} className="h-8 w-7 grid place-items-center rounded-md hover:bg-destructive/10 text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
+                </div>
+              ))}
+              <Button type="button" variant="ghost" size="sm" onClick={() => addWindow(i)} className="gap-1.5 h-7 text-xs">
+                <Plus className="h-3.5 w-3.5" /> Add window
+              </Button>
+            </div>
+          )}
+        </div>
+      ))}
+      <Button type="button" variant="outline" size="sm" onClick={addBlock} className="gap-1.5">
+        <Plus className="h-4 w-4" /> Add date
       </Button>
     </div>
   );
@@ -843,6 +982,8 @@ function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_
     location_value: "",
     location_options: [{ type: "phone", value: null }],
     intake_questions: [],
+    appointment_types: [],
+    date_overrides: [],
     notify_config: { ...DEFAULT_NOTIFY, reminders: [...DEFAULT_NOTIFY.reminders] },
   };
 }
@@ -884,6 +1025,8 @@ function CalendarBuilderSheet({
         location_type: c.location_type || "phone", location_value: c.location_value ?? "",
         location_options: normalizeLocationOptions(c.location_options),
         intake_questions: normalizeIntake(c.intake_questions),
+        appointment_types: normalizeAppointmentTypes(c.appointment_types),
+        date_overrides: normalizeDateOverrides(c.date_overrides),
         notify_config: normalizeNotify(c.notify_config),
       });
       setAvail(jsonToAvail(c.availability_json));
@@ -940,6 +1083,23 @@ function CalendarBuilderSheet({
         })
         .filter((q) => q.label.length > 0 && !(q._isChoice && q.options.length === 0))
         .map(({ _isChoice, ...q }) => q),
+      // Service menu: drop unnamed types; clamp duration.
+      appointment_types: draft.appointment_types
+        .map((t) => ({
+          id: t.id,
+          name: t.name.trim(),
+          description: (t.description ?? "").trim(),
+          duration_min: Math.max(5, Math.min(1440, t.duration_min || 30)),
+        }))
+        .filter((t) => t.name.length > 0),
+      // Date overrides: keep valid dates; a non-blocked date needs ≥1 window.
+      date_overrides: draft.date_overrides
+        .map((o) => ({
+          date: o.date,
+          blocked: o.blocked,
+          windows: o.blocked ? [] : o.windows.filter((w) => /^\d{2}:\d{2}$/.test(w.start) && /^\d{2}:\d{2}$/.test(w.end) && w.end > w.start),
+        }))
+        .filter((o) => /^\d{4}-\d{2}-\d{2}$/.test(o.date) && (o.blocked || o.windows.length > 0)),
       notify_config: draft.notify_config,
     };
 
@@ -1023,19 +1183,24 @@ function CalendarBuilderSheet({
                 This calendar is a Draft — flip it Live on the card for the link to accept bookings.
               </p>
             )}
-            {/* Embed code — drop the booking widget into any website. */}
-            <div className="mt-3">
-              <div className="text-[11px] font-medium text-muted-foreground mb-1">Embed on your site</div>
-              <div className="flex items-center gap-2">
-                <code className="text-[11px] bg-background rounded px-2 py-1 border truncate flex-1">
-                  {`<iframe src="${bookingUrl(existing.slug)}" width="100%" height="720" frameborder="0"></iframe>`}
-                </code>
-                <Button variant="outline" size="sm" onClick={async () => {
-                  try { await navigator.clipboard.writeText(`<iframe src="${bookingUrl(existing.slug)}" width="100%" height="720" frameborder="0" style="border:0;"></iframe>`); toast.success("Embed code copied"); }
-                  catch { toast.error("Couldn't copy"); }
-                }}><Copy className="h-3.5 w-3.5 mr-1" /> Copy</Button>
-              </div>
-            </div>
+            {/* Embed code — drop the booking widget into any website. One source
+                of truth so what's shown is exactly what's copied. */}
+            {(() => {
+              const embedCode = `<iframe src="${bookingUrl(existing.slug)}" width="100%" height="720" style="border:0;" title="Book a time"></iframe>`;
+              return (
+                <div className="mt-3">
+                  <div className="text-[11px] font-medium text-muted-foreground mb-1">Embed on your site</div>
+                  <div className="flex items-center gap-2">
+                    <code className="text-[11px] bg-background rounded px-2 py-1 border truncate flex-1">{embedCode}</code>
+                    <Button variant="outline" size="sm" onClick={async () => {
+                      try { await navigator.clipboard.writeText(embedCode); toast.success("Embed code copied"); }
+                      catch { toast.error("Couldn't copy"); }
+                    }}><Copy className="h-3.5 w-3.5 mr-1" /> Copy</Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">Paste into any web page. Adjust <code>height</code> to fit your layout.</p>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1140,6 +1305,14 @@ function CalendarBuilderSheet({
             </div>
           </BuilderSection>
 
+          {/* 2½ — Date-specific hours / block-outs */}
+          <BuilderSection title="Date-specific hours" description="Block a day off (holiday, vacation) or set special hours for a single date. These override the weekly pattern.">
+            <DateOverridesEditor
+              overrides={draft.date_overrides}
+              onChange={(o) => set("date_overrides", o)}
+            />
+          </BuilderSection>
+
           {/* 3 — Booking rules */}
           <BuilderSection title="Booking rules" description="Meeting length and padding between bookings.">
             <div className="space-y-1.5">
@@ -1179,6 +1352,14 @@ function CalendarBuilderSheet({
               </select>
               <p className="text-xs text-muted-foreground">How far ahead guests can book — keep it tight for a busy calendar, or open it wide.</p>
             </div>
+          </BuilderSection>
+
+          {/* 3¼ — Service menu (appointment types) */}
+          <BuilderSection title="Service menu" description="Offer more than one kind of meeting on this page. Add two or more and guests pick a service first — each with its own length. Leave empty for a single meeting at the duration above.">
+            <AppointmentTypesEditor
+              types={draft.appointment_types}
+              onChange={(t) => set("appointment_types", t)}
+            />
           </BuilderSection>
 
           {/* 3½ — Team / hosts (edit-only: needs a saved calendar id to attach hosts) */}
