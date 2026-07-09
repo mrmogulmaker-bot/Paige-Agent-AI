@@ -67,14 +67,15 @@ function layoutDay(events: GridEvent[]): Array<{ ev: GridEvent; lane: number; la
   return out;
 }
 
-function EventBlock({ ev, style }: { ev: GridEvent; style: React.CSSProperties }) {
+function EventBlock({ ev, style, onClick }: { ev: GridEvent; style: React.CSSProperties; onClick?: () => void }) {
   const cancelled = ev.status === "cancelled";
   const blocked = ev.status === "blocked";
   // Blocked time reads as unavailable (neutral, hatched), not a real appointment.
   const hue = blocked ? "#94a3b8" : ev.color;
   return (
     <div
-      className="absolute rounded-md px-1.5 py-1 overflow-hidden text-[11px] leading-tight cursor-default"
+      onClick={onClick}
+      className={`absolute rounded-md px-1.5 py-1 overflow-hidden text-[11px] leading-tight ${onClick ? "cursor-pointer hover:brightness-95" : "cursor-default"}`}
       style={{
         ...style,
         backgroundColor: blocked
@@ -105,7 +106,7 @@ function TimeGutter() {
   );
 }
 
-function DayColumn({ day, events, isToday }: { day: Date; events: GridEvent[]; isToday: boolean }) {
+function DayColumn({ day, events, isToday, onEventClick }: { day: Date; events: GridEvent[]; isToday: boolean; onEventClick?: (id: string) => void }) {
   const base = startOfDay(day);
   const laid = useMemo(() => layoutDay(events.filter((e) => isSameDay(e.start, day))), [events, day]);
   const now = useNowMinutes(isToday);
@@ -123,7 +124,7 @@ function DayColumn({ day, events, isToday }: { day: Date; events: GridEvent[]; i
         const height = Math.min(rawHeight, HOUR_HEIGHT * 24 - top - 2);
         const widthPct = 100 / lanes;
         return (
-          <EventBlock key={ev.id} ev={ev} style={{
+          <EventBlock key={ev.id} ev={ev} onClick={onEventClick ? () => onEventClick(ev.id) : undefined} style={{
             top, height,
             left: `calc(${lane * widthPct}% + 2px)`,
             width: `calc(${widthPct}% - 4px)`,
@@ -154,7 +155,7 @@ function useNowMinutes(active: boolean): number | null {
   return mins;
 }
 
-export function CalendarGrid({ view, cursor, events }: { view: ViewMode; cursor: Date; events: GridEvent[] }) {
+export function CalendarGrid({ view, cursor, events, onEventClick }: { view: ViewMode; cursor: Date; events: GridEvent[]; onEventClick?: (id: string) => void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (view !== "month" && scrollRef.current) {
@@ -162,7 +163,7 @@ export function CalendarGrid({ view, cursor, events }: { view: ViewMode; cursor:
     }
   }, [view, cursor]);
 
-  if (view === "month") return <MonthView cursor={cursor} events={events} />;
+  if (view === "month") return <MonthView cursor={cursor} events={events} onEventClick={onEventClick} />;
 
   const days = view === "day" ? [startOfDay(cursor)] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(cursor), i));
   const today = new Date();
@@ -187,7 +188,7 @@ export function CalendarGrid({ view, cursor, events }: { view: ViewMode; cursor:
         <div className="flex">
           <TimeGutter />
           {days.map((d) => (
-            <DayColumn key={d.toISOString()} day={d} events={events} isToday={isSameDay(d, today)} />
+            <DayColumn key={d.toISOString()} day={d} events={events} isToday={isSameDay(d, today)} onEventClick={onEventClick} />
           ))}
         </div>
       </div>
@@ -195,7 +196,7 @@ export function CalendarGrid({ view, cursor, events }: { view: ViewMode; cursor:
   );
 }
 
-function MonthView({ cursor, events }: { cursor: Date; events: GridEvent[] }) {
+function MonthView({ cursor, events, onEventClick }: { cursor: Date; events: GridEvent[]; onEventClick?: (id: string) => void }) {
   const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
   const gridStart = startOfWeek(first);
   const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
@@ -232,7 +233,9 @@ function MonthView({ cursor, events }: { cursor: Date; events: GridEvent[] }) {
               </div>
               <div className="space-y-0.5">
                 {list.slice(0, 3).map((e) => (
-                  <div key={e.id} className="flex items-center gap-1 text-[10px] truncate" title={`${e.title} · ${fmtTime(e.start)}`}>
+                  <div key={e.id} onClick={onEventClick ? () => onEventClick(e.id) : undefined}
+                    className={`flex items-center gap-1 text-[10px] truncate ${onEventClick ? "cursor-pointer hover:opacity-70" : ""}`}
+                    title={`${e.title} · ${fmtTime(e.start)}`}>
                     <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
                     <span className="text-muted-foreground tabular-nums">{e.start.getHours()}:{String(e.start.getMinutes()).padStart(2, "0")}</span>
                     <span className="truncate">{e.title}</span>

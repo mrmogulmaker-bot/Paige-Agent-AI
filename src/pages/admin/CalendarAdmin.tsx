@@ -36,6 +36,7 @@ interface CalMeta { id: string; title: string | null; color: string | null; acce
 interface BookingRow {
   id: string; title: string; start_at: string; end_at: string; status: string;
   source: string; guest_name: string | null; guest_email: string | null; calendar_id: string | null;
+  location_type: string | null; location_value: string | null;
 }
 
 const UNASSIGNED = "__unassigned__";
@@ -71,7 +72,16 @@ export default function CalendarAdmin() {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [newOpen, setNewOpen] = useState(false);
+  const [detail, setDetail] = useState<BookingRow | null>(null);
   const reqSeq = useRef(0);
+
+  const setBookingStatus = async (id: string, status: string) => {
+    const { error } = await supabase.from("internal_bookings").update({ status }).eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    setBookings((bs) => bs.map((b) => b.id === id ? { ...b, status } : b));
+    setDetail((d) => d && d.id === id ? { ...d, status } : d);
+    toast.success(status === "cancelled" ? "Booking cancelled" : status === "no_show" ? "Marked as no-show" : "Updated");
+  };
 
   const colorFor = useCallback((calId: string | null) => {
     const c = calendars.find((x) => x.id === calId);
@@ -93,7 +103,7 @@ export default function CalendarAdmin() {
     // Overlap-aware: catch events that START before the window but run into it.
     const { data } = await supabase
       .from("internal_bookings")
-      .select("id, title, start_at, end_at, status, source, guest_name, guest_email, calendar_id")
+      .select("id, title, start_at, end_at, status, source, guest_name, guest_email, calendar_id, location_type, location_value")
       .eq("host_user_id", uid)
       .lt("start_at", to.toISOString())
       .gte("end_at", from.toISOString())
@@ -175,7 +185,8 @@ export default function CalendarAdmin() {
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
               )}
-              <CalendarGrid view={view} cursor={cursor} events={events} />
+              <CalendarGrid view={view} cursor={cursor} events={events}
+                onEventClick={(id) => setDetail(bookings.find((b) => b.id === id) ?? null)} />
             </div>
 
             {/* Filter rail — color legend + calendar toggles */}
@@ -205,7 +216,7 @@ export default function CalendarAdmin() {
 
         {/* APPOINTMENT LIST */}
         <TabsContent value="list" className="space-y-4">
-          <AppointmentList bookings={bookings} loading={loading} colorFor={colorFor} />
+          <AppointmentList bookings={bookings} loading={loading} colorFor={colorFor} onSelect={setDetail} />
         </TabsContent>
 
         {/* CALENDAR SETTINGS */}
@@ -213,6 +224,14 @@ export default function CalendarAdmin() {
           <CalendarsPanel />
         </TabsContent>
       </Tabs>
+
+      <BookingDetailDialog
+        booking={detail}
+        onOpenChange={(v) => !v && setDetail(null)}
+        colorFor={colorFor}
+        onCancelBooking={(id) => setBookingStatus(id, "cancelled")}
+        onNoShow={(id) => setBookingStatus(id, "no_show")}
+      />
 
       <NewAppointmentDialog
         open={newOpen}
@@ -229,8 +248,62 @@ export default function CalendarAdmin() {
   );
 }
 
-function AppointmentList({ bookings, loading, colorFor }: {
-  bookings: BookingRow[]; loading: boolean; colorFor: (id: string | null) => string;
+const LOC_LABEL: Record<string, string> = {
+  google_meet: "Google Meet", zoom: "Zoom", phone: "Phone call", in_person: "In person", custom: "Custom",
+};
+function BookingDetailDialog({ booking, onOpenChange, colorFor, onCancelBooking, onNoShow }: {
+  booking: BookingRow | null;
+  onOpenChange: (v: boolean) => void;
+  colorFor: (id: string | null) => string;
+  onCancelBooking: (id: string) => void;
+  onNoShow: (id: string) => void;
+}) {
+  const b = booking;
+  return (
+    <Dialog open={b !== null} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        {b && (
+          <>
+            <DialogHeader>
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: colorFor(b.calendar_id) }} />
+                <DialogTitle>{b.title || b.guest_name || "Appointment"}</DialogTitle>
+              </div>
+              <DialogDescription>
+                {new Date(b.start_at).toLocaleString([], { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                {" – "}
+                {new Date(b.end_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="text-sm space-y-1.5 py-1">
+              {(b.guest_name || b.guest_email) && (
+                <div className="flex gap-2"><span className="text-muted-foreground w-16">Guest</span><span>{b.guest_name}{b.guest_email ? ` · ${b.guest_email}` : ""}</span></div>
+              )}
+              {b.location_type && (
+                <div className="flex gap-2"><span className="text-muted-foreground w-16">Where</span><span>{LOC_LABEL[b.location_type] ?? b.location_type}{b.location_value ? ` · ${b.location_value}` : ""}</span></div>
+              )}
+              <div className="flex gap-2 items-center"><span className="text-muted-foreground w-16">Status</span>
+                <Badge variant={b.status === "scheduled" ? "default" : "secondary"} className="capitalize">{b.status.replace(/_/g, " ")}</Badge>
+                <Badge variant="secondary" className="capitalize">{b.source.replace(/_/g, " ")}</Badge>
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:justify-start">
+              {b.status !== "cancelled" && (
+                <Button variant="outline" size="sm" onClick={() => onCancelBooking(b.id)}>Cancel booking</Button>
+              )}
+              {b.status !== "no_show" && b.status !== "cancelled" && (
+                <Button variant="outline" size="sm" onClick={() => onNoShow(b.id)}>Mark no-show</Button>
+              )}
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AppointmentList({ bookings, loading, colorFor, onSelect }: {
+  bookings: BookingRow[]; loading: boolean; colorFor: (id: string | null) => string; onSelect: (b: BookingRow) => void;
 }) {
   const grouped = useMemo(() => {
     const m = new Map<string, BookingRow[]>();
@@ -255,7 +328,8 @@ function AppointmentList({ bookings, loading, colorFor }: {
               <div key={date} className="space-y-2">
                 <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{date}</div>
                 {items.map((b) => (
-                  <div key={b.id} className="flex items-center gap-3 rounded-md border p-3 text-sm">
+                  <div key={b.id} onClick={() => onSelect(b)}
+                    className="flex items-center gap-3 rounded-md border p-3 text-sm cursor-pointer hover:bg-muted/50 transition-colors">
                     <span className="h-8 w-1 rounded-full flex-shrink-0" style={{ backgroundColor: colorFor(b.calendar_id) }} />
                     <div className="min-w-0 flex-1">
                       <div className="font-medium truncate">{b.title || b.guest_name || "Appointment"}</div>
