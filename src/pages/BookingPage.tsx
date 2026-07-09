@@ -206,10 +206,12 @@ export default function BookingPage() {
     const res = data as { error?: string } | null;
     if (error || res?.error) {
       setErrorMsg(res?.error ?? "Couldn't book that time.");
-      if (res?.error?.includes("no longer available")) {
-        setSelectedSlot(null); setPhase("pick");
-        const { data: fresh } = await supabase.functions.invoke("public-booking", { body: { action: "availability", slug } });
-        setSlots((fresh as { slots?: string[] } | null)?.slots ?? []);
+      if (res?.error?.includes("no longer available") || res?.error?.includes("just booked")) {
+        setSelectedSlot(null);
+        // Reuse the normal fetch path so the selected service (appointmentTypeId)
+        // stays intact — a raw refetch here previously fell back to the first
+        // service's grid while the UI still showed the chosen one's duration.
+        void fetchAvailability();
       }
       return;
     }

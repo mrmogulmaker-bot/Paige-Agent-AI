@@ -203,27 +203,38 @@ function windowStarts(h: HostSettings, fromMs: number, toMs: number, nowMs: numb
   const earliest = nowMs + h.minNoticeMin * 60000;
   const dayMs = 86_400_000;
   const pad = (n: number) => String(n).padStart(2, "0");
-  // Walk each calendar day in the host's timezone across the window.
-  for (let cursor = fromMs - dayMs; cursor <= toMs + dayMs; cursor += dayMs) {
-    const { y, mo, d, wd } = ymdInTz(cursor, h.timezone);
+  // Walk CALENDAR dates (not fixed 24h steps) in the host's timezone. Stepping
+  // a raw UTC-ms cursor by exactly 86_400_000 can skip the short (23h) day of
+  // a DST spring-forward transition when `fromMs` falls late in the host's
+  // local day — the fixed step then lands past that date entirely. Deriving
+  // each next date via calendar arithmetic (not elapsed milliseconds) visits
+  // every date exactly once regardless of DST.
+  let { y, mo, d } = ymdInTz(fromMs - dayMs, h.timezone);
+  while (zonedWallToUtcMs(y, mo - 1, d, 12, 0, h.timezone) <= toMs + dayMs) {
+    // Weekday of a calendar date is timezone-independent — pure date math.
+    const wd = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
     // Date overrides win over the weekly pattern: a blocked date yields nothing;
     // a date with custom windows uses those; otherwise fall back to the week.
     const override = h.dateOverrides.find((o) => o.date === `${y}-${pad(mo)}-${pad(d)}`);
-    if (override?.blocked) continue;
-    const windows = override
-      ? override.windows.map((w) => ({ day: wd, start: w.start, end: w.end }))
-      : h.availability.filter((w) => w.day === wd);
-    for (const w of windows) {
-      const [sh, sm] = w.start.split(":").map(Number);
-      const [eh, em] = w.end.split(":").map(Number);
-      const winStart = zonedWallToUtcMs(y, mo - 1, d, sh, sm, h.timezone);
-      const winEnd = zonedWallToUtcMs(y, mo - 1, d, eh, em, h.timezone);
-      for (let s = winStart; s + durMs <= winEnd; s += durMs) {
-        if (s < fromMs || s > toMs) continue;
-        if (s < earliest) continue;
-        starts.push(s);
+    if (!override?.blocked) {
+      const windows = override
+        ? override.windows.map((w) => ({ day: wd, start: w.start, end: w.end }))
+        : h.availability.filter((w) => w.day === wd);
+      for (const w of windows) {
+        const [sh, sm] = w.start.split(":").map(Number);
+        const [eh, em] = w.end.split(":").map(Number);
+        const winStart = zonedWallToUtcMs(y, mo - 1, d, sh, sm, h.timezone);
+        const winEnd = zonedWallToUtcMs(y, mo - 1, d, eh, em, h.timezone);
+        for (let s = winStart; s + durMs <= winEnd; s += durMs) {
+          if (s < fromMs || s > toMs) continue;
+          if (s < earliest) continue;
+          starts.push(s);
+        }
       }
     }
+    const next = new Date(Date.UTC(y, mo - 1, d));
+    next.setUTCDate(next.getUTCDate() + 1);
+    y = next.getUTCFullYear(); mo = next.getUTCMonth() + 1; d = next.getUTCDate();
   }
   return Array.from(new Set(starts)).sort((a, b) => a - b);
 }
@@ -625,8 +636,13 @@ Deno.serve(async (req) => {
         appointment_type: selType ? { id: selType.id, name: selType.name, duration_min: selType.duration_min } : null,
       }).select("id, start_at, end_at, title").single();
       if (error) {
-        // Unique/exclusion violation = the slot was just taken in a race.
-        if ((error as { code?: string }).code === "23505")
+        // 23505 = exact-start unique violation; 23P01 = the GiST exclusion
+        // constraint (overlapping time range for this host) — both mean the
+        // slot was just taken in a race. The exclusion constraint is what
+        // actually closes the mixed-duration overlap gap the app-level
+        // isFree() check can't (read-then-insert can't see a concurrent insert).
+        const code = (error as { code?: string }).code;
+        if (code === "23505" || code === "23P01")
           return json({ error: "That time was just booked. Please pick another." }, 409);
         return json({ error: error.message }, 500);
       }
