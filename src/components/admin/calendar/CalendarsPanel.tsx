@@ -627,6 +627,7 @@ function CalendarBuilderSheet({
   // are minted on save (create).
   const [draft, setDraft] = useState(blankDraft());
   const [avail, setAvail] = useState<AvailState>(DEFAULT_AVAIL);
+  const [slugInput, setSlugInput] = useState(""); // editable Custom URL (blank on create = auto)
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -645,9 +646,11 @@ function CalendarBuilderSheet({
         notify_config: normalizeNotify(c.notify_config),
       });
       setAvail(jsonToAvail(c.availability_json));
+      setSlugInput(c.slug);
     } else {
       setDraft({ ...blankDraft(), type: state.type ?? "personal" });
       setAvail(DEFAULT_AVAIL);
+      setSlugInput("");
     }
   }, [state]);
 
@@ -684,9 +687,15 @@ function CalendarBuilderSheet({
     setSaving(true);
 
     if (isEdit && existing) {
-      const { data, error } = await supabase.from("calendars").update(patch).eq("id", existing.id).select(SELECT_COLS).single();
+      const desiredSlug = slugify(slugInput);
+      const patchWithSlug = desiredSlug && desiredSlug !== existing.slug ? { ...patch, slug: desiredSlug } : patch;
+      const { data, error } = await supabase.from("calendars").update(patchWithSlug).eq("id", existing.id).select(SELECT_COLS).single();
       setSaving(false);
-      if (error || !data) { toast.error(error?.message ?? "Save failed"); return; }
+      if (error || !data) {
+        if ((error as { code?: string })?.code === "23505") toast.error("That booking link is taken — pick another.");
+        else toast.error(error?.message ?? "Save failed");
+        return;
+      }
       toast.success("Calendar saved");
       onSaved(data as CalendarRow, false);
       onOpenChange(false);
@@ -695,13 +704,20 @@ function CalendarBuilderSheet({
 
     // Create.
     if (!isPlatformStaff && !tenantId) { setSaving(false); toast.error("No active workspace — pick a tenant first"); return; }
-    const slug = `${slugify(title) || "calendar"}-${randomSuffix()}`;
+    // Honor a custom URL if typed; otherwise auto-generate a unique one.
+    const custom = slugify(slugInput);
+    const slug = custom || `${slugify(title) || "calendar"}-${randomSuffix()}`;
     // Go live on creation — a new calendar already has working defaults + weekly
     // availability, so its public booking link should accept bookings right away
     // (toggle it back to Draft on the card to unpublish).
     const { data, error } = await supabase
       .from("calendars").insert({ tenant_id: tenantId, slug, enabled: true, ...patch }).select(SELECT_COLS).single();
-    if (error || !data) { setSaving(false); toast.error(error?.message ?? "Could not create the calendar"); return; }
+    if (error || !data) {
+      setSaving(false);
+      if ((error as { code?: string })?.code === "23505") toast.error("That booking link is taken — pick another.");
+      else toast.error(error?.message ?? "Could not create the calendar");
+      return;
+    }
     // Register the creator as a host (REQUIRED — a hostless calendar is unbookable
     // and unrecoverable today; roll back rather than leave a dead one behind).
     const { data: auth } = await supabase.auth.getUser();
@@ -748,6 +764,19 @@ function CalendarBuilderSheet({
                 This calendar is a Draft — flip it Live on the card for the link to accept bookings.
               </p>
             )}
+            {/* Embed code — drop the booking widget into any website. */}
+            <div className="mt-3">
+              <div className="text-[11px] font-medium text-muted-foreground mb-1">Embed on your site</div>
+              <div className="flex items-center gap-2">
+                <code className="text-[11px] bg-background rounded px-2 py-1 border truncate flex-1">
+                  {`<iframe src="${bookingUrl(existing.slug)}" width="100%" height="720" frameborder="0"></iframe>`}
+                </code>
+                <Button variant="outline" size="sm" onClick={async () => {
+                  try { await navigator.clipboard.writeText(`<iframe src="${bookingUrl(existing.slug)}" width="100%" height="720" frameborder="0" style="border:0;"></iframe>`); toast.success("Embed code copied"); }
+                  catch { toast.error("Couldn't copy"); }
+                }}><Copy className="h-3.5 w-3.5 mr-1" /> Copy</Button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -757,6 +786,19 @@ function CalendarBuilderSheet({
             <div className="space-y-1.5">
               <Label>Name</Label>
               <Input value={draft.title ?? ""} onChange={(e) => set("title", e.target.value)} placeholder="Discovery call" autoFocus={!isEdit} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Custom URL</Label>
+              <div className="flex items-center rounded-md border overflow-hidden focus-within:ring-2 focus-within:ring-ring">
+                <span className="px-2.5 text-xs text-muted-foreground bg-muted/60 py-2 whitespace-nowrap">/book/</span>
+                <input
+                  value={slugInput}
+                  onChange={(e) => setSlugInput(e.target.value)}
+                  onBlur={() => setSlugInput((s) => slugify(s))}
+                  placeholder={isEdit ? "" : "auto from the name"}
+                  className="flex-1 bg-transparent px-2 py-2 text-sm outline-none" />
+              </div>
+              <p className="text-[11px] text-muted-foreground">The public booking link. Leave blank to auto-generate. Letters, numbers, and dashes only.</p>
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
