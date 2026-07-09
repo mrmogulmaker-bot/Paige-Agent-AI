@@ -23,13 +23,19 @@ successful, rich, or made money without a team."*
   team — spinning up five agents to flip a boolean is theater. Everything else: team.
 - Orchestrate teams via the Workflow tool (parallel specialists → verify → integrate).
 
-## 2. Content rule — coaching only.
+## 2. Content rule — client-based service businesses, never consumer finance.
 
-The product and all marketing are for **coaching / consulting operations only**:
-client management, follow-ups, workflows, onboarding, scheduling, retainers, outcomes.
-**Never** mention credit, credit repair, funding, lending, loans, financing, readiness
-or funding scores, lender products, or anything that reads as consumer finance/credit —
-anywhere on the site, in copy, or in code. The review agent explicitly checks for this.
+The product and all marketing are for **client-based service businesses** —
+coaches, **consultants, agencies, thought leaders, advisors**, and any professional
+who manages clients: client management, follow-ups, workflows, onboarding,
+scheduling, retainers, outcomes. **Do not hardwire "coaching"** so narrowly that
+consultants, agencies, and thought leaders feel excluded — the audience is broad;
+prefer inclusive words like *practice · business · clients · work · team* over
+"coaching" in shared/platform copy. **Never** mention credit, credit repair, funding,
+lending, loans, financing, readiness or funding scores, lender products, or anything
+that reads as consumer finance/credit — anywhere on the site, in copy, or in code.
+The review agent explicitly checks for both: the finance prohibition AND
+over-narrowing to "coaching."
 
 ## 3. Voice.
 
@@ -108,3 +114,31 @@ team personalizes it per client. **That cross-team coordination is the product.*
 The substrate already exists (sub-agent forge, `delegate_to_subagent`, ~12 sub-agents,
 skills engine, approvals / propose→confirm); the work is formalizing it into two
 departments + the action bus under Paige's orchestration, tenant-authored per Playbook.
+
+## 9. Always separate platform (Super Admin) from tenant. Ask "who is this for?"
+
+**Directive (owner: Antonio):** Before building or placing *anything*, answer one
+question first: **is this for the primary Super Admin (the platform operator — us),
+or for the tenants who run their businesses on the platform?** They are different
+audiences with different needs, and conflating them is how a platform rots. This
+question is non-negotiable and gets asked *every* time.
+
+- **Platform / Super Admin (top-down, "us"):** the operator's own controls — fleet
+  management, tenant provisioning, platform billing, the master brand (Paige Agent
+  AI), and the clean **default sets** that ship to everyone. This layer stays
+  coaching-generic; it is **never** seeded with one vertical's content (e.g. no
+  credit/funding email templates in the platform default registry, no
+  vertical-specific copy in the super-admin account).
+- **Tenant (every coach / agency / sub-account):** each tenant authors their **own** —
+  brand, voice, Playbook, email templates & sequences, automations, journeys —
+  native to *their* practice, tenant-scoped, and available **platform-wide to all
+  tenants**. A vertical-specific product (e.g. **Mogul Maker Academy / Project Mogul
+  Enterprise**) lives as a *tenant's* configuration and may reuse archived assets as
+  **its** templates — never as a platform default.
+- **The test, every time:** *"Does this belong to the operator, or to a tenant?"* If
+  tenant-facing, it must be tenant-authored and tenant-scoped (per Playbook), not
+  hardcoded into the Super Admin. If operator-only, keep it out of tenant surfaces.
+- **Keep the seam clean:** no mix-ups about who a feature, asset, or template is for.
+  Archive vertical content for reuse by the tenant it belongs to; keep the platform
+  default coaching-generic. This reinforces §7 (tenant-authored portal) and §8
+  (per-tenant Playbook).
