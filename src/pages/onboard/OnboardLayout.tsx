@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useOnboardingClient } from "./useOnboardingClient";
 import { supabase } from "@/integrations/supabase/client";
-import { readableTextOn } from "@/lib/brand/contrast";
+import { readableTextOn, isColorDark } from "@/lib/brand/contrast";
+import type { CSSProperties } from "react";
 import "./onboard-theme.css";
 
 export interface OnboardBrand {
@@ -160,7 +161,7 @@ export default function OnboardLayout() {
           <div className="onboard-card p-10 text-center space-y-3">
             <h1 className="text-xl font-semibold">Please sign in</h1>
             <p className="text-sm" style={{ color: "rgba(8,20,40,0.7)" }}>
-              Use the magic link in the welcome email your coach sent you.
+              Use the link in the welcome email {brand?.tenant_name ?? "the workspace that invited you"} sent you.
             </p>
             <a className="underline" href="/auth">Go to sign in</a>
           </div>
@@ -176,9 +177,9 @@ export default function OnboardLayout() {
           <div className="onboard-card p-10 text-center space-y-3">
             <h1 className="text-xl font-semibold">We can't find your account yet</h1>
             <p className="text-sm" style={{ color: "rgba(8,20,40,0.7)" }}>
-              Your coach hasn't activated your onboarding yet, or the email on your account
-              ({userEmail ?? "—"}) doesn't match our records. Please reply to your welcome
-              email and we'll sort it out.
+              {brand?.tenant_name ?? "The workspace that invited you"} hasn't activated your onboarding
+              yet, or the email on your account ({userEmail ?? "—"}) doesn't match their records. Please
+              reply to your welcome email and they'll sort it out.
             </p>
             <button className="underline" onClick={refresh}>Try again</button>
           </div>
@@ -187,8 +188,14 @@ export default function OnboardLayout() {
     );
   }
 
+  // Drive the onboarding accent from the tenant's brand — but only when it stays
+  // legible on the dark shell; a dark brand color falls back to gold.
+  const shellStyle = (brand?.primary_color && !isColorDark(brand.primary_color)
+    ? ({ ["--onboard-accent"]: brand.primary_color } as CSSProperties)
+    : undefined);
+
   return (
-    <div className="onboard-shell">
+    <div className="onboard-shell" style={shellStyle}>
       <div className="onboard-container">
         {brand && (
           <div className="flex items-center gap-3 mb-6">

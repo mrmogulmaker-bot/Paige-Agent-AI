@@ -101,15 +101,8 @@ export default function JoinWorkspace() {
     return () => { cancelled = true; };
   }, [token]);
 
-  /** Consume the invite for an already-authenticated user and route them in. */
-  const doAccept = async (uid: string) => {
-    // Staff invitations capture the Workforce/GLBA acknowledgment first.
-    if (isStaffInvite && !consentDone) {
-      setUserId(uid);
-      setConsentOpen(true);
-      setAccepting(false);
-      return;
-    }
+  /** Run the accept RPC and route the user in (no consent gate — caller handles it). */
+  const finishAccept = async (uid: string) => {
     const { error: e } = await supabase.rpc("accept_tenant_invite", { _token: token });
     if (e) throw e;
     try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ }
@@ -121,6 +114,18 @@ export default function JoinWorkspace() {
     }
     const target = await resolveLandingRoute(uid);
     window.location.assign(target);
+  };
+
+  /** Consume the invite for an already-authenticated user and route them in. */
+  const doAccept = async (uid: string) => {
+    // Staff invitations capture the Workforce/GLBA acknowledgment first.
+    if (isStaffInvite && !consentDone) {
+      setUserId(uid);
+      setConsentOpen(true);
+      setAccepting(false);
+      return;
+    }
+    await finishAccept(uid);
   };
 
   const onAcceptClick = async () => {
@@ -262,8 +267,8 @@ export default function JoinWorkspace() {
                 <Checkbox checked={regConsent} onCheckedChange={(v) => setRegConsent(!!v)} className="mt-0.5" />
                 <span>
                   I agree to the{" "}
-                  <Link to="/legal/terms" target="_blank" className="underline">Terms</Link> and{" "}
-                  <Link to="/legal/privacy" target="_blank" className="underline">Privacy Policy</Link>, and to work
+                  <Link to="/legal/terms" target="_blank" className="underline" onClick={(e) => e.stopPropagation()}>Terms</Link> and{" "}
+                  <Link to="/legal/privacy" target="_blank" className="underline" onClick={(e) => e.stopPropagation()}>Privacy Policy</Link>, and to work
                   with {info?.tenant_name ?? "this workspace"} through my client portal.
                 </span>
               </label>
@@ -307,7 +312,15 @@ export default function JoinWorkspace() {
         context={{ tenant_id: info?.tenant_id, role: info?.default_role, source: "join_workspace" }}
         onAccepted={() => {
           setConsentDone(true);
-          setTimeout(() => { void onAcceptClick(); }, 50);
+          // Consent recorded — finish the accept directly (do NOT re-run the gate,
+          // whose stale closure would still see consentDone=false and re-open it).
+          if (userId) {
+            setAccepting(true);
+            void finishAccept(userId).catch((err) => {
+              toast.error(err instanceof Error ? err.message : "Could not accept invite");
+              setAccepting(false);
+            });
+          }
         }}
       />
     </div>

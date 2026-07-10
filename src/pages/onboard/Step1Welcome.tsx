@@ -97,7 +97,10 @@ export default function Step1Welcome() {
         .eq("client_id", client.id)
         .eq("section", "playbook_intake")
         .maybeSingle();
-      if (!cancelled && data?.payload) setAnswers(data.payload as Record<string, unknown>);
+      // Only hydrate if the client hasn't started typing (don't clobber input).
+      if (!cancelled && data?.payload) {
+        setAnswers((prev) => (Object.keys(prev).length ? prev : (data.payload as Record<string, unknown>)));
+      }
     })();
     return () => { cancelled = true; };
   }, [client.id]);
@@ -225,7 +228,13 @@ export default function Step1Welcome() {
           </div>
         )}
 
-        <div className="rounded-lg p-4" style={{ background: "rgba(207,174,112,0.12)", border: "1px solid rgba(207,174,112,0.35)" }}>
+        <div
+          className="rounded-lg p-4"
+          style={{
+            background: accent ? `color-mix(in srgb, ${accent} 12%, transparent)` : "rgba(207,174,112,0.12)",
+            border: `1px solid ${accent ? `color-mix(in srgb, ${accent} 35%, transparent)` : "rgba(207,174,112,0.35)"}`,
+          }}
+        >
           <div className="font-semibold mb-1">What happens next</div>
           <p className="text-sm" style={{ color: "rgba(8,20,40,0.78)" }}>
             Once you sign your agreement you'll go straight into your portal. {pb.persona.name} will walk you

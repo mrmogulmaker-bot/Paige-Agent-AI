@@ -41,7 +41,7 @@ export function useOnboardingClient() {
       const { data: byEmail } = await supabase
         .from("clients")
         .select("id, tenant_id, first_name, last_name, email, entity_name, linked_user_id, onboarding_stage, lifecycle_stage")
-        .ilike("email", user.email)
+        .ilike("email", user.email.replace(/([%_\\])/g, "\\$1"))
         .maybeSingle();
       if (byEmail) {
         // Bind it.
