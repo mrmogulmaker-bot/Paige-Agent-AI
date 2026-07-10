@@ -264,6 +264,63 @@ export const marketingAgency: Playbook = {
   },
 };
 
+// Funding / capital-raising coaching — an OPT-IN preset a tenant CHOOSES (§2
+// clarification, 2026-07-09). Selecting it sets slug "funding", which flips the
+// funding_enabled gate in get_paige_persona_context() so this tenant's Paige gets
+// the full funding "skill" (the preserved funding brain + funding tools). It is
+// NEVER a platform default and is never seeded into the God account — it only
+// appears here as one choice among many, available to every tenant who wants it.
+export const fundingCoach: Playbook = {
+  slug: "funding",
+  name: "Funding & Capital-Raising Coaching",
+  vertical: "Funding, business credit & capital-raising coaching",
+  persona: {
+    name: "Paige",
+    role: "your funding coach's strategist",
+    greeting:
+      "Hi — I'm Paige, working with your coach to get you funding-ready and moving toward the capital you're after. Where do you want to start?",
+    tone: "sharp, strategic, encouraging",
+    domain: "funding and capital-raising coaching",
+  },
+  quickActions: [
+    { label: "My funding roadmap", prompt: "What's my next step toward getting funded?" },
+    { label: "Strengthen my profile", prompt: "Help me strengthen my business credit and funding profile" },
+    { label: "Capital strategy", prompt: "I want to talk through my capital-raising strategy" },
+    { label: "Book a session", prompt: "Help me schedule my next coaching session" },
+  ],
+  probingQuestions: [
+    { id: "objective", ask: "What are you raising capital for, and roughly how much are you targeting?", captures: "funding_objective" },
+    { id: "timeline", ask: "What timeline are you working toward for the capital?", captures: "timeline" },
+    { id: "readiness", ask: "Where do you feel your business and personal profile stand today?", captures: "readiness" },
+    { id: "path", ask: "Are you leaning toward lenders, investors, or a mix?", captures: "capital_path" },
+  ],
+  journey: [
+    { key: "assessment", label: "Assessment", description: "Goals, profile, and funding readiness reviewed." },
+    { key: "foundation", label: "Foundation", description: "Business credit and fundability strengthened." },
+    { key: "strategy", label: "Strategy", description: "Capital plan and target sources set." },
+    { key: "outreach", label: "Outreach", description: "Applications and investor conversations underway." },
+    { key: "funded", label: "Funded", description: "Capital secured and next moves planned." },
+  ],
+  intake: [
+    { key: "full_name", label: "Full name", type: "text", required: true },
+    { key: "email", label: "Email", type: "text", required: true },
+    { key: "business_name", label: "Business name", type: "text" },
+    { key: "funding_objective", label: "What are you raising capital for?", type: "longtext", required: true },
+    { key: "target_amount", label: "Target amount", type: "text" },
+    { key: "timeline", label: "Timeline", type: "select", options: ["ASAP", "This quarter", "Next quarter", "Exploring"] },
+  ],
+  portal: {
+    modules: [
+      { key: "home", label: "Home" },
+      { key: "readiness", label: "Funding Readiness" },
+      { key: "program", label: "My Plan" },
+      { key: "sessions", label: "Sessions" },
+      { key: "messages", label: "Messages" },
+      { key: "billing", label: "Billing" },
+    ],
+  },
+};
+
 /** The starter Playbook library a tenant picks from at onboarding. */
 export const PLAYBOOK_LIBRARY: Playbook[] = [
   generalDefault,
@@ -271,4 +328,5 @@ export const PLAYBOOK_LIBRARY: Playbook[] = [
   fitnessCoach,
   businessConsultant,
   marketingAgency,
+  fundingCoach,
 ];
