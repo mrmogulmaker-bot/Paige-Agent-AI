@@ -118,6 +118,7 @@ const AffiliateTracking = lazyWithReload(() => import("./components/dashboard/Af
 const Support = lazyWithReload(() => import("./pages/Support"));
 const MyAgreements = lazyWithReload(() => import("./pages/MyAgreements"));
 const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
+const ActionItems = lazyWithReload(() => import("./pages/app/ActionItems"));
 const GoogleCalendarCallback = lazyWithReload(() => import("./pages/GoogleCalendarCallback"));
 
 const queryClient = new QueryClient({
@@ -209,6 +210,7 @@ const App = () => (
               <Route path="agreements" element={<PageSuspense><MyAgreements /></PageSuspense>} />
               <Route path="affiliate" element={<PageSuspense><AffiliateTracking /></PageSuspense>} />
               <Route path="approvals" element={<PageSuspense><ClientApprovals /></PageSuspense>} />
+              <Route path="actions" element={<PageSuspense><ActionItems /></PageSuspense>} />
             </Route>
 
             {/* Backward compat redirect */}
@@ -240,6 +242,8 @@ const App = () => (
                 Preserve invite deep-links by redirecting to the unified /accept-invite handler; all other
                 /workspace/* URLs land in the consumer dashboard. */}
             <Route path="/workspace/accept-invite" element={<Navigate to={`/accept-invite${window.location.search}`} replace />} />
+            {/* Customer action-bus notifications link here (admin_propose_paige_actions). */}
+            <Route path="/workspace/paige/actions" element={<Navigate to="/app/actions" replace />} />
             <Route path="/workspace/*" element={<Navigate to="/app" replace />} />
 
             {/* Client program onboarding wizard — admin-triggered, magic-link entry */}
