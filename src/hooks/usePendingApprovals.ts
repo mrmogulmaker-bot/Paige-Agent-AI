@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useId } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface ApprovalQueueRow {
@@ -38,6 +38,12 @@ export type PendingApproval = ApprovalQueueRow & {
 export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?: string }) {
   const [items, setItems] = useState<ApprovalQueueRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // Unique per hook instance so two consumers with the same scope/contactId
+  // (e.g. AdminLayout + the Your Paige command center, both scope:"all") never
+  // share a realtime channel topic. Supabase dedupes channels by topic and hands
+  // the 2nd caller the already-subscribed channel — its .on("postgres_changes")
+  // then throws "cannot add callbacks after subscribe()", crashing the workspace.
+  const instanceId = useId();
 
   const refresh = useCallback(async () => {
     let q = supabase
@@ -62,7 +68,7 @@ export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?:
   useEffect(() => {
     refresh();
     const channel = supabase
-      .channel(`paige_approvals_${opts?.scope ?? "all"}_${opts?.contactId ?? "any"}`)
+      .channel(`paige_approvals_${opts?.scope ?? "all"}_${opts?.contactId ?? "any"}_${instanceId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "paige_pending_approvals" },
@@ -70,7 +76,7 @@ export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?:
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [refresh, opts?.scope, opts?.contactId]);
+  }, [refresh, opts?.scope, opts?.contactId, instanceId]);
 
   return { items, loading, refresh };
 }
