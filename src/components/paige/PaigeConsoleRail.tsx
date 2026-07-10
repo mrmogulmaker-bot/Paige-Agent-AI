@@ -61,7 +61,7 @@ const ALL_ITEMS = CLUSTERS.flatMap((c) => c.items);
 
 function hint(id: ConsoleSection, counts: RailCounts): string | null {
   switch (id) {
-    case "persona": return counts.personaNamed ? null : null; // dot handled separately
+    case "persona": return null; // named-state shown as a gold dot, not a count
     case "quickActions": return counts.quickActions ? `· ${counts.quickActions}` : null;
     case "probing": return counts.probing ? `· ${counts.probing}` : null;
     case "journey": return counts.journey ? `· ${counts.journey}` : null;

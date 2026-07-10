@@ -204,6 +204,17 @@ export function AddDocDialog({
 
   const tagList = () => tags.split(",").map((t) => t.trim()).filter(Boolean);
 
+  // supabase.functions.invoke surfaces a generic "non-2xx status" message on a
+  // FunctionsHttpError; the useful message (e.g. "That page had no readable
+  // text", "Only HTTPS URLs are allowed") is in the JSON body. Prefer it.
+  const serverError = async (e: any, fallback: string): Promise<string> => {
+    try {
+      const body = await e?.context?.json?.();
+      if (body?.error && typeof body.error === "string") return body.error;
+    } catch { /* body wasn't JSON */ }
+    return e?.message || fallback;
+  };
+
   const submitPaste = async () => {
     if (!title.trim() || !content.trim()) return toast.error("Title and content required");
     setBusy(true);
@@ -225,7 +236,7 @@ export function AddDocDialog({
       onIngested?.(title.trim(), data?.doc_id);
       onClose();
     } catch (e: any) {
-      toast.error(e?.message ?? "Couldn't index — retry");
+      toast.error(await serverError(e, "Couldn't index — retry"));
     } finally {
       setBusy(false);
       setProgress(null);
@@ -255,7 +266,7 @@ export function AddDocDialog({
       onIngested?.(title.trim() || u, data?.doc_id);
       onClose();
     } catch (e: any) {
-      toast.error(e?.message ?? "Couldn't fetch or index that link — retry");
+      toast.error(await serverError(e, "Couldn't fetch or index that link — retry"));
     } finally {
       clearTimeout(stageTimer);
       setBusy(false);

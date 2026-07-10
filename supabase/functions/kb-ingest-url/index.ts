@@ -53,6 +53,40 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// HTTPS-only + blocklist guard. Returns an error string if the URL is not a
+// safe public target, else null. Applied to the initial URL AND every redirect
+// hop so a public URL can't 3xx-bounce (or DNS-rebind) into an internal target.
+function unsafeReason(raw: string): string | null {
+  let u: URL;
+  try { u = new URL(raw); } catch { return "Invalid URL format"; }
+  if (u.protocol !== "https:") return "Only HTTPS URLs are allowed";
+  if (BLOCKED_HOST_PATTERNS.some((p) => p.test(u.hostname.toLowerCase()))) return "URL not allowed";
+  return null;
+}
+
+// Fetch following redirects MANUALLY so each hop's Location is re-validated
+// against the SSRF guard before we follow it (Deno's default redirect:"follow"
+// would chase a 302 → http://169.254.169.254 without re-checking).
+async function safeFetch(startUrl: string, maxHops = 5): Promise<Response> {
+  let current = startUrl;
+  for (let hop = 0; hop <= maxHops; hop++) {
+    const bad = unsafeReason(current);
+    if (bad) throw new Error(bad);
+    const res = await fetch(current, {
+      headers: { "User-Agent": "Paige-AI-Bot/1.0" },
+      redirect: "manual",
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc) return res;
+      current = new URL(loc, current).toString(); // resolve relative redirects
+      continue;
+    }
+    return res;
+  }
+  throw new Error("Too many redirects");
+}
+
 // Pull a usable title out of the raw HTML before we strip tags.
 function extractTitle(html: string): string | null {
   const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
@@ -97,17 +131,17 @@ serve(async (req) => {
     } catch {
       return json({ error: "Invalid URL format" }, 400);
     }
-    if (parsedUrl.protocol !== "https:") return json({ error: "Only HTTPS URLs are allowed" }, 400);
-    if (BLOCKED_HOST_PATTERNS.some((p) => p.test(parsedUrl.hostname.toLowerCase()))) {
-      return json({ error: "URL not allowed" }, 403);
-    }
+    const initialBad = unsafeReason(url);
+    if (initialBad) return json({ error: initialBad }, initialBad === "URL not allowed" ? 403 : 400);
 
-    // Fetch the page.
+    // Fetch the page (redirects re-validated per hop against the SSRF guard).
     let res: Response;
     try {
-      res = await fetch(url, { headers: { "User-Agent": "Paige-AI-Bot/1.0" } });
+      res = await safeFetch(url);
     } catch (e) {
-      return json({ error: `Couldn't reach the page: ${(e as Error).message}` }, 400);
+      const msg = (e as Error).message;
+      if (msg === "URL not allowed") return json({ error: "That link redirected somewhere we can't fetch." }, 403);
+      return json({ error: `Couldn't reach the page: ${msg}` }, 400);
     }
     if (!res.ok) return json({ error: `Failed to fetch URL: ${res.status} ${res.statusText}` }, 400);
 

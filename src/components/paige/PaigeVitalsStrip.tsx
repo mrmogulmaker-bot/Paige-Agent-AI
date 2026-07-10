@@ -49,7 +49,7 @@ export function PaigeVitalsStrip({ pb, tenantName, counts, knowledgePulse, onOpe
                 )}
               >
                 <BookOpen className="h-3 w-3" />
-                {counts.docs} {counts.docs === 1 ? "doc" : "docs"} · {counts.chunks} recall
+                {counts.docs} {counts.docs === 1 ? "doc" : "docs"} · {counts.chunks} passages
               </button>
             </div>
           </div>

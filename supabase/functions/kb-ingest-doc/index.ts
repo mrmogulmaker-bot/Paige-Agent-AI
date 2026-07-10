@@ -154,6 +154,17 @@ serve(async (req) => {
       if (chunkErr) console.warn("[kb-ingest] chunk insert error:", chunkErr.message);
     }
 
+    // Reconcile the doc's chunk_count to the number of chunks that actually
+    // embedded — the row was created with the intended count, but embeds can
+    // fail (rate limit / provider down). Without this, the UI would show
+    // "Ready · N recall" for a doc Paige can't actually retrieve (0 vectors).
+    if (rows.length !== chunks.length) {
+      await admin
+        .from("tenant_knowledge_docs")
+        .update({ chunk_count: rows.length })
+        .eq("id", doc.id);
+    }
+
     return new Response(JSON.stringify({
       ok: true,
       doc_id: doc.id,

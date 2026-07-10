@@ -63,7 +63,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
 
   useEffect(() => {
     return subscribeKnowledgeAdded((title) => {
-      setBanner(`Paige just learned from ${title}.`);
+      setBanner(`Paige just indexed ${title} — she'll draw on it from here.`);
       setChipPulse(true);
       setTimeout(() => setChipPulse(false), 1400);
     });
@@ -169,7 +169,9 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
               </button>
             </div>
           ) : (
-            <div className="flex-1" />
+            <p className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
+              Talk to {pb.persona.name?.trim() || "Paige"} below — or teach her something new.
+            </p>
           )}
           <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground hover:text-foreground" onClick={() => openConsole("knowledge")}>
             <GraduationCap className="w-4 h-4 mr-1.5" /> Teach Paige something

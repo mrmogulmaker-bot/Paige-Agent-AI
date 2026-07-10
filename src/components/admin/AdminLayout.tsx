@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
-  TrendingUp, Menu, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
+  TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
   Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, Store,
 } from "lucide-react";
 import {
@@ -42,9 +42,12 @@ type Hub = {
 
 const hubs: Hub[] = [
   { label: "Dashboard", href: "/admin", icon: BarChart3 },
-  // Tenant KB + Knowledge Review now live inside Your Paige → Customize Paige →
-  // Knowledge; keep their legacy routes highlighting this hub for deep-link back-compat.
-  { label: "Your Paige", href: "/admin/playbook", icon: Bot, aliases: ["/admin/tenant-knowledge", "/admin/network-kb", "/admin/knowledge"] },
+  // Tenant KB (+ the tenant's own network-contribution status) now lives inside
+  // Your Paige → Customize Paige → Knowledge; keep the tenant-knowledge route
+  // highlighting this hub for deep-link back-compat. The operator review queues
+  // (/admin/network-kb, /admin/knowledge) are platform-level — they live under
+  // the God console's Automation hub, not here (§9).
+  { label: "Your Paige", href: "/admin/playbook", icon: Bot, aliases: ["/admin/tenant-knowledge"] },
   { label: "Marketplace", href: "/admin/marketplace", icon: Store },
   { label: "Client Agreement", href: "/admin/agreement", icon: FileSignature },
   {
@@ -167,11 +170,15 @@ const GOD_HUBS: Hub[] = [
       { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
       { label: "Paige Skills", href: "/admin/skills", icon: Bot },
       { label: "Integrations", href: "/admin/integrations", icon: Plug },
-      // The platform-global knowledge canon is operator-level (§9) — the only
-      // knowledge surface that stays out of tenant Your Paige.
+      // Platform-level knowledge surfaces (§9) — the global canon plus the
+      // review queues that approve tenant-shared docs into it. These stay
+      // operator-only; tenants get their own KB + contribution status inside
+      // Your Paige.
       { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
+      { label: "Network Review", href: "/admin/network-kb", icon: BookOpen },
+      { label: "Review Queue", href: "/admin/knowledge", icon: BookOpen },
     ],
-    aliases: ["/admin/sub-agents", "/admin/skills", "/admin/integrations", "/admin/knowledge-base"],
+    aliases: ["/admin/sub-agents", "/admin/skills", "/admin/integrations", "/admin/knowledge-base", "/admin/network-kb", "/admin/knowledge"],
   },
 ];
 // God "More" menu — calendar setup, support, security, and the platform settings
