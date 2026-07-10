@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, Store,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -43,6 +43,7 @@ type Hub = {
 const hubs: Hub[] = [
   { label: "Dashboard", href: "/admin", icon: BarChart3 },
   { label: "Your Paige", href: "/admin/playbook", icon: Bot },
+  { label: "Marketplace", href: "/admin/marketplace", icon: Store },
   { label: "Client Agreement", href: "/admin/agreement", icon: FileSignature },
   {
     label: "Contacts",

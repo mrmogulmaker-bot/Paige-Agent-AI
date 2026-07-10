@@ -1293,7 +1293,7 @@ JSON:`;
     // SECURITY DEFINER RPC keyed on auth.uid(); call on the USER-scoped client.
     // Never throw — default to the neutral persona so a client is never blocked.
     const NEUTRAL_PERSONA = { name: "Paige", role: "your team's assistant", tone: "warm, direct, professional", domain: "your practice" };
-    function buildPaigePersonaBlock(pb: any, tenantName: string): string {
+    function buildPaigePersonaBlock(pb: any, tenantName: string, fundingOn: boolean): string {
       const p = (pb && pb.persona) || {};
       const name = String(p.name || NEUTRAL_PERSONA.name).trim();
       const role = String(p.role || NEUTRAL_PERSONA.role).trim();
@@ -1322,8 +1322,10 @@ Tone: ${tone}. Hold this voice in every reply — direct, confident, human.
 
 You are native to ${tenant}. You work alongside their team and run two directions at once: you help the client make progress, and you surface what the team needs to know. Everything you say fits ${domain} — never a generic, off-the-shelf script.
 ${greeting ? `\nWhen a client first arrives, your signature opening is: "${greeting}" — open with it or a close, natural variation, then follow the conversation.\n` : ""}
-${probeSection}${journeySection}HARD GUARDRAIL — STAY IN LANE:
-Do not raise credit, credit scores, funding, loans, lenders, MCAs, cash advances, financing, or capital-raising unless ${tenant}'s domain (${domain}) explicitly includes it, or the client brings it up first. Those are not this practice's business unless stated. If a client asks about something outside ${domain}, help where you genuinely can, or hand them to ${tenant}'s team — never invent services, programs, or offers ${tenant} does not provide.`.trim();
+${probeSection}${journeySection}${fundingOn
+  ? `SCOPE — ${tenant} offers funding & capital-raising coaching alongside ${domain}, so credit, business credit, funding, lenders, and capital strategy ARE in scope here — bring them up when they genuinely help the client. Never invent services, programs, or offers ${tenant} does not actually provide.`
+  : `HARD GUARDRAIL — STAY IN LANE:
+Do not raise credit, credit scores, funding, loans, lenders, MCAs, cash advances, financing, or capital-raising unless ${tenant}'s domain (${domain}) explicitly includes it, or the client brings it up first. Those are not this practice's business unless stated. If a client asks about something outside ${domain}, help where you genuinely can, or hand them to ${tenant}'s team — never invent services, programs, or offers ${tenant} does not provide.`}`.trim();
     }
 
     let personaCtx: { tenant_id: string | null; tenant_name: string | null; playbook_config: any; playbook_slug: string | null; funding_enabled: boolean } =
@@ -3159,7 +3161,7 @@ SUPPORT & FEEDBACK AWARENESS
 
     // Build message array — lead with the tenant's persona so identity is set first.
     const aiMessages: any[] = [
-      { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice") },
+      { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice", fundingEnabled) },
       { role: "system", content: systemPrompt },
     ];
 

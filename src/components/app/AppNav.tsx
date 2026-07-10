@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Home, BookOpen, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye, LifeBuoy, ListChecks } from "lucide-react";
+import { Home, BookOpen, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye, LifeBuoy, ListChecks, ClipboardList } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -33,6 +33,7 @@ const MODULE_ROUTES: Record<string, { href: string; icon: LucideIcon }> = {
   learn: { href: "/app/learn", icon: BookOpen },
   resources: { href: "/app/learn", icon: BookOpen },
   approvals: { href: "/app/approvals", icon: ListChecks },
+  actions: { href: "/app/actions", icon: ClipboardList },
 };
 
 interface NavItem {
@@ -74,6 +75,16 @@ export function AppNav({ user }: AppNavProps) {
       return route ? { label: m.label, href: route.href, icon: route.icon } : null;
     })
     .filter((item): item is NavItem => item !== null);
+
+  // "Action items" is the customer's side of the two-way action bus (§8) — a core
+  // portal surface every client gets, regardless of what their Playbook's module
+  // list happens to include. Slot it right after Home.
+  if (!isCoachOrAdmin && !navItems.some((i) => i.href === "/app/actions")) {
+    const homeIdx = navItems.findIndex((i) => i.href === "/app");
+    navItems.splice(homeIdx >= 0 ? homeIdx + 1 : 0, 0, {
+      label: "Action items", href: "/app/actions", icon: ClipboardList,
+    });
+  }
 
   const userRoleLabel = isAdmin ? "Admin" : isCoachOrAdmin ? "Coach" : "Client";
   const isViewingAsClient = isCoachOrAdmin && mode === "client";
