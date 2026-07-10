@@ -180,7 +180,9 @@ serve(async (req) => {
         body: JSON.stringify({
           title: finalTitle,
           content,
-          category: category ?? null,
+          // kb-ingest-doc's schema takes category as string | undefined (not
+          // null) — only include it when present, else omit the key entirely.
+          ...(category ? { category } : {}),
           tags: tags ?? [],
           source: "url",
           source_url: url,
