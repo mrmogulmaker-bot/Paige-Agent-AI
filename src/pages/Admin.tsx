@@ -65,6 +65,7 @@ const FundingPipelineView = lazy(() => import("@/components/dashboard/admin/Fund
 // UserManagement removed in Ship #3 / Task #15 — canonical Team & Roles is /admin/members (MembersAdmin).
 const AdminSettingsHub = lazy(() => import("@/pages/admin/AdminSettingsHub"));
 const PlaybookAdmin = lazy(() => import("@/pages/admin/PlaybookAdmin"));
+const AgreementAdmin = lazy(() => import("@/pages/admin/AgreementAdmin"));
 const PlatformTenants = lazy(() => import("@/pages/admin/PlatformTenants"));
 const PlatformTeam = lazy(() => import("@/pages/admin/PlatformTeam"));
 const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformance").then(m => ({ default: m.UserPerformance })));
@@ -429,6 +430,13 @@ const Admin = () => {
           <AdminOnly>
             <Suspense fallback={<SuspenseFallback />}>
               <PlaybookAdmin />
+            </Suspense>
+          </AdminOnly>
+        } />
+        <Route path="agreement" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <AgreementAdmin />
             </Suspense>
           </AdminOnly>
         } />

@@ -7,14 +7,16 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  AGREEMENT_TEMPLATE_KEY,
-  AGREEMENT_VERSION,
-  AGREEMENT_DISPLAY_TITLE,
-  renderAgreement,
-} from "./agreement-v1";
+  DEFAULT_AGREEMENT_TITLE,
+  DEFAULT_AGREEMENT_VERSION,
+  DEFAULT_AGREEMENT_TEMPLATE,
+  renderAgreementBody,
+} from "./agreement-default";
+import { readableTextOn } from "@/lib/brand/contrast";
 import type { OnboardClient } from "./useOnboardingClient";
+import type { OnboardBrand } from "./OnboardLayout";
 
-type Ctx = { client: OnboardClient; refresh: () => void };
+type Ctx = { client: OnboardClient; refresh: () => void; brand: OnboardBrand | null };
 
 const STEPS = ["Your info", "Agreement"];
 
@@ -106,7 +108,7 @@ function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void
 }
 
 export default function Step2Agreement() {
-  const { client, refresh } = useOutletContext<Ctx>();
+  const { client, refresh, brand } = useOutletContext<Ctx>();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -117,18 +119,59 @@ export default function Step2Agreement() {
   const [esignConsent, setEsignConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // The agreement is the TENANT's own document if they've authored one, else the
+  // neutral platform default — never a hardcoded vertical/credit contract (§2/§9).
+  const [agr, setAgr] = useState<
+    { title: string; body: string; key: string; version: string; tenantName: string } | null
+  >(null);
+  const [agrError, setAgrError] = useState(false);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("get_client_service_agreement").then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        // Don't silently fall back to the platform default — signing the wrong
+        // contract is worse than a retry. Surface it.
+        setAgrError(true);
+        return;
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      const tenantName = (row as any)?.tenant_name || brand?.tenant_name || "your provider";
+      const custom = (row as any)?.agreement_body as string | null;
+      setAgr({
+        title: (row as any)?.agreement_title || DEFAULT_AGREEMENT_TITLE,
+        body: custom || DEFAULT_AGREEMENT_TEMPLATE,
+        key: custom ? "tenant_custom" : "platform_default",
+        version: custom ? "tenant-v1" : DEFAULT_AGREEMENT_VERSION,
+        tenantName,
+      });
+    });
+    return () => { cancelled = true; };
+  }, [brand?.tenant_name]);
+
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const agreementText = useMemo(() => renderAgreement({
-    client_full_legal_name: `${client.first_name ?? ""} ${client.last_name ?? ""}`.trim() || "Client",
-    client_entity_name: client.entity_name || "Entity to be formed",
-    effective_date: today,
-    signature_date: today,
-    mma_state_of_registration: "Georgia",
-    plan_label: "To be confirmed at next step",
-    plan_total: "$4,997",
-    plan_paid_to_date: "—",
-    plan_schedule: "Confirmed at the payment step.",
-  }), [client, today]);
+  const agreementTitle = agr?.title ?? DEFAULT_AGREEMENT_TITLE;
+  const agreementText = useMemo(() => {
+    if (!agr) return "";
+    return renderAgreementBody(agr.body, {
+      tenant_name: agr.tenantName,
+      client_full_legal_name: `${client.first_name ?? ""} ${client.last_name ?? ""}`.trim() || "Client",
+      effective_date: today,
+      signature_date: today,
+    });
+  }, [agr, client, today]);
+  const accent = brand?.primary_color || null;
+
+  // If the agreement fits without scrolling (short custom agreements, tall
+  // viewports), there's nothing to scroll — unlock signing immediately so the
+  // client isn't deadlocked behind a scroll event that never fires.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (el && agreementText && el.scrollHeight <= el.clientHeight + 4) {
+      setScrolledToEnd(true);
+    }
+  }, [agreementText]);
 
   const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -136,7 +179,7 @@ export default function Step2Agreement() {
   };
 
   const canSubmit =
-    scrolledToEnd && typedName.trim().length > 1 && readConsent && esignConsent && !submitting;
+    scrolledToEnd && typedName.trim().length > 1 && readConsent && esignConsent && !submitting && !!agreementText;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -145,8 +188,8 @@ export default function Step2Agreement() {
       const { data, error } = await supabase.functions.invoke("finalize-agreement", {
         body: {
           client_id: client.id,
-          agreement_template_key: AGREEMENT_TEMPLATE_KEY,
-          agreement_version: AGREEMENT_VERSION,
+          agreement_template_key: agr?.key ?? "platform_default",
+          agreement_version: agr?.version ?? DEFAULT_AGREEMENT_VERSION,
           agreement_text_snapshot: agreementText,
           signature: {
             typed_name: typedName.trim(),
@@ -173,11 +216,22 @@ export default function Step2Agreement() {
     <>
       <ProgressHeader
         stepIndex={1}
-        title={AGREEMENT_DISPLAY_TITLE}
-        subtitle="Read the full agreement. Scroll to the end to unlock signing — this is the last step before your workspace opens."
+        title={agreementTitle}
+        subtitle="Read the full agreement. Scroll to the end to unlock signing — this is the last step before your portal opens."
       />
       <div className="onboard-card p-6 sm:p-8 space-y-6">
-        <div className="agreement-body" onScroll={onScroll}>{agreementText}</div>
+        <div
+          ref={bodyRef}
+          className="agreement-body"
+          onScroll={onScroll}
+          tabIndex={0}
+          role="region"
+          aria-label="Agreement text — scroll to the end to enable signing"
+        >
+          {agrError
+            ? "We couldn't load your agreement. Please refresh the page and try again."
+            : agreementText || "Loading agreement…"}
+        </div>
 
         <div className={scrolledToEnd ? "space-y-5" : "space-y-5 opacity-60 pointer-events-none select-none"}>
           {!scrolledToEnd && (
@@ -199,7 +253,7 @@ export default function Step2Agreement() {
           <div className="space-y-3">
             <label className="flex items-start gap-3 text-sm">
               <Checkbox checked={readConsent} onCheckedChange={(v) => setReadConsent(!!v)} />
-              <span>I have read and agree to the {AGREEMENT_DISPLAY_TITLE}.</span>
+              <span>I have read and agree to the {agreementTitle}.</span>
             </label>
             <label className="flex items-start gap-3 text-sm">
               <Checkbox checked={esignConsent} onCheckedChange={(v) => setEsignConsent(!!v)} />
@@ -211,7 +265,11 @@ export default function Step2Agreement() {
           </div>
 
           <div className="flex justify-end pt-2">
-            <Button onClick={submit} disabled={!canSubmit}>
+            <Button
+              onClick={submit}
+              disabled={!canSubmit}
+              style={accent ? { backgroundColor: accent, color: readableTextOn(accent) } : undefined}
+            >
               {submitting ? "Signing…" : "Sign & continue"}
             </Button>
           </div>
