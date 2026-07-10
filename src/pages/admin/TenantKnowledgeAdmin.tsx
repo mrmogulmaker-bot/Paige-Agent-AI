@@ -87,7 +87,7 @@ export default function TenantKnowledgeAdmin() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             {activeTenant
-              ? `Private docs Paige uses to answer questions inside ${activeTenant.name}. Toggle "Share to Network" to contribute back to the Mogul canon.`
+              ? `Private docs Paige uses to answer questions inside ${activeTenant.name}. Toggle "Share to Network" to contribute back to the shared network canon.`
               : "Your private knowledge corpus."}
           </p>
         </div>
@@ -112,7 +112,7 @@ export default function TenantKnowledgeAdmin() {
           ) : docs.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Brain className="w-10 h-10 mx-auto mb-3 opacity-50" />
-              <p>No documents yet. Add SOPs, scripts, lender notes, or playbooks Paige should know about.</p>
+              <p>No documents yet. Add SOPs, scripts, reference docs, or playbooks Paige should know about.</p>
             </div>
           ) : (
             <Table>
@@ -175,18 +175,39 @@ export default function TenantKnowledgeAdmin() {
   );
 }
 
-function AddDocDialog({ onClose }: { onClose: () => void }) {
+/**
+ * Add-document dialog. Two honest modes: "Paste" (existing kb-ingest-doc path)
+ * and "From URL" (kb-ingest-url orchestrator — fetches the page server-side,
+ * then chunks + embeds). Reused verbatim by the Knowledge panel in Your Paige.
+ * `onIngested` fires after a successful add with the title + new doc id so the
+ * workspace can pulse the vitals chip and show the "Paige just learned" banner.
+ */
+export function AddDocDialog({
+  onClose,
+  onIngested,
+  initialMode = "paste",
+}: {
+  onClose: () => void;
+  onIngested?: (title: string, docId?: string) => void;
+  initialMode?: "paste" | "url";
+}) {
+  const [mode, setMode] = useState<"paste" | "url">(initialMode);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [url, setUrl] = useState("");
   const [summary, setSummary] = useState("");
   const [category, setCategory] = useState("");
   const [tags, setTags] = useState("");
   const [share, setShare] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
 
-  const submit = async () => {
+  const tagList = () => tags.split(",").map((t) => t.trim()).filter(Boolean);
+
+  const submitPaste = async () => {
     if (!title.trim() || !content.trim()) return toast.error("Title and content required");
     setBusy(true);
+    setProgress("Teaching Paige…");
     try {
       const { data, error } = await supabase.functions.invoke("kb-ingest-doc", {
         body: {
@@ -194,64 +215,130 @@ function AddDocDialog({ onClose }: { onClose: () => void }) {
           content,
           summary: summary.trim() || undefined,
           category: category.trim() || undefined,
-          tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+          tags: tagList(),
           source: "paste",
           share_to_network: share,
         },
       });
       if (error) throw error;
       toast.success(`Indexed (${data?.chunk_count ?? 0} chunks)`);
+      onIngested?.(title.trim(), data?.doc_id);
       onClose();
     } catch (e: any) {
-      toast.error(e?.message ?? "Failed");
+      toast.error(e?.message ?? "Couldn't index — retry");
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   };
 
+  const submitUrl = async () => {
+    const u = url.trim();
+    if (!u) return toast.error("Add a link to fetch");
+    if (!/^https:\/\//i.test(u)) return toast.error("Only secure https:// links can be added");
+    setBusy(true);
+    setProgress("Fetching page…");
+    // Two honest stages — the fetch happens first server-side, then indexing.
+    const stageTimer = setTimeout(() => setProgress("Teaching Paige…"), 1200);
+    try {
+      const { data, error } = await supabase.functions.invoke("kb-ingest-url", {
+        body: {
+          url: u,
+          title: title.trim() || undefined,
+          category: category.trim() || undefined,
+          tags: tagList(),
+          share_to_network: share,
+        },
+      });
+      if (error) throw error;
+      toast.success(`Indexed (${data?.chunk_count ?? 0} chunks)`);
+      onIngested?.(title.trim() || u, data?.doc_id);
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Couldn't fetch or index that link — retry");
+    } finally {
+      clearTimeout(stageTimer);
+      setBusy(false);
+      setProgress(null);
+    }
+  };
+
+  const submit = mode === "url" ? submitUrl : submitPaste;
+
   return (
     <DialogContent className="max-w-2xl">
-      <DialogHeader><DialogTitle>Add Knowledge Document</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle>Teach Paige something new</DialogTitle></DialogHeader>
       <div className="space-y-4">
+        {/* Mode toggle */}
+        <div className="inline-flex rounded-lg border p-0.5 bg-muted/40">
+          <button
+            type="button"
+            onClick={() => setMode("paste")}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${mode === "paste" ? "bg-background shadow-sm font-medium" : "text-muted-foreground"}`}
+          >
+            Paste text
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("url")}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${mode === "url" ? "bg-background shadow-sm font-medium" : "text-muted-foreground"}`}
+          >
+            From a link
+          </button>
+        </div>
+
+        {mode === "url" ? (
+          <div>
+            <Label>Link *</Label>
+            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/your-methodology" />
+            <p className="text-xs text-muted-foreground mt-1">Paige fetches the page, then chunks and learns it. Secure https links only.</p>
+          </div>
+        ) : null}
+
         <div>
-          <Label>Title *</Label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Chase Ink underwriting cheat sheet" />
+          <Label>Title {mode === "url" ? "(optional)" : "*"}</Label>
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Discovery call script" />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label>Category</Label>
-            <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="lender_intel" />
+            <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. onboarding" />
           </div>
           <div>
             <Label>Tags (comma separated)</Label>
-            <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="chase, ink, underwriting" />
+            <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="intake, discovery, methodology" />
           </div>
         </div>
-        <div>
-          <Label>Summary (optional)</Label>
-          <Input value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="One-line summary used in search results" />
-        </div>
-        <div>
-          <Label>Content *</Label>
-          <Textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            rows={10}
-            placeholder="Paste the doc body. Will be chunked + embedded automatically."
-          />
-        </div>
+        {mode === "paste" && (
+          <>
+            <div>
+              <Label>Summary (optional)</Label>
+              <Input value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="One-line summary used in search results" />
+            </div>
+            <div>
+              <Label>Content *</Label>
+              <Textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={10}
+                placeholder="Paste the doc body — Paige chunks and learns it automatically."
+              />
+            </div>
+          </>
+        )}
         <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
           <div>
-            <div className="font-medium text-sm">Contribute to Network</div>
+            <div className="font-medium text-sm">Share to the network</div>
             <p className="text-xs text-muted-foreground">
-              Submit this doc for Mogul review. If approved it joins the global canon every tenant inherits.
+              Submit this doc for review. If approved it joins the shared canon every practice can draw on.
             </p>
           </div>
           <Switch checked={share} onCheckedChange={setShare} />
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex items-center justify-end gap-2">
+          {progress && <span className="text-xs text-muted-foreground mr-auto">{progress}</span>}
           <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={submit} disabled={busy}>{busy ? "Indexing…" : "Add & Embed"}</Button>
+          <Button onClick={submit} disabled={busy}>{busy ? (progress ?? "Working…") : "Add & teach"}</Button>
         </div>
       </div>
     </DialogContent>

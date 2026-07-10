@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
-  TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
+  TrendingUp, Menu, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
   Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, Store,
 } from "lucide-react";
 import {
@@ -42,7 +42,9 @@ type Hub = {
 
 const hubs: Hub[] = [
   { label: "Dashboard", href: "/admin", icon: BarChart3 },
-  { label: "Your Paige", href: "/admin/playbook", icon: Bot },
+  // Tenant KB + Knowledge Review now live inside Your Paige → Customize Paige →
+  // Knowledge; keep their legacy routes highlighting this hub for deep-link back-compat.
+  { label: "Your Paige", href: "/admin/playbook", icon: Bot, aliases: ["/admin/tenant-knowledge", "/admin/network-kb", "/admin/knowledge"] },
   { label: "Marketplace", href: "/admin/marketplace", icon: Store },
   { label: "Client Agreement", href: "/admin/agreement", icon: FileSignature },
   {
@@ -94,20 +96,16 @@ const hubs: Hub[] = [
       { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
       { label: "Paige Skills", href: "/admin/skills", icon: Bot },
       { label: "Integrations", href: "/admin/integrations", icon: Plug },
-      { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
-      { label: "Tenant Knowledge", href: "/admin/tenant-knowledge", icon: Brain },
-      { label: "Network Insights", href: "/admin/network-kb", icon: BookOpen },
-      { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
+      // Tenant Knowledge + Knowledge Review moved into Your Paige → Customize
+      // Paige → Knowledge (§9 seam). Platform-global Knowledge Base is operator-
+      // level now (see GOD_HUBS). Routes stay mounted in Admin.tsx for deep-link
+      // back-compat.
     ],
     // Orphan tool routes that conceptually live under Automation.
     aliases: [
       "/admin/integrations",
       "/admin/sub-agents",
       "/admin/skills",
-      "/admin/knowledge",
-      "/admin/knowledge-base",
-      "/admin/tenant-knowledge",
-      "/admin/network-kb",
       "/admin/signatures",
       "/admin/social",
       "/admin/notifications",
@@ -169,8 +167,11 @@ const GOD_HUBS: Hub[] = [
       { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
       { label: "Paige Skills", href: "/admin/skills", icon: Bot },
       { label: "Integrations", href: "/admin/integrations", icon: Plug },
+      // The platform-global knowledge canon is operator-level (§9) — the only
+      // knowledge surface that stays out of tenant Your Paige.
+      { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
     ],
-    aliases: ["/admin/sub-agents", "/admin/skills", "/admin/integrations"],
+    aliases: ["/admin/sub-agents", "/admin/skills", "/admin/integrations", "/admin/knowledge-base"],
   },
 ];
 // God "More" menu — calendar setup, support, security, and the platform settings
