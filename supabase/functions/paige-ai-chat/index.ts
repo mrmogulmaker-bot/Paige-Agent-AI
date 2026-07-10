@@ -4252,8 +4252,8 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
       // If Paige queued any approvals this turn, prepend an `approval_queued`
       // SSE frame so the chat can render a confirmation card, then pass the
       // model's follow-up text through unchanged.
-      if (queuedApprovals.length > 0) {
-        const upstream = followUpResponse.body!.getReader();
+      if (queuedApprovals.length > 0 && followUpResponse.body) {
+        const upstream = followUpResponse.body.getReader();
         const enc = new TextEncoder();
         const wrapped = new ReadableStream({
           async start(controller) {

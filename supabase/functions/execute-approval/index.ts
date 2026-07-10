@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
   // Load the approval (service role — we authorize explicitly below).
   const { data: approval, error: loadErr } = await admin
     .from("paige_pending_approvals")
-    .select("id, status, tenant_id, contact_id, conversation_id, category, type, draft_content")
+    .select("id, status, tenant_id, contact_id, conversation_id, category, type, draft_content, metadata")
     .eq("id", approvalId)
     .maybeSingle();
   if (loadErr) return json(500, { error: loadErr.message });
@@ -71,6 +71,7 @@ Deno.serve(async (req) => {
       .select("tenant_id")
       .eq("user_id", user.id)
       .eq("tenant_id", approval.tenant_id)
+      .eq("status", "active")
       .maybeSingle();
     if (!membership) return json(403, { error: "cross_tenant_forbidden" });
   }
@@ -79,6 +80,28 @@ Deno.serve(async (req) => {
   if (approval.status === "sent" || approval.status === "approved") {
     return json(200, { ok: true, executed: false, already: approval.status, approval_id: approvalId });
   }
+
+  // Atomic claim: guard against a double-send from two concurrent Approve clicks
+  // (two tabs, or the UI and Paige at once). Only the caller that flips
+  // claimed_at from NULL while status is still 'pending' proceeds; the loser
+  // treats it as already handled. There is no transient status admitted by the
+  // CHECK, so claimed_at is the lock. Released below if a comms send fails, so a
+  // genuine retry is still possible.
+  const { data: claimed } = await admin
+    .from("paige_pending_approvals")
+    .update({ claimed_at: new Date().toISOString(), reviewed_by_user_id: user.id })
+    .eq("id", approvalId)
+    .eq("status", "pending")
+    .is("claimed_at", null)
+    .select("id")
+    .maybeSingle();
+  if (!claimed) {
+    return json(200, { ok: true, executed: false, already: "in_progress", approval_id: approvalId });
+  }
+  const releaseClaim = () => admin
+    .from("paige_pending_approvals")
+    .update({ claimed_at: null })
+    .eq("id", approvalId);
 
   const dc = (approval.draft_content ?? {}) as Record<string, unknown>;
   const category = String(approval.category ?? approval.type ?? "").toLowerCase();
@@ -100,10 +123,10 @@ Deno.serve(async (req) => {
         .maybeSingle();
       to = channel === "sms" ? String(contact?.phone ?? "") : String(contact?.email ?? "");
     }
-    if (!to) return json(422, { error: "no_recipient", detail: "draft has no `to` and the contact has no address" });
+    if (!to) { await releaseClaim(); return json(422, { error: "no_recipient", detail: "draft has no `to` and the contact has no address" }); }
 
     const body = String(dc.body ?? dc.message ?? "");
-    if (!body) return json(422, { error: "empty_body" });
+    if (!body) { await releaseClaim(); return json(422, { error: "empty_body" }); }
 
     // Forward the caller's JWT so send-message authorizes the same user and
     // performs the send + status flip (status='approved' on success).
@@ -122,8 +145,9 @@ Deno.serve(async (req) => {
     });
     const sendResult = await resp.json().catch(() => ({}));
     if (!resp.ok || sendResult?.status !== "sent") {
-      // send-message leaves the row 'pending' on failure — surface the error,
-      // never report success.
+      // send-message leaves the row 'pending' on failure — release the claim so a
+      // genuine retry is possible, surface the error, never report success.
+      await releaseClaim();
       return json(502, { ok: false, executed: false, error: sendResult?.error ?? "send_failed", detail: sendResult });
     }
     return json(200, { ok: true, executed: true, channel, approval_id: approvalId, audit_id: sendResult.audit_id });
@@ -131,6 +155,7 @@ Deno.serve(async (req) => {
 
   // No automated executor for this category yet — acknowledge (mark approved)
   // exactly as the prior button did, and record that no outbound action ran.
+  // metadata is now selected above, so the spread preserves existing keys.
   const meta = (typeof (approval as any).metadata === "object" && (approval as any).metadata) || {};
   const { error: ackErr } = await admin
     .from("paige_pending_approvals")
