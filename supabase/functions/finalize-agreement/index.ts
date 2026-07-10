@@ -21,7 +21,6 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
-import { fireAndForgetBridge } from "../_shared/mmaOsBridge.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -246,14 +245,6 @@ Deno.serve(async (req) => {
     })
     .eq("id", client_id)
     .in("onboarding_stage", ["invited", "signing_agreement", "pre_invite"]);
-
-  fireAndForgetBridge("client.agreement_signed", {
-    client_id,
-    agreement_id: row.id,
-    template_key: agreement_template_key,
-    version: agreement_version,
-    signed_at: signedAtIso,
-  });
 
   return new Response(
     JSON.stringify({ ok: true, agreement_id: row.id, signed_pdf_path }),

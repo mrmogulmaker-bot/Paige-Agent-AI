@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export interface OnboardClient {
   id: string;
+  tenant_id: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -32,14 +33,14 @@ export function useOnboardingClient() {
     // Match by linked_user_id first, then by email (so we can claim the row).
     let { data: client } = await supabase
       .from("clients")
-      .select("id, first_name, last_name, email, entity_name, linked_user_id, onboarding_stage, lifecycle_stage")
+      .select("id, tenant_id, first_name, last_name, email, entity_name, linked_user_id, onboarding_stage, lifecycle_stage")
       .eq("linked_user_id", user.id)
       .maybeSingle();
 
     if (!client && user.email) {
       const { data: byEmail } = await supabase
         .from("clients")
-        .select("id, first_name, last_name, email, entity_name, linked_user_id, onboarding_stage, lifecycle_stage")
+        .select("id, tenant_id, first_name, last_name, email, entity_name, linked_user_id, onboarding_stage, lifecycle_stage")
         .ilike("email", user.email)
         .maybeSingle();
       if (byEmail) {
