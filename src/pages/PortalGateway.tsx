@@ -11,7 +11,7 @@
  * there is no self-serve signup here — just email + password back into /app.
  */
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,9 +22,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { readableTextOn } from "@/lib/brand/contrast";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
+import { cachePortalSlug } from "@/lib/auth/signOut";
 
 interface PortalBrand {
-  tenant_id: string;
   tenant_name: string;
   tenant_slug: string;
   logo_url: string | null;
@@ -35,7 +35,10 @@ export default function PortalGateway() {
   const { tenantSlug = "" } = useParams<{ tenantSlug: string }>();
   const [brand, setBrand] = useState<PortalBrand | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -44,36 +47,57 @@ export default function PortalGateway() {
   const [sendingReset, setSendingReset] = useState(false);
 
   // If a customer is already signed in, don't show a login wall — route them in.
+  // Keep the spinner up until this settles so an authed visitor never sees a
+  // flash of the sign-in form on their bookmarked gateway.
   useEffect(() => {
     let cancelled = false;
     supabase.auth.getUser().then(async ({ data }) => {
-      if (cancelled || !data.user) return;
-      const target = await resolveLandingRoute(data.user.id);
-      if (!cancelled) window.location.assign(target);
-    });
+      if (cancelled) return;
+      if (data.user) {
+        const target = await resolveLandingRoute(data.user.id);
+        if (!cancelled) window.location.replace(target);
+        return; // leave checkingAuth true — we're navigating away
+      }
+      setCheckingAuth(false);
+    }).catch(() => { if (!cancelled) setCheckingAuth(false); });
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setLoadError(false);
+    setNotFound(false);
     (async () => {
       try {
         const { data, error } = await supabase.rpc("peek_tenant_portal_brand", { _slug: tenantSlug });
         if (cancelled) return;
         if (error) throw error;
         const row = Array.isArray(data) ? (data[0] as PortalBrand | undefined) : (data as PortalBrand | null);
-        if (!row) { setNotFound(true); } else { setBrand(row); }
+        if (!row) {
+          setNotFound(true);
+        } else {
+          setBrand(row);
+          // Remember this tenant so involuntary logouts (session expiry) can
+          // still return the customer here instead of the Paige page (§9).
+          cachePortalSlug(row.tenant_slug);
+        }
       } catch {
-        if (!cancelled) setNotFound(true);
+        // Transient RPC/network failure is not a bad slug. Don't tell a customer
+        // with a valid bookmark that their link is invalid — offer a retry.
+        if (!cancelled) setLoadError(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [tenantSlug]);
+  }, [tenantSlug, reloadKey]);
 
   const brandColor = brand?.primary_color || "#CFAE70";
   const btnStyle = { backgroundColor: brandColor, color: readableTextOn(brandColor) };
+  // Hold the spinner until BOTH the brand peek and the auth probe settle, so an
+  // already-authed visitor never sees a flash of the sign-in form.
+  const busy = loading || checkingAuth;
 
   const signIn = async () => {
     const em = email.trim().toLowerCase();
@@ -97,9 +121,11 @@ export default function PortalGateway() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return toast.error("Enter your email above first, then tap reset");
     setSendingReset(true);
     try {
-      // Send them back to THIS tenant gateway after they reset — keeps the whole
-      // loop under the coach's brand.
-      const redirectTo = `${window.location.origin}/portal/${encodeURIComponent(tenantSlug)}`;
+      // Route to the real recovery handler (which renders the set-new-password
+      // form), carrying the tenant slug so the reset stays under the coach's
+      // brand and returns here when done. Sending them straight back to /portal
+      // would consume the one-time token without ever letting them set a password.
+      const redirectTo = `${window.location.origin}/reset-password?portal=${encodeURIComponent(tenantSlug)}`;
       const { error } = await supabase.auth.resetPasswordForEmail(em, { redirectTo });
       if (error) throw error;
       toast.success("Check your email for a link to reset your password.");
@@ -110,6 +136,20 @@ export default function PortalGateway() {
     }
   };
 
+  const title = busy
+    ? "Loading…"
+    : loadError || notFound
+      ? "Client Portal"
+      : `Welcome back to ${brand?.tenant_name}`;
+
+  const description = busy
+    ? " "
+    : loadError
+      ? "We couldn't load this page. Check your connection and try again."
+      : notFound
+        ? "This portal link isn't valid. Please use the link your provider gave you, or the invitation email they sent."
+        : "Sign in to open your private client portal.";
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12">
       <Helmet>
@@ -118,7 +158,7 @@ export default function PortalGateway() {
       </Helmet>
       <Card className="max-w-md w-full">
         <CardHeader className="text-center">
-          {loading ? null : brand?.logo_url ? (
+          {busy ? null : brand?.logo_url ? (
             <img src={brand.logo_url} alt={brand.tenant_name} className="h-12 w-auto mx-auto mb-3 object-contain" />
           ) : brand ? (
             <div
@@ -128,22 +168,18 @@ export default function PortalGateway() {
               {brand.tenant_name.charAt(0).toUpperCase()}
             </div>
           ) : null}
-          <CardTitle>
-            {loading ? "Loading…" : notFound ? "Client Portal" : `Welcome back to ${brand?.tenant_name}`}
-          </CardTitle>
-          <CardDescription>
-            {loading
-              ? " "
-              : notFound
-                ? "This portal link isn't valid. Please use the link your provider gave you, or the invitation email they sent."
-                : "Sign in to open your private client portal."}
-          </CardDescription>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {loading ? (
+          {busy ? (
             <div className="flex justify-center py-4">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
+          ) : loadError ? (
+            <Button onClick={() => setReloadKey((k) => k + 1)} className="w-full" style={btnStyle}>
+              Try again
+            </Button>
           ) : notFound ? null : (
             <>
               <div className="space-y-2">

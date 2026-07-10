@@ -1,22 +1,62 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
+// A tenant's customer must return to their coach's branded gateway on EVERY
+// exit — the sign-out button, but also involuntary logouts (session expiry,
+// forced sign-out) whose handlers fire when the token is already invalid and an
+// RPC can't be trusted. We cache the customer's portal slug (survives the
+// sign-out storage wipe via PRESERVE_KEYS) so those paths can resolve the
+// gateway synchronously. Staff never get a slug cached, so they still exit to "/".
+const PORTAL_SLUG_KEY = "paige_portal_slug";
+
+export function cachePortalSlug(slug: string | null | undefined) {
+  if (typeof window === "undefined") return;
+  try {
+    if (slug) window.localStorage.setItem(PORTAL_SLUG_KEY, slug);
+  } catch { /* ignore */ }
+}
+
+/** Synchronous, session-free gateway target from the cached slug, or null. */
+export function readCachedPortalTarget(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const slug = window.localStorage.getItem(PORTAL_SLUG_KEY);
+    return slug ? `/portal/${encodeURIComponent(slug)}` : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolve where a user should land AFTER sign-out. A tenant's customer returns
  * to their coach's branded gateway (/portal/:slug) — never the Paige platform
  * page (§9). get_client_portal_brand returns a row ONLY for a linked customer,
  * so staff/operators (no row) fall through to `fallback`. Must be called while
- * still authenticated (before performSignOut). Never throws.
+ * still authenticated (before performSignOut). Never throws, and never blocks
+ * sign-out for more than ~1.5s (a hung RPC falls back to the cached slug).
  */
 export async function customerSignOutTarget(fallback = "/"): Promise<string> {
   try {
-    const { data } = await supabase.rpc("get_client_portal_brand");
-    const row = Array.isArray(data) ? data[0] : data;
-    const slug = (row as { tenant_slug?: string } | null)?.tenant_slug;
-    return slug ? `/portal/${encodeURIComponent(slug)}` : fallback;
+    const rpc = supabase.rpc("get_client_portal_brand").then(({ data }) => {
+      const row = Array.isArray(data) ? data[0] : data;
+      return (row as { tenant_slug?: string } | null)?.tenant_slug ?? null;
+    });
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
+    const slug = await Promise.race([rpc, timeout]);
+    if (slug) {
+      cachePortalSlug(slug);
+      return `/portal/${encodeURIComponent(slug)}`;
+    }
+    // RPC empty (staff) or timed out — use the cached gateway if we have one.
+    return readCachedPortalTarget() ?? fallback;
   } catch {
-    return fallback;
+    return readCachedPortalTarget() ?? fallback;
   }
+}
+
+/** True while a performSignOut() is mid-flight (so global listeners can defer). */
+export function isSignOutInFlight(): boolean {
+  return isSigningOut;
 }
 
 const AUTH_STORAGE_KEY_PATTERNS = [

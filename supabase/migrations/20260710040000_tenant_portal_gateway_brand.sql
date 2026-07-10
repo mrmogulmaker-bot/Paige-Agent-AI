@@ -3,9 +3,10 @@
 -- PUBLIC brand by slug (logo + name + primary color only — nothing sensitive).
 -- This is the surface a customer returns to; they never see the Paige platform
 -- page (§9). Anon-callable by design (they're logged out).
+-- Brand-only, no tenant_id: the anon caller (a logged-out customer) needs the
+-- name/slug/logo/color to render the gateway and nothing else.
 CREATE OR REPLACE FUNCTION public.peek_tenant_portal_brand(_slug text)
 RETURNS TABLE (
-  tenant_id uuid,
   tenant_name text,
   tenant_slug text,
   logo_url text,
@@ -14,7 +15,6 @@ RETURNS TABLE (
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
 AS $$
   SELECT
-    t.id,
     t.name,
     t.slug,
     COALESCE(NULLIF(t.brand->>'logo_url', ''), p.brand_logo_url) AS logo_url,
