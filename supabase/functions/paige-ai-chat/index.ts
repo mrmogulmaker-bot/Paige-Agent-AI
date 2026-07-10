@@ -1742,8 +1742,11 @@ INSTEAD, route them straight into the BUILD Business 5-Stage Progression (Sectio
   • Stage 5 (Months 18–36+, PAYDEX 80+, Intelliscore 76+, Equifax 700+, $250K+ rev, 2–3+ years): Bank LOCs, SBA 7(a), commercial RE, equipment financing
 Paige's job: ASSESS what stage the business is in (use the 5-question probe in Section 15), then GUIDE them to the next stage's accounts in sequence. Never gate EIN-only funding behind personal credit work.
 
-SUPPORT & FEEDBACK AWARENESS:
-Paige acts first. Most of what a client "wishes she could do," she can already do — answer it, walk them through it, draft what they need, or take the next step she has a tool for (anything going out to someone is drafted for approval, never sent unasked). So when a client says "can you…", Paige's default is to DO it, not to point them at a feedback form; she never answers a request she can actually fulfill with "I can't do that." Paige is honest about her reach and does not over-claim: she is clear about what she can drive now versus what she can't, and she never claims she can change things she cannot (billing, plan, permissions, or another user's settings) — if it is genuinely outside her reach, she says so plainly and hands it to the right person. If something is actually broken — an error, a page not loading, data wrong in a way she cannot fix — Paige acknowledges it and routes it to a human through Support: "I'm sorry you're hitting that — the quickest fix is to flag it to the team through Support so they can jump on it. Want me to help you write up exactly what happened?" A real, not-yet-built feature Paige logs as a feature request under Share Feedback, framed as the team weighing what clients ask for most; Paige NEVER promises a feature will be built, and never routes a request she can already fulfill into this bucket.
+SUPPORT AWARENESS RULE:
+When a client expresses frustration, reports a bug, or says something is not working correctly, Paige acknowledges it and directs them to support: "I am sorry you are experiencing that. For the fastest resolution you can submit a support ticket directly in the app — go to the Support tab in the sidebar and our team will get back to you within 24 hours. Would you like me to help you describe the issue clearly before you submit?"
+
+FEEDBACK AWARENESS RULE:
+When a client says they wish Paige could do something she cannot currently do, Paige acknowledges the limitation and directs them to the feedback portal: "That is a great idea and something I would love to be able to do. You can submit that as a feature request in the Support tab under Share Feedback — if enough clients vote for it, it goes directly onto the product roadmap. Your feedback genuinely shapes what gets built next." Paige NEVER promises a feature will be built — she always frames it as something the team will consider based on community votes.
 
 CRITICAL CONTENT FILTERING RULES:
 When discussing Personal Credit (ACCEL or BUILD Personal) AND the user has NOT asked about EIN-only/business funding:
@@ -3158,10 +3161,8 @@ When the client shares a URL, or you genuinely need current public info to answe
 =============================================================
 SUPPORT & FEEDBACK AWARENESS
 =============================================================
-- ACT FIRST. Most of what someone "wishes you could do," you can already do — answer it, walk them through it, draft the thing they need, or take the next step you have a tool for (and anything that goes out to someone gets drafted for approval, never sent unasked). So when they say "can you…", your default is to DO it, not to point them at a feedback form. Never answer a request you can actually fulfill with "I can't do that."
-- Say what's real about your reach, and don't over-claim. Be straight about what you can drive right now versus what you can't — and never claim you can change things you can't (billing, plan, permissions, or another user's settings). If it's genuinely outside your reach, say so plainly and hand it to the right person.
-- Genuine bugs still go to a human. If something is actually broken — an error, a page not loading, data wrong in a way you can't fix — acknowledge it and get them to Support: "Sorry you're hitting that — quickest fix is to flag it to the team through Support so they can jump on it. Want me to help you write up exactly what happened?"
-- A real, not-yet-built feature can be logged as a feature request under Share Feedback: "Love that idea — you can drop it under Share Feedback, and the team weighs what clients ask for most." Never promise a feature will be built — and never route a request you can already fulfill into this bucket.`;
+- When a client is frustrated, reports a bug, or says something isn't working, acknowledge it and point them to support: "Sorry you're hitting that. Fastest fix is to submit a support ticket in the app — Support tab in the sidebar — and the team will get back to you. Want me to help you write up the issue first?"
+- When a client wishes you could do something you can't, acknowledge it and point them to feedback: "Love that idea. You can drop it as a feature request in the Support tab under Share Feedback — the team reviews what clients ask for most." Never promise a feature will be built.`;
 
     // Funding tenants (opt-in skill) keep the full funding brain; everyone else
     // gets the neutral core. The tenant's authored persona leads either way.
@@ -3191,36 +3192,16 @@ SUPPORT & FEEDBACK AWARENESS
       aiMessages.push({
         role: "system",
         content:
-`=== OPERATOR MODE — YOU RUN THE DESK WITH THEM ===
-The current user is an ADMIN or COACH running their practice on Paige. You are their teammate on the inside of the business — a colleague who does the work, not a help screen they read. You both SEE the whole book of business and ACT on it. When they ask you to do something you can do, your instinct is to do it — not to describe where a button lives or send them off to figure it out.
+`=== CRM OPERATOR MODE ===
+The current user is an ADMIN or COACH operating the Paige CRM. You have full read access to every contact, deal, task, and activity in the system through the crm_* tools. Use them proactively whenever the operator asks anything that requires looking across the customer base — for example:
+- "Who are my new leads this week?" → crm_search_contacts with lifecycle_stage=lead, sort by created_at desc.
+- "Show me [first name]'s clients" → crm_search_contacts filtered by coach.
+- "What's the pipeline look like?" → crm_pipeline_summary, then crm_list_deals for the top stages.
+- "Tell me about Jane Doe" → crm_search_contacts to resolve the id, then crm_get_contact_summary for the full file (recent activity, deals, tasks, notes, lifecycle, last touch).
+- "What tasks are overdue?" → crm_list_tasks with overdue=true.
 
-HOW YOU OPEN & SCOPE THE WORK (be the assistant who runs the shift):
-- Set the tone like their right hand, not a chatbot. When they open with a bare "hey" or start vague, don't answer "how can I help?" and wait — take initiative: "What are we working on today?" Then narrow it with a probing question or two, the way a sharp assistant would.
-- Always figure out the SCOPE first: are we working ON A CLIENT, or on a PART OF THE BUSINESS? If a client — which one (get the name, then resolve it with crm_search_contacts)? If a function — pipeline, follow-ups, a campaign, content, onboarding, at-risk accounts, the daily brief? Ask the one or two questions you need to point yourself at the right work, then go.
-- Probe like a domain expert before you draft or act on something consequential: for an email, confirm the goal and the one thing it must land; for a client, pull their file and lead with where they stand and the next best move; for "what needs my attention," surface the shortlist and ask which to take first.
-- Bring things TO them the way an assistant would — proactively flag what's waiting, what's overdue, who's gone quiet, what you'd recommend next — instead of only answering what's asked. You set the agenda together; you don't just wait for orders.
-
-WHAT YOU CAN SEE (read tools — use proactively):
-- crm_search_contacts — find any contact; resolve a name or email to an id; pull leads by lifecycle stage, by assigned coach, by tag, newest first.
-- crm_get_contact_summary — the full file on one client: stage, coach, open deal value, last activities, open tasks, notes.
-- crm_list_deals / crm_pipeline_summary — the pipeline, the weighted forecast, what's moving and what's stuck.
-- crm_list_tasks — what's due, what's overdue, what's on a given coach's plate.
-
-WHAT YOU CAN DO (action tools — this is the part that matters):
-- Draft and queue outbound for approval — propose_action writes the full email, text, or follow-up in the practice's own voice and files it in the operator's approvals queue ("waiting on you"). It does NOT send on its own: the operator approves it on their Live desk and only then does it go out. So when they say "email Dana about onboarding" or "text the leads who went quiet," you WRITE it and QUEUE it — you don't tell them to go do it themselves. You do NOT need the client's email address or phone to do this — when a client is focused or you pass their contact_id, the system pulls the address from their record at send time, so never stop to ask the operator for an email that's already on file; just draft it and queue it.
-- Create tasks and reminders — crm_create_task puts a follow-up, a document chase, or an outreach reminder on the operator queue (or on a specific coach), with a due date.
-- Log the work — crm_log_activity records a call, email, note, or meeting on a client's timeline so the file stays current.
-- Move the pipeline — crm_update_pipeline_stage advances a deal; crm_assign_coach routes a client to the right person.
-- Hand the heavy lift to your team — list_subagents, then delegate_to_subagent, puts a specialist on it (diagnostics, research, drafting, audits, pipeline, coaching). You are not one assistant; you run a bench, and you pull in the right specialist when a request needs real depth.
-
-HOW YOU OPERATE:
-- Resolve a name or email to a client_id with crm_search_contacts before any per-client action (summary, stage change, activity log, assign).
-- Brief like an operator, not a database — counts, names, dollar amounts, last-touch dates, and the next move. Never raw JSON.
-- When the operator asks about one customer, lead with lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action — then offer to take it.
-- Bias to action inside your lane: anything low-risk and internal (a task, a note, a stage change, an assignment) you just do and confirm what you did; anything that goes OUT to a client (email, text, follow-up) you draft and queue for their approval — never send unapproved, and never sit on your hands for something you can queue.
-
-You are the teammate who operates this practice alongside them — you read the whole book, draft the moves, queue them for the green light, keep the records straight, and bring in your specialists when it counts.
-=== END OPERATOR MODE ===`,
+Always resolve names/emails to client_id via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
+=== END CRM OPERATOR MODE ===`,
       });
     }
 
@@ -3256,17 +3237,7 @@ You are the teammate who operates this practice alongside them — you read the 
       }
     }
 
-    // Call AI
-    const response = await gatewayCompat("anthropic", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: attachedDocument ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
-        messages: aiMessages,
-        tools: [
+    const toolDefs = [
           {
             type: "function",
             function: {
@@ -3593,7 +3564,7 @@ You are the teammate who operates this practice alongside them — you read the 
             type: "function",
             function: {
               name: "propose_action",
-              description: "Propose a consequential OUTBOUND action for the operator to approve before it goes out — an email, an SMS/text, or a follow-up message to a client. This does NOT send anything: it drafts the message and files it in the operator's approvals queue ('waiting on you'). The operator approves it in their Live desk and only THEN is it sent. Use this whenever the user asks you to email/text/message/follow-up-with a client, or you recommend reaching out. Write the full draft (subject + body for email; body for SMS) in the client's tenant voice. IMPORTANT: you do NOT need the recipient's email address or phone number to queue this — when a client is focused (CLIENT CONTEXT is present) or you pass a contact_id, the approval system resolves the recipient from that client's record at send time. So when the operator says 'email this client' about a focused/known client, DRAFT AND QUEUE IT immediately — never stop to ask the operator for an email address that is already on the client's record. Only ask for an address if there is genuinely no focused client and no contact_id. For low-risk internal work (a task, a note, a stage change) use the crm_* tools directly instead — those don't need approval.",
+              description: "Propose a consequential OUTBOUND action for the operator to approve before it goes out — an email, an SMS/text, or a follow-up message to a client. This does NOT send anything: it drafts the message and files it in the operator's approvals queue ('waiting on you'). The operator approves it in their Live desk and only THEN is it sent. Use this whenever the user asks you to email/text/message/follow-up-with a client, or you recommend reaching out. Write the full draft (subject + body for email; body for SMS) in the client's tenant voice. For low-risk internal work (a task, a note, a stage change) use the crm_* tools directly instead — those don't need approval.",
               parameters: {
                 type: "object",
                 properties: {
@@ -3608,7 +3579,19 @@ You are the teammate who operates this practice alongside them — you read the 
               }
             }
           },
-        ],
+    ];
+
+    // Call AI
+    const response = await gatewayCompat("anthropic", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${lovableApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: attachedDocument ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
+        messages: aiMessages,
+        tools: toolDefs,
         tool_choice: "auto",
         stream: true,
       }),
@@ -3626,68 +3609,57 @@ You are the teammate who operates this practice alongside them — you read the 
     // For non-document requests: check if streaming response contains tool calls
     // We need to accumulate first to detect tool calls, then handle accordingly
     if (!attachedDocument) {
-      // Read the full streamed response to check for tool calls
-      const fullReader = response.body!.getReader();
-      const fullDecoder = new TextDecoder();
-      let accumulatedContent = "";
-      let toolCalls: any[] = [];
-      let allChunks: Uint8Array[] = [];
-      let hasToolCall = false;
-
-      // Accumulate the stream
-      while (true) {
-        const { done, value } = await fullReader.read();
-        if (done) break;
-        allChunks.push(value);
-        const chunk = fullDecoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-        for (const line of lines) {
-          if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
-          try {
-            const parsed = JSON.parse(line.slice(6));
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) accumulatedContent += content;
-            const tc = parsed.choices?.[0]?.delta?.tool_calls;
-            if (tc) {
-              hasToolCall = true;
-              for (const call of tc) {
-                if (call.index !== undefined) {
-                  if (!toolCalls[call.index]) toolCalls[call.index] = { id: "", type: "function", function: { name: "", arguments: "" } };
-                  if (call.id) toolCalls[call.index].id = call.id;
-                  if (call.function?.name) toolCalls[call.index].function.name = call.function.name;
-                  if (call.function?.arguments) toolCalls[call.index].function.arguments += call.function.arguments;
+      // Multi-round agentic loop: consume one streamed round, detect tool
+      // calls, execute them, then re-ask WITH tools until a natural stop or a
+      // safety bound. consumeRound accumulates one streamed gateway response.
+      const consumeRound = async (resp: Response) => {
+        const fullReader = resp.body!.getReader();
+        const fullDecoder = new TextDecoder();
+        let content = "";
+        let toolCalls: any[] = [];
+        let allChunks: Uint8Array[] = [];
+        let hasToolCall = false;
+        while (true) {
+          const { done, value } = await fullReader.read();
+          if (done) break;
+          allChunks.push(value);
+          const chunk = fullDecoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+          for (const line of lines) {
+            if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+            try {
+              const parsed = JSON.parse(line.slice(6));
+              const c = parsed.choices?.[0]?.delta?.content;
+              if (c) content += c;
+              const tc = parsed.choices?.[0]?.delta?.tool_calls;
+              if (tc) {
+                hasToolCall = true;
+                for (const call of tc) {
+                  if (call.index !== undefined) {
+                    if (!toolCalls[call.index]) toolCalls[call.index] = { id: "", type: "function", function: { name: "", arguments: "" } };
+                    if (call.id) toolCalls[call.index].id = call.id;
+                    if (call.function?.name) toolCalls[call.index].function.name = call.function.name;
+                    if (call.function?.arguments) toolCalls[call.index].function.arguments += call.function.arguments;
+                  }
                 }
               }
-            }
-            // Check finish_reason for tool_calls
-            if (parsed.choices?.[0]?.finish_reason === "tool_calls") hasToolCall = true;
-          } catch { /* skip */ }
-        }
-      }
-
-      // If no tool calls, replay the accumulated chunks as-is
-      if (!hasToolCall) {
-        const replayStream = new ReadableStream({
-          start(controller) {
-            for (const chunk of allChunks) {
-              controller.enqueue(chunk);
-            }
-            controller.close();
+              if (parsed.choices?.[0]?.finish_reason === "tool_calls") hasToolCall = true;
+            } catch { /* skip */ }
           }
-        });
-        return new Response(replayStream, {
-          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
-        });
-      }
+        }
+        return { content, toolCalls, allChunks, hasToolCall };
+      };
 
-      // Handle tool calls
+      // executeToolCalls dispatches one round's tool calls. Every tc that clears
+      // the guard is pushed to `executed` and gets EXACTLY ONE tool-result
+      // (including the terminal Unknown-tool branch). Approvals accumulate into
+      // the shared queuedApprovals passed in from the loop.
+      const executeToolCalls = async (toolCalls: any[], queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }>) => {
       const toolResults: any[] = [];
-      // Approvals queued by propose_action this turn — surfaced to the client as
-      // an `approval_queued` SSE frame so the chat can render a confirmation card,
-      // while the right-rail Live desk picks them up via realtime.
-      const queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }> = [];
+      const executed: any[] = [];
       for (const tc of toolCalls) {
         if (!tc || !tc.function?.name) continue;
+        executed.push(tc);
         
         if (tc.function.name === "update_client_data") {
           try {
@@ -4235,67 +4207,80 @@ You are the teammate who operates this practice alongside them — you read the 
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "propose_action_error" }) });
           }
+        } else {
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: `Unknown tool: ${tc.function.name}` }) });
         }
       }
+      return { toolResults, executed };
+      };
 
-      // Make a second AI call with tool results to get the final response
-      const followUpMessages = [
-        ...aiMessages,
-        { role: "assistant", content: accumulatedContent || null, tool_calls: toolCalls.filter(Boolean) },
-        ...toolResults,
-      ];
+      // Bounded multi-round agentic loop. Round 0 reuses the first call already
+      // issued above; each later round re-asks WITH tools so Paige can chain
+      // actions, stopping on a natural (tool-less) reply or a safety bound.
+      const MAX_ROUNDS = 5, MAX_TOTAL_TOOL_CALLS = 12, WALL_CLOCK_MS = 45_000;
+      const startedAt = Date.now();
+      const queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }> = [];
+      const convo: any[] = [...aiMessages];
+      let currentResponse = response;
+      let totalToolCalls = 0;
+      const seenSignatures = new Set<string>();
+      let finalChunks: Uint8Array[] | null = null;
+      let forcedTermination = false;
 
-      const followUpResponse = await gatewayCompat("anthropic", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: followUpMessages,
-          stream: true,
-        }),
-      });
+      for (let round = 0; round < MAX_ROUNDS; round++) {
+        const { content, toolCalls, allChunks, hasToolCall } = await consumeRound(currentResponse);
+        if (!hasToolCall) { finalChunks = allChunks; break; }
+        const realCalls = toolCalls.filter((tc: any) => tc && tc.function?.name);
+        const sig = JSON.stringify(realCalls.map((tc: any) => [tc.function.name, tc.function.arguments]));
+        // No-progress: the model re-emitted the exact same call(s) as an earlier
+        // round. Do NOT execute again (a repeated propose_action would double-queue
+        // an approval) — close out from the balanced convo we already have.
+        if (seenSignatures.has(sig)) { forcedTermination = true; break; }
+        const overCap = totalToolCalls + realCalls.length > MAX_TOTAL_TOOL_CALLS;
+        const overTime = Date.now() - startedAt > WALL_CLOCK_MS;
+        const lastRound = round === MAX_ROUNDS - 1;
+        const { toolResults, executed } = await executeToolCalls(toolCalls, queuedApprovals);
+        totalToolCalls += executed.length;
+        seenSignatures.add(sig);
+        convo.push({ role: "assistant", content: content || null, tool_calls: executed });
+        convo.push(...toolResults);
+        if (overCap || overTime || lastRound) { forcedTermination = true; break; }
+        currentResponse = await gatewayCompat("anthropic", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
+        });
+        if (!currentResponse.ok) { forcedTermination = true; break; }
+      }
 
-      if (!followUpResponse.ok) {
-        // Fallback: return accumulated content if follow-up fails
-        const fallbackStream = new ReadableStream({
-          start(controller) {
-            for (const chunk of allChunks) controller.enqueue(chunk);
-            controller.close();
+      // Hybrid final stream: replay a natural tool-less round verbatim, or issue a
+      // tools-less closing call when we terminated mid-flight. Approvals queued
+      // across all rounds are surfaced first as an `approval_queued` frame.
+      let finalStreamResponse: Response | null = null;
+      if (forcedTermination) {
+        finalStreamResponse = await gatewayCompat("anthropic", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: convo, stream: true }),
+        });
+      }
+      const enc = new TextEncoder();
+      const finalStream = new ReadableStream({
+        async start(controller) {
+          if (queuedApprovals.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
+          if (finalChunks) {
+            for (const c of finalChunks) controller.enqueue(c);
+          } else if (finalStreamResponse?.ok && finalStreamResponse.body) {
+            const up = finalStreamResponse.body.getReader();
+            try { while (true) { const { done, value } = await up.read(); if (done) break; controller.enqueue(value); } } finally { /* noop */ }
+          } else {
+            controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "I gathered what I could but couldn't finish that — mind trying again?" } }] })}\n\n`));
+            controller.enqueue(enc.encode("data: [DONE]\n\n")); // sentinel so the client finalizes the bubble
           }
-        });
-        return new Response(fallbackStream, {
-          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
-        });
-      }
-
-      // If Paige queued any approvals this turn, prepend an `approval_queued`
-      // SSE frame so the chat can render a confirmation card, then pass the
-      // model's follow-up text through unchanged.
-      if (queuedApprovals.length > 0 && followUpResponse.body) {
-        const upstream = followUpResponse.body.getReader();
-        const enc = new TextEncoder();
-        const wrapped = new ReadableStream({
-          async start(controller) {
-            controller.enqueue(enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
-            try {
-              while (true) {
-                const { done, value } = await upstream.read();
-                if (done) break;
-                controller.enqueue(value);
-              }
-            } finally {
-              controller.close();
-            }
-          },
-        });
-        return new Response(wrapped, {
-          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
-        });
-      }
-
-      return new Response(followUpResponse.body, {
-        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+          controller.close();
+        },
       });
+      return new Response(finalStream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
     }
 
     // With document: intercept stream to accumulate response, then trigger background sync
