@@ -66,6 +66,7 @@ const FundingPipelineView = lazy(() => import("@/components/dashboard/admin/Fund
 const AdminSettingsHub = lazy(() => import("@/pages/admin/AdminSettingsHub"));
 const PlaybookAdmin = lazy(() => import("@/pages/admin/PlaybookAdmin"));
 const AgreementAdmin = lazy(() => import("@/pages/admin/AgreementAdmin"));
+const Marketplace = lazy(() => import("@/pages/admin/Marketplace"));
 const PlatformTenants = lazy(() => import("@/pages/admin/PlatformTenants"));
 const PlatformTeam = lazy(() => import("@/pages/admin/PlatformTeam"));
 const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformance").then(m => ({ default: m.UserPerformance })));
@@ -437,6 +438,13 @@ const Admin = () => {
           <AdminOnly>
             <Suspense fallback={<SuspenseFallback />}>
               <AgreementAdmin />
+            </Suspense>
+          </AdminOnly>
+        } />
+        <Route path="marketplace" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <Marketplace />
             </Suspense>
           </AdminOnly>
         } />
