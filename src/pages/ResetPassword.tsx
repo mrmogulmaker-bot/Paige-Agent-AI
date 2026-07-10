@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,12 @@ import { Loader2, ArrowLeft, CheckCircle2 } from "lucide-react";
 import paigeLogo from "@/assets/paige-logo-transparent.png";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 
+interface PortalBrand {
+  tenant_name: string;
+  logo_url: string | null;
+  primary_color: string | null;
+}
+
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -17,6 +23,25 @@ const ResetPassword = () => {
   const [isRecovery, setIsRecovery] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+
+  // When a customer resets from their tenant gateway, ?portal=<slug> keeps the
+  // whole flow under the coach's brand — never the Paige platform (§9). The
+  // "back" destination becomes /portal/<slug>, not /auth.
+  const portalSlug = searchParams.get("portal");
+  const [brand, setBrand] = useState<PortalBrand | null>(null);
+  const backTarget = portalSlug ? `/portal/${encodeURIComponent(portalSlug)}` : "/auth";
+
+  useEffect(() => {
+    if (!portalSlug) return;
+    let cancelled = false;
+    supabase.rpc("peek_tenant_portal_brand", { _slug: portalSlug }).then(({ data }) => {
+      if (cancelled) return;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row) setBrand(row as PortalBrand);
+    });
+    return () => { cancelled = true; };
+  }, [portalSlug]);
 
   useEffect(() => {
     // Listen for the PASSWORD_RECOVERY event
@@ -54,7 +79,7 @@ const ResetPassword = () => {
       } else {
         setIsSuccess(true);
         toast({ title: "Password updated!", description: "You can now sign in with your new password." });
-        setTimeout(() => navigate("/auth"), 3000);
+        setTimeout(() => navigate(backTarget), 3000);
       }
     } catch {
       toast({ title: "Error", description: "Something went wrong.", variant: "destructive" });
@@ -67,14 +92,18 @@ const ResetPassword = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background px-4">
         <div className="text-center space-y-4 max-w-md">
-          <img src={paigeLogo} alt="PaigeAgent.ai" className="h-12 w-auto mx-auto" />
+          {brand ? (
+            brand.logo_url ? (
+              <img src={brand.logo_url} alt={brand.tenant_name} className="h-12 w-auto mx-auto object-contain" />
+            ) : null
+          ) : !portalSlug ? (
+            <img src={paigeLogo} alt="PaigeAgent.ai" className="h-12 w-auto mx-auto" />
+          ) : null}
           <h1 className="text-2xl font-bold text-foreground">Invalid Reset Link</h1>
           <p className="text-muted-foreground text-sm">
             This link is invalid or has expired. Please request a new password reset.
           </p>
-          <Link to="/auth">
-            <Button className="mt-4">Back to Sign In</Button>
-          </Link>
+          <Button className="mt-4" onClick={() => navigate(backTarget)}>Back to Sign In</Button>
         </div>
       </div>
     );
@@ -96,8 +125,18 @@ const ResetPassword = () => {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-[400px] space-y-8">
         <div className="flex items-center justify-center gap-3">
-          <img src={paigeLogo} alt="PaigeAgent.ai" className="h-10 w-auto" />
-          <span className="text-xl font-bold text-foreground tracking-tight">PaigeAgent.ai</span>
+          {brand ? (
+            brand.logo_url ? (
+              <img src={brand.logo_url} alt={brand.tenant_name} className="h-10 w-auto object-contain" />
+            ) : (
+              <span className="text-xl font-bold text-foreground tracking-tight">{brand.tenant_name}</span>
+            )
+          ) : !portalSlug ? (
+            <>
+              <img src={paigeLogo} alt="PaigeAgent.ai" className="h-10 w-auto" />
+              <span className="text-xl font-bold text-foreground tracking-tight">PaigeAgent.ai</span>
+            </>
+          ) : null}
         </div>
 
         <div className="space-y-2 text-center">
@@ -147,9 +186,13 @@ const ResetPassword = () => {
         </form>
 
         <div className="text-center">
-          <Link to="/auth" className="text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => navigate(backTarget)}
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1"
+          >
             <ArrowLeft className="w-3.5 h-3.5" /> Back to Sign In
-          </Link>
+          </button>
         </div>
       </div>
     </div>

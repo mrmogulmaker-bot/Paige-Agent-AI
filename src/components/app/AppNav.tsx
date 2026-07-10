@@ -14,9 +14,10 @@ import { Home, BookOpen, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, Me
 import type { LucideIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
-import { performSignOut } from "@/lib/auth/signOut";
+import { supabase } from "@/integrations/supabase/client";
+import { performSignOut, customerSignOutTarget, cachePortalSlug } from "@/lib/auth/signOut";
 import { useUnreadSupportCount } from "@/hooks/useUnreadSupportCount";
 import { usePlaybook } from "@/lib/playbook";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
@@ -54,6 +55,17 @@ export function AppNav({ user }: AppNavProps) {
   const { count: unreadSupport } = useUnreadSupportCount(user.id);
   const pb = usePlaybook();
 
+  // Cache this customer's portal slug so an involuntary logout (session expiry,
+  // forced sign-out) can still return them to their tenant gateway, not the
+  // Paige page (§9). No-ops for staff (get_client_portal_brand returns no row).
+  useEffect(() => {
+    if (isCoachOrAdmin) return;
+    supabase.rpc("get_client_portal_brand").then(({ data }) => {
+      const row = Array.isArray(data) ? data[0] : data;
+      cachePortalSlug((row as { tenant_slug?: string } | null)?.tenant_slug ?? null);
+    }).catch(() => { /* non-blocking */ });
+  }, [isCoachOrAdmin]);
+
   // Visible nav = the active Playbook's portal modules, filtered to those with a
   // real route. Labels come straight from the Playbook (neutral coaching copy).
   const navItems: NavItem[] = pb.portal.modules
@@ -70,7 +82,9 @@ export function AppNav({ user }: AppNavProps) {
     if (isSigningOut) return;
     setMobileMenuOpen(false);
     setIsSigningOut(true);
-    await performSignOut("/");
+    // Customers land back on their coach's branded gateway; staff exit to root.
+    const target = await customerSignOutTarget("/");
+    await performSignOut(target);
   };
 
   if (isMobile) {

@@ -26,7 +26,7 @@ import { linkOAuthIdentity } from "@/integrations/auth/oauth";
 import { z } from "zod";
 import { Switch } from "@/components/ui/switch";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
-import { performSignOut } from "@/lib/auth/signOut";
+import { performSignOut, customerSignOutTarget } from "@/lib/auth/signOut";
 
 const ssnSchema = z.string().regex(/^\d{3}-?\d{2}-?\d{4}$/, "Invalid SSN format (XXX-XX-XXXX)");
 
@@ -797,13 +797,16 @@ const SecurityCard = () => {
   const handleLocalSignOut = async () => {
     if (signingOut || signingOutAll) return;
     setSigningOut(true);
-    await performSignOut("/");
+    // Customers return to their coach's branded gateway; staff exit to root.
+    const target = await customerSignOutTarget("/");
+    await performSignOut(target);
   };
 
   const handleSignOutAllDevices = async () => {
     if (signingOut || signingOutAll) return;
     setSigningOutAll(true);
-    await performSignOut({ redirectTo: "/", scope: "global" });
+    const target = await customerSignOutTarget("/");
+    await performSignOut({ redirectTo: target, scope: "global" });
   };
 
   return (

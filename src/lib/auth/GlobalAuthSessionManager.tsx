@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { performSignOut, registerSignOutQueryClient } from "@/lib/auth/signOut";
+import { performSignOut, registerSignOutQueryClient, readCachedPortalTarget, isSignOutInFlight } from "@/lib/auth/signOut";
 
 const PUBLIC_ROUTES = new Set([
   "/",
@@ -20,6 +20,8 @@ function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_ROUTES.has(pathname)) return true;
   // Allow public marketing/affiliate landing variants
   if (pathname.startsWith("/affiliates/")) return true;
+  // Tenant-branded customer portal gateway (signed-out landing / log back in).
+  if (pathname.startsWith("/portal/")) return true;
   return false;
 }
 
@@ -59,8 +61,11 @@ async function handleExpiredSession() {
 
   sessionExpiredHandled = true;
   toast.error("Your session expired — please sign in again.");
+  // A tenant's customer returns to their branded gateway, never the Paige
+  // auth page (§9); staff (no cached slug) fall back to /auth.
+  const expiredTarget = readCachedPortalTarget() ?? "/auth";
   setTimeout(() => {
-    performSignOut({ redirectTo: "/auth", scope: "local" });
+    performSignOut({ redirectTo: expiredTarget, scope: "local" });
   }, 250);
 }
 
@@ -148,10 +153,15 @@ export function GlobalAuthSessionManager() {
             console.warn("Failed to clear cache on SIGNED_OUT:", e);
           }
 
+          // If an explicit performSignOut() is driving this, let it own the
+          // post-signout navigation (it targets the customer's tenant gateway);
+          // redirecting here would race it and could land on the Paige page (§9).
+          if (isSignOutInFlight()) return;
           // If user is on a public page, no redirect needed.
           if (!isPublicRoute(window.location.pathname)) {
             // Use replace so back button doesn't return to a logged-in view.
-            window.location.replace("/");
+            // Prefer the customer's branded gateway if we know it.
+            window.location.replace(readCachedPortalTarget() ?? "/");
           }
           return;
         }
@@ -203,7 +213,7 @@ export function GlobalAuthSessionManager() {
         // the user is not trapped in a stale authenticated loading loop.
         forcedLogoutHandledRef.current = true;
         toast.error("Your session was reset — please sign in again.");
-        await performSignOut({ redirectTo: "/auth", scope: "local" });
+        await performSignOut({ redirectTo: readCachedPortalTarget() ?? "/auth", scope: "local" });
       } catch {
         // Non-blocking: ordinary auth/session handling still applies.
       }
