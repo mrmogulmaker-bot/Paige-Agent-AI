@@ -1,17 +1,25 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { usePlaybook } from "@/lib/playbook";
+import type { IntakeField } from "@/lib/playbook";
+import { readableTextOn } from "@/lib/brand/contrast";
 import type { OnboardClient } from "./useOnboardingClient";
 import { advanceOnboardingStage } from "./useOnboardingClient";
+import type { OnboardBrand } from "./OnboardLayout";
 
-type Ctx = { client: OnboardClient; refresh: () => void };
+type Ctx = { client: OnboardClient; refresh: () => void; brand: OnboardBrand | null };
 
 const STEPS = ["Your info", "Agreement"];
+
+// Contact identity is captured by the fields above, so a tenant's Playbook intake
+// shouldn't re-ask these — we render only the vertical-specific questions here.
+const CONTACT_KEYS = new Set(["full_name", "first_name", "last_name", "name", "email", "phone"]);
 
 function ProgressHeader({ stepIndex, title, subtitle }: { stepIndex: number; title: string; subtitle: string }) {
   const pct = Math.round(((stepIndex + 1) / STEPS.length) * 100);
@@ -25,8 +33,44 @@ function ProgressHeader({ stepIndex, title, subtitle }: { stepIndex: number; tit
   );
 }
 
+/** Renders one tenant-authored Playbook intake question by its type. */
+function IntakeQuestion({ field, value, onChange }: {
+  field: IntakeField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const v = (value ?? "") as string;
+  return (
+    <div className="space-y-2">
+      <Label>
+        {field.label}
+        {!field.required && <span className="text-xs ml-1" style={{ color: "rgba(8,20,40,0.5)" }}>(optional)</span>}
+      </Label>
+      {field.type === "longtext" ? (
+        <Textarea value={v} onChange={(e) => onChange(e.target.value)} rows={3} />
+      ) : field.type === "select" ? (
+        <select
+          value={v}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full h-10 rounded-md border px-3 text-sm bg-white"
+          style={{ borderColor: "rgba(8,20,40,0.2)", color: "#081428" }}
+        >
+          <option value="">Select…</option>
+          {(field.options ?? []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      ) : (
+        <Input
+          type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+          value={v}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function Step1Welcome() {
-  const { client, refresh } = useOutletContext<Ctx>();
+  const { client, refresh, brand } = useOutletContext<Ctx>();
   const navigate = useNavigate();
   const pb = usePlaybook();
   const [busy, setBusy] = useState(false);
@@ -39,10 +83,37 @@ export default function Step1Welcome() {
   const [stateRegion, setStateRegion] = useState<string>((client as any).state ?? "");
   const [zip, setZip] = useState<string>((client as any).zip_code ?? "");
 
+  // The tenant's Playbook drives the intake — never a hardcoded (funding) set.
+  const questions = (pb.intake ?? []).filter((f) => !CONTACT_KEYS.has(f.key));
+  const [answers, setAnswers] = useState<Record<string, unknown>>({});
+
+  // Hydrate any previously-saved answers so the client can resume.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("paige_client_intake_submissions")
+        .select("payload")
+        .eq("client_id", client.id)
+        .eq("section", "playbook_intake")
+        .maybeSingle();
+      // Only hydrate if the client hasn't started typing (don't clobber input).
+      if (!cancelled && data?.payload) {
+        setAnswers((prev) => (Object.keys(prev).length ? prev : (data.payload as Record<string, unknown>)));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [client.id]);
+
+  const missingRequired = questions.some(
+    (f) => f.required && !String(answers[f.key] ?? "").trim(),
+  );
+
   const canContinue =
     firstName.trim().length > 0 &&
     lastName.trim().length > 0 &&
     phone.trim().length >= 7 &&
+    !missingRequired &&
     !busy;
 
   const begin = async () => {
@@ -63,6 +134,24 @@ export default function Step1Welcome() {
         .eq("id", client.id);
       if (updErr) throw updErr;
 
+      // Persist the Playbook intake answers (upsert; resumable) so the tenant's
+      // team + Paige have the client's context from the first minute.
+      if (questions.length > 0) {
+        const { error: intakeErr } = await supabase
+          .from("paige_client_intake_submissions")
+          .upsert(
+            {
+              client_id: client.id,
+              section: "playbook_intake",
+              payload: answers,
+              submitted_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "client_id,section" },
+          );
+        if (intakeErr) throw intakeErr;
+      }
+
       const { error } = await advanceOnboardingStage(client.id, "signing_agreement");
       if (error) throw error;
       await refresh();
@@ -73,12 +162,15 @@ export default function Step1Welcome() {
     }
   };
 
+  const accent = brand?.primary_color || null;
+  const workspace = brand?.tenant_name || "your workspace";
+
   return (
     <>
       <ProgressHeader
         stepIndex={0}
         title={`Welcome, ${client.first_name ?? "there"}.`}
-        subtitle={`Just two quick steps: confirm your personal information, then sign your service agreement. That's it — you'll go straight into your workspace and ${pb.persona.name} will take it from there.`}
+        subtitle={`A couple of quick things: confirm your details${questions.length ? " and tell us a bit about you" : ""}, then sign your agreement. After that you're in — and ${pb.persona.name} takes it from there.`}
       />
       <div className="onboard-card p-6 sm:p-8 space-y-6">
         <div>
@@ -117,16 +209,47 @@ export default function Step1Welcome() {
           </div>
         </div>
 
-        <div className="rounded-lg p-4" style={{ background: "rgba(207,174,112,0.12)", border: "1px solid rgba(207,174,112,0.35)" }}>
+        {questions.length > 0 && (
+          <div className="space-y-5 pt-2 border-t" style={{ borderColor: "rgba(8,20,40,0.1)" }}>
+            <div>
+              <div className="text-sm font-semibold" style={{ color: "#081428" }}>A bit about you</div>
+              <div className="text-xs" style={{ color: "rgba(8,20,40,0.6)" }}>
+                This helps {workspace} and {pb.persona.name} tailor everything to you.
+              </div>
+            </div>
+            {questions.map((f) => (
+              <IntakeQuestion
+                key={f.key}
+                field={f}
+                value={answers[f.key]}
+                onChange={(v) => setAnswers((a) => ({ ...a, [f.key]: v }))}
+              />
+            ))}
+          </div>
+        )}
+
+        <div
+          className="rounded-lg p-4"
+          style={{
+            background: accent ? `color-mix(in srgb, ${accent} 12%, transparent)` : "rgba(207,174,112,0.12)",
+            border: `1px solid ${accent ? `color-mix(in srgb, ${accent} 35%, transparent)` : "rgba(207,174,112,0.35)"}`,
+          }}
+        >
           <div className="font-semibold mb-1">What happens next</div>
           <p className="text-sm" style={{ color: "rgba(8,20,40,0.78)" }}>
-            Once you sign your agreement you'll be taken straight into your workspace. {pb.persona.name} will walk you
-            through everything else — right inside your portal.
+            Once you sign your agreement you'll go straight into your portal. {pb.persona.name} will walk you
+            through everything else from there.
           </p>
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={begin} disabled={!canContinue}>{busy ? "Saving…" : "Continue to agreement"}</Button>
+          <Button
+            onClick={begin}
+            disabled={!canContinue}
+            style={accent ? { backgroundColor: accent, color: readableTextOn(accent) } : undefined}
+          >
+            {busy ? "Saving…" : "Continue to agreement"}
+          </Button>
         </div>
       </div>
     </>
