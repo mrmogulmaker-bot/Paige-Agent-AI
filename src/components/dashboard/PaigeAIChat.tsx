@@ -37,6 +37,8 @@ export interface PaigeAIChatProps {
   focusBanner?: React.ReactNode;
   /** Quick-action chips above the composer. */
   chips?: QuickChip[];
+  /** Opening bubble. Command center passes an operator-flavored opener. */
+  greeting?: string;
 }
 
 const PaigeAIChatInner = ({
@@ -46,6 +48,7 @@ const PaigeAIChatInner = ({
   clientContext,
   focusBanner,
   chips,
+  greeting,
 }: PaigeAIChatProps) => {
   // The tenant's authored persona names the assistant in the default header —
   // audience-broad, voice-compliant, never a hardcoded vertical (doctrine §2/§3).
@@ -69,7 +72,7 @@ const PaigeAIChatInner = ({
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "Hey, how can I help?",
+      content: greeting ?? "Hey, how can I help?",
     },
   ]);
   const [input, setInput] = useState("");
