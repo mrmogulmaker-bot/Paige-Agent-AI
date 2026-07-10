@@ -1,4 +1,4 @@
-import { useState, useEffect, type CSSProperties } from "react";
+import { useState, useEffect, useMemo, type CSSProperties } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,7 @@ import { trackEvent } from "@/hooks/useAnalytics";
 import { resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
 import { isSafeRedirectPath } from "@/lib/auth/safeRedirect";
 import { useRequiredSignupDocs, recordAcceptances } from "@/lib/legal/useLegalDocuments";
+import { readableTextOn, isColorDark } from "@/lib/brand/contrast";
 
 const authSchema = z.object({
   email: z.string().trim().email({ message: "Invalid email address" }),
@@ -42,6 +43,70 @@ const Auth = () => {
   const { docs: requiredDocs } = useRequiredSignupDocs();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Client-invite mode: when a tenant's CUSTOMER arrives here from /join/<token>
+  // to sign in/up, the page must wear the TENANT's brand (§6/§9) — never Paige's
+  // SaaS pitch. Peek the invite (anon RPC, no consumption) for the tenant brand.
+  const nextParam = searchParams.get("next");
+  const inviteToken = useMemo(() => {
+    const m = nextParam ? /^\/join\/([^/?#]+)/.exec(nextParam) : null;
+    return m ? m[1] : null;
+  }, [nextParam]);
+  const isClientInvite = !!inviteToken;
+  const [inviteBrand, setInviteBrand] = useState<
+    { tenant_name: string; logo_url: string | null; primary_color: string | null } | null
+  >(null);
+  // 'loading' until the peek resolves; 'ready' once we have a valid tenant brand;
+  // 'invalid' if the token is bad/expired/failed. We NEVER render the Paige-branded
+  // signup to a tenant's customer — a leak of the platform brand (§9) — so the page
+  // gates on this until the tenant brand is known.
+  const [inviteState, setInviteState] = useState<"loading" | "ready" | "invalid">(
+    isClientInvite ? "loading" : "ready",
+  );
+
+  useEffect(() => {
+    if (!inviteToken) return;
+    let cancelled = false;
+    supabase.rpc("peek_tenant_invite", { _token: inviteToken })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        const row = Array.isArray(data) ? data[0] : data;
+        if (error || !row || (row as any).is_valid === false) {
+          setInviteState("invalid");
+          return;
+        }
+        setInviteBrand({
+          tenant_name: (row as any).tenant_name,
+          logo_url: (row as any).brand?.logo_url ?? null,
+          primary_color: (row as any).brand?.primary_color ?? null,
+        });
+        setInviteState("ready");
+      })
+      .catch(() => { if (!cancelled) setInviteState("invalid"); });
+    return () => { cancelled = true; };
+  }, [inviteToken]);
+
+  // OAuth must land back on the invite target (/join/:token) when present, so a
+  // customer who signs in with Google/Apple still reaches invite acceptance.
+  const oauthRedirectTo = (nextParam && isSafeRedirectPath(nextParam))
+    ? `${window.location.origin}${nextParam}`
+    : `${window.location.origin}/app`;
+
+  const brandColor = inviteBrand?.primary_color || null;
+  // Neutral fallback — NEVER the platform ("Paige Agent") name in client-invite mode.
+  const brandName = inviteBrand?.tenant_name || (isClientInvite ? "your workspace" : "Paige Agent");
+  const ctaTextColor = brandColor ? readableTextOn(brandColor) : undefined;
+  // The hero accent is text on a DARK indigo panel, so a dark tenant color would
+  // vanish — fall back to gold when the brand color is too dark to read there.
+  const heroAccent = brandColor && !isColorDark(brandColor) ? brandColor : "#F0C86A";
+  const headingTitle = isLogin
+    ? "Welcome back"
+    : isClientInvite ? `Join ${brandName}` : "Start with Paige";
+  const headingSub = isLogin
+    ? (isClientInvite ? `Sign in to open your ${brandName} portal` : "Sign in to your workspace")
+    : (isClientInvite
+        ? `Create your login to open your private client portal with ${brandName}.`
+        : "14 days free · no card required · Paige works on day one");
 
   useEffect(() => {
     setIsLogin(searchParams.get("mode") !== "signup");
@@ -162,6 +227,9 @@ const Auth = () => {
             password,
             fullName,
             marketingOptIn: consentMarketing,
+            // A client accepting a tenant's invite already got the tenant's
+            // branded invite email — don't also send the Paige welcome (§9).
+            suppressWelcome: isClientInvite,
           });
           newUserId = res.userId;
         } catch (e) {
@@ -180,6 +248,12 @@ const Auth = () => {
         }
 
         void trackEvent("signup_complete", "activation", { method: "email" });
+
+        // A brand-new tenant (not accepting an invite) must not inherit a stale
+        // pending-invite stash from an earlier visitor on this browser (§9).
+        if (!isClientInvite) {
+          try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ }
+        }
 
         // Persist consent on the profile (non-blocking)
         if (newUserId) {
@@ -210,15 +284,19 @@ const Auth = () => {
           }
         }
 
-        // Send welcome email
-        supabase.functions.invoke("send-transactional-email", {
-          body: {
-            templateName: "welcome",
-            recipientEmail: email,
-            idempotencyKey: `welcome-${email}-${Date.now()}`,
-            templateData: { name: fullName },
-          },
-        }).catch(err => console.warn("Welcome email failed:", err));
+        // Send the platform welcome email — but NOT for a client accepting a
+        // tenant's invite (they already got the tenant's branded invite; a Paige
+        // welcome would leak the platform to the tenant's customer, §9).
+        if (!isClientInvite) {
+          supabase.functions.invoke("send-transactional-email", {
+            body: {
+              templateName: "welcome",
+              recipientEmail: email,
+              idempotencyKey: `welcome-${email}-${Date.now()}`,
+              templateData: { name: fullName },
+            },
+          }).catch(err => console.warn("Welcome email failed:", err));
+        }
 
         toast({
           title: "Account created!",
@@ -239,8 +317,11 @@ const Auth = () => {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
+      // A non-invite OAuth signup must not inherit a stale pending-invite stash
+      // from an earlier visitor on this browser (§9).
+      if (!isClientInvite) { try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ } }
       void trackEvent("signup_cta_click", "acquisition", { method: "google" });
-      const result = await signInWithOAuth("google", `${window.location.origin}/app`);
+      const result = await signInWithOAuth("google", oauthRedirectTo);
       if (result.error) {
         toast({ title: "Google sign-in failed", description: String(result.error), variant: "destructive" });
       }
@@ -255,7 +336,8 @@ const Auth = () => {
   const handleAppleSignIn = async () => {
     setIsLoading(true);
     try {
-      const result = await signInWithOAuth("apple", `${window.location.origin}/app`);
+      if (!isClientInvite) { try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ } }
+      const result = await signInWithOAuth("apple", oauthRedirectTo);
       if (result.error) {
         toast({ title: "Apple sign-in failed", description: String(result.error), variant: "destructive" });
       }
@@ -272,11 +354,19 @@ const Auth = () => {
     navigate(`/auth?mode=${newMode}`, { replace: true });
   };
 
-  const features = [
+  const platformFeatures = [
     { icon: TrendingUp, title: "Client follow-through", desc: "Every client gets the follow-up you'd never keep up with" },
     { icon: Zap, title: "Works on day one", desc: "Paige runs your operation the moment you connect her" },
     { icon: Shield, title: "Your practice, private", desc: "256-bit encryption keeps your client data secure" },
   ];
+  // For a CLIENT accepting a tenant invite, the left panel speaks to THEM (the
+  // customer), not the coach — and never pitches the Paige platform (§9).
+  const clientFeatures = [
+    { icon: TrendingUp, title: "Everything in one place", desc: "Messages, progress, documents, and your next steps — together" },
+    { icon: Zap, title: "Help around the clock", desc: "Your assistant is here whenever you need a hand" },
+    { icon: Shield, title: "Private & secure", desc: "Your information is encrypted and shared only with your team" },
+  ];
+  const features = isClientInvite ? clientFeatures : platformFeatures;
   const HEAD = "'Bricolage Grotesque', 'Space Grotesk', sans-serif";
 
   // Scoped gold+indigo brand palette — overrides the app's (legacy purple) theme
@@ -308,6 +398,29 @@ const Auth = () => {
     ["--shadow-glow" as string]: "0 0 40px rgba(240,200,106,0.35)",
   } as CSSProperties;
 
+  // Client-invite gate: never show a tenant's customer the Paige-branded signup.
+  // Hold on a neutral screen until the tenant brand resolves; show a neutral error
+  // (no platform branding) if the invite is invalid/expired.
+  if (isClientInvite && inviteState !== "ready") {
+    return (
+      <div className="relative min-h-screen flex items-center justify-center px-4 text-center" style={goldTheme}>
+        {inviteState === "loading" ? (
+          <div className="flex flex-col items-center gap-3 text-[#F8F5EE]/80">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span className="text-sm">Loading your invite…</span>
+          </div>
+        ) : (
+          <div className="max-w-sm space-y-3 text-[#F8F5EE]">
+            <h1 className="text-xl font-semibold">This invite link isn't valid</h1>
+            <p className="text-sm text-[#F8F5EE]/70">
+              It may have expired or been revoked. Ask whoever invited you for a fresh link.
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-screen flex text-[#F8F5EE]" style={goldTheme}>
       <ForgotPasswordDialog open={showForgotPassword} onOpenChange={setShowForgotPassword} />
@@ -326,14 +439,32 @@ const Auth = () => {
           <div className="absolute top-0 right-0 w-px h-full bg-gradient-to-b from-transparent via-accent/20 to-transparent" style={{ transform: 'translateX(-120px)' }} />
         </div>
 
-        {/* Top — Logo */}
+        {/* Top — Logo (tenant's for a client invite, Paige's otherwise) */}
         <div className="relative z-10">
-          <Link to="/" className="inline-flex items-center gap-2.5 group">
-            <PaigeMark className="h-9 w-9" />
-            <span className="text-xl font-semibold tracking-tight text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
-              Paige <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
-            </span>
-          </Link>
+          {isClientInvite ? (
+            <div className="inline-flex items-center gap-2.5">
+              {inviteBrand?.logo_url ? (
+                <img src={inviteBrand.logo_url} alt={brandName} className="h-9 w-auto max-w-[180px] object-contain" />
+              ) : (
+                <span
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-base font-semibold"
+                  style={{ backgroundColor: brandColor || "#241645", color: readableTextOn(brandColor || "#241645") }}
+                >
+                  {brandName.charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span className="text-xl font-semibold tracking-tight text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
+                {brandName}
+              </span>
+            </div>
+          ) : (
+            <Link to="/" className="inline-flex items-center gap-2.5 group">
+              <PaigeMark className="h-9 w-9" />
+              <span className="text-xl font-semibold tracking-tight text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
+                Paige <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
+              </span>
+            </Link>
+          )}
         </div>
 
         {/* Center — Hero Message */}
@@ -341,16 +472,33 @@ const Auth = () => {
           <div className="space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20">
               <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-              <span className="text-xs font-medium text-accent tracking-wide uppercase">Operations · Follow-ups · Follow-through</span>
+              <span className="text-xs font-medium text-accent tracking-wide uppercase">
+                {isClientInvite ? "Your private client portal" : "Operations · Follow-ups · Follow-through"}
+              </span>
             </div>
-            <h2 className="text-4xl xl:text-5xl font-bold text-primary-foreground leading-[1.05] tracking-tight" style={{ fontFamily: HEAD }}>
-              She runs your
-              <br />
-              <span style={{ color: "#F0C86A" }}>business.</span>
-            </h2>
-            <p className="text-primary-foreground/60 text-base max-w-md leading-relaxed">
-              You run the transformation. Paige handles the operations, follow-ups, and follow-through — so you deliver the outcomes only you can.
-            </p>
+            {isClientInvite ? (
+              <>
+                <h2 className="text-4xl xl:text-5xl font-bold text-primary-foreground leading-[1.05] tracking-tight" style={{ fontFamily: HEAD }}>
+                  Welcome to
+                  <br />
+                  <span style={{ color: heroAccent }}>{brandName}.</span>
+                </h2>
+                <p className="text-primary-foreground/60 text-base max-w-md leading-relaxed">
+                  You've been invited to your private client portal — one place to work with the team, track your progress, and get help whenever you need it.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-4xl xl:text-5xl font-bold text-primary-foreground leading-[1.05] tracking-tight" style={{ fontFamily: HEAD }}>
+                  She runs your
+                  <br />
+                  <span style={{ color: "#F0C86A" }}>business.</span>
+                </h2>
+                <p className="text-primary-foreground/60 text-base max-w-md leading-relaxed">
+                  You run the transformation. Paige handles the operations, follow-ups, and follow-through — so you deliver the outcomes only you can.
+                </p>
+              </>
+            )}
           </div>
 
           {/* Feature pills */}
@@ -380,8 +528,10 @@ const Auth = () => {
               <Shield className="h-4 w-4 text-accent" />
             </div>
             <div>
-              <p className="text-xs font-medium text-primary-foreground/85">Built for coaches, consultants, agencies &amp; thought leaders</p>
-              <p className="text-[11px] text-primary-foreground/55">256-bit encryption · your client data stays private</p>
+              <p className="text-xs font-medium text-primary-foreground/85">
+                {isClientInvite ? `Your private workspace with ${brandName}` : "Built for coaches, consultants, agencies & thought leaders"}
+              </p>
+              <p className="text-[11px] text-primary-foreground/55">256-bit encryption · your data stays private</p>
             </div>
           </div>
         </div>
@@ -391,16 +541,36 @@ const Auth = () => {
       <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150 fill-mode-both">
         {/* Top nav */}
         <div className="flex items-center justify-between px-6 sm:px-10 py-5">
-          <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">Back to home</span>
-          </Link>
-          <Link to="/" className="lg:hidden inline-flex items-center gap-2">
-            <PaigeMark className="h-8 w-8" />
-            <span className="text-lg font-semibold text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
-              Paige <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
-            </span>
-          </Link>
+          {isClientInvite ? (
+            <span aria-hidden className="w-4" />
+          ) : (
+            <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Back to home</span>
+            </Link>
+          )}
+          {isClientInvite ? (
+            <div className="lg:hidden inline-flex items-center gap-2">
+              {inviteBrand?.logo_url ? (
+                <img src={inviteBrand.logo_url} alt={brandName} className="h-8 w-auto max-w-[150px] object-contain" />
+              ) : (
+                <span
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-sm font-semibold"
+                  style={{ backgroundColor: brandColor || "#241645", color: readableTextOn(brandColor || "#241645") }}
+                >
+                  {brandName.charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span className="text-lg font-semibold text-[#F8F5EE]" style={{ fontFamily: HEAD }}>{brandName}</span>
+            </div>
+          ) : (
+            <Link to="/" className="lg:hidden inline-flex items-center gap-2">
+              <PaigeMark className="h-8 w-8" />
+              <span className="text-lg font-semibold text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
+                Paige <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[#F0C86A]/90">Agent</span>
+              </span>
+            </Link>
+          )}
           <button
             type="button"
             onClick={toggleMode}
@@ -417,14 +587,27 @@ const Auth = () => {
           <div className="w-full max-w-[400px] space-y-8">
             {/* Heading */}
             <div className="space-y-2">
+              {isClientInvite && (
+                <div className="flex items-center gap-2.5 mb-1">
+                  {inviteBrand?.logo_url ? (
+                    <img src={inviteBrand.logo_url} alt={brandName} className="h-7 w-auto max-w-[140px] object-contain" />
+                  ) : (
+                    <span
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-sm font-semibold"
+                      style={{ backgroundColor: brandColor || "#241645", color: readableTextOn(brandColor || "#241645") }}
+                    >
+                      {brandName.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Client portal invite
+                  </span>
+                </div>
+              )}
               <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight" style={{ fontFamily: HEAD }}>
-                {isLogin ? "Welcome back" : "Start with Paige"}
+                {headingTitle}
               </h1>
-              <p className="text-muted-foreground text-sm">
-                {isLogin
-                  ? "Sign in to your workspace"
-                  : "14 days free · no card required · Paige works on day one"}
-              </p>
+              <p className="text-muted-foreground text-sm">{headingSub}</p>
             </div>
 
             {/* Form */}
@@ -512,7 +695,7 @@ const Auth = () => {
                       aria-required
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
-                      I have read and agree to the Paige Agent{" "}
+                      I have read and agree to the{isClientInvite ? "" : " Paige Agent"}{" "}
                       <Link to="/legal/terms" target="_blank" className="underline text-accent hover:opacity-80">
                         Terms of Service
                       </Link>
@@ -540,30 +723,35 @@ const Auth = () => {
                       aria-required
                     />
                     <span className="text-xs text-foreground/85 leading-relaxed">
-                      I understand that my data is used exclusively to provide my
-                      Paige Agent services and is{" "}
+                      I understand that my data is used exclusively to provide
+                      {isClientInvite ? " the services I signed up for" : " my Paige Agent services"} and is{" "}
                       <strong>never sold to third parties or advertisers</strong>.{" "}
                       <span className="text-destructive">*</span>
                     </span>
                   </label>
 
-                  <label className="flex items-start gap-2.5 cursor-pointer">
-                    <Checkbox
-                      checked={consentMarketing}
-                      onCheckedChange={(v) => setConsentMarketing(!!v)}
-                      className="mt-0.5 h-5 w-5 border-2 border-primary-foreground/60 bg-primary-foreground/10 data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=checked]:text-[#241645]"
-                    />
-                    <span className="text-xs text-foreground/70 leading-relaxed">
-                      I agree to receive marketing communications about Paige Agent products and
-                      updates. <em>(Optional — uncheck to receive only service notifications)</em>
-                    </span>
-                  </label>
+                  {/* The platform-marketing opt-in is nonsensical for a tenant's
+                      customer accepting a portal invite — hide it there (§9). */}
+                  {!isClientInvite && (
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <Checkbox
+                        checked={consentMarketing}
+                        onCheckedChange={(v) => setConsentMarketing(!!v)}
+                        className="mt-0.5 h-5 w-5 border-2 border-primary-foreground/60 bg-primary-foreground/10 data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=checked]:text-[#241645]"
+                      />
+                      <span className="text-xs text-foreground/70 leading-relaxed">
+                        I agree to receive marketing communications about Paige Agent products and
+                        updates. <em>(Optional — uncheck to receive only service notifications)</em>
+                      </span>
+                    </label>
+                  )}
                 </div>
               )}
 
               <Button
                 type="submit"
                 className="w-full h-12 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[#241645] text-sm font-bold shadow-[0_12px_34px_rgba(240,200,106,0.28)] transition-transform duration-300 hover:scale-[1.01] disabled:opacity-60 disabled:hover:scale-100"
+                style={brandColor ? { background: brandColor, color: ctaTextColor, boxShadow: "none" } : undefined}
                 disabled={isLoading || (!isLogin && (!consentAgreements || !consentDataUsage))}
               >
                 {isLoading ? (
@@ -572,7 +760,7 @@ const Auth = () => {
                     {isLogin ? "Signing in..." : "Creating account..."}
                   </>
                 ) : (
-                  <>{isLogin ? "Sign In" : "Start with Paige"}</>
+                  <>{isLogin ? "Sign In" : isClientInvite ? "Create my portal login" : "Start with Paige"}</>
                 )}
               </Button>
             </form>
@@ -627,7 +815,7 @@ const Auth = () => {
               </div>
               <div className="relative flex justify-center">
                 <span className="bg-background px-4 text-xs text-muted-foreground/60">
-                  {isLogin ? "New to Paige Agent?" : "Already have an account?"}
+                  {isLogin ? (isClientInvite ? "New here?" : "New to Paige Agent?") : "Already have an account?"}
                 </span>
               </div>
             </div>
@@ -640,22 +828,27 @@ const Auth = () => {
               disabled={isLoading}
               className="w-full h-11 text-sm border-border/60 text-muted-foreground hover:text-foreground hover:border-accent/40 transition-all"
             >
-              {isLogin ? "Create a free account" : "Sign in instead"}
+              {isLogin ? (isClientInvite ? "Create your login" : "Create a free account") : "Sign in instead"}
             </Button>
 
-            {/* Team Login hint */}
-            <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/70">
-              <Shield className="w-3 h-3" />
-              <span>Team member? Use your admin credentials above — you'll be routed automatically.</span>
-            </div>
+            {/* Team Login hint — staff routing copy is off-context for a customer */}
+            {!isClientInvite && (
+              <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/70">
+                <Shield className="w-3 h-3" />
+                <span>Team member? Use your admin credentials above — you'll be routed automatically.</span>
+              </div>
+            )}
 
-            {/* Legal */}
-            <p className="text-center text-[11px] text-muted-foreground/70 leading-relaxed">
-              By continuing you agree to our{" "}
-              <Link to="/terms" className="underline hover:text-muted-foreground transition-colors">Terms</Link>
-              {" "}and{" "}
-              <Link to="/privacy" className="underline hover:text-muted-foreground transition-colors">Privacy Policy</Link>.
-            </p>
+            {/* Legal — the consent block above already carries terms for the
+                client-invite path; this platform-legal footer is hidden there (§9). */}
+            {!isClientInvite && (
+              <p className="text-center text-[11px] text-muted-foreground/70 leading-relaxed">
+                By continuing you agree to our{" "}
+                <Link to="/terms" className="underline hover:text-muted-foreground transition-colors">Terms</Link>
+                {" "}and{" "}
+                <Link to="/privacy" className="underline hover:text-muted-foreground transition-colors">Privacy Policy</Link>.
+              </p>
+            )}
           </div>
         </div>
       </div>
