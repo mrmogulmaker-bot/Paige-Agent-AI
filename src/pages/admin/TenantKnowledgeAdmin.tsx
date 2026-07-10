@@ -95,7 +95,7 @@ export default function TenantKnowledgeAdmin() {
           <DialogTrigger asChild>
             <Button><Plus className="w-4 h-4 mr-1.5" /> Add Document</Button>
           </DialogTrigger>
-          <AddDocDialog onClose={() => { setOpen(false); load(); }} />
+          <AddDocDialog tenantId={activeTenantId ?? undefined} onClose={() => { setOpen(false); load(); }} />
         </Dialog>
       </div>
 
@@ -175,26 +175,33 @@ export default function TenantKnowledgeAdmin() {
   );
 }
 
+type AddMode = "paste" | "url" | "file";
+
 /**
- * Add-document dialog. Two honest modes: "Paste" (existing kb-ingest-doc path)
- * and "From URL" (kb-ingest-url orchestrator — fetches the page server-side,
- * then chunks + embeds). Reused verbatim by the Knowledge panel in Your Paige.
- * `onIngested` fires after a successful add with the title + new doc id so the
- * workspace can pulse the vitals chip and show the "Paige just learned" banner.
+ * Add-document dialog. Three honest modes: "Paste" (kb-ingest-doc), "From a
+ * link" (kb-ingest-url — fetches the page server-side), and "Upload" (uploads to
+ * the tenant-knowledge bucket, then kb-ingest-file extracts text — PDF/txt/md +
+ * image OCR — and chunks + embeds). Reused by the Knowledge panel in Your Paige.
+ * `onIngested` fires after a successful add so the workspace can pulse the vitals
+ * chip and show the "Paige just indexed …" banner. `tenantId` is required for the
+ * Upload path (the file lands under <tenant_id>/… so bucket RLS scopes it).
  */
 export function AddDocDialog({
   onClose,
   onIngested,
   initialMode = "paste",
+  tenantId,
 }: {
   onClose: () => void;
   onIngested?: (title: string, docId?: string) => void;
-  initialMode?: "paste" | "url";
+  initialMode?: AddMode;
+  tenantId?: string;
 }) {
-  const [mode, setMode] = useState<"paste" | "url">(initialMode);
+  const [mode, setMode] = useState<AddMode>(initialMode);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [url, setUrl] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [summary, setSummary] = useState("");
   const [category, setCategory] = useState("");
   const [tags, setTags] = useState("");
@@ -274,7 +281,51 @@ export function AddDocDialog({
     }
   };
 
-  const submit = mode === "url" ? submitUrl : submitPaste;
+  const submitFile = async () => {
+    if (!file) return toast.error("Choose a file to upload");
+    if (!tenantId) return toast.error("Switch into a workspace first — there's nowhere to store this.");
+    if (file.size > 26214400) return toast.error("That file is over 25 MB — try a smaller one.");
+    setBusy(true);
+    setProgress("Uploading…");
+    const safe = file.name.replace(/[^\w.\-]/g, "_");
+    const path = `${tenantId}/${crypto.randomUUID()}_${safe}`;
+    let uploaded = false;
+    try {
+      const { error: upErr } = await supabase.storage.from("tenant-knowledge").upload(path, file);
+      if (upErr) throw upErr;
+      uploaded = true;
+
+      setProgress("Reading the file…");
+      const { data, error } = await supabase.functions.invoke("kb-ingest-file", {
+        body: {
+          path,
+          mime: file.type || undefined,
+          filename: file.name,
+          title: title.trim() || undefined,
+          category: category.trim() || undefined,
+          tags: tagList(),
+          share_to_network: share,
+        },
+      });
+      if (error) throw error;
+      toast.success(
+        data?.truncated
+          ? `Indexed the first part (${data?.chunk_count ?? 0} chunks) — it's a big one, split it for the rest.`
+          : `Indexed (${data?.chunk_count ?? 0} chunks)`,
+      );
+      onIngested?.(title.trim() || file.name, data?.doc_id);
+      onClose();
+    } catch (e: any) {
+      // Don't orphan the uploaded object if indexing failed — best-effort prune.
+      if (uploaded) supabase.storage.from("tenant-knowledge").remove([path]).then(() => {}, () => {});
+      toast.error(await serverError(e, "Couldn't read or index that file — retry"));
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  };
+
+  const submit = mode === "url" ? submitUrl : mode === "file" ? submitFile : submitPaste;
 
   return (
     <DialogContent className="max-w-2xl">
@@ -296,6 +347,13 @@ export function AddDocDialog({
           >
             From a link
           </button>
+          <button
+            type="button"
+            onClick={() => setMode("file")}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${mode === "file" ? "bg-background shadow-sm font-medium" : "text-muted-foreground"}`}
+          >
+            Upload a file
+          </button>
         </div>
 
         {mode === "url" ? (
@@ -306,8 +364,23 @@ export function AddDocDialog({
           </div>
         ) : null}
 
+        {mode === "file" ? (
+          <div>
+            <Label>File *</Label>
+            <Input
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md,.csv"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              PDF (max 24 MB), scan/image (png · jpg · webp, max 5 MB), or text (txt · md · csv). Paige
+              reads it — scans and images are transcribed automatically — then chunks and learns it.
+            </p>
+          </div>
+        ) : null}
+
         <div>
-          <Label>Title {mode === "url" ? "(optional)" : "*"}</Label>
+          <Label>Title {mode === "paste" ? "*" : "(optional)"}</Label>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Discovery call script" />
         </div>
         <div className="grid grid-cols-2 gap-3">

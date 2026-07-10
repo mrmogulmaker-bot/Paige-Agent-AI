@@ -57,11 +57,12 @@ const SOURCE_GLYPH: Record<string, typeof FileText> = {
 };
 
 export function KnowledgePanel({ tenantName }: { tenantName: string }) {
-  const { counts, notifyKnowledgeAdded, refreshCounts } = usePaigeWorkspace();
+  const { counts, notifyKnowledgeAdded, refreshCounts, activeTenantId } = usePaigeWorkspace();
   const [docs, setDocs] = useState<TenantDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [fileOpen, setFileOpen] = useState(false);
   const [pulseId, setPulseId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TenantDoc | null>(null);
 
@@ -136,6 +137,7 @@ export function KnowledgePanel({ tenantName }: { tenantName: string }) {
             </DialogTrigger>
             <AddDocDialog
               initialMode="paste"
+              tenantId={activeTenantId ?? undefined}
               onClose={() => setPasteOpen(false)}
               onIngested={handleIngested}
             />
@@ -149,15 +151,25 @@ export function KnowledgePanel({ tenantName }: { tenantName: string }) {
             </DialogTrigger>
             <AddDocDialog
               initialMode="url"
+              tenantId={activeTenantId ?? undefined}
               onClose={() => setLinkOpen(false)}
               onIngested={handleIngested}
             />
           </Dialog>
 
-          <Button variant="outline" size="sm" disabled className="opacity-60">
-            <Paperclip className="w-4 h-4 mr-1.5" /> Upload a file
-            <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">Coming soon</span>
-          </Button>
+          <Dialog open={fileOpen} onOpenChange={setFileOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Paperclip className="w-4 h-4 mr-1.5" /> Upload a file
+              </Button>
+            </DialogTrigger>
+            <AddDocDialog
+              initialMode="file"
+              tenantId={activeTenantId ?? undefined}
+              onClose={() => setFileOpen(false)}
+              onIngested={handleIngested}
+            />
+          </Dialog>
         </div>
 
         {/* Doc cards */}
