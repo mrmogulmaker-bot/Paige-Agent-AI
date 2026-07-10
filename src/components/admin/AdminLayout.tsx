@@ -42,9 +42,13 @@ type Hub = {
 
 const hubs: Hub[] = [
   { label: "Dashboard", href: "/admin", icon: BarChart3 },
-  { label: "Your Paige", href: "/admin/playbook", icon: Bot },
+  // Tenant KB (+ the tenant's own network-contribution status) now lives inside
+  // Your Paige → Customize Paige → Knowledge; keep the tenant-knowledge route
+  // highlighting this hub for deep-link back-compat. The operator review queues
+  // (/admin/network-kb, /admin/knowledge) are platform-level — they live under
+  // the God console's Automation hub, not here (§9).
+  { label: "Your Paige", href: "/admin/playbook", icon: Bot, aliases: ["/admin/tenant-knowledge"] },
   { label: "Marketplace", href: "/admin/marketplace", icon: Store },
-  { label: "Client Agreement", href: "/admin/agreement", icon: FileSignature },
   {
     label: "Contacts",
     href: "/admin/contacts",
@@ -94,20 +98,16 @@ const hubs: Hub[] = [
       { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
       { label: "Paige Skills", href: "/admin/skills", icon: Bot },
       { label: "Integrations", href: "/admin/integrations", icon: Plug },
-      { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
-      { label: "Tenant Knowledge", href: "/admin/tenant-knowledge", icon: Brain },
-      { label: "Network Insights", href: "/admin/network-kb", icon: BookOpen },
-      { label: "Knowledge Review", href: "/admin/knowledge", icon: BookOpen },
+      // Tenant Knowledge + Knowledge Review moved into Your Paige → Customize
+      // Paige → Knowledge (§9 seam). Platform-global Knowledge Base is operator-
+      // level now (see GOD_HUBS). Routes stay mounted in Admin.tsx for deep-link
+      // back-compat.
     ],
     // Orphan tool routes that conceptually live under Automation.
     aliases: [
       "/admin/integrations",
       "/admin/sub-agents",
       "/admin/skills",
-      "/admin/knowledge",
-      "/admin/knowledge-base",
-      "/admin/tenant-knowledge",
-      "/admin/network-kb",
       "/admin/signatures",
       "/admin/social",
       "/admin/notifications",
@@ -132,6 +132,9 @@ const hubs: Hub[] = [
 // route-level RoleGate enforcement in Admin.tsx.
 type MoreItem = HubChild & { adminOnly?: boolean };
 const moreNavItems: MoreItem[] = [
+  // Moved out of the top hub bar into More — a tenant sets its client service
+  // agreement once, so it's a setup surface, not a daily-driver tab.
+  { label: "Client Agreement", href: "/admin/agreement", icon: FileSignature },
   { label: "Coaches", href: "/admin/coaches", icon: UserCog },
   { label: "Members & Roles", href: "/admin/members", icon: UserCog, adminOnly: true },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
@@ -169,8 +172,15 @@ const GOD_HUBS: Hub[] = [
       { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
       { label: "Paige Skills", href: "/admin/skills", icon: Bot },
       { label: "Integrations", href: "/admin/integrations", icon: Plug },
+      // Platform-level knowledge surfaces (§9) — the global canon plus the
+      // review queues that approve tenant-shared docs into it. These stay
+      // operator-only; tenants get their own KB + contribution status inside
+      // Your Paige.
+      { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
+      { label: "Network Review", href: "/admin/network-kb", icon: BookOpen },
+      { label: "Review Queue", href: "/admin/knowledge", icon: BookOpen },
     ],
-    aliases: ["/admin/sub-agents", "/admin/skills", "/admin/integrations"],
+    aliases: ["/admin/sub-agents", "/admin/skills", "/admin/integrations", "/admin/knowledge-base", "/admin/network-kb", "/admin/knowledge"],
   },
 ];
 // God "More" menu — calendar setup, support, security, and the platform settings

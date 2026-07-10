@@ -165,18 +165,18 @@ Rules:
 - All scores must be between 300-850 or null
 - Set extraction_verified to false if you cannot confidently extract the data`;
 
-// Lightweight embedding helper for memory writes. Returns null on any failure
-// so the caller can still persist the row without blocking the user-facing
-// response. Uses OpenAI Voyage voyage-3 (1024 dims) to match schema.
+// Lightweight embedding helper for memory + KB retrieval. Returns null on any
+// failure so the caller can still proceed without blocking the user-facing
+// response. Uses Voyage voyage-3 (1024 dims) via embeddingsCompat to match the
+// tenant_knowledge_chunks / rag_documents embedding columns.
 async function embedText(text: string): Promise<number[] | null> {
   try {
-    const openaiKey = "unused";
-    if (!openaiKey || !text) return null;
+    if (!text) return null;
     const trimmed = text.length > 8000 ? text.slice(0, 8000) : text;
     const r = await embeddingsCompat("voyage", {
       method: "POST",
-      headers: { Authorization: `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "text-embedding-3-small", input: trimmed }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input: trimmed }),
     });
     if (!r.ok) return null;
     const j = await r.json();
@@ -1214,47 +1214,56 @@ JSON:`;
         // Reuse the embedding from the rag block when available, else compute.
         const tkEmbedding = await embedText(tkQuery);
         if (tkEmbedding) {
+          // Live signature is (p_tenant_id, p_query_embedding, p_match_count)
+          // RETURNS (source_tier, doc_id, chunk_id, title, content, similarity).
+          // Over-fetch, then filter by similarity in TS — the RPC has no
+          // p_min_similarity param (passing one 404s the call → silent no-op).
           const { data: tkRows, error: tkErr } = await supabase.rpc(
             "match_tenant_knowledge",
             {
-              p_query_embedding: tkEmbedding as any,
               p_tenant_id: tenantId,
-              p_match_count: 5,
-              p_min_similarity: 0.7,
+              p_query_embedding: tkEmbedding as unknown as string,
+              p_match_count: 8,
             },
           );
           if (tkErr) {
             console.warn("[paige] match_tenant_knowledge error:", tkErr.message);
-          } else if (Array.isArray(tkRows) && tkRows.length > 0) {
-            const blocks = tkRows.map((r: any) => {
-              const tier = r.source === "tenant" ? "TENANT" : "GLOBAL";
-              return `[${tier}] ${r.title}\n${(r.content || "").slice(0, 600)}\n---`;
-            }).join("\n");
-            tenantKbContext = `\n\n=== TENANT KNOWLEDGE ===\nPrivate tenant docs and global canon, ranked by semantic relevance. Use to ground your answer; never quote verbatim.\n\n${blocks}\n=== END TENANT KNOWLEDGE ===\n`;
+          } else {
+            const MIN_SIM = 0.7;
+            const kept = (Array.isArray(tkRows) ? tkRows : [])
+              .filter((r: any) => (Number(r.similarity) || 0) >= MIN_SIM)
+              .slice(0, 5);
+            if (kept.length > 0) {
+              const blocks = kept.map((r: any) => {
+                const tier = r.source_tier === "global" ? "GLOBAL" : "TENANT";
+                return `[${tier}] ${r.title}\n${(r.content || "").slice(0, 600)}\n---`;
+              }).join("\n");
+              tenantKbContext = `\n\n=== TENANT KNOWLEDGE ===\nPrivate tenant docs and global canon, ranked by semantic relevance. Use to ground your answer; never quote verbatim.\n\n${blocks}\n=== END TENANT KNOWLEDGE ===\n`;
 
-            // Metadata-only telemetry. Hash the query — never persist raw text.
-            try {
-              const hashBuf = await crypto.subtle.digest(
-                "SHA-256",
-                new TextEncoder().encode(tkQuery),
-              );
-              const queryHash = Array.from(new Uint8Array(hashBuf))
-                .map((b) => b.toString(16).padStart(2, "0")).join("");
-              const sims = tkRows.map((r: any) => Number(r.similarity) || 0);
-              const topSim = sims.length ? Math.max(...sims) : 0;
-              await supabase.from("kb_query_telemetry").insert({
-                tenant_id: tenantId,
-                user_id: user.id,
-                query_hash: queryHash,
-                query_intent_tags: [],
-                result_count: tkRows.length,
-                top_similarity: topSim,
-                had_tenant_match: tkRows.some((r: any) => r.source === "tenant"),
-                had_global_match: tkRows.some((r: any) => r.source === "global"),
-                source: "paige-ai-chat",
-              });
-            } catch (telErr) {
-              console.warn("[paige] kb telemetry log failed:", telErr);
+              // Metadata-only telemetry. Hash the query — never persist raw text.
+              // Columns mirror the kb_query_telemetry schema exactly.
+              try {
+                const hashBuf = await crypto.subtle.digest(
+                  "SHA-256",
+                  new TextEncoder().encode(tkQuery),
+                );
+                const queryHash = Array.from(new Uint8Array(hashBuf))
+                  .map((b) => b.toString(16).padStart(2, "0")).join("");
+                const sims = kept.map((r: any) => Number(r.similarity) || 0);
+                const topSim = sims.length ? Math.max(...sims) : 0;
+                await supabase.from("kb_query_telemetry").insert({
+                  tenant_id: tenantId,
+                  query_hash: queryHash,
+                  query_length: tkQuery.length,
+                  query_intent_tags: [],
+                  result_count: kept.length,
+                  top_similarity: topSim,
+                  had_tenant_match: kept.some((r: any) => r.source_tier === "tenant"),
+                  had_global_match: kept.some((r: any) => r.source_tier === "global"),
+                });
+              } catch (telErr) {
+                console.warn("[paige] kb telemetry log failed:", telErr);
+              }
             }
           }
         }

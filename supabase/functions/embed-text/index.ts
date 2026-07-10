@@ -1,6 +1,6 @@
-// Standalone embedding service used by Paige memory pipeline.
-// Uses OpenAI Voyage voyage-3 (1024 dims) — matches the vector(1536) schema.
-// Auth required; rate-limited per user.
+// Standalone embedding service used by the Paige memory pipeline.
+// Embeds via Voyage voyage-3 (1024 dims) through embeddingsCompat — matches the
+// vector(1024) embedding columns. Auth required; rate-limited per user.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -14,14 +14,6 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const OPENAI_API_KEY = "unused";
-    if (!OPENAI_API_KEY) {
-      return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
     const authHeader = req.headers.get("Authorization") || "";
@@ -50,16 +42,13 @@ serve(async (req) => {
 
     const resp = await embeddingsCompat("voyage", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ model: "text-embedding-3-small", input: trimmed }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input: trimmed }),
     });
 
     if (!resp.ok) {
       const errText = await resp.text();
-      console.error("OpenAI embeddings error:", resp.status, errText);
+      console.error("embeddings error:", resp.status, errText);
       return new Response(JSON.stringify({ error: "Embedding service error", detail: errText }), {
         status: 502,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

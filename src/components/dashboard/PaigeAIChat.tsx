@@ -16,10 +16,15 @@ import { getCurrentPageName } from "@/lib/pageContext";
 import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
 import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
 import { extractEntityDiagram } from "@/lib/entityDiagram";
+import { usePlaybook } from "@/lib/playbook";
 
 type Message = { role: "user" | "assistant"; content: string };
 
-const PaigeAIChatInner = () => {
+const PaigeAIChatInner = ({ hideHeader = false }: { hideHeader?: boolean }) => {
+  // The tenant's authored persona names the assistant in the default header —
+  // audience-broad, voice-compliant, never a hardcoded vertical (doctrine §2/§3).
+  const playbook = usePlaybook();
+  const persona = playbook.persona;
   const sessionId = useRef(`session-${Date.now()}`).current;
   
   // Check if user is admin or coach for feedback visibility
@@ -59,7 +64,7 @@ const PaigeAIChatInner = () => {
     // IMPORTANT: Register web_search as a client tool in your ElevenLabs agent dashboard at
     // elevenlabs.io under your Paige agent → Conversational AI → Tools → Add Client Tool.
     // Name: web_search
-    // Description: Search the web for current vehicle financing rates, lender requirements, and real-time information.
+    // Description: Search the web for current, real-time information relevant to the client's question.
     // Parameter: query (string, required) — the search query to execute.
     clientTools: {
       web_search: async ({ query }: { query: string }) => {
@@ -306,16 +311,18 @@ const PaigeAIChatInner = () => {
   }, []); // cleanup only on unmount
 
   return (
-    <div className="max-w-4xl mx-auto h-[calc(100vh-4rem)]">
+    <div className={`max-w-4xl mx-auto w-full ${hideHeader ? "h-full" : "h-[calc(100vh-4rem)]"}`}>
       <div className="flex flex-col h-full">
-        <div className="mb-6">
-          <h2 className="text-3xl font-bold text-foreground">
-            Chat with PaigeAgent.ai
-          </h2>
-          <p className="text-muted-foreground mt-2">
-            Your personal credit coaching assistant
-          </p>
-        </div>
+        {!hideHeader && (
+          <div className="mb-6">
+            <h2 className="text-3xl font-bold text-foreground">
+              Chat with {persona.name || "Paige"}
+            </h2>
+            <p className="text-muted-foreground mt-2">
+              Talk to her about your work — she's here to help.
+            </p>
+          </div>
+        )}
 
         <Card className="flex-1 flex flex-col bg-card border-border shadow-card overflow-hidden">
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -385,7 +392,7 @@ const PaigeAIChatInner = () => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleSend()}
-                placeholder="Ask Paige about your credit journey..."
+                placeholder={`Ask ${persona.name || "Paige"} anything…`}
                 className="flex-1"
                 disabled={isLoading || conversation.status === "connected"}
               />
@@ -434,8 +441,8 @@ const PaigeAIChatInner = () => {
   );
 };
 
-export const PaigeAIChat = () => (
+export const PaigeAIChat = ({ hideHeader = false }: { hideHeader?: boolean } = {}) => (
   <ConversationProvider>
-    <PaigeAIChatInner />
+    <PaigeAIChatInner hideHeader={hideHeader} />
   </ConversationProvider>
 );
