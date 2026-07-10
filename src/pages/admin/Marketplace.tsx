@@ -21,6 +21,11 @@ const ICONS: Record<string, LucideIcon> = { TrendingUp, Palette, Mic, Workflow }
 export default function Marketplace() {
   const { activeTenantId, loading: tenantLoading } = useTenantContext();
   const [enabled, setEnabled] = useState<string[]>([]);
+  // Funding can also be on via the "Funding" coach-type Playbook preset (set in
+  // Your Paige) — a separate path the AI gate also honors. When it is, we lock
+  // the funding card ON so the toggle can't misrepresent state or lie with a
+  // false "switched off" (one source of truth, §7/§9).
+  const [presetFundingOn, setPresetFundingOn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -34,6 +39,11 @@ export default function Marketplace() {
       const feats = (data?.features ?? {}) as Record<string, unknown>;
       const raw = feats.enabled_skills;
       setEnabled(Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string") : []);
+      const pbSlug = (feats.playbook_config as { slug?: unknown } | null)?.slug;
+      setPresetFundingOn(
+        feats.playbook === "funding" || pbSlug === "funding" ||
+        feats.paige_funding_skill === true || feats.paige_funding_skill === "true",
+      );
       setLoading(false);
     });
     return () => { cancelled = true; };
@@ -98,7 +108,10 @@ export default function Marketplace() {
             <div className="grid gap-3 sm:grid-cols-2">
               {skills.map((skill) => {
                 const Icon = ICONS[skill.icon] ?? Sparkles;
-                const isOn = enabled.includes(skill.slug);
+                // Funding is "locked on" when it's active via the Funding coach-type
+                // preset rather than this skill toggle — the toggle can't turn that off.
+                const lockedOn = skill.slug === "funding" && presetFundingOn;
+                const isOn = enabled.includes(skill.slug) || lockedOn;
                 const available = skill.status === "available";
                 return (
                   <Card key={skill.slug} className={available ? "" : "opacity-70"}>
@@ -114,7 +127,7 @@ export default function Marketplace() {
                         {available ? (
                           <Switch
                             checked={isOn}
-                            disabled={saving === skill.slug || loading}
+                            disabled={saving === skill.slug || loading || lockedOn}
                             onCheckedChange={(v) => toggle(skill, v)}
                             aria-label={`Toggle ${skill.name}`}
                           />
@@ -125,9 +138,11 @@ export default function Marketplace() {
                     </CardHeader>
                     <CardContent className="pt-0">
                       <p className="text-xs text-muted-foreground">{skill.description}</p>
-                      {available && isOn && (
+                      {lockedOn ? (
+                        <p className="mt-2 text-[11px] font-medium text-primary">Included with your Funding coach type — manage it in Your Paige.</p>
+                      ) : available && isOn ? (
                         <p className="mt-2 text-[11px] font-medium text-primary">On — Paige uses this with every client.</p>
-                      )}
+                      ) : null}
                     </CardContent>
                   </Card>
                 );
