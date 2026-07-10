@@ -3440,6 +3440,55 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           {
             type: "function",
             function: {
+              name: "crm_create_contact",
+              description: "Admin/coach only. Add a new contact (client) to the CRM. Use when the operator asks you to add someone. Executes immediately — a contact is internal data, not an outbound message. Returns the new contact id. If a contact with the same email already exists for this operator, returns that existing id instead of creating a duplicate.",
+              parameters: {
+                type: "object",
+                properties: {
+                  first_name: { type: "string", description: "First name. If unknown, pass the person's name or leave blank and provide email." },
+                  last_name: { type: "string" },
+                  email: { type: "string" },
+                  phone: { type: "string" },
+                  entity_name: { type: "string", description: "Company / business name." },
+                  title: { type: "string", description: "Job title / role." },
+                  lifecycle_stage: { type: "string", enum: ["lead","mql","sql","opportunity","customer","evangelist","churned","archived"], description: "Defaults to lead." },
+                  primary_offer: { type: "string", description: "The offer/program this contact is being worked for." },
+                  notes: { type: "string", description: "Freeform notes to seed the contact with." },
+                  tags: { type: "array", items: { type: "string" } },
+                  assigned_coach_user_id: { type: "string", description: "Optional auth user UUID of the coach to assign." }
+                },
+                required: []
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_update_contact",
+              description: "Admin/coach only. Update fields on an existing contact (client). Resolve the contact first with crm_search_contacts to get its id. Only pass the fields you want to change; omitted fields are left as-is. Executes immediately (internal data, not outbound).",
+              parameters: {
+                type: "object",
+                properties: {
+                  contact_id: { type: "string", description: "clients.id UUID (from crm_search_contacts)." },
+                  first_name: { type: "string" },
+                  last_name: { type: "string" },
+                  email: { type: "string" },
+                  phone: { type: "string" },
+                  entity_name: { type: "string" },
+                  title: { type: "string" },
+                  lifecycle_stage: { type: "string", enum: ["lead","mql","sql","opportunity","customer","evangelist","churned","archived"] },
+                  primary_offer: { type: "string" },
+                  notes: { type: "string" },
+                  status: { type: "string", enum: ["pending","active","inactive","archived"] },
+                  assigned_coach_user_id: { type: "string", description: "Auth user UUID of the coach to assign." }
+                },
+                required: ["contact_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "crm_log_activity",
               description: "Admin/coach only. Log a communication or activity (call, email, note, meeting) on a client's timeline.",
               parameters: {
@@ -3896,6 +3945,8 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           tc.function.name === "crm_update_pipeline_stage" ||
           tc.function.name === "crm_assign_coach" ||
           tc.function.name === "crm_create_task" ||
+          tc.function.name === "crm_create_contact" ||
+          tc.function.name === "crm_update_contact" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
@@ -3971,6 +4022,44 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
                 .single();
               if (error) throw error;
               result = { success: true, task_id: row?.id };
+            } else if (tc.function.name === "crm_create_contact") {
+              // Caller-authed client so auth.uid() resolves inside the RPC (sets
+              // created_by, role gate, tenant). tenant_id passed explicitly too.
+              const { data: newId, error } = await supabaseClient.rpc("create_contact", {
+                p_first_name: args.first_name ?? null,
+                p_last_name: args.last_name ?? null,
+                p_email: args.email ?? null,
+                p_phone: args.phone ?? null,
+                p_entity_name: args.entity_name ?? null,
+                p_title: args.title ?? null,
+                p_lifecycle_stage: args.lifecycle_stage ?? "lead",
+                p_source: "paige",
+                p_tags: Array.isArray(args.tags) ? args.tags : [],
+                p_primary_offer: args.primary_offer ?? null,
+                p_notes: args.notes ?? null,
+                p_assigned_coach_user_id: args.assigned_coach_user_id ?? null,
+                p_tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, contact_id: newId };
+            } else if (tc.function.name === "crm_update_contact") {
+              if (!args.contact_id) throw new Error("contact_id is required");
+              const { error } = await supabaseClient.rpc("update_contact", {
+                p_contact_id: args.contact_id,
+                p_first_name: args.first_name ?? null,
+                p_last_name: args.last_name ?? null,
+                p_email: args.email ?? null,
+                p_phone: args.phone ?? null,
+                p_entity_name: args.entity_name ?? null,
+                p_title: args.title ?? null,
+                p_lifecycle_stage: args.lifecycle_stage ?? null,
+                p_primary_offer: args.primary_offer ?? null,
+                p_notes: args.notes ?? null,
+                p_status: args.status ?? null,
+                p_assigned_coach_user_id: args.assigned_coach_user_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, contact_id: args.contact_id };
             } else if (tc.function.name === "crm_log_activity") {
               const { data: row, error } = await admin
                 .from("communication_log")
