@@ -3,14 +3,22 @@
 // queries or doc content. Plus the review queue for tenant-contributed docs.
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableCell, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Network, Database, AlertCircle, TrendingUp, Check, X } from "lucide-react";
+import { Network, Database, AlertCircle, TrendingUp, Check, X, Inbox } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import {
+  PageShell,
+  PageHeader,
+  StatRow,
+  StatTile,
+  SectionCard,
+  DataTableShell,
+  EmptyState,
+} from "@/components/ui/page";
 
 interface PendingDoc {
   id: string;
@@ -91,22 +99,26 @@ export default function NetworkKbInsights() {
     .slice(0, 10);
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Network className="w-6 h-6" /> Network Insights
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Aggregate signal across every tenant's KB. Metadata only — no raw queries or document content leaves tenant boundaries.
-        </p>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        eyebrow="Platform · Network"
+        title="Network Insights"
+        description="Aggregate signal across every tenant's KB. Metadata only — no raw queries or document content leaves tenant boundaries."
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard icon={Database} label="Queries (last 500)" value={String(totalQueries)} />
-        <StatCard icon={AlertCircle} label="Unanswered" value={String(unmatchedQueries)} tone={unmatchedQueries > 0 ? "warn" : "ok"} />
-        <StatCard icon={TrendingUp} label="Tenant-KB hits" value={`${tenantCoverage}/${totalQueries}`} />
-        <StatCard icon={Network} label="Avg top similarity" value={avgTopSim} />
-      </div>
+      <StatRow cols={4}>
+        <StatTile icon={Database} label="Queries (last 500)" value={String(totalQueries)} loading={loading} />
+        <StatTile
+          icon={AlertCircle}
+          label="Unanswered"
+          value={String(unmatchedQueries)}
+          intent={unmatchedQueries > 0 ? "negative" : "neutral"}
+          loading={loading}
+        />
+        <StatTile icon={TrendingUp} label="Tenant-KB hits" value={`${tenantCoverage}/${totalQueries}`} loading={loading} />
+        <StatTile icon={Network} label="Avg top similarity" value={avgTopSim} loading={loading} />
+      </StatRow>
 
       <Tabs defaultValue="queue" className="space-y-4">
         <TabsList>
@@ -115,97 +127,88 @@ export default function NetworkKbInsights() {
         </TabsList>
 
         <TabsContent value="queue">
-          <Card>
-            <CardHeader>
-              <CardTitle>Pending Network Contributions</CardTitle>
-              <CardDescription>
-                Tenants opted these docs into the network. Approve to add to global canon; reject to leave them tenant-private.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <p className="text-sm text-muted-foreground">Loading…</p>
-              ) : pending.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No pending contributions.</p>
-              ) : (
-                <div className="space-y-3">
-                  {pending.map((d) => (
-                    <div key={d.id} className="rounded-lg border p-4 space-y-2">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-medium">{d.title}</div>
-                          <div className="text-xs text-muted-foreground mt-0.5">
-                            from <span className="font-mono">{d.tenants?.name ?? d.tenant_id.slice(0, 8)}</span> · {formatDistanceToNow(new Date(d.created_at), { addSuffix: true })}
-                          </div>
-                          {d.summary && <p className="text-sm text-muted-foreground mt-1.5">{d.summary}</p>}
-                          <div className="flex gap-1.5 mt-2 flex-wrap">
-                            {d.category && <Badge variant="outline">{d.category}</Badge>}
-                            {(d.tags ?? []).map((t) => <Badge key={t} variant="secondary">{t}</Badge>)}
-                          </div>
-                          <details className="mt-2 text-sm">
-                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Preview content</summary>
-                            <pre className="mt-2 whitespace-pre-wrap text-xs bg-muted/40 rounded p-3 max-h-64 overflow-auto">
-                              {d.content.slice(0, 4000)}{d.content.length > 4000 ? "\n…" : ""}
-                            </pre>
-                          </details>
+          <SectionCard
+            title="Pending Network Contributions"
+            description="Tenants opted these docs into the network. Approve to add to global canon; reject to leave them tenant-private."
+          >
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : pending.length === 0 ? (
+              <EmptyState
+                icon={Inbox}
+                title="Queue is clear"
+                description="No tenants have offered docs to the shared canon right now. New contributions land here for your review."
+              />
+            ) : (
+              <div className="space-y-3">
+                {pending.map((d) => (
+                  <div key={d.id} className="rounded-lg border border-border p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium">{d.title}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          from <span className="font-mono">{d.tenants?.name ?? d.tenant_id.slice(0, 8)}</span> · {formatDistanceToNow(new Date(d.created_at), { addSuffix: true })}
                         </div>
-                        <div className="flex flex-col gap-2 shrink-0">
-                          <Button size="sm" onClick={() => decide(d.id, "approve")}>
-                            <Check className="w-4 h-4 mr-1" /> Approve
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => decide(d.id, "reject")}>
-                            <X className="w-4 h-4 mr-1" /> Reject
-                          </Button>
+                        {d.summary && <p className="text-sm text-muted-foreground mt-1.5">{d.summary}</p>}
+                        <div className="flex gap-1.5 mt-2 flex-wrap">
+                          {d.category && <Badge variant="outline">{d.category}</Badge>}
+                          {(d.tags ?? []).map((t) => <Badge key={t} variant="secondary">{t}</Badge>)}
                         </div>
+                        <details className="group mt-3 rounded-lg border border-border bg-muted/30">
+                          <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">
+                            Preview content
+                          </summary>
+                          <pre className="whitespace-pre-wrap border-t border-border/60 px-3 py-3 text-xs text-foreground/90 max-h-64 overflow-auto">
+                            {d.content.slice(0, 4000)}{d.content.length > 4000 ? "\n…" : ""}
+                          </pre>
+                        </details>
+                      </div>
+                      <div className="flex flex-col gap-2 shrink-0">
+                        <Button size="sm" variant="gold" onClick={() => decide(d.id, "approve")}>
+                          <Check className="w-4 h-4 mr-1" /> Approve
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => decide(d.id, "reject")}>
+                          <X className="w-4 h-4 mr-1" /> Reject
+                        </Button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
         </TabsContent>
 
         <TabsContent value="intents">
-          <Card>
-            <CardHeader>
-              <CardTitle>Top Query Intents</CardTitle>
-              <CardDescription>Most-requested intent tags across the network. Use to prioritize new global-canon content.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {topIntents.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">No intent telemetry yet.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow><TableHead>Intent</TableHead><TableHead className="text-right">Count</TableHead></TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {topIntents.map(([tag, n]) => (
-                      <TableRow key={tag}>
-                        <TableCell><Badge variant="outline">{tag}</Badge></TableCell>
-                        <TableCell className="text-right font-mono">{n}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+          <SectionCard
+            title="Top Query Intents"
+            description="Most-requested intent tags across the network. Use to prioritize new global-canon content."
+            padded={false}
+          >
+            <DataTableShell
+              columns={[
+                { key: "intent", header: "Intent" },
+                { key: "count", header: "Count", numeric: true },
+              ]}
+              isEmpty={topIntents.length === 0}
+              empty={
+                <EmptyState
+                  icon={TrendingUp}
+                  title="No intent signal yet"
+                  description="Once tenants start asking their portals questions, the most-requested intents surface here."
+                />
+              }
+            >
+              {topIntents.map(([tag, n]) => (
+                <TableRow key={tag}>
+                  <TableCell><Badge variant="outline">{tag}</Badge></TableCell>
+                  <TableCell className="text-right font-mono tabular-nums">{n}</TableCell>
+                </TableRow>
+              ))}
+            </DataTableShell>
+          </SectionCard>
         </TabsContent>
       </Tabs>
-    </div>
-  );
-}
-
-function StatCard({ icon: Icon, label, value, tone }: { icon: any; label: string; value: string; tone?: "ok" | "warn" }) {
-  const toneCls = tone === "warn" ? "text-amber-600 dark:text-amber-400" : "";
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground"><Icon className="w-3.5 h-3.5" /> {label}</div>
-        <div className={`text-2xl font-semibold mt-1 ${toneCls}`}>{value}</div>
-      </CardContent>
-    </Card>
+    </PageShell>
   );
 }
