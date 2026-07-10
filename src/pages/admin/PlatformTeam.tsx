@@ -7,19 +7,19 @@
  * the platform email path (deferred) — the link works today.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Building2, ShieldAlert, ShieldCheck, UserPlus, Copy, Trash2, Loader2, Crown } from "lucide-react";
+import { ShieldAlert, ShieldCheck, UserPlus, Copy, Trash2, Loader2, Crown, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableRow } from "@/components/ui/table";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  PageShell, PageHeader, StatRow, StatTile, SectionCard,
+  DataTableShell, EmptyState, StatePill, type Column,
+} from "@/components/ui/page";
 import { useToast } from "@/hooks/use-toast";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { PLATFORM } from "@/lib/platform/identity";
@@ -115,40 +115,57 @@ export default function PlatformTeam() {
   };
 
   const ownerCount = useMemo(() => staff.filter((s) => s.role === "super_admin").length, [staff]);
+  const adminCount = staff.length - ownerCount;
 
-  if (ctxLoading) return <div className="text-muted-foreground text-sm">Loading…</div>;
-
-  if (!isPlatformStaff) {
+  if (ctxLoading) {
     return (
-      <Card className="max-w-xl">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5 text-destructive" />
-            <CardTitle>Platform team only</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">This area is restricted to the platform team.</p>
-        </CardContent>
-      </Card>
+      <PageShell width="wide">
+        <div className="text-muted-foreground text-sm">Loading platform team…</div>
+      </PageShell>
     );
   }
 
+  if (!isPlatformStaff) {
+    return (
+      <PageShell width="narrow">
+        <SectionCard title="Platform team only" icon={ShieldAlert}>
+          <p className="text-sm text-muted-foreground">This area is restricted to the platform team.</p>
+        </SectionCard>
+      </PageShell>
+    );
+  }
+
+  const inviteColumns: Column[] = [
+    { key: "email", header: "Email" },
+    { key: "expires", header: "Expires" },
+    { key: "actions", header: "Actions", className: "text-right" },
+  ];
+
+  const staffColumns: Column[] = [
+    { key: "name", header: "Name" },
+    { key: "email", header: "Email" },
+    { key: "role", header: "Role" },
+    { key: "actions", header: "Actions", className: "text-right" },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold">Platform Team</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Your {PLATFORM.name} staff. Invite scoped <strong>Platform Admins</strong> who can run the fleet and
-          support tenants — but never touch billing, other admins, or global config.
-        </p>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        eyebrow="Platform · Team"
+        title="Platform Team"
+        description={`Your ${PLATFORM.name} staff. Invite scoped Platform Admins who can run the fleet and support tenants — but never touch billing, other admins, or global config.`}
+      />
+
+      <StatRow cols={3}>
+        <StatTile label="Staff" value={staff.length} icon={Users} loading={loading} />
+        <StatTile label="Platform Admins" value={adminCount} icon={ShieldCheck} loading={loading} />
+        <StatTile label="Pending invites" value={invites.length} icon={UserPlus} loading={loading} />
+      </StatRow>
 
       {/* Invite (owner-only) */}
       {isPlatformOwner && (
-      <Card>
-        <CardHeader><CardTitle className="text-base">Invite a Platform Admin</CardTitle></CardHeader>
-        <CardContent>
+        <SectionCard title="Invite a Platform Admin" icon={UserPlus}>
           <div className="flex flex-col sm:flex-row gap-2">
             <Input
               type="email" value={email} placeholder="staff@yourcompany.com"
@@ -156,7 +173,7 @@ export default function PlatformTeam() {
               onKeyDown={(e) => { if (e.key === "Enter") sendInvite(); }}
               disabled={inviting} className="sm:max-w-sm"
             />
-            <Button onClick={sendInvite} disabled={inviting}>
+            <Button variant="gold" onClick={sendInvite} disabled={inviting}>
               {inviting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <UserPlus className="w-4 h-4 mr-2" />}
               Create invite
             </Button>
@@ -165,95 +182,83 @@ export default function PlatformTeam() {
             Creates a secure invite link (copied to your clipboard). Automated email delivery is coming with the
             platform email engine — for now, send them the link.
           </p>
-        </CardContent>
-      </Card>
+        </SectionCard>
       )}
 
       {/* Pending invites */}
       {invites.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Pending invites</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader><TableRow>
-                  <TableHead>Email</TableHead><TableHead>Expires</TableHead><TableHead className="text-right">Actions</TableHead>
-                </TableRow></TableHeader>
-                <TableBody>
-                  {invites.map((inv) => (
-                    <TableRow key={inv.id}>
-                      <TableCell className="font-medium">{inv.email}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground tabular-nums">
-                        {new Date(inv.expires_at).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" onClick={() => copyLink(inv.token)}>
-                          <Copy className="w-3.5 h-3.5 mr-1.5" /> Copy link
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => cancelInvite(inv.id)}>
-                          Cancel
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-3">
+          <h2 className="font-display text-base font-semibold text-foreground">Pending invites</h2>
+          <DataTableShell columns={inviteColumns}>
+            {invites.map((inv) => (
+              <TableRow key={inv.id}>
+                <TableCell className="font-medium">{inv.email}</TableCell>
+                <TableCell className="text-sm text-muted-foreground tabular-nums">
+                  {new Date(inv.expires_at).toLocaleDateString()}
+                </TableCell>
+                <TableCell className="text-right">
+                  <Button variant="ghost" size="sm" onClick={() => copyLink(inv.token)}>
+                    <Copy className="w-3.5 h-3.5 mr-1.5" /> Copy link
+                  </Button>
+                  <Button variant="ghost" size="sm" className="text-destructive" onClick={() => cancelInvite(inv.id)}>
+                    Cancel
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </DataTableShell>
+        </div>
       )}
 
       {/* Staff roster */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Staff ({staff.length})</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 text-sm text-muted-foreground">Loading…</div>
-          ) : staff.length === 0 ? (
-            <div className="p-6 text-sm text-muted-foreground">No staff yet.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader><TableRow>
-                  <TableHead>Name</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow></TableHeader>
-                <TableBody>
-                  {staff.map((s) => {
-                    const isOwner = s.role === "super_admin";
-                    return (
-                      <TableRow key={s.user_id}>
-                        <TableCell className="font-medium">{s.full_name || "—"}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{s.email}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={isOwner
-                            ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
-                            : "bg-violet-500/15 text-violet-300 border-violet-500/30"}>
-                            {isOwner ? <Crown className="w-3 h-3 mr-1" /> : <ShieldCheck className="w-3 h-3 mr-1" />}
-                            {ROLE_LABEL[s.role] ?? s.role}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {isOwner ? (
-                            <span className="text-xs text-muted-foreground pr-2">Protected</span>
-                          ) : isPlatformOwner ? (
-                            <Button variant="ghost" size="sm" className="text-destructive"
-                              onClick={() => setRevokeTarget(s)}>
-                              <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Revoke
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground pr-2">—</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <div className="space-y-3">
+        <h2 className="font-display text-base font-semibold text-foreground">Staff ({staff.length})</h2>
+        <DataTableShell
+          columns={staffColumns}
+          loading={loading}
+          isEmpty={staff.length === 0}
+          empty={
+            <EmptyState
+              icon={Users}
+              title="No staff yet"
+              description="Invite your first Platform Admin to help run the fleet."
+            />
+          }
+        >
+          {staff.map((s) => {
+            const isOwner = s.role === "super_admin";
+            return (
+              <TableRow key={s.user_id}>
+                <TableCell className="font-medium">{s.full_name || "—"}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{s.email}</TableCell>
+                <TableCell>
+                  {isOwner ? (
+                    <StatePill state="included" icon={<Crown className="w-3 h-3" />}>
+                      {ROLE_LABEL[s.role] ?? s.role}
+                    </StatePill>
+                  ) : (
+                    <StatePill state="off" icon={<ShieldCheck className="w-3 h-3" />}>
+                      {ROLE_LABEL[s.role] ?? s.role}
+                    </StatePill>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">
+                  {isOwner ? (
+                    <span className="text-xs text-muted-foreground pr-2">Protected</span>
+                  ) : isPlatformOwner ? (
+                    <Button variant="ghost" size="sm" className="text-destructive"
+                      onClick={() => setRevokeTarget(s)}>
+                      <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Revoke
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground pr-2">—</span>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </DataTableShell>
+      </div>
 
       <AlertDialog open={revokeTarget !== null} onOpenChange={(v) => !v && setRevokeTarget(null)}>
         <AlertDialogContent>
@@ -273,6 +278,6 @@ export default function PlatformTeam() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageShell>
   );
 }
