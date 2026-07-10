@@ -17,14 +17,13 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { MoreHorizontal, UserPlus, Mail, ShieldOff, ShieldCheck, LogOut, Trash2, UserCog, Crown, UserMinus, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { InviteMemberDialog } from "@/components/admin/InviteMemberDialog";
 import { ReassignCoachDialog } from "@/components/admin/ReassignCoachDialog";
 import { MemberProfileDrawer } from "@/components/admin/MemberProfileDrawer";
+import { ManageRolesDialog } from "@/components/admin/ManageRolesDialog";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 // ---- Role taxonomy ---------------------------------------------------------
 // A "staff role" = anything that grants platform/workspace authority.
@@ -36,8 +35,6 @@ const isStaffRow = (m: { roles: string[]; is_owner: boolean }) =>
 
 const ROLE_FILTERS = ["all", "owner", "admin", "coach", "sales_rep", "broker", "cs_rep", "finance", "viewer"] as const;
 type RoleFilter = typeof ROLE_FILTERS[number];
-
-const ASSIGNABLE_ROLES = ["admin", "coach", "sales_rep", "broker", "cs_rep", "finance", "viewer"];
 
 const roleColor: Record<string, string> = {
   owner: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
@@ -75,6 +72,7 @@ interface PendingInvite {
 }
 
 export default function MembersAdmin() {
+  const { activeTenantId } = useTenantContext();
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,20 +80,14 @@ export default function MembersAdmin() {
   const [filter, setFilter] = useState<RoleFilter>("all");
   const [includeNonStaff, setIncludeNonStaff] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Suspend dialog
   const [suspendTarget, setSuspendTarget] = useState<MemberRow | null>(null);
   const [suspendReason, setSuspendReason] = useState("");
 
-  // Add role dialog
-  const [addRoleTarget, setAddRoleTarget] = useState<MemberRow | null>(null);
-  const [newRole, setNewRole] = useState("coach");
-
-  // Change role dialog (atomic from→to transition via change_user_role RPC)
-  const [changeRoleTarget, setChangeRoleTarget] = useState<MemberRow | null>(null);
-  const [changeFromRole, setChangeFromRole] = useState<string>("");
-  const [changeToRole, setChangeToRole] = useState<string>("");
-  const [changeReason, setChangeReason] = useState("");
+  // Manage roles dialog (multi-role editor — add/remove several roles in one save)
+  const [manageRolesTarget, setManageRolesTarget] = useState<MemberRow | null>(null);
 
   // Reassign dialog (when removing a coach)
   const [reassignCoachId, setReassignCoachId] = useState<string | null>(null);
@@ -160,6 +152,7 @@ export default function MembersAdmin() {
 
       const currentUserRes = await supabase.auth.getUser();
       const currentUserId = currentUserRes.data.user?.id;
+      setCurrentUserId(currentUserId ?? null);
 
       const built: MemberRow[] = users.map(u => {
         const prof = profByUser.get(u.id) || {};
@@ -284,55 +277,6 @@ export default function MembersAdmin() {
     });
     if (error) { toast.error(error.message); return; }
     toast.success("Signed user out of all sessions");
-  };
-
-  const handleAddRole = async () => {
-    if (!addRoleTarget) return;
-    const { error } = await supabase.rpc("grant_tenant_member_role", {
-      _user_id: addRoleTarget.user_id,
-      _role: newRole as any,
-    });
-    if (error) { toast.error(error.message); return; }
-    toast.success(`Granted ${newRole}`);
-    setAddRoleTarget(null);
-    loadAll();
-  };
-
-  const handleRemoveRole = async (m: MemberRow, role: string) => {
-    if (m.is_owner && role === "admin") {
-      toast.error("Owner's admin role cannot be removed");
-      return;
-    }
-    const { error } = await supabase.from("user_roles")
-      .delete().eq("user_id", m.user_id).eq("role", role as any);
-    if (error) { toast.error(error.message); return; }
-    toast.success(`Removed ${role}`);
-    loadAll();
-  };
-
-  const handleChangeRole = async () => {
-    if (!changeRoleTarget || !changeFromRole || !changeToRole) return;
-    if (changeFromRole === changeToRole) {
-      toast.error("Pick a different destination role");
-      return;
-    }
-    const { error } = await supabase.rpc("change_user_role", {
-      _target_user_id: changeRoleTarget.user_id,
-      _from_role: changeFromRole as any,
-      _to_role: changeToRole as any,
-      _reason: changeReason.trim() || null,
-    });
-    if (error) {
-      // Server-side hierarchy errors surface via RAISE EXCEPTION — show clean message.
-      const msg = /ROLE_CHANGE_FORBIDDEN:\s*(.*)/i.exec(error.message)?.[1]
-        || error.message
-        || "Role change was rejected";
-      toast.error(msg);
-      return;
-    }
-    toast.success(`Changed ${changeFromRole} → ${changeToRole}`);
-    setChangeRoleTarget(null); setChangeFromRole(""); setChangeToRole(""); setChangeReason("");
-    loadAll();
   };
 
   const handleRevokeAccess = async () => {
@@ -587,7 +531,7 @@ export default function MembersAdmin() {
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" disabled={m.is_owner}>
+                          <Button variant="ghost" size="icon">
                             <MoreHorizontal className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -597,40 +541,22 @@ export default function MembersAdmin() {
                           <DropdownMenuItem onClick={() => setProfileTarget(m)}>
                             <UserCog className="w-4 h-4 mr-2" /> View profile
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { setAddRoleTarget(m); setNewRole("coach"); }}>
-                            <UserCog className="w-4 h-4 mr-2" /> Add role
+                          {/* One editor for every role — add or remove several at once, self included. */}
+                          <DropdownMenuItem onClick={() => setManageRolesTarget(m)}>
+                            <UserCog className="w-4 h-4 mr-2" /> Manage roles
                           </DropdownMenuItem>
-                          {m.roles.length > 0 && (
-                            <DropdownMenuItem onClick={() => {
-                              setChangeRoleTarget(m);
-                              setChangeFromRole(m.roles[0]);
-                              setChangeToRole("");
-                              setChangeReason("");
-                            }}>
-                              <UserCog className="w-4 h-4 mr-2" /> Change role…
-                            </DropdownMenuItem>
-                          )}
-                          {m.roles.length > 0 && (
-                            <>
-                              <DropdownMenuLabel className="text-[10px] uppercase text-muted-foreground pt-2">Remove single role</DropdownMenuLabel>
-                              {m.roles.map(r => (
-                                <DropdownMenuItem key={r} onClick={() => handleRemoveRole(m, r)}>
-                                  <span className="capitalize">{r.replace("_", " ")}</span>
-                                </DropdownMenuItem>
-                              ))}
-                            </>
-                          )}
                           <DropdownMenuSeparator />
+                          {/* Destructive actions are never available against the platform owner. */}
                           {m.suspended_at ? (
-                            <DropdownMenuItem onClick={() => handleReactivate(m)}>
+                            <DropdownMenuItem onClick={() => handleReactivate(m)} disabled={m.is_owner}>
                               <ShieldCheck className="w-4 h-4 mr-2" /> Reactivate
                             </DropdownMenuItem>
                           ) : (
-                            <DropdownMenuItem onClick={() => setSuspendTarget(m)}>
+                            <DropdownMenuItem onClick={() => setSuspendTarget(m)} disabled={m.is_owner}>
                               <ShieldOff className="w-4 h-4 mr-2" /> Suspend
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem onClick={() => handleForceSignout(m)}>
+                          <DropdownMenuItem onClick={() => handleForceSignout(m)} disabled={m.is_owner}>
                             <LogOut className="w-4 h-4 mr-2" /> Force sign-out
                           </DropdownMenuItem>
                           {m.roles.includes("coach") && (
@@ -639,10 +565,10 @@ export default function MembersAdmin() {
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => setRevokeTarget(m)}>
+                          <DropdownMenuItem onClick={() => setRevokeTarget(m)} disabled={m.is_owner}>
                             <UserMinus className="w-4 h-4 mr-2" /> Revoke platform access
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => { setRemoveTarget(m); setRemoveConfirmText(""); }} className="text-destructive">
+                          <DropdownMenuItem onClick={() => { setRemoveTarget(m); setRemoveConfirmText(""); }} disabled={m.is_owner} className="text-destructive">
                             <Trash2 className="w-4 h-4 mr-2" /> Delete user (permanent)
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -693,76 +619,16 @@ export default function MembersAdmin() {
         </DialogContent>
       </Dialog>
 
-      {/* Add role dialog */}
-      <Dialog open={!!addRoleTarget} onOpenChange={(o) => { if (!o) setAddRoleTarget(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add a role to {addRoleTarget?.email}</DialogTitle>
-            <DialogDescription>
-              Grants a staff role. If they were a client/lead, they'll now appear in Members & Roles too.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label>Role</Label>
-            <Select value={newRole} onValueChange={setNewRole}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {ASSIGNABLE_ROLES.filter(r => !addRoleTarget?.roles.includes(r)).map(r => (
-                  <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setAddRoleTarget(null)}>Cancel</Button>
-            <Button onClick={handleAddRole}>Add role</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Change role dialog (atomic from→to via change_user_role RPC) */}
-      <Dialog open={!!changeRoleTarget} onOpenChange={(o) => { if (!o) { setChangeRoleTarget(null); setChangeFromRole(""); setChangeToRole(""); setChangeReason(""); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Change role for {changeRoleTarget?.email}</DialogTitle>
-            <DialogDescription>
-              Atomically swaps one staff role for another. Enforced by the server: admins can't demote other admins or super-admins, and tenant owners can't lose admin.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label>From role</Label>
-              <Select value={changeFromRole} onValueChange={setChangeFromRole}>
-                <SelectTrigger><SelectValue placeholder="Current role" /></SelectTrigger>
-                <SelectContent>
-                  {(changeRoleTarget?.roles ?? []).map(r => (
-                    <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>To role</Label>
-              <Select value={changeToRole} onValueChange={setChangeToRole}>
-                <SelectTrigger><SelectValue placeholder="Pick new role" /></SelectTrigger>
-                <SelectContent>
-                  {ASSIGNABLE_ROLES.filter(r => r !== changeFromRole).map(r => (
-                    <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Reason (optional — saved to audit log)</Label>
-              <Textarea value={changeReason} onChange={(e) => setChangeReason(e.target.value)} rows={2} placeholder="e.g. Promoting to broker after certification…" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setChangeRoleTarget(null)}>Cancel</Button>
-            <Button onClick={handleChangeRole} disabled={!changeFromRole || !changeToRole}>Change role</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Manage roles — multi-role editor (add/remove several roles in one save) */}
+      <ManageRolesDialog
+        member={manageRolesTarget}
+        currentUserId={currentUserId}
+        tenantId={activeTenantId}
+        open={!!manageRolesTarget}
+        onOpenChange={(o) => { if (!o) setManageRolesTarget(null); }}
+        onSaved={loadAll}
+        onNeedsCoachReassign={(id, label) => { setReassignCoachId(id); setReassignLabel(label); }}
+      />
 
       {/* Revoke access (soft) */}
       <Dialog open={!!revokeTarget} onOpenChange={(o) => { if (!o) setRevokeTarget(null); }}>
