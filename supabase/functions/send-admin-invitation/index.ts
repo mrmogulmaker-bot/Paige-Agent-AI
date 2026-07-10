@@ -100,34 +100,14 @@ const handler = async (req: Request): Promise<Response> => {
       console.log("Created new user:", targetUserId);
     }
 
-    // 3. Assign the role and tenant membership. Tenant-scoped RLS resolves
-    // visibility from tenant_members, while user_roles drives app navigation.
-    await supabase
-      .from("user_roles")
-      .upsert({ user_id: targetUserId, role }, { onConflict: "user_id,role" });
-
-    if (inviterTenantId && role !== "client") {
-      const tenantRole = role === "admin" ? "admin" : role === "coach" ? "coach" : "member";
-      await supabase
-        .from("tenant_members")
-        .upsert(
-          {
-            tenant_id: inviterTenantId,
-            user_id: targetUserId,
-            role: tenantRole,
-            status: "active",
-            invited_at: new Date().toISOString(),
-            joined_at: new Date().toISOString(),
-          },
-          { onConflict: "tenant_id,user_id" },
-        );
-
-      await supabase
-        .from("profiles")
-        .update({ active_tenant_id: inviterTenantId })
-        .eq("user_id", targetUserId)
-        .is("active_tenant_id", null);
-    }
+    // 3. Do NOT grant the role or tenant membership yet. An invite must stay
+    // PENDING until the person actually signs up — accept-invite grants the
+    // user_role and upserts tenant_members (status 'active', joined_at now) when
+    // they set their password. Granting here made invitees show as active
+    // members before they'd ever accepted. The pre-created auth user above only
+    // exists so accept-invite can set their password; it carries no role/tenant
+    // access until acceptance. The pending state is the invitations row itself
+    // (accepted_at IS NULL), which MembersAdmin renders as a pending invite.
 
     // 4. Mint our own opaque token; the BEFORE INSERT trigger hashes it and clears the plaintext.
     const rawToken = Array.from(crypto.getRandomValues(new Uint8Array(32)))
