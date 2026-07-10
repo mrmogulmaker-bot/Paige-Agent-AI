@@ -35,13 +35,15 @@ const STATUS_LABEL: Record<CustomerAction["status"], string> = {
   expired: "Expired",
 };
 
-function dueLabel(expires_at: string): string | null {
+// expires_at is a ~30-day housekeeping TTL, not a coach-set deadline — only
+// surface it as the item genuinely nears expiry, and frame it as expiry (never a
+// "due date" the team didn't set).
+function expiryLabel(expires_at: string): string | null {
   const ms = new Date(expires_at).getTime() - Date.now();
   if (ms <= 0) return "Expired";
   const days = Math.ceil(ms / 86400000);
-  if (days <= 1) return "Due today";
-  if (days <= 30) return `${days} days left`;
-  return null;
+  if (days > 3) return null;
+  return days <= 1 ? "Expires today" : `Expires in ${days} days`;
 }
 
 function ActionCard({
@@ -85,7 +87,11 @@ function ActionCard({
     }
   };
 
-  const due = dueLabel(action.expires_at);
+  const nearExpiry = expiryLabel(action.expires_at);
+  const expiredUnswept =
+    (action.status === "customer_notified" || action.status === "proposed") &&
+    new Date(action.expires_at).getTime() <= Date.now();
+  const nonOpenStatus = expiredUnswept ? "Expired" : STATUS_LABEL[action.status];
   const responses = action.paige_customer_responses ?? [];
 
   return (
@@ -95,13 +101,13 @@ function ActionCard({
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <Badge variant="secondary" className="text-[10px]">{TYPE_LABEL[action.action_type]}</Badge>
-              {open && due && (
+              {open && nearExpiry && (
                 <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <Clock className="w-3 h-3" /> {due}
+                  <Clock className="w-3 h-3" /> {nearExpiry}
                 </span>
               )}
               {!open && (
-                <span className="text-[11px] text-muted-foreground">{STATUS_LABEL[action.status]}</span>
+                <span className="text-[11px] text-muted-foreground">{nonOpenStatus}</span>
               )}
             </div>
             <CardTitle className="text-base leading-snug">{action.title}</CardTitle>
@@ -130,6 +136,7 @@ function ActionCard({
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   placeholder="What would you like to ask your team?"
+                  aria-label="Your question for your team"
                   rows={3}
                   autoFocus
                 />

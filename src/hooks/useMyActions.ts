@@ -64,15 +64,20 @@ export function useMyActions() {
     setLoading(false);
   }, []);
 
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Subscribe only once we know the contact_id, and filter to this client's rows
+  // (per-user channel name) so a client's session doesn't re-query on every other
+  // client's writes platform-wide.
   useEffect(() => {
-    refresh();
+    if (!contactId) return;
     const ch = supabase
-      .channel("my_actions_stream")
-      .on("postgres_changes", { event: "*", schema: "public", table: "paige_customer_actions" }, () => refresh())
-      .on("postgres_changes", { event: "*", schema: "public", table: "paige_customer_responses" }, () => refresh())
+      .channel(`my_actions_${contactId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "paige_customer_actions", filter: `contact_id=eq.${contactId}` }, () => refresh())
+      .on("postgres_changes", { event: "*", schema: "public", table: "paige_customer_responses", filter: `contact_id=eq.${contactId}` }, () => refresh())
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [refresh]);
+  }, [contactId, refresh]);
 
   const respond = useCallback(
     async (actionId: string, responseType: ActionResponseType, text?: string) => {
@@ -83,7 +88,17 @@ export function useMyActions() {
       });
       if (error) throw error;
       const res = data as { ok?: boolean; error?: string } | null;
-      if (!res?.ok) throw new Error(res?.error || "Could not submit your response");
+      if (!res?.ok) {
+        // Map server codes to client-friendly copy (never surface raw codes).
+        const friendly: Record<string, string> = {
+          ACTION_EXPIRED: "This item has expired — reach out to your team if you still need it.",
+          FORBIDDEN: "You're not able to respond to this item.",
+          ACTION_NOT_FOUND: "This item is no longer available.",
+          INVALID_RESPONSE_TYPE: "That response isn't available.",
+          UNAUTHENTICATED: "Please sign in again to respond.",
+        };
+        throw new Error(friendly[res?.error ?? ""] ?? "We couldn't submit your response. Please try again.");
+      }
       await refresh();
       return res;
     },
