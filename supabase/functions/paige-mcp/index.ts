@@ -752,7 +752,7 @@ mcp.tool("list_pending_approvals", {
 
 mcp.tool("decide_pending_approval", {
   description:
-    "Approve, reject, request_changes, or escalate a pending approval. Provide a rationale for any non-approve decision. On approve, status becomes 'approved' for the downstream worker to send.",
+    "Record a decision (approve, reject, request_changes, escalate) on a pending approval. Provide a rationale for any non-approve decision. NOTE: this records the decision only — it does not itself send the drafted action. Outbound execution of an approved item happens through the operator's Live desk (execute-approval → send-message); use this to log a decision, not to trigger a send.",
   inputSchema: z.object({
     approval_id: z.string(),
     decision: z.enum(["approve", "reject", "request_changes", "escalate"]),
