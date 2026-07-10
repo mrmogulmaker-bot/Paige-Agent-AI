@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableCell, TableRow } from "@/components/ui/table";
 import { UserCog, Plus, Search } from "lucide-react";
 import { AddCoachDialog } from "@/components/admin/AddCoachDialog";
 import { CoachDetailDrawer } from "@/components/admin/CoachDetailDrawer";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  PageShell,
+  PageHeader,
+  DataTableShell,
+  EmptyState,
+  StatePill,
+  Toolbar,
+  type Column,
+} from "@/components/ui/page";
 
 type CoachRow = {
   user_id: string;
@@ -28,6 +36,14 @@ const SPECIALTY_LABEL: Record<string, string> = {
   entity: "Entity",
   underwriting: "Underwriting",
 };
+
+const COLUMNS: Column[] = [
+  { key: "coach", header: "Coach" },
+  { key: "specialties", header: "Specialties" },
+  { key: "load", header: "Load", numeric: true },
+  { key: "status", header: "Status" },
+  { key: "actions", header: "", className: "text-right" },
+];
 
 export default function CoachesAdmin() {
   const [coaches, setCoaches] = useState<CoachRow[]>([]);
@@ -84,17 +100,20 @@ export default function CoachesAdmin() {
   }, [coaches, search, filter]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Coaches</h1>
-          <p className="text-sm text-muted-foreground">Manage coach roster, specialties, capacity, and assignments.</p>
-        </div>
-        <Button onClick={() => setAddOpen(true)}><Plus className="h-4 w-4 mr-2" /> Add coach</Button>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        title="Coaches"
+        icon={UserCog}
+        description="Manage coach roster, specialties, capacity, and assignments."
+        actions={
+          <Button variant="gold" onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" /> Add coach
+          </Button>
+        }
+      />
 
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
+      <Toolbar>
+        <div className="relative flex-1 min-w-[12rem]">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input className="pl-8" placeholder="Search coaches…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
@@ -106,67 +125,59 @@ export default function CoachesAdmin() {
             <SelectItem value="full">At capacity</SelectItem>
           </SelectContent>
         </Select>
-      </div>
+      </Toolbar>
 
-      <Card className="overflow-hidden">
-        {loading ? (
-          <div className="p-8 text-center text-muted-foreground">Loading coaches…</div>
-        ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">No coaches match your filter.</div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Coach</TableHead>
-                <TableHead>Specialties</TableHead>
-                <TableHead className="text-center">Load</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((c) => {
-                const overCap = c.capacity != null && c.active_count >= c.capacity;
-                return (
-                  <TableRow key={c.user_id} className="cursor-pointer" onClick={() => setSelected(c)}>
-                    <TableCell>
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-9 w-9 rounded-full bg-accent/10 text-accent flex items-center justify-center flex-shrink-0">
-                          <UserCog className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">{c.name}</div>
-                          <div className="text-xs text-muted-foreground font-mono truncate">{c.user_id.slice(0, 8)}…</div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {c.specialties.length === 0 ? (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        ) : c.specialties.map((s) => (
-                          <Badge key={s} variant="outline" className="text-xs">{SPECIALTY_LABEL[s] || s}</Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant={overCap ? "destructive" : "secondary"}>
-                        {c.active_count}{c.capacity != null ? ` / ${c.capacity}` : ""}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {c.accepting ? <Badge>Accepting</Badge> : <Badge variant="outline">Paused</Badge>}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setSelected(c); }}>Manage</Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
+      <DataTableShell
+        columns={COLUMNS}
+        loading={loading}
+        isEmpty={filtered.length === 0}
+        empty={
+          <EmptyState
+            icon={UserCog}
+            title="No coaches match your filter"
+            description="Adjust your search or filter, or add a coach to the roster."
+          />
+        }
+      >
+        {filtered.map((c) => {
+          const overCap = c.capacity != null && c.active_count >= c.capacity;
+          return (
+            <TableRow key={c.user_id} className="cursor-pointer" onClick={() => setSelected(c)}>
+              <TableCell>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="h-9 w-9 rounded-full bg-muted text-muted-foreground flex items-center justify-center flex-shrink-0">
+                    <UserCog className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{c.name}</div>
+                    <div className="text-xs text-muted-foreground font-mono truncate">{c.user_id.slice(0, 8)}…</div>
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="flex flex-wrap gap-1">
+                  {c.specialties.length === 0 ? (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  ) : c.specialties.map((s) => (
+                    <Badge key={s} variant="outline" className="text-xs">{SPECIALTY_LABEL[s] || s}</Badge>
+                  ))}
+                </div>
+              </TableCell>
+              <TableCell className="text-right tabular-nums">
+                <StatePill state={overCap ? "error" : "off"}>
+                  {c.active_count}{c.capacity != null ? ` / ${c.capacity}` : ""}
+                </StatePill>
+              </TableCell>
+              <TableCell>
+                {c.accepting ? <StatePill state="success">Accepting</StatePill> : <StatePill state="off">Paused</StatePill>}
+              </TableCell>
+              <TableCell className="text-right">
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setSelected(c); }}>Manage</Button>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </DataTableShell>
 
       <AddCoachDialog open={addOpen} onOpenChange={setAddOpen} onAdded={load} />
       <CoachDetailDrawer
@@ -176,6 +187,6 @@ export default function CoachesAdmin() {
         coachName={selected?.name}
         onChanged={load}
       />
-    </div>
+    </PageShell>
   );
 }

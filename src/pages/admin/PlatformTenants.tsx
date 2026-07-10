@@ -7,34 +7,37 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import {
-  Building2, Users, Contact as ContactIcon, ShieldAlert, AlertTriangle, Clock, ArrowUpDown,
+  Building2, ShieldAlert, AlertTriangle, Clock, ArrowUpDown,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useTenantContext, TenantSummary } from "@/hooks/useTenantContext";
+import {
+  PageShell, PageHeader, StatRow, StatTile, SectionCard,
+  DataTableShell, EmptyState, Toolbar, StatePill, type Column, type PillState,
+} from "@/components/ui/page";
+import { useTenantContext } from "@/hooks/useTenantContext";
 import { PLATFORM } from "@/lib/platform/identity";
 import {
   type TenantStatus, type HealthLevel, STATUS_META, tenantHealth, trialDaysLeft,
 } from "@/lib/platform/tenantLifecycle";
 import { TenantDetailSheet, type FleetTenant } from "@/components/admin/platform/TenantDetailSheet";
 
-const STATUS_TONE: Record<string, string> = {
-  positive: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  notice: "bg-violet-500/15 text-violet-300 border-violet-500/30",
-  warn: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  critical: "bg-red-500/15 text-red-400 border-red-500/30",
-  neutral: "bg-muted text-muted-foreground border-border",
+// Status tone → state-pill state. Attention tones (warn/critical) collapse to the
+// destructive pill; positive → success; trial → muted pending; canceled → off.
+const STATUS_PILL: Record<string, PillState> = {
+  positive: "success",
+  notice: "pending",
+  warn: "error",
+  critical: "error",
+  neutral: "off",
 };
+// Health dots use semantic status tokens (never raw text-*-400).
 const HEALTH_DOT: Record<HealthLevel, string> = {
-  healthy: "bg-emerald-400",
-  watch: "bg-amber-400",
-  critical: "bg-red-400",
+  healthy: "bg-[hsl(var(--success))]",
+  watch: "bg-[hsl(var(--warning))]",
+  critical: "bg-[hsl(var(--destructive))]",
 };
 
 type SortKey = "name" | "plan_offer" | "status" | "trial" | "seats" | "customers" | "health";
@@ -155,147 +158,149 @@ export default function PlatformTenants() {
   const openTenant = (t: FleetTenant) => { setSelectedId(t.id); setSheetOpen(true); };
 
   if (ctxLoading) {
-    return <div className="text-muted-foreground text-sm">Loading platform console…</div>;
+    return (
+      <PageShell width="wide">
+        <div className="text-muted-foreground text-sm">Loading platform console…</div>
+      </PageShell>
+    );
   }
 
   if (!isPlatformOwner) {
     return (
-      <Card className="max-w-xl">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5 text-destructive" />
-            <CardTitle>Platform owner only</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
+      <PageShell width="narrow">
+        <SectionCard title="Platform owner only" icon={ShieldAlert}>
           <p className="text-sm text-muted-foreground">
             This area is restricted to the platform owner. If you manage a tenant,
             head to <strong>Settings → Workspace</strong> instead.
           </p>
-        </CardContent>
-      </Card>
+        </SectionCard>
+      </PageShell>
     );
   }
 
+  const columns: Column[] = [
+    { key: "name", header: <SortButton label="Tenant" k="name" sortKey={sortKey} sortBy={sortBy} /> },
+    { key: "plan", header: <SortButton label="Plan" k="plan_offer" sortKey={sortKey} sortBy={sortBy} /> },
+    { key: "status", header: <SortButton label="Status" k="status" sortKey={sortKey} sortBy={sortBy} /> },
+    { key: "trial", header: <SortButton label="Trial" k="trial" sortKey={sortKey} sortBy={sortBy} /> },
+    { key: "seats", numeric: true, header: <SortButton label="Seats" k="seats" align="right" sortKey={sortKey} sortBy={sortBy} /> },
+    { key: "customers", numeric: true, header: <SortButton label="Customers" k="customers" align="right" sortKey={sortKey} sortBy={sortBy} /> },
+    { key: "health", header: <SortButton label="Health" k="health" sortKey={sortKey} sortBy={sortBy} /> },
+  ];
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold">Fleet Console</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Every workspace running on {PLATFORM.name}. Click a tenant to manage its plan, limits, and lifecycle.
-        </p>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        eyebrow="Platform · Fleet"
+        title="Fleet Console"
+        description={`Every workspace running on ${PLATFORM.name}. Click a tenant to manage its plan, limits, and lifecycle.`}
+      />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Tenants" value={totals.tenants} icon={Building2} />
-        <StatCard label="Active" value={totals.active} icon={Building2} />
-        <StatCard label="On trial" value={totals.trials} icon={Clock} />
-        <StatCard label="Needs attention" value={totals.atRisk} icon={AlertTriangle}
-          tone={totals.atRisk > 0 ? "warn" : undefined} />
-      </div>
+      <StatRow cols={4}>
+        <StatTile label="Tenants" value={totals.tenants} icon={Building2} loading={loading} />
+        <StatTile label="Active" value={totals.active} icon={Building2} loading={loading} />
+        <StatTile label="On trial" value={totals.trials} icon={Clock} loading={loading} />
+        <StatTile
+          label="Needs attention"
+          value={totals.atRisk}
+          icon={AlertTriangle}
+          intent={totals.atRisk > 0 ? "negative" : "neutral"}
+          loading={loading}
+        />
+      </StatRow>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-          <CardTitle className="text-base">All tenants</CardTitle>
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, slug, status…"
-            className="max-w-[220px] h-8"
-            aria-label="Search tenants"
-          />
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="p-6 text-sm text-muted-foreground">Loading…</div>
-          ) : filtered.length === 0 ? (
-            <div className="p-6 text-sm text-muted-foreground">
-              {rows.length === 0 ? "No tenants yet." : "No tenants match your search."}
-            </div>
-          ) : (
-            <TooltipProvider delayDuration={200}>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <SortHead label="Tenant" k="name" {...{ sortKey, sortBy }} />
-                      <SortHead label="Plan" k="plan_offer" {...{ sortKey, sortBy }} />
-                      <SortHead label="Status" k="status" {...{ sortKey, sortBy }} />
-                      <SortHead label="Trial" k="trial" {...{ sortKey, sortBy }} />
-                      <SortHead label="Seats" k="seats" align="right" {...{ sortKey, sortBy }} />
-                      <SortHead label="Customers" k="customers" align="right" {...{ sortKey, sortBy }} />
-                      <SortHead label="Health" k="health" {...{ sortKey, sortBy }} />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map(({ t, health, days }) => {
-                      const meta = STATUS_META[t.status];
-                      return (
-                        <TableRow
-                          key={t.id}
-                          className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                          tabIndex={0}
-                          role="button"
-                          aria-label={`Manage ${t.name}`}
-                          onClick={() => openTenant(t)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openTenant(t); }
-                          }}
-                        >
-                          <TableCell>
-                            <div className="font-medium">{t.name}</div>
-                            <div className="text-xs text-muted-foreground">/{t.slug}</div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="font-mono text-[10px]">{t.plan_offer ?? "—"}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={STATUS_TONE[meta.tone]}>{meta.label}</Badge>
-                          </TableCell>
-                          <TableCell className="text-sm tabular-nums">
-                            {t.status === "trial" && days !== null
-                              ? days >= 0
-                                ? <span className={days <= 3 ? "text-amber-400" : ""}>{days}d</span>
-                                : <span className="text-red-400">lapsed</span>
-                              : <span className="text-muted-foreground">—</span>}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            <span className={t.seat_limit > 0 && t.member_count >= t.seat_limit ? "text-amber-400" : ""}>
-                              {t.member_count}/{t.seat_limit || "∞"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            <span className={t.customer_limit > 0 && t.customer_count >= t.customer_limit ? "text-amber-400" : ""}>
-                              {t.customer_count}/{t.customer_limit || "∞"}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            {health.level === "healthy" ? (
-                              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <span className={`w-2 h-2 rounded-full ${HEALTH_DOT.healthy}`} /> Healthy
-                              </span>
-                            ) : (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="inline-flex items-center gap-1.5 text-xs">
-                                    <span className={`w-2 h-2 rounded-full ${HEALTH_DOT[health.level]}`} />
-                                    {health.level === "critical" ? "Critical" : "Watch"}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>{health.reasons.join(" · ")}</TooltipContent>
-                              </Tooltip>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </TooltipProvider>
-          )}
-        </CardContent>
-      </Card>
+      <Toolbar>
+        <h2 className="font-display text-base font-semibold text-foreground">All tenants</h2>
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search name, slug, status…"
+          className="max-w-[220px] h-9"
+          aria-label="Search tenants"
+        />
+      </Toolbar>
+
+      <TooltipProvider delayDuration={200}>
+        <DataTableShell
+          columns={columns}
+          loading={loading}
+          isEmpty={filtered.length === 0}
+          empty={
+            <EmptyState
+              icon={Building2}
+              title={rows.length === 0 ? "No workspaces yet" : "No tenants match your search"}
+              description={
+                rows.length === 0
+                  ? "The moment a workspace signs on, it lands here with live health."
+                  : "Clear the search to see the whole fleet."
+              }
+            />
+          }
+        >
+          {filtered.map(({ t, health, days }) => {
+            const meta = STATUS_META[t.status];
+            return (
+              <TableRow
+                key={t.id}
+                className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                tabIndex={0}
+                role="button"
+                aria-label={`Manage ${t.name}`}
+                onClick={() => openTenant(t)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openTenant(t); }
+                }}
+              >
+                <TableCell>
+                  <div className="font-medium">{t.name}</div>
+                  <div className="text-xs text-muted-foreground">/{t.slug}</div>
+                </TableCell>
+                <TableCell>
+                  <span className="font-mono text-xs text-muted-foreground">{t.plan_offer ?? "—"}</span>
+                </TableCell>
+                <TableCell>
+                  <StatePill state={STATUS_PILL[meta.tone] ?? "off"}>{meta.label}</StatePill>
+                </TableCell>
+                <TableCell className="text-sm tabular-nums">
+                  {t.status === "trial" && days !== null
+                    ? days >= 0
+                      ? <span className={days <= 3 ? "text-[hsl(var(--warning))]" : ""}>{days}d</span>
+                      : <span className="text-[hsl(var(--destructive))]">lapsed</span>
+                    : <span className="text-muted-foreground">—</span>}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  <span className={t.seat_limit > 0 && t.member_count >= t.seat_limit ? "text-[hsl(var(--warning))]" : ""}>
+                    {t.member_count}/{t.seat_limit || "∞"}
+                  </span>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  <span className={t.customer_limit > 0 && t.customer_count >= t.customer_limit ? "text-[hsl(var(--warning))]" : ""}>
+                    {t.customer_count}/{t.customer_limit || "∞"}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  {health.level === "healthy" ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span className={`w-2 h-2 rounded-full ${HEALTH_DOT.healthy}`} /> Healthy
+                    </span>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center gap-1.5 text-xs">
+                          <span className={`w-2 h-2 rounded-full ${HEALTH_DOT[health.level]}`} />
+                          {health.level === "critical" ? "Critical" : "Watch"}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>{health.reasons.join(" · ")}</TooltipContent>
+                    </Tooltip>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </DataTableShell>
+      </TooltipProvider>
 
       <TenantDetailSheet
         tenant={selected}
@@ -303,43 +308,23 @@ export default function PlatformTenants() {
         onOpenChange={setSheetOpen}
         onChanged={load}
       />
-    </div>
+    </PageShell>
   );
 }
 
-function SortHead({
+function SortButton({
   label, k, sortKey, sortBy, align,
 }: {
   label: string; k: SortKey; sortKey: SortKey; sortBy: (k: SortKey) => void; align?: "right";
 }) {
   return (
-    <TableHead className={align === "right" ? "text-right" : ""}>
-      <button
-        type="button"
-        onClick={() => sortBy(k)}
-        className={`inline-flex items-center gap-1 hover:text-foreground transition-colors ${sortKey === k ? "text-foreground font-medium" : ""} ${align === "right" ? "flex-row-reverse" : ""}`}
-      >
-        {label}
-        <ArrowUpDown className="w-3 h-3 opacity-50" />
-      </button>
-    </TableHead>
-  );
-}
-
-function StatCard({
-  label, value, icon: Icon, tone,
-}: {
-  label: string; value: number; icon: typeof Building2; tone?: "warn";
-}) {
-  return (
-    <Card>
-      <CardContent className="p-4 flex items-center justify-between">
-        <div>
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
-          <div className={`text-2xl font-bold tabular-nums mt-1 ${tone === "warn" ? "text-amber-400" : ""}`}>{value}</div>
-        </div>
-        <Icon className={`w-5 h-5 ${tone === "warn" ? "text-amber-400" : "text-muted-foreground"}`} />
-      </CardContent>
-    </Card>
+    <button
+      type="button"
+      onClick={() => sortBy(k)}
+      className={`inline-flex items-center gap-1 hover:text-foreground transition-colors ${sortKey === k ? "text-foreground font-semibold" : ""} ${align === "right" ? "flex-row-reverse" : ""}`}
+    >
+      {label}
+      <ArrowUpDown className="w-3 h-3 opacity-50" />
+    </button>
   );
 }

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { TableCell, TableRow } from "@/components/ui/table";
+import {
+  PageShell, PageHeader, StatRow, StatTile, SectionCard, DataTableShell,
+  EmptyState, FilterChip, StatePill, type Column, type PillState,
+} from "@/components/ui/page";
 import {
   Search, Plus, Download, Users, Briefcase, Sparkles, Tag, Pencil, BanIcon,
   Star, Filter, Trash2,
@@ -86,6 +90,14 @@ const SEGMENTS: Segment[] = [
   { id: "churned", label: "Churned", description: "Churned lifecycle",
     match: (c) => c.lifecycle_stage === "client_churned" },
 ];
+
+// Retire the lifecycle rainbow: collapse the per-stage color soup into the
+// three semantic pill tones. Label still carries the exact stage name.
+function lifecyclePill(stage: string): PillState {
+  if (["client_active", "won", "client_funded"].includes(stage)) return "success";
+  if (stage === "client_churned") return "error";
+  return "pending";
+}
 
 export default function ContactsAdmin() {
   const navigate = useNavigate();
@@ -267,48 +279,70 @@ export default function ContactsAdmin() {
     }
   };
 
+  const columns: Column[] = [
+    {
+      key: "sel",
+      className: "w-8",
+      header: (
+        <Checkbox
+          checked={selected.size > 0 && selected.size === filtered.length}
+          onCheckedChange={toggleSelectAll}
+          aria-label="Select all"
+        />
+      ),
+    },
+    { key: "contact", header: "Contact" },
+    { key: "lifecycle", header: "Lifecycle" },
+    { key: "tags", header: "Tags" },
+    { key: "score", header: "Score", numeric: true },
+    { key: "deals", header: "Open deals", numeric: true },
+    { key: "coach", header: "Coach" },
+    { key: "touch", header: "Last touch" },
+    { key: "actions", header: "Actions", numeric: true },
+  ];
+
   return (
     <TooltipProvider delayDuration={250}>
-      <div className="space-y-4 pb-24">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Contacts</h1>
-            <p className="text-sm text-muted-foreground">
-              Your CRM contact book — segment, assign, edit, and push straight into the pipeline.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={exportCSV}>
-              <Download className="h-4 w-4 mr-1" /> Export {selected.size > 0 ? `(${selected.size})` : "CSV"}
-            </Button>
-            <Button size="sm" onClick={() => setNewOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" /> New contact
-            </Button>
-          </div>
-        </div>
+      <PageShell width="wide" className="pb-24">
+        <PageHeader
+          icon={Users}
+          title="Contacts"
+          description="Your CRM contact book — segment, assign, edit, and push straight into the pipeline."
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={exportCSV}>
+                <Download className="h-4 w-4 mr-1" /> Export {selected.size > 0 ? `(${selected.size})` : "CSV"}
+              </Button>
+              <Button variant="gold" size="sm" onClick={() => setNewOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" /> New contact
+              </Button>
+            </>
+          }
+        />
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard icon={Users} label="Total contacts" value={clients.length.toString()} />
-          <StatCard icon={Sparkles} label="Active leads (Lead → SQL)" value={stats.leads.toString()} />
-          <StatCard icon={Briefcase} label="Open deals" value={stats.totalOpenDeals.toString()} sub={formatMoney(stats.totalOpenValue)} />
-          <StatCard icon={Tag} label="Customers" value={stats.customers.toString()} />
-        </div>
+        <StatRow cols={4}>
+          <StatTile icon={Users} label="Total contacts" value={clients.length.toString()} />
+          <StatTile icon={Sparkles} label="Active leads (Lead → SQL)" value={stats.leads.toString()} />
+          <StatTile icon={Briefcase} label="Open deals" value={stats.totalOpenDeals.toString()} hint={formatMoney(stats.totalOpenValue)} />
+          <StatTile icon={Tag} label="Customers" value={stats.customers.toString()} />
+        </StatRow>
 
         {/* Smart segments */}
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-xs text-muted-foreground flex items-center gap-1 mr-1">
             <Filter className="h-3 w-3" /> Segments:
           </span>
-          <Chip active={!segment} onClick={() => setParam("segment", "")} label="All" />
+          <FilterChip active={!segment} onClick={() => setParam("segment", "")}>All</FilterChip>
           {SEGMENTS.map((s) => (
             <Tooltip key={s.id}>
               <TooltipTrigger asChild>
                 <span>
-                  <Chip
+                  <FilterChip
                     active={segment === s.id}
                     onClick={() => setParam("segment", segment === s.id ? "" : s.id)}
-                    label={s.label}
-                  />
+                  >
+                    {s.label}
+                  </FilterChip>
                 </span>
               </TooltipTrigger>
               <TooltipContent>{s.description}</TooltipContent>
@@ -316,204 +350,184 @@ export default function ContactsAdmin() {
           ))}
         </div>
 
-        <Card className="p-3 flex flex-wrap gap-2">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search name, email, business, tag…"
-              value={search}
-              onChange={(e) => setParam("q", e.target.value)}
-              className="pl-9"
-            />
+        <SectionCard padded={false} className="p-3">
+          <div className="flex flex-wrap gap-2">
+            <div className="relative flex-1 min-w-[220px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search name, email, business, tag…"
+                value={search}
+                onChange={(e) => setParam("q", e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={lifecycle} onValueChange={(v) => setParam("lifecycle", v)}>
+              <SelectTrigger className="w-[170px]"><SelectValue placeholder="Lifecycle" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All lifecycle stages</SelectItem>
+                {LIFECYCLE_STAGES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={coachFilter} onValueChange={(v) => setParam("coach", v)}>
+              <SelectTrigger className="w-[200px]"><SelectValue placeholder="Coach" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All coaches</SelectItem>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                {coaches.map((c) => (
+                  <SelectItem key={c.user_id} value={c.user_id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={tagFilter} onValueChange={(v) => setParam("tag", v)}>
+              <SelectTrigger className="w-[160px]"><SelectValue placeholder="Tag" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All tags</SelectItem>
+                {allTags.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={lifecycle} onValueChange={(v) => setParam("lifecycle", v)}>
-            <SelectTrigger className="w-[170px]"><SelectValue placeholder="Lifecycle" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All lifecycle stages</SelectItem>
-              {LIFECYCLE_STAGES.map((s) => (
-                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={coachFilter} onValueChange={(v) => setParam("coach", v)}>
-            <SelectTrigger className="w-[200px]"><SelectValue placeholder="Coach" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All coaches</SelectItem>
-              <SelectItem value="unassigned">Unassigned</SelectItem>
-              {coaches.map((c) => (
-                <SelectItem key={c.user_id} value={c.user_id}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={tagFilter} onValueChange={(v) => setParam("tag", v)}>
-            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Tag" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All tags</SelectItem>
-              {allTags.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </Card>
+        </SectionCard>
 
-        <Card className="overflow-hidden">
-          {loading ? (
-            <div className="p-8 text-center text-muted-foreground">Loading contacts…</div>
-          ) : filtered.length === 0 ? (
-            <div className="p-10 text-center">
-              <Users className="h-10 w-10 mx-auto text-muted-foreground/40 mb-2" />
-              <div className="font-medium">No contacts match your filters</div>
-              <div className="text-sm text-muted-foreground mb-4">
-                {clients.length === 0 ? "Add your first contact to get started." : "Try clearing filters or change your search."}
-              </div>
-              <Button size="sm" onClick={() => setNewOpen(true)}>
-                <Plus className="h-4 w-4 mr-1" /> New contact
-              </Button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-3 w-8">
-                      <Checkbox
-                        checked={selected.size > 0 && selected.size === filtered.length}
-                        onCheckedChange={toggleSelectAll}
-                        aria-label="Select all"
-                      />
-                    </th>
-                    <th className="px-4 py-3 text-left">Contact</th>
-                    <th className="px-4 py-3 text-left">Lifecycle</th>
-                    <th className="px-4 py-3 text-left">Tags</th>
-                    <th className="px-4 py-3 text-right">Score</th>
-                    <th className="px-4 py-3 text-right">Open deals</th>
-                    <th className="px-4 py-3 text-left">Coach</th>
-                    <th className="px-4 py-3 text-left">Last touch</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((c) => {
-                    const meta = lifecycleMeta(c.lifecycle_stage);
-                    const r = rollup[c.id];
-                    const name = `${c.first_name} ${c.last_name}`.trim() || c.email || "Unnamed";
-                    const isSel = selected.has(c.id);
-                    return (
-                      <tr key={c.id} className={`border-t border-border hover:bg-muted/30 ${isSel ? "bg-primary/5" : ""}`}>
-                        <td className="px-3 py-3">
-                          <Checkbox
-                            checked={isSel}
-                            onCheckedChange={() => toggleSelect(c.id)}
-                            aria-label={`Select ${name}`}
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <button className="text-left" onClick={() => navigate(`/admin/contacts/${c.id}`)}>
-                            <div className="font-medium flex items-center gap-2">
-                              {name}
-                              {c.do_not_contact && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <BanIcon className="h-3.5 w-3.5 text-red-600" />
-                                  </TooltipTrigger>
-                                  <TooltipContent>Do Not Contact</TooltipContent>
-                                </Tooltip>
-                              )}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {c.entity_name || "—"}{c.email ? ` · ${c.email}` : ""}
-                            </div>
-                          </button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Select value={c.lifecycle_stage || "new_lead"} onValueChange={(v) => updateLifecycle(c.id, v)}>
-                            <SelectTrigger className="h-8 w-[150px] border-0 bg-transparent p-0 focus:ring-0">
-                              <Badge variant="outline" className={`${meta.color} border-transparent`}>
-                                {meta.label}
-                              </Badge>
-                            </SelectTrigger>
-                            <SelectContent>
-                              {LIFECYCLE_STAGES.map((s) => (
-                                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1 max-w-[200px]">
-                            {(c.tags || []).slice(0, 3).map((t) => (
-                              <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
-                            ))}
-                            {(c.tags || []).length > 3 && (
-                              <span className="text-xs text-muted-foreground">+{(c.tags || []).length - 3}</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <LeadScore score={c.lead_score} />
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="font-medium">{r?.open_deals || 0}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {r?.open_value_cents ? formatMoney(r.open_value_cents) : "—"}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Select
-                            value={c.assigned_coach_user_id || "unassigned"}
-                            onValueChange={(v) => assignCoach(c.id, v === "unassigned" ? null : v)}
-                          >
-                            <SelectTrigger className="h-8 w-[170px]">
-                              <SelectValue>{coachName(c.assigned_coach_user_id)}</SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="unassigned">Unassigned</SelectItem>
-                              {coaches.map((co) => (
-                                <SelectItem key={co.user_id} value={co.user_id}>{co.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">
-                          {c.last_contacted_at ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span>{formatDistanceToNow(new Date(c.last_contacted_at), { addSuffix: true })}</span>
-                              </TooltipTrigger>
-                              <TooltipContent>{format(new Date(c.last_contacted_at), "PPpp")}</TooltipContent>
-                            </Tooltip>
-                          ) : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <Button variant="ghost" size="icon" onClick={() => setEditTarget(c)} aria-label="Edit contact">
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          {isAdmin && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => setDeleteTarget(c)}
-                                  aria-label="Delete contact"
-                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>Delete contact (admin)</TooltipContent>
-                            </Tooltip>
-                          )}
-                          <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/contacts/${c.id}`)}>
-                            Open
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
+        <DataTableShell
+          columns={columns}
+          loading={loading}
+          isEmpty={!loading && filtered.length === 0}
+          empty={
+            <EmptyState
+              icon={Users}
+              title="No contacts match your filters"
+              description={clients.length === 0
+                ? "Add your first contact to get started."
+                : "Try clearing filters or change your search."}
+              action={
+                <Button variant="gold" size="sm" onClick={() => setNewOpen(true)}>
+                  <Plus className="h-4 w-4 mr-1" /> New contact
+                </Button>
+              }
+            />
+          }
+        >
+          {filtered.map((c) => {
+            const meta = lifecycleMeta(c.lifecycle_stage);
+            const r = rollup[c.id];
+            const name = `${c.first_name} ${c.last_name}`.trim() || c.email || "Unnamed";
+            const isSel = selected.has(c.id);
+            return (
+              <TableRow key={c.id} className={isSel ? "bg-primary/5" : undefined}>
+                <TableCell>
+                  <Checkbox
+                    checked={isSel}
+                    onCheckedChange={() => toggleSelect(c.id)}
+                    aria-label={`Select ${name}`}
+                  />
+                </TableCell>
+                <TableCell>
+                  <button className="text-left" onClick={() => navigate(`/admin/contacts/${c.id}`)}>
+                    <div className="font-medium flex items-center gap-2">
+                      {name}
+                      {c.do_not_contact && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <BanIcon className="h-3.5 w-3.5 text-destructive" />
+                          </TooltipTrigger>
+                          <TooltipContent>Do Not Contact</TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {c.entity_name || "—"}{c.email ? ` · ${c.email}` : ""}
+                    </div>
+                  </button>
+                </TableCell>
+                <TableCell>
+                  <Select value={c.lifecycle_stage || "new_lead"} onValueChange={(v) => updateLifecycle(c.id, v)}>
+                    <SelectTrigger className="h-8 w-[150px] border-0 bg-transparent p-0 focus:ring-0">
+                      <StatePill state={lifecyclePill(c.lifecycle_stage || "new_lead")}>
+                        {meta.label}
+                      </StatePill>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LIFECYCLE_STAGES.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1 max-w-[200px]">
+                    {(c.tags || []).slice(0, 3).map((t) => (
+                      <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                    ))}
+                    {(c.tags || []).length > 3 && (
+                      <span className="text-xs text-muted-foreground">+{(c.tags || []).length - 3}</span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">
+                  <LeadScore score={c.lead_score} />
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="font-medium">{r?.open_deals || 0}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {r?.open_value_cents ? formatMoney(r.open_value_cents) : "—"}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Select
+                    value={c.assigned_coach_user_id || "unassigned"}
+                    onValueChange={(v) => assignCoach(c.id, v === "unassigned" ? null : v)}
+                  >
+                    <SelectTrigger className="h-8 w-[170px]">
+                      <SelectValue>{coachName(c.assigned_coach_user_id)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {coaches.map((co) => (
+                        <SelectItem key={co.user_id} value={co.user_id}>{co.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {c.last_contacted_at ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>{formatDistanceToNow(new Date(c.last_contacted_at), { addSuffix: true })}</span>
+                      </TooltipTrigger>
+                      <TooltipContent>{format(new Date(c.last_contacted_at), "PPpp")}</TooltipContent>
+                    </Tooltip>
+                  ) : "—"}
+                </TableCell>
+                <TableCell className="text-right whitespace-nowrap">
+                  <Button variant="ghost" size="icon" onClick={() => setEditTarget(c)} aria-label="Edit contact">
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  {isAdmin && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteTarget(c)}
+                          aria-label="Delete contact"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Delete contact (admin)</TooltipContent>
+                    </Tooltip>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/contacts/${c.id}`)}>
+                    Open
+                  </Button>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </DataTableShell>
 
         <BulkActionsBar
           selectedIds={Array.from(selected)}
@@ -581,56 +595,15 @@ export default function ContactsAdmin() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </div>
+      </PageShell>
     </TooltipProvider>
-  );
-}
-
-function Chip({
-  active, onClick, label, colorClass,
-}: { active: boolean; onClick: () => void; label: string; colorClass?: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-        active
-          ? "bg-primary text-primary-foreground border-primary"
-          : `border-border hover:bg-muted/50 ${colorClass || ""}`
-      }`}
-    >
-      {label}
-    </button>
   );
 }
 
 function LeadScore({ score }: { score: number | null }) {
   if (score == null) return <span className="text-xs text-muted-foreground">—</span>;
-  const color =
-    score >= 70 ? "bg-red-500/15 text-red-700 dark:text-red-300" :
-    score >= 40 ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" :
-    "bg-muted text-muted-foreground";
+  const state: PillState = score >= 70 ? "success" : score >= 40 ? "pending" : "off";
   return (
-    <Badge variant="outline" className={`${color} border-transparent gap-1`}>
-      <Star className="h-3 w-3" /> {score}
-    </Badge>
-  );
-}
-
-function StatCard({
-  icon: Icon, label, value, sub,
-}: { icon: any; label: string; value: string; sub?: string }) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-center gap-3">
-        <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-          <Icon className="h-4 w-4" />
-        </div>
-        <div className="min-w-0">
-          <div className="text-xs text-muted-foreground uppercase tracking-wider">{label}</div>
-          <div className="text-lg font-semibold">{value}</div>
-          {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
-        </div>
-      </div>
-    </Card>
+    <StatePill state={state} icon={<Star className="h-3 w-3" />}>{score}</StatePill>
   );
 }

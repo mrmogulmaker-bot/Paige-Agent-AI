@@ -4,7 +4,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  PageShell, PageHeader, StatRow, StatTile, SectionCard,
+  DataTableShell, EmptyState, StatePill, type PillState, type Column,
+} from "@/components/ui/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,9 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableRow } from "@/components/ui/table";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -73,6 +74,22 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   suspended: "destructive",
   declined: "outline",
 };
+
+const STATUS_PILL: Record<string, PillState> = {
+  approved: "success",
+  pending: "pending",
+  suspended: "error",
+  declined: "off",
+};
+
+const BROKER_COLUMNS: Column[] = [
+  { key: "business", header: "Business" },
+  { key: "type", header: "Type", className: "hidden md:table-cell" },
+  { key: "code", header: "Code", className: "hidden sm:table-cell" },
+  { key: "clients", header: "Clients", numeric: true, className: "hidden sm:table-cell" },
+  { key: "status", header: "Status" },
+  { key: "actions", header: "Actions", numeric: true },
+];
 
 const BROKER_TYPES = [
   { value: "credit_coach", label: "Credit Coach" },
@@ -228,55 +245,53 @@ const BrokersAdmin = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Brokers</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Approve applications, grant access, and manage broker accounts.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-md border bg-card">
-            <Switch
-              checked={autoApprove}
-              onCheckedChange={toggleAutoApprove}
-              disabled={autoApproveLoading}
-              id="auto-approve"
-            />
-            <Label htmlFor="auto-approve" className="text-xs cursor-pointer">
-              Auto-approve apps
-            </Label>
-          </div>
-          <Button onClick={() => setGrantOpen(true)} size="sm">
-            <UserPlus className="h-4 w-4 mr-1" /> Grant Broker Access
-          </Button>
-        </div>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        icon={Briefcase}
+        title="Brokers"
+        description="Approve applications, grant access, and manage broker accounts."
+        actions={
+          <>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-card">
+              <Switch
+                checked={autoApprove}
+                onCheckedChange={toggleAutoApprove}
+                disabled={autoApproveLoading}
+                id="auto-approve"
+              />
+              <Label htmlFor="auto-approve" className="text-xs cursor-pointer">
+                Auto-approve apps
+              </Label>
+            </div>
+            <Button onClick={() => setGrantOpen(true)} size="sm">
+              <UserPlus className="h-4 w-4 mr-1" /> Grant Broker Access
+            </Button>
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={Briefcase} label="Total applications" value={String(totals.total)} />
-        <StatCard
+      <StatRow cols={4}>
+        <StatTile icon={Briefcase} label="Total applications" value={String(totals.total)} />
+        <StatTile
           icon={AlertCircle}
           label="Pending review"
           value={String(totals.pending)}
-          sub={totals.pending > 0 ? "Awaiting your action" : "All caught up"}
+          hint={totals.pending > 0 ? "Awaiting your action" : "All caught up"}
         />
-        <StatCard icon={Users} label="Active brokers" value={String(totals.approved)} />
-        <StatCard
+        <StatTile icon={Users} label="Active brokers" value={String(totals.approved)} />
+        <StatTile
           icon={DollarSign}
           label="Broker MRR"
           value={totals.mrr.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}
-          sub="Active subscriptions"
+          hint="Active subscriptions"
         />
-      </div>
+      </StatRow>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">All brokers</CardTitle>
-          <CardDescription>Filter by business name, referral code, type, or status.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <SectionCard
+        title="All brokers"
+        description="Filter by business name, referral code, type, or status."
+      >
+        <div className="space-y-4">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -287,117 +302,102 @@ const BrokersAdmin = () => {
             />
           </div>
 
-          {loading ? (
-            <div className="space-y-2">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">No brokers match that filter.</p>
-          ) : (
-            <div className="overflow-x-auto -mx-3 sm:mx-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Business</TableHead>
-                    <TableHead className="hidden md:table-cell">Type</TableHead>
-                    <TableHead className="hidden sm:table-cell">Code</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">Clients</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((b) => (
-                    <TableRow
-                      key={b.id}
-                      className="cursor-pointer hover:bg-muted/40"
-                      onClick={() => setDetailBroker(b)}
-                    >
-                      <TableCell className="font-medium max-w-[180px] truncate">{b.business_name}</TableCell>
-                      <TableCell className="hidden md:table-cell text-sm capitalize text-muted-foreground">
-                        {b.broker_type.replace(/_/g, " ")}
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        {b.referral_code ? (
-                          <code className="text-xs font-mono bg-muted px-2 py-1 rounded">{b.referral_code}</code>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+          <DataTableShell
+            columns={BROKER_COLUMNS}
+            loading={loading}
+            isEmpty={filtered.length === 0}
+            empty={
+              <EmptyState
+                icon={Briefcase}
+                title="No brokers match that filter."
+                description="Adjust your search to find the broker you're after."
+              />
+            }
+          >
+            {filtered.map((b) => (
+              <TableRow
+                key={b.id}
+                className="cursor-pointer hover:bg-muted/40"
+                onClick={() => setDetailBroker(b)}
+              >
+                <TableCell className="font-medium max-w-[180px] truncate">{b.business_name}</TableCell>
+                <TableCell className="hidden md:table-cell text-sm capitalize text-muted-foreground">
+                  {b.broker_type.replace(/_/g, " ")}
+                </TableCell>
+                <TableCell className="hidden sm:table-cell">
+                  {b.referral_code ? (
+                    <code className="text-xs font-mono bg-muted px-2 py-1 rounded">{b.referral_code}</code>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right text-sm hidden sm:table-cell">
+                  {b.current_client_count}
+                </TableCell>
+                <TableCell>
+                  <StatePill state={STATUS_PILL[b.status] ?? "off"}>{b.status}</StatePill>
+                </TableCell>
+                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-end gap-1 flex-wrap">
+                    {b.status === "pending" && (
+                      <>
+                        <Button size="sm" variant="gold" onClick={() => onApprove(b)} disabled={busy}>
+                          <CheckCircle2 className="h-3.5 w-3.5 sm:mr-1" />
+                          <span className="hidden sm:inline">Approve</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDeclineTarget(b)}
+                          disabled={busy}
+                        >
+                          <XCircle className="h-3.5 w-3.5 sm:mr-1" />
+                          <span className="hidden sm:inline">Decline</span>
+                        </Button>
+                      </>
+                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="ghost">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setDetailBroker(b)}>
+                          View details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setEditTarget(b)}>
+                          <Pencil className="h-3.5 w-3.5 mr-2" /> Edit profile
+                        </DropdownMenuItem>
+                        {b.status === "approved" && (
+                          <DropdownMenuItem
+                            onClick={() => setStatusTarget({ broker: b, nextStatus: "suspended" })}
+                          >
+                            Suspend
+                          </DropdownMenuItem>
                         )}
-                      </TableCell>
-                      <TableCell className="text-right text-sm hidden sm:table-cell">
-                        {b.current_client_count}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={STATUS_VARIANT[b.status] ?? "outline"} className="capitalize">
-                          {b.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex justify-end gap-1 flex-wrap">
-                          {b.status === "pending" && (
-                            <>
-                              <Button size="sm" variant="default" onClick={() => onApprove(b)} disabled={busy}>
-                                <CheckCircle2 className="h-3.5 w-3.5 sm:mr-1" />
-                                <span className="hidden sm:inline">Approve</span>
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setDeclineTarget(b)}
-                                disabled={busy}
-                              >
-                                <XCircle className="h-3.5 w-3.5 sm:mr-1" />
-                                <span className="hidden sm:inline">Decline</span>
-                              </Button>
-                            </>
-                          )}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button size="sm" variant="ghost">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setDetailBroker(b)}>
-                                View details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setEditTarget(b)}>
-                                <Pencil className="h-3.5 w-3.5 mr-2" /> Edit profile
-                              </DropdownMenuItem>
-                              {b.status === "approved" && (
-                                <DropdownMenuItem
-                                  onClick={() => setStatusTarget({ broker: b, nextStatus: "suspended" })}
-                                >
-                                  Suspend
-                                </DropdownMenuItem>
-                              )}
-                              {(b.status === "suspended" || b.status === "declined") && (
-                                <DropdownMenuItem
-                                  onClick={() => setStatusTarget({ broker: b, nextStatus: "approved" })}
-                                >
-                                  Reinstate
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem asChild>
-                                <a href={`/broker/app`} target="_blank" rel="noreferrer">
-                                  <ExternalLink className="h-3.5 w-3.5 mr-2" /> Open Workspace
-                                </a>
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                        {(b.status === "suspended" || b.status === "declined") && (
+                          <DropdownMenuItem
+                            onClick={() => setStatusTarget({ broker: b, nextStatus: "approved" })}
+                          >
+                            Reinstate
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild>
+                          <a href={`/broker/app`} target="_blank" rel="noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5 mr-2" /> Open Workspace
+                          </a>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </DataTableShell>
+        </div>
+      </SectionCard>
 
       {/* Decline modal */}
       <Dialog open={!!declineTarget} onOpenChange={(o) => !o && setDeclineTarget(null)}>
@@ -499,27 +499,9 @@ const BrokersAdmin = () => {
           }}
         />
       )}
-    </div>
+    </PageShell>
   );
 };
-
-const StatCard = ({
-  icon: Icon, label, value, sub,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string; value: string; sub?: string;
-}) => (
-  <Card>
-    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-      <CardTitle className="text-sm font-medium">{label}</CardTitle>
-      <Icon className="h-4 w-4 text-muted-foreground" />
-    </CardHeader>
-    <CardContent>
-      <div className="text-2xl font-bold">{value}</div>
-      {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
-    </CardContent>
-  </Card>
-);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Grant Access Dialog
@@ -814,7 +796,7 @@ const BrokerDetailDialog = ({
           {broker.status === "pending" && (
             <>
               <Button variant="outline" onClick={onDecline}>Decline</Button>
-              <Button onClick={onApprove}>Approve</Button>
+              <Button variant="gold" onClick={onApprove}>Approve</Button>
             </>
           )}
           {broker.status === "approved" && (
