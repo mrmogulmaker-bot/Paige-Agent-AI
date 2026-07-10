@@ -49,7 +49,6 @@ const hubs: Hub[] = [
   // the God console's Automation hub, not here (§9).
   { label: "Your Paige", href: "/admin/playbook", icon: Bot, aliases: ["/admin/tenant-knowledge"] },
   { label: "Marketplace", href: "/admin/marketplace", icon: Store },
-  { label: "Client Agreement", href: "/admin/agreement", icon: FileSignature },
   {
     label: "Contacts",
     href: "/admin/contacts",
@@ -133,6 +132,9 @@ const hubs: Hub[] = [
 // route-level RoleGate enforcement in Admin.tsx.
 type MoreItem = HubChild & { adminOnly?: boolean };
 const moreNavItems: MoreItem[] = [
+  // Moved out of the top hub bar into More — a tenant sets its client service
+  // agreement once, so it's a setup surface, not a daily-driver tab.
+  { label: "Client Agreement", href: "/admin/agreement", icon: FileSignature },
   { label: "Coaches", href: "/admin/coaches", icon: UserCog },
   { label: "Members & Roles", href: "/admin/members", icon: UserCog, adminOnly: true },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
