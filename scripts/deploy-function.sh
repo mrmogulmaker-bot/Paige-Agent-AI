@@ -34,7 +34,7 @@ def walk(p):
     p=os.path.normpath(p)
     if p in seen or not os.path.exists(p): return
     seen.append(p)
-    for m in re.finditer(r'from\s+"([^"]+)"', open(p).read()):
+    for m in re.finditer(r"""from\s+['"]([^'"]+)['"]""", open(p).read()):
         imp=m.group(1)
         if imp.startswith('.'):
             walk(os.path.join(os.path.dirname(p), imp))
