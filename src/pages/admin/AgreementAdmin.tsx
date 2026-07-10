@@ -101,8 +101,9 @@ export default function AgreementAdmin() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Your agreement</CardTitle>
           <CardDescription>
-            Markdown-style headings (<code># Heading</code>) render as bold. Available placeholders,
-            substituted per client at signing: {PLACEHOLDERS.map((p) => <code key={p} className="mx-1">{p}</code>)}
+            Plain text — what you write is exactly what your client reads and signs. These placeholders
+            are filled in per client at signing: {PLACEHOLDERS.map((p) => <code key={p} className="mx-1">{p}</code>)}.
+            Any other <code>{"{{token}}"}</code> is left as-is.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

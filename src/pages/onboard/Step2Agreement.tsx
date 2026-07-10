@@ -124,10 +124,18 @@ export default function Step2Agreement() {
   const [agr, setAgr] = useState<
     { title: string; body: string; key: string; version: string; tenantName: string } | null
   >(null);
+  const [agrError, setAgrError] = useState(false);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     let cancelled = false;
-    supabase.rpc("get_client_service_agreement").then(({ data }) => {
+    supabase.rpc("get_client_service_agreement").then(({ data, error }) => {
       if (cancelled) return;
+      if (error) {
+        // Don't silently fall back to the platform default — signing the wrong
+        // contract is worse than a retry. Surface it.
+        setAgrError(true);
+        return;
+      }
       const row = Array.isArray(data) ? data[0] : data;
       const tenantName = (row as any)?.tenant_name || brand?.tenant_name || "your provider";
       const custom = (row as any)?.agreement_body as string | null;
@@ -154,6 +162,16 @@ export default function Step2Agreement() {
     });
   }, [agr, client, today]);
   const accent = brand?.primary_color || null;
+
+  // If the agreement fits without scrolling (short custom agreements, tall
+  // viewports), there's nothing to scroll — unlock signing immediately so the
+  // client isn't deadlocked behind a scroll event that never fires.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (el && agreementText && el.scrollHeight <= el.clientHeight + 4) {
+      setScrolledToEnd(true);
+    }
+  }, [agreementText]);
 
   const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -202,7 +220,18 @@ export default function Step2Agreement() {
         subtitle="Read the full agreement. Scroll to the end to unlock signing — this is the last step before your portal opens."
       />
       <div className="onboard-card p-6 sm:p-8 space-y-6">
-        <div className="agreement-body" onScroll={onScroll}>{agreementText || "Loading agreement…"}</div>
+        <div
+          ref={bodyRef}
+          className="agreement-body"
+          onScroll={onScroll}
+          tabIndex={0}
+          role="region"
+          aria-label="Agreement text — scroll to the end to enable signing"
+        >
+          {agrError
+            ? "We couldn't load your agreement. Please refresh the page and try again."
+            : agreementText || "Loading agreement…"}
+        </div>
 
         <div className={scrolledToEnd ? "space-y-5" : "space-y-5 opacity-60 pointer-events-none select-none"}>
           {!scrolledToEnd && (
