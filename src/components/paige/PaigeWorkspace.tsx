@@ -162,6 +162,21 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
     }
   };
 
+  const first = firstNameOf(focusedClient);
+
+  // Only Phase-1-capable actions (N1). "Draft a campaign" is draft prose only —
+  // no send/bulk tool is wired, so the copy frames it as a review-first draft.
+  // NOTE: this useMemo (like every hook) must run before the loading return
+  // below — a hook after a conditional return trips React #310 the moment
+  // loading flips.
+  const quickChips: QuickChip[] = useMemo(() => [
+    { label: "What needs my attention?", prompt: "What needs my attention right now across my customers?", autoSend: true },
+    { label: "Draft a follow-up", prompt: "Draft a follow-up I can review and send." },
+    { label: "Summarize this customer", prompt: `Summarize where ${first || "this customer"} stands and the next best move.`, visibleWhenFocused: true },
+    { label: "Move a deal forward", prompt: "Which deals are stuck, and what should I do to move one forward?" },
+    { label: "Draft a campaign", prompt: "Draft a campaign to my segment — I'll review before anything sends." },
+  ], [first]);
+
   if (loading || !pb) {
     return (
       <div className="flex items-center gap-3 text-muted-foreground p-8 justify-center">
@@ -179,18 +194,6 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
     portal: pb.portal.modules.length,
     knowledgeDocs: counts.docs,
   };
-
-  const first = firstNameOf(focusedClient);
-
-  // Only Phase-1-capable actions (N1). "Draft a campaign" is draft prose only —
-  // no send/bulk tool is wired, so the copy frames it as a review-first draft.
-  const quickChips: QuickChip[] = useMemo(() => [
-    { label: "What needs my attention?", prompt: "What needs my attention right now across my customers?", autoSend: true },
-    { label: "Draft a follow-up", prompt: "Draft a follow-up I can review and send." },
-    { label: "Summarize this customer", prompt: `Summarize where ${first || "this customer"} stands and the next best move.`, visibleWhenFocused: true },
-    { label: "Move a deal forward", prompt: "Which deals are stuck, and what should I do to move one forward?" },
-    { label: "Draft a campaign", prompt: "Draft a campaign to my segment — I'll review before anything sends." },
-  ], [first]);
 
   const railProps = {
     focused: focusedClient,
