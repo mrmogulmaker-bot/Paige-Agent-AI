@@ -1,8 +1,8 @@
-// Ingest a tenant-private knowledge doc: chunk it, embed via Lovable AI
-// Gateway (Voyage voyage-3, 1024-dim), and write to
-// tenant_knowledge_docs + tenant_knowledge_chunks. Tenant-scoped via RLS on
-// the caller's JWT — the row's tenant_id is derived from the caller, not
-// trusted from the client payload.
+// Ingest a tenant-private knowledge doc: chunk it, embed via Voyage voyage-3
+// (1024-dim) through embeddingsCompat, and write to tenant_knowledge_docs +
+// tenant_knowledge_chunks. Tenant-scoped via RLS on the caller's JWT — the
+// row's tenant_id is derived from the caller, not trusted from the client
+// payload.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -42,11 +42,11 @@ function chunkText(text: string): string[] {
   return out;
 }
 
-async function embed(text: string, apiKey: string): Promise<number[]> {
+async function embed(text: string): Promise<number[]> {
   const r = await embeddingsCompat("voyage", {
     method: "POST",
-    headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "google/gemini-embedding-001", input: text }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ input: text }),
   });
   if (!r.ok) throw new Error(`embed ${r.status}: ${await r.text()}`);
   const j = await r.json();
@@ -131,19 +131,11 @@ serve(async (req) => {
       });
     }
 
-    const apiKey = "unused";
-    if (!apiKey) {
-      return new Response(JSON.stringify({
-        ok: true, doc_id: doc.id, chunk_count: chunks.length,
-        warning: "LOVABLE_API_KEY missing — doc stored but not embedded.",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    // Embed chunks sequentially (gateway shares the rate-limit bucket with chat).
+    // Embed chunks sequentially (shares the embedding rate-limit bucket with chat).
     const rows: Record<string, unknown>[] = [];
     for (let i = 0; i < chunks.length; i++) {
       try {
-        const vec = await embed(chunks[i], apiKey);
+        const vec = await embed(chunks[i]);
         rows.push({
           tenant_id: doc.tenant_id,
           doc_id: doc.id,
