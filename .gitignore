@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code local session state (settings + agent worktrees) — never commit
+.claude/
