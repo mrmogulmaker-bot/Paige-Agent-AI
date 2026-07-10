@@ -61,6 +61,7 @@ const Onboarding = lazyWithReload(() => import("./pages/Onboarding"));
 const SignupCoachQualify = lazyWithReload(() => import("./pages/SignupCoachQualify"));
 const McpAuthorize = lazyWithReload(() => import("./pages/McpAuthorize"));
 const JoinWorkspace = lazyWithReload(() => import("./pages/JoinWorkspace"));
+const PortalGateway = lazyWithReload(() => import("./pages/PortalGateway"));
 const TenantStorefront = lazyWithReload(() => import("./pages/public/TenantStorefront"));
 const GrowthPageRenderer = lazyWithReload(() => import("./pages/public/GrowthPageRenderer"));
 const GrowthFormRenderer = lazyWithReload(() => import("./pages/public/GrowthFormRenderer"));
@@ -186,6 +187,7 @@ const App = () => (
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
             <Route path="/accept-invite" element={<PageSuspense><AcceptInvite /></PageSuspense>} />
             <Route path="/join/:token" element={<PageSuspense><JoinWorkspace /></PageSuspense>} />
+            <Route path="/portal/:tenantSlug" element={<PageSuspense><PortalGateway /></PageSuspense>} />
             <Route path="/mcp/authorize" element={<PageSuspense><McpAuthorize /></PageSuspense>} />
             <Route path="/auth/google-calendar/callback" element={<PageSuspense><GoogleCalendarCallback /></PageSuspense>} />
 

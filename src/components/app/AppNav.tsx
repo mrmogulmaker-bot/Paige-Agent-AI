@@ -16,7 +16,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
-import { performSignOut } from "@/lib/auth/signOut";
+import { performSignOut, customerSignOutTarget } from "@/lib/auth/signOut";
 import { useUnreadSupportCount } from "@/hooks/useUnreadSupportCount";
 import { usePlaybook } from "@/lib/playbook";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
@@ -70,7 +70,9 @@ export function AppNav({ user }: AppNavProps) {
     if (isSigningOut) return;
     setMobileMenuOpen(false);
     setIsSigningOut(true);
-    await performSignOut("/");
+    // Customers land back on their coach's branded gateway; staff exit to root.
+    const target = await customerSignOutTarget("/");
+    await performSignOut(target);
   };
 
   if (isMobile) {

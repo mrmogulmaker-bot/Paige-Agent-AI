@@ -1,6 +1,24 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
+/**
+ * Resolve where a user should land AFTER sign-out. A tenant's customer returns
+ * to their coach's branded gateway (/portal/:slug) — never the Paige platform
+ * page (§9). get_client_portal_brand returns a row ONLY for a linked customer,
+ * so staff/operators (no row) fall through to `fallback`. Must be called while
+ * still authenticated (before performSignOut). Never throws.
+ */
+export async function customerSignOutTarget(fallback = "/"): Promise<string> {
+  try {
+    const { data } = await supabase.rpc("get_client_portal_brand");
+    const row = Array.isArray(data) ? data[0] : data;
+    const slug = (row as { tenant_slug?: string } | null)?.tenant_slug;
+    return slug ? `/portal/${encodeURIComponent(slug)}` : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 const AUTH_STORAGE_KEY_PATTERNS = [
   /^sb-.*-auth-token$/i,
   /^supabase\.auth/i,

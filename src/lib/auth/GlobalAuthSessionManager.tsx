@@ -20,6 +20,8 @@ function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_ROUTES.has(pathname)) return true;
   // Allow public marketing/affiliate landing variants
   if (pathname.startsWith("/affiliates/")) return true;
+  // Tenant-branded customer portal gateway (signed-out landing / log back in).
+  if (pathname.startsWith("/portal/")) return true;
   return false;
 }
 
