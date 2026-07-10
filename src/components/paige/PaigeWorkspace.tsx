@@ -2,21 +2,48 @@
 // always-visible vitals strip, with a wide right-side "Customize Paige" console.
 // Owns the Playbook edit lifecycle (pb / lastSavedPb / dirty / saving) and the
 // one honest Save for the whole object; Knowledge commits per-doc on its own.
-import { useEffect, useState } from "react";
-import { Loader2, Sparkles, GraduationCap, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Loader2, Sparkles, GraduationCap, X, UserCircle2, SlidersHorizontal } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { resolveActivePlaybook } from "@/lib/playbook/resolve";
 import { PLAYBOOK_LIBRARY } from "@/lib/playbook/presets";
 import type { Playbook } from "@/lib/playbook/types";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 import { PaigeWorkspaceProvider, usePaigeWorkspace } from "./PaigeWorkspaceContext";
-import { PaigeVitalsStrip } from "./PaigeVitalsStrip";
+import { PaigeCommandBar } from "./PaigeCommandBar";
+import { PaigeSidebar } from "./PaigeSidebar";
+import { PaigeRailSheet } from "./PaigeRailSheet";
 import { PaigeConsole } from "./PaigeConsole";
 import type { ConsoleSection, RailCounts } from "./PaigeConsoleRail";
+import type { FocusedClient, QuickChip } from "./commandCenterTypes";
+import { buildFocusProse, firstNameOf } from "./commandCenterTypes";
+
+/** Sticky strip above the chat message list — mirrors the rail mini-card. */
+function FocusBanner({ client, onClear }: { client: FocusedClient; onClear: () => void }) {
+  const first = firstNameOf(client);
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-accent/30 bg-accent/[0.05] px-3 py-1.5 text-sm m-3 mb-0">
+      <span className="h-2 w-2 rounded-full bg-gradient-gold shrink-0" />
+      <span className="min-w-0 truncate">
+        Focused on {first} — Paige is focused on their account.
+      </span>
+      <button
+        type="button"
+        onClick={onClear}
+        className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
+      >
+        Clear
+      </button>
+    </div>
+  );
+}
 
 const slugify = (s: string) =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "field";
@@ -36,6 +63,7 @@ const uniqueKeyed = <T extends Record<string, unknown>>(items: T[], field: "key"
 function WorkspaceBody({ tenantName }: { tenantName: string }) {
   const { activeTenantId } = useTenantContext();
   const { counts, subscribeKnowledgeAdded } = usePaigeWorkspace();
+  const isMobile = useIsMobile();
 
   const [pb, setPb] = useState<Playbook | null>(null);
   const [lastSavedPb, setLastSavedPb] = useState<Playbook | null>(null);
@@ -44,6 +72,17 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
   const [justSaved, setJustSaved] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [section, setSection] = useState<ConsoleSection>("persona");
+
+  // Command-center focus state (cc-spec §2). Held here so the chat focus banner
+  // and the rail mini-card never disagree.
+  const [focusedClient, setFocusedClient] = useState<FocusedClient | null>(null);
+  const [railOpen, setRailOpen] = useState(false);
+  const clearFocus = () => setFocusedClient(null);
+  const focusProse = useMemo(() => buildFocusProse(focusedClient), [focusedClient]);
+
+  // Tenant-wide approvals — the single source for BOTH the command-bar momentum
+  // count (never rescoped — B3) and the feed's cross-scope math.
+  const { items: tenantApprovals, loading: approvalsLoading } = usePendingApprovals({ scope: "all" });
 
   // "She got smarter" tie-back: banner above the composer + vitals chip pulse.
   const [banner, setBanner] = useState<string | null>(null);
@@ -141,47 +180,119 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
     knowledgeDocs: counts.docs,
   };
 
+  const first = firstNameOf(focusedClient);
+
+  // Only Phase-1-capable actions (N1). "Draft a campaign" is draft prose only —
+  // no send/bulk tool is wired, so the copy frames it as a review-first draft.
+  const quickChips: QuickChip[] = useMemo(() => [
+    { label: "What needs my attention?", prompt: "What needs my attention right now across my customers?", autoSend: true },
+    { label: "Draft a follow-up", prompt: "Draft a follow-up I can review and send." },
+    { label: "Summarize this customer", prompt: `Summarize where ${first || "this customer"} stands and the next best move.`, visibleWhenFocused: true },
+    { label: "Move a deal forward", prompt: "Which deals are stuck, and what should I do to move one forward?" },
+    { label: "Draft a campaign", prompt: "Draft a campaign to my segment — I'll review before anything sends." },
+  ], [first]);
+
+  const railProps = {
+    focused: focusedClient,
+    onFocus: setFocusedClient,
+    onClear: clearFocus,
+    onCustomize: () => openConsole("persona"),
+    approvals: tenantApprovals,
+    approvalsLoading,
+  };
+
   return (
     <div className="flex flex-col h-full min-h-[34rem] -mx-3 sm:-mx-4 md:-mx-6 -my-3 sm:-my-4 md:-my-6">
-      <PaigeVitalsStrip
+      <PaigeCommandBar
         pb={pb}
         tenantName={tenantName}
         counts={counts}
         knowledgePulse={chipPulse}
+        pending={tenantApprovals.length}
         onOpen={openConsole}
       />
 
-      {/* Chat column */}
-      <div className="flex-1 min-h-0 flex flex-col">
-        {/* Slim action bar: the "she got smarter" banner + a second door into Knowledge. */}
-        <div className="w-full max-w-4xl mx-auto px-3 md:px-0 pt-3 flex items-center gap-2">
-          {banner ? (
-            <div className="flex-1 min-w-0 flex items-center gap-2 rounded-md border border-accent/40 bg-accent/5 px-3 py-1.5 text-sm">
-              <span className="h-1.5 w-1.5 rounded-full bg-gradient-gold shrink-0" />
-              <span className="truncate">{banner}</span>
-              <button
-                type="button"
-                onClick={() => setBanner(null)}
-                className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
-                aria-label="Dismiss"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ) : (
-            <p className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
-              Talk to {pb.persona.name?.trim() || "Paige"} below — or teach her something new.
-            </p>
-          )}
-          <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground hover:text-foreground" onClick={() => openConsole("knowledge")}>
-            <GraduationCap className="w-4 h-4 mr-1.5" /> Teach Paige something
-          </Button>
-        </div>
+      {/* Two regions: dominant chat (left) + standing rail (right, desktop). */}
+      <div className="flex-1 min-h-0 flex">
+        <section className="flex-1 min-w-0 flex flex-col">
+          {/* Slim action bar: "she got smarter" banner + a second door into Knowledge. */}
+          <div className="w-full px-3 pt-3 flex items-center gap-2">
+            {banner ? (
+              <div className="flex-1 min-w-0 flex items-center gap-2 rounded-md border border-accent/40 bg-accent/5 px-3 py-1.5 text-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-gradient-gold shrink-0" />
+                <span className="truncate">{banner}</span>
+                <button
+                  type="button"
+                  onClick={() => setBanner(null)}
+                  className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
+                  aria-label="Dismiss"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <p className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
+                Talk to {pb.persona.name?.trim() || "Paige"} below — or teach her something new.
+              </p>
+            )}
+            <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground hover:text-foreground" onClick={() => openConsole("knowledge")}>
+              <GraduationCap className="w-4 h-4 mr-1.5" /> Teach Paige something
+            </Button>
+          </div>
 
-        <div className="flex-1 min-h-0 w-full">
-          <PaigeAIChat hideHeader />
-        </div>
+          <div className="flex-1 min-h-0 w-full">
+            <PaigeAIChat
+              hideHeader
+              fill
+              clientId={focusedClient?.id ?? null}
+              clientContext={focusProse}
+              focusBanner={focusedClient ? <FocusBanner client={focusedClient} onClear={clearFocus} /> : undefined}
+              chips={quickChips}
+            />
+          </div>
+        </section>
+
+        {!isMobile && (
+          <aside className="flex w-[360px] lg:w-[380px] shrink-0 flex-col border-l bg-primary/[0.055] shadow-[inset_1px_0_0_hsl(var(--border))]">
+            <PaigeSidebar {...railProps} />
+          </aside>
+        )}
       </div>
+
+      {/* Mobile dock — in-flow (not fixed), above nothing it can overlap (S5). */}
+      <div className="md:hidden shrink-0 flex items-center gap-2 border-t bg-primary/[0.04] px-3 py-2">
+        <button
+          type="button"
+          onClick={() => setRailOpen(true)}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2 rounded-md border px-3 py-2 text-sm",
+            focusedClient ? "border-accent/40" : "",
+          )}
+        >
+          <UserCircle2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="truncate">{focusedClient ? focusedClient.name : "Select customer"}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setRailOpen(true)}
+          aria-label={`${tenantApprovals.length} waiting`}
+          className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-2 text-sm shrink-0"
+        >
+          <span className={cn("h-2 w-2 rounded-full", tenantApprovals.length > 0 ? "bg-gradient-gold" : "bg-muted-foreground/40")} />
+          <span className="tabular-nums">{tenantApprovals.length > 0 ? `${tenantApprovals.length} waiting` : "All clear"}</span>
+        </button>
+        <Button
+          onClick={() => openConsole("persona")}
+          size="icon"
+          variant="outline"
+          className="shrink-0 border-accent/50 text-accent hover:bg-accent/10"
+          aria-label="Customize Paige"
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {isMobile && <PaigeRailSheet open={railOpen} onOpenChange={setRailOpen} {...railProps} />}
 
       <PaigeConsole
         open={consoleOpen}

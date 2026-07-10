@@ -457,4 +457,33 @@ All colors MUST be HSL.
   @media (prefers-reduced-motion: reduce) {
     .text-shimmer-purple { animation: none; }
   }
+
+  /* ── "Your Paige" Command Center motion budget (cc-spec §4) ──
+     Exactly two motions + one ambient. All disabled under reduced-motion. */
+
+  /* Ambient: the "Live desk" dot slow breathe. */
+  @keyframes cc-breathe {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.35; }
+  }
+  .cc-breathe { animation: cc-breathe 2s ease-in-out infinite; }
+
+  /* Motion #1: count-increase pulse — one soft gold ring, ~700ms, once. */
+  @keyframes cc-count-pulse {
+    0%   { box-shadow: 0 0 0 0 hsl(var(--accent) / 0.55); }
+    100% { box-shadow: 0 0 0 7px hsl(var(--accent) / 0); }
+  }
+  .cc-count-pulse { animation: cc-count-pulse 700ms ease-out 1; }
+
+  /* Motion #2: the satisfying approve — row collapses 1fr → 0fr, fades. */
+  .cc-collapse { display: grid; grid-template-rows: 1fr; opacity: 1;
+    transition: grid-template-rows 220ms ease, opacity 220ms ease; }
+  .cc-collapse > * { overflow: hidden; min-height: 0; }
+  .cc-collapse.cc-collapsing { grid-template-rows: 0fr; opacity: 0; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cc-breathe { animation: none; }
+    .cc-count-pulse { animation: none; }
+    .cc-collapse { transition: none; }
+  }
 }

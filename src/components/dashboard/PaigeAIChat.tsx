@@ -17,10 +17,34 @@ import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } f
 import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
 import { extractEntityDiagram } from "@/lib/entityDiagram";
 import { usePlaybook } from "@/lib/playbook";
+import type { QuickChip } from "@/components/paige/commandCenterTypes";
 
 type Message = { role: "user" | "assistant"; content: string };
 
-const PaigeAIChatInner = ({ hideHeader = false }: { hideHeader?: boolean }) => {
+// Optional, back-compatible props (cc-spec §3). Legacy mounts (Dashboard) pass
+// none of these and behave exactly as before.
+export interface PaigeAIChatProps {
+  hideHeader?: boolean;
+  /** Command-center mode: fill the region, drop the max-w-4xl centering. */
+  fill?: boolean;
+  /** Focused customer id — added to the chat POST body so Paige acts on them. */
+  clientId?: string | null;
+  /** Prose describing the focused customer — added to the chat POST body. */
+  clientContext?: string;
+  /** Sticky strip above the message list, shown only when a customer is focused. */
+  focusBanner?: React.ReactNode;
+  /** Quick-action chips above the composer. */
+  chips?: QuickChip[];
+}
+
+const PaigeAIChatInner = ({
+  hideHeader = false,
+  fill = false,
+  clientId = null,
+  clientContext,
+  focusBanner,
+  chips,
+}: PaigeAIChatProps) => {
   // The tenant's authored persona names the assistant in the default header —
   // audience-broad, voice-compliant, never a hardcoded vertical (doctrine §2/§3).
   const playbook = usePlaybook();
@@ -49,6 +73,7 @@ const PaigeAIChatInner = ({ hideHeader = false }: { hideHeader?: boolean }) => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const location = useLocation();
   const currentPageName = getCurrentPageName(location.pathname);
@@ -197,10 +222,22 @@ const PaigeAIChatInner = ({ hideHeader = false }: { hideHeader?: boolean }) => {
 
 
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  // Chip click: prefill the composer + focus so the operator can edit before
+  // Paige acts (cc-spec §3). Only chips flagged autoSend dispatch immediately.
+  const handleChip = (chip: QuickChip) => {
+    if (chip.autoSend) {
+      void handleSend(chip.prompt);
+      return;
+    }
+    setInput(chip.prompt);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
 
-    const userMessage: Message = { role: "user", content: input };
+  const handleSend = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
+    if (!text || isLoading) return;
+
+    const userMessage: Message = { role: "user", content: text };
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput("");
@@ -228,7 +265,7 @@ const PaigeAIChatInner = ({ hideHeader = false }: { hideHeader?: boolean }) => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ messages: newMessages, ...getUserClock() }),
+          body: JSON.stringify({ messages: newMessages, ...(clientId ? { clientId } : {}), ...(clientContext ? { clientContext } : {}), ...getUserClock() }),
         }
       );
 
@@ -310,8 +347,10 @@ const PaigeAIChatInner = ({ hideHeader = false }: { hideHeader?: boolean }) => {
     };
   }, []); // cleanup only on unmount
 
+  const visibleChips = (chips ?? []).filter((c) => !c.visibleWhenFocused || !!clientId);
+
   return (
-    <div className={`max-w-4xl mx-auto w-full ${hideHeader ? "h-full" : "h-[calc(100vh-4rem)]"}`}>
+    <div className={fill ? "w-full h-full" : `max-w-4xl mx-auto w-full ${hideHeader ? "h-full" : "h-[calc(100vh-4rem)]"}`}>
       <div className="flex flex-col h-full">
         {!hideHeader && (
           <div className="mb-6">
@@ -325,6 +364,7 @@ const PaigeAIChatInner = ({ hideHeader = false }: { hideHeader?: boolean }) => {
         )}
 
         <Card className="flex-1 flex flex-col bg-card border-border shadow-card overflow-hidden">
+          {focusBanner}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4">
             {messages.map((message, index) => (
               <div
@@ -374,6 +414,21 @@ const PaigeAIChatInner = ({ hideHeader = false }: { hideHeader?: boolean }) => {
           </div>
 
           <div className="border-t border-border p-4 space-y-3">
+            {visibleChips.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pb-0.5 -mb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {visibleChips.map((chip) => (
+                  <button
+                    key={chip.label}
+                    type="button"
+                    onClick={() => handleChip(chip)}
+                    disabled={isLoading || conversation.status === "connected"}
+                    className="shrink-0 rounded-full border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {conversation.status === "connected" && (
               <div className="flex items-center justify-center gap-2 text-sm">
                 {conversation.isSpeaking ? (
@@ -389,6 +444,7 @@ const PaigeAIChatInner = ({ hideHeader = false }: { hideHeader?: boolean }) => {
             
             <div className="flex gap-2">
               <Input
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleSend()}
@@ -397,7 +453,7 @@ const PaigeAIChatInner = ({ hideHeader = false }: { hideHeader?: boolean }) => {
                 disabled={isLoading || conversation.status === "connected"}
               />
               <Button 
-                onClick={handleSend} 
+                onClick={() => handleSend()}
                 disabled={isLoading || !input.trim() || conversation.status === "connected"}
                 className="bg-gradient-gold hover:opacity-90"
                 size="icon"
@@ -441,8 +497,8 @@ const PaigeAIChatInner = ({ hideHeader = false }: { hideHeader?: boolean }) => {
   );
 };
 
-export const PaigeAIChat = ({ hideHeader = false }: { hideHeader?: boolean } = {}) => (
+export const PaigeAIChat = (props: PaigeAIChatProps = {}) => (
   <ConversationProvider>
-    <PaigeAIChatInner hideHeader={hideHeader} />
+    <PaigeAIChatInner {...props} />
   </ConversationProvider>
 );
