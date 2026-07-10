@@ -201,3 +201,38 @@ must leave the door open for it.**
   dead end.
 - This serves §7 (Paige is the intelligent portal) and §8 (Paige orchestrates the
   teams): the moat is that she can **operate** the platform, not just answer about it.
+
+## 11. World-class is the floor, not the ceiling — premium on every surface.
+
+**Directive (owner: Antonio, 2026-07-10):** the premium design standard set by the
+Marketplace redesign and the shared primitive layer is now the **baseline for
+everything we build — "this kind of standard for everything, and better."** No surface
+ships looking like generic admin CRUD again. Every new or touched page is held to the
+best-in-class bar; when in doubt, raise it.
+
+- **Build on the primitive layer.** Use `@/components/ui/page`
+  (`PageShell` · `PageHeader` · `SectionCard` · `StatTile`/`StatRow` ·
+  `DataTableShell` · `EmptyState` · `Toolbar`/`FilterChip` · `StatePill` ·
+  `GlyphPlate`). Do **not** hand-roll headers, KPI tiles, tables, or empty states on
+  raw shadcn `Card`. If a primitive is missing, add it to the layer — don't fork a
+  one-off. The Marketplace (`SkillCard` + hero masthead) is the reference bar.
+- **Gold discipline (§6), enforced.** Gold is spent **only** on the act/approve/on
+  moment (`Button variant="gold"`, `StatePill state="on"`) — never a resting border,
+  decorative icon, avatar tint, selected row, or focus ring (rings are indigo `--ring`).
+  Gold-as-text uses `--gold-dark`; gold-as-fill pairs `--accent-foreground`.
+- **Token-only, theme-aware, accessible, motion-safe.** Zero hardcoded hex in shipped
+  UI; semantic status via `--success`/`--warning`/`--destructive`; AA contrast in light
+  **and** dark; every animation guarded by `useReducedMotion`.
+- **No amateur tells.** No scroll-walls (collapse to tabs/rails/accordions, §67); no
+  raw `<pre>`/JSON dumps as product UI; no bare "Loading…"/`return null` blanks (use
+  skeletons + crafted `EmptyState`); no native `<select>`/`<input type=checkbox>`; no
+  backend table/function names, internal jargon (`MMA OS`, `n8n`, `§NN`, secret var
+  names, "once Antonio approves"), or owner PII in visible copy (§3).
+- **The design crew is mandatory on design work (§1/§5).** Every page/surface carries a
+  **design engineer** (builds to the primitives), an **adversarial verifier** (hunts
+  gold misuse, contrast, broken states, jargon, regressions), and a **compliance
+  officer** (judges it against best-in-class + §2/§3/§6/§9). The integrator fixes
+  blocking findings before merge. This pass is non-negotiable — it has already caught
+  render bugs that would otherwise have shipped.
+- **The test, every time:** *"Would the owner call this world-class, and does it read as
+  one continuous system with the rest of the platform?"* If not, it isn't done.
