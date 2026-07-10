@@ -12,6 +12,7 @@ import { Deal, Pipeline, PipelineStage, formatMoney, logDealActivity } from "@/l
 import { useTenantOffers } from "@/hooks/useTenantOffers";
 import { NewDealDialog } from "@/components/admin/pipeline/NewDealDialog";
 import { DealDrawer } from "@/components/admin/pipeline/DealDrawer";
+import { PageShell, PageHeader, StatRow, StatTile, Toolbar, EmptyState } from "@/components/ui/page";
 
 export default function PipelineAdmin() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -115,42 +116,56 @@ export default function PipelineAdmin() {
 
   if (!pipelines.length) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3">
-        <p className="text-muted-foreground">No pipelines yet.</p>
-        <Button asChild><Link to="/admin/settings/pipelines">Create your first pipeline</Link></Button>
-      </div>
+      <PageShell width="wide">
+        <PageHeader
+          title="Pipeline"
+          description="Drag deals across stages. Click a card for full context."
+          icon={TrendingUp}
+        />
+        <EmptyState
+          icon={TrendingUp}
+          title="No pipelines yet"
+          description="Set up your first pipeline and start moving deals toward the close."
+          action={
+            <Button asChild variant="gold">
+              <Link to="/admin/settings/pipelines">Create your first pipeline</Link>
+            </Button>
+          }
+        />
+      </PageShell>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3 justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl sm:text-3xl font-bold">Pipeline</h1>
-          <p className="text-sm text-muted-foreground">Drag deals across stages. Click a card for full context.</p>
-        </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <Select value={activePipelineId} onValueChange={setActivePipelineId}>
-            <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {pipelines.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}{p.is_default ? " · default" : ""}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button asChild variant="outline" size="sm"><Link to="/admin/settings/pipelines"><Settings className="w-4 h-4 mr-1" /> Configure</Link></Button>
-          <Button size="sm" onClick={() => { setNewStage(null); setShowNew(true); }}><Plus className="w-4 h-4 mr-1" /> New Deal</Button>
-        </div>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        title="Pipeline"
+        description="Drag deals across stages. Click a card for full context."
+        icon={TrendingUp}
+        actions={
+          <>
+            <Select value={activePipelineId} onValueChange={setActivePipelineId}>
+              <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {pipelines.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}{p.is_default ? " · default" : ""}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button asChild variant="outline" size="sm"><Link to="/admin/settings/pipelines"><Settings className="w-4 h-4 mr-1" /> Configure</Link></Button>
+            <Button variant="gold" size="sm" onClick={() => { setNewStage(null); setShowNew(true); }}><Plus className="w-4 h-4 mr-1" /> New Deal</Button>
+          </>
+        }
+      />
 
       {/* Stats bar */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <StatRow cols={4}>
         <StatTile label="Open deals" value={String(stats.openCount)} />
         <StatTile label="Open pipeline value" value={formatMoney(stats.openValue)} />
-        <StatTile label="Weighted forecast" value={formatMoney(stats.weighted)} icon={<TrendingUp className="w-3.5 h-3.5" />} />
+        <StatTile label="Weighted forecast" value={formatMoney(stats.weighted)} icon={TrendingUp} />
         <StatTile label="Won this month" value={`${stats.wonCount} · ${formatMoney(stats.wonValue)}`} />
-      </div>
+      </StatRow>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 items-center">
+      <Toolbar>
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Search deals or contacts…" className="pl-8 h-9" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -163,7 +178,7 @@ export default function PipelineAdmin() {
             {coaches.map((c) => <SelectItem key={c.user_id} value={c.user_id}>{c.name}</SelectItem>)}
           </SelectContent>
         </Select>
-      </div>
+      </Toolbar>
 
       {/* Board */}
       <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1">
@@ -197,7 +212,7 @@ export default function PipelineAdmin() {
                       draggable
                       onDragStart={(e) => onDragStart(e, d.id)}
                       onClick={() => setSelectedDeal(d)}
-                      className="p-3 cursor-grab active:cursor-grabbing hover:border-accent transition-colors"
+                      className="p-3 cursor-grab active:cursor-grabbing hover:border-primary transition-colors"
                     >
                       <div className="font-medium text-sm line-clamp-2">{d.title}</div>
                       {c && <div className="text-xs text-muted-foreground truncate mt-0.5">{c.name}{c.entity ? ` · ${c.entity}` : ""}</div>}
@@ -218,7 +233,7 @@ export default function PipelineAdmin() {
                 })}
                 <button
                   onClick={() => { setNewStage(stage.id); setShowNew(true); }}
-                  className="w-full text-xs text-muted-foreground hover:text-foreground py-1.5 border border-dashed border-border rounded hover:border-accent transition-colors"
+                  className="w-full text-xs text-muted-foreground hover:text-foreground py-1.5 border border-dashed border-border rounded hover:border-primary transition-colors"
                 >+ Add deal</button>
               </div>
             </div>
@@ -242,15 +257,6 @@ export default function PipelineAdmin() {
         onOpenChange={(v) => !v && setSelectedDeal(null)}
         onChanged={() => loadBoard(activePipelineId)}
       />
-    </div>
-  );
-}
-
-function StatTile({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
-  return (
-    <Card className="p-3">
-      <div className="text-xs text-muted-foreground flex items-center gap-1">{icon}{label}</div>
-      <div className="text-lg font-semibold mt-1">{value}</div>
-    </Card>
+    </PageShell>
   );
 }
