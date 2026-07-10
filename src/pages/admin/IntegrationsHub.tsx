@@ -41,7 +41,7 @@ const tiles = [
   { key: "zapier", icon: Zap, title: "Zapier MCP", description: "Expose thousands of apps to Paige via the MCP client.", href: "/admin/integrations/zapier" },
   { key: "telegram", icon: Send, title: "Telegram Alerts", description: "Bot channel for admin alerts and overdue approvals.", href: "/admin/integrations/telegram" },
   { key: "gmail", icon: MessageSquare, title: "Gmail (Founder Inbox)", description: "Deliverability-sensitive sends via OAuth.", href: "/admin/integrations/gmail" },
-  { key: "firecrawl", icon: Search, title: "Firecrawl Web Search", description: "Live web research + bureau scraping. Replaces Tavily.", href: "/admin/integrations" },
+  { key: "firecrawl", icon: Search, title: "Firecrawl Web Search", description: "Live web research and site crawling.", href: "/admin/integrations" },
   { key: "langsmith", icon: Activity, title: "AI Activity (LangSmith)", description: "Recent traces, cost and latency for all AI calls.", href: "/admin/integrations/ai-activity" },
   { key: "docusign", icon: FileSignature, title: "DocuSign", description: "VIP apps, coach agreements, DFY engagement letters, term sheets.", href: "/admin/integrations/docusign" },
   { key: "cal", icon: CalendarClock, title: "Cal.com", description: "Booking surface for VIP intros, DFY discovery and workshops.", href: "/admin/integrations/cal" },
@@ -52,11 +52,11 @@ const tiles = [
   { key: "sentry", icon: Bug, title: "Sentry Errors", description: "Frontend + Edge Function error tracking with deep links.", href: "/admin/observability/errors" },
   { key: "nav", icon: Building2, title: "Nav (Business Credit)", description: "Pull D&B / Experian / Equifax business profiles for capital readiness.", href: "/admin/integrations/nav" },
   { key: "smartcredit", icon: ShieldCheck, title: "SmartCredit (Owner Lens)", description: "Owner credit standing — funding eligibility lens only. No dispute work.", href: "/admin/integrations/smartcredit" },
-  { key: "plaid", icon: Landmark, title: "Plaid (Banking)", description: "Cash flow + funding readiness. Scaffolding active; live when Antonio connects.", href: "/admin/integrations/plaid" },
+  { key: "plaid", icon: Landmark, title: "Plaid (Banking)", description: "Cash flow signals. Connect to go live.", href: "/admin/integrations/plaid" },
 ] as const;
 
 
-export default function IntegrationsHub() {
+export default function IntegrationsHub({ embedded = false }: { embedded?: boolean } = {}) {
   const [config, setConfig] = useState<ConfigShape | null>(null);
   const [counts, setCounts] = useState<Counts>({
     n8n: 0, mcp: 0, telegramConfigured: false, recentSubscriptionEvents: 0,
@@ -114,6 +114,32 @@ export default function IntegrationsHub() {
     }
   };
 
+  const grid = (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {tiles.map((tile) => {
+        const status = statusFor(tile.key);
+        return (
+          <SectionCard
+            key={tile.key}
+            interactive
+            icon={tile.icon}
+            title={tile.title}
+            description={tile.description}
+            actions={<StatePill state={status.state}>{status.label}</StatePill>}
+          >
+            <Button asChild size="sm" variant="outline" className="gap-1">
+              <Link to={tile.href}>Manage <ExternalLink className="size-3" /></Link>
+            </Button>
+          </SectionCard>
+        );
+      })}
+    </div>
+  );
+
+  // Embedded inside the Settings → Integrations tab: skip the shell + hero so it
+  // doesn't render a second masthead under the Settings page's own hero.
+  if (embedded) return grid;
+
   return (
     <PageShell width="wide">
       <PageHeader
@@ -123,26 +149,7 @@ export default function IntegrationsHub() {
         title="Integrations"
         description="Every tool Paige can reach — the wiring that lets her act across your stack. Admin only."
       />
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {tiles.map((tile) => {
-          const status = statusFor(tile.key);
-          return (
-            <SectionCard
-              key={tile.key}
-              interactive
-              icon={tile.icon}
-              title={tile.title}
-              description={tile.description}
-              actions={<StatePill state={status.state}>{status.label}</StatePill>}
-            >
-              <Button asChild size="sm" variant="outline" className="gap-1">
-                <Link to={tile.href}>Manage <ExternalLink className="size-3" /></Link>
-              </Button>
-            </SectionCard>
-          );
-        })}
-      </div>
+      {grid}
     </PageShell>
   );
 }

@@ -135,7 +135,7 @@ export function AdminSettingsHub() {
 
         <TabsContent value="integrations" className="space-y-4">
           <Suspense fallback={<p className="text-sm text-muted-foreground">Loading integrations…</p>}>
-            <IntegrationsHub />
+            <IntegrationsHub embedded />
           </Suspense>
         </TabsContent>
 

@@ -6,10 +6,10 @@ import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { PageShell, PageHeader, SectionCard, StatRow, StatTile, EmptyState, StatePill } from "@/components/ui/page";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
@@ -29,7 +29,7 @@ const PAGE_TEMPLATES = [
   { key: "vsl", label: "VSL Page", description: "Video, headline, single CTA." },
 ];
 const FORM_TEMPLATES = [
-  { key: "btf-application", label: "BTF 3-Step Application", description: "Personal / Business / Funding — mirrors build-to-fund-onboar.vibepreview.com." },
+  { key: "btf-application", label: "BTF 3-Step Application", description: "Three-step application: personal, business, and funding details." },
   { key: "discovery-call", label: "Discovery Call Intake", description: "Name, business, revenue, timeline." },
   { key: "lead-magnet", label: "Lead Magnet Opt-in", description: "Email + first name only." },
   { key: "coach-application", label: "Coach Application", description: "Background + clients managed + experience." },
@@ -80,15 +80,7 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
   const tenantSlug = activeTenant?.slug ?? "tenant";
   const inboundBase = `${(import.meta.env.VITE_SUPABASE_URL ?? "").replace(/\/$/, "")}/functions/v1/growth-inbound`;
 
-  return (
-    <div className="space-y-6">
-      {!embedded && (
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Growth OS</h1>
-          <p className="text-muted-foreground text-sm">Landing pages, funnels, and forms — all wired into your contacts, pipeline, and Paige workflows.</p>
-        </div>
-      )}
-
+  const tabs = (
       <Tabs value={tab} onValueChange={(v) => setParams({ tab: v })}>
         {!embedded && (
           <TabsList>
@@ -105,18 +97,17 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
             <CreatePageDialog tenantId={activeTenantId} onCreated={() => setParams({ tab: "pages" })} />
           } />
           {loading ? <div className="text-muted-foreground text-sm">Loading…</div> : pages.length === 0 ? (
-            <EmptyState icon={<LayoutGrid className="w-8 h-8" />} title="No pages yet" body="Spin one up from a template. We seeded the BUILD-to-FUND sales page for the Mogul Maker tenant." />
+            <EmptyState icon={LayoutGrid} title="No pages yet" description="Spin one up from a template, then publish it when it's ready to go live." />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {pages.map((p) => (
-                <Card key={p.id}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base flex items-center justify-between gap-2">
-                      <span className="truncate">{p.title}</span>
-                      <Badge variant={p.status === "published" ? "default" : "outline"}>{p.status}</Badge>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-xs text-muted-foreground space-y-2">
+                <SectionCard
+                  key={p.id}
+                  interactive
+                  title={<span className="truncate">{p.title}</span>}
+                  actions={<StatePill state={p.status === "published" ? "success" : "off"}>{p.status}</StatePill>}
+                >
+                  <div className="text-xs text-muted-foreground space-y-2">
                     <div>/{p.slug}</div>
                     <div className="flex gap-2">
                       <Button asChild size="sm" variant="outline">
@@ -126,8 +117,8 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
                       </Button>
                       <TogglePublishButton kind="page" row={p} onChanged={() => setParams({ tab: "pages" })} />
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </SectionCard>
               ))}
             </div>
           )}
@@ -138,26 +129,25 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
             <CreateFunnelDialog tenantId={activeTenantId} pages={pages} forms={forms} onCreated={() => setParams({ tab: "funnels" })} />
           } />
           {funnels.length === 0 ? (
-            <EmptyState icon={<GitBranch className="w-8 h-8" />} title="No funnels yet" body="A funnel chains pages → forms → success in one flow. Build one once you have a sales page + form." />
+            <EmptyState icon={GitBranch} title="No funnels yet" description="A funnel chains pages → forms → success in one flow. Build one once you have a page and a form." />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {funnels.map((f) => (
-                <Card key={f.id}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base flex items-center justify-between">
-                      <span>{f.name}</span>
-                      <Badge variant={f.status === "active" ? "default" : "outline"}>{f.status}</Badge>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-xs text-muted-foreground">
+                <SectionCard
+                  key={f.id}
+                  interactive
+                  title={<span>{f.name}</span>}
+                  actions={<StatePill state={f.status === "active" ? "success" : "off"}>{f.status}</StatePill>}
+                >
+                  <div className="text-xs text-muted-foreground">
                     <div className="mb-2">/f/{tenantSlug}/{f.slug}</div>
                     <Button asChild size="sm" variant="outline">
                       <a href={`/f/${tenantSlug}/${f.slug}`} target="_blank" rel="noreferrer">
                         <ExternalLink className="w-3.5 h-3.5 mr-1" />Open
                       </a>
                     </Button>
-                  </CardContent>
-                </Card>
+                  </div>
+                </SectionCard>
               ))}
             </div>
           )}
@@ -168,18 +158,17 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
             <CreateFormDialog tenantId={activeTenantId} onCreated={() => setParams({ tab: "forms" })} />
           } />
           {forms.length === 0 ? (
-            <EmptyState icon={<FileText className="w-8 h-8" />} title="No forms yet" body="Use a template or have Paige generate one for you." />
+            <EmptyState icon={FileText} title="No forms yet" description="Use a template or have Paige generate one for you." />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {forms.map((f) => (
-                <Card key={f.id}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-base flex items-center justify-between">
-                      <span className="truncate">{f.name}</span>
-                      <Badge variant={f.status === "active" ? "default" : "outline"}>{f.status}</Badge>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-xs text-muted-foreground space-y-2">
+                <SectionCard
+                  key={f.id}
+                  interactive
+                  title={<span className="truncate">{f.name}</span>}
+                  actions={<StatePill state={f.status === "active" ? "success" : "off"}>{f.status}</StatePill>}
+                >
+                  <div className="text-xs text-muted-foreground space-y-2">
                     <div>/{f.slug}</div>
                     <div className="flex gap-2">
                       <Button asChild size="sm" variant="outline">
@@ -189,8 +178,8 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
                       </Button>
                       <CopyButton text={`${window.location.origin}/form/${f.id}`} label="Copy link" />
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </SectionCard>
               ))}
             </div>
           )}
@@ -199,7 +188,7 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
         <TabsContent value="submissions" className="space-y-4 mt-4">
           <SectionHeader title="All Submissions (last 50)" />
           {subs.length === 0 ? (
-            <EmptyState icon={<Inbox className="w-8 h-8" />} title="No submissions yet" body="Submissions from Paige forms and external builders both land here." />
+            <EmptyState icon={Inbox} title="No submissions yet" description="Submissions from Paige forms and external builders both land here." />
           ) : (
             <div className="space-y-2">
               {subs.map((s) => (
@@ -225,14 +214,14 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
             Already using Webflow, Framer, ClickFunnels, GoHighLevel, Vibe, or Typeform? Create a bridge — point your form's webhook at the URL below and Paige will ingest every submission into your contacts and pipeline.
           </p>
           {sources.length === 0 ? (
-            <EmptyState icon={<Plug className="w-8 h-8" />} title="No external sources yet" body="Add a bridge for each external form or builder you want to pipe into Paige." />
+            <EmptyState icon={Plug} title="No external sources yet" description="Add a bridge for each external form or builder you want to pipe into Paige." />
           ) : (
             <div className="space-y-2">
               {sources.map((s) => {
                 const webhookUrl = s.webhook_token ? `${inboundBase}/${s.webhook_token}` : `${inboundBase}/[token hidden — regenerate to view]`;
                 return (
-                  <Card key={s.id}>
-                    <CardContent className="p-3 text-xs space-y-2">
+                  <SectionCard key={s.id}>
+                    <div className="text-xs space-y-2">
                       <div className="flex items-center justify-between">
                         <div className="font-medium text-sm">{s.label}</div>
                         <Badge variant="outline" className="capitalize">{s.provider}</Badge>
@@ -244,15 +233,34 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
                       <div className="text-muted-foreground">
                         Last seen: {s.last_seen_at ? new Date(s.last_seen_at).toLocaleString() : "never"}
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </SectionCard>
                 );
               })}
             </div>
           )}
         </TabsContent>
       </Tabs>
-    </div>
+  );
+
+  if (embedded) return <div className="space-y-6">{tabs}</div>;
+
+  return (
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        eyebrow="Pages · Funnels · Forms"
+        title="Growth OS"
+        description="Landing pages, funnels, and forms — all wired into your contacts, pipeline, and Paige workflows."
+      />
+      <StatRow>
+        <StatTile label="Pages" value={pages.length} icon={LayoutGrid} loading={loading} />
+        <StatTile label="Funnels" value={funnels.length} icon={GitBranch} loading={loading} />
+        <StatTile label="Forms" value={forms.length} icon={FileText} loading={loading} />
+        <StatTile label="Submissions" value={subs.length} icon={Inbox} loading={loading} />
+      </StatRow>
+      {tabs}
+    </PageShell>
   );
 }
 
@@ -262,18 +270,6 @@ function SectionHeader({ title, cta }: { title: string; cta?: React.ReactNode })
       <h2 className="text-lg font-semibold">{title}</h2>
       {cta}
     </div>
-  );
-}
-
-function EmptyState({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
-  return (
-    <Card>
-      <CardContent className="py-10 text-center space-y-2">
-        <div className="mx-auto text-muted-foreground">{icon}</div>
-        <div className="font-medium">{title}</div>
-        <div className="text-sm text-muted-foreground max-w-md mx-auto">{body}</div>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -318,7 +314,7 @@ function CreatePageDialog({ tenantId, onCreated }: { tenantId: string | null; on
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button size="sm"><Plus className="w-4 h-4 mr-1" />New Page</Button></DialogTrigger>
+      <DialogTrigger asChild><Button size="sm" variant="gold"><Plus className="w-4 h-4 mr-1" />New Page</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Create landing page</DialogTitle></DialogHeader>
         <div className="space-y-3">
@@ -335,7 +331,7 @@ function CreatePageDialog({ tenantId, onCreated }: { tenantId: string | null; on
             <p className="text-[11px] text-muted-foreground mt-1">{PAGE_TEMPLATES.find((t) => t.key === template)?.description}</p>
           </div>
         </div>
-        <DialogFooter><Button onClick={create}>Create</Button></DialogFooter>
+        <DialogFooter><Button variant="gold" onClick={create}>Create</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -359,7 +355,7 @@ function CreateFormDialog({ tenantId, onCreated }: { tenantId: string | null; on
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button size="sm"><Plus className="w-4 h-4 mr-1" />New Form</Button></DialogTrigger>
+      <DialogTrigger asChild><Button size="sm" variant="gold"><Plus className="w-4 h-4 mr-1" />New Form</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Create form</DialogTitle></DialogHeader>
         <div className="space-y-3">
@@ -376,7 +372,7 @@ function CreateFormDialog({ tenantId, onCreated }: { tenantId: string | null; on
             <p className="text-[11px] text-muted-foreground mt-1">{FORM_TEMPLATES.find((t) => t.key === template)?.description}</p>
           </div>
         </div>
-        <DialogFooter><Button onClick={create}>Create</Button></DialogFooter>
+        <DialogFooter><Button variant="gold" onClick={create}>Create</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -407,7 +403,7 @@ function CreateFunnelDialog({ tenantId, pages, forms, onCreated }: { tenantId: s
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button size="sm"><Plus className="w-4 h-4 mr-1" />New Funnel</Button></DialogTrigger>
+      <DialogTrigger asChild><Button size="sm" variant="gold"><Plus className="w-4 h-4 mr-1" />New Funnel</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Create funnel</DialogTitle></DialogHeader>
         <div className="space-y-3">
@@ -428,7 +424,7 @@ function CreateFunnelDialog({ tenantId, pages, forms, onCreated }: { tenantId: s
             </Select>
           </div>
         </div>
-        <DialogFooter><Button onClick={create}>Create</Button></DialogFooter>
+        <DialogFooter><Button variant="gold" onClick={create}>Create</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -452,7 +448,7 @@ function CreateSourceDialog({ tenantId, forms, onCreated }: { tenantId: string |
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button size="sm"><Plus className="w-4 h-4 mr-1" />Add Bridge</Button></DialogTrigger>
+      <DialogTrigger asChild><Button size="sm" variant="gold"><Plus className="w-4 h-4 mr-1" />Add Bridge</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>New external builder bridge</DialogTitle></DialogHeader>
         <div className="space-y-3">
@@ -472,7 +468,7 @@ function CreateSourceDialog({ tenantId, forms, onCreated }: { tenantId: string |
             </Select>
           </div>
         </div>
-        <DialogFooter><Button onClick={create}>Create bridge</Button></DialogFooter>
+        <DialogFooter><Button variant="gold" onClick={create}>Create bridge</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -646,15 +642,13 @@ function SubmissionRow({
   };
 
   return (
-    <Card>
-      <CardContent className="p-3 text-xs space-y-2">
+    <SectionCard>
+      <div className="text-xs space-y-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-[10px]">{sub.source}</Badge>
             {sub.contact_id && (
-              <Badge variant="secondary" className="text-[10px]">
-                <Check className="w-3 h-3 mr-1" /> Linked
-              </Badge>
+              <StatePill state="success" icon={<Check className="w-3 h-3" />}>Linked</StatePill>
             )}
             <span className="text-muted-foreground">{new Date(sub.created_at).toLocaleString()}</span>
           </div>
@@ -674,8 +668,8 @@ function SubmissionRow({
         <pre className="whitespace-pre-wrap break-words text-muted-foreground bg-muted/40 p-2 rounded">
           {JSON.stringify(sub.payload_json, null, 2)}
         </pre>
-      </CardContent>
-    </Card>
+      </div>
+    </SectionCard>
   );
 }
 
