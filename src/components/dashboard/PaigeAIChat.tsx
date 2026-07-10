@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2, Mic, MicOff } from "lucide-react";
+import { Send, Loader2, Mic, MicOff, Clock } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -19,7 +19,9 @@ import { extractEntityDiagram } from "@/lib/entityDiagram";
 import { usePlaybook } from "@/lib/playbook";
 import type { QuickChip } from "@/components/paige/commandCenterTypes";
 
-type Message = { role: "user" | "assistant"; content: string };
+/** An action Paige filed to the approvals queue this turn (propose→confirm). */
+type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
+type Message = { role: "user" | "assistant"; content: string; queued?: QueuedApproval[] };
 
 // Optional, back-compatible props (cc-spec §3). Legacy mounts (Dashboard) pass
 // none of these and behave exactly as before.
@@ -286,6 +288,7 @@ const PaigeAIChatInner = ({
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let assistantMessage = "";
+      let queuedThisTurn: QueuedApproval[] = [];
       let textBuffer = "";
       let streamDone = false;
 
@@ -314,10 +317,16 @@ const PaigeAIChatInner = ({
 
           try {
             const parsed = JSON.parse(jsonStr);
+            // Structured event: Paige queued an action to the approvals desk.
+            if (Array.isArray(parsed.approval_queued)) {
+              queuedThisTurn = parsed.approval_queued as QueuedApproval[];
+              setMessages([...newMessages, { role: "assistant", content: assistantMessage, queued: queuedThisTurn }]);
+              continue;
+            }
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
               assistantMessage += content;
-              setMessages([...newMessages, { role: "assistant", content: assistantMessage }]);
+              setMessages([...newMessages, { role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined }]);
             }
           } catch {
             textBuffer = line + "\n" + textBuffer;
@@ -394,6 +403,15 @@ const PaigeAIChatInner = ({
                         {before && <p className="text-sm text-foreground whitespace-pre-wrap">{before}</p>}
                         {diagram && <EntityDiagramCard data={diagram} />}
                         {after && <p className="text-sm text-foreground whitespace-pre-wrap">{after}</p>}
+                        {message.queued?.map((q) => (
+                          <div key={q.id} className="mt-2 flex items-start gap-2 rounded-md border border-accent/40 bg-accent/5 p-2.5">
+                            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium leading-snug">{q.summary}</p>
+                              <p className="text-xs text-muted-foreground">Paige queued this — it's waiting on you. Approve it in your Live desk and it goes out.</p>
+                            </div>
+                          </div>
+                        ))}
                       </>
                     );
                   })() : (

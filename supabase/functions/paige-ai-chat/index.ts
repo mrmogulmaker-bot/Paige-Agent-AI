@@ -3570,6 +3570,25 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
               }
             }
           },
+          {
+            type: "function",
+            function: {
+              name: "propose_action",
+              description: "Propose a consequential OUTBOUND action for the operator to approve before it goes out — an email, an SMS/text, or a follow-up message to a client. This does NOT send anything: it drafts the message and files it in the operator's approvals queue ('waiting on you'). The operator approves it in their Live desk and only THEN is it sent. Use this whenever the user asks you to email/text/message/follow-up-with a client, or you recommend reaching out. Write the full draft (subject + body for email; body for SMS) in the client's tenant voice. For low-risk internal work (a task, a note, a stage change) use the crm_* tools directly instead — those don't need approval.",
+              parameters: {
+                type: "object",
+                properties: {
+                  action_type: { type: "string", enum: ["email", "sms", "followup"], description: "email = drafted email; sms = text message; followup = a nurture/follow-up email to a specific client." },
+                  contact_id: { type: "string", description: "Client UUID to send to. Omit to use the currently focused client." },
+                  to: { type: "string", description: "Optional explicit recipient (email address or phone). If omitted, resolved from the client's contact record." },
+                  subject: { type: "string", description: "Email subject line (email/followup only)." },
+                  body: { type: "string", description: "The full drafted message body, in the tenant's voice." },
+                  summary: { type: "string", description: "One-line summary of the action for the approvals queue, e.g. 'Follow-up email to Dana about onboarding'." }
+                },
+                required: ["action_type", "body", "summary"]
+              }
+            }
+          },
         ],
         tool_choice: "auto",
         stream: true,
@@ -3644,6 +3663,10 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
 
       // Handle tool calls
       const toolResults: any[] = [];
+      // Approvals queued by propose_action this turn — surfaced to the client as
+      // an `approval_queued` SSE frame so the chat can render a confirmation card,
+      // while the right-rail Live desk picks them up via realtime.
+      const queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }> = [];
       for (const tc of toolCalls) {
         if (!tc || !tc.function?.name) continue;
         
@@ -4135,6 +4158,64 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "orchestrator_error" }) });
           }
+        } else if (tc.function.name === "propose_action") {
+          // Propose→confirm: draft a consequential outbound action and FILE it as a
+          // pending approval. Never sends here — the operator approves in the Live
+          // desk, which runs execute-approval → send-message. Outbound comms are
+          // gated to admin|coach, matching send-message and the CRM operator tools.
+          try {
+            const { data: roleRows } = await supabase
+              .from("user_roles").select("role").eq("user_id", user.id);
+            const roles = (roleRows || []).map((r: any) => r.role);
+            if (!(roles.includes("admin") || roles.includes("coach"))) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Proposing outbound client messages is restricted to admins and coaches." }) });
+              continue;
+            }
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const actionType = String(args.action_type || "email").toLowerCase();
+            const channel = actionType === "sms" ? "sms" : "email";
+            const contactId = args.contact_id || payloadClientId || null;
+            const body = String(args.body || "").trim();
+            const summary = String(args.summary || (channel === "sms" ? "Text a client" : "Email a client")).trim();
+            if (!body) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "No message body was drafted." }) });
+              continue;
+            }
+            const draftContent: Record<string, unknown> = { channel, body };
+            if (args.to) draftContent.to = String(args.to);
+            if (channel === "email" && args.subject) draftContent.subject = String(args.subject);
+            const { data: inserted, error: insErr } = await supabase
+              .from("paige_pending_approvals")
+              .insert({
+                // 'cs_draft' is the allowed type for a drafted outbound message
+                // (the type CHECK admits only cs_draft/campaign_send/tier_change/
+                // qc_finding/milestone/other). The channel/kind lives in category
+                // (email|sms|followup) + draft_content.channel.
+                type: "cs_draft",
+                category: actionType,
+                draft_content: draftContent,
+                contact_id: contactId,
+                summary,
+                source: "paige_chat",
+                risk_level: "medium",
+                submitted_by_user_id: user.id,
+                // Stamp tenant explicitly: this insert runs via the service-role
+                // client, so the stamp_tenant_id trigger (which reads auth.uid())
+                // would leave tenant_id NULL and the row would never appear in the
+                // tenant's approvals queue.
+                tenant_id: personaCtx.tenant_id,
+              })
+              .select("id")
+              .single();
+            if (insErr || !inserted) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: insErr?.message || "Could not queue the approval." }) });
+              continue;
+            }
+            queuedApprovals.push({ id: inserted.id, summary, category: actionType, contact_id: contactId });
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, queued: true, approval_id: inserted.id, summary, note: "Filed in the operator's approvals queue — it will send once approved. Tell the user it's waiting on them." }) });
+          } catch (e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "propose_action_error" }) });
+          }
         }
       }
 
@@ -4164,6 +4245,31 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           }
         });
         return new Response(fallbackStream, {
+          headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+        });
+      }
+
+      // If Paige queued any approvals this turn, prepend an `approval_queued`
+      // SSE frame so the chat can render a confirmation card, then pass the
+      // model's follow-up text through unchanged.
+      if (queuedApprovals.length > 0) {
+        const upstream = followUpResponse.body!.getReader();
+        const enc = new TextEncoder();
+        const wrapped = new ReadableStream({
+          async start(controller) {
+            controller.enqueue(enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
+            try {
+              while (true) {
+                const { done, value } = await upstream.read();
+                if (done) break;
+                controller.enqueue(value);
+              }
+            } finally {
+              controller.close();
+            }
+          },
+        });
+        return new Response(wrapped, {
           headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
         });
       }

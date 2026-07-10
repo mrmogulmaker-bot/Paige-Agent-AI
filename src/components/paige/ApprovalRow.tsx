@@ -1,10 +1,10 @@
 // The star row of the Live desk (cc-spec §1.2 group 1, closes B1). Inline
-// Approve mirrors the canonical approvals path EXACTLY (R1 resolved): a direct
-// table update on paige_pending_approvals — status:"approved", reviewed_at —
-// identical to ApprovalsInbox, so whatever downstream fires on status=approved
-// fires here too. No MCP tool, no invented fields. On success: gold check flash +
-// the row collapses (motion #2) and the realtime subscription ticks the count
-// down. On error: toast, keep the row.
+// Approve calls the execute-approval seam (§10): it APPROVES AND ACTS — email/SMS
+// drafts get sent (send-message stamps the row approved+sent_at), and categories
+// with no executor yet are acknowledged (marked approved) as before. This closes
+// the old silent-drop where Approve flipped status but nothing ran. On success:
+// gold check flash + the row collapses (motion #2) and the realtime subscription
+// ticks the count down. On error: toast, keep the row.
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, Timer, User, Loader2 } from "lucide-react";
@@ -62,14 +62,15 @@ export function ApprovalRow({ a }: { a: ApprovalQueueRow }) {
 
   const approve = async () => {
     setBusy(true);
-    // EXACTLY the canonical approve (ApprovalsInbox.tsx / addendum R1). Single id.
-    const { error } = await supabase
-      .from("paige_pending_approvals")
-      .update({ status: "approved", reviewed_at: new Date().toISOString() })
-      .eq("id", a.id);
+    // Approve AND act via the callable execute-approval seam (§10): email/SMS
+    // drafts are sent (send-message flips the row to approved+sent_at); other
+    // categories are acknowledged (marked approved) as before.
+    const { data, error } = await supabase.functions.invoke("execute-approval", {
+      body: { approval_id: a.id },
+    });
     setBusy(false);
-    if (error) {
-      toast.error(error.message); // keep the row on failure
+    if (error || (data && data.ok === false)) {
+      toast.error(error?.message ?? data?.error ?? "Couldn't complete that action."); // keep the row on failure
       return;
     }
     // Success beat: flash the check, then collapse. Realtime refresh ticks count.
