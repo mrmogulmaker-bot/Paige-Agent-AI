@@ -28,26 +28,37 @@ export default function AgreementAdmin() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!activeTenantId) { setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
+    setLoadError(false);
     supabase.rpc("get_tenant_service_agreement", { _tenant_id: activeTenantId }).then(({ data, error }) => {
       if (cancelled) return;
-      if (error) { toast.error(error.message); setLoading(false); return; }
+      if (error) {
+        // Don't drop into an empty editor — a Save from here would write NULL
+        // and wipe the tenant's existing saved agreement. Block editing until
+        // the current value loads.
+        toast.error(error.message);
+        setLoadError(true);
+        setLoading(false);
+        return;
+      }
       const row = Array.isArray(data) ? data[0] : data;
       setTitle((row as any)?.agreement_title ?? "");
       setBody((row as any)?.agreement_body ?? "");
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [activeTenantId]);
+  }, [activeTenantId, reloadKey]);
 
   const save = async () => {
-    if (!activeTenantId) return;
+    if (!activeTenantId || loadError) return;
     setSaving(true);
     try {
       const { error } = await supabase.rpc("set_tenant_service_agreement", {
@@ -109,6 +120,16 @@ export default function AgreementAdmin() {
         <CardContent className="space-y-4">
           {loading ? (
             <div className="text-sm text-muted-foreground">Loading…</div>
+          ) : loadError ? (
+            <div className="space-y-3">
+              <p className="text-sm text-destructive">
+                We couldn't load your current agreement, so editing is disabled to protect what you've
+                already saved. Please try again.
+              </p>
+              <Button type="button" variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
+                Retry
+              </Button>
+            </div>
           ) : (
             <>
               <div className="space-y-2">
