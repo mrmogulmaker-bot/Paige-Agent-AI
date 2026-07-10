@@ -68,13 +68,6 @@ const SPECIALIZATION_OPTIONS = [
   "wealth_building",
 ];
 
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  approved: "default",
-  pending: "secondary",
-  suspended: "destructive",
-  declined: "outline",
-};
-
 const STATUS_PILL: Record<string, PillState> = {
   approved: "success",
   pending: "pending",
@@ -677,9 +670,7 @@ const BrokerDetailDialog = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 flex-wrap">
             {broker.business_name}
-            <Badge variant={STATUS_VARIANT[broker.status] ?? "outline"} className="capitalize">
-              {broker.status}
-            </Badge>
+            <StatePill state={STATUS_PILL[broker.status] ?? "off"}>{broker.status}</StatePill>
           </DialogTitle>
           <DialogDescription className="capitalize">
             {broker.broker_type.replace(/_/g, " ")}

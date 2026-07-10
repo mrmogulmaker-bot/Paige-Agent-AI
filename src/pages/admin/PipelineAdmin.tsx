@@ -112,7 +112,12 @@ export default function PipelineAdmin() {
     toast.success(`Moved to ${newStage?.label}`);
   };
 
-  if (loading) return <div className="p-8 text-center text-muted-foreground">Loading pipeline…</div>;
+  if (loading) return (
+    <PageShell width="wide">
+      <PageHeader title="Pipeline" description="Drag deals across stages. Click a card for full context." icon={TrendingUp} />
+      <div className="p-8 text-center text-muted-foreground">Loading pipeline…</div>
+    </PageShell>
+  );
 
   if (!pipelines.length) {
     return (
@@ -218,7 +223,7 @@ export default function PipelineAdmin() {
                       {c && <div className="text-xs text-muted-foreground truncate mt-0.5">{c.name}{c.entity ? ` · ${c.entity}` : ""}</div>}
                       {d.offer_type && (
                         <div className="mt-1.5">
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent/10 text-gold-dark border border-accent/20">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border">
                             {offerLabel(d.offer_type)}
                           </span>
                         </div>
