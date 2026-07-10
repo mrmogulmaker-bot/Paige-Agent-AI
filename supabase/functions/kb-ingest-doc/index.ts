@@ -19,7 +19,7 @@ const BodySchema = z.object({
   summary: z.string().max(2000).optional(),
   category: z.string().max(100).optional(),
   tags: z.array(z.string().max(60)).max(20).optional(),
-  source: z.enum(["upload", "url", "paste", "sync"]).optional(),
+  source: z.enum(["upload", "url", "paste", "sync", "scan"]).optional(),
   source_url: z.string().url().max(2000).optional(),
   share_to_network: z.boolean().optional(),
   tenant_id: z.string().uuid().optional(), // platform-owner override

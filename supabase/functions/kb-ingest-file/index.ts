@@ -29,6 +29,13 @@ const BodySchema = z.object({
 // kb-ingest-doc caps content at 500k; stay comfortably under after extraction.
 const MAX_CONTENT = 480_000;
 
+// Provider limits: Anthropic caps images ~5 MB and PDFs ~32 MB base64 (base64
+// inflates ~1.34x, so a ~24 MB raw PDF is the practical ceiling). The bucket
+// allows 25 MB, so enforce tighter, type-specific caps BEFORE calling Claude and
+// return a clean message rather than a raw provider 400.
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_PDF_BYTES = 24 * 1024 * 1024;
+
 const IMAGE_MIME: Record<string, string> = {
   "image/png": "image/png",
   "image/jpeg": "image/jpeg",
@@ -36,6 +43,20 @@ const IMAGE_MIME: Record<string, string> = {
   "image/webp": "image/webp",
   "image/gif": "image/gif",
 };
+
+const EXT_IMAGE_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+// Media type for an image block — prefer the real mime, fall back to the file
+// extension (browsers often send an empty type on drag-drop), never blind-png.
+function imageMediaType(mime: string | undefined, ext: string): string {
+  return IMAGE_MIME[(mime || "").toLowerCase()] ?? EXT_IMAGE_MIME[ext] ?? "image/png";
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -108,26 +129,45 @@ serve(async (req) => {
     const bytes = new Uint8Array(await blob.arrayBuffer());
     if (bytes.length === 0) return json({ error: "That file was empty." }, 400);
 
+    // Type-specific size guards BEFORE calling Claude (provider limits).
+    if (cls.kind === "image" && bytes.length > MAX_IMAGE_BYTES) {
+      return json({ error: "That image is too large to read (max 5 MB). Try a smaller or compressed scan." }, 400);
+    }
+    if (cls.kind === "pdf" && bytes.length > MAX_PDF_BYTES) {
+      return json({ error: "That PDF is too large to read (max ~24 MB). Split it into smaller files." }, 400);
+    }
+
     // Extract text.
     let content = "";
+    let truncated = false;
     if (cls.kind === "text") {
       content = new TextDecoder().decode(bytes).trim();
     } else {
       const b64 = toBase64(bytes);
       const block = cls.kind === "pdf"
         ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }
-        : { type: "image", source: { type: "base64", media_type: IMAGE_MIME[(mime || "").toLowerCase()] ?? "image/png", data: b64 } };
-      const result = await callClaude({
-        maxTokens: 8000,
-        messages: [{ role: "user", content: [block, { type: "text", text: EXTRACT_PROMPT }] }],
-      });
+        : { type: "image", source: { type: "base64", media_type: imageMediaType(mime, ext), data: b64 } };
+      let result;
+      try {
+        result = await callClaude({
+          maxTokens: 32000,
+          messages: [{ role: "user", content: [block, { type: "text", text: EXTRACT_PROMPT }] }],
+        });
+      } catch (e) {
+        // Don't leak the raw provider error to the tenant UI; log the detail.
+        console.error("[kb-ingest-file] extraction failed:", (e as Error).message);
+        return json({ error: "Paige couldn't read that file. It may be corrupt, password-protected, or an unsupported format." }, 400);
+      }
       content = (result.text || "").trim();
+      // Honest truncation signal: if the model hit the output cap, we only have a
+      // prefix of a long document.
+      truncated = result.stopReason === "max_tokens";
     }
 
     if (!content || content.length < 10) {
       return json({ error: "We couldn't pull any readable text out of that file." }, 400);
     }
-    if (content.length > MAX_CONTENT) content = content.slice(0, MAX_CONTENT);
+    if (content.length > MAX_CONTENT) { content = content.slice(0, MAX_CONTENT); truncated = true; }
 
     const derivedTitle = (title?.trim() || filename?.replace(/\.[^.]+$/, "") || path.split("/").pop() || "Uploaded document").slice(0, 300);
 
@@ -158,9 +198,10 @@ serve(async (req) => {
     if (!ingestRes.ok) {
       return json({ error: (ingestBody as any)?.error ?? "Indexing failed" }, ingestRes.status);
     }
-    return json({ ...ingestBody, source: cls.source }, 200);
+    return json({ ...ingestBody, source: cls.source, truncated }, 200);
   } catch (error) {
+    // Never surface raw provider/internal error text to the tenant UI; log it.
     console.error("[kb-ingest-file] error:", error);
-    return json({ error: error instanceof Error ? error.message : "Failed to ingest file" }, 500);
+    return json({ error: "Something went wrong reading that file. Please try again." }, 500);
   }
 });

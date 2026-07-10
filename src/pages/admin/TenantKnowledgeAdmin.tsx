@@ -287,11 +287,13 @@ export function AddDocDialog({
     if (file.size > 26214400) return toast.error("That file is over 25 MB — try a smaller one.");
     setBusy(true);
     setProgress("Uploading…");
+    const safe = file.name.replace(/[^\w.\-]/g, "_");
+    const path = `${tenantId}/${crypto.randomUUID()}_${safe}`;
+    let uploaded = false;
     try {
-      const safe = file.name.replace(/[^\w.\-]/g, "_");
-      const path = `${tenantId}/${crypto.randomUUID()}_${safe}`;
       const { error: upErr } = await supabase.storage.from("tenant-knowledge").upload(path, file);
       if (upErr) throw upErr;
+      uploaded = true;
 
       setProgress("Reading the file…");
       const { data, error } = await supabase.functions.invoke("kb-ingest-file", {
@@ -306,10 +308,16 @@ export function AddDocDialog({
         },
       });
       if (error) throw error;
-      toast.success(`Indexed (${data?.chunk_count ?? 0} chunks)`);
+      toast.success(
+        data?.truncated
+          ? `Indexed the first part (${data?.chunk_count ?? 0} chunks) — it's a big one, split it for the rest.`
+          : `Indexed (${data?.chunk_count ?? 0} chunks)`,
+      );
       onIngested?.(title.trim() || file.name, data?.doc_id);
       onClose();
     } catch (e: any) {
+      // Don't orphan the uploaded object if indexing failed — best-effort prune.
+      if (uploaded) supabase.storage.from("tenant-knowledge").remove([path]).then(() => {}, () => {});
       toast.error(await serverError(e, "Couldn't read or index that file — retry"));
     } finally {
       setBusy(false);
@@ -365,8 +373,8 @@ export function AddDocDialog({
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              PDF, scan/image (png · jpg · webp), or text/markdown, up to 25 MB. Paige reads it — scans and
-              images are transcribed automatically — then chunks and learns it.
+              PDF (max 24 MB), scan/image (png · jpg · webp, max 5 MB), or text (txt · md · csv). Paige
+              reads it — scans and images are transcribed automatically — then chunks and learns it.
             </p>
           </div>
         ) : null}
