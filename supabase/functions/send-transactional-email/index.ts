@@ -345,10 +345,14 @@ Deno.serve(async (req) => {
   if (fromOverride && fromAddressAligns(fromOverride)) resolvedFrom = fromOverride
   if (replyToOverride) resolvedReplyTo = replyToOverride
 
-  // 6. Enqueue the pre-rendered email for async processing by the dispatcher.
-  // The dispatcher (process-email-queue) handles sending, retries, and rate-limit backoff.
+  // 6. Send directly via Resend. The old async path (enqueue_email →
+  // process-email-queue, which sent via Lovable) was never deployed, so
+  // transactional email silently never left the building — "sent" only ever
+  // meant "queued into a black hole." Send inline via Resend (same proven path
+  // as send-message), record the REAL outcome, and retire the Lovable worker (#79).
+  const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 
-  // Log pending BEFORE enqueue so we have a record even if enqueue crashes
+  // Log the attempt up front so there's always a record.
   await supabase.from('email_send_log').insert({
     message_id: messageId,
     template_name: templateName,
@@ -358,52 +362,56 @@ Deno.serve(async (req) => {
     metadata: { from: resolvedFrom, reply_to: resolvedReplyTo },
   })
 
-  const { error: enqueueError } = await supabase.rpc('enqueue_email', {
-    queue_name: 'transactional_emails',
-    payload: {
-      message_id: messageId,
-      to: effectiveRecipient,
-      from: resolvedFrom,
-      sender_domain: SENDER_DOMAIN,
-      subject: resolvedSubject,
-      html,
-      text: plainText,
-      purpose: 'transactional',
-      label: templateName,
-      idempotency_key: idempotencyKey,
-      unsubscribe_token: unsubscribeToken,
-      queued_at: new Date().toISOString(),
-    },
-  })
-
-  if (enqueueError) {
-    console.error('Failed to enqueue email', {
-      error: enqueueError,
-      templateName,
-      effectiveRecipient,
-    })
-
-    await supabase.from('email_send_log').insert({
-      message_id: messageId,
-      template_name: templateName,
-      recipient_email: effectiveRecipient,
-      status: 'failed',
-      error_message: 'Failed to enqueue email',
-    })
-
-    return new Response(JSON.stringify({ error: 'Failed to enqueue email' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  if (!RESEND_API_KEY) {
+    await supabase.from('email_send_log').update({ status: 'failed', error_message: 'RESEND_API_KEY not set' }).eq('message_id', messageId)
+    return new Response(JSON.stringify({ error: 'email_provider_unconfigured' }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
-  console.log('Transactional email enqueued', { templateName, effectiveRecipient })
-
-  return new Response(
-    JSON.stringify({ success: true, queued: true }),
-    {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  let sendOk = false
+  let vendorId: string | null = null
+  let sendError: string | null = null
+  try {
+    const resendResp = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: resolvedFrom,
+        to: [effectiveRecipient],
+        subject: resolvedSubject,
+        html,
+        text: plainText,
+        ...(resolvedReplyTo ? { reply_to: resolvedReplyTo } : {}),
+      }),
+    })
+    const resendJson: any = await resendResp.json().catch(() => ({}))
+    if (resendResp.ok && resendJson?.id) {
+      sendOk = true
+      vendorId = resendJson.id
+    } else {
+      sendError = `resend_${resendResp.status}: ${JSON.stringify(resendJson).slice(0, 300)}`
     }
+  } catch (e) {
+    sendError = (e as Error).message?.slice(0, 300) ?? 'resend_request_failed'
+  }
+
+  await supabase.from('email_send_log').update({
+    status: sendOk ? 'sent' : 'failed',
+    error_message: sendError,
+    metadata: { from: resolvedFrom, reply_to: resolvedReplyTo, vendor_message_id: vendorId },
+  }).eq('message_id', messageId)
+
+  if (!sendOk) {
+    console.error('Transactional email send failed', { templateName, effectiveRecipient, sendError })
+    return new Response(JSON.stringify({ error: 'send_failed', detail: sendError }), {
+      status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  console.log('Transactional email sent via Resend', { templateName, effectiveRecipient, vendorId })
+  return new Response(
+    JSON.stringify({ success: true, sent: true, id: vendorId }),
+    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   )
 })
