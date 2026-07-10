@@ -74,7 +74,7 @@ export function PaigeCommandBar({ pb, tenantName, counts, knowledgePulse, pendin
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs">
-                <span className={cn("h-2 w-2 rounded-full", named ? "bg-gradient-gold" : "bg-muted-foreground/40")} />
+                <span className={cn("h-2 w-2 rounded-full", named ? "bg-primary" : "bg-muted-foreground/40")} />
                 {named
                   ? <>{pb.persona.name}<span className="text-muted-foreground"> · {pb.persona.role}</span></>
                   : <span className="text-muted-foreground">Not named yet — set her up</span>}

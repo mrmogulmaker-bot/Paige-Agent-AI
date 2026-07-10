@@ -153,7 +153,7 @@ export function LiveActionFeed({ approvals, approvalsLoading, focused }: Props) 
       {/* Live desk header + breathing dot + activity sliver (S3) */}
       <div className="sticky top-0 z-10 bg-primary/[0.02] backdrop-blur-sm px-0.5 pb-2 pt-0.5">
         <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-gradient-gold cc-breathe" />
+          <span className="h-2 w-2 rounded-full bg-primary cc-breathe" />
           <span className="text-sm font-semibold">Live desk</span>
         </div>
         <p className="mt-1 truncate text-[11px] text-muted-foreground">

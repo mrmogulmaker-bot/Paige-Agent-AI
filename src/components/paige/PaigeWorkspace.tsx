@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Loader2, Sparkles, GraduationCap, X, UserCircle2, SlidersHorizontal } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { resolveActivePlaybook } from "@/lib/playbook/resolve";
 import { PLAYBOOK_LIBRARY } from "@/lib/playbook/presets";
@@ -31,7 +32,7 @@ function FocusBanner({ client, onClear }: { client: FocusedClient; onClear: () =
     <div className="flex items-center gap-2 rounded-md border border-accent/30 bg-accent/[0.05] px-3 py-1.5 text-sm m-3 mb-0">
       <span className="h-2 w-2 rounded-full bg-gradient-gold shrink-0" />
       <span className="min-w-0 truncate">
-        Focused on {first} — Paige is acting on their account.
+        Focused on {first} — Paige is focused on their account.
       </span>
       <button
         type="button"
@@ -62,6 +63,7 @@ const uniqueKeyed = <T extends Record<string, unknown>>(items: T[], field: "key"
 function WorkspaceBody({ tenantName }: { tenantName: string }) {
   const { activeTenantId } = useTenantContext();
   const { counts, subscribeKnowledgeAdded } = usePaigeWorkspace();
+  const isMobile = useIsMobile();
 
   const [pb, setPb] = useState<Playbook | null>(null);
   const [lastSavedPb, setLastSavedPb] = useState<Playbook | null>(null);
@@ -250,9 +252,11 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
           </div>
         </section>
 
-        <aside className="hidden md:flex w-[360px] lg:w-[380px] shrink-0 flex-col border-l bg-primary/[0.055] shadow-[inset_1px_0_0_hsl(var(--border))]">
-          <PaigeSidebar {...railProps} />
-        </aside>
+        {!isMobile && (
+          <aside className="flex w-[360px] lg:w-[380px] shrink-0 flex-col border-l bg-primary/[0.055] shadow-[inset_1px_0_0_hsl(var(--border))]">
+            <PaigeSidebar {...railProps} />
+          </aside>
+        )}
       </div>
 
       {/* Mobile dock — in-flow (not fixed), above nothing it can overlap (S5). */}
@@ -288,7 +292,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
         </Button>
       </div>
 
-      <PaigeRailSheet open={railOpen} onOpenChange={setRailOpen} {...railProps} />
+      {isMobile && <PaigeRailSheet open={railOpen} onOpenChange={setRailOpen} {...railProps} />}
 
       <PaigeConsole
         open={consoleOpen}

@@ -265,7 +265,7 @@ const PaigeAIChatInner = ({
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ messages: newMessages, clientId, clientContext, ...getUserClock() }),
+          body: JSON.stringify({ messages: newMessages, ...(clientId ? { clientId } : {}), ...(clientContext ? { clientContext } : {}), ...getUserClock() }),
         }
       );
 

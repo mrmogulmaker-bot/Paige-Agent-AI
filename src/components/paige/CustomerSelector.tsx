@@ -81,6 +81,7 @@ export function CustomerSelector({ onSelect }: Props) {
           type="button"
           variant="outline"
           role="combobox"
+          aria-expanded={open}
           className="w-full justify-between font-normal"
         >
           <span className="truncate text-muted-foreground">Select a customer…</span>
