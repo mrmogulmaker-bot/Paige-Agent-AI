@@ -1,14 +1,17 @@
 // Admin viewer for security canary probes. Lists recent probe runs against
 // the publicly-readable growth tables and surfaces any regressions.
+// Reference migration for the Wave 0 premium primitive layer.
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ShieldCheck, ShieldAlert, RefreshCw, PlayCircle } from "lucide-react";
+import { TableCell, TableRow } from "@/components/ui/table";
+import { ShieldCheck, ShieldAlert, RefreshCw, PlayCircle, Clock, CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import {
+  PageShell, PageHeader, StatRow, StatTile, DataTableShell, EmptyState, StatePill,
+  type Column, type PillState,
+} from "@/components/ui/page";
 
 interface CanaryRun {
   id: string;
@@ -21,11 +24,20 @@ interface CanaryRun {
   created_at: string;
 }
 
-const STATUS_BADGE: Record<CanaryRun["status"], { label: string; className: string }> = {
-  pass: { label: "Pass", className: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30" },
-  regression: { label: "Regression", className: "bg-red-500/15 text-red-700 border-red-500/30" },
-  error: { label: "Error", className: "bg-amber-500/15 text-amber-700 border-amber-500/30" },
+const STATUS_PILL: Record<CanaryRun["status"], { state: PillState; label: string }> = {
+  pass: { state: "success", label: "Pass" },
+  regression: { state: "error", label: "Regression" },
+  error: { state: "pending", label: "Error" },
 };
+
+const COLS: Column[] = [
+  { key: "when", header: "When" },
+  { key: "probe", header: "Probe" },
+  { key: "target", header: "Target" },
+  { key: "status", header: "Status" },
+  { key: "http", header: "HTTP", numeric: true },
+  { key: "detail", header: "Leaked columns / error" },
+];
 
 export default function SecurityCanaryAdmin() {
   const [runs, setRuns] = useState<CanaryRun[]>([]);
@@ -72,122 +84,90 @@ export default function SecurityCanaryAdmin() {
   const healthy = lastRun && runs.slice(0, 2).every((r) => r.status === "pass");
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            {healthy ? (
-              <ShieldCheck className="h-6 w-6 text-emerald-600" />
-            ) : (
-              <ShieldAlert className="h-6 w-6 text-red-600" />
-            )}
-            Security Canary
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Hourly probes confirm that anonymous visitors cannot read restricted internal columns on
-            <code className="mx-1 px-1 rounded bg-muted">growth_forms</code>
-            and
-            <code className="mx-1 px-1 rounded bg-muted">growth_pages</code>.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button size="sm" onClick={runNow} disabled={probing}>
-            <PlayCircle className={`h-4 w-4 mr-2 ${probing ? "animate-pulse" : ""}`} />
-            {probing ? "Probing…" : "Run probe now"}
-          </Button>
-        </div>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        icon={healthy ? ShieldCheck : ShieldAlert}
+        eyebrow="Platform · Integrity"
+        title="Security Canary"
+        description="Hourly probes confirm anonymous visitors can't read restricted internal columns on the public growth tables."
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button variant="gold" size="sm" onClick={runNow} disabled={probing}>
+              <PlayCircle className={`h-4 w-4 mr-2 ${probing ? "animate-pulse" : ""}`} />
+              {probing ? "Probing…" : "Run probe now"}
+            </Button>
+          </>
+        }
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Last run</CardDescription>
-            <CardTitle className="text-lg">
-              {lastRun ? formatDistanceToNow(new Date(lastRun.created_at), { addSuffix: true }) : "—"}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Recent regressions (last 100 runs)</CardDescription>
-            <CardTitle className={`text-lg ${recentRegressions > 0 ? "text-red-600" : ""}`}>
-              {recentRegressions}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Schedule</CardDescription>
-            <CardTitle className="text-lg">Every hour (:07)</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+      <StatRow cols={3}>
+        <StatTile
+          label="Status"
+          value={healthy ? "Healthy" : lastRun ? "Needs attention" : "—"}
+          intent={healthy ? "positive" : lastRun ? "negative" : "neutral"}
+          icon={healthy ? ShieldCheck : ShieldAlert}
+          loading={loading}
+        />
+        <StatTile
+          label="Recent regressions"
+          value={recentRegressions}
+          intent={recentRegressions > 0 ? "negative" : "neutral"}
+          hint="last 100 runs"
+          icon={ShieldAlert}
+          loading={loading}
+        />
+        <StatTile
+          label="Last run"
+          value={lastRun ? formatDistanceToNow(new Date(lastRun.created_at), { addSuffix: true }) : "—"}
+          hint="scheduled hourly (:07)"
+          icon={Clock}
+          loading={loading}
+        />
+      </StatRow>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent probe runs</CardTitle>
-          <CardDescription>
-            Each run executes one probe per target. A regression means a restricted column was
-            reachable by an anonymous caller.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>When</TableHead>
-                <TableHead>Probe</TableHead>
-                <TableHead>Target</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>HTTP</TableHead>
-                <TableHead>Leaked columns / error</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {runs.length === 0 && !loading && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    No probe runs yet. Click "Run probe now" to generate the first run.
-                  </TableCell>
-                </TableRow>
-              )}
-              {runs.map((r) => {
-                const badge = STATUS_BADGE[r.status];
-                return (
-                  <TableRow key={r.id}>
-                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                      {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">{r.probe_name}</TableCell>
-                    <TableCell className="font-mono text-xs">{r.target}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={badge.className}>
-                        {badge.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">{r.http_status ?? "—"}</TableCell>
-                    <TableCell className="text-sm">
-                      {r.leaked_columns && r.leaked_columns.length > 0 ? (
-                        <span className="text-red-600 font-mono text-xs">
-                          {r.leaked_columns.join(", ")}
-                        </span>
-                      ) : r.error_message ? (
-                        <span className="text-amber-700 text-xs">{r.error_message}</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
+      <DataTableShell
+        columns={COLS}
+        loading={loading}
+        isEmpty={runs.length === 0}
+        empty={
+          <EmptyState
+            icon={CalendarClock}
+            title="No probe runs yet"
+            description="Run the first probe now to confirm the public growth tables aren't leaking restricted columns."
+            action={<Button variant="gold" size="sm" onClick={runNow} disabled={probing}>Run probe now</Button>}
+          />
+        }
+      >
+        {runs.map((r) => {
+          const pill = STATUS_PILL[r.status];
+          return (
+            <TableRow key={r.id}>
+              <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
+              </TableCell>
+              <TableCell className="font-mono text-xs">{r.probe_name}</TableCell>
+              <TableCell className="font-mono text-xs">{r.target}</TableCell>
+              <TableCell><StatePill state={pill.state}>{pill.label}</StatePill></TableCell>
+              <TableCell className="text-sm text-right tabular-nums">{r.http_status ?? "—"}</TableCell>
+              <TableCell className="text-sm">
+                {r.leaked_columns && r.leaked_columns.length > 0 ? (
+                  <span className="text-[hsl(var(--destructive))] font-mono text-xs">
+                    {r.leaked_columns.join(", ")}
+                  </span>
+                ) : r.error_message ? (
+                  <span className="text-[hsl(var(--warning))] text-xs">{r.error_message}</span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </DataTableShell>
+    </PageShell>
   );
 }
