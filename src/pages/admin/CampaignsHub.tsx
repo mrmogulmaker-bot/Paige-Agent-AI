@@ -7,6 +7,7 @@ import { lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Megaphone, LayoutGrid, GitBranch, FileText, Inbox, Plug } from "lucide-react";
+import { PageShell, PageHeader } from "@/components/ui/page";
 import { CampaignsOverviewStats } from "@/components/admin/campaigns/CampaignsOverviewStats";
 
 const CampaignsOverview = lazy(() => import("@/pages/admin/CampaignsAdmin"));
@@ -27,17 +28,14 @@ export default function CampaignsHub() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Megaphone className="w-6 h-6" /> Campaigns
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Outbound marketing &amp; acquisition — live campaigns, landing pages, funnels, forms,
-          submissions, and external builder bridges. All wired into contacts, pipeline, and Paige
-          workflows in real time.
-        </p>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        eyebrow="Growth & Acquisition"
+        title="Campaigns"
+        icon={Megaphone}
+        description="Live campaigns, landing pages, funnels, forms, submissions, and external builder bridges — all wired into contacts, pipeline, and Paige workflows in real time."
+      />
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex flex-wrap h-auto">
@@ -66,6 +64,6 @@ export default function CampaignsHub() {
           </div>
         )}
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

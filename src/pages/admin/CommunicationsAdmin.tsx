@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Mail, MessageSquare, TrendingUp, AlertTriangle, Loader2 } from "lucide-react";
+import { Mail, MessageSquare, TrendingUp, AlertTriangle, ShieldCheck } from "lucide-react";
+import {
+  PageShell,
+  PageHeader,
+  StatRow,
+  StatTile,
+  SectionCard,
+  DataTableShell,
+  EmptyState,
+  StatePill,
+} from "@/components/ui/page";
+import { TableCell, TableRow } from "@/components/ui/table";
 
 interface LogRow {
   id: string;
@@ -16,6 +25,8 @@ interface LogRow {
   error_message: string | null;
   created_at: string;
 }
+
+const isFailedStatus = (status: string) => status === "failed" || status === "bounced";
 
 const CommunicationsAdmin = () => {
   const [loading, setLoading] = useState(true);
@@ -98,67 +109,48 @@ const CommunicationsAdmin = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  const failures = logs.filter((l) => l.status === "failed" || l.status === "bounced");
+  const failures = logs.filter((l) => isFailedStatus(l.status));
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Communications</h1>
-        <p className="text-muted-foreground">
-          Email + SMS dispatch overview and audit log for this month.
-        </p>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        eyebrow="Platform"
+        title="Communications"
+        description="Email and SMS dispatch overview, plus this month's audit log."
+      />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Emails (MTD)</CardTitle>
-            <Mail className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.emailsThisMonth}</div>
-            <p className="text-xs text-muted-foreground">{stats.emailSuccessRate}% delivered</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">SMS (MTD)</CardTitle>
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.smsThisMonth}</div>
-            <p className="text-xs text-muted-foreground">{stats.smsSuccessRate}% delivered</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Opt-in Rates</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm">Email: <strong>{stats.emailEnabledPct}%</strong></div>
-            <div className="text-sm">SMS: <strong>{stats.smsEnabledPct}%</strong></div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Issues</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">{stats.failuresThisMonth}</div>
-            <p className="text-xs text-muted-foreground">{stats.unsubscribedCount} unsubscribed</p>
-          </CardContent>
-        </Card>
-      </div>
+      <StatRow cols={4}>
+        <StatTile
+          label="Emails (MTD)"
+          value={stats.emailsThisMonth}
+          icon={Mail}
+          hint={`${stats.emailSuccessRate}% delivered`}
+          loading={loading}
+        />
+        <StatTile
+          label="SMS (MTD)"
+          value={stats.smsThisMonth}
+          icon={MessageSquare}
+          hint={`${stats.smsSuccessRate}% delivered`}
+          loading={loading}
+        />
+        <StatTile
+          label="Opt-in (Email / SMS)"
+          value={`${stats.emailEnabledPct}% / ${stats.smsEnabledPct}%`}
+          icon={TrendingUp}
+          hint="of all users opted in"
+          loading={loading}
+        />
+        <StatTile
+          label="Issues"
+          value={stats.failuresThisMonth}
+          icon={AlertTriangle}
+          intent="negative"
+          hint={`${stats.unsubscribedCount} unsubscribed`}
+          loading={loading}
+        />
+      </StatRow>
 
       <Tabs defaultValue="recent">
         <TabsList>
@@ -167,100 +159,81 @@ const CommunicationsAdmin = () => {
         </TabsList>
 
         <TabsContent value="recent">
-          <Card>
-            <CardHeader>
-              <CardTitle>Last 100 Communications</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                      <th className="py-2 pr-4">When</th>
-                      <th className="py-2 pr-4">Channel</th>
-                      <th className="py-2 pr-4">Type</th>
-                      <th className="py-2 pr-4">User</th>
-                      <th className="py-2 pr-4">Status</th>
-                      <th className="py-2 pr-4">Preview</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {logs.map((row) => (
-                      <tr key={row.id} className="border-b">
-                        <td className="py-2 pr-4 whitespace-nowrap">
-                          {new Date(row.created_at).toLocaleString()}
-                        </td>
-                        <td className="py-2 pr-4">
-                          <Badge variant="outline">{row.channel}</Badge>
-                        </td>
-                        <td className="py-2 pr-4">{row.message_type}</td>
-                        <td className="py-2 pr-4 font-mono text-xs">
-                          {row.user_id.slice(0, 8)}…
-                        </td>
-                        <td className="py-2 pr-4">
-                          <Badge
-                            variant={
-                              row.status === "failed" || row.status === "bounced"
-                                ? "destructive"
-                                : "default"
-                            }
-                          >
-                            {row.status}
-                          </Badge>
-                        </td>
-                        <td className="py-2 pr-4 max-w-xs truncate text-muted-foreground">
-                          {row.preview ?? row.subject ?? "—"}
-                        </td>
-                      </tr>
-                    ))}
-                    {logs.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="py-8 text-center text-muted-foreground">
-                          No communications yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
+          <DataTableShell
+            columns={[
+              { key: "when", header: "When" },
+              { key: "channel", header: "Channel" },
+              { key: "type", header: "Type" },
+              { key: "user", header: "User" },
+              { key: "status", header: "Status" },
+              { key: "preview", header: "Preview" },
+            ]}
+            loading={loading}
+            isEmpty={logs.length === 0}
+            empty={
+              <EmptyState
+                icon={Mail}
+                title="Nothing has gone out yet"
+                description="The moment Paige sends an email or text, every dispatch lands here with its delivery status."
+              />
+            }
+          >
+            {logs.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {new Date(row.created_at).toLocaleString()}
+                </TableCell>
+                <TableCell className="capitalize">{row.channel}</TableCell>
+                <TableCell>{row.message_type}</TableCell>
+                <TableCell className="font-mono text-xs">{row.user_id.slice(0, 8)}…</TableCell>
+                <TableCell>
+                  <StatePill state={isFailedStatus(row.status) ? "error" : "success"}>
+                    {row.status}
+                  </StatePill>
+                </TableCell>
+                <TableCell className="max-w-xs truncate text-muted-foreground">
+                  {row.preview ?? row.subject ?? "—"}
+                </TableCell>
+              </TableRow>
+            ))}
+          </DataTableShell>
         </TabsContent>
 
         <TabsContent value="failures">
-          <Card>
-            <CardHeader>
-              <CardTitle>Failed Deliveries</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {failures.length === 0 ? (
-                <p className="text-muted-foreground py-8 text-center">No failures — nice.</p>
-              ) : (
-                <div className="space-y-3">
-                  {failures.map((row) => (
-                    <div key={row.id} className="border rounded-md p-3 space-y-1">
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{new Date(row.created_at).toLocaleString()}</span>
-                        <Badge variant="destructive">{row.status}</Badge>
-                      </div>
-                      <div className="text-sm">
-                        <strong>{row.channel}</strong> · {row.message_type} · user{" "}
-                        <span className="font-mono text-xs">{row.user_id.slice(0, 8)}…</span>
-                      </div>
-                      {row.error_message && (
-                        <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
-                          {row.error_message}
-                        </div>
-                      )}
+          {failures.length === 0 ? (
+            <SectionCard>
+              <EmptyState
+                icon={ShieldCheck}
+                title="Every message landed"
+                description="No bounces, no failures this month. When one slips, it shows up here with the reason so you can fix it fast."
+              />
+            </SectionCard>
+          ) : (
+            <div className="space-y-3">
+              {failures.map((row) => (
+                <SectionCard key={row.id}>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{new Date(row.created_at).toLocaleString()}</span>
+                      <StatePill state="error">{row.status}</StatePill>
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    <div className="text-sm">
+                      <span className="font-semibold capitalize">{row.channel}</span> · {row.message_type} · user{" "}
+                      <span className="font-mono text-xs">{row.user_id.slice(0, 8)}…</span>
+                    </div>
+                    {row.error_message && (
+                      <div className="rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+                        {row.error_message}
+                      </div>
+                    )}
+                  </div>
+                </SectionCard>
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 };
 

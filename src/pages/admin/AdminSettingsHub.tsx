@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PageShell, PageHeader, SectionCard, StatePill } from "@/components/ui/page";
 import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe, CalendarCheck, Plug } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
@@ -61,37 +61,33 @@ const FLAG_META: Record<FlagKey, { label: string; description: string }> = {
 
 export function AdminSettingsHub() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Manage workspace, platform behavior, and system health from one place.
-        </p>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        eyebrow="Command Center"
+        title="Settings"
+        description="Manage workspace, platform behavior, and system health from one place."
+        icon={SettingsIcon}
+      />
 
       {/* Transitional signpost — Team & Roles moved to /admin/members (Ship #3 / Task #15).
           Keep visible until users' muscle memory catches up; remove in a future cleanup ship. */}
-      <Card className="border-primary/30 bg-primary/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Shield className="w-4 h-4" /> Team &amp; Roles has moved
-          </CardTitle>
-          <CardDescription>
-            Manage teammates, roles, invitations, suspend/reactivate, and access controls from the dedicated Members &amp; Roles page.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild>
-            <Link to="/admin/members">
-              Go to Members &amp; Roles
-              <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <SectionCard
+        icon={Shield}
+        title="Team & Roles has moved"
+        description="Manage teammates, roles, invitations, suspend/reactivate, and access controls from the dedicated Members & Roles page."
+        className="border-primary/30 bg-primary/5"
+      >
+        <Button asChild>
+          <Link to="/admin/members">
+            Go to Members &amp; Roles
+            <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+          </Link>
+        </Button>
+      </SectionCard>
 
       <Tabs defaultValue="workspace" className="space-y-4">
-        <TabsList className="w-full sm:w-auto flex-wrap h-auto">
+        <TabsList className="flex h-auto flex-wrap justify-start gap-1 p-1">
           <TabsTrigger value="workspace" className="gap-2">
             <Building2 className="w-4 h-4" /> Workspace
           </TabsTrigger>
@@ -148,16 +144,12 @@ export function AdminSettingsHub() {
         </TabsContent>
 
         <TabsContent value="pipelines" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <KanbanSquare className="w-4 h-4" /> Sales Pipelines
-              </CardTitle>
-              <CardDescription>
-                Build multiple pipelines with custom stages, win probabilities, and won/lost rules. Power your weighted forecast and Paige's CRM automations.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
+          <SectionCard
+            icon={KanbanSquare}
+            title="Sales Pipelines"
+            description="Build multiple pipelines with custom stages, win probabilities, and won/lost rules. Power your weighted forecast and Paige's CRM automations."
+          >
+            <div className="flex flex-wrap gap-2">
               <Button asChild>
                 <Link to="/admin/settings/pipelines">
                   Configure pipelines
@@ -170,8 +162,8 @@ export function AdminSettingsHub() {
                   <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
                 </Link>
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </SectionCard>
         </TabsContent>
 
         <TabsContent value="platform" className="space-y-4">
@@ -199,7 +191,7 @@ export function AdminSettingsHub() {
           <McpSessionsPanel />
         </TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }
 
@@ -260,14 +252,12 @@ function PlatformSettingsPanel() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Platform Settings</CardTitle>
-        <CardDescription>
-          Feature flags that change how the app behaves for every user. Changes apply immediately.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2">
+    <SectionCard
+      icon={SettingsIcon}
+      title="Platform Settings"
+      description="Feature flags that change how the app behaves for every user. Changes apply immediately."
+    >
+      <div className="space-y-2">
         {(Object.keys(FLAG_DEFAULTS) as FlagKey[]).map((key, idx) => (
           <div key={key}>
             {idx > 0 && <Separator className="my-2" />}
@@ -289,27 +279,23 @@ function PlatformSettingsPanel() {
             </div>
           </div>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </SectionCard>
   );
 }
 
 function NotificationsCommsPanel() {
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Mail className="w-4 h-4" /> Email Infrastructure
-          </CardTitle>
-          <CardDescription>
-            Branded emails sent from paigeagent.ai via the queue dispatcher.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <SectionCard
+        icon={Mail}
+        title="Email Infrastructure"
+        description="Branded emails sent from paigeagent.ai via the queue dispatcher."
+      >
+        <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <Badge variant="secondary">paigeagent.ai</Badge>
-            <Badge variant="outline" className="text-xs">Queue: pgmq</Badge>
+            <StatePill state="success">paigeagent.ai</StatePill>
+            <StatePill state="pending">Queue: pgmq</StatePill>
           </div>
           <p className="text-xs text-muted-foreground">
             Auth emails and transactional sends share a retry-safe queue with
@@ -321,19 +307,15 @@ function NotificationsCommsPanel() {
               <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
             </Link>
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Bell className="w-4 h-4" /> Push & SMS
-          </CardTitle>
-          <CardDescription>
-            Web push uses VAPID; SMS routes through Twilio with opt-out tracking.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <SectionCard
+        icon={Bell}
+        title="Push & SMS"
+        description="Web push uses VAPID; SMS routes through Twilio with opt-out tracking."
+      >
+        <div className="space-y-3">
           <ul className="text-xs text-muted-foreground space-y-1.5">
             <li>• Dispute status updates &rarr; push to client</li>
             <li>• New funding match &rarr; push (deduped 24h)</li>
@@ -346,8 +328,8 @@ function NotificationsCommsPanel() {
               <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
             </Link>
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
     </div>
   );
 }
@@ -389,28 +371,28 @@ function PlatformPipesPanel() {
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Radio className="w-4 h-4" /> Send Pipes & Inbound Channels
-        </CardTitle>
-        <CardDescription>
-          Controls how Paige routes outbound email/SMS and which inbound channels are live. GHL is a temporary fallback until Twilio A2P + Resend domain are fully verified.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <SectionCard
+      icon={Radio}
+      title="Send Pipes & Inbound Channels"
+      description="Controls how Paige routes outbound email/SMS and which inbound channels are live. GHL is a temporary fallback until Twilio A2P + Resend domain are fully verified."
+    >
+      <div className="space-y-5">
         <div className="space-y-1.5">
           <Label className="text-xs">Twilio A2P status</Label>
-          <select
-            className="flex h-9 w-full max-w-xs rounded-md border border-input bg-background px-3 py-1 text-sm"
+          <Select
             value={config.twilio_a2p_status ?? "not_started"}
-            onChange={(e) => setConfig({ ...config, twilio_a2p_status: e.target.value as PaigeConfig["twilio_a2p_status"] })}
+            onValueChange={(v) => setConfig({ ...config, twilio_a2p_status: v as PaigeConfig["twilio_a2p_status"] })}
           >
-            <option value="not_started">Not started</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved (send via Twilio)</option>
-            <option value="rejected">Rejected</option>
-          </select>
+            <SelectTrigger className="w-full max-w-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="not_started">Not started</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="approved">Approved (send via Twilio)</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+            </SelectContent>
+          </Select>
           <p className="text-[11px] text-muted-foreground">When approved, SMS sends go through Twilio. Otherwise they fall back to GHL.</p>
         </div>
 
@@ -446,8 +428,8 @@ function PlatformPipesPanel() {
         </div>
 
         <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save pipes"}</Button>
-      </CardContent>
-    </Card>
+      </div>
+    </SectionCard>
   );
 }
 

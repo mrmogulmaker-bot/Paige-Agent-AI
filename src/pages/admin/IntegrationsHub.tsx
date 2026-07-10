@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageShell, PageHeader, SectionCard, StatePill } from "@/components/ui/page";
+import type { PillState } from "@/components/ui/page";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  Workflow, CreditCard, Mail, MessageSquare, Send, Zap, Search, Activity,
+  Workflow, CreditCard, MessageSquare, Send, Zap, Search, Activity,
   ExternalLink, FileSignature, CalendarClock, BarChart3, Bug, Share2, UserSearch,
-  Building2, ShieldCheck, Landmark,
+  Building2, ShieldCheck, Landmark, Plug,
 } from "lucide-react";
 
 
@@ -94,58 +94,55 @@ export default function IntegrationsHub() {
   const hasSentryDsn = Boolean(import.meta.env.VITE_SENTRY_DSN);
   const hasPosthogKey = Boolean(import.meta.env.VITE_POSTHOG_KEY);
 
-  const statusFor = (key: string) => {
+  const statusFor = (key: string): { state: PillState; label: string } => {
     switch (key) {
-      case "n8n": return counts.n8n > 0 ? { tone: "default" as const, label: `${counts.n8n} connection${counts.n8n === 1 ? "" : "s"}` } : { tone: "secondary" as const, label: "Not configured" };
-      case "stripe": return counts.recentSubscriptionEvents > 0 ? { tone: "default" as const, label: `${counts.recentSubscriptionEvents} events (7d)` } : { tone: "secondary" as const, label: "Awaiting events" };
-      case "ghl": return config?.ghl_location_id ? { tone: "default" as const, label: "Connected" } : { tone: "secondary" as const, label: "Not configured" };
-      case "zapier": return counts.mcp > 0 ? { tone: "default" as const, label: `${counts.mcp} active` } : { tone: "secondary" as const, label: "Not configured" };
-      case "telegram": return counts.telegramConfigured ? { tone: "default" as const, label: "Active" } : { tone: "secondary" as const, label: "Not configured" };
-      case "gmail": return config?.gmail_default_sender ? { tone: "default" as const, label: config.gmail_default_sender } : { tone: "secondary" as const, label: "Not connected" };
-      case "firecrawl": return { tone: "default" as const, label: "Active (FIRECRAWL_API_KEY)" };
-      case "langsmith": return config?.langsmith_project ? { tone: "default" as const, label: config.langsmith_project } : { tone: "secondary" as const, label: "Disabled" };
-      case "docusign": return counts.envelopes > 0 ? { tone: "default" as const, label: `${counts.envelopes} envelope${counts.envelopes === 1 ? "" : "s"}` } : { tone: "secondary" as const, label: "Not configured" };
-      case "cal": return counts.bookings > 0 ? { tone: "default" as const, label: `${counts.bookings} bookings (30d)` } : { tone: "secondary" as const, label: "Not configured" };
-      case "meta": return config?.meta_default_page_id ? { tone: "default" as const, label: "Connected" } : { tone: "secondary" as const, label: "Not configured" };
-      case "apollo": return config?.apollo_auto_enrich ? { tone: "default" as const, label: `Auto-enrich on • ${counts.enrichments} (7d)` } : { tone: "secondary" as const, label: "Auto-enrich off" };
-      case "posthog": return hasPosthogKey ? { tone: "default" as const, label: "Connected" } : { tone: "secondary" as const, label: "Disabled" };
-      case "sentry": return hasSentryDsn ? { tone: "default" as const, label: "Connected" } : { tone: "secondary" as const, label: "Disabled" };
-      default: return { tone: "secondary" as const, label: "Unknown" };
+      case "n8n": return counts.n8n > 0 ? { state: "success", label: `${counts.n8n} connection${counts.n8n === 1 ? "" : "s"}` } : { state: "off", label: "Not configured" };
+      case "stripe": return counts.recentSubscriptionEvents > 0 ? { state: "success", label: `${counts.recentSubscriptionEvents} events (7d)` } : { state: "off", label: "Awaiting events" };
+      case "ghl": return config?.ghl_location_id ? { state: "success", label: "Connected" } : { state: "off", label: "Not configured" };
+      case "zapier": return counts.mcp > 0 ? { state: "success", label: `${counts.mcp} active` } : { state: "off", label: "Not configured" };
+      case "telegram": return counts.telegramConfigured ? { state: "success", label: "Active" } : { state: "off", label: "Not configured" };
+      case "gmail": return config?.gmail_default_sender ? { state: "success", label: config.gmail_default_sender } : { state: "off", label: "Not connected" };
+      case "firecrawl": return { state: "success", label: "Active" };
+      case "langsmith": return config?.langsmith_project ? { state: "success", label: config.langsmith_project } : { state: "off", label: "Disabled" };
+      case "docusign": return counts.envelopes > 0 ? { state: "success", label: `${counts.envelopes} envelope${counts.envelopes === 1 ? "" : "s"}` } : { state: "off", label: "Not configured" };
+      case "cal": return counts.bookings > 0 ? { state: "success", label: `${counts.bookings} bookings (30d)` } : { state: "off", label: "Not configured" };
+      case "meta": return config?.meta_default_page_id ? { state: "success", label: "Connected" } : { state: "off", label: "Not configured" };
+      case "apollo": return config?.apollo_auto_enrich ? { state: "success", label: `Auto-enrich on • ${counts.enrichments} (7d)` } : { state: "off", label: "Auto-enrich off" };
+      case "posthog": return hasPosthogKey ? { state: "success", label: "Connected" } : { state: "off", label: "Disabled" };
+      case "sentry": return hasSentryDsn ? { state: "success", label: "Connected" } : { state: "off", label: "Disabled" };
+      default: return { state: "off", label: "Unknown" };
     }
   };
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Integrations</h1>
-        <p className="text-sm text-muted-foreground">
-          Paige's connector layer — the central nervous system for MMA. Restricted to admins.
-        </p>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        eyebrow="Connector Layer"
+        icon={Plug}
+        title="Integrations"
+        description="Every tool Paige can reach — the wiring that lets her act across your stack. Admin only."
+      />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {tiles.map((tile) => {
-          const Icon = tile.icon;
           const status = statusFor(tile.key);
           return (
-            <Card key={tile.key} className="group hover:border-primary/40 transition-colors">
-              <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                <div className="flex items-center gap-2">
-                  <div className="rounded-md bg-muted p-2"><Icon className="size-4" /></div>
-                  <CardTitle className="text-base">{tile.title}</CardTitle>
-                </div>
-                <Badge variant={status.tone}>{status.label}</Badge>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <CardDescription>{tile.description}</CardDescription>
-                <Button asChild size="sm" variant="outline" className="gap-1">
-                  <Link to={tile.href}>Manage <ExternalLink className="size-3" /></Link>
-                </Button>
-              </CardContent>
-            </Card>
+            <SectionCard
+              key={tile.key}
+              interactive
+              icon={tile.icon}
+              title={tile.title}
+              description={tile.description}
+              actions={<StatePill state={status.state}>{status.label}</StatePill>}
+            >
+              <Button asChild size="sm" variant="outline" className="gap-1">
+                <Link to={tile.href}>Manage <ExternalLink className="size-3" /></Link>
+              </Button>
+            </SectionCard>
           );
         })}
       </div>
-    </div>
+    </PageShell>
   );
 }

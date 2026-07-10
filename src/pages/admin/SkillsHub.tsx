@@ -1,14 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TableCell, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, Play, Power, ShieldAlert, Activity } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  PageShell,
+  PageHeader,
+  StatRow,
+  StatTile,
+  SectionCard,
+  DataTableShell,
+  EmptyState,
+  StatePill,
+} from "@/components/ui/page";
+import { Blocks, Play, ShieldAlert, Activity, Lightbulb, Wand2, Search } from "lucide-react";
 
 interface Skill {
   id: string;
@@ -45,11 +56,38 @@ interface Proposal {
   created_at: string;
 }
 
-const riskColor = (r: string) =>
-  r === "read_only" ? "bg-emerald-500/10 text-emerald-700"
-  : r === "draft" ? "bg-blue-500/10 text-blue-700"
-  : r === "mutating" ? "bg-amber-500/10 text-amber-700"
-  : "bg-rose-500/10 text-rose-700";
+// Risk levels rendered on semantic status tokens (AA in light + dark), never
+// the old light-only bg-emerald/amber/rose soup. read-only is safe (success),
+// mutating is caution (warning), external/high is danger (destructive).
+const RISK_META: Record<string, { label: string; cls: string }> = {
+  read_only: { label: "Read-only", cls: "bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))]" },
+  draft: { label: "Draft", cls: "bg-primary/10 text-primary" },
+  mutating: { label: "Mutating", cls: "bg-[hsl(var(--warning)/0.18)] text-[hsl(var(--warning))]" },
+};
+
+function RiskBadge({ risk }: { risk: string }) {
+  const meta =
+    RISK_META[risk] ??
+    { label: risk.replace(/_/g, " "), cls: "bg-destructive/15 text-destructive" };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        meta.cls,
+      )}
+    >
+      {meta.label}
+    </span>
+  );
+}
+
+function MetaPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+      {children}
+    </span>
+  );
+}
 
 export default function SkillsHub() {
   const { toast } = useToast();
@@ -111,19 +149,23 @@ export default function SkillsHub() {
     [skills, search],
   );
 
+  const activeCount = skills.filter((s) => s.status === "active").length;
+
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Sparkles className="h-7 w-7 text-amber-500" /> Skills Hub
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Reusable recipes Paige can execute. She can propose new ones autonomously — high-risk skills require admin confirm on the first 3 runs.
-          </p>
-        </div>
-        <Badge variant="outline" className="text-sm">{skills.filter(s => s.status === "active").length} active</Badge>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        eyebrow="Paige Skills"
+        title="Skills Hub"
+        description="Reusable recipes Paige can run on demand. She proposes new ones on her own — high-risk skills wait for your confirm on the first three runs."
+      />
+
+      <StatRow cols={4}>
+        <StatTile label="Skills" value={skills.length} icon={Blocks} loading={loading} />
+        <StatTile label="Active" value={activeCount} icon={Activity} loading={loading} hint="live and callable" />
+        <StatTile label="Recent runs" value={runs.length} icon={Play} loading={loading} />
+        <StatTile label="Proposals" value={proposals.length} icon={Lightbulb} loading={loading} />
+      </StatRow>
 
       <Tabs defaultValue="skills">
         <TabsList>
@@ -134,97 +176,180 @@ export default function SkillsHub() {
         </TabsList>
 
         <TabsContent value="skills" className="space-y-3">
-          <Input placeholder="Search skills…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-md" />
-          {loading ? <p className="text-muted-foreground">Loading…</p> : filtered.map((s) => (
-            <Card key={s.id}>
-              <CardContent className="p-4 flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold">{s.name}</h3>
-                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{s.slug}</code>
-                    <Badge className={riskColor(s.risk_level)}>{s.risk_level}</Badge>
-                    <Badge variant="outline">{s.category}</Badge>
-                    {s.created_by === "paige" && <Badge className="bg-purple-500/10 text-purple-700">Paige-authored</Badge>}
+          <div className="relative max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search skills…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-28 w-full rounded-[var(--radius)]" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <SectionCard>
+              <EmptyState
+                icon={Blocks}
+                title={search ? "Nothing matches that search" : "No skills yet"}
+                description={
+                  search
+                    ? "Try a different name or slug."
+                    : "Forge Paige's first skill and it will show up here, ready to run."
+                }
+                tone="brand"
+              />
+            </SectionCard>
+          ) : (
+            filtered.map((s, i) => (
+              <SectionCard
+                key={s.id}
+                numbered={i + 1}
+                icon={Blocks}
+                interactive
+                title={
+                  <span className="flex flex-wrap items-center gap-2">
+                    {s.name}
+                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal">{s.slug}</code>
+                    <RiskBadge risk={s.risk_level} />
+                    <MetaPill>{s.category}</MetaPill>
+                    {s.created_by === "paige" && <MetaPill>Paige-authored</MetaPill>}
                     {s.require_admin_confirm_first_n > 0 && s.run_count < s.require_admin_confirm_first_n && (
-                      <Badge className="bg-amber-500/10 text-amber-700 gap-1"><ShieldAlert className="h-3 w-3" /> {s.require_admin_confirm_first_n - s.run_count} confirms left</Badge>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--warning)/0.18)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--warning))]">
+                        <ShieldAlert className="h-3 w-3" /> {s.require_admin_confirm_first_n - s.run_count} confirms left
+                      </span>
                     )}
+                  </span>
+                }
+                description={s.description ?? undefined}
+                actions={
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex items-center gap-2">
+                      <Switch checked={s.status === "active"} onCheckedChange={() => toggle(s)} />
+                      <StatePill state={s.status === "active" ? "on" : "off"} />
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => testRun(s)} className="gap-1">
+                      <Play className="h-3 w-3" /> Test
+                    </Button>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">{s.description}</p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {s.run_count} runs · {s.success_count} successes · triggers: {s.trigger_phrases.slice(0, 2).join(" | ") || "—"}
-                  </p>
-                </div>
-                <div className="flex flex-col gap-2 items-end">
-                  <div className="flex items-center gap-2 text-xs">
-                    <Switch checked={s.status === "active"} onCheckedChange={() => toggle(s)} />
-                    <span>{s.status}</span>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => testRun(s)} className="gap-1">
-                    <Play className="h-3 w-3" /> Test
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                }
+              >
+                <p className="text-xs text-muted-foreground">
+                  {s.run_count} runs · {s.success_count} successes · triggers: {s.trigger_phrases.slice(0, 2).join(" | ") || "—"}
+                </p>
+              </SectionCard>
+            ))
+          )}
         </TabsContent>
 
-        <TabsContent value="runs" className="space-y-2">
-          {runs.map((r) => (
-            <Card key={r.id}>
-              <CardContent className="p-3 flex items-center justify-between text-sm">
-                <div className="flex items-center gap-3">
-                  <Activity className="h-4 w-4 text-muted-foreground" />
+        <TabsContent value="runs" className="space-y-3">
+          <DataTableShell
+            columns={[
+              { key: "skill", header: "Skill" },
+              { key: "status", header: "Status" },
+              { key: "duration", header: "Duration", numeric: true },
+              { key: "when", header: "When", numeric: true },
+            ]}
+            loading={loading}
+            isEmpty={runs.length === 0}
+            empty={
+              <EmptyState
+                icon={Activity}
+                title="No runs yet"
+                description="Once Paige runs a skill, every execution lands here with its status and timing."
+              />
+            }
+          >
+            {runs.map((r) => (
+              <TableRow key={r.id}>
+                <TableCell>
                   <code className="text-xs">{r.skill_slug}</code>
-                  <Badge variant={r.status === "succeeded" ? "default" : r.status === "failed" ? "destructive" : "secondary"}>{r.status}</Badge>
-                  {r.duration_ms !== null && <span className="text-xs text-muted-foreground">{r.duration_ms}ms</span>}
-                </div>
-                <div className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleString()}</div>
-              </CardContent>
-              {r.error && <CardContent className="px-3 pb-3 text-xs text-destructive">{r.error}</CardContent>}
-            </Card>
-          ))}
-          {runs.length === 0 && <p className="text-muted-foreground text-sm">No runs yet.</p>}
+                  {r.error && <p className="mt-1 text-xs text-destructive">{r.error}</p>}
+                </TableCell>
+                <TableCell>
+                  <StatePill
+                    state={r.status === "succeeded" ? "success" : r.status === "failed" ? "error" : "pending"}
+                  >
+                    {r.status}
+                  </StatePill>
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
+                  {r.duration_ms !== null ? `${r.duration_ms}ms` : "—"}
+                </TableCell>
+                <TableCell className="text-right text-xs text-muted-foreground">
+                  {new Date(r.created_at).toLocaleString()}
+                </TableCell>
+              </TableRow>
+            ))}
+          </DataTableShell>
         </TabsContent>
 
-        <TabsContent value="proposals" className="space-y-2">
-          {proposals.map((p) => (
-            <Card key={p.id}>
-              <CardContent className="p-3">
-                <div className="flex items-center gap-2">
-                  <strong>{p.proposed_name}</strong>
-                  <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{p.proposed_slug}</code>
-                  <Badge className={riskColor(p.risk_level)}>{p.risk_level}</Badge>
-                  <Badge variant="outline">{p.status}</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">{p.description}</p>
-                {p.rationale && <p className="text-xs text-muted-foreground mt-1 italic">Why: {p.rationale}</p>}
-              </CardContent>
-            </Card>
-          ))}
-          {proposals.length === 0 && <p className="text-muted-foreground text-sm">No proposals yet.</p>}
+        <TabsContent value="proposals" className="space-y-3">
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full rounded-[var(--radius)]" />
+              ))}
+            </div>
+          ) : proposals.length === 0 ? (
+            <SectionCard>
+              <EmptyState
+                icon={Lightbulb}
+                title="No proposals yet"
+                description="When Paige spots a recipe worth adding, she'll pitch it here for your review."
+              />
+            </SectionCard>
+          ) : (
+            proposals.map((p) => (
+              <SectionCard
+                key={p.id}
+                icon={Lightbulb}
+                title={
+                  <span className="flex flex-wrap items-center gap-2">
+                    {p.proposed_name}
+                    <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-normal">{p.proposed_slug}</code>
+                    <RiskBadge risk={p.risk_level} />
+                    <MetaPill>{p.status}</MetaPill>
+                  </span>
+                }
+                description={p.description ?? undefined}
+              >
+                {p.rationale && (
+                  <p className="text-xs italic text-muted-foreground">Why: {p.rationale}</p>
+                )}
+              </SectionCard>
+            ))
+          )}
         </TabsContent>
 
         <TabsContent value="forge" className="space-y-3">
-          <Card>
-            <CardHeader>
-              <CardTitle>Forge a new skill</CardTitle>
-              <p className="text-sm text-muted-foreground">Describe what Paige should be able to do. She'll draft a structured skill, slot in the right tools, and auto-publish.</p>
-            </CardHeader>
-            <CardContent className="space-y-3">
+          <SectionCard
+            icon={Wand2}
+            title="Forge a new skill"
+            description="Describe what Paige should be able to do. She drafts a structured skill, slots in the right tools, and publishes it."
+          >
+            <div className="space-y-3">
               <Textarea
-                placeholder="e.g. When a client passes their MyFICO check, scrape three competitor lender sites and draft a comparison brief."
+                placeholder="e.g. When a client finishes onboarding, pull their last three sessions and draft a check-in the coach can send."
                 value={forgeIntent}
                 onChange={(e) => setForgeIntent(e.target.value)}
                 rows={4}
               />
-              <Button onClick={forge} disabled={forging || !forgeIntent.trim()} className="gap-2">
-                <Sparkles className="h-4 w-4" /> {forging ? "Drafting…" : "Forge skill"}
+              <Button variant="gold" onClick={forge} disabled={forging || !forgeIntent.trim()} className="gap-2">
+                <Wand2 className="h-4 w-4" /> {forging ? "Drafting…" : "Forge skill"}
               </Button>
-              <p className="text-xs text-muted-foreground">Read-only/draft skills publish live immediately. Mutating + external-send skills require admin confirm on the first 3 runs.</p>
-            </CardContent>
-          </Card>
+              <p className="text-xs text-muted-foreground">
+                Read-only and draft skills publish live right away. Skills that change data or send externally wait for your confirm on the first three runs.
+              </p>
+            </div>
+          </SectionCard>
         </TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

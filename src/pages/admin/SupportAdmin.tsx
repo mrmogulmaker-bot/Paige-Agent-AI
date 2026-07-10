@@ -1,19 +1,68 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableCell, TableRow } from "@/components/ui/table";
 import { Inbox, Activity, AlertTriangle, Clock, CheckCircle2, Lightbulb, Download, ArrowUp } from "lucide-react";
 import {
-  TICKET_STATUS_LABEL, TICKET_STATUS_STYLES, PRIORITY_STYLES, FEATURE_STATUS_LABEL, FEATURE_STATUS_STYLES,
+  PageShell, PageHeader, StatRow, StatTile, SectionCard, DataTableShell, EmptyState,
+  Toolbar, FilterChip, StatePill, type Column, type PillState,
+} from "@/components/ui/page";
+import {
+  TICKET_STATUS_LABEL, FEATURE_STATUS_LABEL,
   ticketCategoryLabel, featureCategoryLabel, timeAgo,
   type TicketStatus, type TicketPriority, type FeatureStatus,
 } from "@/components/support/supportTypes";
 import { AdminTicketPanel } from "@/components/support/AdminTicketPanel";
 import { AdminFeatureRequestPanel } from "@/components/support/AdminFeatureRequestPanel";
+
+// State-carrying pills replace the badge color soup — legible by label, gold spent
+// only on the on-moment (§6). Green = resolved/shipped, destructive = urgent/declined.
+const TICKET_STATUS_PILL: Record<TicketStatus, PillState> = {
+  open: "pending",
+  in_progress: "pending",
+  waiting_on_client: "pending",
+  resolved: "success",
+  closed: "off",
+};
+const PRIORITY_PILL: Record<TicketPriority, PillState> = {
+  low: "off",
+  normal: "off",
+  high: "pending",
+  urgent: "error",
+};
+const FEATURE_STATUS_PILL: Record<FeatureStatus, PillState> = {
+  submitted: "off",
+  under_review: "pending",
+  planned: "pending",
+  in_progress: "pending",
+  shipped: "success",
+  declined: "error",
+};
+
+const TICKET_COLUMNS: Column[] = [
+  { key: "ticket", header: "Ticket" },
+  { key: "client", header: "Client", className: "hidden sm:table-cell" },
+  { key: "category", header: "Category", className: "hidden md:table-cell" },
+  { key: "subject", header: "Subject" },
+  { key: "priority", header: "Priority", className: "hidden sm:table-cell" },
+  { key: "status", header: "Status" },
+  { key: "assignee", header: "Assignee", className: "hidden md:table-cell" },
+  { key: "created", header: "Created", className: "hidden lg:table-cell" },
+  { key: "updated", header: "Updated", className: "hidden lg:table-cell" },
+];
+
+const FEATURE_COLUMNS: Column[] = [
+  { key: "title", header: "Title" },
+  { key: "category", header: "Category" },
+  { key: "votes", header: "Votes", numeric: true },
+  { key: "status", header: "Status" },
+  { key: "submitter", header: "Submitter", className: "hidden md:table-cell" },
+  { key: "submitted", header: "Submitted", className: "hidden lg:table-cell" },
+  { key: "response", header: "Response" },
+];
 
 interface AdminTicket {
   id: string;
@@ -207,79 +256,66 @@ export default function SupportAdmin() {
   const initials = (name: string) =>
     name.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase() || "?";
 
-  const TicketTable = ({ rows }: { rows: AdminTicket[] }) => (
-    <div className="overflow-x-auto -mx-3 sm:mx-0">
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Ticket</TableHead>
-          <TableHead className="hidden sm:table-cell">Client</TableHead>
-          <TableHead className="hidden md:table-cell">Category</TableHead>
-          <TableHead>Subject</TableHead>
-          <TableHead className="hidden sm:table-cell">Priority</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="hidden md:table-cell">Assignee</TableHead>
-          <TableHead className="hidden lg:table-cell">Created</TableHead>
-          <TableHead className="hidden lg:table-cell">Updated</TableHead>
+  const TicketTable = ({ rows, loading: tableLoading }: { rows: AdminTicket[]; loading?: boolean }) => (
+    <DataTableShell
+      columns={TICKET_COLUMNS}
+      loading={tableLoading}
+      isEmpty={!tableLoading && rows.length === 0}
+      empty={
+        <EmptyState
+          icon={Inbox}
+          title="No tickets to show"
+          description="When clients open a ticket, it lands right here for your team to work."
+        />
+      }
+    >
+      {rows.map((t) => (
+        <TableRow key={t.id} className="cursor-pointer" onClick={() => setActiveTicketId(t.id)}>
+          <TableCell className="font-mono text-xs">{t.ticket_number}</TableCell>
+          <TableCell className="hidden sm:table-cell">
+            <div className="text-sm">{t.client_name || "—"}</div>
+            <div className="text-xs text-muted-foreground">{t.client_email || ""}</div>
+          </TableCell>
+          <TableCell className="hidden md:table-cell">
+            <Badge variant="outline">{ticketCategoryLabel(t.category)}</Badge>
+          </TableCell>
+          <TableCell className="max-w-[260px] truncate">{t.subject}</TableCell>
+          <TableCell className="hidden sm:table-cell">
+            <StatePill state={PRIORITY_PILL[t.priority]}>
+              {t.priority === "urgent" && <AlertTriangle className="w-3 h-3" />}
+              {t.priority}
+            </StatePill>
+          </TableCell>
+          <TableCell>
+            <StatePill state={TICKET_STATUS_PILL[t.status]}>{TICKET_STATUS_LABEL[t.status]}</StatePill>
+          </TableCell>
+          <TableCell className="hidden md:table-cell">
+            {t.assigned_to ? (
+              <div className="flex items-center gap-1.5">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+                  {initials(t.assigned_to)}
+                </span>
+                <span className="text-xs">{t.assigned_to}</span>
+              </div>
+            ) : (
+              <span className="text-xs text-muted-foreground italic">Unassigned</span>
+            )}
+          </TableCell>
+          <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{timeAgo(t.created_at)}</TableCell>
+          <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{timeAgo(t.updated_at)}</TableCell>
         </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((t) => (
-          <TableRow key={t.id} className="cursor-pointer" onClick={() => setActiveTicketId(t.id)}>
-            <TableCell className="font-mono text-xs">{t.ticket_number}</TableCell>
-            <TableCell>
-              <div className="text-sm">{t.client_name || "—"}</div>
-              <div className="text-xs text-muted-foreground">{t.client_email || ""}</div>
-            </TableCell>
-            <TableCell className="hidden md:table-cell">
-              <Badge variant="outline">{ticketCategoryLabel(t.category)}</Badge>
-            </TableCell>
-            <TableCell className="max-w-[260px] truncate">{t.subject}</TableCell>
-            <TableCell>
-              <Badge variant="outline" className={PRIORITY_STYLES[t.priority]}>
-                {t.priority === "urgent" && <AlertTriangle className="w-3 h-3 mr-1" />}
-                {t.priority}
-              </Badge>
-            </TableCell>
-            <TableCell>
-              <Badge variant="outline" className={TICKET_STATUS_STYLES[t.status]}>
-                {TICKET_STATUS_LABEL[t.status]}
-              </Badge>
-            </TableCell>
-            <TableCell>
-              {t.assigned_to ? (
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/20 text-gold-dark text-[10px] font-bold">
-                    {initials(t.assigned_to)}
-                  </span>
-                  <span className="text-xs">{t.assigned_to}</span>
-                </div>
-              ) : (
-                <span className="text-xs text-muted-foreground italic">Unassigned</span>
-              )}
-            </TableCell>
-            <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{timeAgo(t.created_at)}</TableCell>
-            <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{timeAgo(t.updated_at)}</TableCell>
-          </TableRow>
-        ))}
-        {rows.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-8">
-              No tickets to show.
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
-    </div>
+      ))}
+    </DataTableShell>
   );
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Support & Feedback</h1>
-        <p className="text-muted-foreground mt-1">Manage client tickets and product feedback in one place.</p>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        eyebrow="Support"
+        title="Support & Feedback"
+        description="Manage client tickets and product feedback in one place."
+      />
 
       <Tabs defaultValue="open">
         <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
@@ -292,136 +328,117 @@ export default function SupportAdmin() {
 
         {/* OPEN TICKETS */}
         <TabsContent value="open" className="space-y-4 pt-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiCard label="Open" value={openCount} icon={<Inbox className="w-4 h-4" />} tone="blue" />
-            <KpiCard label="In Progress" value={inProgressCount} icon={<Activity className="w-4 h-4" />} tone="amber" />
-            <KpiCard label="Urgent" value={urgentCount} icon={<AlertTriangle className="w-4 h-4" />} tone="red" />
-            <KpiCard label="Avg Resolution" value={`${avgResolutionHours.toFixed(1)}h`} icon={<Clock className="w-4 h-4" />} tone="emerald" />
-          </div>
+          <StatRow cols={4}>
+            <StatTile label="Open" value={openCount} icon={Inbox} loading={loading} />
+            <StatTile label="In Progress" value={inProgressCount} icon={Activity} loading={loading} />
+            <StatTile
+              label="Urgent"
+              value={urgentCount}
+              icon={AlertTriangle}
+              intent={urgentCount > 0 ? "negative" : "neutral"}
+              loading={loading}
+            />
+            <StatTile label="Avg Resolution" value={`${avgResolutionHours.toFixed(1)}h`} icon={Clock} loading={loading} />
+          </StatRow>
 
           {/* Assignee filter chips */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground uppercase tracking-wider">Filter:</span>
-            <Button
-              variant={assigneeFilter === "all" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setAssigneeFilter("all")}
-            >
+            <FilterChip active={assigneeFilter === "all"} onClick={() => setAssigneeFilter("all")}>
               All ({openTickets.length})
-            </Button>
-            <Button
-              variant={assigneeFilter === "mine" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setAssigneeFilter("mine")}
-              disabled={!adminName}
+            </FilterChip>
+            <FilterChip
+              active={assigneeFilter === "mine"}
+              onClick={() => adminName && setAssigneeFilter("mine")}
             >
               My Tickets ({adminName ? openTickets.filter((t) => t.assigned_to === adminName).length : 0})
-            </Button>
-            <Button
-              variant={assigneeFilter === "unassigned" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setAssigneeFilter("unassigned")}
-            >
+            </FilterChip>
+            <FilterChip active={assigneeFilter === "unassigned"} onClick={() => setAssigneeFilter("unassigned")}>
               Unassigned ({openTickets.filter((t) => !t.assigned_to).length})
-            </Button>
+            </FilterChip>
           </div>
 
-          <Card className="border-border">
-            {loading ? (
-              <div className="p-6 text-sm text-muted-foreground">Loading...</div>
-            ) : (
-              <TicketTable rows={filteredOpenTickets} />
-            )}
-          </Card>
+          <TicketTable rows={filteredOpenTickets} loading={loading} />
         </TabsContent>
 
         {/* ALL TICKETS */}
         <TabsContent value="all" className="space-y-4 pt-4">
-          <Card className="p-4 border-border">
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">From</label>
-                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-[160px]" />
+          <SectionCard>
+            <Toolbar>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">From</label>
+                  <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-[160px]" />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">To</label>
+                  <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-[160px]" />
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">To</label>
-                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-[160px]" />
-              </div>
-              <div className="flex-1" />
               <Button variant="outline" onClick={exportCsv} className="gap-2">
                 <Download className="w-4 h-4" /> Export CSV
               </Button>
-            </div>
-          </Card>
-          <Card className="border-border">
-            <TicketTable rows={filteredAllTickets} />
-          </Card>
+            </Toolbar>
+          </SectionCard>
+          <TicketTable rows={filteredAllTickets} loading={loading} />
         </TabsContent>
 
         {/* FEATURE REQUESTS */}
         <TabsContent value="features" className="space-y-4 pt-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiCard label="Total Requests" value={features.length} icon={<Lightbulb className="w-4 h-4" />} tone="blue" />
-            <KpiCard label="Total Votes" value={totalVotes} icon={<ArrowUp className="w-4 h-4" />} tone="amber" />
-            <KpiCard label="Planned / In Progress" value={plannedCount} icon={<Activity className="w-4 h-4" />} tone="purple" />
-            <KpiCard label="Shipped" value={shippedCount} icon={<CheckCircle2 className="w-4 h-4" />} tone="emerald" />
-          </div>
+          <StatRow cols={4}>
+            <StatTile label="Total Requests" value={features.length} icon={Lightbulb} loading={loading} />
+            <StatTile label="Total Votes" value={totalVotes} icon={ArrowUp} loading={loading} />
+            <StatTile label="Planned / In Progress" value={plannedCount} icon={Activity} loading={loading} />
+            <StatTile
+              label="Shipped"
+              value={shippedCount}
+              icon={CheckCircle2}
+              intent={shippedCount > 0 ? "positive" : "neutral"}
+              loading={loading}
+            />
+          </StatRow>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card className="lg:col-span-2 border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Votes</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="hidden md:table-cell">Submitter</TableHead>
-                    <TableHead className="hidden lg:table-cell">Submitted</TableHead>
-                    <TableHead>Response</TableHead>
+            <div className="lg:col-span-2">
+              <DataTableShell
+                columns={FEATURE_COLUMNS}
+                loading={loading}
+                isEmpty={!loading && features.length === 0}
+                empty={
+                  <EmptyState
+                    icon={Lightbulb}
+                    title="No feature requests yet"
+                    description="Ideas your clients and team submit will collect here, ranked by votes."
+                  />
+                }
+              >
+                {features.map((f) => (
+                  <TableRow key={f.id} className="cursor-pointer" onClick={() => setActiveFeatureId(f.id)}>
+                    <TableCell className="font-medium max-w-[240px] truncate">{f.title}</TableCell>
+                    <TableCell><Badge variant="outline">{featureCategoryLabel(f.category)}</Badge></TableCell>
+                    <TableCell className="text-right"><span className="font-bold tabular-nums">{f.vote_count}</span></TableCell>
+                    <TableCell>
+                      <StatePill state={FEATURE_STATUS_PILL[f.status]}>{FEATURE_STATUS_LABEL[f.status]}</StatePill>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <div className="text-xs">{f.submitter_name || "—"}</div>
+                      <div className="text-[11px] text-muted-foreground">{f.submitter_email || ""}</div>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{timeAgo(f.created_at)}</TableCell>
+                    <TableCell>
+                      {f.admin_response ? (
+                        <StatePill state="success">Yes</StatePill>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {features.map((f) => (
-                    <TableRow key={f.id} className="cursor-pointer" onClick={() => setActiveFeatureId(f.id)}>
-                      <TableCell className="font-medium max-w-[240px] truncate">{f.title}</TableCell>
-                      <TableCell><Badge variant="outline">{featureCategoryLabel(f.category)}</Badge></TableCell>
-                      <TableCell><span className="font-bold tabular-nums">{f.vote_count}</span></TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={FEATURE_STATUS_STYLES[f.status]}>
-                          {FEATURE_STATUS_LABEL[f.status]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <div className="text-xs">{f.submitter_name || "—"}</div>
-                        <div className="text-[11px] text-muted-foreground">{f.submitter_email || ""}</div>
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">{timeAgo(f.created_at)}</TableCell>
-                      <TableCell>
-                        {f.admin_response ? (
-                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30">Yes</Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-muted-foreground">—</Badge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {features.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">
-                        No feature requests yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </Card>
+                ))}
+              </DataTableShell>
+            </div>
 
             {/* Top 10 widget */}
-            <Card className="border-border p-4">
-              <h3 className="font-semibold flex items-center gap-2 mb-3">
-                <ArrowUp className="w-4 h-4 text-accent" /> Top 10 Most Requested
-              </h3>
+            <SectionCard title="Top 10 Most Requested" icon={ArrowUp}>
               <ol className="space-y-2">
                 {top10.map((f, idx) => (
                   <li key={f.id} className="flex items-start gap-2 text-sm">
@@ -429,7 +446,7 @@ export default function SupportAdmin() {
                     <div className="flex-1 min-w-0">
                       <button
                         onClick={() => setActiveFeatureId(f.id)}
-                        className="font-medium text-left hover:text-gold-dark line-clamp-2"
+                        className="font-medium text-left hover:text-primary line-clamp-2"
                       >
                         {f.title}
                       </button>
@@ -437,7 +454,7 @@ export default function SupportAdmin() {
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                           {featureCategoryLabel(f.category)}
                         </Badge>
-                        <span className="text-xs font-bold text-gold-dark">{f.vote_count} votes</span>
+                        <span className="text-xs font-semibold text-foreground tabular-nums">{f.vote_count} votes</span>
                       </div>
                     </div>
                   </li>
@@ -446,7 +463,7 @@ export default function SupportAdmin() {
                   <li className="text-sm text-muted-foreground">No requests yet.</li>
                 )}
               </ol>
-            </Card>
+            </SectionCard>
           </div>
         </TabsContent>
       </Tabs>
@@ -464,25 +481,6 @@ export default function SupportAdmin() {
         onOpenChange={(o) => !o && setActiveFeatureId(null)}
         onUpdated={loadAll}
       />
-    </div>
-  );
-}
-
-function KpiCard({ label, value, icon, tone }: { label: string; value: number | string; icon: React.ReactNode; tone: "blue" | "amber" | "red" | "emerald" | "purple" }) {
-  const toneClass = {
-    blue: "text-blue-600 bg-blue-500/10 border-blue-500/30",
-    amber: "text-amber-600 bg-amber-500/10 border-amber-500/30",
-    red: "text-destructive bg-destructive/10 border-destructive/30",
-    emerald: "text-emerald-600 bg-emerald-500/10 border-emerald-500/30",
-    purple: "text-purple-600 bg-purple-500/10 border-purple-500/30",
-  }[tone];
-  return (
-    <Card className="p-4 border-border">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-muted-foreground uppercase tracking-wider">{label}</span>
-        <span className={`p-1.5 rounded-md border ${toneClass}`}>{icon}</span>
-      </div>
-      <div className="text-2xl font-bold mt-2 tabular-nums">{value}</div>
-    </Card>
+    </PageShell>
   );
 }

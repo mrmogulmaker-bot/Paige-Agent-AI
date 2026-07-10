@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { Card, CardContent } from "@/components/ui/card";
-import { GitBranch, FileText, LayoutGrid, Inbox, TrendingUp, Loader2 } from "lucide-react";
+import { StatRow, StatTile } from "@/components/ui/page";
+import { GitBranch, FileText, LayoutGrid, Inbox, TrendingUp } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 interface Stats {
   liveFunnels: number;
@@ -60,40 +61,33 @@ export function CampaignsOverviewStats() {
     return () => { cancelled = true; };
   }, [activeTenantId]);
 
-  if (loading || !stats) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground py-4">
-        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading campaign stats…
-      </div>
-    );
-  }
+  const isLoading = loading || !stats;
 
-  const items: { label: string; value: string | number; icon: any; hint?: string }[] = [
-    { label: "Live Funnels", value: stats.liveFunnels, icon: GitBranch },
-    { label: "Live Pages", value: stats.livePages, icon: LayoutGrid },
-    { label: "Live Forms", value: stats.liveForms, icon: FileText },
-    { label: "Submissions (7d)", value: stats.submissions7d, icon: Inbox },
+  const items: { label: string; value: string | number; icon: LucideIcon; hint?: string }[] = [
+    { label: "Live Funnels", value: stats?.liveFunnels ?? 0, icon: GitBranch },
+    { label: "Live Pages", value: stats?.livePages ?? 0, icon: LayoutGrid },
+    { label: "Live Forms", value: stats?.liveForms ?? 0, icon: FileText },
+    { label: "Submissions (7d)", value: stats?.submissions7d ?? 0, icon: Inbox },
     {
       label: "Top Form (7d)",
-      value: stats.topForm ? `${stats.topForm.count}` : "—",
+      value: stats?.topForm ? `${stats.topForm.count}` : "—",
       icon: TrendingUp,
-      hint: stats.topForm?.name,
+      hint: stats?.topForm?.name,
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+    <StatRow cols={4}>
       {items.map((it) => (
-        <Card key={it.label}>
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <it.icon className="w-3.5 h-3.5" /> {it.label}
-            </div>
-            <div className="text-2xl font-semibold tracking-tight mt-1">{it.value}</div>
-            {it.hint && <div className="text-[11px] text-muted-foreground truncate">{it.hint}</div>}
-          </CardContent>
-        </Card>
+        <StatTile
+          key={it.label}
+          label={it.label}
+          value={it.value}
+          icon={it.icon}
+          hint={it.hint}
+          loading={isLoading}
+        />
       ))}
-    </div>
+    </StatRow>
   );
 }
