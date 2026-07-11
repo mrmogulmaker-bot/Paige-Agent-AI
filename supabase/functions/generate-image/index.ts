@@ -77,13 +77,28 @@ serve(async (req: Request) => {
     });
     if (upErr) throw new Error(`Storage upload failed: ${upErr.message}`);
     const { data: pub } = admin.storage.from("paige-generated").getPublicUrl(path);
+    const publicUrl = pub?.publicUrl ?? null;
+
+    // Auto-file every generated image into the tenant's Content Studio library (§10),
+    // so it's browsable/reusable without a second step. Best-effort — never fail the
+    // generation because the library insert hiccuped.
+    let contentId: string | null = null;
+    if (tenantId && publicUrl) {
+      const title = prompt.slice(0, 60) + (prompt.length > 60 ? "…" : "");
+      const { data: cid, error: saveErr } = await admin.rpc("save_marketing_content", {
+        p_kind: "image", p_title: title, p_image_url: publicUrl, p_image_path: path,
+        p_size: body?.size ?? "square", p_brief: prompt.slice(0, 500), p_tenant_id: tenantId,
+      });
+      if (saveErr) console.error("library save failed:", saveErr.message);
+      else contentId = (cid as string) ?? null;
+    }
 
     await admin.from("audit_logs").insert({
-      user_id: user.id, entity: "generated_image", action: "generate_image", entity_id: null,
+      user_id: user.id, entity: "generated_image", action: "generate_image", entity_id: contentId,
       data: { tenant_id: tenantId, path, size, prompt: prompt.slice(0, 200) },
     });
 
-    return new Response(JSON.stringify({ url: pub?.publicUrl ?? null, path, size }), {
+    return new Response(JSON.stringify({ url: publicUrl, path, size, content_id: contentId }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("generate-image error:", e);

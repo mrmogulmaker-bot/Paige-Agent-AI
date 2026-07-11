@@ -3635,6 +3635,23 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           {
             type: "function",
             function: {
+              name: "content_save",
+              description: "Admin/coach only. Save a piece of marketing content to the tenant's Content Studio library so the operator can reuse it later. Use after draft_marketing_content when the operator likes a draft and wants to keep it, or to save copy you wrote inline. Generated images auto-save, so use this for text/copy. Pure save; no sending.",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string", description: "Short label for the saved item." },
+                  body: { type: "string", description: "The full copy to save." },
+                  channel: { type: "string", enum: ["social_post", "ad_copy", "email_campaign", "caption", "blog_outline", "sms_broadcast"], description: "Optional channel this copy is for." },
+                  brief: { type: "string", description: "Optional brief/prompt that produced it." }
+                },
+                required: ["title", "body"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "crm_log_activity",
               description: "Admin/coach only. Log a communication or activity (call, email, note, meeting) on a client's timeline.",
               parameters: {
@@ -4112,6 +4129,7 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           tc.function.name === "calendar_book_meeting" ||
           tc.function.name === "generate_image" ||
           tc.function.name === "draft_marketing_content" ||
+          tc.function.name === "content_save" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
@@ -4318,6 +4336,17 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
                 if (error) throw error;
                 result = { success: true, booking_id: bid };
               }
+            } else if (tc.function.name === "content_save") {
+              const { data: cid, error } = await supabaseClient.rpc("save_marketing_content", {
+                p_kind: "text",
+                p_title: args.title,
+                p_body: args.body,
+                p_channel: args.channel ?? null,
+                p_brief: args.brief ?? null,
+                p_tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, content_id: cid };
             } else if (tc.function.name === "crm_log_activity") {
               const { data: row, error } = await admin
                 .from("communication_log")

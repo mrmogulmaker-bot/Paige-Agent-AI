@@ -6,12 +6,15 @@
 import { lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Megaphone, LayoutGrid, GitBranch, FileText, Inbox, Plug } from "lucide-react";
+import { Megaphone, LayoutGrid, GitBranch, FileText, Inbox, Plug, Sparkles } from "lucide-react";
 import { PageShell, PageHeader } from "@/components/ui/page";
 import { CampaignsOverviewStats } from "@/components/admin/campaigns/CampaignsOverviewStats";
 
 const CampaignsOverview = lazy(() => import("@/pages/admin/CampaignsAdmin"));
 const GrowthHub = lazy(() => import("@/pages/admin/GrowthHub"));
+const ContentStudio = lazy(() =>
+  import("@/components/admin/content/ContentStudio").then((m) => ({ default: m.ContentStudio })),
+);
 
 const GROWTH_TABS = new Set(["pages", "funnels", "forms", "submissions", "integrations"]);
 
@@ -40,6 +43,7 @@ export default function CampaignsHub() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="overview"><Megaphone className="w-4 h-4 mr-1.5" />Overview</TabsTrigger>
+          <TabsTrigger value="content"><Sparkles className="w-4 h-4 mr-1.5" />Content Studio</TabsTrigger>
           <TabsTrigger value="pages"><LayoutGrid className="w-4 h-4 mr-1.5" />Pages</TabsTrigger>
           <TabsTrigger value="funnels"><GitBranch className="w-4 h-4 mr-1.5" />Funnels</TabsTrigger>
           <TabsTrigger value="forms"><FileText className="w-4 h-4 mr-1.5" />Forms</TabsTrigger>
@@ -51,6 +55,12 @@ export default function CampaignsHub() {
           <CampaignsOverviewStats />
           <Suspense fallback={<div className="text-sm text-muted-foreground">Loading campaigns…</div>}>
             <CampaignsOverview />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="content" className="mt-4">
+          <Suspense fallback={<div className="text-sm text-muted-foreground">Loading Content Studio…</div>}>
+            <ContentStudio />
           </Suspense>
         </TabsContent>
 
