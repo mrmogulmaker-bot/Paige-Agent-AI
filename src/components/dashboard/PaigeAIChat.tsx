@@ -502,7 +502,7 @@ const PaigeAIChatInner = ({
 
   return (
     <div className={fill ? "w-full h-full" : `max-w-4xl mx-auto w-full ${hideHeader ? "h-full" : "h-[calc(100vh-4rem)]"}`}>
-      <div className={enableHistory ? "flex h-full min-h-0 gap-4" : "flex flex-col h-full"}>
+      <div className={enableHistory ? "flex h-full min-h-0 gap-4 px-3 pt-3 md:px-4" : "flex flex-col h-full"}>
         {enableHistory && (
           <ThreadRail
             threads={threadsApi.threads}

@@ -172,8 +172,8 @@ function ThreadList(props: Omit<ThreadRailProps, "mobileOpen" | "onMobileOpenCha
   const buckets = useMemo(() => groupByRecency(threads), [threads]);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2.5 px-3 pb-3 pt-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-2.5 border-b border-border px-4 pb-3 pt-4">
         <GlyphPlate icon={MessagesSquare} size="sm" />
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-display text-sm font-semibold text-foreground">Your chats</h3>
@@ -181,7 +181,7 @@ function ThreadList(props: Omit<ThreadRailProps, "mobileOpen" | "onMobileOpenCha
         </div>
       </div>
 
-      <div className="px-3 pb-3">
+      <div className="px-3 pb-3 pt-3">
         <Button variant="gold" size="sm" className="w-full" onClick={onNewChat}>
           <MessageSquarePlus className="mr-2 h-4 w-4" /> New chat
         </Button>
@@ -242,7 +242,7 @@ export function ThreadRail(props: ThreadRailProps) {
 
   return (
     <>
-      <aside className="hidden w-72 shrink-0 flex-col rounded-xl border border-border bg-card md:flex">
+      <aside className="hidden w-72 shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-card md:flex">
         <ThreadList {...list} />
       </aside>
 
