@@ -57,6 +57,10 @@ function describeStep(
     case "crm_update_contact": return { label: "Updating the contact", group: "client" };
     case "crm_delete_contact": return { label: "Removing that contact", group: "client" };
     case "crm_log_activity": return { label: "Jotting down a note", group: "client" };
+    case "crm_list_team": return { label: "Checking your team", group: "owner" };
+    case "crm_assign_contact": return { label: "Assigning the contact", group: "owner" };
+    case "program_list": return { label: "Reviewing your programs", group: "owner" };
+    case "program_enroll": return { label: "Enrolling them in the program", group: "client" };
     // Pipeline (owner)
     case "pipeline_create": return { label: "Building your pipeline", group: "owner" };
     case "pipeline_add_stage": return { label: "Adding a pipeline stage", group: "owner" };
@@ -3824,6 +3828,53 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "crm_list_team",
+              description: "Admin/coach only. List the tenant's team members (coaches, brokers, admins, sales reps) with their names, roles, and user ids. Use this to resolve 'assign her to the coach named X' into a user_id before calling crm_assign_contact.",
+              parameters: { type: "object", properties: {} }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_assign_contact",
+              description: "Admin/coach only. Assign a contact to a teammate. role picks the seat: 'coach' (default), 'owner'/'sales_rep' (lead owner), or 'cs' (client-success primary). Resolve the person via crm_list_team first to get their user_id. Confirm with the operator before assigning.",
+              parameters: {
+                type: "object",
+                properties: {
+                  contact_id: { type: "string", description: "clients.id of the contact to assign." },
+                  user_id: { type: "string", description: "auth user id of the teammate (from crm_list_team)." },
+                  role: { type: "string", enum: ["coach", "owner", "sales_rep", "cs"], description: "Which seat to fill. Default coach." }
+                },
+                required: ["contact_id", "user_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "program_list",
+              description: "Admin/coach only. List the programs and offers loaded for this tenant, priority/current-campaign first. Use to recommend the right program during onboarding and to resolve a program name to its id before enrolling.",
+              parameters: { type: "object", properties: {} }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "program_enroll",
+              description: "Admin/coach only. Enroll a contact into a program/offer. Resolve the program via program_list first. Confirm with the operator before enrolling. Idempotent — re-enrolling returns the existing enrollment.",
+              parameters: {
+                type: "object",
+                properties: {
+                  contact_id: { type: "string", description: "clients.id of the contact." },
+                  program_id: { type: "string", description: "programs.id from program_list." }
+                },
+                required: ["contact_id", "program_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "crm_log_activity",
               description: "Admin/coach only. Log a communication or activity (call, email, note, meeting) on a client's timeline.",
               parameters: {
@@ -4306,6 +4357,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "action_advance" ||
           tc.function.name === "action_list" ||
           tc.function.name === "action_get" ||
+          tc.function.name === "crm_list_team" ||
+          tc.function.name === "crm_assign_contact" ||
+          tc.function.name === "program_list" ||
+          tc.function.name === "program_enroll" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
@@ -4558,6 +4613,35 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, count: (data as any[])?.length ?? 0, actions: data ?? [] };
+            } else if (tc.function.name === "crm_list_team") {
+              const { data, error } = await supabaseClient.rpc("list_team_members", {
+                p_tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, count: (data as any[])?.length ?? 0, members: data ?? [] };
+            } else if (tc.function.name === "crm_assign_contact") {
+              const { data, error } = await supabaseClient.rpc("assign_contact", {
+                p_contact_id: args.contact_id,
+                p_user_id: args.user_id,
+                p_role: args.role ?? "coach",
+                p_tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, ...(data as any) };
+            } else if (tc.function.name === "program_list") {
+              const { data, error } = await supabaseClient.rpc("list_tenant_programs", {
+                p_tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, count: (data as any[])?.length ?? 0, programs: data ?? [] };
+            } else if (tc.function.name === "program_enroll") {
+              const { data, error } = await supabaseClient.rpc("enroll_contact_in_program", {
+                p_contact_id: args.contact_id,
+                p_program_id: args.program_id,
+                p_tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, ...(data as any) };
             } else if (tc.function.name === "crm_log_activity") {
               const { data: row, error } = await admin
                 .from("communication_log")
