@@ -46,7 +46,15 @@ export default function N8nIntegrationConfig() {
     });
     if (setErr) {
       setBusy(null);
-      toast.error(setErr.message?.includes("https") ? "Instance URL must start with https://" : "Couldn't save. You need admin access.");
+      // Surface the real reason instead of assuming it's a permissions problem —
+      // the RPC raises specific messages (https required, admin required, etc.).
+      const raw = setErr.message || "";
+      const friendly =
+        /https/i.test(raw) ? "Instance URL must start with https://" :
+        /admin|forbidden|42501/i.test(raw) ? "You need admin access on this workspace to connect n8n." :
+        /api key|no_key/i.test(raw) ? "An API key is required." :
+        `Couldn't save the connection. ${raw}`.trim();
+      toast.error(friendly);
       return;
     }
     // Immediately test the connection so the operator sees it's live.
