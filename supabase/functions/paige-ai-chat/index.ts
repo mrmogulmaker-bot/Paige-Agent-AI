@@ -3580,6 +3580,23 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           {
             type: "function",
             function: {
+              name: "draft_marketing_content",
+              description: "Admin/coach only. Draft marketing content for the tenant — social posts, ad copy, email campaigns, captions, blog outlines, or SMS broadcasts — in their brand voice. Returns draft text for the operator to review; drafting is safe and has no side effects (sending is a separate approval-gated step). Use when the operator asks you to write, create, or draft marketing/social/ad/email content.",
+              parameters: {
+                type: "object",
+                properties: {
+                  channel: { type: "string", enum: ["social_post", "ad_copy", "email_campaign", "caption", "blog_outline", "sms_broadcast"], description: "The kind of content to write." },
+                  brief: { type: "string", description: "What the content is about + any key points, offer, or CTA." },
+                  tone: { type: "string", description: "Optional tone, e.g. bold, warm, professional, playful." },
+                  variations: { type: "number", description: "How many distinct drafts to return (1-3, default 1)." }
+                },
+                required: ["channel", "brief"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "crm_log_activity",
               description: "Admin/coach only. Log a communication or activity (call, email, note, meeting) on a client's timeline.",
               parameters: {
@@ -4054,6 +4071,7 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           tc.function.name === "pipeline_add_stage" ||
           tc.function.name === "member_grant_role" ||
           tc.function.name === "member_revoke_role" ||
+          tc.function.name === "draft_marketing_content" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
@@ -4220,6 +4238,13 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
                 if ((del as any)?.error) throw new Error((del as any).error);
                 result = { success: true, deleted: args.contact_id };
               }
+            } else if (tc.function.name === "draft_marketing_content") {
+              const { data: cd, error } = await supabaseClient.functions.invoke("content-draft", {
+                body: { channel: args.channel, brief: args.brief, tone: args.tone ?? null, variations: args.variations ?? 1, tenant_id: personaCtx?.tenant_id ?? null },
+              });
+              if (error) throw error;
+              if ((cd as any)?.error) throw new Error((cd as any).error);
+              result = { success: true, channel: (cd as any)?.channel, drafts: (cd as any)?.drafts ?? [] };
             } else if (tc.function.name === "crm_log_activity") {
               const { data: row, error } = await admin
                 .from("communication_log")
