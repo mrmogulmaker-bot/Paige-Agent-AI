@@ -8,7 +8,7 @@
 // theme-aware, motion guarded via Tailwind motion-safe/motion-reduce. Jargon-free copy
 // comes pre-resolved from the server (§11) — this component renders labels verbatim.
 import { useState } from "react";
-import { Loader2, Check, AlertCircle, Circle, ListChecks } from "lucide-react";
+import { Loader2, Check, AlertCircle, Circle, ListChecks, Users, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionCard, EmptyState } from "@/components/ui/page";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -119,7 +119,23 @@ export function PaigeReasoningStrip({
   personaName?: string;
 }) {
   const [sheetOpen, setSheetOpen] = useState(false);
-  if (!loading && steps.length === 0) return null;
+  const name = personaName || "Paige";
+
+  // At rest, the strip stays present as an "on watch" pill — never blanks (so the mobile
+  // reasoning surface is always there, matching the desktop persistent deck).
+  if (!loading && steps.length === 0) {
+    return (
+      <div className="flex items-center gap-2.5 rounded-lg border border-border bg-muted/20 px-3 py-2">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[hsl(var(--ring)/0.1)] ring-1 ring-inset ring-[hsl(var(--ring)/0.25)]">
+          <span className="h-2 w-2 rounded-full bg-[hsl(var(--ring))] motion-safe:cc-breathe" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-foreground">{name} · on watch</p>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Ready when you are</p>
+        </div>
+      </div>
+    );
+  }
 
   // Stay "at work" while the answer is still streaming (isLoading), even after the step
   // burst lands — so "Done" only appears once the reply has settled.
@@ -127,8 +143,7 @@ export function PaigeReasoningStrip({
   const current =
     [...steps].reverse().find((s) => s.status === "running")?.label ??
     steps[steps.length - 1]?.label ??
-    `${personaName || "Paige"} is thinking…`;
-  const name = personaName || "Paige";
+    `${name} is thinking…`;
 
   return (
     <div className="flex items-center gap-2.5 rounded-lg border border-border bg-muted/20 px-3 py-2">
@@ -172,21 +187,140 @@ export function PaigeReasoningStrip({
   );
 }
 
-/** Desktop-only right rail — the full timeline for real multi-step work. */
-export function PaigeWorkRail({
-  steps,
-  loading,
+// ─── ReasoningDeck — the persistent "watch her work" cockpit ──────────────────
+// Always visible (never returns null): two standing department lanes with a handoff
+// heartbeat between them (§8 made literal), a live step timeline while Paige works, and a
+// crafted "standing by" rest state. After a run the finished timeline persists until the
+// next turn — that IS the rest memory. Zero gold — running --ring, done --success,
+// error --destructive, department + heartbeat --ring.
+
+function DepartmentLane({
+  icon: Icon,
+  name,
+  remit,
+  active,
+  count,
+}: {
+  icon: typeof Users;
+  name: string;
+  remit: string;
+  active: boolean;
+  count?: number;
+}) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <span
+        className={cn(
+          "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg ring-1 ring-inset transition-colors",
+          active
+            ? "bg-[hsl(var(--ring)/0.16)] ring-[hsl(var(--ring)/0.5)]"
+            : "bg-[hsl(var(--ring)/0.08)] ring-[hsl(var(--ring)/0.2)]",
+        )}
+      >
+        <Icon className={cn("h-4 w-4", active ? "text-[hsl(var(--ring))]" : "text-muted-foreground")} aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <p className={cn("truncate text-sm font-medium", active ? "text-foreground" : "text-muted-foreground")}>{name}</p>
+          {active && typeof count === "number" && count > 0 && (
+            <span className="rounded-full bg-[hsl(var(--ring)/0.12)] px-1.5 text-[10px] font-semibold tabular-nums text-[hsl(var(--ring))]">{count}</span>
+          )}
+        </div>
+        <p className="truncate text-[11px] text-muted-foreground">{remit}</p>
+      </div>
+      {/* Working = indigo --ring (never done-green); ready = muted. Zero gold on this watch surface. */}
+      <span
+        className={cn(
+          "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+          active ? "bg-[hsl(var(--ring)/0.15)] text-[hsl(var(--ring))]" : "bg-muted text-muted-foreground",
+        )}
+      >
+        {active ? "working" : "ready"}
+      </span>
+    </div>
+  );
+}
+
+/** The persistent reasoning cockpit for the workspace right column. */
+export function ReasoningDeck({
+  trace,
   personaName,
 }: {
-  steps: PaigeStep[];
-  loading?: boolean;
+  trace: { steps: PaigeStep[]; loading?: boolean };
   personaName?: string;
 }) {
-  if (!loading && steps.length === 0) return null;
   const name = personaName || "Paige";
+  const steps = trace.steps;
+  const working = trace.loading || steps.some((s) => s.status === "running");
+  const finished = !working && steps.length > 0;
+
+  const ownerActive = working && steps.some((s) => s.group === "owner");
+  const clientActive = working && steps.some((s) => s.group === "client");
+  const ownerCount = steps.filter((s) => s.group === "owner").length;
+  const clientCount = steps.filter((s) => s.group === "client").length;
+
+  const title = working ? `${name} at work` : finished ? `Done · ${steps.length} step${steps.length === 1 ? "" : "s"}` : `${name} · ready`;
+
+  // padded={false} + our own flex-col/min-h-0 chain: the scroll region's DIRECT parent must
+  // be the bounded flex column, or SectionCard's block padding wrapper would break flex-1 and
+  // clip long runs silently (crew catch). The card itself just clips the rounded corners.
   return (
-    <SectionCard title={`${name} at work`} className="h-full">
-      <StepTimeline steps={steps} loading={loading} />
+    <SectionCard padded={false} className="overflow-hidden">
+      <div className="flex max-h-[45vh] flex-col p-4">
+        {/* Header — breathing dot at rest, spinner at work, success on finish */}
+        <div className="flex items-center gap-2 px-1 pb-2.5" role="status" aria-live="polite">
+          <span
+            className={cn(
+              "grid h-6 w-6 shrink-0 place-items-center rounded-lg ring-1 ring-inset",
+              finished ? "bg-[hsl(var(--success)/0.12)] ring-[hsl(var(--success)/0.3)]" : "bg-[hsl(var(--ring)/0.1)] ring-[hsl(var(--ring)/0.25)]",
+            )}
+          >
+            {working ? (
+              <>
+                <Loader2 className="hidden h-3.5 w-3.5 animate-spin text-[hsl(var(--ring))] motion-safe:block" aria-hidden />
+                <Circle className="h-3.5 w-3.5 text-[hsl(var(--ring))] motion-safe:hidden" aria-hidden />
+              </>
+            ) : finished ? (
+              <Check className="h-3.5 w-3.5 text-[hsl(var(--success))]" aria-hidden />
+            ) : (
+              <span className="h-2 w-2 rounded-full bg-[hsl(var(--ring))] motion-safe:cc-breathe" />
+            )}
+          </span>
+          <span className="font-display text-sm font-semibold text-foreground">{title}</span>
+        </div>
+
+        {/* Two standing department lanes + handoff heartbeat between them */}
+        <div className="relative space-y-3 px-1">
+          <DepartmentLane icon={Users} name="Owner Ops" remit="Pipeline · follow-ups · retainers" active={ownerActive} count={ownerCount} />
+          {/* handoff connector: a dot travels the hairline while the teams pass work between them */}
+          <div className="ml-4 flex items-center gap-2 py-0.5" aria-hidden>
+            <span className="relative block h-4 w-px bg-[hsl(var(--border))]">
+              <span
+                className={cn(
+                  "absolute left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[hsl(var(--ring))]",
+                  working ? "motion-safe:cc-busflow" : "top-1/2 -translate-y-1/2 opacity-40",
+                )}
+              />
+            </span>
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">handoff</span>
+          </div>
+          <DepartmentLane icon={UserRound} name="Client Experience" remit="Onboarding · answers · nurture" active={clientActive} count={clientCount} />
+        </div>
+
+        {/* Working/just-finished → the timeline (the persisted run is the rest memory);
+            first load with no run yet → a crafted standing-by state. */}
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto border-t pt-3">
+          {working || finished ? (
+            <StepTimeline steps={steps} loading={trace.loading} />
+          ) : (
+            <EmptyState
+              icon={ListChecks}
+              title="Standing by"
+              description={`Give ${name} a task and watch her reason through it here — step by step, across both her teams.`}
+            />
+          )}
+        </div>
+      </div>
     </SectionCard>
   );
 }

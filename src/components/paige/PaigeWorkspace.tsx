@@ -4,7 +4,7 @@
 // one honest Save for the whole object; Knowledge commits per-doc on its own.
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Loader2, Sparkles, X, UserCircle2, SlidersHorizontal } from "lucide-react";
-import type { PaigeStep } from "@/components/dashboard/PaigeStepTrace";
+import { ReasoningDeck, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -73,9 +73,13 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
   const [justSaved, setJustSaved] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [section, setSection] = useState<ConsoleSection>("persona");
-  // Paige's live step trace, lifted out of the chat so the Live desk can render it.
+  // Paige's live step trace, lifted out of the chat so the persistent ReasoningDeck renders it.
+  // After a run the finished timeline persists in the deck until the next turn clears it — that
+  // IS the rest memory, so no separate last-run snapshot is needed.
   const [trace, setTrace] = useState<{ steps: PaigeStep[]; loading: boolean }>({ steps: [], loading: false });
-  const handleTrace = useCallback((steps: PaigeStep[], loading: boolean) => setTrace({ steps, loading }), []);
+  const handleTrace = useCallback((steps: PaigeStep[], loading: boolean) => {
+    setTrace({ steps, loading });
+  }, []);
 
   // Command-center focus state (cc-spec §2). Held here so the chat focus banner
   // and the rail mini-card never disagree.
@@ -206,7 +210,6 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
     onCustomize: () => openConsole("persona"),
     approvals: tenantApprovals,
     approvalsLoading,
-    trace,
   };
 
   return (
@@ -258,7 +261,13 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
 
         {!isMobile && (
           <aside className="flex w-[360px] lg:w-[380px] shrink-0 flex-col border-l bg-primary/[0.055] shadow-[inset_1px_0_0_hsl(var(--border))]">
-            <PaigeSidebar {...railProps} />
+            {/* Persistent reasoning cockpit pinned on top; the Live desk fills the rest. */}
+            <div className="shrink-0 p-3 pb-0">
+              <ReasoningDeck trace={trace} personaName={pb.persona.name} />
+            </div>
+            <div className="min-h-0 flex-1">
+              <PaigeSidebar {...railProps} />
+            </div>
           </aside>
         )}
       </div>

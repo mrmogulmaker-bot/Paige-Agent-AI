@@ -3,7 +3,7 @@
 // fold (S3). Group 1 (approvals) rescopes to the focused customer and relabels +
 // shows a cross-scope link (B3) — but the tenant-wide count on the command bar is
 // owned upstream and never rescopes. At most 3 rows/group, then "View all (n)".
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTasks } from "@/hooks/useTasks";
-import { StepTimeline, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import type { ApprovalQueueRow } from "@/hooks/usePendingApprovals";
 import { ApprovalRow } from "./ApprovalRow";
 import type { FocusedClient } from "./commandCenterTypes";
@@ -125,11 +124,9 @@ interface Props {
   approvals: ApprovalQueueRow[];
   approvalsLoading: boolean;
   focused: FocusedClient | null;
-  /** Paige's live step trace, lifted from the chat — the persistent "watch her work" window. */
-  trace?: { steps: PaigeStep[]; loading: boolean };
 }
 
-export function LiveActionFeed({ approvals, approvalsLoading, focused, trace }: Props) {
+export function LiveActionFeed({ approvals, approvalsLoading, focused }: Props) {
   const { items: notifications, loading: notifLoading } = useRecentNotifications();
   const { rows: inMotion, loading: inMotionLoading } = useInMotion(focused?.id ?? null);
   const { tasks, loading: tasksLoading, updateTask } = useTasks({ scope: "all", limit: 20 });
@@ -156,7 +153,7 @@ export function LiveActionFeed({ approvals, approvalsLoading, focused, trace }: 
       {/* Live desk header + breathing dot + activity sliver (S3) */}
       <div className="sticky top-0 z-10 bg-primary/[0.02] backdrop-blur-sm px-0.5 pb-2 pt-0.5">
         <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-primary cc-breathe" />
+          <span className="h-2 w-2 rounded-full bg-[hsl(var(--ring))] cc-breathe" />
           <span className="text-sm font-semibold">Live desk</span>
         </div>
         <p className="mt-1 truncate text-[11px] text-muted-foreground">
@@ -167,18 +164,6 @@ export function LiveActionFeed({ approvals, approvalsLoading, focused, trace }: 
               : "Nothing yet — Paige's moves show up here live."}
         </p>
       </div>
-
-      {/* Watch Paige work — the live step trace, lifted from the chat. Persistent window;
-          renders only while she's working or just finished, so the idle sliver above stays. */}
-      {trace && (trace.loading || trace.steps.length > 0) && (
-        <section className="mt-1 border-b pb-2">
-          <GroupHeader
-            label={trace.loading ? "Paige at work" : "Paige just worked"}
-            count={trace.steps.length || undefined}
-          />
-          <StepTimeline steps={trace.steps} loading={trace.loading} />
-        </section>
-      )}
 
       {/* Group 1 — Needs your approval (star) */}
       <section className="mt-1">

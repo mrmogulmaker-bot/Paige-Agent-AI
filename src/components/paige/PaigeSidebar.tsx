@@ -9,7 +9,6 @@ import { CustomerMiniCard } from "./CustomerMiniCard";
 import { LiveActionFeed } from "./LiveActionFeed";
 import type { FocusedClient } from "./commandCenterTypes";
 import type { ApprovalQueueRow } from "@/hooks/usePendingApprovals";
-import type { PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 
 interface Props {
   focused: FocusedClient | null;
@@ -18,10 +17,9 @@ interface Props {
   onCustomize: () => void;
   approvals: ApprovalQueueRow[];
   approvalsLoading: boolean;
-  trace?: { steps: PaigeStep[]; loading: boolean };
 }
 
-export function PaigeSidebar({ focused, onFocus, onClear, onCustomize, approvals, approvalsLoading, trace }: Props) {
+export function PaigeSidebar({ focused, onFocus, onClear, onCustomize, approvals, approvalsLoading }: Props) {
   return (
     <div className="flex h-full flex-col">
       {/* Customer selector — pinned top */}
@@ -39,7 +37,7 @@ export function PaigeSidebar({ focused, onFocus, onClear, onCustomize, approvals
 
       {/* Live action feed — the only scroll region */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3">
-        <LiveActionFeed approvals={approvals} approvalsLoading={approvalsLoading} focused={focused} trace={trace} />
+        <LiveActionFeed approvals={approvals} approvalsLoading={approvalsLoading} focused={focused} />
       </div>
 
       {/* Customize Paige — pinned floor. Gold OUTLINE (S2), never solid. */}

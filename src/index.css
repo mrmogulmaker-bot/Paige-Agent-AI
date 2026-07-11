@@ -481,9 +481,19 @@ All colors MUST be HSL.
   .cc-collapse > * { overflow: hidden; min-height: 0; }
   .cc-collapse.cc-collapsing { grid-template-rows: 0fr; opacity: 0; }
 
+  /* Motion #3: action-bus heartbeat — a dot travels the connector while Paige works. */
+  @keyframes cc-busflow {
+    0%   { top: 0; opacity: 0; }
+    20%  { opacity: 1; }
+    80%  { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+  .cc-busflow { animation: cc-busflow 1.4s ease-in-out infinite; }
+
   @media (prefers-reduced-motion: reduce) {
     .cc-breathe { animation: none; }
     .cc-count-pulse { animation: none; }
     .cc-collapse { transition: none; }
+    .cc-busflow { animation: none; top: 50%; }
   }
 }

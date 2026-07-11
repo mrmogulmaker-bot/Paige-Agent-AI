@@ -5,7 +5,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { PaigeSidebar } from "./PaigeSidebar";
 import type { FocusedClient } from "./commandCenterTypes";
 import type { ApprovalQueueRow } from "@/hooks/usePendingApprovals";
-import type { PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 
 interface Props {
   open: boolean;
@@ -16,7 +15,6 @@ interface Props {
   onCustomize: () => void;
   approvals: ApprovalQueueRow[];
   approvalsLoading: boolean;
-  trace?: { steps: PaigeStep[]; loading: boolean };
 }
 
 export function PaigeRailSheet({ open, onOpenChange, ...rail }: Props) {
