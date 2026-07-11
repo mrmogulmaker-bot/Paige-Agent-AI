@@ -157,6 +157,9 @@ Deno.serve(async (req) => {
           tags: (w.tags ?? []).map((t: any) => t.name), updatedAt: w.updatedAt,
         }));
         await markSync("connected", null, items.length);
+        // Record the tenant's workflow inventory in the per-tenant registry so the
+        // team can see what exists / is active (GHL-parity), and Paige keeps records.
+        await admin.rpc("sync_tenant_workflows", { _tenant_id: tenantId, _workflows: items }).then(() => {}, () => {});
         return json(action === "test"
           ? { ok: true, connected: true, workflow_count: items.length }
           : { ok: true, workflows: items, count: items.length });
@@ -226,6 +229,8 @@ Deno.serve(async (req) => {
         const res = await n8nFetch(baseUrl, apiKey, "/workflows", { method: "POST", body: JSON.stringify(payload) });
         if (!res.ok) return json({ error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) }, 502);
         const wf = await res.json();
+        // Fold the Paige-authored workflow into the tenant's registry, tagged as hers.
+        if (wf?.id) await admin.rpc("record_paige_workflow", { _tenant_id: tenantId, _n8n_workflow_id: wf.id, _name: wf.name }).then(() => {}, () => {});
         return json({ ok: true, workflow_id: wf?.id, name: wf?.name, active: !!wf?.active });
       }
       case "update": {
