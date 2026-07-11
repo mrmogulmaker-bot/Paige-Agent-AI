@@ -1,0 +1,62 @@
+-- Every workspace gets a default calendar on creation (GHL parity). Today 0 of
+-- N tenants have one, so "add it to my calendar" has nowhere to land. Mirror the
+-- email-identity auto-provision pattern: a SECURITY DEFINER provisioner that
+-- inserts one default calendar per tenant (idempotent), a tenant-insert trigger,
+-- and a backfill for existing tenants.
+
+CREATE OR REPLACE FUNCTION public.provision_tenant_default_calendar(_tenant_id uuid)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE _owner uuid; _base text; _slug text; _n int := 1; _cid uuid;
+BEGIN
+  IF _tenant_id IS NULL THEN RETURN NULL; END IF;
+  -- idempotent: never create a second default
+  SELECT id INTO _cid FROM public.calendars WHERE tenant_id = _tenant_id ORDER BY created_at ASC LIMIT 1;
+  IF _cid IS NOT NULL THEN RETURN _cid; END IF;
+
+  SELECT owner_user_id INTO _owner FROM public.tenants WHERE id = _tenant_id;
+
+  _base := public.sanitize_email_local_part('meetings')
+           || '-' || COALESCE((SELECT slug FROM public.tenants WHERE id = _tenant_id), left(_tenant_id::text, 8));
+  _base := left(_base, 48); _slug := _base;
+  WHILE EXISTS (SELECT 1 FROM public.calendars WHERE lower(slug) = lower(_slug)) LOOP
+    _n := _n + 1; _slug := left(_base, 44) || '-' || _n::text;
+  END LOOP;
+
+  INSERT INTO public.calendars (tenant_id, created_by, slug, type, title, duration_min, enabled)
+  VALUES (_tenant_id, _owner, _slug, 'personal', 'Meetings', 30, true)
+  RETURNING id INTO _cid;
+
+  -- make the owner a host of their default calendar
+  IF _owner IS NOT NULL THEN
+    INSERT INTO public.calendar_hosts (calendar_id, user_id, priority)
+    VALUES (_cid, _owner, 0) ON CONFLICT DO NOTHING;
+  END IF;
+  RETURN _cid;
+END $$;
+REVOKE ALL ON FUNCTION public.provision_tenant_default_calendar(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.provision_tenant_default_calendar(uuid) TO service_role;
+
+-- Fire on tenant creation (AFTER INSERT so owner_user_id is on the row).
+CREATE OR REPLACE FUNCTION public.trg_provision_default_calendar()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  PERFORM public.provision_tenant_default_calendar(NEW.id);
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- never block tenant creation on a calendar hiccup; log and move on
+  RAISE WARNING 'default calendar provision failed for tenant %: %', NEW.id, SQLERRM;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_tenants_provision_default_calendar ON public.tenants;
+CREATE TRIGGER trg_tenants_provision_default_calendar
+  AFTER INSERT ON public.tenants
+  FOR EACH ROW EXECUTE FUNCTION public.trg_provision_default_calendar();
+
+-- Backfill: give every existing tenant that has no calendar a default one.
+DO $$
+DECLARE t record;
+BEGIN
+  FOR t IN SELECT id FROM public.tenants WHERE id NOT IN (SELECT DISTINCT tenant_id FROM public.calendars WHERE tenant_id IS NOT NULL) LOOP
+    PERFORM public.provision_tenant_default_calendar(t.id);
+  END LOOP;
+END $$;
