@@ -45,8 +45,8 @@ function StatusGlyph({ status }: { status: PaigeStep["status"] }) {
   if (status === "running") {
     return (
       <>
-        <Loader2 className="hidden h-3.5 w-3.5 animate-spin text-[hsl(var(--primary))] motion-safe:block" aria-hidden />
-        <Circle className="h-3.5 w-3.5 text-[hsl(var(--primary))] motion-safe:hidden" aria-hidden />
+        <Loader2 className="hidden h-3.5 w-3.5 animate-spin text-[hsl(var(--ring))] motion-safe:block" aria-hidden />
+        <Circle className="h-3.5 w-3.5 text-[hsl(var(--ring))] motion-safe:hidden" aria-hidden />
       </>
     );
   }
@@ -84,7 +84,7 @@ export function StepTimeline({ steps, loading }: { steps: PaigeStep[]; loading?:
                 "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg ring-1 ring-inset",
                 s.group === "shared"
                   ? "bg-muted ring-border"
-                  : "bg-[hsl(var(--primary)/0.1)] ring-[hsl(var(--primary)/0.25)]",
+                  : "bg-[hsl(var(--ring)/0.12)] ring-[hsl(var(--ring)/0.35)]",
               )}
             >
               <StatusGlyph status={s.status} />
@@ -121,7 +121,9 @@ export function PaigeReasoningStrip({
   const [sheetOpen, setSheetOpen] = useState(false);
   if (!loading && steps.length === 0) return null;
 
-  const running = steps.some((s) => s.status === "running") || (loading && steps.length === 0);
+  // Stay "at work" while the answer is still streaming (isLoading), even after the step
+  // burst lands — so "Done" only appears once the reply has settled.
+  const running = loading || steps.some((s) => s.status === "running");
   const current =
     [...steps].reverse().find((s) => s.status === "running")?.label ??
     steps[steps.length - 1]?.label ??
@@ -133,13 +135,13 @@ export function PaigeReasoningStrip({
       <span
         className={cn(
           "grid h-7 w-7 shrink-0 place-items-center rounded-lg ring-1 ring-inset",
-          running ? "bg-[hsl(var(--primary)/0.1)] ring-[hsl(var(--primary)/0.25)]" : "bg-[hsl(var(--success)/0.12)] ring-[hsl(var(--success)/0.3)]",
+          running ? "bg-[hsl(var(--ring)/0.12)] ring-[hsl(var(--ring)/0.35)]" : "bg-[hsl(var(--success)/0.12)] ring-[hsl(var(--success)/0.3)]",
         )}
       >
         {running ? (
           <>
-            <Loader2 className="hidden h-4 w-4 animate-spin text-[hsl(var(--primary))] motion-safe:block" aria-hidden />
-            <Circle className="h-4 w-4 text-[hsl(var(--primary))] motion-safe:hidden" aria-hidden />
+            <Loader2 className="hidden h-4 w-4 animate-spin text-[hsl(var(--ring))] motion-safe:block" aria-hidden />
+            <Circle className="h-4 w-4 text-[hsl(var(--ring))] motion-safe:hidden" aria-hidden />
           </>
         ) : (
           <Check className="h-4 w-4 text-[hsl(var(--success))]" aria-hidden />
@@ -155,7 +157,7 @@ export function PaigeReasoningStrip({
       </div>
       {steps.length > 0 && (
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetTrigger className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] lg:hidden">
+          <SheetTrigger className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
             {steps.length} step{steps.length === 1 ? "" : "s"}
           </SheetTrigger>
           <SheetContent side="bottom" className="max-h-[70vh] overflow-y-auto">
@@ -165,11 +167,6 @@ export function PaigeReasoningStrip({
             <StepTimeline steps={steps} loading={loading} />
           </SheetContent>
         </Sheet>
-      )}
-      {steps.length > 0 && (
-        <span className="hidden shrink-0 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground lg:inline">
-          {steps.length} step{steps.length === 1 ? "" : "s"}
-        </span>
       )}
     </div>
   );
