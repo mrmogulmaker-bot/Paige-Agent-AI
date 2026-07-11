@@ -5,7 +5,8 @@
 // framing unless the tenant's own brief is about it.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-import { gatewayCompat } from "../_shared/claude.ts";
+import { chatCompletionCompat } from "../_shared/claude.ts";
+import { routedChatCompletion } from "../_shared/model-router.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -77,18 +78,21 @@ CHANNEL: ${CHANNEL_GUIDE[channel]}
 RULES: Write for a broad client-based-services audience (coaches, consultants, agencies, advisors) unless the brief says otherwise. Do NOT invent statistics, testimonials, or guarantees. Do NOT introduce consumer-finance/credit/lending framing unless the brief is explicitly about that. Never use "AI-powered", "streamline", "seamless", or "empower".
 Return ONLY JSON: {"drafts":[{"title":"short label","content":"the full copy for this channel"}]}. Produce exactly ${count} distinct draft${count > 1 ? "s" : ""}.`;
 
-    const resp = await gatewayCompat("anthropic", {
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: SYSTEM },
-          { role: "user", content: `Brief: ${brief}${tone ? `\nTone: ${tone}` : ""}` },
-        ],
-      }),
-    });
-    if (!resp.ok) throw new Error(`Draft failed (${resp.status}): ${(await resp.text()).slice(0, 200)}`);
-    const data = await resp.json();
-    const parsed = extractJson(data?.choices?.[0]?.message?.content ?? "");
+    const messages = [
+      { role: "system", content: SYSTEM },
+      { role: "user", content: `Brief: ${brief}${tone ? `\nTone: ${tone}` : ""}` },
+    ];
+    // Drafting is high-volume internal work — route it through the model router so it can
+    // ride the cheap open-model tier when Featherless is configured. Claude is the safety
+    // net: if the routed draft doesn't parse as our JSON, retry once on Claude reasoning.
+    let parsed: any;
+    try {
+      const data = await routedChatCompletion("internal_first_draft", { messages, response_format: { type: "json_object" } });
+      parsed = extractJson(data?.choices?.[0]?.message?.content ?? "");
+    } catch {
+      const retry = await chatCompletionCompat({ messages, response_format: { type: "json_object" } }, "reasoning");
+      parsed = extractJson(retry?.choices?.[0]?.message?.content ?? "");
+    }
     const drafts = Array.isArray(parsed?.drafts) ? parsed.drafts.slice(0, 3).map((d: any) => ({
       title: String(d?.title ?? channel).slice(0, 80),
       content: String(d?.content ?? "").slice(0, 4000),

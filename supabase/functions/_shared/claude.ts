@@ -125,7 +125,7 @@ interface OpenAIStyleBody {
   response_format?: { type?: string } | undefined;
 }
 
-export async function chatCompletionCompat(body: OpenAIStyleBody): Promise<any> {
+export async function chatCompletionCompat(body: OpenAIStyleBody, tierOverride?: ClaudeTier): Promise<any> {
   // Extract system message(s); Anthropic takes system as a top-level param.
   const systemParts: string[] = [];
   const msgs: ClaudeMessage[] = [];
@@ -158,7 +158,7 @@ export async function chatCompletionCompat(body: OpenAIStyleBody): Promise<any> 
     messages: msgs,
     system: system || undefined,
     model: undefined,
-    tier: tierForLegacyModel(body.model),
+    tier: tierOverride ?? tierForLegacyModel(body.model),
     maxTokens: body.max_tokens ?? 2048,
     temperature: body.temperature,
     tools,
