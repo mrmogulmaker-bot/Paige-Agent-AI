@@ -5302,9 +5302,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             });
             const kbText = await kbResp.text();
             let kbData: any; try { kbData = JSON.parse(kbText); } catch { kbData = { raw: kbText }; }
-            result = kbResp.ok
+            // Saved ONLY if the transport succeeded AND the doc actually embedded
+            // (kb-ingest-doc returns 200 + ok:false when the embedder is down; a doc
+            // with 0 vectors is not searchable, so it is NOT a real save).
+            const kbOk = kbResp.ok && kbData?.ok !== false && kbData?.error == null && kbData?.chunk_count !== 0;
+            result = kbOk
               ? { success: true, ...kbData, note: "Saved to the knowledge base and embedded — it's searchable now. Tell the operator it's stored; never mention internal table/function names." }
-              : { success: false, ...kbData, note: "Couldn't save to the knowledge base. Read the error and explain plainly." };
+              : { success: false, ...kbData, note: "It did NOT save — the entry couldn't be embedded/stored (the knowledge service may be down). Tell the operator plainly that it did not save and you'll retry once it's back. Do NOT say it's saved or 'in memory'." };
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "kb_error" }) });

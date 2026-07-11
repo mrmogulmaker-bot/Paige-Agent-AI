@@ -154,6 +154,19 @@ serve(async (req) => {
       if (chunkErr) console.warn("[kb-ingest] chunk insert error:", chunkErr.message);
     }
 
+    // HONESTY: if NOTHING embedded (embedding provider down / key missing), the doc is
+    // not retrievable — it is NOT a real save. Delete the orphan row so the KB doesn't
+    // fill with phantom un-searchable entries, and tell the caller the truth so Paige
+    // doesn't claim it was saved. (Root cause is usually a missing/invalid VOYAGE_API_KEY.)
+    if (chunks.length > 0 && rows.length === 0) {
+      await admin.from("tenant_knowledge_docs").delete().eq("id", doc.id);
+      return new Response(JSON.stringify({
+        ok: false,
+        error: "embedding_failed",
+        detail: "The entry could not be embedded, so it wouldn't be searchable — nothing was saved. The embedding service looks unavailable (check VOYAGE_API_KEY). Try again once it's back.",
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // Reconcile the doc's chunk_count to the number of chunks that actually
     // embedded — the row was created with the intended count, but embeds can
     // fail (rate limit / provider down). Without this, the UI would show
