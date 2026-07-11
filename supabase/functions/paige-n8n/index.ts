@@ -179,6 +179,40 @@ Deno.serve(async (req) => {
         }));
         return json({ ok: true, executions: runs, count: runs.length });
       }
+      case "run": {
+        // Fire a workflow by hitting its webhook trigger — this is how n8n
+        // automations are actually invoked (the workflow must have a Webhook
+        // node and be active). Accept an explicit webhook_path, or resolve it
+        // from the workflow's webhook node.
+        let path: string | undefined = body.webhook_path;
+        if (!path && body.workflow_id) {
+          const wres = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`);
+          if (!wres.ok) return json({ error: `n8n_${wres.status}`, detail: (await wres.text()).slice(0, 300) }, 502);
+          const wf = await wres.json();
+          const nodes: any[] = wf?.nodes ?? [];
+          const hook = nodes.find((n) => typeof n?.type === "string" && n.type.toLowerCase().includes("webhook"));
+          path = hook?.parameters?.path;
+          if (!path) {
+            return json({ error: "not_webhook_triggered", detail: "This workflow has no webhook trigger, so it can't be fired directly — it likely runs on a schedule or is called by another workflow. Activate it or trigger it from its own flow." }, 400);
+          }
+          if (!wf?.active) {
+            return json({ error: "workflow_inactive", detail: "This workflow is turned off, so its webhook won't respond. Turn it on first (n8n_activate_workflow), then run it." }, 409);
+          }
+        }
+        if (!path) return json({ error: "workflow_or_path_required", detail: "Provide a workflow_id (to resolve its webhook) or an explicit webhook_path." }, 400);
+        const webhookUrl = `${baseUrl.replace(/\/$/, "")}/webhook/${String(path).replace(/^\//, "")}`;
+        await assertSafeUrl(webhookUrl);
+        const method = String(body.method || "POST").toUpperCase();
+        const hookRes = await fetch(webhookUrl, {
+          method,
+          redirect: "manual",
+          headers: { "Content-Type": "application/json" },
+          body: method === "GET" || method === "HEAD" ? undefined : JSON.stringify(body.payload ?? {}),
+        });
+        const respText = (await hookRes.text()).slice(0, 1500);
+        return json({ ok: hookRes.ok, status: hookRes.status, response: respText,
+          note: hookRes.ok ? "Webhook fired." : "The webhook returned a non-2xx status — the workflow may need to be active, or the path/payload may not match." });
+      }
       case "create": {
         if (!body.name || !body.nodes) return json({ error: "name_and_nodes_required", detail: "Provide name plus a valid n8n workflow (nodes + connections)." }, 400);
         // Create INACTIVE by default — authored workflows must be reviewed and

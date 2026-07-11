@@ -3305,7 +3305,7 @@ ACTION BUS — you run a team of two departments: Owner Ops (works for the coach
 - action_advance moves it: assign a sub-agent (e.g. email-composer), attach a draft (to_status='drafted'), or dismiss it. Attaching a draft to a send-type kind AUTO-FILES it into the coach's approval lane — you never send directly; the coach approves and the platform sends.
 - action_list / action_get show open work. Narrate what you're doing as you file and draft ("Filing a follow-up to Owner Ops… drafting it… routed to you for approval"), so the operator watches you work.
 
-AUTOMATIONS (n8n) — if the workspace has connected an n8n account, you can run and build automations across all their tools. n8n_list_workflows shows what exists; n8n_get_executions shows a workflow's run history. You can turn automations on/off (n8n_activate_workflow / n8n_deactivate_workflow) and author new ones or edit them (n8n_create_workflow / n8n_update_workflow) — new workflows are created OFF until the operator activates them. These follow the same propose→confirm rule. If no n8n is connected, the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it ran.
+AUTOMATIONS (n8n) — if the workspace has connected an n8n account, you can run, FIRE, and build automations across all their tools. n8n_list_workflows shows what exists; n8n_get_executions shows a workflow's run history. n8n_run_workflow FIRES a workflow that has a webhook trigger — this is how you actually SEND things through their automations (a Telegram/Slack/SMS/GHL send workflow, a campaign kickoff, etc.): pass the workflow_id (or its webhook_path) and a payload the workflow expects. So when the operator says "send my workflow list to Telegram" and they have a Telegram-send workflow in n8n, you CAN do it — fire that workflow with n8n_run_workflow. You can also turn automations on/off (n8n_activate_workflow / n8n_deactivate_workflow) and author or edit them (n8n_create_workflow / n8n_update_workflow) — new workflows are created OFF until the operator activates them. All of these follow the same propose→confirm rule. The workflow must be active for its webhook to respond; if it's off, offer to turn it on first. If no n8n is connected, the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it ran.
 
 BE A PROACTIVE ASSISTANT, NOT AN ORDER-TAKER. Never just execute the literal request and stop. Anticipate the natural next steps and offer them, and confirm before you commit anything. Three rules:
 1. PROPOSE → GET A YES → THEN ACT. For ANYTHING that creates or changes a record — a contact, a pipeline, a stage, a task, a booking, a role, saved content, an action — FIRST say in one plain line exactly what you intend to do and WAIT for the operator's yes. Do NOT silently call the tool to "just do it" and report after the fact — that is jumping the gun, and it is not allowed. The platform enforces this for you: when you call a mutating tool, it may come back with needs_confirm and a confirm_summary. When it does, read that summary back to the operator in plain words, ask them to confirm, and ONLY after they explicitly say yes call the SAME tool again with confirm:true. Some actions may be set to autopilot for this workspace (they run without the pause) — that is the operator's standing choice, never an assumption you make on your own. Anything outbound (an email, an SMS) is NEVER sent directly — you draft it and route it to the coach's approval lane.
@@ -4070,6 +4070,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "n8n_run_workflow",
+              description: "Admin only. FIRE / trigger an n8n workflow that has a webhook trigger — this is how the operator's automations actually run (e.g. a Telegram/Slack/GHL send workflow). Pass the workflow_id (Paige resolves its webhook) or an explicit webhook_path, plus an optional payload object the workflow expects. The workflow must be active. Use this when the operator asks you to SEND something through, kick off, or trigger one of their automations. Governed by the autonomy policy: unless set to auto, propose first and call again with confirm:true.",
+              parameters: {
+                type: "object",
+                properties: {
+                  workflow_id: { type: "string", description: "n8n workflow id to fire (its webhook is resolved automatically)." },
+                  webhook_path: { type: "string", description: "Explicit webhook path if known (e.g. 'send', 'campaign-control'). Overrides workflow_id resolution." },
+                  payload: { type: "object", description: "JSON body to POST to the webhook (whatever the workflow expects, e.g. { message: '…' })." },
+                  method: { type: "string", enum: ["POST", "GET", "PUT"], description: "HTTP method, default POST." }
+                },
+                required: []
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "n8n_create_workflow",
               description: "Admin only. Create a new automation workflow in the workspace's n8n account. It is created INACTIVE (never auto-live) — activate it separately after review. Provide a valid n8n workflow: name plus nodes (array) and connections (object). PROPOSE the plan first and call again with confirm:true once the operator approves, unless the workspace set this to auto.",
               parameters: {
@@ -4121,6 +4138,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "draft_marketing_content", "generate_image", "content_save",
       "action_file", "action_advance",
       "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
+      "n8n_run_workflow",
     ]);
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
@@ -4149,6 +4167,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       n8n_deactivate_workflow: "turning off an automation",
       n8n_create_workflow: "creating an automation",
       n8n_update_workflow: "editing an automation",
+      n8n_run_workflow: "firing an automation",
     };
 
     // A human one-liner of exactly what a mutating call will do — shown to the
@@ -4204,6 +4223,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Create a new n8n automation "${a?.name || "Untitled"}"${Array.isArray(a?.nodes) ? ` (${a.nodes.length} step${a.nodes.length === 1 ? "" : "s"})` : ""}. It starts OFF until you activate it.`;
         case "n8n_update_workflow":
           return `Edit the n8n automation ${a?.workflow_id || ""}${a?.name ? ` (rename to "${a.name}")` : ""}.`;
+        case "n8n_run_workflow":
+          return `Fire the n8n automation ${a?.webhook_path ? `webhook "${a.webhook_path}"` : a?.workflow_id || ""}${a?.payload ? " with the prepared payload" : ""} — this runs it live.`;
         default:
           return `Paige is ${TOOL_LABELS[name] || `running ${name}`}.`;
       }
@@ -4613,6 +4634,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "n8n_deactivate_workflow" ||
           tc.function.name === "n8n_create_workflow" ||
           tc.function.name === "n8n_update_workflow" ||
+          tc.function.name === "n8n_run_workflow" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
@@ -5031,7 +5053,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             } else if (
               tc.function.name === "n8n_list_workflows" || tc.function.name === "n8n_get_executions" ||
               tc.function.name === "n8n_activate_workflow" || tc.function.name === "n8n_deactivate_workflow" ||
-              tc.function.name === "n8n_create_workflow" || tc.function.name === "n8n_update_workflow"
+              tc.function.name === "n8n_create_workflow" || tc.function.name === "n8n_update_workflow" ||
+              tc.function.name === "n8n_run_workflow"
             ) {
               // Route every n8n tool through the paige-n8n edge function with the
               // caller's JWT (it resolves the tenant and pulls the tenant's own
@@ -5043,6 +5066,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 : tc.function.name === "n8n_activate_workflow" ? { action: "activate", workflow_id: args.workflow_id }
                 : tc.function.name === "n8n_deactivate_workflow" ? { action: "deactivate", workflow_id: args.workflow_id }
                 : tc.function.name === "n8n_create_workflow" ? { action: "create", name: args.name, nodes: args.nodes, connections: args.connections ?? {}, settings: args.settings }
+                : tc.function.name === "n8n_run_workflow" ? { action: "run", workflow_id: args.workflow_id, webhook_path: args.webhook_path, payload: args.payload, method: args.method }
                 : { action: "update", workflow_id: args.workflow_id, name: args.name, nodes: args.nodes, connections: args.connections, settings: args.settings };
               const { data: n8nData, error: n8nErr } = await supabaseClient.functions.invoke("paige-n8n", { body: n8nBody });
               if (n8nErr) throw n8nErr;
