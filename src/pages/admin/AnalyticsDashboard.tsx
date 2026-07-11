@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -104,6 +105,9 @@ const fmtMoney = (n: number) =>
 const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
 export default function AnalyticsDashboard() {
+  // Funding/credit analytics are an opt-in tenant surface (§2/§9) — shown only to
+  // tenants who chose the funding preset, never in the coaching-generic default.
+  const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
   const [range, setRange] = useState<RangeKey>("30d");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -534,23 +538,23 @@ export default function AnalyticsDashboard() {
         <RagPerformance start={start} end={end} />
       </div>
 
-      {/* SECTION — Credit outcomes */}
-      <div className="space-y-2">
-        <h2 className="text-xl font-bold text-foreground">Credit Outcomes</h2>
-        <CreditOutcomes start={start} end={end} />
-      </div>
-
-      {/* SECTION — Lender intelligence */}
-      <div className="space-y-2">
-        <h2 className="text-xl font-bold text-foreground">Lender Intelligence</h2>
-        <LenderIntelligence start={start} end={end} />
-      </div>
-
-      {/* SECTION — Broker intelligence */}
-      <div className="space-y-2">
-        <h2 className="text-xl font-bold text-foreground">Broker Intelligence</h2>
-        <BrokerIntelligence start={start} end={end} />
-      </div>
+      {/* SECTIONS — funding/credit analytics, opt-in only (§2/§9) */}
+      {fundingEnabled && (
+        <>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-foreground">Credit Outcomes</h2>
+            <CreditOutcomes start={start} end={end} />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-foreground">Lender Intelligence</h2>
+            <LenderIntelligence start={start} end={end} />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-foreground">Broker Intelligence</h2>
+            <BrokerIntelligence start={start} end={end} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

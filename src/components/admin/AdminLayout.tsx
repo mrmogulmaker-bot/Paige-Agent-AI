@@ -19,6 +19,7 @@ import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
 
 import { useRoleLens } from "@/contexts/RoleLensContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
@@ -212,10 +213,17 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
   const { isPlatformOwner, isPlatformStaff } = useTenantContext();
+  // Funding surfaces are an opt-in tenant offer (§2/§9) — hidden unless this
+  // tenant has chosen the funding preset (which flips the funding_readiness
+  // feature). Generic coaching/consulting/agency tenants never see them.
+  const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
   // Platform staff (owner + Platform Admin) run the God console — its own nav of
   // fleet/platform concerns, not the agency CRM hubs.
   const godMode = isPlatformStaff;
-  const activeHubs = godMode ? (isPlatformOwner ? GOD_HUBS : GOD_STAFF_HUBS) : hubs;
+  const FUNDING_NAV_HREFS = new Set(["/admin/funding", "/admin/funding-pipeline", "/admin/funding-lens"]);
+  const activeHubs = (godMode ? (isPlatformOwner ? GOD_HUBS : GOD_STAFF_HUBS) : hubs).map((h) =>
+    fundingEnabled ? h : { ...h, children: h.children?.filter((c) => !FUNDING_NAV_HREFS.has(c.href)) }
+  );
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
