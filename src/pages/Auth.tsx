@@ -32,6 +32,15 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  // Captured as parts (better data segregation) and composed into fullName, which
+  // the existing signup path stores; a DB trigger re-splits it into profile columns.
+  const [firstName, setFirstName] = useState("");
+  const [middleInitial, setMiddleInitial] = useState("");
+  const [lastName, setLastName] = useState("");
+  useEffect(() => {
+    const mi = middleInitial.trim() ? `${middleInitial.trim().charAt(0).toUpperCase()}.` : "";
+    setFullName([firstName.trim(), mi, lastName.trim()].filter(Boolean).join(" "));
+  }, [firstName, middleInitial, lastName]);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -613,20 +622,40 @@ const Auth = () => {
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
               {!isLogin && (
-                <div className="space-y-2">
-                  <Label htmlFor="fullName" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Full Name
-                  </Label>
-                  <Input
-                    id="fullName"
-                    type="text"
-                    placeholder="John Doe"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                    disabled={isLoading}
-                    className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
-                  />
+                <div className="grid grid-cols-[1fr_4.5rem_1fr] gap-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      First Name
+                    </Label>
+                    <Input
+                      id="firstName" type="text" placeholder="John"
+                      value={firstName} onChange={(e) => setFirstName(e.target.value)}
+                      required disabled={isLoading}
+                      className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="middleInitial" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      M.I.
+                    </Label>
+                    <Input
+                      id="middleInitial" type="text" maxLength={1} placeholder="Q"
+                      value={middleInitial} onChange={(e) => setMiddleInitial(e.target.value)}
+                      disabled={isLoading}
+                      className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all text-center placeholder:text-muted-foreground/40"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Last Name
+                    </Label>
+                    <Input
+                      id="lastName" type="text" placeholder="Doe"
+                      value={lastName} onChange={(e) => setLastName(e.target.value)}
+                      required disabled={isLoading}
+                      className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20 transition-all placeholder:text-muted-foreground/40"
+                    />
+                  </div>
                 </div>
               )}
 
