@@ -36,7 +36,7 @@ type Counts = {
 };
 
 const tiles = [
-  { key: "n8n", icon: Workflow, title: "n8n Workflows", description: "Sync workflow inventory, trigger by ID, view recent executions.", href: "/admin/integrations/n8n" },
+  { key: "n8n", icon: Workflow, title: "n8n Workflows", description: "Connect your n8n so Paige can run, monitor, and build automations across your tools.", href: "/admin/integrations/n8n" },
   { key: "stripe", icon: CreditCard, title: "Stripe Revenue", description: "Live subscription events, MRR delta and churn alerts.", href: "/admin/integrations/subscriptions" },
   { key: "zapier", icon: Zap, title: "Zapier MCP", description: "Expose thousands of apps to Paige via the MCP client.", href: "/admin/integrations/zapier" },
   { key: "telegram", icon: Send, title: "Telegram Alerts", description: "Bot channel for admin alerts and overdue approvals.", href: "/admin/integrations/telegram" },
@@ -68,7 +68,7 @@ export default function IntegrationsHub({ embedded = false }: { embedded?: boole
       const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
       const [cfg, n8n, mcp, tg, sub, env, bkg, soc, enr] = await Promise.all([
         supabase.from("paige_config").select("ghl_pit_ref, ghl_location_id, gmail_default_sender, langsmith_project, posthog_project_url, sentry_org_slug, meta_default_page_id, cal_default_event_type_id, apollo_auto_enrich, docusign_templates").eq("id", 1).maybeSingle(),
-        supabase.from("paige_n8n_connections").select("id", { count: "exact", head: true }),
+        (supabase as any).rpc("get_tenant_n8n_connection"),
         supabase.from("paige_mcp_connections").select("id", { count: "exact", head: true }).eq("enabled", true),
         supabase.from("paige_telegram_config").select("default_admin_chat_id").eq("id", 1).maybeSingle(),
         supabase.from("paige_subscription_events").select("id", { count: "exact", head: true }).gte("created_at", since),
@@ -79,7 +79,7 @@ export default function IntegrationsHub({ embedded = false }: { embedded?: boole
       ]);
       setConfig(cfg.data as ConfigShape | null);
       setCounts({
-        n8n: n8n.count ?? 0,
+        n8n: (n8n as any)?.data?.configured ? 1 : 0,
         mcp: mcp.count ?? 0,
         telegramConfigured: Boolean(tg.data?.default_admin_chat_id),
         recentSubscriptionEvents: sub.count ?? 0,
@@ -96,7 +96,7 @@ export default function IntegrationsHub({ embedded = false }: { embedded?: boole
 
   const statusFor = (key: string): { state: PillState; label: string } => {
     switch (key) {
-      case "n8n": return counts.n8n > 0 ? { state: "success", label: `${counts.n8n} connection${counts.n8n === 1 ? "" : "s"}` } : { state: "off", label: "Not configured" };
+      case "n8n": return counts.n8n > 0 ? { state: "success", label: "Connected" } : { state: "off", label: "Not configured" };
       case "stripe": return counts.recentSubscriptionEvents > 0 ? { state: "success", label: `${counts.recentSubscriptionEvents} events (7d)` } : { state: "off", label: "Awaiting events" };
       case "ghl": return config?.ghl_location_id ? { state: "success", label: "Connected" } : { state: "off", label: "Not configured" };
       case "zapier": return counts.mcp > 0 ? { state: "success", label: `${counts.mcp} active` } : { state: "off", label: "Not configured" };
