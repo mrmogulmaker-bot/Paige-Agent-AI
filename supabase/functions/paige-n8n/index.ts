@@ -23,25 +23,75 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-// SSRF blocklist — identical to kb-ingest-url / fetch-url-content. Do not weaken.
-const BLOCKED_HOST_PATTERNS = [
-  /^localhost$/i, /^127\./, /^10\./, /^192\.168\./, /^172\.(1[6-9]|2[0-9]|3[01])\./,
-  /^169\.254\./, /^::1$/, /^0\.0\.0\.0$/, /^fc00:/i, /^fd00:/i, /\.local$/i, /\.internal$/i,
-];
-function unsafeReason(raw: string): string | null {
+// SSRF guard. String matching alone is bypassable (IPv4-mapped IPv6, DNS →
+// internal, link-local), so we resolve the host and validate every resolved IP
+// NUMERICALLY against private/loopback/link-local/ULA/mapped ranges. IP literals
+// are validated directly. redirect:"manual" stops a 3xx from bouncing internal.
+function ipv4ToInt(ip: string): number | null {
+  const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return null;
+  const o = m.slice(1).map(Number);
+  if (o.some((n) => n > 255)) return null;
+  return (((o[0] << 24) >>> 0) + (o[1] << 16) + (o[2] << 8) + o[3]) >>> 0;
+}
+function ipv4Private(ip: string): boolean {
+  const n = ipv4ToInt(ip);
+  if (n === null) return true; // unparseable → treat as unsafe
+  const inRange = (base: string, bits: number) => {
+    const b = ipv4ToInt(base)!;
+    const mask = bits === 0 ? 0 : (~((1 << (32 - bits)) - 1)) >>> 0;
+    return (n & mask) >>> 0 === (b & mask) >>> 0;
+  };
+  return inRange("0.0.0.0", 8) || inRange("10.0.0.0", 8) || inRange("127.0.0.0", 8) ||
+    inRange("169.254.0.0", 16) || inRange("172.16.0.0", 12) || inRange("192.168.0.0", 16) ||
+    inRange("100.64.0.0", 10) || inRange("192.0.0.0", 24) || inRange("198.18.0.0", 15) ||
+    n === ipv4ToInt("255.255.255.255");
+}
+function ipUnsafe(rawIp: string): boolean {
+  const ip = rawIp.toLowerCase().replace(/^\[|\]$/g, "");
+  if (ipv4ToInt(ip) !== null) return ipv4Private(ip);
+  // IPv6 (canonical or literal). Handle embedded/mapped IPv4 explicitly.
+  if (ip === "::1" || ip === "::") return true;
+  if (/^fe[89ab]/.test(ip)) return true;            // fe80::/10 link-local
+  if (/^f[cd]/.test(ip)) return true;               // fc00::/7 ULA
+  if (/^(64:ff9b::|2002:)/.test(ip)) {              // NAT64 / 6to4 → extract v4 if dotted
+    const d = ip.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+    if (d) return ipv4Private(d[1]);
+    return true;
+  }
+  const mappedDotted = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (mappedDotted) return ipv4Private(mappedDotted[1]);
+  const mappedHex = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (mappedHex) {
+    const hi = parseInt(mappedHex[1], 16), lo = parseInt(mappedHex[2], 16);
+    return ipv4Private(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
+  }
+  return false; // a routable public IPv6
+}
+async function assertSafeUrl(raw: string): Promise<void> {
   let u: URL;
-  try { u = new URL(raw); } catch { return "Invalid instance URL"; }
-  if (u.protocol !== "https:") return "Instance URL must be https://";
-  if (BLOCKED_HOST_PATTERNS.some((p) => p.test(u.hostname.toLowerCase()))) return "Instance URL host is not allowed";
-  return null;
+  try { u = new URL(raw); } catch { throw new Error("Invalid instance URL"); }
+  if (u.protocol !== "https:") throw new Error("Instance URL must be https://");
+  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) throw new Error("Instance URL host is not allowed");
+  // IP literal → validate directly; hostname → resolve A + AAAA and validate all.
+  if (ipv4ToInt(host) !== null || host.includes(":")) {
+    if (ipUnsafe(host)) throw new Error("Instance URL host is not allowed");
+    return;
+  }
+  const ips: string[] = [];
+  for (const kind of ["A", "AAAA"] as const) {
+    try { ips.push(...await Deno.resolveDns(host, kind)); } catch { /* no records of this kind */ }
+  }
+  if (ips.length === 0) throw new Error("Instance URL host could not be resolved");
+  for (const ip of ips) if (ipUnsafe(ip)) throw new Error("Instance URL resolves to a non-public address");
 }
 
 // One n8n REST call, SSRF-validated, no auto-redirect (n8n API shouldn't 3xx;
 // following one blindly could bounce to an internal host).
 async function n8nFetch(baseUrl: string, apiKey: string, path: string, init: RequestInit = {}): Promise<Response> {
   const url = `${baseUrl.replace(/\/$/, "")}/api/v1${path}`;
-  const bad = unsafeReason(url);
-  if (bad) throw new Error(bad);
+  await assertSafeUrl(url);
   return await fetch(url, {
     ...init,
     redirect: "manual",
@@ -82,8 +132,11 @@ Deno.serve(async (req) => {
   const baseUrl: string = secret.base_url;
   const apiKey: string = secret.api_key;
 
-  const preflight = unsafeReason(`${baseUrl.replace(/\/$/, "")}/api/v1`);
-  if (preflight) return json({ error: "unsafe_instance_url", detail: preflight }, 400);
+  try {
+    await assertSafeUrl(`${baseUrl.replace(/\/$/, "")}/api/v1`);
+  } catch (e) {
+    return json({ error: "unsafe_instance_url", detail: e instanceof Error ? e.message : "blocked" }, 400);
+  }
 
   const markSync = (status: string, lastError: string | null, count: number | null) =>
     admin.rpc("update_tenant_n8n_sync", { _tenant_id: tenantId, _status: status, _last_error: lastError, _workflow_count: count }).then(() => {}, () => {});

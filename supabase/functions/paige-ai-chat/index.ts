@@ -3305,6 +3305,8 @@ ACTION BUS — you run a team of two departments: Owner Ops (works for the coach
 - action_advance moves it: assign a sub-agent (e.g. email-composer), attach a draft (to_status='drafted'), or dismiss it. Attaching a draft to a send-type kind AUTO-FILES it into the coach's approval lane — you never send directly; the coach approves and the platform sends.
 - action_list / action_get show open work. Narrate what you're doing as you file and draft ("Filing a follow-up to Owner Ops… drafting it… routed to you for approval"), so the operator watches you work.
 
+AUTOMATIONS (n8n) — if the workspace has connected an n8n account, you can run and build automations across all their tools. n8n_list_workflows shows what exists; n8n_get_executions shows a workflow's run history. You can turn automations on/off (n8n_activate_workflow / n8n_deactivate_workflow) and author new ones or edit them (n8n_create_workflow / n8n_update_workflow) — new workflows are created OFF until the operator activates them. These follow the same propose→confirm rule. If no n8n is connected, the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it ran.
+
 BE A PROACTIVE ASSISTANT, NOT AN ORDER-TAKER. Never just execute the literal request and stop. Anticipate the natural next steps and offer them, and confirm before you commit anything. Three rules:
 1. PROPOSE → GET A YES → THEN ACT. For ANYTHING that creates or changes a record — a contact, a pipeline, a stage, a task, a booking, a role, saved content, an action — FIRST say in one plain line exactly what you intend to do and WAIT for the operator's yes. Do NOT silently call the tool to "just do it" and report after the fact — that is jumping the gun, and it is not allowed. The platform enforces this for you: when you call a mutating tool, it may come back with needs_confirm and a confirm_summary. When it does, read that summary back to the operator in plain words, ask them to confirm, and ONLY after they explicitly say yes call the SAME tool again with confirm:true. Some actions may be set to autopilot for this workspace (they run without the pause) — that is the operator's standing choice, never an assumption you make on your own. Anything outbound (an email, an SMS) is NEVER sent directly — you draft it and route it to the coach's approval lane.
 2. CONFIRM THE RESULT. Once the action actually commits, tell the operator plainly what you did in one line ("Done — created the 'Enterprise Sales' pipeline with 4 stages"). Never leave them guessing whether it happened.
@@ -4018,6 +4020,88 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
           },
+          {
+            type: "function",
+            function: {
+              name: "n8n_list_workflows",
+              description: "Admin only. List the automation workflows in this workspace's connected n8n account (id, name, whether active, tags). Use to see what automations exist before running, editing, or building one. Returns an error asking the operator to connect n8n if none is configured.",
+              parameters: { type: "object", properties: {}, required: [] }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "n8n_get_executions",
+              description: "Admin only. Show recent run history (executions) for one n8n workflow — status, started/stopped times. Resolve the workflow id via n8n_list_workflows first.",
+              parameters: {
+                type: "object",
+                properties: {
+                  workflow_id: { type: "string", description: "The n8n workflow id (from n8n_list_workflows)." },
+                  limit: { type: "number", description: "How many recent runs (default 10, max 50)." }
+                },
+                required: ["workflow_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "n8n_activate_workflow",
+              description: "Admin only. Turn ON an n8n workflow so its trigger runs live. Governed by the workspace autonomy policy: unless set to auto, PROPOSE first and call again with confirm:true once the operator approves. Resolve the id via n8n_list_workflows.",
+              parameters: {
+                type: "object",
+                properties: { workflow_id: { type: "string", description: "The n8n workflow id." } },
+                required: ["workflow_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "n8n_deactivate_workflow",
+              description: "Admin only. Turn OFF an n8n workflow so its trigger stops running. Propose first and call again with confirm:true unless the workspace set this to auto.",
+              parameters: {
+                type: "object",
+                properties: { workflow_id: { type: "string", description: "The n8n workflow id." } },
+                required: ["workflow_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "n8n_create_workflow",
+              description: "Admin only. Create a new automation workflow in the workspace's n8n account. It is created INACTIVE (never auto-live) — activate it separately after review. Provide a valid n8n workflow: name plus nodes (array) and connections (object). PROPOSE the plan first and call again with confirm:true once the operator approves, unless the workspace set this to auto.",
+              parameters: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: "Workflow name." },
+                  nodes: { type: "array", description: "n8n nodes array (valid n8n node objects).", items: { type: "object" } },
+                  connections: { type: "object", description: "n8n connections object wiring the nodes together." },
+                  settings: { type: "object", description: "Optional n8n workflow settings." }
+                },
+                required: ["name", "nodes"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "n8n_update_workflow",
+              description: "Admin only. Update an existing n8n workflow's name, nodes, connections, or settings. Only pass what changes. Propose first and call again with confirm:true unless the workspace set this to auto. Resolve the id via n8n_list_workflows.",
+              parameters: {
+                type: "object",
+                properties: {
+                  workflow_id: { type: "string", description: "The n8n workflow id to update." },
+                  name: { type: "string" },
+                  nodes: { type: "array", items: { type: "object" } },
+                  connections: { type: "object" },
+                  settings: { type: "object" }
+                },
+                required: ["workflow_id"]
+              }
+            }
+          },
     ];
 
     // ── AUTONOMY GATE WIRING ─────────────────────────────────────────────────
@@ -4036,6 +4120,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "calendar_book_meeting", "program_enroll",
       "draft_marketing_content", "generate_image", "content_save",
       "action_file", "action_advance",
+      "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
     ]);
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
@@ -4060,6 +4145,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       content_save: "saving content",
       action_file: "filing an action",
       action_advance: "advancing an action",
+      n8n_activate_workflow: "turning on an automation",
+      n8n_deactivate_workflow: "turning off an automation",
+      n8n_create_workflow: "creating an automation",
+      n8n_update_workflow: "editing an automation",
     };
 
     // A human one-liner of exactly what a mutating call will do — shown to the
@@ -4107,6 +4196,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `File a "${a?.action_kind || "action"}" action${a?.title ? `: ${a.title}` : ""}.`;
         case "action_advance":
           return `Advance action ${a?.action_id || ""}${a?.to_status ? ` → ${a.to_status}` : ""}.`;
+        case "n8n_activate_workflow":
+          return `Turn ON the n8n automation ${a?.workflow_id || ""} so it runs live.`;
+        case "n8n_deactivate_workflow":
+          return `Turn OFF the n8n automation ${a?.workflow_id || ""}.`;
+        case "n8n_create_workflow":
+          return `Create a new n8n automation "${a?.name || "Untitled"}"${Array.isArray(a?.nodes) ? ` (${a.nodes.length} step${a.nodes.length === 1 ? "" : "s"})` : ""}. It starts OFF until you activate it.`;
+        case "n8n_update_workflow":
+          return `Edit the n8n automation ${a?.workflow_id || ""}${a?.name ? ` (rename to "${a.name}")` : ""}.`;
         default:
           return `Paige is ${TOOL_LABELS[name] || `running ${name}`}.`;
       }
@@ -4510,6 +4607,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "crm_assign_contact" ||
           tc.function.name === "program_list" ||
           tc.function.name === "program_enroll" ||
+          tc.function.name === "n8n_list_workflows" ||
+          tc.function.name === "n8n_get_executions" ||
+          tc.function.name === "n8n_activate_workflow" ||
+          tc.function.name === "n8n_deactivate_workflow" ||
+          tc.function.name === "n8n_create_workflow" ||
+          tc.function.name === "n8n_update_workflow" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
@@ -4925,6 +5028,27 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 weighted_forecast_cents: Math.round(weightedForecast),
                 stage_rollup: stageRollup,
               };
+            } else if (
+              tc.function.name === "n8n_list_workflows" || tc.function.name === "n8n_get_executions" ||
+              tc.function.name === "n8n_activate_workflow" || tc.function.name === "n8n_deactivate_workflow" ||
+              tc.function.name === "n8n_create_workflow" || tc.function.name === "n8n_update_workflow"
+            ) {
+              // Route every n8n tool through the paige-n8n edge function with the
+              // caller's JWT (it resolves the tenant and pulls the tenant's own
+              // encrypted n8n creds server-side). Mutating n8n tools already
+              // cleared the autonomy gate above; `confirm` is not an n8n param.
+              const n8nBody: Record<string, unknown> =
+                tc.function.name === "n8n_list_workflows" ? { action: "list" }
+                : tc.function.name === "n8n_get_executions" ? { action: "executions", workflow_id: args.workflow_id, limit: args.limit }
+                : tc.function.name === "n8n_activate_workflow" ? { action: "activate", workflow_id: args.workflow_id }
+                : tc.function.name === "n8n_deactivate_workflow" ? { action: "deactivate", workflow_id: args.workflow_id }
+                : tc.function.name === "n8n_create_workflow" ? { action: "create", name: args.name, nodes: args.nodes, connections: args.connections ?? {}, settings: args.settings }
+                : { action: "update", workflow_id: args.workflow_id, name: args.name, nodes: args.nodes, connections: args.connections, settings: args.settings };
+              const { data: n8nData, error: n8nErr } = await supabaseClient.functions.invoke("paige-n8n", { body: n8nBody });
+              if (n8nErr) throw n8nErr;
+              result = (n8nData as any)?.error
+                ? { success: false, ...(n8nData as any) }
+                : { success: true, ...(n8nData as any) };
             }
 
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
