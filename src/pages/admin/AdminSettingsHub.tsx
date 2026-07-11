@@ -325,10 +325,10 @@ function NotificationsCommsPanel() {
       >
         <div className="space-y-3">
           <ul className="text-xs text-muted-foreground space-y-1.5">
-            <li>• Dispute status updates &rarr; push to client</li>
-            <li>• New funding match &rarr; push (deduped 24h)</li>
-            <li>• Credit alerts &rarr; SMS + email</li>
-            <li>• Onboarding &rarr; transactional email</li>
+            <li>• New client reply &rarr; push to the coach</li>
+            <li>• At-risk client flagged &rarr; push (deduped 24h)</li>
+            <li>• Booking confirmed &rarr; SMS + email</li>
+            <li>• Onboarding step &rarr; transactional email</li>
           </ul>
           <Button asChild variant="outline" size="sm">
             <Link to="/admin/support">

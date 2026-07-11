@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SectionCard, StatePill } from "@/components/ui/page";
 import { cn } from "@/lib/utils";
@@ -35,20 +35,39 @@ const MODES: { value: Mode; label: string; hint: string; icon: typeof Zap }[] = 
 
 function ModeToggle({
   value,
+  label,
   disabled,
   onChange,
 }: {
   value: Mode;
+  label: string;
   disabled?: boolean;
   onChange: (m: Mode) => void;
 }) {
+  const btnRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // ARIA radiogroup keyboard pattern: Left/Up → previous, Right/Down → next,
+  // wrapping, moving both selection and focus (roving tabindex below).
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (disabled) return;
+    const idx = MODES.findIndex((m) => m.value === value);
+    let next = idx;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (idx + 1) % MODES.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (idx - 1 + MODES.length) % MODES.length;
+    else return;
+    e.preventDefault();
+    onChange(MODES[next].value);
+    btnRefs.current[next]?.focus();
+  };
+
   return (
     <div
       role="radiogroup"
-      aria-label="Autonomy mode"
+      aria-label={`Autonomy for ${label}`}
+      onKeyDown={onKeyDown}
       className="inline-flex items-center rounded-lg border border-border bg-muted/40 p-0.5"
     >
-      {MODES.map((m) => {
+      {MODES.map((m, i) => {
         const active = value === m.value;
         // Gold discipline (§6/§11): gold is the act/on moment — only Autopilot,
         // when selected, earns the gold fill. Ask-first and Off use a neutral
@@ -60,9 +79,12 @@ function ModeToggle({
         return (
           <button
             key={m.value}
+            ref={(el) => { btnRefs.current[i] = el; }}
             type="button"
             role="radio"
             aria-checked={active}
+            // Roving tabindex: only the selected radio is in the tab order.
+            tabIndex={active ? 0 : -1}
             disabled={disabled}
             title={m.hint}
             onClick={() => !active && onChange(m.value)}
@@ -173,12 +195,13 @@ export function PaigeAutonomyPanel() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-foreground">{tool.label}</span>
                       {tool.is_default && (
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Default</span>
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Default · Ask first</span>
                       )}
                     </div>
                   </div>
                   <ModeToggle
                     value={tool.mode}
+                    label={tool.label}
                     disabled={saving === tool.tool_key}
                     onChange={(m) => setMode(tool, m)}
                   />
