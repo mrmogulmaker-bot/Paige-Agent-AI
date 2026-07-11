@@ -141,6 +141,9 @@ const messageSchema = z.object({
     })
   ).optional(),
   clientId: z.string().uuid().nullable().optional(),
+  // Owner "Your Paige" multi-chat: the persisted conversation this turn belongs to.
+  // When set, paige-ai-chat persists both turns + rehydrates recall server-side (#94).
+  threadId: z.string().uuid().nullable().optional(),
   clientContext: z.string().max(100000).optional().transform((v) => (v && v.length > 50000 ? v.slice(0, 50000) : v)),
   // Client-provided local clock so Paige can greet/refer to time in the
   // user's actual timezone instead of server UTC.
@@ -325,7 +328,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, clientContext, userTime, userTimezone, userTimeFormatted } = validatedData;
+    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext, userTime, userTimezone, userTimeFormatted } = validatedData;
 
     // === SESSION SUMMARY GENERATION MODE ===
     if (generateSessionSummary && sessionMessages && sessionMessages.length > 0) {
@@ -3255,6 +3258,98 @@ SUPPORT & FEEDBACK AWARENESS
       { role: "system", content: systemPrompt },
     ];
 
+    // ── OWNER MULTI-CHAT PERSISTENCE + RECALL (#94) ──────────────────────────
+    // When a thread is active (Your Paige), persist the user turn NOW (survives a
+    // model error) and rehydrate the rolling summary so a long thread keeps its
+    // early context. All writes go through the caller-JWT client so auth.uid() is
+    // the owner — the append RPC requires it; a service-role write throws 'auth
+    // required'. The client never writes turns (single server-side writer).
+    if (payloadThreadId) {
+      const latestUserText = [...messages].reverse().find((m: any) => m.role === "user")?.content;
+      if (typeof latestUserText === "string" && latestUserText.trim()) {
+        try {
+          await supabaseClient.rpc("paige_chat_turn_append", {
+            p_thread_id: payloadThreadId, p_role: "user", p_content: latestUserText,
+            p_surfaces_used: null, p_load_id: null, p_model: null,
+            p_tokens_used: null, p_latency_ms: null, p_bundle_ref: null, p_tool_calls: null,
+          });
+        } catch (e) { console.error("[paige] persist user turn failed:", (e as Error)?.message); }
+      }
+      try {
+        const { data: th } = await supabaseClient
+          .from("paige_chat_threads").select("summary").eq("id", payloadThreadId).maybeSingle();
+        if (th?.summary) {
+          // After persona + systemPrompt, before operator/CRM context.
+          aiMessages.splice(2, 0, {
+            role: "system",
+            content: `CONVERSATION MEMORY — earlier in THIS chat, older turns folded into a running summary. Treat this as things you already know and can refer back to naturally:\n${th.summary}`,
+          });
+        }
+      } catch (e) { console.warn("[paige] recall fetch failed:", (e as Error)?.message); }
+    }
+
+    // Rolling-summary compaction: every EVERY turns past KEEP, fold everything older
+    // than the last KEEP verbatim turns into the thread summary and advance the
+    // watermark so the summarized range and the verbatim tail never overlap.
+    const maybeRefreshSummary = async (threadId: string) => {
+      const KEEP = 12, EVERY = 8;
+      try {
+        const { data: th } = await supabaseClient.from("paige_chat_threads")
+          .select("message_count, summary, summary_through_seq").eq("id", threadId).maybeSingle();
+        if (!th || th.message_count <= KEEP || th.message_count % EVERY !== 0) return;
+        const { data: rows } = await supabaseClient.from("paige_chat_turns")
+          .select("role,content,seq").eq("thread_id", threadId).in("role", ["user", "assistant"])
+          .order("seq", { ascending: true });
+        if (!rows?.length) return;
+        const cutoffSeq = rows[Math.max(0, rows.length - KEEP)].seq;
+        const toFold = rows.filter((r: any) => r.seq <= cutoffSeq && r.seq > (th.summary_through_seq ?? 0));
+        if (!toFold.length) return;
+        const transcript = toFold.map((t: any) => `${t.role === "user" ? "Owner" : "Paige"}: ${t.content}`).join("\n").slice(0, 12000);
+        const prompt = `Maintain a rolling memory of a long working chat between a business owner and their assistant Paige. Update the summary so nothing important is lost as older turns scroll off. PRESERVE explicitly: the owner's name & preferences, decisions made, tasks/actions Paige took or QUEUED, any PENDING approvals still open, names of clients/contacts, dates, numbers, and open loops. 4-8 tight sentences, flowing prose, no bullets.\n\nPRIOR SUMMARY:\n${th.summary ?? "(none)"}\n\nOLDER TURNS TO FOLD IN:\n${transcript}\n\nUPDATED SUMMARY:`;
+        const resp = await gatewayCompat("anthropic", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: prompt }] }),
+        });
+        if (!resp.ok) return;
+        const summary = (await resp.json())?.choices?.[0]?.message?.content?.trim();
+        if (summary) {
+          await supabaseClient.from("paige_chat_threads")
+            .update({ summary, summary_through_seq: cutoffSeq }).eq("id", threadId);
+        }
+      } catch (e) { console.warn("[paige] summary refresh failed:", (e as Error)?.message); }
+    };
+
+    // Persist Paige's reply after the stream (via EdgeRuntime.waitUntil so a closed
+    // tab still saves it), then auto-title a new thread and refresh the summary.
+    // bundle_ref stores the queued/confirm cards so the UI reconstructs them on reload.
+    const persistAssistantTurn = async (finalText: string, meta: { surfaces?: string[] | null; bundleRef?: unknown; model?: string }) => {
+      if (!payloadThreadId || !finalText || !finalText.trim()) return;
+      try {
+        await supabaseClient.rpc("paige_chat_turn_append", {
+          p_thread_id: payloadThreadId, p_role: "assistant", p_content: finalText,
+          p_surfaces_used: meta.surfaces ?? null, p_load_id: null,
+          p_model: meta.model ?? "google/gemini-2.5-flash", p_tokens_used: null, p_latency_ms: null,
+          p_bundle_ref: (meta.bundleRef ?? null) as any, p_tool_calls: null,
+        });
+        try {
+          const { data: th } = await supabaseClient.from("paige_chat_threads")
+            .select("title, message_count").eq("id", payloadThreadId).maybeSingle();
+          if (th && (!th.title || !String(th.title).trim()) && th.message_count <= 3) {
+            const { data: firstU } = await supabaseClient.from("paige_chat_turns")
+              .select("content").eq("thread_id", payloadThreadId).eq("role", "user")
+              .order("seq", { ascending: true }).limit(1).maybeSingle();
+            const raw = String(firstU?.content ?? "").trim().replace(/\s+/g, " ");
+            if (raw) {
+              const title = raw.split(" ").slice(0, 7).join(" ").slice(0, 60);
+              await supabaseClient.from("paige_chat_threads").update({ title }).eq("id", payloadThreadId);
+            }
+          }
+        } catch { /* title is a nicety, never block */ }
+        await maybeRefreshSummary(payloadThreadId);
+      } catch (e) { console.error("[paige] persist assistant turn failed:", (e as Error)?.message); }
+    };
+
     // === OPERATOR (admin/coach) CONTEXT INJECTION ===
     // When the signed-in user is an admin or coach, Paige gets full CRM
     // visibility tools (search contacts, read deals, list tasks, etc.).
@@ -5399,10 +5494,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       const seenSignatures = new Set<string>();
       let finalChunks: Uint8Array[] | null = null;
       let forcedTermination = false;
+      // Accumulates Paige's final reply text so we can persist the turn (#94).
+      let finalAssistantText = "";
 
       for (let round = 0; round < MAX_ROUNDS; round++) {
         const { content, toolCalls, allChunks, hasToolCall } = await consumeRound(currentResponse);
-        if (!hasToolCall) { finalChunks = allChunks; break; }
+        if (!hasToolCall) { finalChunks = allChunks; finalAssistantText = content; break; }
         const realCalls = toolCalls.filter((tc: any) => tc && tc.function?.name);
         const sig = JSON.stringify(realCalls.map((tc: any) => [tc.function.name, tc.function.arguments]));
         // No-progress: the model re-emitted the exact same call(s) as an earlier
@@ -5473,10 +5570,35 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             for (const c of finalChunks) controller.enqueue(c);
           } else if (finalStreamResponse?.ok && finalStreamResponse.body) {
             const up = finalStreamResponse.body.getReader();
-            try { while (true) { const { done, value } = await up.read(); if (done) break; controller.enqueue(value); } } finally { /* noop */ }
+            const dec = new TextDecoder();
+            try {
+              while (true) {
+                const { done, value } = await up.read();
+                if (done) break;
+                controller.enqueue(value);
+                // Capture the closing reply's text so the turn persists (#94).
+                for (const line of dec.decode(value, { stream: true }).split("\n")) {
+                  if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+                  try { const c = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content; if (c) finalAssistantText += c; } catch { /* skip */ }
+                }
+              }
+            } finally { /* noop */ }
           } else {
             controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "I gathered what I could but couldn't finish that — mind trying again?" } }] })}\n\n`));
             controller.enqueue(enc.encode("data: [DONE]\n\n")); // sentinel so the client finalizes the bubble
+          }
+          // Persist Paige's reply (owner Your-Paige threads only; no-op without a
+          // threadId). bundle_ref carries the queued approvals + confirm cards so
+          // the UI reconstructs them on reload. waitUntil keeps it alive past close.
+          if (payloadThreadId && finalAssistantText.trim()) {
+            const p = persistAssistantTurn(finalAssistantText, {
+              surfaces: stepTrace.map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
+              bundleRef: (queuedApprovals.length || confirmTrace.length)
+                ? { approval_queued: queuedApprovals, paige_confirm: confirmTrace }
+                : null,
+            });
+            // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
+            if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
           }
           controller.close();
         },
@@ -5565,6 +5687,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
           } catch (e) {
             console.warn("[paige] analytics post-stream detection failed:", (e as Error)?.message);
+          }
+
+          // Persist Paige's reply for owner Your-Paige threads (#94). No-op when
+          // no threadId (client portal / doc-only calls). Non-agentic path, so no
+          // queued approvals/confirm cards to bundle.
+          if (payloadThreadId && fullAssistantResponse.trim()) {
+            const p = persistAssistantTurn(fullAssistantResponse, { bundleRef: null });
+            // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
+            if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
           }
 
           controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));

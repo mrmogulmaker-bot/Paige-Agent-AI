@@ -21,10 +21,23 @@ import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { PaigeConfirmCard } from "@/components/chat/PaigeConfirmCard";
 import { usePlaybook } from "@/lib/playbook";
 import type { QuickChip } from "@/components/paige/commandCenterTypes";
+import { usePaigeThreads } from "@/hooks/usePaigeThreads";
+import { useScopedUserId } from "@/hooks/useScopedUserId";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { ThreadRail } from "@/components/dashboard/paige/ThreadRail";
+import { PanelLeft } from "lucide-react";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
-type Message = { role: "user" | "assistant"; content: string; queued?: QueuedApproval[]; confirm?: Array<{ tool: string; summary: string }> };
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  queued?: QueuedApproval[];
+  confirm?: Array<{ tool: string; summary: string }>;
+  /** True on turns rehydrated from history: their confirm cards render settled,
+   *  not as a live Approve button (§15 — never re-fire a past action). */
+  confirmResolved?: boolean;
+};
 
 // Optional, back-compatible props (cc-spec §3). Legacy mounts (Dashboard) pass
 // none of these and behave exactly as before.
@@ -46,6 +59,10 @@ export interface PaigeAIChatProps {
   onTrace?: (steps: PaigeStep[], loading: boolean) => void;
   /** Suppress the inline reasoning strip (desktop: the Live desk owns the timeline). */
   hideReasoningStrip?: boolean;
+  /** Owner "Your Paige" mode (#94): mount the multi-chat history rail, persist
+   *  every conversation, and rehydrate on reload. Off by default — legacy and
+   *  client-focused mounts keep their exact single-session behavior. */
+  enableHistory?: boolean;
 }
 
 const PaigeAIChatInner = ({
@@ -58,6 +75,7 @@ const PaigeAIChatInner = ({
   greeting,
   onTrace,
   hideReasoningStrip = false,
+  enableHistory = false,
 }: PaigeAIChatProps) => {
   // The tenant's authored persona names the assistant in the default header —
   // audience-broad, voice-compliant, never a hardcoded vertical (doctrine §2/§3).
@@ -92,6 +110,16 @@ const PaigeAIChatInner = ({
   const { toast } = useToast();
   const location = useLocation();
   const currentPageName = getCurrentPageName(location.pathname);
+
+  // ── Multi-chat history (#94) — owner "Your Paige" only (enableHistory). ──
+  const scopedUserId = useScopedUserId();
+  const { activeTenantId } = useTenantContext();
+  const threadsApi = usePaigeThreads({ callerUserId: scopedUserId, tenantId: activeTenantId });
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [streamingThreadId, setStreamingThreadId] = useState<string | null>(null);
+  const [mobileRailOpen, setMobileRailOpen] = useState(false);
+  const [historyHydrated, setHistoryHydrated] = useState(false);
+  const openingGreeting = greeting ?? "Hey, how can I help?";
 
   // Modal-driven voice UI state
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
@@ -251,6 +279,58 @@ const PaigeAIChatInner = ({
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
+  // Rebuild the message list from a thread's stored turns. Cards are reconstructed
+  // from bundle_ref and marked resolved — a reloaded confirm renders settled, never
+  // a live Approve button for an action already taken (§15).
+  const turnsToMessages = (turns: Awaited<ReturnType<typeof threadsApi.loadTurns>>): Message[] =>
+    turns
+      .filter((t) => t.role === "user" || t.role === "assistant")
+      .map((t) => {
+        const b = (t.bundle_ref ?? {}) as Record<string, unknown>;
+        const queued = Array.isArray(b.approval_queued) ? (b.approval_queued as QueuedApproval[]) : undefined;
+        const confirm = Array.isArray(b.paige_confirm)
+          ? (b.paige_confirm as Array<{ tool: string; summary: string }>)
+          : undefined;
+        return {
+          role: t.role as "user" | "assistant",
+          content: t.content,
+          queued: queued?.length ? queued : undefined,
+          confirm: confirm?.length ? confirm : undefined,
+          confirmResolved: true,
+        };
+      });
+
+  const selectThread = async (id: string) => {
+    if (id === activeThreadId || isLoading) return; // don't clobber a streaming reply
+    try {
+      const turns = await threadsApi.loadTurns(id);
+      const hydrated = turnsToMessages(turns);
+      setMessages(hydrated.length ? hydrated : [{ role: "assistant", content: openingGreeting }]);
+      setActiveThreadId(id);
+      setSteps([]);
+    } catch (e) {
+      console.error("[PaigeAIChat] load thread failed:", e);
+      toast({ title: "Couldn't open that chat", description: "Give it another try in a moment.", variant: "destructive" });
+    }
+  };
+
+  const startNewChat = () => {
+    if (isLoading) return; // let the current reply finish before switching context
+    setActiveThreadId(null);
+    setMessages([{ role: "assistant", content: openingGreeting }]);
+    setSteps([]);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  // On first load in history mode, resume the most recent chat (or start fresh).
+  useEffect(() => {
+    if (!enableHistory || historyHydrated || threadsApi.isLoading) return;
+    const latest = threadsApi.threads[0];
+    if (latest) void selectThread(latest.id);
+    setHistoryHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enableHistory, historyHydrated, threadsApi.isLoading, threadsApi.threads]);
+
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
     if (!text || isLoading) return;
@@ -276,6 +356,25 @@ const PaigeAIChatInner = ({
         return;
       }
 
+      // History mode: create the thread lazily on the first send, then stream
+      // into it. The server is the single writer of turns — we only pass the id.
+      let threadId = activeThreadId;
+      if (enableHistory) {
+        try {
+          if (!threadId) {
+            threadId = await threadsApi.ensureThread(text);
+            setActiveThreadId(threadId);
+          }
+          setStreamingThreadId(threadId);
+        } catch (e) {
+          console.error("[PaigeAIChat] ensureThread failed:", e);
+          toast({ title: "Couldn't start that chat", description: "Give it another try in a moment.", variant: "destructive" });
+          setMessages(messages);
+          setIsLoading(false);
+          return;
+        }
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`,
         {
@@ -284,7 +383,7 @@ const PaigeAIChatInner = ({
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ messages: newMessages, ...(clientId ? { clientId } : {}), ...(clientContext ? { clientContext } : {}), ...getUserClock() }),
+          body: JSON.stringify({ messages: newMessages, ...(threadId ? { threadId } : {}), ...(clientId ? { clientId } : {}), ...(clientContext ? { clientContext } : {}), ...getUserClock() }),
         }
       );
 
@@ -367,6 +466,14 @@ const PaigeAIChatInner = ({
       }
 
       setIsLoading(false);
+      if (enableHistory) {
+        setStreamingThreadId(null);
+        // Reorder the rail + pick up the server-side auto-title. The assistant
+        // turn + title write run in the edge fn's waitUntil after the stream
+        // closes, so refresh once now and again shortly to catch that commit.
+        threadsApi.onTurnPersisted();
+        window.setTimeout(() => threadsApi.onTurnPersisted(), 1800);
+      }
     } catch (error) {
       console.error("Chat error:", error);
       toast({
@@ -376,6 +483,7 @@ const PaigeAIChatInner = ({
       });
       setMessages(messages);
       setIsLoading(false);
+      if (enableHistory) setStreamingThreadId(null);
     }
   };
 
@@ -391,7 +499,23 @@ const PaigeAIChatInner = ({
 
   return (
     <div className={fill ? "w-full h-full" : `max-w-4xl mx-auto w-full ${hideHeader ? "h-full" : "h-[calc(100vh-4rem)]"}`}>
-      <div className="flex flex-col h-full">
+      <div className={enableHistory ? "flex h-full min-h-0 gap-4" : "flex flex-col h-full"}>
+        {enableHistory && (
+          <ThreadRail
+            threads={threadsApi.threads}
+            isLoading={threadsApi.isLoading}
+            activeThreadId={activeThreadId}
+            streamingThreadId={streamingThreadId}
+            onSelect={(id) => void selectThread(id)}
+            onNewChat={startNewChat}
+            onRename={threadsApi.renameThread}
+            onArchive={threadsApi.archiveThread}
+            onDelete={(id) => { if (id === activeThreadId) startNewChat(); void threadsApi.deleteThread(id); }}
+            mobileOpen={mobileRailOpen}
+            onMobileOpenChange={setMobileRailOpen}
+          />
+        )}
+        <div className={enableHistory ? "flex flex-col h-full min-w-0 flex-1" : "contents"}>
         {!hideHeader && (
           <div className="mb-6">
             <h2 className="text-3xl font-bold text-foreground">
@@ -400,6 +524,17 @@ const PaigeAIChatInner = ({
             <p className="text-muted-foreground mt-2">
               Talk to her about your work — she's here to help.
             </p>
+          </div>
+        )}
+
+        {enableHistory && (
+          <div className="mb-3 flex items-center gap-2 md:hidden">
+            <Button variant="outline" size="sm" onClick={() => setMobileRailOpen(true)}>
+              <PanelLeft className="mr-2 h-4 w-4" /> Chats
+            </Button>
+            <Button variant="gold" size="sm" onClick={startNewChat}>
+              New chat
+            </Button>
           </div>
         )}
 
@@ -443,13 +578,22 @@ const PaigeAIChatInner = ({
                             </div>
                           </div>
                         ))}
-                        {!!message.confirm?.length && index === messages.length - 1 && !isLoading && (
+                        {!!message.confirm?.length && !message.confirmResolved && index === messages.length - 1 && !isLoading && (
                           <PaigeConfirmCard
                             items={message.confirm.map((c) => c.summary)}
                             disabled={isLoading}
                             onApprove={() => void handleSend("Approved — run it.")}
                             onDeny={() => void handleSend("Hold off — skip that one.")}
                           />
+                        )}
+                        {/* Reloaded from history: the confirm moment already passed —
+                            show it settled, never a live Approve button (§15). */}
+                        {!!message.confirm?.length && message.confirmResolved && (
+                          <div className="mt-2 rounded-md border border-border bg-muted/30 p-2.5">
+                            <p className="text-xs text-muted-foreground">
+                              Earlier, Paige asked you to confirm: {message.confirm.map((c) => c.summary).join("; ")}
+                            </p>
+                          </div>
                         )}
                       </>
                     );
@@ -544,6 +688,7 @@ const PaigeAIChatInner = ({
             </Button>
           </div>
         </Card>
+        </div>
       </div>
 
       {/* Premium voice session UI — full-screen modal with avatar, transcript, controls. */}

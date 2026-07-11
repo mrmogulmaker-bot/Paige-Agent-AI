@@ -248,6 +248,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
             <PaigeAIChat
               hideHeader
               fill
+              enableHistory
               greeting="What are we working on today? Point me at a client, or tell me the part of the business you want to move — pipeline, follow-ups, a campaign, a client's file — and I'll take it from there."
               clientId={focusedClient?.id ?? null}
               clientContext={focusProse}
