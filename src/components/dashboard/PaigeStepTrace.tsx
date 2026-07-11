@@ -307,9 +307,16 @@ export function ReasoningDeck({
           <DepartmentLane icon={UserRound} name="Client Experience" remit="Onboarding · answers · nurture" active={clientActive} count={clientCount} />
         </div>
 
-        {/* Working/just-finished → the timeline (the persisted run is the rest memory);
-            first load with no run yet → a crafted standing-by state. */}
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto border-t pt-3">
+        {/* Working/just-finished → the timeline (the persisted run is the rest memory),
+            which fills + scrolls. First load with no run → a compact standing-by block
+            that stays its natural height so the deck doesn't hog the rail and squeeze
+            the live feed below it. */}
+        <div
+          className={cn(
+            "mt-3 border-t pt-3",
+            working || finished ? "min-h-0 flex-1 overflow-y-auto" : "",
+          )}
+        >
           {working || finished ? (
             <StepTimeline steps={steps} loading={trace.loading} />
           ) : (
@@ -317,6 +324,7 @@ export function ReasoningDeck({
               icon={ListChecks}
               title="Standing by"
               description={`Give ${name} a task and watch her reason through it here — step by step, across both her teams.`}
+              className="py-6"
             />
           )}
         </div>
