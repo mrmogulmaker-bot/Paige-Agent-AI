@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { PaigeReasoningStrip, PaigeWorkRail, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
+import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -383,8 +383,7 @@ const PaigeAIChatInner = ({
           </div>
         )}
 
-        <div className={fill ? "flex-1 min-h-0 grid gap-4 grid-rows-[minmax(0,1fr)] lg:grid-cols-[1fr_20rem]" : "flex-1 min-h-0 flex flex-col"}>
-        <Card className="flex-1 min-h-0 min-w-0 flex flex-col bg-card border-border shadow-card overflow-hidden">
+        <Card className="flex-1 flex flex-col bg-card border-border shadow-card overflow-hidden">
           {focusBanner}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4">
             {messages.map((message, index) => (
@@ -517,12 +516,6 @@ const PaigeAIChatInner = ({
             </Button>
           </div>
         </Card>
-        {fill && (
-          <aside className="hidden lg:block min-h-0 overflow-y-auto">
-            <PaigeWorkRail steps={steps} loading={isLoading} personaName={persona.name} />
-          </aside>
-        )}
-        </div>
       </div>
 
       {/* Premium voice session UI — full-screen modal with avatar, transcript, controls. */}
