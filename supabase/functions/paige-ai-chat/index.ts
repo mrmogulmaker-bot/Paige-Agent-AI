@@ -3603,6 +3603,21 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           {
             type: "function",
             function: {
+              name: "generate_image",
+              description: "Admin/coach only. Generate a marketing image from a text description (logos, social graphics, ad creative, hero images). Returns a public URL the operator can use or download. If image generation isn't configured, returns needs_config — tell the operator to add the image key. Safe to run; no side effects beyond storing the image.",
+              parameters: {
+                type: "object",
+                properties: {
+                  prompt: { type: "string", description: "Detailed description of the image to create." },
+                  size: { type: "string", enum: ["square", "portrait", "landscape"], description: "Aspect ratio. Default square." }
+                },
+                required: ["prompt"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "draft_marketing_content",
               description: "Admin/coach only. Draft marketing content for the tenant — social posts, ad copy, email campaigns, captions, blog outlines, or SMS broadcasts — in their brand voice. Returns draft text for the operator to review; drafting is safe and has no side effects (sending is a separate approval-gated step). Use when the operator asks you to write, create, or draft marketing/social/ad/email content.",
               parameters: {
@@ -4095,6 +4110,7 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           tc.function.name === "member_grant_role" ||
           tc.function.name === "member_revoke_role" ||
           tc.function.name === "calendar_book_meeting" ||
+          tc.function.name === "generate_image" ||
           tc.function.name === "draft_marketing_content" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
@@ -4269,6 +4285,18 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
               if (error) throw error;
               if ((cd as any)?.error) throw new Error((cd as any).error);
               result = { success: true, channel: (cd as any)?.channel, drafts: (cd as any)?.drafts ?? [] };
+            } else if (tc.function.name === "generate_image") {
+              const { data: img, error } = await supabaseClient.functions.invoke("generate-image", {
+                body: { prompt: args.prompt, size: args.size ?? "square", tenant_id: personaCtx?.tenant_id ?? null },
+              });
+              if (error) throw error;
+              if ((img as any)?.needs_config) {
+                result = { success: false, needs_config: true, message: (img as any).error };
+              } else if ((img as any)?.error) {
+                throw new Error((img as any).error);
+              } else {
+                result = { success: true, url: (img as any)?.url, size: (img as any)?.size };
+              }
             } else if (tc.function.name === "calendar_book_meeting") {
               // CONFIRM lane: a booking is a real event, so require explicit confirm.
               if (args.confirm !== true) {
