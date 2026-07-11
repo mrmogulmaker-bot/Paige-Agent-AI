@@ -1,0 +1,12 @@
+-- Fix "Could not choose the best candidate function" when adding a team member
+-- (Members & Roles). Two overloads of grant_tenant_member_role existed:
+--   grant_tenant_member_role(uuid, app_role, uuid)            -- 3-arg
+--   grant_tenant_member_role(uuid, app_role, uuid, text)      -- 4-arg (+ _reason)
+-- Both have _tenant_id DEFAULT NULL, so a 3-argument call (the UI's call) matched
+-- BOTH candidates → Postgres 42725 ambiguity, and the grant failed.
+--
+-- The 4-arg version is a strict superset of the 3-arg (same role/membership logic,
+-- PLUS ensuring the profile row exists and richer audit incl. paige_audit_log), so
+-- we drop the redundant 3-arg overload. A 3-arg call now resolves unambiguously to
+-- the 4-arg function with _reason defaulting to NULL.
+DROP FUNCTION IF EXISTS public.grant_tenant_member_role(uuid, public.app_role, uuid);
