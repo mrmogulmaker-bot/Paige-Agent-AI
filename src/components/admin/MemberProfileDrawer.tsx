@@ -33,6 +33,9 @@ interface Props {
 
 interface ProfileFields {
   full_name: string;
+  first_name: string;
+  middle_initial: string;
+  last_name: string;
   phone: string;
   work_email: string;
   business_name: string;
@@ -47,7 +50,8 @@ interface ProfileFields {
 }
 
 const EMPTY: ProfileFields = {
-  full_name: "", phone: "", work_email: "", business_name: "", website_url: "",
+  full_name: "", first_name: "", middle_initial: "", last_name: "",
+  phone: "", work_email: "", business_name: "", website_url: "",
   address: "", city: "", state: "", postal_code: "", coach_bio: "", staff_notes: "", avatar_url: "",
 };
 
@@ -74,7 +78,7 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
       try {
         const [{ data: prof }, clientsRes, invitesRes, tenantRes] = await Promise.all([
           supabase.from("profiles")
-            .select("full_name, phone, work_email, business_name, website_url, address, city, state, postal_code, coach_bio, staff_notes, avatar_url")
+            .select("full_name, first_name, middle_initial, last_name, phone, work_email, business_name, website_url, address, city, state, postal_code, coach_bio, staff_notes, avatar_url")
             .eq("user_id", member.user_id).maybeSingle(),
           supabase.from("clients").select("id", { count: "exact", head: true }).eq("assigned_coach_user_id", member.user_id),
           supabase.from("invitations").select("id", { count: "exact", head: true }).eq("invited_by", member.user_id),
@@ -83,6 +87,9 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
         if (cancelled) return;
         const next: ProfileFields = {
           full_name: (prof as any)?.full_name ?? member.full_name ?? "",
+          first_name: (prof as any)?.first_name ?? "",
+          middle_initial: (prof as any)?.middle_initial ?? "",
+          last_name: (prof as any)?.last_name ?? "",
           phone: (prof as any)?.phone ?? "",
           work_email: (prof as any)?.work_email ?? "",
           business_name: (prof as any)?.business_name ?? "",
@@ -210,7 +217,15 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
           {/* Personal */}
           <div className="space-y-3">
             <div className="text-xs uppercase text-muted-foreground">Personal</div>
-            <Field label="Full name" value={fields.full_name} editing={editing} onChange={v => set("full_name", v)} />
+            {editing ? (
+              <>
+                <Field label="First name" value={fields.first_name} editing onChange={v => set("first_name", v)} />
+                <Field label="Middle initial" value={fields.middle_initial} editing onChange={v => set("middle_initial", v)} placeholder="M" />
+                <Field label="Last name" value={fields.last_name} editing onChange={v => set("last_name", v)} />
+              </>
+            ) : (
+              <Field label="Name" value={fields.full_name} editing={false} onChange={() => {}} />
+            )}
             <Field label="Phone" value={fields.phone} editing={editing} onChange={v => set("phone", v)} placeholder="+1 555 555 5555" />
             <Field label="Work email" value={fields.work_email} editing={editing} onChange={v => set("work_email", v)} placeholder="work@company.com" />
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
