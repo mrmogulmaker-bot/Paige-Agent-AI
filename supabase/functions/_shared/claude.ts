@@ -48,6 +48,38 @@ export interface ClaudeMessage {
 // regression that broke every tool-using turn ("couldn't finish that").
 // ---------------------------------------------------------------------------
 interface OaiMessage { role: string; content: unknown; tool_calls?: any[]; tool_call_id?: string }
+
+// Translate an OpenAI-style message content (string OR a blocks array that may carry
+// image_url / file / data-URI attachments) into Anthropic content. A plain string stays
+// a string; a blocks array maps text→text and data-URI images/PDFs→Anthropic image/document
+// blocks. Without this, multimodal content was JSON.stringify'd and the model saw no image.
+function toClaudeContent(c: unknown): string | any[] {
+  if (typeof c === "string") return c;
+  if (!Array.isArray(c)) return c == null ? "" : JSON.stringify(c);
+  const blocks: any[] = [];
+  for (const b of c as any[]) {
+    if (b == null) continue;
+    if (b.type === "text" && typeof b.text === "string") { blocks.push({ type: "text", text: b.text }); continue; }
+    // Already-Anthropic blocks pass straight through.
+    if (b.type === "image" || b.type === "document" || b.type === "tool_result" || b.type === "tool_use") { blocks.push(b); continue; }
+    // OpenAI image_url / file blocks — accept a data: URI and split out media type + base64.
+    const dataUrl: string | undefined =
+      b.type === "image_url" ? b.image_url?.url :
+      b.type === "file" ? (b.file?.file_data ?? b.file?.url ?? b.data) :
+      typeof b.url === "string" ? b.url : undefined;
+    const m = typeof dataUrl === "string" ? dataUrl.match(/^data:([^;]+);base64,(.*)$/s) : null;
+    if (m) {
+      const media = m[1]; const data = m[2];
+      if (media === "application/pdf") blocks.push({ type: "document", source: { type: "base64", media_type: media, data } });
+      else if (media.startsWith("image/")) blocks.push({ type: "image", source: { type: "base64", media_type: media, data } });
+      else blocks.push({ type: "text", text: `[unsupported attachment: ${media}]` });
+      continue;
+    }
+    blocks.push({ type: "text", text: typeof b === "string" ? b : JSON.stringify(b) });
+  }
+  return blocks.length ? blocks : "";
+}
+
 function splitMessages(messages: OaiMessage[]): { system: string; msgs: ClaudeMessage[] } {
   const asStr = (c: unknown) => (typeof c === "string" ? c : c == null ? "" : JSON.stringify(c));
   const systemParts: string[] = [];
@@ -70,7 +102,7 @@ function splitMessages(messages: OaiMessage[]): { system: string; msgs: ClaudeMe
       raw.push({ role: "assistant", content: blocks });
       continue;
     }
-    raw.push({ role: m.role === "assistant" ? "assistant" : "user", content: asStr(m.content) });
+    raw.push({ role: m.role === "assistant" ? "assistant" : "user", content: toClaudeContent(m.content) });
   }
   // Coalesce consecutive same-role turns (batches multiple tool_results onto one
   // user turn; keeps roles alternating).

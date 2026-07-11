@@ -31,6 +31,7 @@ import { useProfileSnapshot } from "@/hooks/useProfileSnapshot";
 import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { usePlaybook } from "@/lib/playbook";
+import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 
 type Message = {
   role: "user" | "assistant";
@@ -93,6 +94,8 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  // Paige's live reasoning trace (#95/#125) — the "watch her work" steps she streams.
+  const [steps, setSteps] = useState<PaigeStep[]>([]);
   const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -654,6 +657,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       let syncStatus: any = null;
 
       setMessages([...newMessages, { role: "assistant", content: "" }]);
+      setSteps([]); // clear last turn's reasoning as this one starts
 
       while (reader && !streamDone) {
         const { done, value } = await reader.read();
@@ -675,6 +679,11 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
           try {
             const parsed = JSON.parse(jsonStr);
+            if (parsed.paige_step) {
+              // Live "watch her work" frame — upsert into the reasoning strip.
+              setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
+              continue;
+            }
             if (parsed.sync_status) {
               syncStatus = parsed.sync_status;
               continue;
@@ -854,6 +863,12 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Paige's live reasoning — the "watch her work" strip (#95/#125), now on the
+          primary /app surface. Shows an "on watch" resting pill when idle. */}
+      <div className="px-3 sm:px-4 pt-1 flex-shrink-0">
+        <PaigeReasoningStrip steps={steps} loading={isLoading} personaName={playbook?.persona?.name} />
       </div>
 
       {/* Quick actions — horizontally scrollable on mobile */}
