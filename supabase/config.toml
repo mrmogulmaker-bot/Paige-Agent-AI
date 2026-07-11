@@ -98,6 +98,8 @@ project_id = "xygzykjyynhzqytbqnzu"
     verify_jwt = true
   [functions.n8n-get-executions]
     verify_jwt = true
+  [functions.paige-n8n]
+    verify_jwt = true
   [functions.send-telegram]
     verify_jwt = true
   [functions.web-search]

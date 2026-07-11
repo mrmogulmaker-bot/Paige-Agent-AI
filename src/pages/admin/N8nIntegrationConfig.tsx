@@ -1,125 +1,163 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/integrations/supabase/client";
+import { PageShell, PageHeader, SectionCard, StatePill } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Plus, RefreshCw } from "lucide-react";
+import { Workflow, Loader2, Plug, RefreshCw, Unplug } from "lucide-react";
 
-type Connection = {
-  id: string;
-  label: string;
-  base_url: string;
-  api_key_last4: string | null;
-  api_key_ref: string | null;
-  is_default: boolean;
-  last_sync_at: string | null;
+type ConnStatus = {
+  configured: boolean;
+  label?: string | null;
+  base_url?: string | null;
+  api_key_last4?: string | null;
+  status?: "unconfigured" | "connected" | "error";
+  last_error?: string | null;
+  last_sync_at?: string | null;
+  workflow_count?: number;
 };
 
 export default function N8nIntegrationConfig() {
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [newLabel, setNewLabel] = useState("");
-  const [newBase, setNewBase] = useState("https://mrmogulmaker.app.n8n.cloud");
-  const [newRef, setNewRef] = useState("N8N_API_KEY");
-  const [busy, setBusy] = useState(false);
+  const [conn, setConn] = useState<ConnStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<null | "connect" | "test" | "disconnect">(null);
+  const [baseUrl, setBaseUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [label, setLabel] = useState("");
 
   async function load() {
-    const { data, error } = await supabase
-      .from("paige_n8n_connections")
-      .select("id, label, api_key_last4, api_key_ref, is_default, last_sync_at")
-      .order("created_at", { ascending: true });
-    if (error) toast.error(error.message);
-    setConnections((data ?? []).map((d: any) => ({ ...d, base_url: "" })) as Connection[]);
+    setLoading(true);
+    const { data, error } = await (supabase as any).rpc("get_tenant_n8n_connection");
+    setLoading(false);
+    if (error) { toast.error("Couldn't load your n8n connection."); return; }
+    setConn(data as ConnStatus);
   }
 
   useEffect(() => { void load(); }, []);
 
-  async function createConnection() {
-    if (!newLabel || !newBase) return;
-    setBusy(true);
-    const { data, error } = await supabase.from("paige_n8n_connections").insert({
-      label: newLabel,
-      api_key_ref: newRef,
-      is_default: connections.length === 0,
-    } as any).select("id").single();
-    if (!error && data?.id) {
-      await supabase.rpc("platform_set_n8n_base_url" as any, { _id: data.id, _url: newBase });
+  async function connect() {
+    if (!baseUrl.trim() || !apiKey.trim()) return;
+    setBusy("connect");
+    const { error: setErr } = await (supabase as any).rpc("set_tenant_n8n_connection", {
+      _base_url: baseUrl.trim(),
+      _api_key: apiKey.trim(),
+      _label: label.trim() || null,
+    });
+    if (setErr) {
+      setBusy(null);
+      toast.error(setErr.message?.includes("https") ? "Instance URL must start with https://" : "Couldn't save. You need admin access.");
+      return;
     }
-    setBusy(false);
-    if (error) return toast.error(error.message);
-    setNewLabel("");
-    await load();
-    toast.success("Connection added. Set the secret with the same name in Edge Functions.");
-  }
-
-
-  async function setDefault(id: string) {
-    setBusy(true);
-    await supabase.from("paige_n8n_connections").update({ is_default: false }).neq("id", id);
-    const { error } = await supabase.from("paige_n8n_connections").update({ is_default: true }).eq("id", id);
-    setBusy(false);
-    if (error) return toast.error(error.message);
+    // Immediately test the connection so the operator sees it's live.
+    const { data: test, error: testErr } = await supabase.functions.invoke("paige-n8n", { body: { action: "test" } });
+    setBusy(null);
+    setApiKey("");
+    if (testErr || (test as any)?.error) {
+      toast.error("Saved, but couldn't reach n8n — check the URL and key.");
+    } else {
+      toast.success(`Connected — ${(test as any)?.workflow_count ?? 0} workflows found.`);
+    }
     await load();
   }
 
-  async function remove(id: string) {
-    const { error } = await supabase.from("paige_n8n_connections").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+  async function testConnection() {
+    setBusy("test");
+    const { data, error } = await supabase.functions.invoke("paige-n8n", { body: { action: "test" } });
+    setBusy(null);
+    if (error || (data as any)?.error) { toast.error("Couldn't reach n8n. Re-check the URL and key."); }
+    else { toast.success(`Connected — ${(data as any)?.workflow_count ?? 0} workflows.`); }
     await load();
   }
 
-  async function syncWorkflows(id: string) {
-    setBusy(true);
-    const { data, error } = await supabase.functions.invoke("n8n-list-workflows", { body: { connection_id: id } });
-    setBusy(false);
-    if (error) return toast.error(error.message);
-    toast.success(`Synced ${data?.upserted ?? 0} of ${data?.total ?? 0} workflows`);
+  async function disconnect() {
+    setBusy("disconnect");
+    const { error } = await (supabase as any).rpc("clear_tenant_n8n_connection");
+    setBusy(null);
+    if (error) { toast.error("Couldn't disconnect."); return; }
+    toast.success("Disconnected n8n.");
+    setBaseUrl(""); setApiKey(""); setLabel("");
     await load();
   }
+
+  const connected = conn?.configured && conn?.status === "connected";
+  const errored = conn?.configured && conn?.status === "error";
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-semibold">n8n Connections</h1>
-        <p className="text-sm text-muted-foreground">Manage n8n instances that power Paige's workflow registry and Command Center.</p>
-      </div>
+    <PageShell width="prose">
+      <PageHeader
+        icon={Workflow}
+        title="n8n"
+        description="Connect your n8n account so Paige can run — and build — automations across all your tools on your behalf. Your key is encrypted and never leaves the server."
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Add connection</CardTitle>
-          <CardDescription>API keys live in Edge Function secrets. We store only a reference name and last 4.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-1.5"><Label>Label</Label><Input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Production" /></div>
-          <div className="space-y-1.5"><Label>Base URL</Label><Input value={newBase} onChange={(e) => setNewBase(e.target.value)} /></div>
-          <div className="space-y-1.5 md:col-span-2"><Label>Secret name (Edge Functions env)</Label><Input value={newRef} onChange={(e) => setNewRef(e.target.value)} /></div>
-          <div className="md:col-span-2"><Button onClick={createConnection} disabled={busy || !newLabel}><Plus className="size-4 mr-1" />Add</Button></div>
-        </CardContent>
-      </Card>
-
-      <div className="space-y-3">
-        {connections.map((c) => (
-          <Card key={c.id}>
-            <CardContent className="pt-6 flex flex-wrap items-center gap-3">
-              <div className="flex-1 min-w-[200px]">
-                <div className="font-medium">{c.label} {c.is_default && <Badge variant="default" className="ml-2">Default</Badge>}</div>
-                <div className="text-xs text-muted-foreground">{c.base_url}</div>
-                <div className="text-xs text-muted-foreground">Secret: <code>{c.api_key_ref ?? "—"}</code></div>
-                {c.last_sync_at && <div className="text-xs text-muted-foreground">Last sync: {new Date(c.last_sync_at).toLocaleString()}</div>}
+      {loading ? (
+        <div className="h-40 animate-pulse rounded-xl border border-border bg-muted/30" />
+      ) : conn?.configured ? (
+        <SectionCard
+          icon={Plug}
+          title={conn.label || "n8n connection"}
+          description={conn.base_url || undefined}
+          actions={
+            connected ? <StatePill state="on">Connected</StatePill>
+              : errored ? <StatePill state="error">Can't reach</StatePill>
+              : <StatePill state="pending">Saved</StatePill>
+          }
+        >
+          <div className="space-y-4">
+            <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+              <div className="flex justify-between sm:block">
+                <dt className="text-muted-foreground">API key</dt>
+                <dd className="font-medium text-foreground">•••• {conn.api_key_last4 || "----"}</dd>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2"><Switch checked={c.is_default} onCheckedChange={() => setDefault(c.id)} disabled={busy} /><Label className="text-xs">Default</Label></div>
-                <Button size="sm" variant="outline" onClick={() => syncWorkflows(c.id)} disabled={busy}><RefreshCw className="size-3 mr-1" />Sync</Button>
-                <Button size="sm" variant="destructive" onClick={() => remove(c.id)}>Remove</Button>
+              <div className="flex justify-between sm:block">
+                <dt className="text-muted-foreground">Workflows</dt>
+                <dd className="font-medium text-foreground">{conn.workflow_count ?? 0}</dd>
               </div>
-            </CardContent>
-          </Card>
-        ))}
-        {connections.length === 0 && <p className="text-sm text-muted-foreground">No connections yet.</p>}
-      </div>
-    </div>
+              {conn.last_sync_at && (
+                <div className="flex justify-between sm:block">
+                  <dt className="text-muted-foreground">Last checked</dt>
+                  <dd className="font-medium text-foreground">{new Date(conn.last_sync_at).toLocaleString()}</dd>
+                </div>
+              )}
+            </dl>
+            {errored && conn.last_error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{conn.last_error}</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={testConnection} disabled={busy !== null}>
+                {busy === "test" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
+                Test again
+              </Button>
+              <Button variant="ghost" onClick={disconnect} disabled={busy !== null} className="text-muted-foreground">
+                {busy === "disconnect" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Unplug className="mr-1.5 h-4 w-4" />}
+                Disconnect
+              </Button>
+            </div>
+          </div>
+        </SectionCard>
+      ) : (
+        <SectionCard icon={Plug} title="Connect your n8n" description="Paste your instance URL and an n8n API key (n8n → Settings → API). Admin only.">
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="n8n-url">Instance URL</Label>
+              <Input id="n8n-url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://your-instance.app.n8n.cloud" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="n8n-key">API key</Label>
+              <Input id="n8n-key" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="n8n_api_..." autoComplete="off" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="n8n-label">Label <span className="text-muted-foreground">(optional)</span></Label>
+              <Input id="n8n-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Production" />
+            </div>
+            <Button variant="gold" onClick={connect} disabled={busy !== null || !baseUrl.trim() || !apiKey.trim()}>
+              {busy === "connect" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plug className="mr-1.5 h-4 w-4" />}
+              Connect &amp; test
+            </Button>
+          </div>
+        </SectionCard>
+      )}
+    </PageShell>
   );
 }
