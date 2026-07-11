@@ -323,13 +323,16 @@ const PaigeAIChatInner = ({
   };
 
   // On first load in history mode, resume the most recent chat (or start fresh).
+  // Gate on isFetched (a real, enabled fetch settled) — NOT isLoading, which is
+  // false for a disabled query before the user/tenant ids resolve. Latching on
+  // that empty pre-resolution render would strand the owner on a blank chat.
   useEffect(() => {
-    if (!enableHistory || historyHydrated || threadsApi.isLoading) return;
+    if (!enableHistory || historyHydrated || !threadsApi.isFetched) return;
     const latest = threadsApi.threads[0];
     if (latest) void selectThread(latest.id);
     setHistoryHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enableHistory, historyHydrated, threadsApi.isLoading, threadsApi.threads]);
+  }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads]);
 
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
@@ -551,7 +554,7 @@ const PaigeAIChatInner = ({
                 {message.role === "assistant" && (
                   <img
                     src={paigeAvatar}
-                    alt="PaigeAgent.ai"
+                    alt={persona.name || "Paige"}
                     className="w-10 h-10 rounded-full border-2 border-primary"
                   />
                 )}
@@ -570,8 +573,8 @@ const PaigeAIChatInner = ({
                         {diagram && <EntityDiagramCard data={diagram} />}
                         {after && <MarkdownMessage content={after} />}
                         {message.queued?.map((q) => (
-                          <div key={q.id} className="mt-2 flex items-start gap-2 rounded-md border border-accent/40 bg-accent/5 p-2.5">
-                            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                          <div key={q.id} className="mt-2 flex items-start gap-2 rounded-md border border-border bg-muted/40 p-2.5">
+                            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-medium leading-snug">{q.summary}</p>
                               <p className="text-xs text-muted-foreground">Paige queued this — it's waiting on you. Approve it in your Live desk and it goes out.</p>
@@ -629,7 +632,7 @@ const PaigeAIChatInner = ({
                     type="button"
                     onClick={() => handleChip(chip)}
                     disabled={isLoading || conversation.status === "connected"}
-                    className="shrink-0 rounded-full border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+                    className="shrink-0 rounded-full border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-[hsl(var(--ring))] hover:text-foreground disabled:opacity-50"
                   >
                     {chip.label}
                   </button>
@@ -640,7 +643,7 @@ const PaigeAIChatInner = ({
               <div className="flex items-center justify-center gap-2 text-sm">
                 {conversation.isSpeaking ? (
                   <div className="flex items-center gap-2 text-primary">
-                    <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
+                    <div className="w-2 h-2 bg-primary rounded-full animate-pulse motion-reduce:animate-none" />
                     <span>Paige is speaking...</span>
                   </div>
                 ) : (
@@ -654,18 +657,19 @@ const PaigeAIChatInner = ({
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && handleSend()}
+                onKeyDown={(e) => e.key === "Enter" && handleSend()}
                 placeholder={`Ask ${persona.name || "Paige"} anything…`}
                 className="flex-1"
                 disabled={isLoading || conversation.status === "connected"}
               />
-              <Button 
+              <Button
                 onClick={() => handleSend()}
                 disabled={isLoading || !input.trim() || conversation.status === "connected"}
-                className="bg-gradient-gold hover:opacity-90"
+                variant="gold"
                 size="icon"
+                aria-label="Send message"
               >
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Send className="w-4 h-4" />}
               </Button>
             </div>
             

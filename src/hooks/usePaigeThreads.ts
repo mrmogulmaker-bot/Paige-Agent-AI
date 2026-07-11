@@ -141,6 +141,11 @@ export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: s
   return {
     threads: threadsQuery.data ?? [],
     isLoading: threadsQuery.isLoading,
+    // True only once an ENABLED query actually settled a fetch. A disabled query
+    // (ids not yet resolved) reports isLoading:false in react-query v5, so the
+    // auto-resume effect must gate on this, not isLoading, or it latches on the
+    // empty first render and never restores the most-recent chat (#94).
+    isFetched: enabled && threadsQuery.isFetched,
     loadTurns,
     ensureThread,
     renameThread: (id: string, title: string) => renameThread.mutate({ id, title }),

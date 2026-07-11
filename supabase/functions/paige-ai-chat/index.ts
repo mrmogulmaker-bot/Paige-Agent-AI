@@ -4523,34 +4523,45 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         let toolCalls: any[] = [];
         let allChunks: Uint8Array[] = [];
         let hasToolCall = false;
+        // Carry a leftover-line buffer across reads: the gateway routinely splits
+        // a `data: {...}` SSE record across two TCP reads, and parsing per-read
+        // would drop those straddling deltas from `content` (the persisted text)
+        // even though the raw bytes forward fine to the client. (#94 integrity.)
+        let sseBuf = "";
+        const handleLine = (line: string) => {
+          if (!line.startsWith("data: ") || line.includes("[DONE]")) return;
+          try {
+            const parsed = JSON.parse(line.slice(6));
+            const c = parsed.choices?.[0]?.delta?.content;
+            if (c) content += c;
+            const tc = parsed.choices?.[0]?.delta?.tool_calls;
+            if (tc) {
+              hasToolCall = true;
+              for (const call of tc) {
+                if (call.index !== undefined) {
+                  if (!toolCalls[call.index]) toolCalls[call.index] = { id: "", type: "function", function: { name: "", arguments: "" } };
+                  if (call.id) toolCalls[call.index].id = call.id;
+                  if (call.function?.name) toolCalls[call.index].function.name = call.function.name;
+                  if (call.function?.arguments) toolCalls[call.index].function.arguments += call.function.arguments;
+                }
+              }
+            }
+            if (parsed.choices?.[0]?.finish_reason === "tool_calls") hasToolCall = true;
+          } catch { /* skip */ }
+        };
         while (true) {
           const { done, value } = await fullReader.read();
           if (done) break;
           allChunks.push(value);
-          const chunk = fullDecoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-          for (const line of lines) {
-            if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
-            try {
-              const parsed = JSON.parse(line.slice(6));
-              const c = parsed.choices?.[0]?.delta?.content;
-              if (c) content += c;
-              const tc = parsed.choices?.[0]?.delta?.tool_calls;
-              if (tc) {
-                hasToolCall = true;
-                for (const call of tc) {
-                  if (call.index !== undefined) {
-                    if (!toolCalls[call.index]) toolCalls[call.index] = { id: "", type: "function", function: { name: "", arguments: "" } };
-                    if (call.id) toolCalls[call.index].id = call.id;
-                    if (call.function?.name) toolCalls[call.index].function.name = call.function.name;
-                    if (call.function?.arguments) toolCalls[call.index].function.arguments += call.function.arguments;
-                  }
-                }
-              }
-              if (parsed.choices?.[0]?.finish_reason === "tool_calls") hasToolCall = true;
-            } catch { /* skip */ }
+          sseBuf += fullDecoder.decode(value, { stream: true });
+          let nl: number;
+          while ((nl = sseBuf.indexOf("\n")) !== -1) {
+            handleLine(sseBuf.slice(0, nl));
+            sseBuf = sseBuf.slice(nl + 1);
           }
         }
+        sseBuf += fullDecoder.decode(); // flush any trailing multi-byte char
+        if (sseBuf) handleLine(sseBuf); // final line without a trailing newline
         return { content, toolCalls, allChunks, hasToolCall };
       };
 
@@ -5571,20 +5582,32 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           } else if (finalStreamResponse?.ok && finalStreamResponse.body) {
             const up = finalStreamResponse.body.getReader();
             const dec = new TextDecoder();
+            // Buffer across reads so a `data:` record split over two reads still
+            // contributes its delta to the persisted text (#94 integrity).
+            let capBuf = "";
+            const capLine = (line: string) => {
+              if (!line.startsWith("data: ") || line.includes("[DONE]")) return;
+              try { const c = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content; if (c) finalAssistantText += c; } catch { /* skip */ }
+            };
             try {
               while (true) {
                 const { done, value } = await up.read();
                 if (done) break;
                 controller.enqueue(value);
-                // Capture the closing reply's text so the turn persists (#94).
-                for (const line of dec.decode(value, { stream: true }).split("\n")) {
-                  if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
-                  try { const c = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content; if (c) finalAssistantText += c; } catch { /* skip */ }
-                }
+                capBuf += dec.decode(value, { stream: true });
+                let nl: number;
+                while ((nl = capBuf.indexOf("\n")) !== -1) { capLine(capBuf.slice(0, nl)); capBuf = capBuf.slice(nl + 1); }
               }
-            } finally { /* noop */ }
+            } finally {
+              capBuf += dec.decode();
+              if (capBuf) capLine(capBuf);
+            }
           } else {
-            controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "I gathered what I could but couldn't finish that — mind trying again?" } }] })}\n\n`));
+            // Couldn't finish. Show the fallback AND persist it, so a reload
+            // shows the same thing the user saw (not a question with no reply).
+            const fallback = "I gathered what I could but couldn't finish that — mind trying again?";
+            finalAssistantText = fallback;
+            controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: fallback } }] })}\n\n`));
             controller.enqueue(enc.encode("data: [DONE]\n\n")); // sentinel so the client finalizes the bubble
           }
           // Persist Paige's reply (owner Your-Paige threads only; no-op without a
@@ -5610,11 +5633,22 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let fullAssistantResponse = "";
+    // Leftover-line buffer across pulls: a `data:` record split over two reads
+    // must still contribute its delta to the persisted text (#94 integrity).
+    let directSseBuf = "";
 
     const stream = new ReadableStream({
       async pull(controller) {
         const { done, value } = await reader.read();
         if (done) {
+          directSseBuf += decoder.decode(); // flush; process any trailing line
+          if (directSseBuf) {
+            for (const line of directSseBuf.split("\n")) {
+              if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
+              try { const c = JSON.parse(line.slice(6))?.choices?.[0]?.delta?.content; if (c) fullAssistantResponse += c; } catch { /* skip */ }
+            }
+            directSseBuf = "";
+          }
           // Credit-report PDF path: run structured extraction + sync.
           if (isCreditReportPdf && attachedDocument?.base64) {
             try {
@@ -5704,9 +5738,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         }
 
         controller.enqueue(value);
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-        for (const line of lines) {
+        directSseBuf += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = directSseBuf.indexOf("\n")) !== -1) {
+          const line = directSseBuf.slice(0, nl);
+          directSseBuf = directSseBuf.slice(nl + 1);
           if (!line.startsWith("data: ") || line.includes("[DONE]")) continue;
           try {
             const parsed = JSON.parse(line.slice(6));

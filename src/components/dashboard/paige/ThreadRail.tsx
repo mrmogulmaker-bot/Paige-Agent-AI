@@ -102,7 +102,7 @@ function ThreadRow({
       <button
         type="button"
         onClick={onSelect}
-        className="min-w-0 flex-1 truncate text-left outline-none"
+        className="min-w-0 flex-1 truncate rounded text-left outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
         title={thread.title ?? "Untitled chat"}
       >
         <span className={cn("truncate", active ? "font-medium text-foreground" : "text-foreground/80")}>
