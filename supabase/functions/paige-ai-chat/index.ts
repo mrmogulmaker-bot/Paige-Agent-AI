@@ -1383,7 +1383,22 @@ JSON:`;
     // SECURITY DEFINER RPC keyed on auth.uid(); call on the USER-scoped client.
     // Never throw — default to the neutral persona so a client is never blocked.
     const NEUTRAL_PERSONA = { name: "Paige", role: "your team's assistant", tone: "warm, direct, professional", domain: "your practice" };
-    function buildPaigePersonaBlock(pb: any, tenantName: string, fundingOn: boolean): string {
+    function buildBrandSection(brand: Record<string, any> | null, tenant: string): string {
+      const b = brand || {};
+      const lines = [
+        b.product_name && `Product / portal name: ${b.product_name}`,
+        b.primary_color && `Primary color: ${b.primary_color}`,
+        b.accent_color && `Accent color: ${b.accent_color}`,
+        b.font && `Typeface: ${b.font}`,
+        b.logo_url && `Logo (for light backgrounds): ${b.logo_url}`,
+        b.logo_dark_url && `Logo (for dark backgrounds): ${b.logo_dark_url}`,
+        b.tagline && `Tagline: "${b.tagline}"`,
+      ].filter(Boolean).join("\n");
+      if (!lines) return "";
+      return `\n\nBRAND — everything you design or build for ${tenant} (a landing page, an email, a form, an image, a document) MUST wear THIS brand, never a generic look and never the platform's. Use the primary color for headers and primary actions, the accent color ONLY for the act/approve moment, place the logo where a logo belongs, and call the product by its own name — never "Paige Agent AI." If a brand asset you need is missing, ask the owner for it rather than inventing an off-brand placeholder:\n${lines}`;
+    }
+
+    function buildPaigePersonaBlock(pb: any, tenantName: string, fundingOn: boolean, brand: Record<string, any> | null = null): string {
       const p = (pb && pb.persona) || {};
       const name = String(p.name || NEUTRAL_PERSONA.name).trim();
       const role = String(p.role || NEUTRAL_PERSONA.role).trim();
@@ -1415,11 +1430,12 @@ ${greeting ? `\nWhen a client first arrives, your signature opening is: "${greet
 ${probeSection}${journeySection}${fundingOn
   ? `SCOPE — ${tenant} offers funding & capital-raising coaching alongside ${domain}, so credit, business credit, funding, lenders, and capital strategy ARE in scope here — bring them up when they genuinely help the client. Never invent services, programs, or offers ${tenant} does not actually provide.`
   : `HARD GUARDRAIL — STAY IN LANE:
-Do not raise credit, credit scores, funding, loans, lenders, MCAs, cash advances, financing, or capital-raising unless ${tenant}'s domain (${domain}) explicitly includes it, or the client brings it up first. Those are not this practice's business unless stated. If a client asks about something outside ${domain}, help where you genuinely can, or hand them to ${tenant}'s team — never invent services, programs, or offers ${tenant} does not provide.`}`.trim();
+Do not raise credit, credit scores, funding, loans, lenders, MCAs, cash advances, financing, or capital-raising unless ${tenant}'s domain (${domain}) explicitly includes it, or the client brings it up first. Those are not this practice's business unless stated. If a client asks about something outside ${domain}, help where you genuinely can, or hand them to ${tenant}'s team — never invent services, programs, or offers ${tenant} does not provide.`}`.trim()
+        + buildBrandSection(brand, tenant);
     }
 
-    let personaCtx: { tenant_id: string | null; tenant_name: string | null; playbook_config: any; playbook_slug: string | null; funding_enabled: boolean } =
-      { tenant_id: null, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: false };
+    let personaCtx: { tenant_id: string | null; tenant_name: string | null; playbook_config: any; playbook_slug: string | null; funding_enabled: boolean; brand: Record<string, any> | null } =
+      { tenant_id: null, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null };
     try {
       const { data: pc, error: pcErr } = await supabaseClient.rpc("get_paige_persona_context");
       if (pcErr) {
@@ -1433,6 +1449,7 @@ Do not raise credit, credit scores, funding, loans, lenders, MCAs, cash advances
             playbook_config: row.playbook_config ?? null,
             playbook_slug: row.playbook_slug ?? null,
             funding_enabled: row.funding_enabled === true,
+            brand: row.brand ?? null,
           };
         }
       }
@@ -3254,7 +3271,7 @@ SUPPORT & FEEDBACK AWARENESS
 
     // Build message array — lead with the tenant's persona so identity is set first.
     const aiMessages: any[] = [
-      { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice", fundingEnabled) },
+      { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice", fundingEnabled, personaCtx.brand) },
       { role: "system", content: systemPrompt },
     ];
 
