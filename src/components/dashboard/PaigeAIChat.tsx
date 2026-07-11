@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Send, Loader2, Mic, MicOff, Clock } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
@@ -106,7 +107,7 @@ const PaigeAIChatInner = ({
   const [isLoading, setIsLoading] = useState(false);
   const [steps, setSteps] = useState<PaigeStep[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   const location = useLocation();
   const currentPageName = getCurrentPageName(location.pathname);
@@ -203,6 +204,9 @@ const PaigeAIChatInner = ({
 
   // Mirror the live step trace up so a parent surface (the Live desk) can render it.
   useEffect(() => { onTrace?.(steps, isLoading); }, [steps, isLoading, onTrace]);
+
+  // Collapse the composer back to one line once it's cleared (after send / new chat).
+  useEffect(() => { if (input === "" && inputRef.current) inputRef.current.style.height = "auto"; }, [input]);
 
   // Voice chat functions
   const startVoiceChat = async () => {
@@ -652,14 +656,22 @@ const PaigeAIChatInner = ({
               </div>
             )}
             
-            <div className="flex gap-2">
-              <Input
+            <div className="flex items-end gap-2">
+              <Textarea
                 ref={inputRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                rows={1}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  const el = e.target; el.style.height = "auto";
+                  el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+                }}
+                onKeyDown={(e) => {
+                  // Enter sends; Shift+Enter inserts a newline (so long messages wrap).
+                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+                }}
                 placeholder={`Ask ${persona.name || "Paige"} anything…`}
-                className="flex-1"
+                className="max-h-40 min-h-[2.5rem] flex-1 resize-none"
                 disabled={isLoading || conversation.status === "connected"}
               />
               <Button
