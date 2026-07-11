@@ -69,6 +69,7 @@ const AgreementAdmin = lazy(() => import("@/pages/admin/AgreementAdmin"));
 const Marketplace = lazy(() => import("@/pages/admin/Marketplace"));
 const PlatformTenants = lazy(() => import("@/pages/admin/PlatformTenants"));
 const PlatformTeam = lazy(() => import("@/pages/admin/PlatformTeam"));
+const PlatformSendingIdentities = lazy(() => import("@/pages/admin/PlatformSendingIdentities"));
 const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformance").then(m => ({ default: m.UserPerformance })));
 const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
 const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
@@ -582,6 +583,9 @@ const Admin = () => {
         } />
         <Route path="platform/team" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformTeam /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/sending" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformSendingIdentities /></Suspense></PlatformStaffOnly>
         } />
       </Routes>
 
