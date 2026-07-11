@@ -77,8 +77,8 @@ export default function CampaignsHub() {
         <TabsContent value="brand" className="mt-4">
           <Suspense fallback={
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
-              <div className="h-96 animate-pulse rounded-xl border border-border bg-muted/40" />
-              <div className="h-80 animate-pulse rounded-xl border border-border bg-muted/40" />
+              <div className="h-96 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
+              <div className="h-80 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
             </div>
           }>
             <BrandKitPanel />

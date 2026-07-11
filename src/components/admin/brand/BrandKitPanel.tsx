@@ -25,7 +25,8 @@ const MAX_BYTES = 2 * 1024 * 1024;
 const IMG_TYPES = ["image/png", "image/svg+xml", "image/webp", "image/jpeg", "image/x-icon", "image/vnd.microsoft.icon"];
 
 function SourceBadge({ source, hasOwn }: { source?: BrandSource; hasOwn: boolean }) {
-  if (hasOwn) return <StatePill state="included">Custom</StatePill>;
+  // "Custom" uses `success` (not gold `included`) — gold is reserved for the Save act (§11).
+  if (hasOwn) return <StatePill state="success">Custom</StatePill>;
   if (source === "agency") return <StatePill state="pending">Inherited</StatePill>;
   return <StatePill state="off">Placeholder</StatePill>;
 }
@@ -168,8 +169,19 @@ export function BrandKitPanel() {
   });
   const [dark, setDark] = useState(false);
 
+  const dirty = useMemo(() => {
+    const norm = (v?: string | null) => (v ?? "").trim();
+    return (["primary_color", "accent_color", "font", "product_name", "tagline", "from_name", "support_email"] as const)
+      .some((k) => norm(form[k]) !== norm((own as any)[k]));
+  }, [form, own]);
+
+  // Seed the form from the saved brand — but never clobber unsaved edits. A logo
+  // upload/remove refetches `own` (new identity), which would otherwise revert the
+  // user's in-progress text/color changes; skip the reseed while the form is dirty.
+  const seeded = useRef(false);
   useEffect(() => {
     if (!bk.state) return;
+    if (seeded.current && dirty) return;
     setForm({
       primary_color: own.primary_color ?? "",
       accent_color: own.accent_color ?? "",
@@ -179,6 +191,7 @@ export function BrandKitPanel() {
       from_name: own.from_name ?? "",
       support_email: own.support_email ?? "",
     });
+    seeded.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bk.state?.own]);
 
@@ -189,13 +202,9 @@ export function BrandKitPanel() {
   const previewPrimary = isValidHex(form.primary_color) ? form.primary_color : (eff?.primary_color ?? PRIMARY_FLOOR);
   const previewAccent = isValidHex(form.accent_color) ? form.accent_color : (eff?.accent_color ?? ACCENT_FLOOR);
   const previewName = form.product_name.trim() || eff?.product_name || bk.state?.tenantName || "Your brand";
-  const previewLogo = (dark ? own.logo_dark_url : own.logo_url) || own.logo_url || eff?.logo_url || null;
-
-  const dirty = useMemo(() => {
-    const norm = (v?: string | null) => (v ?? "").trim();
-    return (["primary_color", "accent_color", "font", "product_name", "tagline", "from_name", "support_email"] as const)
-      .some((k) => norm(form[k]) !== norm((own as any)[k]));
-  }, [form, own]);
+  const previewLogo =
+    (dark ? (own.logo_dark_url || eff?.logo_dark_url) : null) ||
+    own.logo_url || eff?.logo_url || null;
 
   const invalidHex =
     (form.primary_color.trim() && !isValidHex(form.primary_color)) ||
@@ -263,10 +272,10 @@ export function BrandKitPanel() {
             <ColorField label="Primary" value={form.primary_color} floor={PRIMARY_FLOOR}
               onChange={(v) => setForm((f) => ({ ...f, primary_color: v }))}
               contrastAgainst="#FFFFFF" contrastLabel="On white," />
+            {/* Accent is always used as a fill with auto-contrast text, so a
+                readability chip would always "pass" and mislead — omit it. */}
             <ColorField label="Accent" value={form.accent_color} floor={ACCENT_FLOOR}
-              onChange={(v) => setForm((f) => ({ ...f, accent_color: v }))}
-              contrastAgainst={readableTextOn(isValidHex(form.accent_color) ? form.accent_color : ACCENT_FLOOR)}
-              contrastLabel="Label," />
+              onChange={(v) => setForm((f) => ({ ...f, accent_color: v }))} />
           </div>
         </SectionCard>
 
@@ -362,7 +371,7 @@ export function BrandKitPanel() {
               </div>
               {/* body */}
               <div className="space-y-3 p-4" style={{ color: dark ? "#E7E7EA" : "#1A1A22", fontFamily: form.font || undefined }}>
-                <p className="text-sm font-semibold">Welcome back 👋</p>
+                <p className="text-sm font-semibold">Welcome back</p>
                 <p className="text-xs opacity-70">
                   {(form.tagline.trim() || eff?.tagline) || "This is how your portal and emails will look to your clients."}
                 </p>
@@ -373,7 +382,7 @@ export function BrandKitPanel() {
               </div>
               {/* email footer */}
               <div className="border-t px-4 py-2 text-[11px]"
-                style={{ borderColor: dark ? "rgba(255,255,255,.08)" : "var(--border)", color: dark ? "#8A8A95" : "#71717A" }}>
+                style={{ borderColor: dark ? "rgba(255,255,255,.08)" : "hsl(var(--border))", color: dark ? "#8A8A95" : "#71717A" }}>
                 From {form.from_name.trim() || eff?.from_name || previewName}
                 {(form.support_email.trim() || eff?.support_email) ? ` · ${form.support_email.trim() || eff?.support_email}` : ""}
               </div>
