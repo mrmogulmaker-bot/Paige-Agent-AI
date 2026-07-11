@@ -5191,6 +5191,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // burst-emitted as paige_step frames just before the answer. Never mutates the loop.
       const stepTrace: Array<{ id: string; round: number; seq: number; label: string; group: "owner" | "client" | "shared"; status: "done" | "error"; detail?: string; ts: number }> = [];
       let stepSeq = 0;
+      // Confirm-before-commit UX (#120): mutating tools gated to 'confirm' return
+      // needs_confirm; we surface each as a `paige_confirm` frame so the client can
+      // render an Approve/Deny card instead of Paige asking in prose.
+      const confirmTrace: Array<{ tool: string; summary: string }> = [];
       const convo: any[] = [...aiMessages];
       let currentResponse = response;
       let totalToolCalls = 0;
@@ -5220,7 +5224,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           try {
             const res = toolResults.find((r: any) => r.tool_call_id === tc.id);
             let ok = true;
-            try { ok = JSON.parse(res?.content ?? "{}")?.success !== false; } catch { /* keep ok */ }
+            try {
+              const parsed = JSON.parse(res?.content ?? "{}");
+              ok = parsed?.success !== false;
+              // Capture a pending confirmation so the client renders an approve card.
+              if (parsed?.needs_confirm && parsed?.confirm_summary) {
+                confirmTrace.push({ tool: parsed.tool || tc.function?.name || "action", summary: String(parsed.confirm_summary) });
+              }
+            } catch { /* keep ok */ }
             const derived = describeStep(tc, res);
             if (!derived) continue; // gated/stub calls dropped (never render as failure)
             stepTrace.push({
@@ -5259,6 +5270,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // Steps first — the trace of what she did — then approvals, then the answer.
           for (const s of stepTrace) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_step: s })}\n\n`));
           if (queuedApprovals.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
+          for (const c of confirmTrace) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_confirm: c })}\n\n`));
           if (finalChunks) {
             for (const c of finalChunks) controller.enqueue(c);
           } else if (finalStreamResponse?.ok && finalStreamResponse.body) {

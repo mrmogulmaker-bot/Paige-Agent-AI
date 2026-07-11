@@ -25,6 +25,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
 import { primeMicAndAudio, startManagedVoiceSession, describeVoiceError } from "@/lib/voice/startVoiceSession";
 import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
+import { PaigeConfirmCard } from "@/components/chat/PaigeConfirmCard";
 import { extractFromMessage } from "@/lib/conversationalExtractor";
 import { fieldToWriteBackUpdate } from "@/lib/extractionProposal";
 import { useProfileSnapshot } from "@/hooks/useProfileSnapshot";
@@ -40,6 +41,8 @@ type Message = {
   syncStatus?: any;
   /** Inline extraction proposal rendered as a confirmation card after this message. */
   extractionProposal?: ExtractionProposal;
+  /** Confirm-before-commit card (#120) — Paige is asking to approve a mutating action. */
+  confirm?: { tool: string; summary: string };
 };
 
 interface PaigeChatProps {
@@ -655,6 +658,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       let textBuffer = "";
       let streamDone = false;
       let syncStatus: any = null;
+      let confirmThisTurn: { tool: string; summary: string } | null = null;
 
       setMessages([...newMessages, { role: "assistant", content: "" }]);
       setSteps([]); // clear last turn's reasoning as this one starts
@@ -688,10 +692,15 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
               syncStatus = parsed.sync_status;
               continue;
             }
+            if (parsed.paige_confirm?.summary) {
+              confirmThisTurn = { tool: String(parsed.paige_confirm.tool || "action"), summary: String(parsed.paige_confirm.summary) };
+              setMessages([...newMessages, { role: "assistant", content: assistantMessage, confirm: confirmThisTurn }]);
+              continue;
+            }
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
               assistantMessage += content;
-              setMessages([...newMessages, { role: "assistant", content: assistantMessage }]);
+              setMessages([...newMessages, { role: "assistant", content: assistantMessage, confirm: confirmThisTurn ?? undefined }]);
             }
           } catch {
             textBuffer = line + "\n" + textBuffer;
@@ -846,6 +855,13 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
                   proposal={message.extractionProposal}
                   onConfirm={(selectedKeys) => handleExtractionConfirm(message.extractionProposal!, selectedKeys)}
                   onSkip={() => handleExtractionSkip(message.extractionProposal!)}
+                />
+              )}
+              {message.confirm && index === messages.length - 1 && !isLoading && (
+                <PaigeConfirmCard
+                  summary={message.confirm.summary}
+                  onApprove={() => void handleSend("Yes — approved. Go ahead and do it.")}
+                  onDeny={() => void handleSend("No — don't do that. Cancel it.")}
                 />
               )}
             </div>

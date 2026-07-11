@@ -18,12 +18,13 @@ import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } f
 import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
 import { extractEntityDiagram } from "@/lib/entityDiagram";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
+import { PaigeConfirmCard } from "@/components/chat/PaigeConfirmCard";
 import { usePlaybook } from "@/lib/playbook";
 import type { QuickChip } from "@/components/paige/commandCenterTypes";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
-type Message = { role: "user" | "assistant"; content: string; queued?: QueuedApproval[] };
+type Message = { role: "user" | "assistant"; content: string; queued?: QueuedApproval[]; confirm?: { tool: string; summary: string } };
 
 // Optional, back-compatible props (cc-spec §3). Legacy mounts (Dashboard) pass
 // none of these and behave exactly as before.
@@ -305,6 +306,7 @@ const PaigeAIChatInner = ({
       const decoder = new TextDecoder();
       let assistantMessage = "";
       let queuedThisTurn: QueuedApproval[] = [];
+      let confirmThisTurn: { tool: string; summary: string } | null = null;
       let textBuffer = "";
       let streamDone = false;
 
@@ -341,13 +343,19 @@ const PaigeAIChatInner = ({
             // Structured event: Paige queued an action to the approvals desk.
             if (Array.isArray(parsed.approval_queued)) {
               queuedThisTurn = parsed.approval_queued as QueuedApproval[];
-              setMessages([...newMessages, { role: "assistant", content: assistantMessage, queued: queuedThisTurn }]);
+              setMessages([...newMessages, { role: "assistant", content: assistantMessage, queued: queuedThisTurn, confirm: confirmThisTurn ?? undefined }]);
+              continue;
+            }
+            // Structured event: Paige is asking to confirm a mutating action → render an approve/deny card.
+            if (parsed.paige_confirm?.summary) {
+              confirmThisTurn = { tool: String(parsed.paige_confirm.tool || "action"), summary: String(parsed.paige_confirm.summary) };
+              setMessages([...newMessages, { role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn }]);
               continue;
             }
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
               assistantMessage += content;
-              setMessages([...newMessages, { role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined }]);
+              setMessages([...newMessages, { role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn ?? undefined }]);
             }
           } catch {
             textBuffer = line + "\n" + textBuffer;
@@ -433,6 +441,13 @@ const PaigeAIChatInner = ({
                             </div>
                           </div>
                         ))}
+                        {message.confirm && index === messages.length - 1 && !isLoading && (
+                          <PaigeConfirmCard
+                            summary={message.confirm.summary}
+                            onApprove={() => void handleSend("Yes — approved. Go ahead and do it.")}
+                            onDeny={() => void handleSend("No — don't do that. Cancel it.")}
+                          />
+                        )}
                       </>
                     );
                   })() : (
