@@ -127,7 +127,7 @@ Deno.serve(async (req) => {
   const { data: secret, error: sErr } = await admin.rpc("get_tenant_n8n_secret", { _tenant_id: tenantId });
   if (sErr) return json({ error: "secret_lookup_failed" }, 500);
   if (!secret?.configured) {
-    return json({ error: "not_connected", detail: "This workspace hasn't connected an n8n account yet. Connect one in Settings → Integrations → n8n." }, 409);
+    return json({ ok: false, error: "not_connected", detail: "This workspace hasn't connected an n8n account yet. Connect one in Settings → Integrations → n8n." });
   }
   const baseUrl: string = secret.base_url;
   const apiKey: string = secret.api_key;
@@ -195,14 +195,21 @@ Deno.serve(async (req) => {
           const nodes: any[] = wf?.nodes ?? [];
           const hook = nodes.find((n) => typeof n?.type === "string" && n.type.toLowerCase().includes("webhook"));
           path = hook?.parameters?.path;
+          // Return 200 with ok:false for these EXPECTED cases so functions.invoke
+          // delivers the detail to Paige (a non-2xx would be collapsed to a generic
+          // "non-2xx" error and she'd lose the explanation).
           if (!path) {
-            return json({ error: "not_webhook_triggered", detail: "This workflow has no webhook trigger, so it can't be fired directly — it likely runs on a schedule or is called by another workflow. Activate it or trigger it from its own flow." }, 400);
+            const isSub = nodes.some((n) => typeof n?.type === "string" && n.type.toLowerCase().includes("executeworkflowtrigger"));
+            return json({ ok: false, error: "not_webhook_triggered",
+              detail: isSub
+                ? "That's a reusable SUB-workflow — it's meant to be CALLED by other workflows (it has no webhook), so it can't be fired standalone through the API. Offer to build a small webhook-trigger workflow that calls it (webhook → Execute Workflow → this sub-workflow); then you can fire that webhook anytime with the inputs it expects."
+                : "This workflow has no webhook trigger (it likely runs on a schedule or is called by another workflow), so it can't be fired directly. Offer to add a webhook trigger, or trigger it from its own flow." });
           }
           if (!wf?.active) {
-            return json({ error: "workflow_inactive", detail: "This workflow is turned off, so its webhook won't respond. Turn it on first (n8n_activate_workflow), then run it." }, 409);
+            return json({ ok: false, error: "workflow_inactive", detail: "This workflow is turned off, so its webhook won't respond. Offer to turn it on first (n8n_activate_workflow), then run it." });
           }
         }
-        if (!path) return json({ error: "workflow_or_path_required", detail: "Provide a workflow_id (to resolve its webhook) or an explicit webhook_path." }, 400);
+        if (!path) return json({ ok: false, error: "workflow_or_path_required", detail: "Provide a workflow_id (to resolve its webhook) or an explicit webhook_path." });
         const webhookUrl = `${baseUrl.replace(/\/$/, "")}/webhook/${String(path).replace(/^\//, "")}`;
         await assertSafeUrl(webhookUrl);
         const method = String(body.method || "POST").toUpperCase();
