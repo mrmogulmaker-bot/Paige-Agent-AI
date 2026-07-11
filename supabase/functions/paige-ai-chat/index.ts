@@ -3580,6 +3580,29 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           {
             type: "function",
             function: {
+              name: "calendar_book_meeting",
+              description: "Admin/coach only. Book a one-on-one meeting on the operator's calendar. Because a booking is a real event, this is a TWO-STEP action: first call WITHOUT confirm to echo the details back, then call again with confirm:true only after the operator says yes. Provide start_at and end_at as ISO 8601 timestamps. If booking for a known contact, pass contact_id (guest name/email are filled from it).",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string", description: "Meeting title, e.g. 'Strategy call with Jane'." },
+                  start_at: { type: "string", description: "ISO 8601 start, e.g. 2026-07-12T14:00:00-05:00." },
+                  end_at: { type: "string", description: "ISO 8601 end." },
+                  timezone: { type: "string", description: "IANA tz, e.g. America/New_York. Defaults to UTC." },
+                  contact_id: { type: "string", description: "clients.id of the contact this meeting is with (optional)." },
+                  guest_name: { type: "string" },
+                  guest_email: { type: "string" },
+                  notes: { type: "string" },
+                  location: { type: "string", description: "e.g. 'Zoom', 'Phone', or an address." },
+                  confirm: { type: "boolean", description: "Set true ONLY after the operator confirmed the details." }
+                },
+                required: ["title", "start_at", "end_at"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "draft_marketing_content",
               description: "Admin/coach only. Draft marketing content for the tenant — social posts, ad copy, email campaigns, captions, blog outlines, or SMS broadcasts — in their brand voice. Returns draft text for the operator to review; drafting is safe and has no side effects (sending is a separate approval-gated step). Use when the operator asks you to write, create, or draft marketing/social/ad/email content.",
               parameters: {
@@ -4071,6 +4094,7 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           tc.function.name === "pipeline_add_stage" ||
           tc.function.name === "member_grant_role" ||
           tc.function.name === "member_revoke_role" ||
+          tc.function.name === "calendar_book_meeting" ||
           tc.function.name === "draft_marketing_content" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
@@ -4245,6 +4269,27 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
               if (error) throw error;
               if ((cd as any)?.error) throw new Error((cd as any).error);
               result = { success: true, channel: (cd as any)?.channel, drafts: (cd as any)?.drafts ?? [] };
+            } else if (tc.function.name === "calendar_book_meeting") {
+              // CONFIRM lane: a booking is a real event, so require explicit confirm.
+              if (args.confirm !== true) {
+                result = { success: false, needs_confirm: true,
+                  confirm_summary: `Book "${args.title}" from ${args.start_at} to ${args.end_at}${args.timezone ? ` (${args.timezone})` : ""}${args.location ? ` at ${args.location}` : ""}. Confirm with the operator, then call again with confirm:true.` };
+              } else {
+                const { data: bid, error } = await supabaseClient.rpc("create_internal_booking", {
+                  _title: args.title,
+                  _start_at: args.start_at,
+                  _end_at: args.end_at,
+                  _timezone: args.timezone ?? "UTC",
+                  _contact_id: args.contact_id ?? null,
+                  _guest_name: args.guest_name ?? null,
+                  _guest_email: args.guest_email ?? null,
+                  _notes: args.notes ?? null,
+                  _location: args.location ?? null,
+                  _tenant_id: personaCtx?.tenant_id ?? null,
+                });
+                if (error) throw error;
+                result = { success: true, booking_id: bid };
+              }
             } else if (tc.function.name === "crm_log_activity") {
               const { data: row, error } = await admin
                 .from("communication_log")
