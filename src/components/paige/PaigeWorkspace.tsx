@@ -19,7 +19,7 @@ import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 import { PaigeWorkspaceProvider, usePaigeWorkspace } from "./PaigeWorkspaceContext";
 import { PaigeCommandBar } from "./PaigeCommandBar";
-import { PaigeSidebar } from "./PaigeSidebar";
+import { PaigeSidebarBody, CustomizeFloor } from "./PaigeSidebar";
 import { PaigeRailSheet } from "./PaigeRailSheet";
 import { PaigeConsole } from "./PaigeConsole";
 import type { ConsoleSection, RailCounts } from "./PaigeConsoleRail";
@@ -262,12 +262,17 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
 
         {!isMobile && (
           <aside className="flex w-[360px] lg:w-[380px] shrink-0 flex-col border-l bg-primary/[0.055] shadow-[inset_1px_0_0_hsl(var(--border))]">
-            {/* Persistent reasoning cockpit pinned on top; the Live desk fills the rest. */}
-            <div className="shrink-0 p-3 pb-0">
-              <ReasoningDeck trace={trace} personaName={pb.persona.name} />
+            {/* One scroll column — reasoning cockpit, customer selector, and the Live
+                desk all flow and share the height instead of the feed being crushed
+                into a sliver. Customize Paige is pinned to the floor, always reachable. */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="space-y-3 p-3">
+                <ReasoningDeck trace={trace} personaName={pb.persona.name} />
+                <PaigeSidebarBody {...railProps} />
+              </div>
             </div>
-            <div className="min-h-0 flex-1">
-              <PaigeSidebar {...railProps} />
+            <div className="shrink-0 border-t bg-primary/[0.02] p-3">
+              <CustomizeFloor onCustomize={railProps.onCustomize} />
             </div>
           </aside>
         )}

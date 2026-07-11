@@ -1,7 +1,8 @@
-// The command-center right rail (cc-spec §2). Owns the flex-col overflow
-// contract: the selector (top) and Customize button (floor) never scroll away;
-// only the feed in the middle scrolls. Shared by the desktop <aside> and the
-// mobile PaigeRailSheet — one implementation, no re-build.
+// The command-center right rail (cc-spec §2). The BODY (customer selector + live
+// feed) is natural-height and reusable; the desktop workspace flows it inside one
+// scroll column with the Customize button pinned to the aside floor, while the
+// mobile sheet wraps the same body in its own scroll + floor. One implementation,
+// no re-build.
 import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CustomerSelector } from "./CustomerSelector";
@@ -19,11 +20,12 @@ interface Props {
   approvalsLoading: boolean;
 }
 
-export function PaigeSidebar({ focused, onFocus, onClear, onCustomize, approvals, approvalsLoading }: Props) {
+/** Customer selector + live action feed, natural height (no wrapper scroll/floor). */
+export function PaigeSidebarBody({ focused, onFocus, onClear, approvals, approvalsLoading }: Omit<Props, "onCustomize">) {
   return (
-    <div className="flex h-full flex-col">
-      {/* Customer selector — pinned top */}
-      <div className="shrink-0 border-b p-3 space-y-2">
+    <div className="space-y-3">
+      {/* Customer selector */}
+      <div className="space-y-2 rounded-lg border bg-card/60 p-3">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Work a customer</p>
         {focused ? (
           <CustomerMiniCard client={focused} onClear={onClear} />
@@ -35,20 +37,36 @@ export function PaigeSidebar({ focused, onFocus, onClear, onCustomize, approvals
         )}
       </div>
 
-      {/* Live action feed — the only scroll region */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-3">
+      {/* Live action feed */}
+      <div className="rounded-lg border bg-card/60 p-3">
         <LiveActionFeed approvals={approvals} approvalsLoading={approvalsLoading} focused={focused} />
       </div>
+    </div>
+  );
+}
 
-      {/* Customize Paige — pinned floor. Gold OUTLINE (S2), never solid. */}
+/** The Customize-Paige floor button — gold OUTLINE (S2), never solid. */
+export function CustomizeFloor({ onCustomize }: { onCustomize: () => void }) {
+  return (
+    <Button
+      onClick={onCustomize}
+      variant="outline"
+      className="w-full border-accent/50 text-accent hover:bg-accent/10"
+    >
+      <SlidersHorizontal className="mr-2 h-4 w-4" /> Customize Paige
+    </Button>
+  );
+}
+
+/** Full rail — used by the mobile sheet. The body scrolls; Customize is pinned. */
+export function PaigeSidebar({ onCustomize, ...body }: Props) {
+  return (
+    <div className="flex h-full flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <PaigeSidebarBody {...body} />
+      </div>
       <div className="shrink-0 border-t p-3">
-        <Button
-          onClick={onCustomize}
-          variant="outline"
-          className="w-full border-accent/50 text-accent hover:bg-accent/10"
-        >
-          <SlidersHorizontal className="mr-2 h-4 w-4" /> Customize Paige
-        </Button>
+        <CustomizeFloor onCustomize={onCustomize} />
       </div>
     </div>
   );
