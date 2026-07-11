@@ -3489,6 +3489,97 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           {
             type: "function",
             function: {
+              name: "pipeline_create",
+              description: "Admin/coach only. Create a new sales/delivery pipeline with ordered stages. Use when the operator asks you to set up a pipeline for their program or business. Executes immediately (internal config). Each stage: label, probability 0-100, stage_type open|won|lost (exactly one won, one lost). Returns the new pipeline id.",
+              parameters: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: "Pipeline name in the tenant's own language." },
+                  description: { type: "string" },
+                  is_default: { type: "boolean", description: "Make this the tenant's default pipeline." },
+                  stages: {
+                    type: "array",
+                    description: "Ordered stages, first to last.",
+                    items: {
+                      type: "object",
+                      properties: {
+                        label: { type: "string" },
+                        probability: { type: "number" },
+                        stage_type: { type: "string", enum: ["open", "won", "lost"] }
+                      },
+                      required: ["label"]
+                    }
+                  }
+                },
+                required: ["name"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "pipeline_add_stage",
+              description: "Admin/coach only. Add a single stage to an existing pipeline. Executes immediately.",
+              parameters: {
+                type: "object",
+                properties: {
+                  pipeline_id: { type: "string" },
+                  label: { type: "string" },
+                  probability: { type: "number" },
+                  stage_type: { type: "string", enum: ["open", "won", "lost"] }
+                },
+                required: ["pipeline_id", "label"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "member_grant_role",
+              description: "Admin/coach only. Grant a staff role to a user by their auth user id (resolve via crm/admin lookup first). Roles: admin, coach, sales_rep, broker, cs_rep, finance, viewer. The server enforces the role hierarchy. Executes immediately.",
+              parameters: {
+                type: "object",
+                properties: {
+                  user_id: { type: "string", description: "auth.users.id of the person to grant the role to." },
+                  role: { type: "string", enum: ["admin", "coach", "sales_rep", "broker", "cs_rep", "finance", "viewer"] }
+                },
+                required: ["user_id", "role"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "member_revoke_role",
+              description: "Admin/coach only. Remove a staff role from a user. The server enforces guards (can't remove the owner's admin, last-admin, coach-with-active-clients). Executes immediately; returns {ok:false, reason:'active_clients'} if a coach still has assigned clients.",
+              parameters: {
+                type: "object",
+                properties: {
+                  user_id: { type: "string" },
+                  role: { type: "string", enum: ["admin", "coach", "sales_rep", "broker", "cs_rep", "finance", "viewer"] }
+                },
+                required: ["user_id", "role"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "crm_delete_contact",
+              description: "Admin only. Permanently delete a contact and its related records. This is destructive and cannot be undone, so it is a TWO-STEP action: first call WITHOUT confirm to get a confirmation summary, tell the operator exactly what will be deleted, and only call again with confirm:true after they explicitly say yes.",
+              parameters: {
+                type: "object",
+                properties: {
+                  contact_id: { type: "string", description: "clients.id UUID." },
+                  confirm: { type: "boolean", description: "Set true ONLY after the operator has explicitly confirmed the deletion." }
+                },
+                required: ["contact_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "crm_log_activity",
               description: "Admin/coach only. Log a communication or activity (call, email, note, meeting) on a client's timeline.",
               parameters: {
@@ -3730,6 +3821,17 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           }
         } else if (tc.function.name === "web_fetch") {
           toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ note: "Web fetch not executed in this flow" }) });
+        } else if (
+          !fundingEnabled &&
+          (tc.function.name === "search_regional_lenders" ||
+           tc.function.name === "search_sba_lenders" ||
+           tc.function.name === "get_current_rates" ||
+           tc.function.name === "search_funding_marketplace")
+        ) {
+          // §90 defense-in-depth: these toolDefs are already gated behind
+          // fundingEnabled, but re-check at dispatch so a stale/hallucinated call
+          // can never execute for a tenant without the funding skill.
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Funding tools are not enabled for this workspace." }) });
         } else if (tc.function.name === "search_regional_lenders") {
           try {
             const args = JSON.parse(tc.function.arguments || "{}");
@@ -3947,6 +4049,11 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           tc.function.name === "crm_create_task" ||
           tc.function.name === "crm_create_contact" ||
           tc.function.name === "crm_update_contact" ||
+          tc.function.name === "crm_delete_contact" ||
+          tc.function.name === "pipeline_create" ||
+          tc.function.name === "pipeline_add_stage" ||
+          tc.function.name === "member_grant_role" ||
+          tc.function.name === "member_revoke_role" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
@@ -4060,6 +4167,59 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
               });
               if (error) throw error;
               result = { success: true, contact_id: args.contact_id };
+            } else if (tc.function.name === "pipeline_create") {
+              const stagesIn = Array.isArray(args.stages) ? args.stages : [];
+              const { data: pid, error } = await supabaseClient.rpc("create_pipeline_with_stages", {
+                _tenant_id: personaCtx?.tenant_id ?? null,
+                _name: args.name,
+                _stages: stagesIn.map((s: any, i: number) => ({
+                  label: s?.label ?? `Stage ${i + 1}`,
+                  order_index: i + 1,
+                  probability: Math.max(0, Math.min(100, Number(s?.probability) || 0)),
+                  stage_type: ["open", "won", "lost"].includes(s?.stage_type) ? s.stage_type : "open",
+                })),
+                _description: args.description ?? null,
+                _is_default: args.is_default === true,
+                _created_by: user.id,
+              });
+              if (error) throw error;
+              result = { success: true, pipeline_id: pid };
+            } else if (tc.function.name === "pipeline_add_stage") {
+              const { data: sid, error } = await supabaseClient.rpc("add_pipeline_stage", {
+                _pipeline_id: args.pipeline_id,
+                _label: args.label,
+                _probability: Math.max(0, Math.min(100, Number(args.probability) || 0)),
+                _stage_type: ["open", "won", "lost"].includes(args.stage_type) ? args.stage_type : "open",
+              });
+              if (error) throw error;
+              result = { success: true, stage_id: sid };
+            } else if (tc.function.name === "member_grant_role") {
+              const { error } = await supabaseClient.rpc("grant_tenant_member_role", {
+                _user_id: args.user_id, _role: args.role, _tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, user_id: args.user_id, role: args.role };
+            } else if (tc.function.name === "member_revoke_role") {
+              const { data: rv, error } = await supabaseClient.rpc("revoke_tenant_member_role", {
+                _user_id: args.user_id, _role: args.role, _tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = (rv && (rv as any).ok === false)
+                ? { success: false, ...(rv as any) }
+                : { success: true, user_id: args.user_id, role: args.role };
+            } else if (tc.function.name === "crm_delete_contact") {
+              // CONFIRM lane: destructive, so require an explicit confirm:true.
+              if (args.confirm !== true) {
+                result = { success: false, needs_confirm: true, contact_id: args.contact_id,
+                  confirm_summary: "This permanently deletes the contact and its deals, activities, documents, and coach links. Ask the operator to confirm, then call again with confirm:true." };
+              } else {
+                const { data: del, error } = await supabaseClient.functions.invoke("delete-contact", {
+                  body: { contact_id: args.contact_id },
+                });
+                if (error) throw error;
+                if ((del as any)?.error) throw new Error((del as any).error);
+                result = { success: true, deleted: args.contact_id };
+              }
             } else if (tc.function.name === "crm_log_activity") {
               const { data: row, error } = await admin
                 .from("communication_log")
