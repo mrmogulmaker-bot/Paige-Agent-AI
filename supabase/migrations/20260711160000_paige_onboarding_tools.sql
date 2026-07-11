@@ -138,15 +138,17 @@ BEGIN
     RAISE EXCEPTION 'ENROLL_PROGRAM_NOT_IN_TENANT' USING ERRCODE = '42501';
   END IF;
 
-  SELECT id INTO _existing FROM public.program_enrollments
-   WHERE program_id = p_program_id AND client_id = p_contact_id LIMIT 1;
-  IF _existing IS NOT NULL THEN
-    RETURN jsonb_build_object('ok', true, 'enrollment_id', _existing, 'already', true);
-  END IF;
-
+  -- Idempotent + race-safe: ON CONFLICT handles a concurrent double-enroll.
   INSERT INTO public.program_enrollments (program_id, client_id, status, enrolled_at)
   VALUES (p_program_id, p_contact_id, 'active', now())
+  ON CONFLICT (program_id, client_id) DO NOTHING
   RETURNING id INTO _eid;
+
+  IF _eid IS NULL THEN
+    SELECT id INTO _eid FROM public.program_enrollments
+     WHERE program_id = p_program_id AND client_id = p_contact_id LIMIT 1;
+    RETURN jsonb_build_object('ok', true, 'enrollment_id', _eid, 'already', true);
+  END IF;
 
   INSERT INTO public.audit_logs (user_id, entity, action, entity_id, data)
   VALUES (_caller, 'program_enrollment', 'enroll_contact_in_program', _eid,
