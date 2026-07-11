@@ -38,6 +38,55 @@ export interface ClaudeMessage {
   content: string | unknown[]; // string, or Anthropic content blocks (incl. tool_result)
 }
 
+// ---------------------------------------------------------------------------
+// Translate an OpenAI-/gateway-style message list into Anthropic messages.
+// This is the ONE place that must get tool-calling right — the tool loop sends
+// back an assistant turn carrying `tool_calls` followed by `tool` results, and
+// Anthropic needs (a) the assistant `tool_use` blocks so each `tool_result` has
+// a matching id, and (b) consecutive tool_results merged onto ONE user turn
+// (Anthropic requires alternating roles). Missing (a) was the Lovable→Anthropic
+// regression that broke every tool-using turn ("couldn't finish that").
+// ---------------------------------------------------------------------------
+interface OaiMessage { role: string; content: unknown; tool_calls?: any[]; tool_call_id?: string }
+function splitMessages(messages: OaiMessage[]): { system: string; msgs: ClaudeMessage[] } {
+  const asStr = (c: unknown) => (typeof c === "string" ? c : c == null ? "" : JSON.stringify(c));
+  const systemParts: string[] = [];
+  const raw: ClaudeMessage[] = [];
+  for (const m of messages ?? []) {
+    if (m.role === "system") { systemParts.push(asStr(m.content)); continue; }
+    if (m.role === "tool") {
+      raw.push({ role: "user", content: [{ type: "tool_result", tool_use_id: m.tool_call_id, content: asStr(m.content) }] });
+      continue;
+    }
+    if (m.role === "assistant" && Array.isArray(m.tool_calls) && m.tool_calls.length) {
+      const blocks: any[] = [];
+      const txt = asStr(m.content);
+      if (txt && txt !== "null") blocks.push({ type: "text", text: txt });
+      for (const tc of m.tool_calls) {
+        let input: unknown = {};
+        try { input = tc?.function?.arguments ? JSON.parse(tc.function.arguments) : {}; } catch { input = {}; }
+        blocks.push({ type: "tool_use", id: tc.id, name: tc?.function?.name, input });
+      }
+      raw.push({ role: "assistant", content: blocks });
+      continue;
+    }
+    raw.push({ role: m.role === "assistant" ? "assistant" : "user", content: asStr(m.content) });
+  }
+  // Coalesce consecutive same-role turns (batches multiple tool_results onto one
+  // user turn; keeps roles alternating).
+  const toBlocks = (c: unknown): any[] => (Array.isArray(c) ? c : [{ type: "text", text: typeof c === "string" ? c : JSON.stringify(c) }]);
+  const msgs: ClaudeMessage[] = [];
+  for (const m of raw) {
+    const last = msgs[msgs.length - 1];
+    if (last && last.role === m.role) {
+      last.content = [...toBlocks(last.content), ...toBlocks(m.content)];
+    } else {
+      msgs.push({ role: m.role, content: m.content });
+    }
+  }
+  return { system: systemParts.join("\n\n"), msgs };
+}
+
 export interface ClaudeCallOpts {
   messages: ClaudeMessage[];
   system?: string;
@@ -126,20 +175,9 @@ interface OpenAIStyleBody {
 }
 
 export async function chatCompletionCompat(body: OpenAIStyleBody, tierOverride?: ClaudeTier): Promise<any> {
-  // Extract system message(s); Anthropic takes system as a top-level param.
-  const systemParts: string[] = [];
-  const msgs: ClaudeMessage[] = [];
-  for (const m of body.messages ?? []) {
-    const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-    if (m.role === "system") { systemParts.push(content); continue; }
-    if (m.role === "tool") {
-      // OpenAI tool result -> Anthropic tool_result block on a user turn
-      msgs.push({ role: "user", content: [{ type: "tool_result", tool_use_id: (m as any).tool_call_id, content }] });
-      continue;
-    }
-    msgs.push({ role: m.role === "assistant" ? "assistant" : "user", content });
-  }
-  let system = systemParts.join("\n\n");
+  // Extract system + translate messages (incl. assistant tool_calls -> tool_use).
+  const { system: sys0, msgs } = splitMessages(body.messages as OaiMessage[]);
+  let system = sys0;
 
   // response_format json -> nudge via system (Anthropic has no json_object flag).
   if (body.response_format?.type && /json/.test(body.response_format.type)) {
@@ -198,18 +236,8 @@ export async function chatCompletionCompat(body: OpenAIStyleBody, tierOverride?:
 // separately; do NOT use this for stream:true requests.)
 // Translate an OpenAI-/gateway-style body into an Anthropic Messages request object.
 function buildClaudeRequest(body: OpenAIStyleBody): Record<string, unknown> {
-  const systemParts: string[] = [];
-  const msgs: ClaudeMessage[] = [];
-  for (const m of body.messages ?? []) {
-    const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-    if (m.role === "system") { systemParts.push(content); continue; }
-    if (m.role === "tool") {
-      msgs.push({ role: "user", content: [{ type: "tool_result", tool_use_id: (m as any).tool_call_id, content }] });
-      continue;
-    }
-    msgs.push({ role: m.role === "assistant" ? "assistant" : "user", content });
-  }
-  let system = systemParts.join("\n\n");
+  const { system: sys0, msgs } = splitMessages(body.messages as OaiMessage[]);
+  let system = sys0;
   if (body.response_format?.type && /json/.test(body.response_format.type)) {
     system = (system ? system + "\n\n" : "") +
       "Respond with a single valid JSON value only. No prose, no markdown fences.";
