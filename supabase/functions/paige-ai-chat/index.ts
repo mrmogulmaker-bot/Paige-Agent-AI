@@ -4035,6 +4035,30 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "action_file", "action_advance",
     ]);
 
+    // Friendly, operator-facing labels for each mutating tool — never surface the
+    // raw internal tool_key (§11: no backend function names in visible copy).
+    const TOOL_LABELS: Record<string, string> = {
+      crm_update_contact: "updating a contact",
+      crm_create_contact: "adding a contact",
+      crm_delete_contact: "deleting a contact",
+      crm_update_pipeline_stage: "moving a client's stage",
+      crm_assign_coach: "assigning a coach",
+      crm_assign_contact: "assigning a contact",
+      crm_create_task: "creating a task",
+      crm_log_activity: "logging an activity",
+      pipeline_create: "creating a pipeline",
+      pipeline_add_stage: "adding a pipeline stage",
+      member_grant_role: "granting a staff role",
+      member_revoke_role: "revoking a staff role",
+      calendar_book_meeting: "booking a meeting",
+      program_enroll: "enrolling a client in a program",
+      draft_marketing_content: "drafting marketing content",
+      generate_image: "generating an image",
+      content_save: "saving content",
+      action_file: "filing an action",
+      action_advance: "advancing an action",
+    };
+
     // A human one-liner of exactly what a mutating call will do — shown to the
     // operator when Paige pauses for confirmation.
     const describeConfirm = (name: string, a: any): string => {
@@ -4045,8 +4069,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Add stage "${a?.label || ""}" to the pipeline.`;
         case "crm_create_contact":
           return `Add contact ${[a?.first_name, a?.last_name].filter(Boolean).join(" ") || a?.email || "new contact"}${a?.email ? ` (${a.email})` : ""}.`;
-        case "crm_update_contact":
-          return `Update this contact${a?.lifecycle_stage ? ` → stage ${a.lifecycle_stage}` : ""}.`;
+        case "crm_update_contact": {
+          const who = [a?.first_name, a?.last_name].filter(Boolean).join(" ") || a?.email || "";
+          const fields = ["first_name", "last_name", "email", "phone", "entity_name", "title", "lifecycle_stage", "primary_offer", "status", "notes", "assigned_coach_user_id"].filter((k) => a?.[k] != null && a[k] !== "");
+          return `Update ${who ? `${who}'s` : "this"} contact${fields.length ? ` (${fields.join(", ")})` : ""}.`;
+        }
         case "crm_delete_contact":
           return `Permanently delete the contact and its deals, activities, documents, and coach links. This cannot be undone.`;
         case "crm_update_pipeline_stage":
@@ -4078,7 +4105,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         case "action_advance":
           return `Advance action ${a?.action_id || ""}${a?.to_status ? ` → ${a.to_status}` : ""}.`;
         default:
-          return `Run ${name}.`;
+          return `Paige is ${TOOL_LABELS[name] || `running ${name}`}.`;
       }
     };
 
@@ -4205,11 +4232,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           try { gateArgs = JSON.parse(tc.function.arguments || "{}"); } catch { gateArgs = {}; }
           const autoMode = await resolveToolAutonomy(tc.function.name);
           if (autoMode === "off") {
-            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, disabled: true, tool: tc.function.name, error: `The "${tc.function.name}" action is turned off for this workspace in Paige's autonomy settings. Tell the operator it's disabled and don't retry.` }) });
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, disabled: true, error: `${(TOOL_LABELS[tc.function.name] || "this action").replace(/^./, (c) => c.toUpperCase())} is turned off for this workspace in Paige's autonomy settings. Tell the operator it's disabled (don't mention any internal names) and don't retry.` }) });
             continue;
           }
           if (autoMode === "confirm" && gateArgs.confirm !== true) {
-            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, needs_confirm: true, tool: tc.function.name, confirm_summary: describeConfirm(tc.function.name, gateArgs), note: "Do NOT retry yet. This action requires the operator's approval. Read the confirm_summary back to them in plain language, ask them to confirm, and ONLY after they explicitly say yes call this same tool again with confirm:true." }) });
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, needs_confirm: true, confirm_summary: describeConfirm(tc.function.name, gateArgs), note: "Do NOT retry yet. This action requires the operator's approval. Read the confirm_summary back in plain language — and name the SPECIFIC client/contact/program you're acting on by the name you just used, never 'the client'. Ask them to confirm, and ONLY after they explicitly say yes call this same tool again with confirm:true." }) });
             continue;
           }
           // autoMode === 'auto', or confirm already satisfied → fall through to execute.

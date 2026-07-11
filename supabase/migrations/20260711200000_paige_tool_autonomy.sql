@@ -196,6 +196,17 @@ BEGIN
 END;
 $$;
 
+-- CRITICAL: strip the default PUBLIC EXECUTE grant first. Without this, `anon`
+-- (a member of PUBLIC) keeps EXECUTE, and because anon's JWT has no `sub` claim
+-- auth.uid() is NULL — which drops straight into the TRUSTED service branch of
+-- every dual-caller function, bypassing the admin/tenant gate. That would let
+-- anyone with the browser-shipped anon key write any tenant's autonomy policy
+-- (e.g. flip a tool to 'auto') or read another tenant's posture. Revoke, then
+-- grant only to authenticated (JWT branch, gated) and service_role (trusted).
+REVOKE ALL ON FUNCTION public.resolve_tool_autonomy(uuid, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.set_tool_autonomy(text, text, uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.list_tool_autonomy(uuid) FROM PUBLIC, anon;
+
 GRANT EXECUTE ON FUNCTION public.resolve_tool_autonomy(uuid, text) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.set_tool_autonomy(text, text, uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.list_tool_autonomy(uuid) TO authenticated, service_role;
