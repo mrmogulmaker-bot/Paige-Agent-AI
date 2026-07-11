@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { PaigeReasoningStrip, PaigeWorkRail, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -77,6 +78,7 @@ const PaigeAIChatInner = ({
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [steps, setSteps] = useState<PaigeStep[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -247,6 +249,7 @@ const PaigeAIChatInner = ({
     setMessages(newMessages);
     setInput("");
     setIsLoading(true);
+    setSteps([]); // fresh "watch her work" trace per turn
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -320,6 +323,11 @@ const PaigeAIChatInner = ({
 
           try {
             const parsed = JSON.parse(jsonStr);
+            // Structured event: a "watch her work" step (#95). Upsert by id, sorted by seq.
+            if (parsed.paige_step) {
+              setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
+              continue;
+            }
             // Structured event: Paige queued an action to the approvals desk.
             if (Array.isArray(parsed.approval_queued)) {
               queuedThisTurn = parsed.approval_queued as QueuedApproval[];
@@ -375,7 +383,8 @@ const PaigeAIChatInner = ({
           </div>
         )}
 
-        <Card className="flex-1 flex flex-col bg-card border-border shadow-card overflow-hidden">
+        <div className={fill ? "flex-1 min-h-0 grid gap-4 grid-rows-[minmax(0,1fr)] lg:grid-cols-[1fr_20rem]" : "flex-1 min-h-0 flex flex-col"}>
+        <Card className="flex-1 min-h-0 min-w-0 flex flex-col bg-card border-border shadow-card overflow-hidden">
           {focusBanner}
           <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4">
             {messages.map((message, index) => (
@@ -433,6 +442,12 @@ const PaigeAIChatInner = ({
               </div>
             ))}
           </div>
+
+          {(isLoading || steps.length > 0) && (
+            <div className="border-t border-border px-4 pt-3">
+              <PaigeReasoningStrip steps={steps} loading={isLoading} personaName={persona.name} />
+            </div>
+          )}
 
           <div className="border-t border-border p-4 space-y-3">
             {visibleChips.length > 0 && (
@@ -502,6 +517,12 @@ const PaigeAIChatInner = ({
             </Button>
           </div>
         </Card>
+        {fill && (
+          <aside className="hidden lg:block min-h-0 overflow-y-auto">
+            <PaigeWorkRail steps={steps} loading={isLoading} personaName={persona.name} />
+          </aside>
+        )}
+        </div>
       </div>
 
       {/* Premium voice session UI — full-screen modal with avatar, transcript, controls. */}

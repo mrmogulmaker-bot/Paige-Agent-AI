@@ -10,6 +10,80 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// "Watch Paige work" (#95): turn one executed tool call into a friendly, present-tense,
+// jargon-free step for the reasoning trace. The raw snake_case tool name NEVER leaves the
+// server (§11); every branch — including the default — returns human copy in §3 voice.
+// Returns null to DROP a step (policy-gated rejections and non-work stubs) so a gated call
+// never renders as a scary failure and the trace never advertises work not performed.
+const SUBAGENT_FRIENDLY: Record<string, string> = {
+  "email-composer": "your email specialist",
+  "content-writer": "your content specialist",
+  "research-analyst": "your research specialist",
+};
+function describeStep(
+  tc: any,
+  res: any,
+): { label: string; group: "owner" | "client" | "shared"; detail?: string } | null {
+  const name: string = tc?.function?.name ?? "";
+  let args: any = {};
+  try { args = JSON.parse(tc?.function?.arguments ?? "{}"); } catch { /* ignore */ }
+  let out: any = {};
+  try { out = JSON.parse(res?.content ?? "{}"); } catch { /* ignore */ }
+  const failed = out?.success === false;
+
+  // Drop policy-gated rejections (funding-not-enabled, permission-denied) and the
+  // web_fetch stub — never render these as work or as failure.
+  if (name === "web_fetch") return null;
+  if (failed && typeof out?.error === "string" &&
+      /not enabled|disabled|permission|not allowed|restricted|forbidden/i.test(out.error)) return null;
+
+  switch (name) {
+    // Action bus (§8)
+    case "action_file": {
+      const toClient = args?.to_department === "client_experience"
+        || /^client\./.test(args?.action_kind ?? "");
+      return toClient
+        ? { label: "Filing this to Client Experience", group: "client", detail: "hand-off" }
+        : { label: "Filing this to Owner Ops", group: "owner", detail: "hand-off" };
+    }
+    case "action_advance": return { label: "Moving that action forward", group: "owner" };
+    case "action_list": return { label: "Checking the team's queue", group: "owner" };
+    case "action_get": return { label: "Pulling up that action", group: "owner" };
+    case "propose_action": return { label: "Lining up something for your approval", group: "owner", detail: "waiting on you" };
+    // CRM (client)
+    case "crm_search_contacts": return { label: "Looking through your contacts", group: "client", detail: typeof out?.count === "number" ? `${out.count} found` : undefined };
+    case "crm_get_contact_summary": return { label: "Pulling up the contact", group: "client" };
+    case "crm_create_contact": return { label: "Adding a contact", group: "client" };
+    case "crm_update_contact": return { label: "Updating the contact", group: "client" };
+    case "crm_delete_contact": return { label: "Removing that contact", group: "client" };
+    case "crm_log_activity": return { label: "Jotting down a note", group: "client" };
+    // Pipeline (owner)
+    case "pipeline_create": return { label: "Building your pipeline", group: "owner" };
+    case "pipeline_add_stage": return { label: "Adding a pipeline stage", group: "owner" };
+    case "crm_pipeline_summary": case "crm_list_deals": return { label: "Reviewing your pipeline", group: "owner" };
+    case "crm_list_tasks": return { label: "Checking your tasks", group: "owner" };
+    // Roles / members (owner)
+    case "member_grant_role": return { label: "Updating team access", group: "owner" };
+    case "member_revoke_role": return { label: "Updating team access", group: "owner" };
+    // Content (shared)
+    case "draft_marketing_content": return { label: "Drafting your content", group: "shared" };
+    case "content_save": return { label: "Saving that to your library", group: "shared" };
+    case "generate_image": return { label: "Creating the image", group: "shared", detail: failed ? undefined : "image ready" };
+    // Scheduling (owner)
+    case "calendar_book_meeting": return { label: "Booking the meeting", group: "owner" };
+    // Team / orchestration (shared)
+    case "delegate_to_subagent": {
+      const slug = args?.slug ?? args?.subagent ?? "";
+      const who = SUBAGENT_FRIENDLY[slug] ?? "a specialist";
+      return { label: `Bringing in ${who}`, group: "shared" };
+    }
+    case "list_subagents": return { label: "Finding the right specialist", group: "shared" };
+    // Research (shared)
+    case "get_business_snapshot": return { label: "Taking stock of your business", group: "shared" };
+    default: return { label: "Working on that", group: "shared" };
+  }
+}
+
 // Fire-and-forget analytics writer for Paige internals (RAG, Firecrawl, legal flags).
 // Uses the service-role client and never blocks the chat response.
 async function logAnalyticsEvent(
@@ -4704,6 +4778,11 @@ ACTION BUS — you run a team of two departments: Owner Ops (works for the coach
       const MAX_ROUNDS = 5, MAX_TOTAL_TOOL_CALLS = 12, WALL_CLOCK_MS = 45_000;
       const startedAt = Date.now();
       const queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }> = [];
+      // "Watch Paige work" step trace (#95) — a truthful, jargon-free record of what she
+      // did this turn, derived read-only from the loop's already-executed tool calls and
+      // burst-emitted as paige_step frames just before the answer. Never mutates the loop.
+      const stepTrace: Array<{ id: string; round: number; seq: number; label: string; group: "owner" | "client" | "shared"; status: "done" | "error"; detail?: string; ts: number }> = [];
+      let stepSeq = 0;
       const convo: any[] = [...aiMessages];
       let currentResponse = response;
       let totalToolCalls = 0;
@@ -4726,6 +4805,24 @@ ACTION BUS — you run a team of two departments: Owner Ops (works for the coach
         const { toolResults, executed } = await executeToolCalls(toolCalls, queuedApprovals);
         totalToolCalls += executed.length;
         seenSignatures.add(sig);
+        // Derive the step trace for THIS round here — before the terminating break below,
+        // so the final round's tools are still recorded. Purely synchronous + read-only:
+        // no await, no gateway call, no mutation of loop bounds/convo/seenSignatures.
+        for (const tc of executed) {
+          try {
+            const res = toolResults.find((r: any) => r.tool_call_id === tc.id);
+            let ok = true;
+            try { ok = JSON.parse(res?.content ?? "{}")?.success !== false; } catch { /* keep ok */ }
+            const derived = describeStep(tc, res);
+            if (!derived) continue; // gated/stub calls dropped (never render as failure)
+            stepTrace.push({
+              id: `${round}:${tc.id}`, round, seq: ++stepSeq,
+              label: derived.label, group: derived.group,
+              status: ok ? "done" : "error", detail: derived.detail,
+              ts: Date.now() - startedAt,
+            });
+          } catch { /* a cosmetic-trace throw must never break the agentic loop */ }
+        }
         convo.push({ role: "assistant", content: content || null, tool_calls: executed });
         convo.push(...toolResults);
         if (overCap || overTime || lastRound) { forcedTermination = true; break; }
@@ -4751,6 +4848,8 @@ ACTION BUS — you run a team of two departments: Owner Ops (works for the coach
       const enc = new TextEncoder();
       const finalStream = new ReadableStream({
         async start(controller) {
+          // Steps first — the trace of what she did — then approvals, then the answer.
+          for (const s of stepTrace) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_step: s })}\n\n`));
           if (queuedApprovals.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
           if (finalChunks) {
             for (const c of finalChunks) controller.enqueue(c);
