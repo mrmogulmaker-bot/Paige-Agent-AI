@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Settings, Filter, TrendingUp, Search } from "lucide-react";
+import { Plus, Settings, Filter, TrendingUp, Search, Sparkles } from "lucide-react";
 import { Deal, Pipeline, PipelineStage, formatMoney, logDealActivity } from "@/lib/pipelines";
 import { useTenantOffers } from "@/hooks/useTenantOffers";
+import { useTenantContext } from "@/hooks/useTenantContext";
 import { NewDealDialog } from "@/components/admin/pipeline/NewDealDialog";
 import { DealDrawer } from "@/components/admin/pipeline/DealDrawer";
+import { PipelineFromProgramDialog } from "@/components/admin/pipeline/PipelineFromProgramDialog";
 import { PageShell, PageHeader, StatRow, StatTile, Toolbar, EmptyState } from "@/components/ui/page";
 
 export default function PipelineAdmin() {
@@ -27,7 +29,9 @@ export default function PipelineAdmin() {
   const [search, setSearch] = useState("");
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [coaches, setCoaches] = useState<{ user_id: string; name: string }[]>([]);
+  const [showFromProgram, setShowFromProgram] = useState(false);
   const { offerLabel } = useTenantOffers();
+  const { activeTenantId } = useTenantContext();
 
   useEffect(() => { loadPipelines(); }, []);
   useEffect(() => { if (activePipelineId) loadBoard(activePipelineId); }, [activePipelineId]);
@@ -156,6 +160,7 @@ export default function PipelineAdmin() {
               </SelectContent>
             </Select>
             <Button asChild variant="outline" size="sm"><Link to="/admin/settings/pipelines"><Settings className="w-4 h-4 mr-1" /> Configure</Link></Button>
+            <Button variant="outline" size="sm" onClick={() => setShowFromProgram(true)}><Sparkles className="w-4 h-4 mr-1" /> Build from a program</Button>
             <Button variant="gold" size="sm" onClick={() => { setNewStage(null); setShowNew(true); }}><Plus className="w-4 h-4 mr-1" /> New Deal</Button>
           </>
         }
@@ -261,6 +266,13 @@ export default function PipelineAdmin() {
         open={!!selectedDeal}
         onOpenChange={(v) => !v && setSelectedDeal(null)}
         onChanged={() => loadBoard(activePipelineId)}
+      />
+
+      <PipelineFromProgramDialog
+        open={showFromProgram}
+        onOpenChange={setShowFromProgram}
+        tenantId={activeTenantId}
+        onCreated={(id) => { loadPipelines().then(() => setActivePipelineId(id)); }}
       />
     </PageShell>
   );
