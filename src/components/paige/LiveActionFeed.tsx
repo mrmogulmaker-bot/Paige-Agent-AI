@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, ArrowRight, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTasks } from "@/hooks/useTasks";
+import { StepTimeline, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import type { ApprovalQueueRow } from "@/hooks/usePendingApprovals";
 import { ApprovalRow } from "./ApprovalRow";
 import type { FocusedClient } from "./commandCenterTypes";
@@ -124,9 +125,11 @@ interface Props {
   approvals: ApprovalQueueRow[];
   approvalsLoading: boolean;
   focused: FocusedClient | null;
+  /** Paige's live step trace, lifted from the chat — the persistent "watch her work" window. */
+  trace?: { steps: PaigeStep[]; loading: boolean };
 }
 
-export function LiveActionFeed({ approvals, approvalsLoading, focused }: Props) {
+export function LiveActionFeed({ approvals, approvalsLoading, focused, trace }: Props) {
   const { items: notifications, loading: notifLoading } = useRecentNotifications();
   const { rows: inMotion, loading: inMotionLoading } = useInMotion(focused?.id ?? null);
   const { tasks, loading: tasksLoading, updateTask } = useTasks({ scope: "all", limit: 20 });
@@ -164,6 +167,18 @@ export function LiveActionFeed({ approvals, approvalsLoading, focused }: Props) 
               : "Nothing yet — Paige's moves show up here live."}
         </p>
       </div>
+
+      {/* Watch Paige work — the live step trace, lifted from the chat. Persistent window;
+          renders only while she's working or just finished, so the idle sliver above stays. */}
+      {trace && (trace.loading || trace.steps.length > 0) && (
+        <section className="mt-1 border-b pb-2">
+          <GroupHeader
+            label={trace.loading ? "Paige at work" : "Paige just worked"}
+            count={trace.steps.length || undefined}
+          />
+          <StepTimeline steps={trace.steps} loading={trace.loading} />
+        </section>
+      )}
 
       {/* Group 1 — Needs your approval (star) */}
       <section className="mt-1">

@@ -40,6 +40,10 @@ export interface PaigeAIChatProps {
   chips?: QuickChip[];
   /** Opening bubble. Command center passes an operator-flavored opener. */
   greeting?: string;
+  /** Fires with the live step trace so a parent surface (Live desk) can render it. */
+  onTrace?: (steps: PaigeStep[], loading: boolean) => void;
+  /** Suppress the inline reasoning strip (desktop: the Live desk owns the timeline). */
+  hideReasoningStrip?: boolean;
 }
 
 const PaigeAIChatInner = ({
@@ -50,6 +54,8 @@ const PaigeAIChatInner = ({
   focusBanner,
   chips,
   greeting,
+  onTrace,
+  hideReasoningStrip = false,
 }: PaigeAIChatProps) => {
   // The tenant's authored persona names the assistant in the default header —
   // audience-broad, voice-compliant, never a hardcoded vertical (doctrine §2/§3).
@@ -164,6 +170,9 @@ const PaigeAIChatInner = ({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Mirror the live step trace up so a parent surface (the Live desk) can render it.
+  useEffect(() => { onTrace?.(steps, isLoading); }, [steps, isLoading, onTrace]);
 
   // Voice chat functions
   const startVoiceChat = async () => {
@@ -383,9 +392,9 @@ const PaigeAIChatInner = ({
           </div>
         )}
 
-        <Card className="flex-1 flex flex-col bg-card border-border shadow-card overflow-hidden">
+        <Card className="flex-1 min-h-0 flex flex-col bg-card border-border shadow-card overflow-hidden">
           {focusBanner}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
             {messages.map((message, index) => (
               <div
                 key={index}
@@ -442,7 +451,7 @@ const PaigeAIChatInner = ({
             ))}
           </div>
 
-          {(isLoading || steps.length > 0) && (
+          {!hideReasoningStrip && (isLoading || steps.length > 0) && (
             <div className="border-t border-border px-4 pt-3">
               <PaigeReasoningStrip steps={steps} loading={isLoading} personaName={persona.name} />
             </div>

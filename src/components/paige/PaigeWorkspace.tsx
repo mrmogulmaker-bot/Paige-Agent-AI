@@ -2,8 +2,9 @@
 // always-visible vitals strip, with a wide right-side "Customize Paige" console.
 // Owns the Playbook edit lifecycle (pb / lastSavedPb / dirty / saving) and the
 // one honest Save for the whole object; Knowledge commits per-doc on its own.
-import { useEffect, useMemo, useState } from "react";
-import { Loader2, Sparkles, GraduationCap, X, UserCircle2, SlidersHorizontal } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Loader2, Sparkles, X, UserCircle2, SlidersHorizontal } from "lucide-react";
+import type { PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -72,6 +73,9 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
   const [justSaved, setJustSaved] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [section, setSection] = useState<ConsoleSection>("persona");
+  // Paige's live step trace, lifted out of the chat so the Live desk can render it.
+  const [trace, setTrace] = useState<{ steps: PaigeStep[]; loading: boolean }>({ steps: [], loading: false });
+  const handleTrace = useCallback((steps: PaigeStep[], loading: boolean) => setTrace({ steps, loading }), []);
 
   // Command-center focus state (cc-spec §2). Held here so the chat focus banner
   // and the rail mini-card never disagree.
@@ -202,6 +206,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
     onCustomize: () => openConsole("persona"),
     approvals: tenantApprovals,
     approvalsLoading,
+    trace,
   };
 
   return (
@@ -218,12 +223,12 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
       {/* Two regions: dominant chat (left) + standing rail (right, desktop). */}
       <div className="flex-1 min-h-0 flex">
         <section className="flex-1 min-w-0 flex flex-col">
-          {/* Slim action bar: "she got smarter" banner + a second door into Knowledge. */}
-          <div className="w-full px-3 pt-3 flex items-center gap-2">
-            {banner ? (
-              <div className="flex-1 min-w-0 flex items-center gap-2 rounded-md border border-accent/40 bg-accent/5 px-3 py-1.5 text-sm">
+          {/* "She got smarter" banner — only when set, so it never adds a resting header row. */}
+          {banner && (
+            <div className="w-full px-3 pt-2">
+              <div className="flex items-center gap-2 rounded-md border border-accent/40 bg-accent/5 px-3 py-1.5 text-sm">
                 <span className="h-1.5 w-1.5 rounded-full bg-gradient-gold shrink-0" />
-                <span className="truncate">{banner}</span>
+                <span className="min-w-0 flex-1 truncate">{banner}</span>
                 <button
                   type="button"
                   onClick={() => setBanner(null)}
@@ -233,15 +238,8 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
-            ) : (
-              <p className="flex-1 min-w-0 truncate text-xs text-muted-foreground">
-                Talk to {pb.persona.name?.trim() || "Paige"} below — or teach her something new.
-              </p>
-            )}
-            <Button variant="ghost" size="sm" className="shrink-0 text-muted-foreground hover:text-foreground" onClick={() => openConsole("knowledge")}>
-              <GraduationCap className="w-4 h-4 mr-1.5" /> Teach Paige something
-            </Button>
-          </div>
+            </div>
+          )}
 
           <div className="flex-1 min-h-0 w-full">
             <PaigeAIChat
@@ -252,6 +250,8 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
               clientContext={focusProse}
               focusBanner={focusedClient ? <FocusBanner client={focusedClient} onClear={clearFocus} /> : undefined}
               chips={quickChips}
+              onTrace={handleTrace}
+              hideReasoningStrip={!isMobile}
             />
           </div>
         </section>

@@ -6,7 +6,8 @@
 // when it rises. Full width, sticky, above both columns.
 import { useEffect, useRef, useState } from "react";
 import { PaigeMark } from "@/components/brand/PaigeMark";
-import { BookOpen } from "lucide-react";
+import { BookOpen, GraduationCap } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Playbook } from "@/lib/playbook/types";
 import type { ConsoleSection } from "./PaigeConsoleRail";
@@ -64,7 +65,7 @@ export function PaigeCommandBar({ pb, tenantName, counts, knowledgePulse, pendin
   return (
     <div className="sticky top-0 z-20 border-b bg-primary/[0.04] backdrop-blur supports-[backdrop-filter]:bg-primary/[0.04]">
       {/* Desktop */}
-      <div className="hidden md:flex items-center justify-between gap-4 px-4 lg:px-6 py-2.5">
+      <div className="hidden md:flex items-center justify-between gap-4 px-4 lg:px-6 py-2">
         <div className="flex items-start gap-3 min-w-0">
           <PaigeMark className="h-9 w-9 shrink-0 mt-0.5" />
           <div className="min-w-0">
@@ -96,7 +97,17 @@ export function PaigeCommandBar({ pb, tenantName, counts, knowledgePulse, pendin
             </div>
           </div>
         </div>
-        <MomentumReadout pending={pending} className="shrink-0" />
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={() => onOpen("knowledge")}
+          >
+            <GraduationCap className="mr-1.5 h-4 w-4" /> Teach Paige something
+          </Button>
+          <MomentumReadout pending={pending} />
+        </div>
       </div>
 
       {/* Mobile */}
