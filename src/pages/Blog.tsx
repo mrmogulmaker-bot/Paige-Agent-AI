@@ -58,7 +58,7 @@ const Blog = () => {
     <div className="min-h-screen flex flex-col bg-background">
       <PageHead
         title="Blog — PaigeAgent.ai"
-        description="Articles on credit building, business funding strategy, and entrepreneurship from the team behind PaigeAgent.ai and Mogul Maker Academy."
+        description="Playbooks on client management, follow-ups, and running a service practice — from the team behind PaigeAgent.ai."
         path="/blog"
       />
       <Header />
@@ -78,9 +78,9 @@ const Blog = () => {
             The PaigeAgent <span className="text-gold">Blog</span>
           </h1>
           <p className="text-lg text-muted-foreground mb-10 max-w-xl mx-auto">
-            Funding playbooks, credit-build case studies, lender intelligence,
-            and AI-powered strategy — straight from our team. Get notified
-            when we publish the first issue.
+            Client-management playbooks, growth case studies, and the operating
+            tactics behind Paige — straight from our team. Get notified when we
+            publish the first issue.
           </p>
 
           <Card className="p-8 max-w-lg mx-auto bg-card border-border">
