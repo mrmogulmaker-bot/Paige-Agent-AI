@@ -52,21 +52,19 @@ async function getCaller(req: Request) {
   return { userId, isAdmin };
 }
 
-async function quotaToday() {
+// Quota is PER-TENANT (D-5): one tenant can't exhaust the factory for everyone.
+// tenant_id NULL = the platform/operator lane.
+async function quotaToday(tenantId: string | null) {
   const today = new Date().toISOString().slice(0, 10);
-  const { data } = await supabase
-    .from("paige_subagent_factory_quota")
-    .select("*").eq("quota_date", today).maybeSingle();
-  return data ?? { quota_date: today, proposals_count: 0, soft_shipped: 0, hard_shipped: 0 };
+  let q = supabase.from("paige_subagent_factory_quota").select("*").eq("quota_date", today);
+  q = tenantId ? q.eq("tenant_id", tenantId) : q.is("tenant_id", null);
+  const { data } = await q.maybeSingle();
+  return data ?? { quota_date: today, tenant_id: tenantId, proposals_count: 0, soft_shipped: 0, hard_shipped: 0 };
 }
 
-async function bumpQuota(field: "proposals_count" | "soft_shipped" | "hard_shipped") {
-  const today = new Date().toISOString().slice(0, 10);
-  const cur = await quotaToday();
-  const next = { ...cur, [field]: (cur as Record<string, number>)[field] + 1 };
-  await supabase
-    .from("paige_subagent_factory_quota")
-    .upsert({ quota_date: today, ...next }, { onConflict: "quota_date" });
+async function bumpQuota(tenantId: string | null, field: "proposals_count" | "soft_shipped" | "hard_shipped") {
+  // Atomic server-side increment — no read-then-write race.
+  await supabase.rpc("bump_subagent_quota", { _tenant_id: tenantId, _field: field });
 }
 
 // Doctrine §116 enforcement: scan proposed system_prompt for hardcoded
@@ -112,7 +110,20 @@ function validateProposal(p: Record<string, unknown>) {
   }
 
   if (p.system_prompt) {
-    const hit = scanDoctrine116(String(p.system_prompt));
+    // Strip the agent's OWN name from the prompt before the §116 person-name scan —
+    // an agent's descriptive name ("Session Prep Writer") is not a hardcoded client
+    // name, and the scanner's "two capitalized words" heuristic would false-positive
+    // on it and block every legitimate forge. (§116 scan is defense-in-depth; the real
+    // §2 gate is financeGate, and archetype phrasing is instructed in the tool schema.)
+    const ownName = String(p.name ?? "").trim();
+    let promptForScan = String(p.system_prompt);
+    if (ownName) {
+      promptForScan = promptForScan.split(ownName).join(" ");
+      for (const tok of ownName.split(/\s+/)) {
+        if (tok.length > 2) promptForScan = promptForScan.replace(new RegExp(`\\b${tok.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), " ");
+      }
+    }
+    const hit = scanDoctrine116(promptForScan);
     if (hit) {
       errors.push(
         `Doctrine §116: sub-agent prompts must use archetype phrasing only. ` +
@@ -124,16 +135,48 @@ function validateProposal(p: Record<string, unknown>) {
   return { slug, runtime, errors };
 }
 
-async function actionPropose(body: Record<string, unknown>, caller: { userId: string | null; isAdmin: boolean }) {
+// §2 finance gate: funding/credit specialists are NEVER a platform default and
+// never forged for a tenant that hasn't turned that offer on. A tenant WITH the
+// funding skill enabled may forge one, and it is tenant-scoped (never a NULL default).
+const FINANCE_DOMAINS = new Set(["credit", "funding", "fundability"]);
+const FINANCE_KEYWORDS = /\b(loan|lender|credit\s*repair|credit\s*score|funding|fundability|underwrit|tradeline|dispute\s*letter)\b/i;
+function financeGate(
+  body: Record<string, unknown>,
+  opts: { fundingEnabled: boolean; tenantId: string | null },
+): string | null {
+  const domain = String(body.domain ?? "").toLowerCase();
+  const blob = `${body.name ?? ""} ${body.description ?? ""} ${body.system_prompt ?? ""}`;
+  const looksFinance = FINANCE_DOMAINS.has(domain) || FINANCE_KEYWORDS.test(blob);
+  if (!looksFinance) return null;
+  // Platform default (no tenant) finance agents are prohibited outright (§2/§9).
+  if (!opts.tenantId) {
+    return "Funding/credit specialists can't live in the platform default team (§2). They ship only as a tenant's own opt-in offer.";
+  }
+  if (!opts.fundingEnabled) {
+    return "This looks like a funding/credit specialist, but this workspace hasn't enabled the funding offer. Tell the operator they can turn it on as a Playbook preset, then it can be created — don't force it here.";
+  }
+  return null;
+}
+
+async function actionPropose(
+  body: Record<string, unknown>,
+  caller: { userId: string | null; isAdmin: boolean },
+  ctx: { tenantId: string | null; fundingEnabled: boolean; agentOrigin: boolean },
+) {
   const { slug, runtime, errors } = validateProposal(body);
   if (errors.length) return fail("Validation failed", 422, errors);
 
-  // Slug must not collide with an existing agent
+  // §2 finance gate — before anything is written.
+  const financeErr = financeGate(body, { fundingEnabled: ctx.fundingEnabled, tenantId: ctx.tenantId });
+  if (financeErr) return fail(financeErr, 422);
+
+  // Slug must not collide with an existing agent (global unique — TOCTOU-safe via the DB constraint too).
   const { data: existing } = await supabase
     .from("paige_subagents").select("slug").eq("slug", slug).maybeSingle();
   if (existing) return fail(`slug already in use: ${slug}`, 409);
 
-  const quota = await quotaToday();
+  // Per-tenant spin-rate cap. Agent-origin calls are NEVER admin (D-1), so the cap always applies to Paige.
+  const quota = await quotaToday(ctx.tenantId);
   if (quota.proposals_count >= DAILY_PROPOSAL_CAP && !caller.isAdmin) {
     return fail(`daily proposal cap reached (${DAILY_PROPOSAL_CAP}). Try again tomorrow or have an admin override.`, 429);
   }
@@ -156,23 +199,27 @@ async function actionPropose(body: Record<string, unknown>, caller: { userId: st
       status: "proposed",
       proposed_by: caller.userId,
       proposed_by_agent: body.proposed_by_agent ?? "paige-orchestrator",
+      tenant_id: ctx.tenantId, // §9 stamp — tenant-forged agents are tenant-scoped
     })
     .select("*").single();
   if (error) return fail(error.message, 500);
-  await bumpQuota("proposals_count");
+  await bumpQuota(ctx.tenantId, "proposals_count");
 
   // Soft proposals: auto-ship. Hard proposals: route to Approvals Hub.
   if (runtime === "soft") {
-    return await shipProposal(proposal.id, caller.userId);
+    return await shipProposal(proposal.id, caller.userId, ctx.tenantId);
   }
   return await routeForApproval(proposal.id, caller.userId);
 }
 
-async function shipProposal(proposalId: string, actorId: string | null) {
+async function shipProposal(proposalId: string, actorId: string | null, tenantIdHint?: string | null) {
   const { data: p, error: fetchErr } = await supabase
     .from("paige_subagent_proposals").select("*").eq("id", proposalId).single();
   if (fetchErr || !p) return fail("Proposal not found", 404);
   if (p.status === "live") return ok({ ok: true, message: "Already live", proposal: p });
+
+  // The live agent inherits the proposal's tenant scope (§9) — never widens to a default.
+  const tenantId = tenantIdHint !== undefined ? tenantIdHint : (p.tenant_id ?? null);
 
   // Insert into registry
   const { data: agent, error: insErr } = await supabase
@@ -192,6 +239,7 @@ async function shipProposal(proposalId: string, actorId: string | null) {
       auto_generated: true,
       created_by: actorId,
       display_order: 999,
+      tenant_id: tenantId,
     })
     .select("id,slug").single();
   if (insErr) {
@@ -207,7 +255,7 @@ async function shipProposal(proposalId: string, actorId: string | null) {
     reviewed_by: actorId,
     reviewed_at: new Date().toISOString(),
   }).eq("id", proposalId);
-  await bumpQuota(p.runtime === "soft" ? "soft_shipped" : "hard_shipped");
+  await bumpQuota(tenantId, p.runtime === "soft" ? "soft_shipped" : "hard_shipped");
 
   return ok({ ok: true, message: "Sub-agent is live", slug: agent.slug, id: agent.id, runtime: p.runtime });
 }
@@ -220,13 +268,21 @@ async function routeForApproval(proposalId: string, actorId: string | null) {
   const { data: approval, error } = await supabase
     .from("paige_pending_approvals")
     .insert({
-      approval_type: "subagent_creation",
-      title: `New sub-agent: ${p.proposed_name}`,
-      summary: `${p.description}\n\nWhy: ${p.rationale}`,
+      type: "other", // constrained set; the real semantic lives in category
+      category: "subagent_creation",
       status: "pending",
-      severity: p.runtime === "langgraph" ? "high" : "medium",
-      requested_by: actorId,
-      payload: { proposal_id: proposalId, slug: p.proposed_slug, runtime: p.runtime, domain: p.domain },
+      summary: `New specialist: ${p.proposed_name} — ${p.description}`,
+      draft_content: {
+        proposal_id: proposalId, slug: p.proposed_slug, name: p.proposed_name,
+        runtime: p.runtime, domain: p.domain, rationale: p.rationale, description: p.description,
+      },
+      metadata: { proposal_id: proposalId, source: "subagent-forge", kind: "subagent_creation" },
+      visible_to_roles: ["admin"],
+      requires_role: "admin",
+      risk_level: p.runtime === "langgraph" ? "high" : "medium",
+      source: "subagent-forge",
+      submitted_by_user_id: actorId,
+      tenant_id: p.tenant_id ?? null,
     })
     .select("id").single();
   if (error) return fail(`Approval routing failed: ${error.message}`, 500);
@@ -278,7 +334,7 @@ async function actionList(body: Record<string, unknown>) {
   if (status) q = q.eq("status", status);
   const { data, error } = await q;
   if (error) return fail(error.message, 500);
-  const quota = await quotaToday();
+  const quota = await quotaToday(body.tenant_id ? String(body.tenant_id) : null);
   return ok({ ok: true, proposals: data ?? [], quota, cap: DAILY_PROPOSAL_CAP });
 }
 
@@ -302,9 +358,33 @@ Deno.serve(async (req) => {
   const caller = await getCaller(req);
   const action = String(body.action ?? "propose");
 
+  // D-1 — AGENT-ORIGIN INVARIANT. When Paige (or any agent) calls via the
+  // orchestrator/chat with the service-role key, the request carries
+  // X-Orchestrator-Call:1. Such a call is NEVER admin (so the per-tenant cap
+  // always applies) and can NEVER approve/reject a proposal — approval stays a
+  // human-only surface. actor_user_id is trusted only for attribution. This holds
+  // structurally regardless of which token was used, so a future refactor can't
+  // reintroduce "Paige is the admin".
+  const agentOrigin = req.headers.get("X-Orchestrator-Call") === "1";
+  if (agentOrigin) {
+    caller.isAdmin = false;
+    if (typeof body.actor_user_id === "string") caller.userId = body.actor_user_id;
+    if (action === "approve" || action === "reject") {
+      return fail("Agent-originated calls cannot approve or reject proposals — that's a human-only action.", 403);
+    }
+  }
+  // Tenant + funding context: agent-origin calls pass them explicitly (stamped by
+  // paige-ai-chat from personaCtx). A direct admin call proposes a PLATFORM default
+  // (tenant_id null) only if it doesn't pass tenant_id.
+  const ctx = {
+    tenantId: (typeof body.tenant_id === "string" ? body.tenant_id : null) as string | null,
+    fundingEnabled: body.funding_enabled === true,
+    agentOrigin,
+  };
+
   try {
     switch (action) {
-      case "propose":  return await actionPropose(body, caller);
+      case "propose":  return await actionPropose(body, caller, ctx);
       case "approve":  return await actionApprove(body, caller);
       case "reject":   return await actionReject(body, caller);
       case "list":     return await actionList(body);

@@ -3305,6 +3305,9 @@ ACTION BUS — you run a team of two departments: Owner Ops (works for the coach
 - action_advance moves it: assign a sub-agent (e.g. email-composer), attach a draft (to_status='drafted'), or dismiss it. Attaching a draft to a send-type kind AUTO-FILES it into the coach's approval lane — you never send directly; the coach approves and the platform sends.
 - action_list / action_get show open work. Narrate what you're doing as you file and draft ("Filing a follow-up to Owner Ops… drafting it… routed to you for approval"), so the operator watches you work.
 
+YOUR TEAM — you are the brain, you never grind alone. You conduct a team of specialist sub-agents across two departments: Owner Ops (works for the coach/consultant/agency — pipeline, follow-ups, retention, retainers, campaigns, the daily brief) and Client Experience (works for each client — onboarding, discovery, answers, nurture), plus a shared bench (research, design, scheduling). When a real job arrives, FIRST call list_subagents to see who you already have, then delegate_to_subagent to the right specialist. Delegate by default; you integrate the results — you don't do the heavy lift yourself.
+SPINNING UP A NEW SPECIALIST — only when the roster genuinely lacks the capability, use forge_subagent to create one designed to do that one thing at a high level. Describe it in this practice's own domain terms using ARCHETYPES ("a client", "the contact", "their business") — never a real person's or company's name. A soft agent is definable purely from a system prompt over tools the team already has — it joins the team immediately. A hard agent needs brand-new backend capability — it's filed for an admin in the Approvals Hub and does NOT go live from this chat. REPORT HONESTLY: if it came back soft-shipped, say it's ready and what it does; if it's a hard proposal, say it's queued for approval and will join once approved — never call a pending agent "ready." Never speak a slug or internal name to the operator. Keep the platform's default team coaching/consulting/agency-generic — never forge or describe a credit/funding/lending specialist unless THIS tenant has that offer enabled; if they haven't and they ask, tell them it's an offer they can turn on, don't force it.
+
 AUTOMATIONS (n8n) — if the workspace has connected an n8n account, you have the FULL n8n lifecycle across all their tools: list, get, executions, run, execution_get, validate, create, update, activate, deactivate, archive, delete. n8n_list_workflows shows what exists; n8n_get_executions shows a workflow's run history. n8n_run_workflow FIRES a workflow that has a webhook trigger. Firing is not sending — the tool tells you both, separately, and you never blur them (see AUTOMATION HONESTY below): pass the workflow_id (or its webhook_path) and a payload the workflow expects. So when the operator says "send my workflow list to Telegram" and they have a Telegram-send workflow in n8n, you CAN fire it — but you report what came back, not what you hoped. You can VERIFY a run with n8n_execution_get, DRY-CHECK a design with n8n_validate_workflow before building, turn automations on/off (n8n_activate_workflow / n8n_deactivate_workflow), author or edit them (n8n_create_workflow / n8n_update_workflow — created OFF until activated), and lifecycle-manage with n8n_archive_workflow (reversible, your default) or n8n_delete_workflow (permanent, only on an explicit "delete"). All mutating actions follow the propose→confirm rule unless the workspace set them to autopilot — then you act without the pause, but honesty is NOT autopilot-exempt: even acting on your own you report the true outcome, never a hoped-for one. Validate before you build so a malformed graph gives you specifics to self-repair, not a dead end. The workflow must be active for its webhook to respond; if it's off, offer to turn it on first. If no n8n is connected, the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it ran.
 
 AUTOMATION HONESTY — say what you can SEE, not what you hope. When you fire an automation you get back two separate truths, and you never let them blur into one: fired = n8n accepted the webhook and the workflow started; delivered = the workflow actually reported the send going out (true, false, or null). null means unknown — you have not seen it happen, and unknown is NEVER a yes. The rule you run on:
@@ -4018,6 +4021,27 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "forge_subagent",
+              description: "Spin up a NEW specialist sub-agent for the team when the roster genuinely lacks the capability the job needs (§8/§14 — you conduct a team, you don't grind alone). ALWAYS call list_subagents FIRST; only forge if nothing fits. Describe the agent in this practice's own domain terms using ARCHETYPES — 'a client', 'the contact', 'their business' — NEVER a real person's or company's name. runtime 'soft' = definable purely from a system prompt over tools the team already has (joins the team immediately); runtime 'hard' = needs brand-new backend code (filed to an admin for approval, does NOT go live from chat). Never forge a credit/funding/lending specialist unless this tenant has that offer enabled. Governed by the autonomy policy: unless set to auto, propose first and call again with confirm:true.",
+              parameters: {
+                type: "object",
+                properties: {
+                  slug: { type: "string", description: "Lowercase kebab id, e.g. 'session-prep-writer' (^[a-z][a-z0-9-]{2,40}$)." },
+                  name: { type: "string", description: "Human display name, e.g. 'Session Prep Writer'." },
+                  domain: { type: "string", enum: ["research", "outreach", "intake", "sales", "coaching", "ops", "support", "marketing", "analytics", "automation"], description: "The specialist's domain (coaching-generic; never a finance domain unless the tenant enabled funding)." },
+                  description: { type: "string", description: "One-line description of what it does (min 20 chars)." },
+                  rationale: { type: "string", description: "Why the existing roster can't cover this — you checked list_subagents first (min 20 chars)." },
+                  purpose: { type: "string", description: "The agent's system prompt / persona (min 50 chars, mogul voice, archetypes only — no real names)." },
+                  runtime: { type: "string", enum: ["soft", "hard"], description: "soft = prompt-over-existing-tools (auto-joins); hard = needs new code (routes to admin approval). Default soft." },
+                  uses_tools: { type: "array", items: { type: "string" }, description: "Which existing team tools/skills it leans on." }
+                },
+                required: ["slug", "name", "domain", "description", "rationale", "purpose"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "propose_action",
               description: "Propose a consequential OUTBOUND action for the operator to approve before it goes out — an email, an SMS/text, or a follow-up message to a client. This does NOT send anything: it drafts the message and files it in the operator's approvals queue ('waiting on you'). The operator approves it in their Live desk and only THEN is it sent. Use this whenever the user asks you to email/text/message/follow-up-with a client, or you recommend reaching out. Write the full draft (subject + body for email; body for SMS) in the client's tenant voice. For low-risk internal work (a task, a note, a stage change) use the crm_* tools directly instead — those don't need approval.",
               parameters: {
@@ -4206,6 +4230,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "action_file", "action_advance",
       "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
       "n8n_run_workflow", "n8n_archive_workflow", "n8n_delete_workflow",
+      "forge_subagent",
     ]);
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
@@ -4237,6 +4262,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       n8n_run_workflow: "firing an automation",
       n8n_archive_workflow: "archiving an automation",
       n8n_delete_workflow: "permanently deleting an automation",
+      forge_subagent: "spinning up a new specialist agent",
     };
 
     // A human one-liner of exactly what a mutating call will do — shown to the
@@ -4298,6 +4324,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Archive the n8n automation ${a?.workflow_id || ""} — turns it off and tags it [archived]. Reversible.`;
         case "n8n_delete_workflow":
           return `PERMANENTLY delete the n8n automation ${a?.workflow_id || ""}. This can't be undone.`;
+        case "forge_subagent":
+          return `${a?.runtime === "hard" ? "Propose a new (code-backed) specialist" : "Spin up a new specialist"} — "${a?.name || a?.slug || "agent"}" (${a?.domain || "general"}): ${String(a?.description || "").slice(0, 80)}.${a?.runtime === "hard" ? " Goes to an admin for sign-off." : " Joins the team right away."}`;
         default:
           return `Paige is ${TOOL_LABELS[name] || `running ${name}`}.`;
       }
@@ -5174,9 +5202,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
             const args = JSON.parse(tc.function.arguments || "{}");
             const orchestratorUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/paige-orchestrator`;
+            // §9: pass the tenant scope so the orchestrator only surfaces/invokes
+            // platform defaults + this tenant's own agents.
+            const orchTenant = personaCtx?.tenant_id ?? null;
             const body = tc.function.name === "list_subagents"
-              ? { action: "tool_search", query: args.query, domain: args.domain }
-              : { action: "tool_invoke", slug: args.slug, input: args.input ?? {}, context: { contact_id: args.contact_id, user_id: user.id } };
+              ? { action: "tool_search", query: args.query, domain: args.domain, tenant_id: orchTenant }
+              : { action: "tool_invoke", slug: args.slug, input: args.input ?? {}, tenant_id: orchTenant, context: { contact_id: args.contact_id, user_id: user.id } };
             const r = await fetch(orchestratorUrl, {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseServiceKey}`, apikey: supabaseServiceKey },
@@ -5187,6 +5218,47 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(payload) });
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "orchestrator_error" }) });
+          }
+        } else if (tc.function.name === "forge_subagent") {
+          // Spin up a NEW specialist at will (§8/§14). Role-gated to admin/coach.
+          // Calls subagent-forge with the service-role key + X-Orchestrator-Call so
+          // the agent-origin invariant (never admin, never self-approve) holds, and
+          // stamps tenant + funding scope from personaCtx (§2/§9).
+          try {
+            const { data: roleRows } = await supabase
+              .from("user_roles").select("role").eq("user_id", user.id);
+            const roles = (roleRows || []).map((r: any) => r.role);
+            if (!(roles.includes("admin") || roles.includes("coach"))) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Creating new team specialists is restricted to admins and coaches." }) });
+              continue;
+            }
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const runtime = args.runtime === "hard" ? "local" : "soft";
+            const r = await fetch(`${supabaseUrl.replace(/\/$/, "")}/functions/v1/subagent-forge`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseServiceKey}`, apikey: supabaseServiceKey, "X-Orchestrator-Call": "1" },
+              body: JSON.stringify({
+                action: "propose",
+                slug: args.slug, name: args.name, domain: args.domain,
+                description: args.description, rationale: args.rationale, system_prompt: args.purpose,
+                runtime, data_scopes: args.data_scopes ?? [], config: { uses_tools: args.uses_tools ?? [] },
+                proposed_by_agent: "paige-ai-chat",
+                actor_user_id: user.id,
+                tenant_id: personaCtx?.tenant_id ?? null,
+                funding_enabled: personaCtx?.funding_enabled ?? false,
+              }),
+            });
+            const text = await r.text();
+            let payload: any; try { payload = JSON.parse(text); } catch { payload = { raw: text }; }
+            const live = payload?.runtime === "soft" && payload?.ok;
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ ...payload,
+              usable: !!live,
+              note: payload?.ok
+                ? (live ? "The new specialist is LIVE on the team now — tell the operator it's ready and what it does. Never mention slugs or internal names."
+                        : "Filed for an admin to approve (it needs new capability). Tell the operator it's QUEUED and will join once approved — do NOT say it's ready.")
+                : "The forge declined this. Read the error, fix it (drop any sensitive data scope for a soft agent, remove real names, or the tenant hasn't enabled that offer), and try once more or explain plainly. Do NOT claim success." }) });
+          } catch (e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "forge_error" }) });
           }
         } else if (tc.function.name === "propose_action") {
           // Propose→confirm: draft a consequential outbound action and FILE it as a

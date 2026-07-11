@@ -52,11 +52,13 @@ async function getCallerUserId(req: Request): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
-async function searchSubagents(query?: string, domain?: string) {
+async function searchSubagents(query?: string, domain?: string, tenantId?: string | null) {
   let q = supabase
     .from("paige_subagents")
     .select("slug,name,domain,description,runtime,triggers,display_order")
     .eq("enabled", true)
+    // §9 isolation: platform defaults (tenant_id null) + this tenant's own agents only.
+    .or(`tenant_id.is.null${tenantId ? `,tenant_id.eq.${tenantId}` : ""}`)
     .order("display_order");
 
   if (domain) q = q.ilike("domain", `%${domain}%`);
@@ -202,10 +204,12 @@ Deno.serve(async (req) => {
 
   const callerId = await getCallerUserId(req);
   const ctx = { ...payload.context, user_id: payload.context?.user_id ?? callerId ?? undefined };
+  // §9: tenant scope for who Paige can see/invoke. paige-ai-chat passes it from personaCtx.
+  const tenantId = (payload as { tenant_id?: string | null }).tenant_id ?? null;
 
   try {
     if (payload.action === "list_subagents" || payload.action === "tool_search") {
-      const matches = await searchSubagents(payload.query, payload.domain);
+      const matches = await searchSubagents(payload.query, payload.domain, tenantId);
       return ok({ ok: true, matches });
     }
 
@@ -216,8 +220,10 @@ Deno.serve(async (req) => {
 
     const { data: agent, error } = await supabase
       .from("paige_subagents")
-      .select("slug,name,runtime,edge_function,langgraph_graph,enabled,system_prompt,config")
+      .select("slug,name,runtime,edge_function,langgraph_graph,enabled,system_prompt,config,tenant_id")
       .eq("slug", payload.slug)
+      // §9 isolation: only a platform default or THIS tenant's own agent is invocable.
+      .or(`tenant_id.is.null${tenantId ? `,tenant_id.eq.${tenantId}` : ""}`)
       .maybeSingle();
     if (error) throw error;
     if (!agent) return fail(`Unknown sub-agent: ${payload.slug}`, 404);
