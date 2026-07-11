@@ -3329,6 +3329,12 @@ BE A PROACTIVE ASSISTANT, NOT AN ORDER-TAKER. Never just execute the literal req
 2. CONFIRM THE RESULT. Once the action actually commits, tell the operator plainly what you did in one line ("Done — created the 'Enterprise Sales' pipeline with 4 stages"). Never leave them guessing whether it happened. But for anything that SENDS (SMS/email/outbound via an automation), this line is bound by AUTOMATION HONESTY: report fired vs delivered, and only say "sent" when delivered:true — never off a bare fire.
 3. PROBE, THEN DRIVE. Then surface the obvious next moves as a short, tight menu of questions (not a wall of text).
 
+THE INNOVATIVE ASSISTANT — probe for specifics, weigh the client's experience, propose the better idea. You serve the human team; you don't silently guess what only a human knows, and you never hand over half-finished work full of [PLACEHOLDER]s as if it were done.
+- PROBE for what you can't know; use what you can. Before you produce or (especially) SEND something, resolve the concrete specifics: the website/domain, which email it comes from (the sending identity), the real names of the people involved (the client, the coach, the staff), the actual links, dates, and the offer. Pull these from the contact/brand/Playbook data you can see; ASK the human for the rest in one tight grouped set of questions. If a draft still has unresolved placeholders, it is NOT done — either fill them from real data or ask. Do not present bracketed filler as finished work.
+- WEIGH THE CLIENT IMPACT. Think about how the thing actually lands on the recipient — clarity, tone, how much effort it asks of them, whether it feels personal or generic. Most humans can't see that in advance; you can, so flag a better call when you spot one.
+- BE THE INNOVATIVE ONE — propose, don't just execute. Bring the idea they didn't ask for but would want: "Want me to come up with the angle?" · "Should this be a document, or a landing page so it presents better?" · "I can make it a form so the moment they fill it out, the answers come straight to you." · "What about a short questionnaire first?" · "Here's what I'd do — what do you think?" Offer the sharper format and the next move, tuned to what you were asked — then, on their yes, BUILD it with your team (design-studio for pages/visuals, forge a specialist, the automation fabric for a form that routes answers back, a document, whatever fits).
+- GROW THE PRACTICE'S BRAIN — with a yes. When you or an agent learn something reusable — a repeatable play, a domain fact, an answer to a recurring question — OFFER to keep it: "Want me to save this to your knowledge base?" and on their yes use save_to_knowledge_base (it's embedded, searchable, and stays yours). If it's a repeatable capability, offer to stand it up as a specialist (forge_subagent). Always confirmation-gated; tenant-scoped; coaching-generic unless this tenant's offer includes the topic.
+
 NEW CLIENT ONBOARDING — when a contact is added, proactively ask (grouped, 3–4 crisp questions, only those that apply):
 - OWNERSHIP: "Want me to assign her to someone — a coach, broker, admin, or sales rep?" (resolve the person, then set the assignment.)
 - PROGRAM / OFFER: "Which program or offer is she here for?" Lead with any the tenant has flagged as a priority or current campaign, if you know them. If programs/products are loaded, read what fits this client and recommend.
@@ -4042,6 +4048,24 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "save_to_knowledge_base",
+              description: "Save a piece of reusable knowledge into THIS tenant's private knowledge base so the practice compounds and Paige can draw on it later. Use when you (or an agent) learn something worth keeping — a repeatable play, a domain fact, an answer to a recurring question, a process. ALWAYS offer it as a suggestion first ('want me to save this to your knowledge base?') and only save on the human's yes, unless the workspace set this to auto. It is embedded and searchable, tenant-scoped (never shared across tenants or to the platform default). Keep it coaching-generic unless this tenant's offer includes the topic.",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string", description: "Short title for the knowledge entry." },
+                  content: { type: "string", description: "The full knowledge text to store (the play, fact, process, or answer)." },
+                  summary: { type: "string", description: "Optional one-line summary." },
+                  category: { type: "string", description: "Optional category, e.g. 'onboarding', 'objection-handling', 'process'." },
+                  tags: { type: "array", items: { type: "string" }, description: "Optional tags." }
+                },
+                required: ["title", "content"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "propose_action",
               description: "Propose a consequential OUTBOUND action for the operator to approve before it goes out — an email, an SMS/text, or a follow-up message to a client. This does NOT send anything: it drafts the message and files it in the operator's approvals queue ('waiting on you'). The operator approves it in their Live desk and only THEN is it sent. Use this whenever the user asks you to email/text/message/follow-up-with a client, or you recommend reaching out. Write the full draft (subject + body for email; body for SMS) in the client's tenant voice. For low-risk internal work (a task, a note, a stage change) use the crm_* tools directly instead — those don't need approval.",
               parameters: {
@@ -4230,7 +4254,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "action_file", "action_advance",
       "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
       "n8n_run_workflow", "n8n_archive_workflow", "n8n_delete_workflow",
-      "forge_subagent",
+      "forge_subagent", "save_to_knowledge_base",
     ]);
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
@@ -4263,6 +4287,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       n8n_archive_workflow: "archiving an automation",
       n8n_delete_workflow: "permanently deleting an automation",
       forge_subagent: "spinning up a new specialist agent",
+      save_to_knowledge_base: "saving this to your knowledge base",
     };
 
     // A human one-liner of exactly what a mutating call will do — shown to the
@@ -4326,6 +4351,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `PERMANENTLY delete the n8n automation ${a?.workflow_id || ""}. This can't be undone.`;
         case "forge_subagent":
           return `${a?.runtime === "hard" ? "Propose a new (code-backed) specialist" : "Spin up a new specialist"} — "${a?.name || a?.slug || "agent"}" (${a?.domain || "general"}): ${String(a?.description || "").slice(0, 80)}.${a?.runtime === "hard" ? " Goes to an admin for sign-off." : " Joins the team right away."}`;
+        case "save_to_knowledge_base":
+          return `Save "${a?.title || "this"}" to your knowledge base so Paige can draw on it later.`;
         default:
           return `Paige is ${TOOL_LABELS[name] || `running ${name}`}.`;
       }
@@ -5259,6 +5286,28 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 : "The forge declined this. Read the error, fix it (drop any sensitive data scope for a soft agent, remove real names, or the tenant hasn't enabled that offer), and try once more or explain plainly. Do NOT claim success." }) });
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "forge_error" }) });
+          }
+        } else if (tc.function.name === "save_to_knowledge_base") {
+          // Grow the tenant's brain (§15). Calls kb-ingest-doc with the CALLER's JWT
+          // so the entry is embedded + tenant-scoped via RLS (never cross-tenant).
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const kbResp = await fetch(`${supabaseUrl}/functions/v1/kb-ingest-doc`, {
+              method: "POST",
+              headers: { Authorization: authHeader, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: args.title, content: args.content, summary: args.summary,
+                category: args.category, tags: args.tags, source: "paste",
+              }),
+            });
+            const kbText = await kbResp.text();
+            let kbData: any; try { kbData = JSON.parse(kbText); } catch { kbData = { raw: kbText }; }
+            result = kbResp.ok
+              ? { success: true, ...kbData, note: "Saved to the knowledge base and embedded — it's searchable now. Tell the operator it's stored; never mention internal table/function names." }
+              : { success: false, ...kbData, note: "Couldn't save to the knowledge base. Read the error and explain plainly." };
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
+          } catch (e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "kb_error" }) });
           }
         } else if (tc.function.name === "propose_action") {
           // Propose→confirm: draft a consequential outbound action and FILE it as a
