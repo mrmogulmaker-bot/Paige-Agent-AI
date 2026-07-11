@@ -558,9 +558,10 @@ function buildIcs(o: { uid: string; startMs: number; endMs: number; title: strin
     "END:VEVENT", "END:VCALENDAR",
   ].join("\r\n");
 }
-async function sendEmail(to: string, subject: string, html: string, ics?: string): Promise<boolean> {
+async function sendEmail(to: string, subject: string, html: string, ics?: string, opts?: { from?: string; replyTo?: string }): Promise<boolean> {
   if (!RESEND_KEY) return false;
-  const body: Record<string, unknown> = { from: EMAIL_FROM, to: [to], subject, html };
+  const body: Record<string, unknown> = { from: opts?.from || EMAIL_FROM, to: [to], subject, html };
+  if (opts?.replyTo) body.reply_to = opts.replyTo;
   if (ics) body.attachments = [{ filename: "invite.ics", content: b64utf8(ics) }];
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -922,9 +923,31 @@ Deno.serve(async (req) => {
           withLine = (await resolveHostNames(admin, hostsToNotify)) || withLine;
         }
 
+        // §6/§9: the guest is the tenant's CLIENT, so the confirmation wears the
+        // tenant's own sending identity (their {slug}@ address / verified domain),
+        // not the platform calendar@. Host-notify below stays on the platform
+        // address (staff-facing). Falls back to EMAIL_FROM if unresolved.
+        let guestSender: { from?: string; replyTo?: string } | undefined;
+        let guestSenderAccount = "platform";
+        if (host.confirmGuest && host.tenant_id) {
+          try {
+            const { data: ident } = await admin.rpc("tenant_sender_identity", { _tenant_id: host.tenant_id });
+            const fromAddr = (ident as { from_address?: string } | null)?.from_address;
+            const fromName = (ident as { from_name?: string } | null)?.from_name || brand.name;
+            if (fromAddr) {
+              const cleanName = String(fromName).replace(/[<>",\r\n]/g, " ").replace(/\s+/g, " ").trim();
+              guestSender = {
+                from: cleanName ? `${cleanName} <${fromAddr}>` : fromAddr,
+                replyTo: (ident as { reply_to?: string } | null)?.reply_to || undefined,
+              };
+              guestSenderAccount = "tenant";
+            }
+          } catch { /* keep platform fallback */ }
+        }
+
         const guestOk = host.confirmGuest
           ? await sendEmail(email, `Confirmed: ${title} · ${whenLabel}`,
-              guestEmailHtml(brand.name, brand.accent, title, whenLabel, loc, withLine, mUrl), ics)
+              guestEmailHtml(brand.name, brand.accent, title, whenLabel, loc, withLine, mUrl), ics, guestSender)
           : false;
 
         const hostSendResults: { email: string; ok: boolean }[] = [];
@@ -937,7 +960,7 @@ Deno.serve(async (req) => {
           }
         }
         await admin.from("email_send_log").insert([
-          { template_name: "booking_confirmation", recipient_email: email, status: guestOk ? "sent" : "skipped", sender_account: "platform", metadata: { via: "public-booking", slug } },
+          { template_name: "booking_confirmation", recipient_email: email, status: guestOk ? "sent" : "skipped", sender_account: guestSenderAccount, metadata: { via: "public-booking", slug } },
           ...hostSendResults.map((r) => ({ template_name: "booking_host_notify", recipient_email: r.email, status: r.ok ? "sent" : "skipped", sender_account: "platform", metadata: { via: "public-booking", slug } })),
         ]).then(() => {}, () => {});
 

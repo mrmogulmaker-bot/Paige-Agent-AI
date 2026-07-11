@@ -111,13 +111,31 @@ Deno.serve(async (req) => {
   const joinUrl = `${PUBLIC_BASE}/join/${token}`;
   const tenantName = tenant?.name || "Your workspace";
 
+  // §6/§9: send from the TENANT's own sending identity (their {slug}@ address or a
+  // verified custom domain), not the platform's hello@ — so the client sees the
+  // coach's brand end-to-end. Falls back to the tenant-name overlay on the platform
+  // address if the identity can't be resolved.
+  let fromHeader = senderFrom(tenantName, EMAIL_FROM);
+  let replyTo: string | undefined;
+  try {
+    const { data: ident } = await admin.rpc("tenant_sender_identity", { _tenant_id: tok.tenant_id });
+    const fromAddr = (ident as { from_address?: string } | null)?.from_address;
+    const fromName = (ident as { from_name?: string } | null)?.from_name || tenantName;
+    if (fromAddr) {
+      const cleanName = String(fromName).replace(/[<>",\r\n]/g, " ").replace(/\s+/g, " ").trim();
+      fromHeader = cleanName ? `${cleanName} <${fromAddr}>` : fromAddr;
+      replyTo = (ident as { reply_to?: string } | null)?.reply_to || undefined;
+    }
+  } catch { /* keep the platform-address fallback */ }
+
   if (!RESEND_KEY) return json({ ok: true, join_url: joinUrl, emailed: false });
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: senderFrom(tenantName, EMAIL_FROM),
+        from: fromHeader,
+        ...(replyTo ? { reply_to: replyTo } : {}),
         to: [recipient],
         subject: `${tenantName} invited you to your client portal`,
         html: inviteHtml(tenantName, accent, brand.logo_url ?? null, joinUrl, firstName),
