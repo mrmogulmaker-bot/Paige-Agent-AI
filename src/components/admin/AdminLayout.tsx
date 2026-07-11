@@ -253,11 +253,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     : (adminNavItems.find((i) => isActive(i.href))?.label ?? "Admin");
 
   return (
-    <div className="min-h-dvh flex flex-col bg-background overflow-x-hidden">
+    <div className="h-dvh flex flex-col bg-background overflow-hidden">
       {/* Banner intentionally omitted on /admin — it's redundant when already on
           the admin dashboard. AppShell still renders it inside the client view. */}
       {/* Top bar — Pipedrive-style horizontal CRM nav */}
-      <header className="sticky top-0 z-40 bg-primary text-primary-foreground border-b border-sidebar-border">
+      <header className="shrink-0 z-40 bg-primary text-primary-foreground border-b border-sidebar-border">
         {/* Row 1: brand + utilities */}
         <div className="flex items-center justify-between gap-3 px-3 md:px-6 h-14">
           <Link to={godMode ? "/admin/platform/tenants" : "/admin"} className="flex items-center gap-2 min-w-0">
