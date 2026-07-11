@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageShell, PageHeader, SectionCard, StatePill } from "@/components/ui/page";
-import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe, CalendarCheck, Plug } from "lucide-react";
+import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe, CalendarCheck, Plug, Bot } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
 import { CalendarConnectorsPanel } from "@/components/admin/settings/CalendarConnectorsPanel";
@@ -20,6 +20,7 @@ import { WorkspaceSettingsPanel } from "@/components/admin/WorkspaceSettingsPane
 import { StorefrontPanel } from "@/components/admin/StorefrontPanel";
 import { EmailDomainsPanel } from "@/components/admin/EmailDomainsPanel";
 import { EmailTemplatesPanel } from "@/components/admin/settings/EmailTemplatesPanel";
+import { PaigeAutonomyPanel } from "@/components/admin/settings/PaigeAutonomyPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -103,6 +104,9 @@ export function AdminSettingsHub() {
           <TabsTrigger value="pipelines" className="gap-2">
             <KanbanSquare className="w-4 h-4" /> Pipelines
           </TabsTrigger>
+          <TabsTrigger value="paige" className="gap-2">
+            <Bot className="w-4 h-4" /> Paige Autonomy
+          </TabsTrigger>
           <TabsTrigger value="platform" className="gap-2">
             <SettingsIcon className="w-4 h-4" /> Platform
           </TabsTrigger>
@@ -164,6 +168,10 @@ export function AdminSettingsHub() {
               </Button>
             </div>
           </SectionCard>
+        </TabsContent>
+
+        <TabsContent value="paige" className="space-y-4">
+          <PaigeAutonomyPanel />
         </TabsContent>
 
         <TabsContent value="platform" className="space-y-4">
