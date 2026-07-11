@@ -95,16 +95,16 @@ async function featherlessChat(body: OpenAIStyleBody, model: string): Promise<an
       body: JSON.stringify({
         model,
         messages: body.messages,
-        max_tokens: body.max_tokens ?? 1024,
+        max_tokens: body.max_tokens ?? 2048,
         temperature: body.temperature ?? 0.4,
         ...(body.response_format?.type && /json/.test(body.response_format.type)
           ? { response_format: { type: "json_object" } } : {}),
       }),
       signal: ctrl.signal,
     });
-    clearTimeout(t);
-    if (!resp.ok) { console.warn(`model-router: featherless ${resp.status}, falling back to Claude`); return null; }
+    if (!resp.ok) { clearTimeout(t); console.warn(`model-router: featherless ${resp.status}, falling back to Claude`); return null; }
     const data = await resp.json();
+    clearTimeout(t);
     if (!data?.choices?.[0]?.message) return null;
     return data;
   } catch (e) {

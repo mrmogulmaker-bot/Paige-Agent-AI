@@ -3263,9 +3263,26 @@ SUPPORT & FEEDBACK AWARENESS
       console.warn("[paige-ai-chat] role lookup failed:", e);
     }
     if (isOperator) {
+      // Who is Paige actually talking to? Load the operator's own profile so she greets
+      // and refers to them by name — a named teammate, not a generic chat box.
+      let operatorName = "";
+      let operatorFirst = "";
+      try {
+        const { data: op } = await supabase
+          .from("profiles")
+          .select("first_name, last_name, full_name")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        operatorFirst = (op?.first_name ?? "").trim();
+        operatorName = [op?.first_name, op?.last_name].filter(Boolean).join(" ").trim()
+          || (op?.full_name ?? "").trim();
+      } catch (_e) { /* name is a nicety, never block */ }
+      const whoLine = operatorName
+        ? `You are speaking with ${operatorName}${operatorFirst ? ` — address them as ${operatorFirst}` : ""}, a member of ${personaCtx?.tenant_name ?? "this"} team. This is a named teammate, not an anonymous user: greet and refer to them by their first name naturally, and remember it for this conversation.\n\n`
+        : "";
       aiMessages.push({
         role: "system",
-        content:
+        content: whoLine +
 `=== CRM OPERATOR MODE ===
 The current user is an ADMIN or COACH operating the Paige CRM. You have full read access to every contact, deal, task, and activity in the system through the crm_* tools. Use them proactively whenever the operator asks anything that requires looking across the customer base — for example:
 - "Who are my new leads this week?" → crm_search_contacts with lifecycle_stage=lead, sort by created_at desc.
@@ -3520,7 +3537,7 @@ ACTION BUS — you run a team of two departments: Owner Ops (works for the coach
             type: "function",
             function: {
               name: "crm_create_contact",
-              description: "Admin/coach only. Add a new contact (client) to the CRM. Use when the operator asks you to add someone. Executes immediately — a contact is internal data, not an outbound message. Returns the new contact id. If a contact with the same email already exists for this operator, returns that existing id instead of creating a duplicate.",
+              description: "Admin/coach only. Add a new contact (client) to the CRM. BEFORE calling this, confirm the details with the operator in one short line — e.g. \"Adding Jacqueline Turner, +1-310-661-1679 — want me to add her?\" — and only call the tool once they say yes. Missing fields like email are fine; add what you have and note they can fill the rest later. Returns the new contact id; a matching email for this operator returns the existing id instead of duplicating.",
               parameters: {
                 type: "object",
                 properties: {
@@ -3530,7 +3547,7 @@ ACTION BUS — you run a team of two departments: Owner Ops (works for the coach
                   phone: { type: "string" },
                   entity_name: { type: "string", description: "Company / business name." },
                   title: { type: "string", description: "Job title / role." },
-                  lifecycle_stage: { type: "string", enum: ["lead","mql","sql","opportunity","customer","evangelist","churned","archived"], description: "Defaults to lead." },
+                  lifecycle_stage: { type: "string", enum: ["new_lead","qualified","nurturing","hot_lead","negotiating","won","client_active","client_paused","client_churned","client_funded","client_alumni"], description: "Defaults to new_lead." },
                   primary_offer: { type: "string", description: "The offer/program this contact is being worked for." },
                   notes: { type: "string", description: "Freeform notes to seed the contact with." },
                   tags: { type: "array", items: { type: "string" } },
@@ -4370,6 +4387,7 @@ ACTION BUS — you run a team of two departments: Owner Ops (works for the coach
                 p_notes: args.notes ?? null,
                 p_assigned_coach_user_id: args.assigned_coach_user_id ?? null,
                 p_tenant_id: personaCtx?.tenant_id ?? null,
+                p_created_by: user.id, // auth.uid() is null in this call path; pass the verified operator
               });
               if (error) throw error;
               result = { success: true, contact_id: newId };
