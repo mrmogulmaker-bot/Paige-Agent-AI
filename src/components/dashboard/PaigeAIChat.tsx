@@ -17,6 +17,7 @@ import { getCurrentPageName } from "@/lib/pageContext";
 import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
 import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
 import { extractEntityDiagram } from "@/lib/entityDiagram";
+import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { usePlaybook } from "@/lib/playbook";
 import type { QuickChip } from "@/components/paige/commandCenterTypes";
 
@@ -420,9 +421,9 @@ const PaigeAIChatInner = ({
                     const { before, diagram, after } = extractEntityDiagram(message.content);
                     return (
                       <>
-                        {before && <p className="text-sm text-foreground whitespace-pre-wrap">{before}</p>}
+                        {before && <MarkdownMessage content={before} />}
                         {diagram && <EntityDiagramCard data={diagram} />}
-                        {after && <p className="text-sm text-foreground whitespace-pre-wrap">{after}</p>}
+                        {after && <MarkdownMessage content={after} />}
                         {message.queued?.map((q) => (
                           <div key={q.id} className="mt-2 flex items-start gap-2 rounded-md border border-accent/40 bg-accent/5 p-2.5">
                             <Clock className="mt-0.5 h-4 w-4 shrink-0 text-accent" />

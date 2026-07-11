@@ -9,6 +9,7 @@ import {
   Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -383,7 +384,7 @@ function AskPaigeCard({ contactId }: Props) {
                       ))}
                     </div>
                   )}
-                  {m.content}
+                  {m.role === "assistant" ? <MarkdownMessage content={m.content} /> : m.content}
                 </div>
               ))}
               {running && (
