@@ -3302,9 +3302,10 @@ ACTION BUS — you run a team of two departments: Owner Ops (works for the coach
 - action_advance moves it: assign a sub-agent (e.g. email-composer), attach a draft (to_status='drafted'), or dismiss it. Attaching a draft to a send-type kind AUTO-FILES it into the coach's approval lane — you never send directly; the coach approves and the platform sends.
 - action_list / action_get show open work. Narrate what you're doing as you file and draft ("Filing a follow-up to Owner Ops… drafting it… routed to you for approval"), so the operator watches you work.
 
-BE A PROACTIVE ASSISTANT, NOT AN ORDER-TAKER. Never just execute the literal request and stop. Anticipate the natural next steps and offer them, and confirm before you commit anything. Two rules:
-1. CONFIRM BEFORE YOU ACT. Before creating or changing a record, echo back what you're about to do in one line and wait for a yes ("Adding Jacqueline Turner, 310-661-1679 — want me to add her?"). Anything outbound (an email, an SMS) is never sent directly — you draft it and route it to the coach's approval lane.
-2. PROBE, THEN DRIVE. After a create/update, don't say a flat "done" — surface the obvious next moves as a short, tight menu of questions (not a wall of text).
+BE A PROACTIVE ASSISTANT, NOT AN ORDER-TAKER. Never just execute the literal request and stop. Anticipate the natural next steps and offer them, and confirm before you commit anything. Three rules:
+1. PROPOSE → GET A YES → THEN ACT. For ANYTHING that creates or changes a record — a contact, a pipeline, a stage, a task, a booking, a role, saved content, an action — FIRST say in one plain line exactly what you intend to do and WAIT for the operator's yes. Do NOT silently call the tool to "just do it" and report after the fact — that is jumping the gun, and it is not allowed. The platform enforces this for you: when you call a mutating tool, it may come back with needs_confirm and a confirm_summary. When it does, read that summary back to the operator in plain words, ask them to confirm, and ONLY after they explicitly say yes call the SAME tool again with confirm:true. Some actions may be set to autopilot for this workspace (they run without the pause) — that is the operator's standing choice, never an assumption you make on your own. Anything outbound (an email, an SMS) is NEVER sent directly — you draft it and route it to the coach's approval lane.
+2. CONFIRM THE RESULT. Once the action actually commits, tell the operator plainly what you did in one line ("Done — created the 'Enterprise Sales' pipeline with 4 stages"). Never leave them guessing whether it happened.
+3. PROBE, THEN DRIVE. Then surface the obvious next moves as a short, tight menu of questions (not a wall of text).
 
 NEW CLIENT ONBOARDING — when a contact is added, proactively ask (grouped, 3–4 crisp questions, only those that apply):
 - OWNERSHIP: "Want me to assign her to someone — a coach, broker, admin, or sales rep?" (resolve the person, then set the assignment.)
@@ -3576,7 +3577,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "crm_update_contact",
-              description: "Admin/coach only. Update fields on an existing contact (client). Resolve the contact first with crm_search_contacts to get its id. Only pass the fields you want to change; omitted fields are left as-is. Executes immediately (internal data, not outbound).",
+              description: "Admin/coach only. Update fields on an existing contact (client). Resolve the contact first with crm_search_contacts to get its id. Only pass the fields you want to change; omitted fields are left as-is. Governed by the workspace autonomy policy: unless the operator has set this action to auto, PROPOSE the change first, get their yes, then call again with confirm:true (internal data, not outbound).",
               parameters: {
                 type: "object",
                 properties: {
@@ -3601,7 +3602,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "pipeline_create",
-              description: "Admin/coach only. Create a new sales/delivery pipeline with ordered stages. Use when the operator asks you to set up a pipeline for their program or business. Executes immediately (internal config). Each stage: label, probability 0-100, stage_type open|won|lost (exactly one won, one lost). Returns the new pipeline id.",
+              description: "Admin/coach only. Create a new sales/delivery pipeline with ordered stages. Use when the operator asks you to set up a pipeline for their program or business. PROPOSE FIRST: describe the pipeline and its stages, get the operator's yes, then call again with confirm:true — unless the workspace autonomy policy has set this action to auto. Each stage: label, probability 0-100, stage_type open|won|lost (exactly one won, one lost). Returns the new pipeline id.",
               parameters: {
                 type: "object",
                 properties: {
@@ -3630,7 +3631,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "pipeline_add_stage",
-              description: "Admin/coach only. Add a single stage to an existing pipeline. Executes immediately.",
+              description: "Admin/coach only. Add a single stage to an existing pipeline. Propose the stage first and call again with confirm:true once the operator approves — unless the workspace has set this action to auto.",
               parameters: {
                 type: "object",
                 properties: {
@@ -3647,7 +3648,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "member_grant_role",
-              description: "Admin/coach only. Grant a staff role to a user by their auth user id (resolve via crm/admin lookup first). Roles: admin, coach, sales_rep, broker, cs_rep, finance, viewer. The server enforces the role hierarchy. Executes immediately.",
+              description: "Admin/coach only. Grant a staff role to a user by their auth user id (resolve via crm/admin lookup first). Roles: admin, coach, sales_rep, broker, cs_rep, finance, viewer. The server enforces the role hierarchy. Propose the grant first and call again with confirm:true once the operator approves — unless the workspace has set this action to auto.",
               parameters: {
                 type: "object",
                 properties: {
@@ -3662,7 +3663,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "member_revoke_role",
-              description: "Admin/coach only. Remove a staff role from a user. The server enforces guards (can't remove the owner's admin, last-admin, coach-with-active-clients). Executes immediately; returns {ok:false, reason:'active_clients'} if a coach still has assigned clients.",
+              description: "Admin/coach only. Remove a staff role from a user. The server enforces guards (can't remove the owner's admin, last-admin, coach-with-active-clients). Propose the change first and call again with confirm:true once the operator approves — unless the workspace has set this action to auto; returns {ok:false, reason:'active_clients'} if a coach still has assigned clients.",
               parameters: {
                 type: "object",
                 properties: {
@@ -4016,6 +4017,103 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           },
     ];
 
+    // ── AUTONOMY GATE WIRING ─────────────────────────────────────────────────
+    // Every tool that writes, creates, or changes state is governed by the
+    // tenant's autonomy policy (tenant_tool_autonomy). Default mode is 'confirm':
+    // Paige must PROPOSE the action and wait for the operator's yes before it
+    // commits. 'auto' lets her act on her own; 'off' disables the tool. Read-only
+    // tools are never gated. This is the single control that stops Paige from
+    // "jumping the gun" — creating a pipeline (etc.) without proposing first.
+    const MUTATING_TOOLS = new Set<string>([
+      "crm_update_contact", "crm_create_contact", "crm_delete_contact",
+      "crm_update_pipeline_stage", "crm_assign_coach", "crm_assign_contact",
+      "crm_create_task", "crm_log_activity",
+      "pipeline_create", "pipeline_add_stage",
+      "member_grant_role", "member_revoke_role",
+      "calendar_book_meeting", "program_enroll",
+      "draft_marketing_content", "generate_image", "content_save",
+      "action_file", "action_advance",
+    ]);
+
+    // A human one-liner of exactly what a mutating call will do — shown to the
+    // operator when Paige pauses for confirmation.
+    const describeConfirm = (name: string, a: any): string => {
+      switch (name) {
+        case "pipeline_create":
+          return `Create a pipeline "${a?.name || "Untitled"}"${Array.isArray(a?.stages) && a.stages.length ? ` with ${a.stages.length} stage${a.stages.length === 1 ? "" : "s"}${a.stages.map((s: any) => s?.label).filter(Boolean).length ? ` (${a.stages.map((s: any) => s?.label).filter(Boolean).join(" → ")})` : ""}` : ""}.`;
+        case "pipeline_add_stage":
+          return `Add stage "${a?.label || ""}" to the pipeline.`;
+        case "crm_create_contact":
+          return `Add contact ${[a?.first_name, a?.last_name].filter(Boolean).join(" ") || a?.email || "new contact"}${a?.email ? ` (${a.email})` : ""}.`;
+        case "crm_update_contact":
+          return `Update this contact${a?.lifecycle_stage ? ` → stage ${a.lifecycle_stage}` : ""}.`;
+        case "crm_delete_contact":
+          return `Permanently delete the contact and its deals, activities, documents, and coach links. This cannot be undone.`;
+        case "crm_update_pipeline_stage":
+          return `Move the client to stage "${a?.status || ""}".`;
+        case "crm_assign_coach":
+          return `Assign ${Array.isArray(a?.client_ids) ? a.client_ids.length : 0} client(s) to coach ${a?.coach_email || ""}.`;
+        case "crm_assign_contact":
+          return `Assign this contact to a coach.`;
+        case "crm_create_task":
+          return `Create a task "${a?.title || ""}"${a?.due_date ? ` due ${a.due_date}` : ""}.`;
+        case "crm_log_activity":
+          return `Log an activity on this contact.`;
+        case "member_grant_role":
+          return `Grant the "${a?.role || ""}" role to a team member.`;
+        case "member_revoke_role":
+          return `Revoke the "${a?.role || ""}" role from a team member.`;
+        case "calendar_book_meeting":
+          return `Book "${a?.title || "meeting"}"${a?.start_at ? ` at ${a.start_at}` : ""}${a?.end_at ? `–${a.end_at}` : ""}${a?.timezone ? ` (${a.timezone})` : ""}.`;
+        case "program_enroll":
+          return `Enroll the client in this program.`;
+        case "draft_marketing_content":
+          return `Draft ${a?.variations || 1} ${a?.channel || "content"} piece(s).`;
+        case "generate_image":
+          return `Generate an image: "${String(a?.prompt || "").slice(0, 80)}".`;
+        case "content_save":
+          return `Save "${a?.title || "content"}" to the content library.`;
+        case "action_file":
+          return `File a "${a?.action_kind || "action"}" action${a?.title ? `: ${a.title}` : ""}.`;
+        case "action_advance":
+          return `Advance action ${a?.action_id || ""}${a?.to_status ? ` → ${a.to_status}` : ""}.`;
+        default:
+          return `Run ${name}.`;
+      }
+    };
+
+    // Advertise the confirm flag on every mutating tool so the model knows the
+    // second (confirm:true) step exists. Read-only tools are untouched.
+    for (const def of toolDefs) {
+      const fn = (def as any)?.function;
+      if (fn && MUTATING_TOOLS.has(fn.name)) {
+        fn.parameters = fn.parameters || { type: "object", properties: {}, required: [] };
+        fn.parameters.properties = fn.parameters.properties || {};
+        if (!fn.parameters.properties.confirm) {
+          fn.parameters.properties.confirm = {
+            type: "boolean",
+            description: "Set true ONLY after the operator has explicitly approved this exact action. Omit or false on the first (proposal) call.",
+          };
+        }
+      }
+    }
+
+    // Per-request cache of resolved autonomy modes (tool_key → 'auto'|'confirm'|'off').
+    const autonomyModeCache = new Map<string, string>();
+    const resolveToolAutonomy = async (toolKey: string): Promise<string> => {
+      if (autonomyModeCache.has(toolKey)) return autonomyModeCache.get(toolKey)!;
+      let mode = "confirm"; // safe default — never assume autopilot
+      try {
+        const { data, error } = await supabaseClient.rpc("resolve_tool_autonomy", {
+          _tenant_id: personaCtx?.tenant_id ?? null,
+          _tool_key: toolKey,
+        });
+        if (!error && typeof data === "string" && ["auto", "confirm", "off"].includes(data)) mode = data;
+      } catch { /* keep safe default */ }
+      autonomyModeCache.set(toolKey, mode);
+      return mode;
+    };
+
     // Call AI
     const response = await gatewayCompat("anthropic", {
       method: "POST",
@@ -4095,7 +4193,28 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       for (const tc of toolCalls) {
         if (!tc || !tc.function?.name) continue;
         executed.push(tc);
-        
+
+        // ── AUTONOMY GATE ────────────────────────────────────────────────────
+        // The single choke point for mutating tools. Default 'confirm' → Paige
+        // proposes and waits (returns needs_confirm the first time). 'auto' → she
+        // acts. 'off' → disabled. Read tools skip this entirely. Every branch here
+        // pushes exactly one tool-result then `continue`s, preserving the loop's
+        // one-result-per-executed-tc invariant.
+        if (MUTATING_TOOLS.has(tc.function.name)) {
+          let gateArgs: any = {};
+          try { gateArgs = JSON.parse(tc.function.arguments || "{}"); } catch { gateArgs = {}; }
+          const autoMode = await resolveToolAutonomy(tc.function.name);
+          if (autoMode === "off") {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, disabled: true, tool: tc.function.name, error: `The "${tc.function.name}" action is turned off for this workspace in Paige's autonomy settings. Tell the operator it's disabled and don't retry.` }) });
+            continue;
+          }
+          if (autoMode === "confirm" && gateArgs.confirm !== true) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, needs_confirm: true, tool: tc.function.name, confirm_summary: describeConfirm(tc.function.name, gateArgs), note: "Do NOT retry yet. This action requires the operator's approval. Read the confirm_summary back to them in plain language, ask them to confirm, and ONLY after they explicitly say yes call this same tool again with confirm:true." }) });
+            continue;
+          }
+          // autoMode === 'auto', or confirm already satisfied → fall through to execute.
+        }
+
         if (tc.function.name === "update_client_data") {
           try {
             const args = JSON.parse(tc.function.arguments);
@@ -4516,18 +4635,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 ? { success: false, ...(rv as any) }
                 : { success: true, user_id: args.user_id, role: args.role };
             } else if (tc.function.name === "crm_delete_contact") {
-              // CONFIRM lane: destructive, so require an explicit confirm:true.
-              if (args.confirm !== true) {
-                result = { success: false, needs_confirm: true, contact_id: args.contact_id,
-                  confirm_summary: "This permanently deletes the contact and its deals, activities, documents, and coach links. Ask the operator to confirm, then call again with confirm:true." };
-              } else {
-                const { data: del, error } = await supabaseClient.functions.invoke("delete-contact", {
-                  body: { contact_id: args.contact_id },
-                });
-                if (error) throw error;
-                if ((del as any)?.error) throw new Error((del as any).error);
-                result = { success: true, deleted: args.contact_id };
-              }
+              // Confirm is enforced by the central autonomy gate above (destructive
+              // → defaults to 'confirm'); by here we're cleared to execute.
+              const { data: del, error } = await supabaseClient.functions.invoke("delete-contact", {
+                body: { contact_id: args.contact_id },
+              });
+              if (error) throw error;
+              if ((del as any)?.error) throw new Error((del as any).error);
+              result = { success: true, deleted: args.contact_id };
             } else if (tc.function.name === "draft_marketing_content") {
               const { data: cd, error } = await supabaseClient.functions.invoke("content-draft", {
                 body: { channel: args.channel, brief: args.brief, tone: args.tone ?? null, variations: args.variations ?? 1, tenant_id: personaCtx?.tenant_id ?? null },
@@ -4548,26 +4663,22 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 result = { success: true, url: (img as any)?.url, size: (img as any)?.size };
               }
             } else if (tc.function.name === "calendar_book_meeting") {
-              // CONFIRM lane: a booking is a real event, so require explicit confirm.
-              if (args.confirm !== true) {
-                result = { success: false, needs_confirm: true,
-                  confirm_summary: `Book "${args.title}" from ${args.start_at} to ${args.end_at}${args.timezone ? ` (${args.timezone})` : ""}${args.location ? ` at ${args.location}` : ""}. Confirm with the operator, then call again with confirm:true.` };
-              } else {
-                const { data: bid, error } = await supabaseClient.rpc("create_internal_booking", {
-                  _title: args.title,
-                  _start_at: args.start_at,
-                  _end_at: args.end_at,
-                  _timezone: args.timezone ?? "UTC",
-                  _contact_id: args.contact_id ?? null,
-                  _guest_name: args.guest_name ?? null,
-                  _guest_email: args.guest_email ?? null,
-                  _notes: args.notes ?? null,
-                  _location: args.location ?? null,
-                  _tenant_id: personaCtx?.tenant_id ?? null,
-                });
-                if (error) throw error;
-                result = { success: true, booking_id: bid };
-              }
+              // Confirm is enforced by the central autonomy gate above (a booking
+              // is a real event → defaults to 'confirm'); here we're cleared to book.
+              const { data: bid, error } = await supabaseClient.rpc("create_internal_booking", {
+                _title: args.title,
+                _start_at: args.start_at,
+                _end_at: args.end_at,
+                _timezone: args.timezone ?? "UTC",
+                _contact_id: args.contact_id ?? null,
+                _guest_name: args.guest_name ?? null,
+                _guest_email: args.guest_email ?? null,
+                _notes: args.notes ?? null,
+                _location: args.location ?? null,
+                _tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, booking_id: bid };
             } else if (tc.function.name === "content_save") {
               const { data: cid, error } = await supabaseClient.rpc("save_marketing_content", {
                 p_kind: "text",
