@@ -3,7 +3,7 @@
 // Routes invocations to local Edge Functions or to LangGraph via paige-bridge.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { gatewayCompat } from "../_shared/claude.ts";
+import { routedChatCompletion, type JobKind } from "../_shared/model-router.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -167,29 +167,28 @@ async function invokeSoft(
   input: Record<string, unknown>,
   _context: OrchestratorRequest["context"],
 ) {
-  const apiKey = "unused";
-  if (!apiKey) return { status: 503, body: { ok: false, error: "LOVABLE_API_KEY not configured" } };
   if (!agent.system_prompt) return { status: 500, body: { ok: false, error: `Soft agent ${agent.slug} missing system_prompt` } };
   const cfg = (agent.config ?? {}) as Record<string, unknown>;
-  const model = (cfg.model as string | undefined) ?? "google/gemini-2.5-flash";
+  // §14 model routing: every agent picks the cheapest-capable model per its job tier.
+  // Default 'internal_first_draft' (open-model-eligible) — a sub-agent's output is an
+  // internal draft Paige integrates/reviews; an agent can override job_kind in its config
+  // (e.g. a client-facing final → 'client_copy_final', which routes to Claude reasoning).
+  const jobKind = (typeof cfg.job_kind === "string" ? cfg.job_kind : "internal_first_draft") as JobKind;
   const userPayload = typeof input === "string" ? input : JSON.stringify(input);
-  const resp = await gatewayCompat("anthropic", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model,
+  try {
+    const data = await routedChatCompletion(jobKind, {
       messages: [
         { role: "system", content: agent.system_prompt },
         { role: "user", content: userPayload },
       ],
-    }),
-  });
-  const text = await resp.text();
-  let body: unknown;
-  try { body = JSON.parse(text); } catch { body = { raw: text }; }
-  if (!resp.ok) return { status: resp.status, body };
-  const answer = (body as { choices?: Array<{ message?: { content?: string } }> })?.choices?.[0]?.message?.content ?? "";
-  return { status: 200, body: { ok: true, agent: agent.slug, answer, raw: body } };
+      max_tokens: 2048,
+    });
+    const answer = (data as { choices?: Array<{ message?: { content?: string } }> })?.choices?.[0]?.message?.content ?? "";
+    if (!answer) return { status: 502, body: { ok: false, error: "Model returned no content" } };
+    return { status: 200, body: { ok: true, agent: agent.slug, answer } };
+  } catch (e) {
+    return { status: 502, body: { ok: false, error: e instanceof Error ? e.message : "model_error" } };
+  }
 }
 
 Deno.serve(async (req) => {
