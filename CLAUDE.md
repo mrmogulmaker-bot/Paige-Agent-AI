@@ -236,3 +236,47 @@ best-in-class bar; when in doubt, raise it.
   render bugs that would otherwise have shipped.
 - **The test, every time:** *"Would the owner call this world-class, and does it read as
   one continuous system with the rest of the platform?"* If not, it isn't done.
+
+## 12. Organize what you create — always ask "where does this belong?"
+
+**Directive (owner: Antonio):** Every time we create a tool, resource, workflow, asset,
+table, function, or file, we **stop and ask whether it needs to be organized** — named to
+a convention, tagged, foldered, filed into the right registry, and placed where it belongs
+for the audience it serves (§9 platform vs tenant). We do not dump loose artifacts into a
+shared space and move on. A thing that isn't findable, isn't named like its siblings, or
+isn't filed into its home is not done.
+
+- **Name to a convention.** Anything Paige (or we) create carries a consistent,
+  recognizable name so it's obvious what it is and who made it — e.g. Paige-authored n8n
+  workflows use a stable prefix, drafts end in `[DRAFT]`, archived work is tagged
+  `[archived]`. No mystery names, no one-offs that don't match their neighbors.
+- **File it into its registry/folder.** If a home exists (the per-tenant workflows
+  registry, a folder, a tags scheme, a table), the new thing goes there on creation — not
+  "later." If no home exists and we're making several of something, we make the home first.
+- **Tenant-scoped and clean-seamed (§9).** Organize by who it's for. Tenant artifacts live
+  in the tenant's space under the tenant's naming; platform/operator artifacts stay out of
+  tenant surfaces. Never let a vertical's assets pollute the shared/platform defaults.
+- **The test, every time:** *"If someone opens this account/repo/registry in six months,
+  will they instantly see what this is, who it's for, and where it lives?"* If not, organize
+  it before shipping.
+
+## 13. Build like the best developers in the world — every time.
+
+**Directive (owner: Antonio):** Every build is held to the standard of the best engineers
+alive. Not "good enough to work" — genuinely excellent: correct, secure, tested, readable,
+and maintainable, the way a top-tier team at the best software companies would ship it. This
+is the engineering counterpart to §11 (world-class design is the floor): §11 governs how it
+looks and feels, §13 governs how it's built underneath.
+
+- **Correctness is proven, not assumed.** Trace the real failure paths, guard the edges,
+  and verify end-to-end (drive the actual flow, not just a typecheck) before calling it done.
+  The adversarial verifier and compliance officer (§1/§5) apply to code, not only UI.
+- **Secure and truthful by construction.** Least privilege, tenant isolation, no IDOR/SSRF/
+  injection holes, no secrets in artifacts. Systems report what actually happened — never a
+  hoped-for outcome (a fire is not a delivery). Honesty is a build requirement, not a nicety.
+- **Clean, idiomatic, maintainable.** Code reads like the surrounding code, names say what
+  they mean, no dead ends or copy-paste forks; when a primitive is missing we add it to the
+  shared layer instead of one-offing. Structured errors that explain the real cause, never a
+  swallowed generic.
+- **The test, every time:** *"Would a world-class engineer put their name on this and be
+  proud of it in code review?"* If not, it isn't done.

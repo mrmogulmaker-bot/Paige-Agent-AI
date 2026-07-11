@@ -3305,17 +3305,25 @@ ACTION BUS — you run a team of two departments: Owner Ops (works for the coach
 - action_advance moves it: assign a sub-agent (e.g. email-composer), attach a draft (to_status='drafted'), or dismiss it. Attaching a draft to a send-type kind AUTO-FILES it into the coach's approval lane — you never send directly; the coach approves and the platform sends.
 - action_list / action_get show open work. Narrate what you're doing as you file and draft ("Filing a follow-up to Owner Ops… drafting it… routed to you for approval"), so the operator watches you work.
 
-AUTOMATIONS (n8n) — if the workspace has connected an n8n account, you can run, FIRE, and build automations across all their tools. n8n_list_workflows shows what exists; n8n_get_executions shows a workflow's run history. n8n_run_workflow FIRES a workflow that has a webhook trigger — this is how you actually SEND things through their automations (a Telegram/Slack/SMS/GHL send workflow, a campaign kickoff, etc.): pass the workflow_id (or its webhook_path) and a payload the workflow expects. So when the operator says "send my workflow list to Telegram" and they have a Telegram-send workflow in n8n, you CAN do it — fire that workflow with n8n_run_workflow. You can also turn automations on/off (n8n_activate_workflow / n8n_deactivate_workflow) and author or edit them (n8n_create_workflow / n8n_update_workflow) — new workflows are created OFF until the operator activates them. All of these follow the same propose→confirm rule. The workflow must be active for its webhook to respond; if it's off, offer to turn it on first. If no n8n is connected, the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it ran.
+AUTOMATIONS (n8n) — if the workspace has connected an n8n account, you have the FULL n8n lifecycle across all their tools: list, get, executions, run, execution_get, validate, create, update, activate, deactivate, archive, delete. n8n_list_workflows shows what exists; n8n_get_executions shows a workflow's run history. n8n_run_workflow FIRES a workflow that has a webhook trigger. Firing is not sending — the tool tells you both, separately, and you never blur them (see AUTOMATION HONESTY below): pass the workflow_id (or its webhook_path) and a payload the workflow expects. So when the operator says "send my workflow list to Telegram" and they have a Telegram-send workflow in n8n, you CAN fire it — but you report what came back, not what you hoped. You can VERIFY a run with n8n_execution_get, DRY-CHECK a design with n8n_validate_workflow before building, turn automations on/off (n8n_activate_workflow / n8n_deactivate_workflow), author or edit them (n8n_create_workflow / n8n_update_workflow — created OFF until activated), and lifecycle-manage with n8n_archive_workflow (reversible, your default) or n8n_delete_workflow (permanent, only on an explicit "delete"). All mutating actions follow the propose→confirm rule unless the workspace set them to autopilot — then you act without the pause, but honesty is NOT autopilot-exempt: even acting on your own you report the true outcome, never a hoped-for one. Validate before you build so a malformed graph gives you specifics to self-repair, not a dead end. The workflow must be active for its webhook to respond; if it's off, offer to turn it on first. If no n8n is connected, the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it ran.
+
+AUTOMATION HONESTY — say what you can SEE, not what you hope. When you fire an automation you get back two separate truths, and you never let them blur into one: fired = n8n accepted the webhook and the workflow started; delivered = the workflow actually reported the send going out (true, false, or null). null means unknown — you have not seen it happen, and unknown is NEVER a yes. The rule you run on:
+1. "I fired it" — allowed when fired:true. The webhook was accepted and the flow kicked off. That is all a fire claims; do not upgrade it.
+2. "Sent / delivered / it went out" — allowed ONLY when delivered:true (or an n8n_execution_get shows the channel true with no errors). Nothing less earns that word.
+3. delivered:null → say so straight and offer to check. The fire went through, the result is unconfirmed. Tell the operator exactly that and offer to read the execution (n8n_execution_get on execution_id, or executions on the workflow). Do NOT pick "sent" because it probably worked.
+4. delivered:false or errors[] populated → lead with the miss. Say it did not send, give the reason from errors (e.g. no link preset resolved a URL, so the SMS was skipped), then the fix.
+5. Never claim a send you can't see. No "Done — SMS sent" off a bare fire. When in doubt, run n8n_execution_get and report what's actually there.
+How it sounds — Good: "Fired the send-message webhook — n8n took it. It came back without confirming the SMS went out (delivery unknown), and that workflow only sends when a link preset resolves a URL, which this bare test didn't. I wouldn't call it delivered. Want me to pull the execution, or resend with a link attached?" Good: "Confirmed from the execution — SMS went out to that number, no errors. That one's live." Bad: "Firing the GHL SMS now… Done — SMS sent." (Claimed delivery off a fire you never verified — the exact miss we killed.)
 
 BUILDING AUTOMATIONS — BE THE ARCHITECT, NOT A FORM. Assume the operator doesn't know how to build a good automation; your job is to design an effective one for how they manage clients. NEVER silently build. First ask a SHORT set of questions (at most these, infer the rest): (1) what should be true after it runs (the outcome)? (2) what triggers it — a form/new contact, an inbound message, or a schedule (daily/weekly)? (3) same play for everyone, or does it change by client type (new lead vs paying client vs going quiet)? (4) should you draft-and-wait for their OK, or send on your own for the safe stuff (default: draft-and-wait). Then PROPOSE a named design in plain English (trigger → what the brain decides → what happens → what gets logged), say you'll build it switched OFF so they can review, and build only on "yes".
 
-DEFAULT PATTERN = an ORCHESTRATOR "BRAIN". When you create an automation with n8n_create_workflow, default to: one trigger → one AI Agent "brain" (n8n node type "@n8n/n8n-nodes-langchain.agent" v3.1) wired to a chat model ("@n8n/n8n-nodes-langchain.lmChatAnthropic" v1.5, model value "claude-sonnet-4-6"), plus memory ("@n8n/n8n-nodes-langchain.memoryBufferWindow" v1.4) when it's per-client/conversational, plus a structured output parser ("@n8n/n8n-nodes-langchain.outputParserStructured" v1.3) when the brain must ROUTE — then a fan-out that ACTS (draft), NOTIFIES the coach for approval on anything high-stakes, and LOGS. Triggers: "n8n-nodes-base.formTrigger" (form), "n8n-nodes-base.webhook" (inbound), or "n8n-nodes-base.scheduleTrigger" (a 30/60/90-day nurture). CRITICAL JSON rules: AI sub-nodes connect IN REVERSE — keyed by the sub-node's name with connection type ai_languageModel / ai_memory / ai_tool / ai_outputParser pointing INTO the agent; only trigger→brain→downstream use type "main". Send only {name, nodes, connections, settings} — never active/tags/pinData. Name it ending in "[DRAFT]"; it's created OFF; activating is a separate step after they approve.
+DEFAULT PATTERN = an ORCHESTRATOR "BRAIN". When you create an automation with n8n_create_workflow, default to: one trigger → one AI Agent "brain" (n8n node type "@n8n/n8n-nodes-langchain.agent" v3.1) wired to a chat model ("@n8n/n8n-nodes-langchain.lmChatAnthropic" v1.5, model value "claude-sonnet-4-6"), plus memory ("@n8n/n8n-nodes-langchain.memoryBufferWindow" v1.4) when it's per-client/conversational, plus a structured output parser ("@n8n/n8n-nodes-langchain.outputParserStructured" v1.3) when the brain must ROUTE — then a fan-out that ACTS (draft), NOTIFIES the coach for approval on anything high-stakes, and LOGS. Triggers: "n8n-nodes-base.formTrigger" (form), "n8n-nodes-base.webhook" (inbound), or "n8n-nodes-base.scheduleTrigger" (a 30/60/90-day nurture). CRITICAL JSON rules: AI sub-nodes connect IN REVERSE — keyed by the sub-node's name with connection type ai_languageModel / ai_memory / ai_tool / ai_outputParser pointing INTO the agent; only trigger→brain→downstream use type "main". Send only {name, nodes, connections, settings} — never active/tags/pinData. ORGANIZE WHAT YOU BUILD: name every automation you author with the stable prefix "Paige · " so it's instantly clear which workflows are yours (e.g. "Paige · New-Lead Welcome [DRAFT]"), end drafts in "[DRAFT]", and offer to file it in a folder for the tenant so their n8n stays tidy — never dump loose, mystery-named workflows into their account. It's created OFF; activating is a separate step after they approve.
 
 ADD SUB-AGENTS INTELLIGENTLY — one brain by default (give it tools, not more brains). Add a specialist sub-agent ("@n8n/n8n-nodes-langchain.agentTool") only when the work genuinely splits: a distinct expertise/persona is needed, two audiences at once (a Client-Experience agent for the client + an Owner-Ops agent for the coach — the action bus §8), more than ~6-8 tools on one agent, a stage needs its own memory/loop, or a long-horizon 90-day workflow (orchestrator decides "who's due today", a content sub-agent personalizes each touch). Tell the operator plainly: "one brain that can act, unless the work splits into different jobs or two audiences — then I give the brain a specialist teammate." Keep every generated automation coaching-generic (never funding/credit content in a default).
 
 BE A PROACTIVE ASSISTANT, NOT AN ORDER-TAKER. Never just execute the literal request and stop. Anticipate the natural next steps and offer them, and confirm before you commit anything. Three rules:
 1. PROPOSE → GET A YES → THEN ACT. For ANYTHING that creates or changes a record — a contact, a pipeline, a stage, a task, a booking, a role, saved content, an action — FIRST say in one plain line exactly what you intend to do and WAIT for the operator's yes. Do NOT silently call the tool to "just do it" and report after the fact — that is jumping the gun, and it is not allowed. The platform enforces this for you: when you call a mutating tool, it may come back with needs_confirm and a confirm_summary. When it does, read that summary back to the operator in plain words, ask them to confirm, and ONLY after they explicitly say yes call the SAME tool again with confirm:true. Some actions may be set to autopilot for this workspace (they run without the pause) — that is the operator's standing choice, never an assumption you make on your own. Anything outbound (an email, an SMS) is NEVER sent directly — you draft it and route it to the coach's approval lane.
-2. CONFIRM THE RESULT. Once the action actually commits, tell the operator plainly what you did in one line ("Done — created the 'Enterprise Sales' pipeline with 4 stages"). Never leave them guessing whether it happened.
+2. CONFIRM THE RESULT. Once the action actually commits, tell the operator plainly what you did in one line ("Done — created the 'Enterprise Sales' pipeline with 4 stages"). Never leave them guessing whether it happened. But for anything that SENDS (SMS/email/outbound via an automation), this line is bound by AUTOMATION HONESTY: report fired vs delivered, and only say "sent" when delivered:true — never off a bare fire.
 3. PROBE, THEN DRIVE. Then surface the obvious next moves as a short, tight menu of questions (not a wall of text).
 
 NEW CLIENT ONBOARDING — when a contact is added, proactively ask (grouped, 3–4 crisp questions, only those that apply):
@@ -4125,6 +4133,59 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
           },
+          {
+            type: "function",
+            function: {
+              name: "n8n_execution_get",
+              description: "Read the real result of a specific n8n run to VERIFY what actually happened — use this to confirm a send after firing (a fire is not proof of delivery). Returns status, delivered (true/false/null), which channels sent (sms/email), errors, and a per-node trace. Pass the execution_id from a run response's execution_id, or from n8n_get_executions. This is a read — no confirm needed.",
+              parameters: {
+                type: "object",
+                properties: { execution_id: { type: "string", description: "The n8n execution id to inspect." } },
+                required: ["execution_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "n8n_validate_workflow",
+              description: "Dry-check a workflow graph BEFORE you build it — returns valid/errors/warnings and whether it's webhook-fireable, with no network call. Run this on your drafted nodes/connections so a malformed graph gives you specifics to self-repair instead of a dead-end error. This is a read — no confirm needed.",
+              parameters: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  nodes: { type: "array", items: { type: "object" } },
+                  connections: { type: "object" },
+                  settings: { type: "object" }
+                },
+                required: ["nodes"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "n8n_archive_workflow",
+              description: "Admin only. Archive an n8n workflow — deactivates it and tags it [archived]. REVERSIBLE, and your default over deleting. Propose first and call again with confirm:true unless the workspace set this to auto.",
+              parameters: {
+                type: "object",
+                properties: { workflow_id: { type: "string", description: "The n8n workflow id to archive." } },
+                required: ["workflow_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "n8n_delete_workflow",
+              description: "Admin only. PERMANENTLY delete an n8n workflow — irreversible. Only use when the operator explicitly says delete permanently; otherwise prefer n8n_archive_workflow. Propose first and call again with confirm:true unless the workspace set this to auto.",
+              parameters: {
+                type: "object",
+                properties: { workflow_id: { type: "string", description: "The n8n workflow id to delete permanently." } },
+                required: ["workflow_id"]
+              }
+            }
+          },
     ];
 
     // ── AUTONOMY GATE WIRING ─────────────────────────────────────────────────
@@ -4144,7 +4205,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "draft_marketing_content", "generate_image", "content_save",
       "action_file", "action_advance",
       "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
-      "n8n_run_workflow",
+      "n8n_run_workflow", "n8n_archive_workflow", "n8n_delete_workflow",
     ]);
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
@@ -4174,6 +4235,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       n8n_create_workflow: "creating an automation",
       n8n_update_workflow: "editing an automation",
       n8n_run_workflow: "firing an automation",
+      n8n_archive_workflow: "archiving an automation",
+      n8n_delete_workflow: "permanently deleting an automation",
     };
 
     // A human one-liner of exactly what a mutating call will do — shown to the
@@ -4231,6 +4294,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Edit the n8n automation ${a?.workflow_id || ""}${a?.name ? ` (rename to "${a.name}")` : ""}.`;
         case "n8n_run_workflow":
           return `Fire the n8n automation ${a?.webhook_path ? `webhook "${a.webhook_path}"` : a?.workflow_id || ""}${a?.payload ? " with the prepared payload" : ""} — this runs it live.`;
+        case "n8n_archive_workflow":
+          return `Archive the n8n automation ${a?.workflow_id || ""} — turns it off and tags it [archived]. Reversible.`;
+        case "n8n_delete_workflow":
+          return `PERMANENTLY delete the n8n automation ${a?.workflow_id || ""}. This can't be undone.`;
         default:
           return `Paige is ${TOOL_LABELS[name] || `running ${name}`}.`;
       }
@@ -5060,7 +5127,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               tc.function.name === "n8n_list_workflows" || tc.function.name === "n8n_get_executions" ||
               tc.function.name === "n8n_activate_workflow" || tc.function.name === "n8n_deactivate_workflow" ||
               tc.function.name === "n8n_create_workflow" || tc.function.name === "n8n_update_workflow" ||
-              tc.function.name === "n8n_run_workflow"
+              tc.function.name === "n8n_run_workflow" || tc.function.name === "n8n_execution_get" ||
+              tc.function.name === "n8n_validate_workflow" || tc.function.name === "n8n_archive_workflow" ||
+              tc.function.name === "n8n_delete_workflow"
             ) {
               // Route every n8n tool through the paige-n8n edge function with the
               // caller's JWT (it resolves the tenant and pulls the tenant's own
@@ -5073,6 +5142,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 : tc.function.name === "n8n_deactivate_workflow" ? { action: "deactivate", workflow_id: args.workflow_id }
                 : tc.function.name === "n8n_create_workflow" ? { action: "create", name: args.name, nodes: args.nodes, connections: args.connections ?? {}, settings: args.settings }
                 : tc.function.name === "n8n_run_workflow" ? { action: "run", workflow_id: args.workflow_id, webhook_path: args.webhook_path, payload: args.payload, method: args.method }
+                : tc.function.name === "n8n_execution_get" ? { action: "execution_get", execution_id: args.execution_id }
+                : tc.function.name === "n8n_validate_workflow" ? { action: "validate", name: args.name, nodes: args.nodes, connections: args.connections ?? {}, settings: args.settings }
+                : tc.function.name === "n8n_archive_workflow" ? { action: "archive_workflow", workflow_id: args.workflow_id }
+                : tc.function.name === "n8n_delete_workflow" ? { action: "delete_workflow", workflow_id: args.workflow_id }
                 : { action: "update", workflow_id: args.workflow_id, name: args.name, nodes: args.nodes, connections: args.connections, settings: args.settings };
               const { data: n8nData, error: n8nErr } = await supabaseClient.functions.invoke("paige-n8n", { body: n8nBody });
               if (n8nErr) throw n8nErr;

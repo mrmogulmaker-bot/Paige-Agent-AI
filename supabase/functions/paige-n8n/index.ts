@@ -23,6 +23,45 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
+// Local, network-free structural check of a workflow graph. Run before a create/
+// update POST so a malformed graph yields SPECIFIC, self-repairable errors instead
+// of an opaque n8n 400 (root cause of the "n8n integration is hitting an error").
+function validateWorkflow(body: any) {
+  const errors: string[] = [], warnings: string[] = [];
+  const nodes: any[] = Array.isArray(body?.nodes) ? body.nodes : [];
+  if (!body?.name || typeof body.name !== "string") errors.push("name must be a non-empty string");
+  if (!nodes.length) errors.push("nodes must be a non-empty array");
+  const names = new Set<string>();
+  for (const n of nodes) {
+    for (const k of ["name", "type", "typeVersion", "position", "parameters"]) {
+      if (n?.[k] === undefined) errors.push(`node '${n?.name ?? "?"}' missing ${k}`);
+    }
+    if (n?.name) { if (names.has(n.name)) errors.push(`duplicate node name '${n.name}'`); names.add(n.name); }
+    for (const k of ["id", "webhookId", "credentials", "active", "pinData"]) {
+      if (k in (n ?? {})) warnings.push(`node '${n?.name}' has '${k}' — n8n rejects extra node-level props; strip before create`);
+    }
+  }
+  const conns = body?.connections ?? {};
+  for (const src of Object.keys(conns)) {
+    if (!names.has(src)) errors.push(`connections references unknown source node '${src}' (must key by node NAME, not id)`);
+    for (const arr of Object.values<any>(conns[src] ?? {})) {
+      for (const group of (arr ?? [])) {
+        for (const c of (group ?? [])) {
+          if (c?.node && !names.has(c.node)) errors.push(`connection targets unknown node '${c.node}'`);
+        }
+      }
+    }
+  }
+  const triggers = nodes.filter((n) => /trigger|webhook/i.test(n?.type ?? ""));
+  const trigger = triggers[0] ?? null;
+  if (triggers.length === 0) errors.push("no trigger node found");
+  if (triggers.length > 1) warnings.push(`${triggers.length} trigger nodes — confirm intentional`);
+  const isSub = /executeworkflowtrigger/i.test(trigger?.type ?? "");
+  if (isSub) warnings.push("trigger is executeWorkflowTrigger — a sub-workflow, NOT REST-fireable; wrap in a webhook to fire it");
+  const fireable = /webhook/i.test(trigger?.type ?? "");
+  return { valid: errors.length === 0, errors, warnings, fireable, trigger: trigger ? { type: trigger.type, node: trigger.name } : null };
+}
+
 // SSRF guard. String matching alone is bypassable (IPv4-mapped IPv6, DNS →
 // internal, link-local), so we resolve the host and validate every resolved IP
 // NUMERICALLY against private/loopback/link-local/ULA/mapped ranges. IP literals
@@ -219,12 +258,63 @@ Deno.serve(async (req) => {
           headers: { "Content-Type": "application/json" },
           body: method === "GET" || method === "HEAD" ? undefined : JSON.stringify(body.payload ?? {}),
         });
-        const respText = (await hookRes.text()).slice(0, 1500);
-        return json({ ok: hookRes.ok, status: hookRes.status, response: respText,
-          note: hookRes.ok ? "Webhook fired." : "The webhook returned a non-2xx status — the workflow may need to be active, or the path/payload may not match." });
+        const respText = (await hookRes.text()).slice(0, 4000);
+        let parsed: any = null; try { parsed = JSON.parse(respText); } catch { /* non-JSON body */ }
+        const o = parsed && typeof parsed === "object" ? parsed : {};
+        // Any of these keys means the workflow reported a machine-readable send outcome.
+        const hasOutcome = ["smsSent", "emailSent", "telegramSent", "tagsAdded", "errors", "contactId", "messageId"].some((k) => k in o);
+        const errs = Array.isArray(o.errors) ? o.errors.map(String) : [];
+        // Map straight through; a key the body OMITS is null, never false.
+        const sms = "smsSent" in o ? o.smsSent === true : null;
+        const email = "emailSent" in o ? o.emailSent === true : null;
+        const tags = "tagsAdded" in o ? o.tagsAdded : null;
+        // delivered truth-table: true ONLY when a channel is explicitly true AND no errors.
+        let delivered: boolean | null = null;
+        if (hasOutcome) {
+          const anyTrue = sms === true || email === true;
+          const anyClaim = sms !== null || email !== null;
+          delivered = errs.length ? false : anyTrue ? true : anyClaim ? false : null;
+        }
+        const executionId = o.executionId ?? o.execution_id ?? hookRes.headers.get("x-execution-id") ?? null;
+        return json({
+          ok: true,                          // the edge function itself ran
+          action: "run",
+          workflow_id: body.workflow_id ?? null,
+          webhook_path: String(path),
+          fired: hookRes.ok,                 // LAYER 1 — webhook accepted the request
+          http_status: hookRes.status,
+          verified: hasOutcome,              // did the workflow return a machine-readable outcome?
+          delivered,                          // LAYER 2 — true | false | null(unknown). The headline field.
+          outcome_source: hasOutcome ? "response_body" : "none",
+          channels: { sms_sent: sms, email_sent: email, tags_added: tags },
+          errors: errs,
+          execution_id: executionId,          // LAYER 3 — feed to execution_get to turn null into fact
+          outcome: hasOutcome ? {
+            contactId: o.contactId ?? null, messageId: o.messageId ?? null,
+            smsSent: sms, emailSent: email, telegramSent: o.telegramSent ?? null,
+            tagsAdded: tags, name: o.name ?? null, errors: errs,
+          } : null,
+          raw_response: respText,             // log/debug only — never quoted to the operator as proof
+          note: !hookRes.ok
+            ? "The webhook returned a non-2xx — the workflow may be inactive, or the path/payload didn't match. Nothing was sent."
+            : hasOutcome
+              ? (delivered
+                  ? "Fired AND the workflow confirmed the send in its response."
+                  : `Fired, but the workflow reported it did NOT send${errs.length ? " — errors: " + errs.join("; ") : " (no channel resolved, or a required field like a link preset was missing)"}. Do NOT tell the operator it was delivered.`)
+              : "Fired: the webhook accepted the request, but this workflow returned no machine-readable send outcome, so delivery is UNCONFIRMED. Say 'fired, delivery unconfirmed' and verify with n8n_execution_get before claiming a send.",
+          verify_hint: hasOutcome
+            ? null
+            : (executionId
+                ? `Run execution_get on execution_id ${executionId} to read the real send result.`
+                : "Run the executions action on this workflow and then execution_get on the newest run id to confirm before telling the operator it went out."),
+        });
       }
       case "create": {
         if (!body.name || !body.nodes) return json({ error: "name_and_nodes_required", detail: "Provide name plus a valid n8n workflow (nodes + connections)." }, 400);
+        // Dry-check the graph BEFORE POSTing so a malformed workflow returns
+        // specific, self-repairable errors instead of an opaque n8n 400.
+        const cv = validateWorkflow(body);
+        if (!cv.valid) return json({ ok: false, error: "invalid_workflow", detail: cv.errors.join("; "), validation: cv });
         // Create INACTIVE by default — authored workflows must be reviewed and
         // explicitly activated, never auto-live.
         const payload = {
@@ -234,7 +324,9 @@ Deno.serve(async (req) => {
           settings: body.settings ?? {},
         };
         const res = await n8nFetch(baseUrl, apiKey, "/workflows", { method: "POST", body: JSON.stringify(payload) });
-        if (!res.ok) return json({ error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) }, 502);
+        // Expected n8n rejection → 200 + ok:false so the real reason reaches Paige
+        // (a 502 would be collapsed by functions.invoke to a generic non-2xx string).
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) });
         const wf = await res.json();
         // Fold the Paige-authored workflow into the tenant's registry, tagged as hers.
         if (wf?.id) await admin.rpc("record_paige_workflow", { _tenant_id: tenantId, _n8n_workflow_id: wf.id, _name: wf.name }).then(() => {}, () => {});
@@ -245,18 +337,96 @@ Deno.serve(async (req) => {
         const payload: Record<string, unknown> = {};
         for (const k of ["name", "nodes", "connections", "settings"]) if (body[k] !== undefined) payload[k] = body[k];
         if (Object.keys(payload).length === 0) return json({ error: "nothing_to_update" }, 400);
+        // Validate only when the caller is replacing the graph (nodes present).
+        if (body.nodes !== undefined) {
+          const uv = validateWorkflow({ name: body.name ?? "update", nodes: body.nodes, connections: body.connections });
+          if (!uv.valid) return json({ ok: false, error: "invalid_workflow", detail: uv.errors.join("; "), validation: uv });
+        }
         const res = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`, { method: "PUT", body: JSON.stringify(payload) });
-        if (!res.ok) return json({ error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) }, 502);
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) });
         const wf = await res.json();
         return json({ ok: true, workflow_id: wf?.id, name: wf?.name, active: !!wf?.active });
+      }
+      case "validate": {
+        const v = validateWorkflow(body);
+        return json({ ok: v.valid, action: "validate", ...v });
+      }
+      case "execution_get": {
+        if (!body.execution_id) return json({ ok: false, error: "execution_id_required", detail: "Provide the execution_id (from a run response or the executions list)." });
+        const res = await n8nFetch(baseUrl, apiKey, `/executions/${encodeURIComponent(body.execution_id)}?includeData=true`);
+        if (res.status === 404) return json({ ok: false, error: "execution_not_found", detail: "No execution with that id. Run the executions action to list recent runs for the workflow." });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 400) });
+        const ex = await res.json();
+        const rd = ex?.data?.resultData ?? {};
+        const lastNode: string | null = rd?.lastNodeExecuted ?? null;
+        // n8n nests final output at data.resultData.runData[<node>][0].data.main[0][0].json — extract defensively.
+        const lastJson = (() => {
+          try { return rd?.runData?.[lastNode ?? ""]?.[0]?.data?.main?.[0]?.[0]?.json ?? null; } catch { return null; }
+        })();
+        const o = lastJson && typeof lastJson === "object" ? lastJson : {};
+        const errs = Array.isArray(o.errors) ? o.errors.map(String) : [];
+        const sms = "smsSent" in o ? o.smsSent === true : null;
+        const email = "emailSent" in o ? o.emailSent === true : null;
+        const tags = "tagsAdded" in o ? o.tagsAdded : null;
+        const status: string = ex?.status ?? (ex?.finished ? "success" : "unknown");
+        let delivered: boolean | null = null;
+        if (status === "success" && (sms !== null || email !== null)) delivered = errs.length ? false : (sms === true || email === true) ? true : false;
+        // Compact per-node trace for failures — never dump the whole envelope.
+        const nodes = Object.entries(rd?.runData ?? {}).map(([name, runs]: any) => ({
+          name, status: runs?.[0]?.error ? "error" : "success", error: runs?.[0]?.error?.message ?? null,
+        }));
+        const nodeError = nodes.find((n) => n.status === "error") ?? null;
+        return json({
+          ok: true, action: "execution_get",
+          execution_id: String(body.execution_id),
+          workflow_id: ex?.workflowId ?? null,
+          status, finished: !!ex?.finished,
+          started_at: ex?.startedAt ?? null, stopped_at: ex?.stoppedAt ?? null,
+          delivered, outcome_source: "execution_check",
+          channels: { sms_sent: sms, email_sent: email, tags_added: tags },
+          errors: errs,
+          last_node: lastNode,
+          result: lastJson ? JSON.stringify(lastJson).slice(0, 4000) : null,
+          node_error: nodeError ? `${nodeError.name}: ${nodeError.error}` : (rd?.error?.message ?? null),
+          nodes,
+          verify_hint: status === "running" || status === "waiting"
+            ? "Still in flight — delivery not yet knowable. Re-check in a moment."
+            : (delivered === true ? "Confirmed from the stored execution — the send went out."
+               : delivered === false ? "Confirmed from the stored execution — it did NOT send; see errors[]. Do not tell the operator it went out."
+               : "Execution finished but reported no channel outcome — delivery remains unconfirmed."),
+        });
       }
       case "activate":
       case "deactivate": {
         if (!body.workflow_id) return json({ error: "workflow_id_required" }, 400);
         const res = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}/${action}`, { method: "POST" });
-        if (!res.ok) return json({ error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 300) }, 502);
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 300) });
         const wf = await res.json();
         return json({ ok: true, workflow_id: wf?.id, active: !!wf?.active });
+      }
+      case "archive_workflow": {
+        // PREFERRED default over delete — reversible ("park don't weave", §4).
+        if (!body.workflow_id) return json({ ok: false, error: "workflow_id_required" });
+        const d = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}/deactivate`, { method: "POST" });
+        if (!d.ok) return json({ ok: false, error: `n8n_${d.status}`, detail: (await d.text()).slice(0, 300) });
+        const wf = await d.json();
+        const name = String(wf?.name ?? "");
+        if (!name.startsWith("[archived]")) {
+          // Tag via name-prefix (works on all n8n versions).
+          await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`, {
+            method: "PUT", body: JSON.stringify({ name: `[archived] ${name}` }),
+          }).catch(() => {});
+        }
+        return json({ ok: true, archived: true, workflow_id: body.workflow_id, active: false, note: "Deactivated and tagged [archived] — reversible. Restore with activate + update." });
+      }
+      case "delete_workflow": {
+        // Permanent — only on an explicit "delete permanently".
+        if (!body.workflow_id) return json({ ok: false, error: "workflow_id_required" });
+        const res = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`, { method: "DELETE" });
+        if (!res.ok) return json({ ok: false, error: `n8n_${res.status}`, detail: (await res.text()).slice(0, 300) });
+        // Registry cleanup; if the RPC is absent, a subsequent list resync drops the ghost.
+        await admin.rpc("forget_paige_workflow", { _tenant_id: tenantId, _n8n_workflow_id: body.workflow_id }).then(() => {}, () => {});
+        return json({ ok: true, deleted: true, workflow_id: body.workflow_id, note: "Workflow permanently deleted from n8n." });
       }
       default:
         return json({ error: "unknown_action", detail: `Unknown n8n action: ${action}` }, 400);
