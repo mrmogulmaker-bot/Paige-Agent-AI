@@ -3201,6 +3201,11 @@ The current user is an ADMIN or COACH operating the Paige CRM. You have full rea
 - "What tasks are overdue?" → crm_list_tasks with overdue=true.
 
 Always resolve names/emails to client_id via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
+
+ACTION BUS — you run a team of two departments: Owner Ops (works for the coach) and Client Experience (works for each client). They hand work to each other on your action bus. When work needs to move — a follow-up to send, an at-risk client to flag, a task to queue — file it and drive it:
+- action_file starts a tracked hand-off (pick the action_kind: owner.followup_email, client.followup, client.at_risk, owner.task, owner.onboarding_nudge, client.portal_recommendation, etc.).
+- action_advance moves it: assign a sub-agent (e.g. email-composer), attach a draft (to_status='drafted'), or dismiss it. Attaching a draft to a send-type kind AUTO-FILES it into the coach's approval lane — you never send directly; the coach approves and the platform sends.
+- action_list / action_get show open work. Narrate what you're doing as you file and draft ("Filing a follow-up to Owner Ops… drafting it… routed to you for approval"), so the operator watches you work.
 === END CRM OPERATOR MODE ===`,
       });
     }
@@ -3646,6 +3651,71 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
                   brief: { type: "string", description: "Optional brief/prompt that produced it." }
                 },
                 required: ["title", "body"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "action_file",
+              description: "Admin/coach only. File a unit of work from one of Paige's departments to the other on the action bus — e.g. Client Experience flags an at-risk client to Owner Ops, or Owner Ops queues a follow-up. This STARTS a tracked hand-off; it does not draft or send. Use action_advance next to draft/route it. action_kind must be one of the platform kinds (e.g. owner.followup_email, client.followup, client.at_risk, owner.task, owner.onboarding_nudge, client.portal_recommendation).",
+              parameters: {
+                type: "object",
+                properties: {
+                  action_kind: { type: "string", description: "The kind of action, e.g. owner.followup_email, client.at_risk, owner.task." },
+                  title: { type: "string", description: "Short title for the action." },
+                  summary: { type: "string", description: "Optional why/context." },
+                  contact_id: { type: "string", description: "clients.id this action is about (optional)." },
+                  to_department: { type: "string", enum: ["owner_ops", "client_experience"], description: "Optional; defaults from the kind." },
+                  priority: { type: "string", enum: ["low", "normal", "high", "urgent"] }
+                },
+                required: ["action_kind", "title"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "action_advance",
+              description: "Admin/coach only. Move an action along its lifecycle: assign it to a sub-agent, attach a draft, route it, or dismiss it. Attaching a draft (to_status='drafted') to an approval-gated kind auto-files it into the coach's approval lane — it NEVER sends directly. Use to_status one of: assigned, drafting, drafted, executing, dismissed.",
+              parameters: {
+                type: "object",
+                properties: {
+                  action_id: { type: "string", description: "The paige_actions id to advance." },
+                  to_status: { type: "string", enum: ["assigned", "drafting", "drafted", "executing", "dismissed"] },
+                  draft_content: { type: "object", description: "The drafted output, e.g. {channel,subject,body}. Required when to_status='drafted'." },
+                  assigned_subagent_slug: { type: "string", description: "Sub-agent to assign, e.g. email-composer." },
+                  decision_rationale: { type: "string", description: "Why, when dismissing." }
+                },
+                required: ["action_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "action_list",
+              description: "Admin/coach only. List actions on Paige's bus — a department's queue or one client's — filed, drafting, waiting on approval, or done. Use to see her team's open work before deciding what to do next.",
+              parameters: {
+                type: "object",
+                properties: {
+                  to_department: { type: "string", enum: ["owner_ops", "client_experience"] },
+                  status: { type: "string", enum: ["filed", "assigned", "drafting", "drafted", "pending_approval", "approved", "executing", "done", "dismissed", "blocked"] },
+                  contact_id: { type: "string", description: "clients.id to filter to one client." },
+                  limit: { type: "number", description: "Max results (default 50, cap 200)." }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "action_get",
+              description: "Admin/coach only. Fetch one action by id with its current status and links (the approval it waits on, the client-facing card it created).",
+              parameters: {
+                type: "object",
+                properties: { action_id: { type: "string", description: "The paige_actions id." } },
+                required: ["action_id"]
               }
             }
           },
@@ -4130,6 +4200,10 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
           tc.function.name === "generate_image" ||
           tc.function.name === "draft_marketing_content" ||
           tc.function.name === "content_save" ||
+          tc.function.name === "action_file" ||
+          tc.function.name === "action_advance" ||
+          tc.function.name === "action_list" ||
+          tc.function.name === "action_get" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
@@ -4347,6 +4421,40 @@ Always resolve names/emails to client_id via crm_search_contacts before calling 
               });
               if (error) throw error;
               result = { success: true, content_id: cid };
+            } else if (tc.function.name === "action_file") {
+              const { data, error } = await supabaseClient.rpc("file_action", {
+                p_action_kind: args.action_kind,
+                p_title: args.title,
+                p_summary: args.summary ?? null,
+                p_contact_id: args.contact_id ?? null,
+                p_to_department: args.to_department ?? null,
+                p_priority: args.priority ?? null,
+                p_tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, ...(data as any) };
+            } else if (tc.function.name === "action_advance") {
+              const { data, error } = await supabaseClient.rpc("advance_action", {
+                p_action_id: args.action_id,
+                p_to_status: args.to_status ?? null,
+                p_draft_content: args.draft_content ?? null,
+                p_assigned_subagent_slug: args.assigned_subagent_slug ?? null,
+                p_decision_rationale: args.decision_rationale ?? null,
+                p_tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, ...(data as any) };
+            } else if (tc.function.name === "action_list" || tc.function.name === "action_get") {
+              const { data, error } = await supabaseClient.rpc("list_actions", {
+                p_to_department: args.to_department ?? null,
+                p_status: args.status ?? null,
+                p_contact_id: args.contact_id ?? null,
+                p_action_id: tc.function.name === "action_get" ? args.action_id : null,
+                p_limit: args.limit ?? 50,
+                p_tenant_id: personaCtx?.tenant_id ?? null,
+              });
+              if (error) throw error;
+              result = { success: true, count: (data as any[])?.length ?? 0, actions: data ?? [] };
             } else if (tc.function.name === "crm_log_activity") {
               const { data: row, error } = await admin
                 .from("communication_log")

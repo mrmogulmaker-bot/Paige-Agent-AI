@@ -1,0 +1,459 @@
+-- ============================================================================
+-- ACTION BUS SPINE (§8) — the foundation Paige's two departments coordinate over.
+-- Fully additive. Designed by the action-bus design crew (data + orchestration
+-- lenses, adversarially merged) and reconciled with the existing substrate:
+--   • paige_pending_approvals  owns the human approval lane (unchanged)
+--   • paige_customer_actions   owns client-facing surfacing (unchanged)
+--   • paige_subagents          owns the sub-agent registry (department column added)
+-- paige_actions is the COORDINATION layer — it links to those three, absorbs none.
+-- Tenant isolation: RPCs are the only writers; JWT callers are pinned to their own
+-- tenant (the p_tenant_id IDOR class we closed in Content Studio is closed here too).
+-- Coaching-generic (§2/§9): the seeded action-kind registry has zero finance kinds.
+-- ============================================================================
+
+-- (A) DEPARTMENT REGISTRY — coaching-generic, platform-level (no tenant_id, §9).
+CREATE TABLE IF NOT EXISTS public.paige_departments (
+  slug          text PRIMARY KEY,
+  name          text NOT NULL,
+  audience      text NOT NULL CHECK (audience IN ('owner','client')),
+  description   text NOT NULL,
+  enabled       boolean NOT NULL DEFAULT true,
+  display_order int NOT NULL DEFAULT 100
+);
+INSERT INTO public.paige_departments(slug,name,audience,description,display_order) VALUES
+ ('owner_ops','Owner Ops','owner','Works for the business owner: pipeline, follow-ups, retainers, campaigns, scheduling, at-risk triage, the daily brief.',1),
+ ('client_experience','Client Experience','client','Works for each client: onboarding, conversational intake, expert probing, answers, nurture, the personalized portal.',2)
+ON CONFLICT (slug) DO NOTHING;
+
+-- Type sub-agents into a department (NULL = shared tool both departments invoke).
+ALTER TABLE public.paige_subagents
+  ADD COLUMN IF NOT EXISTS department text
+    REFERENCES public.paige_departments(slug) ON DELETE SET NULL;
+
+-- (B) ACTION-KIND REGISTRY — routing + defaults + the autonomy hook.
+--     tenant_id NULL = platform default (coaching-generic). tenant_id set = a
+--     tenant-authored / Playbook-preset kind (slug namespaced 't.<slug>.*').
+CREATE TABLE IF NOT EXISTS public.paige_action_kinds (
+  slug                    text PRIMARY KEY,
+  tenant_id               uuid REFERENCES public.tenants(id) ON DELETE CASCADE,
+  label                   text NOT NULL,
+  description             text NOT NULL,
+  default_from_department text NOT NULL REFERENCES public.paige_departments(slug),
+  default_to_department   text NOT NULL REFERENCES public.paige_departments(slug),
+  executor                text NOT NULL
+      CHECK (executor IN ('send_via_approval','surface_to_client','record_only','workflow')),
+  requires_approval       boolean NOT NULL DEFAULT true,
+  approval_type           text NOT NULL DEFAULT 'cs_draft',
+  draft_subagent_slug     text REFERENCES public.paige_subagents(slug) ON DELETE SET NULL,
+  default_autonomy_lane   text NOT NULL DEFAULT 'confirm'
+      CHECK (default_autonomy_lane IN ('auto','confirm','off')),
+  default_priority        text NOT NULL DEFAULT 'normal'
+      CHECK (default_priority IN ('low','normal','high','urgent')),
+  enabled                 boolean NOT NULL DEFAULT true,
+  created_at              timestamptz NOT NULL DEFAULT now(),
+  -- §2/§4 guardrails: "auto-send" is unrepresentable at the schema level.
+  CONSTRAINT chk_send_requires_approval
+    CHECK (executor <> 'send_via_approval' OR requires_approval = true),
+  CONSTRAINT chk_auto_lane_safe
+    CHECK (default_autonomy_lane <> 'auto' OR executor IN ('record_only','workflow'))
+);
+
+INSERT INTO public.paige_action_kinds
+ (slug,label,description,default_from_department,default_to_department,executor,requires_approval,approval_type,draft_subagent_slug,default_autonomy_lane,default_priority) VALUES
+ ('client.at_risk',              'Client at risk',        'Flag a disengaged client so Owner Ops can intervene.',          'client_experience','owner_ops',        'record_only',      false,'other',   NULL,           'auto',   'high'),
+ ('client.intake_question',      'Intake question',       'Client-side probe that needs an owner answer.',                 'client_experience','owner_ops',        'record_only',      false,'other',   NULL,           'confirm','normal'),
+ ('client.followup',             'Client follow-up',      'Draft a nurture/follow-up message to a client.',                'client_experience','owner_ops',        'send_via_approval',true, 'cs_draft','email-composer','confirm','normal'),
+ ('owner.followup_email',        'Follow-up email',       'Owner-initiated follow-up email to a client.',                  'owner_ops',        'client_experience','send_via_approval',true, 'cs_draft','email-composer','confirm','normal'),
+ ('owner.sms_nudge',             'SMS nudge',             'Owner-initiated SMS nudge to a client.',                        'owner_ops',        'client_experience','send_via_approval',true, 'cs_draft','email-composer','confirm','normal'),
+ ('owner.task',                  'Internal task',         'Internal task for the owner team.',                             'owner_ops',        'owner_ops',        'record_only',      false,'other',   NULL,           'auto',   'normal'),
+ ('owner.onboarding_nudge',      'Onboarding nudge',      'Surface an onboarding next-step to a client in their portal.',  'owner_ops',        'client_experience','surface_to_client',false,'other',   NULL,           'confirm','normal'),
+ ('owner.schedule_meeting',      'Schedule meeting',      'Propose a booking to a client in their portal.',                'owner_ops',        'client_experience','surface_to_client',false,'other',   NULL,           'confirm','normal'),
+ ('client.portal_recommendation','Portal recommendation', 'Surface a next-step recommendation inside the client portal.',  'client_experience','client_experience','surface_to_client',false,'other',   NULL,           'confirm','low'),
+ ('owner.daily_brief_item',      'Daily brief item',      'Owner-facing brief line item.',                                 'owner_ops',        'owner_ops',        'record_only',      false,'other',   NULL,           'auto',   'low')
+ON CONFLICT (slug) DO NOTHING;
+
+-- (C) THE BUS — pure coordination/state machine. Tenant-scoped ROWS (§9).
+CREATE TABLE IF NOT EXISTS public.paige_actions (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id             uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  action_kind           text NOT NULL REFERENCES public.paige_action_kinds(slug),
+  from_department       text NOT NULL REFERENCES public.paige_departments(slug),
+  to_department         text NOT NULL REFERENCES public.paige_departments(slug),
+  contact_id            uuid REFERENCES public.clients(id) ON DELETE SET NULL,
+  conversation_id       uuid REFERENCES public.paige_conversations(id) ON DELETE SET NULL,
+  parent_action_id      uuid REFERENCES public.paige_actions(id) ON DELETE SET NULL,
+  title                 text NOT NULL,
+  summary               text,
+  payload               jsonb NOT NULL DEFAULT '{}'::jsonb,
+  draft_content         jsonb,
+  status                text NOT NULL DEFAULT 'filed'
+      CHECK (status IN ('filed','assigned','drafting','drafted','pending_approval',
+                        'approved','executing','done','dismissed','failed','blocked','expired')),
+  priority              text NOT NULL DEFAULT 'normal'
+      CHECK (priority IN ('low','normal','high','urgent')),
+  autonomy_lane         text NOT NULL DEFAULT 'confirm'
+      CHECK (autonomy_lane IN ('auto','confirm','off')),
+  approval_id           uuid REFERENCES public.paige_pending_approvals(id) ON DELETE SET NULL,
+  customer_action_id    uuid REFERENCES public.paige_customer_actions(id) ON DELETE SET NULL,
+  assigned_subagent_slug text REFERENCES public.paige_subagents(slug) ON DELETE SET NULL,
+  invocation_id         uuid REFERENCES public.paige_subagent_invocations(id) ON DELETE SET NULL,
+  assigned_to_user_id   uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_by            uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_by_agent      text,
+  due_at                timestamptz,
+  expires_at            timestamptz,
+  result                jsonb,
+  error                 text,
+  decision_rationale    text,
+  filed_at              timestamptz NOT NULL DEFAULT now(),
+  assigned_at           timestamptz,
+  drafted_at            timestamptz,
+  executed_at           timestamptz,
+  resolved_at           timestamptz,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pa_queue    ON public.paige_actions(tenant_id, to_department, status, priority, filed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pa_open     ON public.paige_actions(tenant_id, status)
+  WHERE status IN ('filed','assigned','drafting','drafted','pending_approval','approved','executing');
+CREATE INDEX IF NOT EXISTS idx_pa_contact  ON public.paige_actions(contact_id)         WHERE contact_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pa_approval ON public.paige_actions(approval_id)        WHERE approval_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pa_custact  ON public.paige_actions(customer_action_id) WHERE customer_action_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pa_parent   ON public.paige_actions(parent_action_id)   WHERE parent_action_id IS NOT NULL;
+
+GRANT SELECT ON public.paige_actions TO authenticated;
+GRANT ALL    ON public.paige_actions TO service_role;
+ALTER TABLE public.paige_actions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS pa_tenant_staff_read ON public.paige_actions;
+CREATE POLICY pa_tenant_staff_read ON public.paige_actions FOR SELECT TO authenticated
+  USING (
+    (tenant_id = public.current_user_tenant_id()
+       AND public.has_any_role(auth.uid(), ARRAY['admin','super_admin','coach']))
+    OR public.has_role(auth.uid(),'admin'::public.app_role)
+  );
+DROP POLICY IF EXISTS pa_no_direct_insert ON public.paige_actions;
+CREATE POLICY pa_no_direct_insert ON public.paige_actions FOR INSERT TO authenticated WITH CHECK (false);
+DROP POLICY IF EXISTS pa_no_direct_update ON public.paige_actions;
+CREATE POLICY pa_no_direct_update ON public.paige_actions FOR UPDATE TO authenticated USING (false) WITH CHECK (false);
+DROP POLICY IF EXISTS pa_no_direct_delete ON public.paige_actions;
+CREATE POLICY pa_no_direct_delete ON public.paige_actions FOR DELETE TO authenticated USING (false);
+DROP POLICY IF EXISTS pa_service_all ON public.paige_actions;
+CREATE POLICY pa_service_all ON public.paige_actions FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+DROP TRIGGER IF EXISTS trg_pa_touch ON public.paige_actions;
+CREATE TRIGGER trg_pa_touch BEFORE UPDATE ON public.paige_actions
+  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+-- Registry tables: read-only to staff, service-writable (Paige governs §10).
+ALTER TABLE public.paige_departments   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.paige_action_kinds  ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON public.paige_departments, public.paige_action_kinds TO authenticated;
+GRANT ALL    ON public.paige_departments, public.paige_action_kinds TO service_role;
+DROP POLICY IF EXISTS dept_read ON public.paige_departments;
+CREATE POLICY dept_read ON public.paige_departments FOR SELECT TO authenticated USING (enabled);
+DROP POLICY IF EXISTS svc_dept ON public.paige_departments;
+CREATE POLICY svc_dept ON public.paige_departments FOR ALL TO service_role USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS kind_read ON public.paige_action_kinds;
+CREATE POLICY kind_read ON public.paige_action_kinds FOR SELECT TO authenticated
+  USING (enabled AND (tenant_id IS NULL OR tenant_id = public.current_user_tenant_id()));
+DROP POLICY IF EXISTS svc_kind ON public.paige_action_kinds;
+CREATE POLICY svc_kind ON public.paige_action_kinds FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- (D) APPROVAL-SYNC TRIGGER — pure-sync, minimal, legacy-safe. Only syncs
+-- send_via_approval outcomes back onto the linked bus row. Never sends, never
+-- writes back to paige_pending_approvals (no recursion).
+CREATE OR REPLACE FUNCTION public.trg_ppa_sync_action() RETURNS trigger
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE _aid uuid := (NEW.metadata->>'action_id')::uuid;
+BEGIN
+  IF _aid IS NULL OR NEW.status = OLD.status THEN RETURN NEW; END IF;
+  IF NEW.status IN ('approved','sent') THEN
+    UPDATE public.paige_actions
+       SET status='done', executed_at=now(), resolved_at=now(),
+           result = coalesce(result,'{}'::jsonb)
+                    || jsonb_build_object('approval_status',NEW.status,'audit_id',NEW.sent_message_audit_id)
+     WHERE id=_aid AND status NOT IN ('done','dismissed','failed','expired');
+  ELSIF NEW.status IN ('rejected','skipped') THEN
+    UPDATE public.paige_actions
+       SET status='dismissed', resolved_at=now(),
+           decision_rationale = coalesce(NEW.decision_rationale, decision_rationale)
+     WHERE id=_aid AND status NOT IN ('done','dismissed','failed','expired');
+  END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_ppa_sync_action ON public.paige_pending_approvals;
+CREATE TRIGGER trg_ppa_sync_action AFTER UPDATE OF status ON public.paige_pending_approvals
+  FOR EACH ROW EXECUTE FUNCTION public.trg_ppa_sync_action();
+
+-- (E) AUTONOMY RESOLVER — v1 stub (returns the kind default). The future Autonomy
+-- Policy Engine replaces the body to consult per-tenant policies + guardrail caps.
+CREATE OR REPLACE FUNCTION public.paige_resolve_autonomy(p_tenant uuid, p_kind text, p_default text)
+  RETURNS text LANGUAGE sql STABLE SET search_path=public AS $$
+  SELECT p_default;
+$$;
+
+-- (F) file_action — a department files a unit of work onto the bus. Dual-caller,
+-- tenant-isolated (JWT caller pinned to own tenant; service/Paige passes p_tenant_id).
+CREATE OR REPLACE FUNCTION public.file_action(
+  p_action_kind      text,
+  p_title            text,
+  p_summary          text  DEFAULT NULL,
+  p_contact_id       uuid  DEFAULT NULL,
+  p_payload          jsonb DEFAULT '{}'::jsonb,
+  p_from_department  text  DEFAULT NULL,
+  p_to_department    text  DEFAULT NULL,
+  p_priority         text  DEFAULT NULL,
+  p_due_at           timestamptz DEFAULT NULL,
+  p_conversation_id  uuid  DEFAULT NULL,
+  p_parent_action_id uuid  DEFAULT NULL,
+  p_created_by_agent text  DEFAULT 'paige',
+  p_tenant_id        uuid  DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE
+  _caller uuid := auth.uid();
+  _tenant uuid;
+  _kind   public.paige_action_kinds%ROWTYPE;
+  _lane   text;
+  _id     uuid;
+BEGIN
+  -- Auth preamble (kills the p_tenant_id IDOR on the JWT path)
+  IF _caller IS NOT NULL THEN
+    _tenant := public.current_user_tenant_id();
+    IF p_tenant_id IS NOT NULL AND p_tenant_id <> _tenant THEN
+      RAISE EXCEPTION 'ACTION_FORBIDDEN: tenant mismatch' USING ERRCODE='42501';
+    END IF;
+    IF NOT (public.is_tenant_member(_tenant)
+            AND public.has_any_role(_caller, ARRAY['admin','super_admin','coach'])) THEN
+      RAISE EXCEPTION 'ACTION_FORBIDDEN: admin or coach required' USING ERRCODE='42501';
+    END IF;
+  ELSE
+    _tenant := p_tenant_id;
+    IF _tenant IS NULL THEN RAISE EXCEPTION 'ACTION_NO_TENANT' USING ERRCODE='22023'; END IF;
+  END IF;
+
+  -- Load + §9-guard the kind (platform default OR this tenant's own; must be enabled)
+  SELECT * INTO _kind FROM public.paige_action_kinds
+   WHERE slug = p_action_kind AND enabled AND (tenant_id IS NULL OR tenant_id = _tenant);
+  IF _kind.slug IS NULL THEN
+    RAISE EXCEPTION 'ACTION_KIND_UNAVAILABLE: % not available for tenant', p_action_kind USING ERRCODE='22023';
+  END IF;
+
+  -- Cross-tenant link guards
+  IF p_contact_id IS NOT NULL AND NOT EXISTS
+     (SELECT 1 FROM public.clients WHERE id=p_contact_id AND tenant_id=_tenant) THEN
+    RAISE EXCEPTION 'ACTION_FORBIDDEN: contact not in tenant' USING ERRCODE='42501';
+  END IF;
+  IF p_parent_action_id IS NOT NULL AND NOT EXISTS
+     (SELECT 1 FROM public.paige_actions WHERE id=p_parent_action_id AND tenant_id=_tenant) THEN
+    RAISE EXCEPTION 'ACTION_FORBIDDEN: parent not in tenant' USING ERRCODE='42501';
+  END IF;
+
+  _lane := public.paige_resolve_autonomy(_tenant, p_action_kind, _kind.default_autonomy_lane);
+
+  INSERT INTO public.paige_actions(
+    tenant_id, action_kind, from_department, to_department, contact_id, conversation_id,
+    parent_action_id, title, summary, payload, status, priority, autonomy_lane,
+    assigned_subagent_slug, due_at, created_by, created_by_agent
+  ) VALUES (
+    _tenant, p_action_kind,
+    COALESCE(p_from_department, _kind.default_from_department),
+    COALESCE(p_to_department,   _kind.default_to_department),
+    p_contact_id, p_conversation_id, p_parent_action_id,
+    p_title, p_summary, COALESCE(p_payload,'{}'::jsonb), 'filed',
+    COALESCE(p_priority, _kind.default_priority), _lane,
+    _kind.draft_subagent_slug, p_due_at, _caller, COALESCE(p_created_by_agent,'paige')
+  ) RETURNING id INTO _id;
+
+  INSERT INTO public.audit_logs(user_id, entity, action, entity_id, data)
+  VALUES (_caller, 'paige_action', 'file_action', _id,
+          jsonb_build_object('tenant_id',_tenant,'kind',p_action_kind,'to',COALESCE(p_to_department,_kind.default_to_department)));
+
+  RETURN jsonb_build_object('ok',true,'action_id',_id,'status','filed');
+END $$;
+
+-- (G) advance_action — move an action along its lifecycle; auto-routes a drafted,
+-- approval-gated action into the coach's approval lane; executes non-approval kinds.
+CREATE OR REPLACE FUNCTION public.advance_action(
+  p_action_id            uuid,
+  p_to_status            text  DEFAULT NULL,
+  p_draft_content        jsonb DEFAULT NULL,
+  p_assigned_subagent_slug text DEFAULT NULL,
+  p_assigned_to_user_id  uuid  DEFAULT NULL,
+  p_invocation_id        uuid  DEFAULT NULL,
+  p_result               jsonb DEFAULT NULL,
+  p_error                text  DEFAULT NULL,
+  p_decision_rationale   text  DEFAULT NULL,
+  p_tenant_id            uuid  DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE
+  _caller uuid := auth.uid();
+  _row    public.paige_actions%ROWTYPE;
+  _kind   public.paige_action_kinds%ROWTYPE;
+  _lane   text;
+  _appr   uuid;
+  _cust   uuid;
+  _res    jsonb;
+  _next   text;
+BEGIN
+  SELECT * INTO _row FROM public.paige_actions WHERE id=p_action_id FOR UPDATE;
+  IF _row.id IS NULL THEN RAISE EXCEPTION 'ACTION_NOT_FOUND' USING ERRCODE='P0002'; END IF;
+
+  -- Tenant isolation derived FROM the row
+  IF _caller IS NOT NULL THEN
+    IF NOT (_row.tenant_id = public.current_user_tenant_id() OR public.is_platform_owner(_caller)) THEN
+      RAISE EXCEPTION 'ACTION_FORBIDDEN: wrong tenant' USING ERRCODE='42501';
+    END IF;
+    IF NOT public.has_any_role(_caller, ARRAY['admin','super_admin','coach']) THEN
+      RAISE EXCEPTION 'ACTION_FORBIDDEN: admin or coach required' USING ERRCODE='42501';
+    END IF;
+  ELSE
+    IF p_tenant_id IS NOT NULL AND p_tenant_id <> _row.tenant_id THEN
+      RAISE EXCEPTION 'ACTION_FORBIDDEN: tenant mismatch' USING ERRCODE='42501';
+    END IF;
+  END IF;
+
+  -- Idempotent: terminal states no-op
+  IF _row.status IN ('done','dismissed','failed','expired') THEN
+    RETURN jsonb_build_object('ok',true,'action_id',_row.id,'status',_row.status,'noop',true);
+  END IF;
+
+  SELECT * INTO _kind FROM public.paige_action_kinds WHERE slug=_row.action_kind;
+  _next := COALESCE(p_to_status, _row.status);
+
+  -- Assignment / draft-attachment metadata (independent of the target status)
+  IF p_assigned_subagent_slug IS NOT NULL OR p_assigned_to_user_id IS NOT NULL THEN
+    UPDATE public.paige_actions SET
+      assigned_subagent_slug = COALESCE(p_assigned_subagent_slug, assigned_subagent_slug),
+      assigned_to_user_id    = COALESCE(p_assigned_to_user_id, assigned_to_user_id),
+      assigned_at            = COALESCE(assigned_at, now())
+    WHERE id=_row.id;
+  END IF;
+
+  IF _next = 'assigned' THEN
+    UPDATE public.paige_actions SET status='assigned', assigned_at=COALESCE(assigned_at,now()) WHERE id=_row.id;
+
+  ELSIF _next = 'drafting' THEN
+    UPDATE public.paige_actions SET status='drafting' WHERE id=_row.id;
+
+  ELSIF _next = 'drafted' THEN
+    UPDATE public.paige_actions SET
+      status='drafted', draft_content=COALESCE(p_draft_content, draft_content),
+      invocation_id=COALESCE(p_invocation_id, invocation_id), drafted_at=now()
+    WHERE id=_row.id;
+    _lane := public.paige_resolve_autonomy(_row.tenant_id, _row.action_kind, _kind.default_autonomy_lane);
+
+    IF _kind.requires_approval THEN
+      -- Route into the EXISTING approval lane (one row; unchanged inbox renders it).
+      INSERT INTO public.paige_pending_approvals(
+        type, category, draft_content, contact_id, conversation_id, tenant_id,
+        source, risk_level, submitted_by_user_id, metadata
+      ) VALUES (
+        _kind.approval_type, _row.action_kind,
+        COALESCE(p_draft_content, _row.draft_content), _row.contact_id, _row.conversation_id, _row.tenant_id,
+        'paige_action_bus', 'medium', _caller,
+        jsonb_build_object('action_id', _row.id)
+      ) RETURNING id INTO _appr;
+      UPDATE public.paige_actions SET approval_id=_appr, status='pending_approval' WHERE id=_row.id;
+
+    ELSIF _lane = 'auto' THEN
+      _next := 'executing';  -- fall through to execute below
+    -- else: hold at 'drafted' as a suggestion (confirm/off) — no approval, no execute.
+    END IF;
+  END IF;
+
+  -- Execution dispatch (either an explicit ->executing, or the auto fall-through)
+  IF _next = 'executing' THEN
+    IF _kind.executor = 'record_only' THEN
+      UPDATE public.paige_actions SET status='done', executed_at=now(), resolved_at=now(),
+        result=COALESCE(p_result, result) WHERE id=_row.id;
+
+    ELSIF _kind.executor = 'surface_to_client' THEN
+      -- admin_propose_paige_actions RETURNS jsonb {ok,count,ids}; it enforces the
+      -- client's shared-context consent and returns ok:false on consent/validation fail.
+      BEGIN
+        _res := public.admin_propose_paige_actions(
+                  _row.contact_id,
+                  jsonb_build_array(jsonb_build_object(
+                    'action_type', _row.action_kind,
+                    'title', _row.title,
+                    'body', COALESCE(_row.draft_content->>'body', _row.summary, _row.title),
+                    'payload', COALESCE(_row.draft_content, _row.payload)
+                  )));
+        IF COALESCE((_res->>'ok')::boolean, false) THEN
+          _cust := NULLIF(_res->'ids'->>0, '')::uuid;
+          UPDATE public.paige_actions SET status='done', customer_action_id=_cust, executed_at=now(),
+            resolved_at=now(), result=jsonb_build_object('customer_action_id',_cust) WHERE id=_row.id;
+        ELSE
+          UPDATE public.paige_actions SET status='blocked',
+            error='client_surface_failed: '||COALESCE(_res->>'error','unknown'), resolved_at=now() WHERE id=_row.id;
+        END IF;
+      EXCEPTION WHEN OTHERS THEN
+        UPDATE public.paige_actions SET status='blocked', error='client_surface_failed: '||SQLERRM,
+          resolved_at=now() WHERE id=_row.id;
+      END;
+
+    ELSIF _kind.executor = 'workflow' THEN
+      UPDATE public.paige_actions SET status='drafted' WHERE id=_row.id;  -- hold; not implemented in v1
+      RAISE EXCEPTION 'ACTION_WORKFLOW_UNIMPLEMENTED' USING ERRCODE='0A000';
+
+    ELSE
+      RAISE EXCEPTION 'ACTION_MISTYPED: send_via_approval kinds route through the approval lane' USING ERRCODE='22023';
+    END IF;
+
+  ELSIF _next IN ('dismissed','failed','blocked') THEN
+    UPDATE public.paige_actions SET status=_next, error=COALESCE(p_error,error),
+      decision_rationale=COALESCE(p_decision_rationale, decision_rationale), resolved_at=now()
+    WHERE id=_row.id;
+  END IF;
+
+  INSERT INTO public.audit_logs(user_id, entity, action, entity_id, data)
+  VALUES (_caller, 'paige_action', 'advance_action', _row.id,
+          jsonb_build_object('to', _next, 'kind', _row.action_kind));
+
+  SELECT * INTO _row FROM public.paige_actions WHERE id=p_action_id;
+  RETURN jsonb_build_object('ok',true,'action_id',_row.id,'status',_row.status,
+                            'approval_id',_row.approval_id,'customer_action_id',_row.customer_action_id);
+END $$;
+
+-- (H) list_actions — tenant-scoped read for the queue / a client / one action.
+CREATE OR REPLACE FUNCTION public.list_actions(
+  p_to_department text DEFAULT NULL,
+  p_status        text DEFAULT NULL,
+  p_contact_id    uuid DEFAULT NULL,
+  p_action_id     uuid DEFAULT NULL,
+  p_limit         int  DEFAULT 50,
+  p_tenant_id     uuid DEFAULT NULL
+) RETURNS SETOF public.paige_actions LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE _caller uuid := auth.uid(); _tenant uuid;
+BEGIN
+  IF _caller IS NOT NULL THEN
+    _tenant := public.current_user_tenant_id();
+    IF NOT (public.is_tenant_member(_tenant)
+            AND public.has_any_role(_caller, ARRAY['admin','super_admin','coach'])) THEN
+      RAISE EXCEPTION 'ACTION_FORBIDDEN' USING ERRCODE='42501';
+    END IF;
+  ELSE
+    _tenant := p_tenant_id;
+    IF _tenant IS NULL THEN RAISE EXCEPTION 'ACTION_NO_TENANT' USING ERRCODE='22023'; END IF;
+  END IF;
+
+  RETURN QUERY
+    SELECT * FROM public.paige_actions
+     WHERE tenant_id = _tenant
+       AND (p_action_id  IS NULL OR id = p_action_id)
+       AND (p_to_department IS NULL OR to_department = p_to_department)
+       AND (p_status     IS NULL OR status = p_status)
+       AND (p_contact_id IS NULL OR contact_id = p_contact_id)
+     ORDER BY filed_at DESC
+     LIMIT GREATEST(1, LEAST(COALESCE(p_limit,50), 200));
+END $$;
+
+REVOKE ALL ON FUNCTION public.file_action(text,text,text,uuid,jsonb,text,text,text,timestamptz,uuid,uuid,text,uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.file_action(text,text,text,uuid,jsonb,text,text,text,timestamptz,uuid,uuid,text,uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.advance_action(uuid,text,jsonb,text,uuid,uuid,jsonb,text,text,uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.advance_action(uuid,text,jsonb,text,uuid,uuid,jsonb,text,text,uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.list_actions(text,text,uuid,uuid,int,uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.list_actions(text,text,uuid,uuid,int,uuid) TO authenticated, service_role;
