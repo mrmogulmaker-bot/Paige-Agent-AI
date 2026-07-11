@@ -59,7 +59,12 @@ export default function CampaignsHub() {
         </TabsContent>
 
         <TabsContent value="content" className="mt-4">
-          <Suspense fallback={<div className="text-sm text-muted-foreground">Loading Content Studio…</div>}>
+          <Suspense fallback={
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,22rem)_1fr]">
+              <div className="h-72 animate-pulse rounded-[var(--radius)] border border-border bg-muted/40" />
+              <div className="h-72 animate-pulse rounded-[var(--radius)] border border-border bg-muted/40" />
+            </div>
+          }>
             <ContentStudio />
           </Suspense>
         </TabsContent>

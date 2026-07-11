@@ -5,7 +5,7 @@
 // of this from chat with no human in the UI. Tenant-generic (§2) — no vertical/finance
 // framing; the tenant's brief decides the content. Built on the premium primitive layer;
 // gold is spent only on the act moments (Draft / Generate / Save).
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import {
@@ -40,6 +40,16 @@ interface Draft { title: string; content: string; }
 interface LibraryRow {
   id: string; kind: "text" | "image"; channel: string | null; title: string;
   body: string | null; image_url: string | null; size: string | null; created_at: string;
+}
+
+// Neutral category/taxonomy chip. Distinct from StatePill (which carries real state) —
+// channel/kind labels are categorization, not status, so they get a plain muted chip.
+function LabelChip({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-border bg-transparent px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+      {children}
+    </span>
+  );
 }
 
 function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
@@ -190,13 +200,13 @@ function ComposePanel({ tenantId, onSaved }: { tenantId: string | null; onSaved:
                   value={d.title} onChange={(e) => setDraft(i, { title: e.target.value })}
                   className="h-8 max-w-xs border-transparent bg-transparent px-1 font-display text-base font-semibold focus-visible:border-input"
                 />
-                <StatePill state="pending">{CHANNEL_LABEL[channel]}</StatePill>
+                <LabelChip>{CHANNEL_LABEL[channel]}</LabelChip>
               </span>
             } actions={<CopyButton text={d.content} />}>
               <Textarea
                 value={d.content} onChange={(e) => setDraft(i, { content: e.target.value })}
                 rows={Math.min(14, Math.max(5, d.content.split("\n").length + 1))}
-                className="font-mono text-sm leading-relaxed"
+                className="text-sm leading-relaxed"
               />
               <div className="mt-3 flex justify-end">
                 <Button onClick={() => save(i)} disabled={savingIdx === i} variant="gold" size="sm" className="gap-1.5">
@@ -271,7 +281,7 @@ function ImagePanel({ tenantId, onSaved }: { tenantId: string | null; onSaved: (
         {needsConfig ? (
           <EmptyState
             icon={Info} title="Image generation isn't switched on yet"
-            description="An admin can enable it in Supabase by adding the image provider key to Edge Function secrets. Copy drafting works now regardless."
+            description="It's not available on your account right now — reach out to turn it on. Drafting copy works now regardless."
           />
         ) : result ? (
           <div className="space-y-3">
@@ -372,7 +382,7 @@ function LibraryPanel({ tenantId, active }: { tenantId: string | null; active: b
               <div className="flex flex-1 flex-col gap-2 p-4">
                 <div className="flex items-start justify-between gap-2">
                   <h4 className="min-w-0 truncate font-display text-sm font-semibold text-foreground">{r.title}</h4>
-                  <StatePill state="pending">{r.kind === "image" ? "Image" : CHANNEL_LABEL[r.channel ?? ""] ?? "Copy"}</StatePill>
+                  <LabelChip>{r.kind === "image" ? "Image" : CHANNEL_LABEL[r.channel ?? ""] ?? "Copy"}</LabelChip>
                 </div>
                 <div className="mt-auto flex items-center gap-1">
                   {r.kind === "text" && r.body && <CopyButton text={r.body} />}

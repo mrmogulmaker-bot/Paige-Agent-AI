@@ -37,8 +37,9 @@ serve(async (req: Request) => {
 
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     if (!OPENAI_API_KEY) {
+      console.warn("generate-image: image provider key not set");
       return new Response(JSON.stringify({
-        error: "Image generation isn't configured yet. Add the OPENAI_API_KEY edge-function secret in Supabase to enable it.",
+        error: "Image generation isn't switched on for your account yet.",
         needs_config: true,
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -50,6 +51,20 @@ serve(async (req: Request) => {
     if (prompt.length < 4) {
       return new Response(JSON.stringify({ error: "Describe the image you want." }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Tenant isolation (§9): the image is stored + filed under tenantId, so the caller
+    // must actually belong to that tenant (platform admins excepted). Without this a coach
+    // in one tenant could plant objects in another's storage prefix + Content Studio library.
+    if (tenantId) {
+      const isPlatformAdmin = roles.some((r: string) => r === "admin" || r === "super_admin");
+      if (!isPlatformAdmin) {
+        const { data: isMember } = await authed.rpc("is_tenant_member", { _tenant: tenantId });
+        if (!isMember) {
+          return new Response(JSON.stringify({ error: "You don't have access to that workspace." }), {
+            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
     }
 
     const oai = await fetch("https://api.openai.com/v1/images/generations", {
