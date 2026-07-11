@@ -6,14 +6,17 @@
 import { lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Megaphone, LayoutGrid, GitBranch, FileText, Inbox, Plug, Sparkles } from "lucide-react";
-import { PageShell, PageHeader } from "@/components/ui/page";
+import { Megaphone, LayoutGrid, GitBranch, FileText, Inbox, Plug, Sparkles, Palette, Share2, Facebook, Youtube, Linkedin } from "lucide-react";
+import { PageShell, PageHeader, EmptyState, StatePill } from "@/components/ui/page";
 import { CampaignsOverviewStats } from "@/components/admin/campaigns/CampaignsOverviewStats";
 
 const CampaignsOverview = lazy(() => import("@/pages/admin/CampaignsAdmin"));
 const GrowthHub = lazy(() => import("@/pages/admin/GrowthHub"));
 const ContentStudio = lazy(() =>
   import("@/components/admin/content/ContentStudio").then((m) => ({ default: m.ContentStudio })),
+);
+const BrandKitPanel = lazy(() =>
+  import("@/components/admin/brand/BrandKitPanel").then((m) => ({ default: m.BrandKitPanel })),
 );
 
 const GROWTH_TABS = new Set(["pages", "funnels", "forms", "submissions", "integrations"]);
@@ -44,6 +47,8 @@ export default function CampaignsHub() {
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="overview"><Megaphone className="w-4 h-4 mr-1.5" />Overview</TabsTrigger>
           <TabsTrigger value="content"><Sparkles className="w-4 h-4 mr-1.5" />Content Studio</TabsTrigger>
+          <TabsTrigger value="brand"><Palette className="w-4 h-4 mr-1.5" />Brand Kit</TabsTrigger>
+          <TabsTrigger value="social"><Share2 className="w-4 h-4 mr-1.5" />Social</TabsTrigger>
           <TabsTrigger value="pages"><LayoutGrid className="w-4 h-4 mr-1.5" />Pages</TabsTrigger>
           <TabsTrigger value="funnels"><GitBranch className="w-4 h-4 mr-1.5" />Funnels</TabsTrigger>
           <TabsTrigger value="forms"><FileText className="w-4 h-4 mr-1.5" />Forms</TabsTrigger>
@@ -67,6 +72,34 @@ export default function CampaignsHub() {
           }>
             <ContentStudio />
           </Suspense>
+        </TabsContent>
+
+        <TabsContent value="brand" className="mt-4">
+          <Suspense fallback={
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
+              <div className="h-96 animate-pulse rounded-xl border border-border bg-muted/40" />
+              <div className="h-80 animate-pulse rounded-xl border border-border bg-muted/40" />
+            </div>
+          }>
+            <BrandKitPanel />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="social" className="mt-4">
+          <EmptyState
+            icon={Share2}
+            tone="brand"
+            title="Social accounts — coming soon"
+            description="Connect Facebook, Instagram, YouTube, TikTok, and LinkedIn so Paige can publish on your behalf and, down the line, help manage your DMs — all under your own brand."
+            action={
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <StatePill state="roadmap">On the roadmap</StatePill>
+                <span className="inline-flex items-center gap-2 text-muted-foreground">
+                  <Facebook className="h-4 w-4" /><Youtube className="h-4 w-4" /><Linkedin className="h-4 w-4" />
+                </span>
+              </div>
+            }
+          />
         </TabsContent>
 
 
