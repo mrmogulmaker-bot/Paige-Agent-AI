@@ -3,8 +3,10 @@
 // and delivers them so a reminder Paige "set" actually lands — an in-app ping
 // for the assignee (or the whole team), plus a branded email when the reminder
 // asked for one. Each reminder is claimed by stamping reminded_at BEFORE it's
-// delivered, so overlapping cron runs never double-fire; a hard delivery
-// failure releases the claim so the next run retries.
+// delivered, so overlapping cron runs never double-fire; a PRE-delivery failure
+// releases the claim so the next run retries, while a post-ping error keeps the
+// claim (never a duplicate ping). A reminder with no reachable recipient is
+// marked cancelled/undeliverable so it doesn't retry forever.
 //
 // This is the honest other half of "set a reminder": Paige files the row via
 // plan_set_reminder, and this worker is what makes it fire on time.
@@ -61,7 +63,7 @@ Deno.serve(async (req) => {
   // Due, unfired reminders that are still open. Small batch per run; cron reruns.
   const { data: due, error: dueErr } = await admin
     .from("plan_items")
-    .select("id, tenant_id, plan_id, title, summary, remind_at, remind_channel, remind_target, assigned_to_user_id, created_by")
+    .select("id, tenant_id, plan_id, title, summary, remind_at, remind_channel, remind_target, assigned_to_user_id, created_by, metadata")
     .eq("item_type", "reminder")
     .is("reminded_at", null)
     .not("status", "in", "(done,cancelled)")
@@ -118,6 +120,10 @@ Deno.serve(async (req) => {
     if (!claimRow) continue; // lost the claim to a concurrent run
     claimed++;
 
+    // Once the in-app ping has landed we must NOT roll the claim back — doing so
+    // would re-deliver (a duplicate ping) on the next run. Only pre-delivery
+    // failures release the claim.
+    let delivered = false;
     try {
       // Who gets pinged: the whole active team, or the single assignee/creator.
       let recipients: string[] = [];
@@ -135,10 +141,15 @@ Deno.serve(async (req) => {
       }
 
       if (recipients.length === 0) {
-        // Nowhere to land — release the claim so a later assignment can fire it.
-        await admin.from("plan_items").update({ reminded_at: null }).eq("id", r.id);
-        claimed--;
-        failures.push({ id: r.id as string, error: "no recipients" });
+        // Genuinely undeliverable (team with no active members, or a self-reminder
+        // whose user was deleted). Keep the claim stamped so it becomes TERMINAL —
+        // releasing it would re-scan and re-fail this row every minute forever.
+        // Record why on the row so it's explainable.
+        await admin.from("plan_items").update({
+          status: "cancelled",
+          metadata: { ...((r as any).metadata || {}), undeliverable: true, undeliverable_reason: "no active recipient at fire time" },
+        }).eq("id", r.id);
+        failures.push({ id: r.id as string, error: "no recipients (marked undeliverable)" });
         continue;
       }
 
@@ -159,6 +170,7 @@ Deno.serve(async (req) => {
       }));
       const { error: notifErr } = await admin.from("notifications").insert(rows);
       if (notifErr) throw notifErr;
+      delivered = true; // ping landed — from here on, never release the claim
       inApp += rows.length;
 
       // Email channel additionally sends a branded note to each recipient.
@@ -173,9 +185,13 @@ Deno.serve(async (req) => {
       // sms channel: the in-app ping still fired above; text delivery rides the
       // shared SMS worker once a per-tenant number is connected (not wired yet).
     } catch (e: any) {
-      // Release the claim so the next run retries this reminder.
-      await admin.from("plan_items").update({ reminded_at: null }).eq("id", r.id);
-      claimed--;
+      // Only release the claim for PRE-delivery failures. If the in-app ping
+      // already landed, keep the claim stamped so we never double-ping — record
+      // the post-delivery error but leave the reminder marked fired.
+      if (!delivered) {
+        await admin.from("plan_items").update({ reminded_at: null }).eq("id", r.id);
+        claimed--;
+      }
       failures.push({ id: r.id as string, error: String(e?.message || e) });
     }
   }

@@ -4130,7 +4130,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   remind_at: { type: "string", description: "Concrete ISO 8601 timestamp WITH offset, e.g. 2026-07-15T09:00:00-04:00. Resolve from the user's words + their timezone." },
                   target: { type: "string", enum: ["user", "team"], description: "'user' = one person (default, themselves unless target_user_id given); 'team' = the whole active team. team needs admin/coach." },
                   target_user_id: { type: "string", description: "Auth user UUID of the teammate to remind (admin/coach only). Omit for a self-reminder." },
-                  channel: { type: "string", enum: ["in_app", "email", "sms"], description: "How it fires. in_app (default) always lands in their feed; email also sends a branded note; sms is not wired yet (still pings in-app)." },
+                  channel: { type: "string", enum: ["in_app", "email"], description: "How it fires. in_app (default) always lands in their feed; email ALSO sends a branded note IF the workspace's email sending is configured (otherwise still pings in-app). Do not promise a text — SMS isn't wired yet." },
+                  contact_id: { type: "string", description: "Optional client (clients.id) this reminder is about — e.g. a rep's 'remind me to follow up with this lead'. Links the reminder to the client so the ping carries that context." },
                   summary: { type: "string", description: "Optional one-line detail shown with the reminder." }
                 },
                 required: ["title", "remind_at"]
@@ -4621,7 +4622,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         case "save_to_knowledge_base":
           return `Save "${a?.title || "this"}" to your knowledge base so Paige can draw on it later.`;
         case "plan_set_reminder":
-          return `Set a reminder${a?.target === "team" ? " for the team" : a?.target_user_id ? " for a teammate" : ""}: "${a?.title || ""}"${a?.remind_at ? ` at ${a.remind_at}` : ""}${a?.channel && a.channel !== "in_app" ? ` (via ${a.channel})` : ""}. It will actually fire.`;
+          return `Set a reminder${a?.target === "team" ? " for the team" : a?.target_user_id ? " for a teammate" : ""}: "${a?.title || ""}"${a?.remind_at ? ` at ${a.remind_at}` : ""}${a?.contact_id ? " (about a client)" : ""}. It'll ping ${a?.target === "team" ? "the team" : "you"} in-app at that time${a?.channel === "email" ? ", plus an email if sending's set up" : ""}.`;
         case "plan_create":
           return `Create a ${a?.horizon || ""} plan "${a?.title || "Untitled"}"${a?.starts_on ? ` (${a.starts_on}${a?.ends_on ? `–${a.ends_on}` : ""})` : ""}${a?.scope === "team" ? " for the team" : ""}.`;
         case "plan_add_milestone":
@@ -5684,7 +5685,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             switch (tc.function.name) {
               case "plan_set_reminder":
                 rpcName = "plan_set_reminder";
-                rpcArgs = { p_title: args.title, p_remind_at: args.remind_at, p_target: args.target ?? "user", p_target_user_id: args.target_user_id ?? null, p_channel: args.channel ?? "in_app", p_plan_id: args.plan_id ?? null, p_summary: args.summary ?? null, p_tenant_id: tid };
+                rpcArgs = { p_title: args.title, p_remind_at: args.remind_at, p_target: args.target ?? "user", p_target_user_id: args.target_user_id ?? null, p_channel: args.channel === "email" ? "email" : "in_app", p_plan_id: args.plan_id ?? null, p_summary: args.summary ?? null, p_contact_id: args.contact_id ?? null, p_tenant_id: tid };
                 break;
               case "plan_create":
                 rpcName = "plan_create";
@@ -5715,17 +5716,32 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             if (rpcErr) {
               // Surface the real reason (PLAN_FORBIDDEN, missing time, etc.) — never
               // claim success. The honesty rule depends on this being truthful.
+              // Map internal PLAN_*/error codes to plain, jargon-free reasons
+              // (§11 — never surface a raw ERRCODE label). Unmapped codes fall
+              // back to a generic line, not the raw string.
               const msg = String(rpcErr.message || "");
-              const friendly = msg.includes("PLAN_FORBIDDEN")
-                ? "You don't have permission for that — team-wide or someone-else's planning is admin/coach only; your own is always fine."
+              const friendly =
+                  msg.includes("PLAN_FORBIDDEN: reassigning") ? "Reassigning a task to someone else is admin/coach only."
+                : msg.includes("PLAN_FORBIDDEN") ? "You don't have permission for that — team-wide or someone-else's planning is admin/coach only; your own is always fine."
                 : msg.includes("PLAN_REMINDER_TIME_REQUIRED") ? "That reminder needs a concrete time — ask when to fire it."
                 : msg.includes("PLAN_ASSIGNEE_NOT_IN_TENANT") ? "That person isn't on this workspace's team."
-                : msg.includes("PLAN_NOT_IN_TENANT") || msg.includes("PLAN_ITEM_NOT_IN_TENANT") ? "That plan/item isn't in this workspace."
-                : msg;
+                : msg.includes("PLAN_CONTACT_NOT_IN_TENANT") ? "That client isn't in this workspace."
+                : msg.includes("PLAN_MILESTONE_NOT_IN_TENANT") ? "That milestone isn't in this workspace."
+                : msg.includes("PLAN_NOT_IN_TENANT") ? "That plan isn't in this workspace."
+                : msg.includes("PLAN_ITEM_NOT_FOUND") ? "Couldn't find that plan item — it may have been removed."
+                : msg.includes("PLAN_BAD_STATUS") ? "That status isn't valid."
+                : msg.includes("PLAN_BAD_HORIZON") ? "That planning horizon isn't valid."
+                : msg.includes("PLAN_BAD_WINDOW") || msg.includes("PLAN_WINDOW") ? "Those start/end dates don't make a valid window."
+                : msg.includes("PLAN_TITLE_REQUIRED") ? "That needs a title."
+                : msg.includes("PLAN_NO_TENANT") ? "Couldn't resolve the workspace for that."
+                : "That didn't go through. Try again or ask for the missing detail.";
               toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: friendly, note: "It did NOT happen — tell the operator plainly why; do not claim it was set." }) });
             } else {
+              // Honesty on delivery: the IN-APP ping is the hard guarantee. Email
+              // is a best-effort side channel (only if the workspace's sending is
+              // configured), so never tell the operator email is 'locked in'.
               const note = tc.function.name === "plan_set_reminder"
-                ? "Reminder is set and WILL fire at its time (in-app; email too if asked). Tell the operator it's locked in."
+                ? "Reminder is set — it WILL ping them in-app at its time. If they asked for email, add: a branded email will ALSO go out if this workspace's email sending is set up. Do NOT promise a text (SMS isn't wired). Confirm plainly."
                 : tc.function.name === "plan_list" ? undefined
                 : "Done and saved. Report exactly what was created/changed; never mention internal table/function names.";
               toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, ...(rpcData && typeof rpcData === "object" ? rpcData : { result: rpcData }), ...(note ? { note } : {}) }) });
