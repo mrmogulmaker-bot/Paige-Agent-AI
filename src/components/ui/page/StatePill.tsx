@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-export type PillState = "on" | "off" | "pending" | "roadmap" | "included" | "error" | "success";
+export type PillState = "on" | "off" | "pending" | "roadmap" | "included" | "error" | "success" | "warning";
 
 /**
  * The state-carrying word-pill — generalized from the Marketplace SkillCard.
@@ -15,6 +15,7 @@ const STYLES: Record<PillState, string> = {
   on: "bg-[hsl(var(--gold))] text-[hsl(var(--accent-foreground))]",
   included: "border border-[hsl(var(--gold)/0.5)] bg-transparent text-[hsl(var(--gold-dark))]",
   success: "bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))]",
+  warning: "bg-[hsl(var(--warning)/0.15)] text-[hsl(var(--warning))]",
   pending: "bg-muted text-muted-foreground",
   roadmap: "bg-muted text-muted-foreground",
   off: "bg-muted text-muted-foreground",
@@ -23,7 +24,7 @@ const STYLES: Record<PillState, string> = {
 
 const DEFAULT_LABEL: Record<PillState, string> = {
   on: "On", off: "Off", pending: "Pending", roadmap: "Roadmap",
-  included: "Included", error: "Error", success: "Active",
+  included: "Included", error: "Error", success: "Active", warning: "Warning",
 };
 
 export function StatePill({

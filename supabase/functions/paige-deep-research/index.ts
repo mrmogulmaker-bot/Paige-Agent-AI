@@ -65,6 +65,14 @@ interface Finding {
   citations: number[];
   confidence: "high" | "medium" | "low";
   unverifiedFields?: string[];
+  // VALIDATED structured specifics — the ONLY trustworthy source of these facts.
+  // Populated solely from values that survived the deterministic gate in
+  // validateAndBind. Consumers (e.g. lender-research) MUST read these, never
+  // regex the free-text `text`/summary (which can carry ungrounded model prose).
+  name?: string;
+  website?: string;
+  phone?: string;
+  values?: string[];
 }
 interface OutSource {
   index: number;
@@ -251,12 +259,20 @@ async function callWebSearch(
   serviceKey: string,
   query: string,
 ): Promise<WebSearchOut> {
-  const r = await fetch(`${supabaseUrl}/functions/v1/paige-web-search`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
-  });
-  const body = await r.json().catch(() => ({}));
+  let body: any = {};
+  try {
+    const r = await fetch(`${supabaseUrl}/functions/v1/paige-web-search`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+    body = await r.json().catch(() => ({}));
+  } catch (e) {
+    // A transient network failure on ONE query must not crash the run or be
+    // mislabeled as "search offline" — treat it as this query returning nothing.
+    console.error("[paige-deep-research] web-search query failed:", (e as Error)?.message);
+    return { configured: true, results: [] };
+  }
   if (body?.configured === false) return { configured: false, results: [] };
   const results = Array.isArray(body?.results) ? body.results : [];
   return {
@@ -512,6 +528,12 @@ function validateAndBind(
       citations: cites,
       confidence,
       ...(unverified.length ? { unverifiedFields: unverified } : {}),
+      // Structured, GATE-SURVIVED specifics. Consumers read these directly and
+      // must never scrape `text` — only what appears here passed validation.
+      ...(name ? { name } : {}),
+      ...(website ? { website } : {}),
+      ...(phone ? { phone } : {}),
+      ...(keptValues.length ? { values: keptValues } : {}),
     });
   }
   return out;
@@ -523,8 +545,12 @@ function deriveConfidence(cited: SourceRec[]): "high" | "medium" | "low" {
   const hasHighAuthority = cited.some((s) => s.tier === "T1" || s.tier === "T2");
   const corroborated = distinctHosts >= 2 || cited.some((s) => s.corroboration >= 1.0);
   if (hasHighAuthority && corroborated) return "high";
-  if (cited.every((s) => s.tier === "T4" || s.tier === "T5") || distinctHosts < 2) return "low"; // single-source, unverified
-  return "medium";
+  // A single AUTHORITATIVE source (T1 .gov/regulator, T2 established press) is
+  // "medium" — not "low/Unverified" — so a genuinely reliable lone source isn't
+  // under-claimed. Only low-tier or truly uncorroborated general web is "low".
+  if (hasHighAuthority) return "medium";
+  if (distinctHosts >= 2) return "medium";
+  return "low";
 }
 
 // Compose the finding text from ONLY the surviving, validated specifics.
@@ -629,6 +655,7 @@ serve(async (req) => {
   let stop: StopReason = "max_hops";
   let configured = true;
 
+  try {
   // ── Bounded PLAN → SEARCH → READ → GAP-CHECK loop (A3) ────────────────────
   outer:
   for (let hop = 0; hop < effectiveMaxHops; hop++) {
@@ -750,4 +777,23 @@ serve(async (req) => {
   const result = buildResult(findings, finalStop, note);
   if (persist) await persistRun(SUPABASE_URL, SERVICE_KEY, runId, body, result);
   return json(result);
+  } catch (e) {
+    // §13 — any unexpected failure returns a STRUCTURED honest error, never a
+    // bare 500 and never a fabricated result. Nothing is persisted on this path.
+    console.error("[paige-deep-research] run error:", (e as Error)?.message);
+    return json({
+      run_id: runId,
+      question,
+      findings: [],
+      sources: [],
+      coverage: {
+        stop_reason: "error",
+        hops_used: hopsUsed,
+        searches,
+        reads,
+        note: "Research hit an unexpected error; returning no findings rather than risk an unverified answer.",
+        configured,
+      },
+    });
+  }
 });

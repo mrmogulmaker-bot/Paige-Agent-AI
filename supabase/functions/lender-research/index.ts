@@ -105,39 +105,11 @@ function hostOf(url: string): string {
   }
 }
 
-function extractWebsite(text: string): string | null {
-  // Prefer an explicit URL; fall back to a bare domain token.
-  const url = text.match(/https?:\/\/[^\s)"'\]]+/i);
-  if (url) return url[0].replace(/[.,;)]+$/, "");
-  const domain = text.match(/\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|org|net|bank|us|gov|edu|co|io)\b/i);
-  return domain ? `https://${domain[0]}` : null;
-}
-
-function extractPhone(text: string): string | null {
-  const m = text.match(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/);
-  return m ? m[0].trim() : null;
-}
-
-function extractRate(text: string): string | null {
-  // A percent range/value, or an APR mention. Dollar figures are NOT treated
-  // as rates.
-  const range = text.match(/\d{1,2}(?:\.\d+)?\s*%\s*(?:[-–to]+\s*\d{1,2}(?:\.\d+)?\s*%)?/i);
-  return range ? range[0].replace(/\s+/g, " ").trim() : null;
-}
-
-function deriveName(text: string, primaryTitle: string | undefined): string | null {
-  // Leading proper-noun phrase of the finding (e.g. "Live Oak Bank offers…").
-  const lead = text.match(
-    /^([A-Z][A-Za-z0-9&'.\-]*(?:\s+(?:of|the|and|for|&)?\s*[A-Z0-9][A-Za-z0-9&'.\-]*){0,5})/,
-  );
-  const candidate = lead?.[1]?.trim();
-  if (candidate && candidate.split(/\s+/).length <= 7 && /[A-Za-z]/.test(candidate)) {
-    return candidate.replace(/[\s,;:]+$/, "");
-  }
-  // Fall back to the cited source's title if the prose didn't lead with a name.
-  if (primaryTitle && primaryTitle.trim()) return primaryTitle.trim().slice(0, 120);
-  return null;
-}
+// NOTE: the earlier prose-scraping helpers (extractWebsite/extractPhone/
+// extractRate/deriveName) were REMOVED — they re-extracted contact facts from
+// ungrounded model prose, bypassing the engine's deterministic gate (#165).
+// mapFindingsToLenders now consumes only the engine's validated structured
+// fields (f.name/f.website/f.phone/f.values).
 
 // ---------------------------------------------------------------------------
 // mapFindingsToLenders — cited fields ONLY. Drops any lender with no surviving
@@ -152,25 +124,23 @@ function mapFindingsToLenders(dr: DeepResearchResult, strict: boolean): Lender[]
     const cites = (f.citations ?? []).filter((c) => byIndex.get(c) && !byIndex.get(c)!.excluded);
     if (cites.length === 0) continue;
 
-    const unverified = new Set((f.unverifiedFields ?? []).map((u) => u.toLowerCase()));
     const primary = byIndex.get(cites[0]);
     const text = f.text ?? "";
 
-    const name = deriveName(text, primary?.title);
-    if (!name) continue; // no attributable entity → not a lender row
+    // §13/#165 — consume ONLY the engine's gate-survived STRUCTURED fields.
+    // NEVER regex f.text: the summary prose is ungrounded model output, and
+    // scraping it would resurrect the exact fabrication this fix kills. Only
+    // what appears in f.name/f.website/f.phone/f.values passed validation.
+    const name = (f.name ?? "").trim();
+    if (!name) continue; // no VALIDATED entity name → not a lender row (never a page title)
 
-    // website — only if not flagged unverified AND a URL is present.
-    const rawWebsite = unverified.has("website") ? null : extractWebsite(text);
-    const website = rawWebsite;
+    const website = (f.website ?? "").trim() || null;    // host-vouched by the engine
+    const contactInfo = (f.phone ?? "").trim() || null;  // last-10 matched in cited text
 
-    // phone — highest-harm field; only if not flagged unverified.
-    const rawPhone = unverified.has("phone") ? null : extractPhone(text);
-    const contactInfo = rawPhone;
-
-    // rate — never a bare fabricated range.
-    const rawRate = unverified.has("rate") || unverified.has("rates") || unverified.has("estimatedrates")
-      ? null
-      : extractRate(text);
+    // rate — the first VALIDATED figure that reads as a percentage (its digits
+    // were confirmed present in a cited source). Never a scraped/fabricated range.
+    const values = Array.isArray(f.values) ? f.values : [];
+    const rawRate = values.find((v) => /\d\s*%/.test(String(v))) ?? null;
     const estimatedRates = rawRate
       ? `${rawRate} — as listed on ${primary ? hostOf(primary.url) : "the cited source"}, verify directly`
       : "Contact lender for rates";
@@ -187,7 +157,7 @@ function mapFindingsToLenders(dr: DeepResearchResult, strict: boolean): Lender[]
       name,
       type: "Lender",
       products: [],
-      minimumRequirements: text.slice(0, 400),
+      minimumRequirements: text.slice(0, 400), // composed text = validated bits only
       estimatedRates,
       contactInfo,
       website,
