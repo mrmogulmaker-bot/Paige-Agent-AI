@@ -20,6 +20,7 @@ import { ClientGoalsCard } from "./ClientGoalsCard";
 import { ClientFundingJourneyTab } from "@/components/funding-journey/ClientFundingJourneyTab";
 import { QuickBooksAdminSummary } from "./admin/QuickBooksAdminSummary";
 import { AdminBusinessPortfolioCard } from "@/components/admin/AdminBusinessPortfolioCard";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
 
 interface ClientFileViewProps {
   clientUserId: string;
@@ -87,6 +88,9 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
   const [roles, setRoles] = useState<string[]>([]);
   const [negativeCount, setNegativeCount] = useState(0);
   const [showFactoryReset, setShowFactoryReset] = useState(false);
+  // Credit/funding surfaces (business credit portfolio, credit-report uploads)
+  // are opt-in per tenant (§2/§9) — hidden entirely for generic coaching tenants.
+  const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
 
 
   useEffect(() => {
@@ -243,18 +247,24 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           <TabsTrigger value="profile" className="text-xs">
             <User className="w-3 h-3 mr-1" /> Profile
           </TabsTrigger>
-          <TabsTrigger value="credit-reports" className="text-xs">
-            <Upload className="w-3 h-3 mr-1" /> Credit Reports
-          </TabsTrigger>
+          {fundingEnabled && (
+            <TabsTrigger value="credit-reports" className="text-xs">
+              <Upload className="w-3 h-3 mr-1" /> Credit Reports
+            </TabsTrigger>
+          )}
           <TabsTrigger value="account-mgmt" className="text-xs">
             <Database className="w-3 h-3 mr-1" /> Account Mgmt
           </TabsTrigger>
-          <TabsTrigger value="funding" className="text-xs">
-            <DollarSign className="w-3 h-3 mr-1" /> Funding Readiness
-          </TabsTrigger>
-          <TabsTrigger value="funding-journey" className="text-xs">
-            <Briefcase className="w-3 h-3 mr-1" /> Funding Journey
-          </TabsTrigger>
+          {fundingEnabled && (
+            <>
+              <TabsTrigger value="funding" className="text-xs">
+                <DollarSign className="w-3 h-3 mr-1" /> Funding Readiness
+              </TabsTrigger>
+              <TabsTrigger value="funding-journey" className="text-xs">
+                <Briefcase className="w-3 h-3 mr-1" /> Funding Journey
+              </TabsTrigger>
+            </>
+          )}
           <TabsTrigger value="documents" className="text-xs">
             <FileText className="w-3 h-3 mr-1" /> Documents
           </TabsTrigger>
@@ -309,26 +319,28 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
 
             {/* Quick Stats Sidebar */}
             <div className="space-y-4">
-              {/* Credit Scores */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Credit Scores</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Equifax</span>
-                    <span className="font-semibold">{profile?.estimated_fico_eq || "—"}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Experian</span>
-                    <span className="font-semibold">{profile?.estimated_fico_ex || "—"}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">TransUnion</span>
-                    <span className="font-semibold">{profile?.estimated_fico_tu || "—"}</span>
-                  </div>
-                </CardContent>
-              </Card>
+              {/* Credit Scores — funding/credit content, gated (§2/§9) */}
+              {fundingEnabled && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Credit Scores</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Equifax</span>
+                      <span className="font-semibold">{profile?.estimated_fico_eq || "—"}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Experian</span>
+                      <span className="font-semibold">{profile?.estimated_fico_ex || "—"}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">TransUnion</span>
+                      <span className="font-semibold">{profile?.estimated_fico_tu || "—"}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Account Stats */}
               <Card>
@@ -336,10 +348,12 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
                   <CardTitle className="text-sm">Account Stats</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Negative Items</span>
-                    <Badge variant={negativeCount > 0 ? "destructive" : "default"}>{negativeCount}</Badge>
-                  </div>
+                  {fundingEnabled && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Negative Items</span>
+                      <Badge variant={negativeCount > 0 ? "destructive" : "default"}>{negativeCount}</Badge>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Subscription</span>
                     <Badge variant="outline">{subscription?.plan_slug || "None"}</Badge>
@@ -461,29 +475,37 @@ export function ClientFileView({ clientUserId, onBack, userRole = "coach" }: Cli
           </div>
 
           {/* Business Portfolio — collapsible view of all client entities, scores, and credit reports */}
-          <div className="mt-6">
-            <AdminBusinessPortfolioCard clientUserId={clientUserId} />
-          </div>
+          {fundingEnabled && (
+            <div className="mt-6">
+              <AdminBusinessPortfolioCard clientUserId={clientUserId} />
+            </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="credit-reports" className="mt-4">
-          <ReportUploadTab clientUserId={clientUserId} />
-        </TabsContent>
+        {fundingEnabled && (
+          <TabsContent value="credit-reports" className="mt-4">
+            <ReportUploadTab clientUserId={clientUserId} />
+          </TabsContent>
+        )}
 
         <TabsContent value="account-mgmt" className="mt-4">
           <AdminAccountManagement clientUserId={clientUserId} userRole={userRole} />
         </TabsContent>
 
-        <TabsContent value="funding" className="mt-4">
-          <div className="space-y-6">
-            <PMEFundingReadiness />
-            {userRole === "admin" && <AdminFundingOverride clientUserId={clientUserId} />}
-          </div>
-        </TabsContent>
+        {fundingEnabled && (
+          <TabsContent value="funding" className="mt-4">
+            <div className="space-y-6">
+              <PMEFundingReadiness />
+              {userRole === "admin" && <AdminFundingOverride clientUserId={clientUserId} />}
+            </div>
+          </TabsContent>
+        )}
 
-        <TabsContent value="funding-journey" className="mt-4">
-          <ClientFundingJourneyTab clientUserId={clientUserId} />
-        </TabsContent>
+        {fundingEnabled && (
+          <TabsContent value="funding-journey" className="mt-4">
+            <ClientFundingJourneyTab clientUserId={clientUserId} />
+          </TabsContent>
+        )}
 
         <TabsContent value="documents" className="mt-4">
           <Card>

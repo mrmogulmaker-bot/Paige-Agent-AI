@@ -23,6 +23,7 @@ import {
   Database, RefreshCw, Loader2, CheckCircle, AlertTriangle, XCircle, Play, Brain, Mail, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
 
 interface BackfillSummary {
   total_processed: number;
@@ -39,6 +40,10 @@ interface BackfillSummary {
 
 export function DataMaintenancePanel() {
   const queryClient = useQueryClient();
+  // Credit-report / fundability / lender-rate maintenance is opt-in per tenant
+  // (§2/§9). Generic coaching tenants keep only the vertical-neutral tools
+  // (memory/embedding backfill); the credit-specific sections stay hidden.
+  const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
   const [backfillResult, setBackfillResult] = useState<BackfillSummary | null>(null);
   const [memoryBackfillResult, setMemoryBackfillResult] = useState<{
     total_processed: number; total_updated: number; error_count: number;
@@ -329,23 +334,30 @@ export function DataMaintenancePanel() {
             Data Maintenance
           </h2>
           <p className="text-muted-foreground text-sm mt-1">
-            Monitor data quality and trigger re-extractions for client credit reports.
+            {fundingEnabled
+              ? "Monitor data quality and trigger re-extractions for client credit reports."
+              : "Monitor data quality and keep client records complete."}
           </p>
         </div>
-        <Button
-          onClick={() => bulkBackfill.mutate(undefined)}
-          disabled={bulkBackfill.isPending}
-          className="gap-2"
-        >
-          {bulkBackfill.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Play className="w-4 h-4" />
-          )}
-          Backfill Missing Data
-        </Button>
+        {fundingEnabled && (
+          <Button
+            onClick={() => bulkBackfill.mutate(undefined)}
+            disabled={bulkBackfill.isPending}
+            className="gap-2"
+          >
+            {bulkBackfill.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            Backfill Missing Data
+          </Button>
+        )}
       </div>
 
+      {/* Credit-report re-extraction & quality — funding vertical only (§2/§9) */}
+      {fundingEnabled && (
+      <>
       {/* Backfill Progress */}
       {bulkBackfill.isPending && (
         <Card className="border-blue-500/30">
@@ -467,6 +479,8 @@ export function DataMaintenancePanel() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* Memory & AI Backfill */}
       <Card>
@@ -518,6 +532,10 @@ export function DataMaintenancePanel() {
         </CardContent>
       </Card>
 
+      {/* Funding-vertical maintenance: fundability/PAR announcement + lender-rate
+          config — opt-in per tenant (§2/§9), hidden for generic coaching tenants. */}
+      {fundingEnabled && (
+      <>
       {/* Beta Launch Email — one-time send */}
       <Card className="border-primary/40">
         <CardHeader>
@@ -701,6 +719,8 @@ export function DataMaintenancePanel() {
           </p>
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   );
 }

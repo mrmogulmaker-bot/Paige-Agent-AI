@@ -7,6 +7,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Check, X, Mic, Sparkles, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
 
 type Proposal = {
   id: string;
@@ -37,6 +38,12 @@ export default function FieldIngestionTab() {
   const [items, setItems] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  // Credit-score ingestion is a funding-vertical option (§2/§9): generic
+  // coaching tenants never surface credit-score proposals for review.
+  const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
+  const visibleItems = fundingEnabled
+    ? items
+    : items.filter((p) => p.tool_name !== "ingest_credit_scores");
 
   const load = async () => {
     setLoading(true);
@@ -165,12 +172,12 @@ export default function FieldIngestionTab() {
       </CardHeader>
       <CardContent className="space-y-2">
         {loading && <p className="text-sm text-muted-foreground py-6 text-center">Loading…</p>}
-        {!loading && items.length === 0 && (
+        {!loading && visibleItems.length === 0 && (
           <p className="text-sm text-muted-foreground py-8 text-center">
             Nothing waiting. Teammates haven't pushed anything from voice or chat yet.
           </p>
         )}
-        {items.map((p) => {
+        {visibleItems.map((p) => {
           const needs = p.status === "needs_review";
           return (
             <div

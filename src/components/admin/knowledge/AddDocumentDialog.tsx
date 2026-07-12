@@ -11,6 +11,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
 
 interface Props {
   open: boolean;
@@ -30,6 +31,9 @@ export function AddDocumentDialog({ open, onOpenChange, docTypes, onSaved }: Pro
   const [entityType, setEntityType] = useState("");
   const [quality, setQuality] = useState([0.9]);
   const [saving, setSaving] = useState(false);
+  // Credit-score / loan-type retrieval tags are funding-vertical only (§2/§9):
+  // generic coaching tenants never see these finance metadata fields.
+  const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
 
   const reset = () => {
     setTitle(""); setContent(""); setSummary("");
@@ -131,14 +135,18 @@ export function AddDocumentDialog({ open, onOpenChange, docTypes, onSaved }: Pro
               Metadata Tags (optional — improves retrieval relevance)
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Credit Score Range</Label>
-                <Input value={creditScoreRange} onChange={(e) => setCreditScoreRange(e.target.value)} placeholder="700-749" />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Loan Type</Label>
-                <Input value={loanType} onChange={(e) => setLoanType(e.target.value)} placeholder="SBA 7(a)" />
-              </div>
+              {fundingEnabled && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Credit Score Range</Label>
+                    <Input value={creditScoreRange} onChange={(e) => setCreditScoreRange(e.target.value)} placeholder="700-749" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Loan Type</Label>
+                    <Input value={loanType} onChange={(e) => setLoanType(e.target.value)} placeholder="SBA 7(a)" />
+                  </div>
+                </>
+              )}
               <div className="space-y-1.5">
                 <Label className="text-xs">State</Label>
                 <Input value={stateTag} onChange={(e) => setStateTag(e.target.value)} placeholder="GA" maxLength={2} />

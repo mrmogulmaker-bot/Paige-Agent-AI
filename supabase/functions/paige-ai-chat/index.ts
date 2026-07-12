@@ -4285,12 +4285,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "list_subagents",
-              description: "Discover Paige's specialized sub-agents (Fundability Diagnostician, Legal & Compliance Reviewer, Business Credit Strategist, Funding Path Architect, Data Consistency Auditor, Market Research, Financial Research, Content Drafter, Intake Concierge, Sales Pipeline, Coach Copilot, Problem Reverse-Engineer). Use this FIRST when the user asks for deep analysis, audits, research, or anything beyond simple data lookups — then call delegate_to_subagent with the matching slug. AUTO-DELEGATION: when the user describes a problem, blocker, or 'why isn't X working' situation, immediately delegate_to_subagent with slug='problem-reverse-engineer' and pass {problem_statement: <verbatim user problem>, contact_id?: <if known>}. When you receive a root_cause_analysis result, embed the raw JSON inside a fenced code block tagged ```root-cause-analysis on its own line so the UI can render the Root-Cause card, then add a 2-3 sentence plainspoken summary underneath.",
+              description: fundingEnabled
+                ? "Discover Paige's specialized sub-agents (Fundability Diagnostician, Legal & Compliance Reviewer, Business Credit Strategist, Funding Path Architect, Data Consistency Auditor, Market Research, Financial Research, Content Drafter, Intake Concierge, Sales Pipeline, Coach Copilot, Problem Reverse-Engineer). Use this FIRST when the user asks for deep analysis, audits, research, or anything beyond simple data lookups — then call delegate_to_subagent with the matching slug. AUTO-DELEGATION: when the user describes a problem, blocker, or 'why isn't X working' situation, immediately delegate_to_subagent with slug='problem-reverse-engineer' and pass {problem_statement: <verbatim user problem>, contact_id?: <if known>}. When you receive a root_cause_analysis result, embed the raw JSON inside a fenced code block tagged ```root-cause-analysis on its own line so the UI can render the Root-Cause card, then add a 2-3 sentence plainspoken summary underneath."
+                : "List the specialist sub-agents available to this workspace and what each does (e.g. Market Research, Content Drafter, Intake Concierge, Sales Pipeline, Coach Copilot, Data Consistency Auditor, Problem Reverse-Engineer). Use this FIRST when the user asks for deep analysis, audits, research, or anything beyond simple data lookups — then call delegate_to_subagent with the matching slug. AUTO-DELEGATION: when the user describes a problem, blocker, or 'why isn't X working' situation, immediately delegate_to_subagent with slug='problem-reverse-engineer' and pass {problem_statement: <verbatim user problem>, contact_id?: <if known>}. When you receive a root_cause_analysis result, embed the raw JSON inside a fenced code block tagged ```root-cause-analysis on its own line so the UI can render the Root-Cause card, then add a 2-3 sentence plainspoken summary underneath.",
               parameters: {
                 type: "object",
                 properties: {
                   query: { type: "string", description: "Keyword(s) to match against agent name/description/triggers." },
-                  domain: { type: "string", description: "Filter by domain (fundability / compliance / credit / funding / research / outreach / intake / sales / coaching)." }
+                  domain: { type: "string", description: fundingEnabled
+                    ? "Filter by domain (fundability / compliance / credit / funding / research / outreach / intake / sales / coaching)."
+                    : "Filter by domain (research / outreach / intake / sales / coaching / ops / content)." }
                 }
               }
             }
@@ -4299,7 +4303,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "delegate_to_subagent",
-              description: "Delegate the heavy lift to a specialized sub-agent. Resolve the slug via list_subagents first. Pass agent-specific input (e.g. {client_id} for fundability/compliance; {query} for market_research; {lender_name} for financial_research). The sub-agent runs its own logic (often Firecrawl + AI Gateway + database joins) and returns structured findings you can summarize for the user.",
+              description: fundingEnabled
+                ? "Delegate the heavy lift to a specialized sub-agent. Resolve the slug via list_subagents first. Pass agent-specific input (e.g. {client_id} for fundability/compliance; {query} for market_research; {lender_name} for financial_research). The sub-agent runs its own logic (often Firecrawl + AI Gateway + database joins) and returns structured findings you can summarize for the user."
+                : "Delegate the heavy lift to a specialized sub-agent. Resolve the slug via list_subagents first. Pass agent-specific input (e.g. {contact_id} for a client-scoped agent; {query} for market_research). The sub-agent runs its own logic (often Firecrawl + AI Gateway + database joins) and returns structured findings you can summarize for the user.",
               parameters: {
                 type: "object",
                 properties: {

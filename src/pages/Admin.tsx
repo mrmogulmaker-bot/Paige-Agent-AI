@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { RoleGate } from "@/components/auth/RoleGate";
 import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { FundingRoute, FundingGate } from "@/components/admin/FundingRoute";
 
 /** Wraps a route element so it's only visible to admins (or platform owner). */
 const AdminOnly = ({ children }: { children: React.ReactNode }) => (
@@ -337,13 +338,13 @@ const Admin = () => {
             <InternalClientFileWrapper />
           </Suspense>
         } />
-        <Route path="funding" element={<Suspense fallback={<SuspenseFallback />}><FundingPortfolioView /></Suspense>} />
-        <Route path="funding-pipeline" element={<Suspense fallback={<SuspenseFallback />}><FundingPipelineView /></Suspense>} />
+        <Route path="funding" element={<FundingRoute><Suspense fallback={<SuspenseFallback />}><FundingPortfolioView /></Suspense></FundingRoute>} />
+        <Route path="funding-pipeline" element={<FundingRoute><Suspense fallback={<SuspenseFallback />}><FundingPipelineView /></Suspense></FundingRoute>} />
         <Route path="analytics" element={
           <Suspense fallback={<SuspenseFallback />}>
             <div className="space-y-8">
               <AnalyticsDashboard />
-              <FundingMatchAccuracy />
+              <FundingGate><FundingMatchAccuracy /></FundingGate>
             </div>
           </Suspense>
         } />
@@ -351,7 +352,7 @@ const Admin = () => {
           <Suspense fallback={<SuspenseFallback />}>
             <div className="space-y-6">
               <KnowledgeBaseReviewQueue />
-              <LenderBureauManager />
+              <FundingGate><LenderBureauManager /></FundingGate>
             </div>
           </Suspense>
         } />
@@ -563,13 +564,13 @@ const Admin = () => {
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><NavIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="business-credit" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><BusinessCreditAdmin /></Suspense></AdminOnly>
+          <FundingRoute><AdminOnly><Suspense fallback={<SuspenseFallback />}><BusinessCreditAdmin /></Suspense></AdminOnly></FundingRoute>
         } />
         <Route path="integrations/smartcredit" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><SmartCreditIntegrationConfig /></Suspense></AdminOnly>
+          <FundingRoute><AdminOnly><Suspense fallback={<SuspenseFallback />}><SmartCreditIntegrationConfig /></Suspense></AdminOnly></FundingRoute>
         } />
         <Route path="owner-credit" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><OwnerCreditAdmin /></Suspense></AdminOnly>
+          <FundingRoute><AdminOnly><Suspense fallback={<SuspenseFallback />}><OwnerCreditAdmin /></Suspense></AdminOnly></FundingRoute>
         } />
         <Route path="integrations/plaid" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><PlaidIntegrationConfig /></Suspense></AdminOnly>
@@ -581,7 +582,7 @@ const Admin = () => {
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><MembersAdmin /></Suspense></AdminOnly>
         } />
         <Route path="funding-lens" element={
-          <Suspense fallback={<SuspenseFallback />}><FundingLensHub /></Suspense>
+          <FundingRoute><Suspense fallback={<SuspenseFallback />}><FundingLensHub /></Suspense></FundingRoute>
         } />
         <Route path="platform/tenants" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformTenants /></Suspense></PlatformStaffOnly>

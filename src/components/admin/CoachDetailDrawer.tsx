@@ -16,13 +16,20 @@ import { toast } from "sonner";
 import { ReassignCoachDialog } from "./ReassignCoachDialog";
 import { Link } from "react-router-dom";
 import { Users, CheckSquare, Activity, ExternalLink } from "lucide-react";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
 
-const SPECIALTY_OPTIONS = [
+// Coaching-generic specialties every tenant can assign (§2/§9).
+const BASE_SPECIALTY_OPTIONS = [
+  { value: "entity", label: "Entity Setup" },
+];
+
+// Credit/funding specialties — shown only when the tenant has the funding
+// vertical enabled; never a default for generic coaching/consulting tenants.
+const FUNDING_SPECIALTY_OPTIONS = [
   { value: "personal_credit", label: "Personal Credit" },
   { value: "business_credit", label: "Business Credit" },
   { value: "funding", label: "Funding Strategy" },
   { value: "btf", label: "Build-to-Fund" },
-  { value: "entity", label: "Entity Setup" },
   { value: "underwriting", label: "Underwriting" },
 ];
 
@@ -46,6 +53,10 @@ export function CoachDetailDrawer({ open, onOpenChange, coachUserId, coachName, 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
+  const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
+  const specialtyOptions = fundingEnabled
+    ? [...BASE_SPECIALTY_OPTIONS, ...FUNDING_SPECIALTY_OPTIONS]
+    : BASE_SPECIALTY_OPTIONS;
 
   useEffect(() => {
     if (!open || !coachUserId) return;
@@ -216,7 +227,7 @@ export function CoachDetailDrawer({ open, onOpenChange, coachUserId, coachName, 
                   <div className="space-y-2">
                     <Label>Specialties</Label>
                     <div className="flex flex-wrap gap-2">
-                      {SPECIALTY_OPTIONS.map((s) => {
+                      {specialtyOptions.map((s) => {
                         const on = (profile?.coach_specialties ?? []).includes(s.value);
                         return (
                           <Badge
