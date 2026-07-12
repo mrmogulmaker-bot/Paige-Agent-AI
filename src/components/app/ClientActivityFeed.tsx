@@ -31,7 +31,6 @@ import { useRailEvents, type RailEvent } from "@/hooks/useRailEvents";
 import { useMyContactId } from "@/hooks/useMyContactId";
 import { usePlaybook } from "@/lib/playbook";
 import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 /** How many recent rows to show — a glanceable strip, not a full history. */
@@ -144,23 +143,12 @@ export function ClientActivityFeed({ contactId: contactIdProp, className }: Prop
 
   const { events, connected } = useRailEvents({ scope: "client", contactId: contactId ?? null });
 
-  // Still resolving who this is — hold a quiet skeleton rather than flashing empty.
-  if (loading) {
-    return (
-      <section className={className}>
-        <div className="mb-2 flex items-center gap-2 px-0.5">
-          <LiveDot connected={false} />
-          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Your activity
-          </h2>
-        </div>
-        <div className="space-y-2">
-          <Skeleton className="h-14 w-full rounded-lg" />
-          <Skeleton className="h-14 w-full rounded-lg" />
-        </div>
-      </section>
-    );
-  }
+  // While self-resolving we can't yet tell a staff/impersonator apart from a
+  // linked client, so we must NOT render a client-labeled "Your activity"
+  // skeleton — that would flash the client surface to a non-client (§9/§11).
+  // Hold entirely until the contact_id is known; a real client's below-the-fold
+  // strip simply appears once resolved. (The explicit-prop mount never loads.)
+  if (loading) return null;
 
   // Not a linked client (staff preview, unknown) — this surface isn't theirs.
   if (!contactId) return null;
