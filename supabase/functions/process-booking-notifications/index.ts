@@ -5,7 +5,10 @@
 // booking_notifications_sent first so nothing is ever sent twice.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const CRON_TOKEN = "pcron-9f2a7c4b1e"; // shared guard; triggering only runs an idempotent scan
+// Read from env so the shared guard can be rotated without a code change (the
+// literal is a transition fallback until the pg_cron secret is moved to Vault,
+// task #145). Triggering only runs an idempotent scan, so the blast radius is low.
+const CRON_TOKEN = Deno.env.get("BOOKING_CRON_TOKEN") ?? "pcron-9f2a7c4b1e";
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_FROM = Deno.env.get("CALENDAR_EMAIL_FROM") ?? Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <calendar@paigeagent.ai>";
 // SMS (Twilio) — reminders may fire on 'sms'/'both'. Reuse the platform's
@@ -259,7 +262,10 @@ Deno.serve(async (req) => {
       for (const ch of channels) {
         if (ch === "email" && !email) continue;
         if (ch === "sms" && !phone) continue;
-        const key = `reminder:${ch}:${rem.offset_min}`;
+        // start time is part of the key so a RESCHEDULED booking (new startMs)
+        // gets a fresh claim and re-reminds for its moved time, instead of the
+        // surviving 'sent' row from the old time silently suppressing it.
+        const key = `reminder:${ch}:${rem.offset_min}:${startMs}`;
         // recipient_email is the claim's audit field; SMS-only has no email, so
         // fall back to the phone as the recorded recipient identifier.
         const recipient = ch === "email" ? email : (email || phone);
@@ -289,7 +295,7 @@ Deno.serve(async (req) => {
     // Follow-up (guest email): due when now is at/after (end + offset), meeting
     // has ended. Email-only; carries the same signed manage link.
     if (email && notify.followup_guest && endMs <= now && endMs + notify.followup_offset_min * MIN <= now) {
-      const key = "followup";
+      const key = `followup:${startMs}`;
       if (await claim(b.id as string, key, email)) {
         const mUrl = await manageUrl(b.id as string, ver);
         const html = shell(brandName, accent, "Thanks for the time",

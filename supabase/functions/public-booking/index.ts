@@ -558,7 +558,10 @@ function b64utf8(s: string): string {
   let bin = ""; for (const b of new TextEncoder().encode(s)) bin += String.fromCharCode(b);
   return btoa(bin);
 }
-const MANAGE_TOKEN_TTL_DAYS = 30;
+// TTL must comfortably exceed the booking horizon (default 60 days, tenant-
+// configurable) so a guest who books far out still has a live reschedule/cancel
+// link at meeting time. Matches booking-manage's ~400-day verifier ceiling.
+const MANAGE_TOKEN_TTL_DAYS = 400;
 // Signed self-serve link. The payload widened from {b} to {b, iat, exp, ver}:
 // `iat`/`exp` bound the link to a ~30-day lifetime and `ver` pins the booking's
 // manage_token_version so a later revocation (bumping that column) invalidates

@@ -241,6 +241,7 @@ async function notifyChange(
   durationMin: number,
   startMs: number,
   ver: number,
+  hostIdsOverride?: string[],
 ): Promise<void> {
   try {
     const tz = b.timezone || "America/New_York";
@@ -279,15 +280,20 @@ async function notifyChange(
       hour: "numeric", minute: "2-digit", timeZoneName: "short",
     }).format(new Date(startMs));
 
-    // Who's attending (for the guest's "With" line + host alerts).
-    const hostIds = b.collective_group_id
-      ? await (async () => {
-          const { data: sibs } = await admin.from("internal_bookings")
-            .select("host_user_id").eq("collective_group_id", b.collective_group_id).neq("status", "cancelled");
-          const ids = Array.from(new Set((sibs ?? []).map((s) => s.host_user_id as string)));
-          return ids.length ? ids : [b.host_user_id];
-        })()
-      : [b.host_user_id];
+    // Who's attending (for the guest's "With" line + host alerts). On cancel the
+    // caller passes a roster snapshot taken BEFORE the legs were cancelled —
+    // re-querying non-cancelled siblings here would return none and drop every
+    // host but one (§13: "everyone was notified" must be true).
+    const hostIds = hostIdsOverride?.length
+      ? hostIdsOverride
+      : b.collective_group_id
+        ? await (async () => {
+            const { data: sibs } = await admin.from("internal_bookings")
+              .select("host_user_id").eq("collective_group_id", b.collective_group_id).neq("status", "cancelled");
+            const ids = Array.from(new Set((sibs ?? []).map((s) => s.host_user_id as string)));
+            return ids.length ? ids : [b.host_user_id];
+          })()
+        : [b.host_user_id];
     const withNames = hostIds.length > 1 ? await resolveHostNames(admin, hostIds) : null;
 
     const guestEmail = b.guest_email;
@@ -442,6 +448,14 @@ Deno.serve(async (req) => {
       : null;
 
     if (action === "cancel") {
+      // Snapshot the attending hosts BEFORE cancelling — otherwise notifyChange
+      // re-queries non-cancelled siblings and finds none, alerting only one host.
+      let cancelHostIds: string[] | undefined;
+      if (b.collective_group_id) {
+        const { data: sibs } = await admin.from("internal_bookings")
+          .select("host_user_id").eq("collective_group_id", b.collective_group_id).neq("status", "cancelled");
+        cancelHostIds = Array.from(new Set((sibs ?? []).map((s) => s.host_user_id as string)));
+      }
       // Bump manage_token_version so this booking's version-stamped links die
       // (defense in depth alongside the status gate). Collective cancels every
       // symmetric leg — cancelling one row would leave the rest holding hosts'
@@ -452,7 +466,7 @@ Deno.serve(async (req) => {
         ? await admin.from("internal_bookings").update(patch).eq("collective_group_id", b.collective_group_id).neq("status", "cancelled")
         : await admin.from("internal_bookings").update(patch).eq("id", b.id);
       if (error) return json({ error: error.message }, 500);
-      await notifyChange(admin, "cancel", bookingCtx, calCtx, apptName, durationMin, Date.parse(b.start_at as string), nextVer);
+      await notifyChange(admin, "cancel", bookingCtx, calCtx, apptName, durationMin, Date.parse(b.start_at as string), nextVer, cancelHostIds);
       return json({ ok: true, status: "cancelled" });
     }
 
