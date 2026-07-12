@@ -24,6 +24,10 @@ import {
 // per-IP (guards both) and per-token (guards a single leaked link). Fail-open on
 // the limiter's own error so a hiccup never blocks a legit change.
 import { clientIp, overRateLimit } from "../_shared/rateLimit.ts";
+// Per-host Zoom (§9): keep the host's Zoom meeting in sync with the booking —
+// move it on reschedule, delete it on cancel. Best-effort (§13): a Zoom failure
+// never fails a change that's already committed.
+import { deleteZoomMeeting, updateZoomMeeting } from "../_shared/zoomMeetings.ts";
 
 // Per-window ceilings (60s). A real guest managing one booking makes a handful of
 // calls; these sit well above that but stop a replay/brute-force flood.
@@ -245,6 +249,29 @@ async function resolveHostPhones(admin: ReturnType<typeof createClient>, hostIds
   return (profs ?? []).map((p) => String((p as { phone?: string }).phone ?? "")).filter(Boolean);
 }
 
+/** Best-effort Zoom sync on reschedule/cancel. The meeting lives on ONE host
+ *  (the primary, for a collective booking); a non-owner host's token 404s and
+ *  no-ops inside the helpers, so trying every attending host is safe and needs
+ *  no stored owner. Never throws — a Zoom hiccup must not fail a change that's
+ *  already committed (§13); the failure is logged, not swallowed. */
+async function syncZoom(
+  admin: ReturnType<typeof createClient>,
+  action: "update" | "delete",
+  hostIds: string[],
+  meetingId: string | null,
+  opts?: { topic?: string; startISO?: string; durationMin?: number; timezone?: string },
+): Promise<void> {
+  if (!meetingId) return;
+  for (const uid of hostIds) {
+    try {
+      if (action === "delete") await deleteZoomMeeting(admin, uid, meetingId);
+      else await updateZoomMeeting(admin, uid, meetingId, opts ?? {});
+    } catch (e) {
+      console.error("booking-manage: zoom sync failed", { action, host: uid, meetingId, err: (e as Error)?.message });
+    }
+  }
+}
+
 interface BookingCtx {
   id: string; tenant_id: string | null; host_user_id: string; guest_name: string | null;
   guest_email: string | null; guest_phone: string | null; timezone: string | null; location_type: string | null;
@@ -272,7 +299,13 @@ async function notifyChange(
     const endMs = startMs + durationMin * 60000;
     const accent = cal?.accent || "#EBB94C";
     const title = apptName || cal?.title || "Your session";
-    const loc = locationLabel(b.location_type || "", b.location_value ?? null);
+    // For a Zoom booking the live join URL is persisted on location_value at
+    // create time and preserved across reschedule (same meeting id) — use it
+    // directly instead of "link to follow", which would be misleading here since
+    // no further link is coming (§13 truthful). Mirrors the create path.
+    const loc = (b.location_type === "zoom" && /^https?:\/\//.test(b.location_value ?? ""))
+      ? (b.location_value as string)
+      : locationLabel(b.location_type || "", b.location_value ?? null);
 
     // Brand + tenant sending identity (§6/§9): the guest is the tenant's client,
     // so their email wears the tenant's own verified sender; host alerts stay on
@@ -471,7 +504,7 @@ Deno.serve(async (req) => {
     }
 
     const { data: b } = await admin.from("internal_bookings")
-      .select("id, tenant_id, calendar_id, host_user_id, guest_name, guest_email, guest_phone, title, start_at, end_at, timezone, status, location_type, location_value, booking_kind, collective_group_id, appointment_type, manage_token_version")
+      .select("id, tenant_id, calendar_id, host_user_id, guest_name, guest_email, guest_phone, title, start_at, end_at, timezone, status, location_type, location_value, booking_kind, collective_group_id, appointment_type, manage_token_version, zoom_meeting_id")
       .eq("id", bookingId).maybeSingle();
     if (!b) return json({ error: "Booking not found." }, 404);
 
@@ -601,6 +634,9 @@ Deno.serve(async (req) => {
         ? await admin.from("internal_bookings").update(patch).eq("collective_group_id", b.collective_group_id).neq("status", "cancelled")
         : await admin.from("internal_bookings").update(patch).eq("id", b.id);
       if (error) return json({ error: error.message }, 500);
+      // Tear down the host's Zoom meeting (best-effort). For collective the
+      // snapshot roster covers the primary that owns the meeting.
+      await syncZoom(admin, "delete", cancelHostIds ?? [b.host_user_id as string], (b.zoom_meeting_id as string | null) ?? null);
       await notifyChange(admin, "cancel", bookingCtx, calCtx, apptName, durationMin, Date.parse(b.start_at as string), nextVer, cancelHostIds, calLifecycle);
       return json({ ok: true, status: "cancelled" });
     }
@@ -659,6 +695,9 @@ Deno.serve(async (req) => {
           return json({ error: error.message }, 500);
         }
         const startAt = (seat as { start_at: string }).start_at;
+        await syncZoom(admin, "update", [b.host_user_id as string], (b.zoom_meeting_id as string | null) ?? null, {
+          topic: apptName || (cal?.title as string) || (b.title as string) || "Meeting", startISO: startAt, durationMin, timezone: tz,
+        });
         await notifyChange(admin, "reschedule", bookingCtx, calCtx, apptName, durationMin, Date.parse(startAt), currentVer, undefined, calLifecycle);
         return json({ ok: true, status: "scheduled", start_at: startAt });
       }
@@ -689,6 +728,11 @@ Deno.serve(async (req) => {
           if (code === "23505" || code === "23P01") return json({ error: "That time was just taken. Please pick another." }, 409);
           return json({ error: error.message }, 500);
         }
+        // Move the ONE Zoom meeting on the primary host (gateHostIds spans the
+        // collective roster; only the owner's token matches, others 404 no-op).
+        await syncZoom(admin, "update", gateHostIds, (b.zoom_meeting_id as string | null) ?? null, {
+          topic: apptName || (cal?.title as string) || (b.title as string) || "Meeting", startISO: new Date(newStart).toISOString(), durationMin, timezone: tz,
+        });
         await notifyChange(admin, "reschedule", bookingCtx, calCtx, apptName, durationMin, newStart, currentVer, undefined, calLifecycle);
         return json({ ok: true, status: "scheduled", start_at: new Date(newStart).toISOString() });
       }
@@ -710,6 +754,9 @@ Deno.serve(async (req) => {
         if (code === "23505" || code === "23P01") return json({ error: "That time was just taken. Please pick another." }, 409);
         return json({ error: error.message }, 500);
       }
+      await syncZoom(admin, "update", [b.host_user_id as string], (b.zoom_meeting_id as string | null) ?? null, {
+        topic: apptName || (cal?.title as string) || (b.title as string) || "Meeting", startISO: new Date(newStart).toISOString(), durationMin, timezone: tz,
+      });
       await notifyChange(admin, "reschedule", bookingCtx, calCtx, apptName, durationMin, newStart, currentVer, undefined, calLifecycle);
       return json({ ok: true, status: "scheduled", start_at: new Date(newStart).toISOString() });
     }

@@ -18,12 +18,15 @@ interface ConnState {
   google_calendar_connected: boolean;
   google_email: string | null;
   apple_caldav_connected: boolean;
+  zoom_connected: boolean;
+  zoom_email: string | null;
 }
 
 export function CalendarConnectorsPanel() {
   const [conn, setConn] = useState<ConnState | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [connectingZoom, setConnectingZoom] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -32,11 +35,12 @@ export function CalendarConnectorsPanel() {
     if (!uid) { setLoading(false); return; }
     const { data } = await supabase
       .from("staff_calendar_settings")
-      .select("google_calendar_connected, google_email, apple_caldav_connected")
+      .select("google_calendar_connected, google_email, apple_caldav_connected, zoom_connected, zoom_email")
       .eq("user_id", uid)
       .maybeSingle();
     setConn((data as ConnState | null) ?? {
       google_calendar_connected: false, google_email: null, apple_caldav_connected: false,
+      zoom_connected: false, zoom_email: null,
     });
     setLoading(false);
   };
@@ -65,6 +69,31 @@ export function CalendarConnectorsPanel() {
       return;
     }
     toast.success("Google Calendar disconnected");
+    void load();
+  };
+
+  const connectZoom = async () => {
+    setConnectingZoom(true);
+    const { data, error } = await supabase.functions.invoke("zoom-oauth-start", {
+      body: { origin: window.location.origin },
+    });
+    setConnectingZoom(false);
+    const url = (data as { authorization_url?: string } | null)?.authorization_url;
+    if (error || !url) {
+      toast.error((data as { error?: string } | null)?.error ?? error?.message ?? "Could not start Zoom OAuth");
+      return;
+    }
+    window.location.href = url;
+  };
+
+  const disconnectZoom = async () => {
+    if (!confirm("Disconnect Zoom?")) return;
+    const { data, error } = await supabase.functions.invoke("zoom-disconnect", { body: {} });
+    if (error || (data as { error?: string } | null)?.error) {
+      toast.error((data as { error?: string } | null)?.error ?? error?.message ?? "Failed");
+      return;
+    }
+    toast.success("Zoom disconnected");
     void load();
   };
 
@@ -107,6 +136,37 @@ export function CalendarConnectorsPanel() {
               <Button onClick={connectGoogle} disabled={connecting}>
                 {connecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <LinkIcon className="h-4 w-4 mr-2" />}
                 Connect Google Calendar
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Zoom</CardTitle>
+                <CardDescription>Connect your Zoom so Paige adds a Zoom link to every booking automatically.</CardDescription>
+              </div>
+              {conn?.zoom_connected
+                ? <Badge className="bg-emerald-600">Connected</Badge>
+                : <Badge variant="secondary">Not connected</Badge>}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {loading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
+            ) : conn?.zoom_connected ? (
+              <>
+                <p className="text-sm text-muted-foreground">{conn.zoom_email ?? "Connected account"}</p>
+                <Button variant="outline" size="sm" onClick={disconnectZoom}>
+                  <Unlink className="h-4 w-4 mr-2" /> Disconnect
+                </Button>
+              </>
+            ) : (
+              <Button onClick={connectZoom} disabled={connectingZoom}>
+                {connectingZoom ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <LinkIcon className="h-4 w-4 mr-2" />}
+                Connect Zoom
               </Button>
             )}
           </CardContent>

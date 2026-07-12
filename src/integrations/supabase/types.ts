@@ -13723,6 +13723,10 @@ export type Database = {
           timezone: string
           updated_at: string
           user_id: string
+          zoom_connected: boolean
+          zoom_email: string | null
+          zoom_refresh_token_encrypted: string | null
+          zoom_user_id: string | null
         }
         Insert: {
           apple_app_password_encrypted?: string | null
@@ -13751,6 +13755,10 @@ export type Database = {
           timezone?: string
           updated_at?: string
           user_id: string
+          zoom_connected?: boolean
+          zoom_email?: string | null
+          zoom_refresh_token_encrypted?: string | null
+          zoom_user_id?: string | null
         }
         Update: {
           apple_app_password_encrypted?: string | null
@@ -13779,6 +13787,10 @@ export type Database = {
           timezone?: string
           updated_at?: string
           user_id?: string
+          zoom_connected?: boolean
+          zoom_email?: string | null
+          zoom_refresh_token_encrypted?: string | null
+          zoom_user_id?: string | null
         }
         Relationships: [
           {

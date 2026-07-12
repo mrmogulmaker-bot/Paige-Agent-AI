@@ -14,6 +14,11 @@ import {
 // surface, layered on top of the existing per-host create cap. Fail-open on the
 // limiter's own error so a hiccup never blocks a legit booking.
 import { clientIp, overRateLimit } from "../_shared/rateLimit.ts";
+// Per-host Zoom (§9): when a calendar meets over Zoom and the assigned host has
+// connected their own Zoom, mint the meeting on THEIR account and drop the real
+// join link into the confirmation. Best-effort (§13) — any failure falls back to
+// the existing 'link to follow' label and never blocks the booking.
+import { createZoomMeeting } from "../_shared/zoomMeetings.ts";
 
 // Per-window ceilings (60s). Availability is cheap but the obvious hammer target;
 // create is expensive (writes + emails) so it's capped tighter. All sit ABOVE any
@@ -948,6 +953,9 @@ Deno.serve(async (req) => {
       // notify) so the confirmation-email tail below runs unchanged for all three.
       let bookingRow: { id: string; start_at: string; end_at: string; title: string };
       let hostsToNotify: string[];
+      // Set on a collective booking so the Zoom mint below can stamp every leg
+      // (the one meeting on the primary host) with the join link / meeting id.
+      let collectiveGroupId: string | null = null;
 
       if (effHost.isClass) {
         // Race-safe capacity: lock/find-or-create the session, count, insert
@@ -986,6 +994,7 @@ Deno.serve(async (req) => {
         // constraint — this is the direct fix for a host's busy time being
         // invisible to the DB when only one row recorded one chosen host.
         const groupId = crypto.randomUUID();
+        collectiveGroupId = groupId;
         const title = selType ? `${selType.name} with ${name}` : `Meeting with ${name}`;
         const rows = effHost.hosts.map((uid) => ({
           tenant_id: host.tenant_id, host_user_id: uid, calendar_id: host.calendarId,
@@ -1105,6 +1114,46 @@ Deno.serve(async (req) => {
         hostsToNotify = [chosenHost];
       }
 
+      // Zoom (best-effort, §13): if this calendar meets over Zoom and the
+      // assigned host has connected their OWN Zoom (§9), mint a real meeting on
+      // their account and persist the join link + meeting id onto the booking so
+      // the confirmation carries a live link instead of "link to follow". For
+      // collective, the ONE meeting is minted on the primary host and stamped
+      // onto every leg (all attend the same meeting — never N meetings). Any
+      // failure (no connection, API error, un-refreshable token) is logged and
+      // the booking proceeds unchanged with the existing label — a Zoom problem
+      // NEVER blocks or rolls back a booking that's already committed.
+      let zoomJoinUrl: string | null = null;
+      if (locationType === "zoom") {
+        try {
+          // hostsToNotify[0] is the meeting owner in every mode: the assigned
+          // host (round-robin), the sole host (single/class), or the primary
+          // host (collective — effHost.hosts[0]).
+          const meetingHost = hostsToNotify[0];
+          const zoom = await createZoomMeeting(admin, meetingHost, {
+            topic: bookingRow.title || selType?.name || host.title || "Meeting",
+            startISO: bookingRow.start_at,
+            durationMin: effHost.durationMin,
+            timezone: host.timezone,
+          });
+          if (zoom) {
+            zoomJoinUrl = zoom.join_url;
+            const patch = { location_value: zoom.join_url, meeting_url: zoom.join_url, zoom_meeting_id: zoom.meeting_id };
+            const { error: stampErr } = collectiveGroupId
+              ? await admin.from("internal_bookings").update(patch).eq("collective_group_id", collectiveGroupId).neq("status", "cancelled")
+              : await admin.from("internal_bookings").update(patch).eq("id", bookingRow.id);
+            // A stamp failure just means the row lacks the URL for later
+            // update/cancel sync — the meeting exists and the email still gets
+            // the link (zoomJoinUrl is already set). Log, don't fail.
+            if (stampErr) console.error("public-booking: zoom link stamp failed", { bookingId: bookingRow.id, err: stampErr.message });
+          }
+        } catch (e) {
+          console.error("public-booking: zoom meeting mint failed (booking kept, link-to-follow fallback)", {
+            bookingId: bookingRow.id, host: hostsToNotify[0], err: (e as Error)?.message,
+          });
+        }
+      }
+
       // Confirmation emails (guest + every host to notify) with an .ics invite
       // — non-blocking: a mail failure must never fail a booking that's
       // already committed.
@@ -1114,7 +1163,9 @@ Deno.serve(async (req) => {
           timeZone: host.timezone, weekday: "long", month: "long", day: "numeric", year: "numeric",
           hour: "numeric", minute: "2-digit", timeZoneName: "short",
         }).format(new Date(startMs));
-        const loc = locationLabel(locationType, locationValue);
+        // A minted Zoom link (best-effort above) replaces the "link to follow"
+        // label for the guest, host, and .ics — everyone gets the live join URL.
+        const loc = zoomJoinUrl || locationLabel(locationType, locationValue);
         const title = selType?.name || host.title || "Your session";
         const ics = buildIcs({
           uid: `${bookingRow.id}@paigeagent.ai`, startMs, endMs, title,

@@ -3,6 +3,10 @@ project_id = "xygzykjyynhzqytbqnzu"
 [functions]
   [functions.public-booking]
     verify_jwt = false
+  # Zoom redirects the host's browser straight here with ?code=&state= and no
+  # Supabase JWT — the HMAC-signed state is what authenticates the connecting host.
+  [functions.zoom-oauth-callback]
+    verify_jwt = false
   # Public front-door signup — creates a pre-confirmed account via the service
   # role (email verification not wired yet). Must be reachable pre-auth.
   [functions.tenant-signup]
