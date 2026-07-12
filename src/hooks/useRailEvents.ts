@@ -139,8 +139,14 @@ export function useRailEvents(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .on("broadcast" as any, { event: RAIL_BROADCAST_EVENT }, (msg: any) => {
         try {
-          const event = coerceRailEvent(msg?.payload);
-          if (!event) return;
+          // realtime.send (server-side DB broadcast) can nest the app payload one
+          // level deeper (msg.payload.payload) than a client channel.send frame —
+          // accept both shapes so a shape mismatch never silently renders nothing.
+          const event = coerceRailEvent(msg?.payload) ?? coerceRailEvent(msg?.payload?.payload);
+          if (!event) {
+            if (msg?.payload) console.debug("[rail] unrecognized frame shape", msg?.payload);
+            return;
+          }
           if (!mountedRef.current) return;
           setEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
           onEventRef.current?.(event);
