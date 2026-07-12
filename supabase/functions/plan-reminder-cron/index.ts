@@ -12,7 +12,10 @@
 // plan_set_reminder, and this worker is what makes it fire on time.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const CRON_TOKEN = "pcron-9f2a7c4b1e"; // shared guard; the scan is idempotent
+// The pg_cron trigger token lives ONLY in Supabase Vault (task #145) — never in
+// source or env. Each trigger is authorized by the service-role RPC
+// public.verify_cron_token against the x-cron-token header the cron job builds
+// via public.cron_token_header(); no literal token exists in this file.
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_FROM = Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <notifications@paigeagent.ai>";
 
@@ -53,11 +56,18 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok");
-  if ((req.headers.get("x-cron-token") ?? new URL(req.url).searchParams.get("token")) !== CRON_TOKEN) {
+
+  // Service-role client is built first so it can authorize the trigger below.
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  // Authorize the cron trigger against the Vault-held token via a service-role
+  // RPC (task #145): the secret exists only in Vault, so we verify the received
+  // header rather than compare to any local literal. verify_jwt is off, so this
+  // is the ONLY gate — fail CLOSED on any RPC error or a non-true result (§13).
+  const cronToken = req.headers.get("x-cron-token") ?? "";
+  const { data: cronOk, error: cronErr } = await admin.rpc("verify_cron_token", { _token: cronToken });
+  if (cronErr || cronOk !== true) {
     return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
   }
-
-  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const nowIso = new Date().toISOString();
 
   // Due, unfired reminders that are still open. Small batch per run; cron reruns.
