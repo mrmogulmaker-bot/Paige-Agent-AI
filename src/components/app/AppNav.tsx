@@ -35,7 +35,10 @@ const MODULE_ROUTES: Record<string, { href: string; icon: LucideIcon }> = {
   resources: { href: "/app/learn", icon: BookOpen },
   approvals: { href: "/app/approvals", icon: ListChecks },
   actions: { href: "/app/actions", icon: ClipboardList },
-  planning: { href: "/app/planning", icon: CalendarClock },
+  // NOTE: 'planning' is intentionally NOT here. plan_list is tenant-member
+  // scoped (a client gets PLAN_FORBIDDEN), so Planning must never be added to a
+  // client's Playbook module list — it's surfaced via the staff-only fallback
+  // below instead (§9 keeps the client seam clean).
 };
 
 interface NavItem {

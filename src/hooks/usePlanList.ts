@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { friendlyPlanError } from "@/lib/planning";
 
 /**
  * Reads the Planning hub's data from the plan_list RPC — the same tenant- and
@@ -66,8 +67,13 @@ export interface UsePlanListResult {
   allItems: PlanItem[];
   loading: boolean;
   error: string | null;
+  /** True when the caller has no access to planning (e.g. a client, whom the
+   * RPC refuses) — the UI shows a graceful state instead of a raw error. */
+  forbidden: boolean;
   userId: string | null;
-  refresh: () => Promise<void>;
+  /** Refetch. Pass { silent: true } after a single-row mutation so the whole
+   * hub doesn't flash to skeletons. */
+  refresh: (opts?: { silent?: boolean }) => Promise<void>;
 }
 
 export function usePlanList(opts: UsePlanListOpts = {}): UsePlanListResult {
@@ -76,11 +82,12 @@ export function usePlanList(opts: UsePlanListOpts = {}): UsePlanListResult {
   const [looseItems, setLooseItems] = useState<PlanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (opts?: { silent?: boolean }) => {
     if (!enabled) { setLoading(false); return; }
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     setError(null);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -114,8 +121,13 @@ export function usePlanList(opts: UsePlanListOpts = {}): UsePlanListResult {
 
       setPlans(nextPlans.map((p) => ({ ...p, items: p.items ?? [] })));
       setLooseItems(nextLoose);
+      setForbidden(false);
     } catch (e: any) {
-      setError(e?.message ?? "Couldn't load your planning.");
+      const raw = String(e?.message || "");
+      // A client (non-member) is refused by the RPC — that's a graceful "not
+      // available here" state, not an error banner with an internal code.
+      setForbidden(raw.includes("PLAN_FORBIDDEN") || raw.includes("PLAN_NO_TENANT"));
+      setError(friendlyPlanError(raw));
       setPlans([]);
       setLooseItems([]);
     } finally {
@@ -130,5 +142,5 @@ export function usePlanList(opts: UsePlanListOpts = {}): UsePlanListResult {
     ...plans.flatMap((p) => p.items),
   ];
 
-  return { plans, looseItems, allItems, loading, error, userId, refresh };
+  return { plans, looseItems, allItems, loading, error, forbidden, userId, refresh };
 }

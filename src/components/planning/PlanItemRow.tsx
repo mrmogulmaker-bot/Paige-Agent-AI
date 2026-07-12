@@ -24,7 +24,7 @@ const TYPE_ICON: Record<PlanItem["item_type"], LucideIcon> = {
 
 const STATUS_PILL: Record<PlanItem["status"], PillState> = {
   open: "off",
-  in_progress: "on",
+  in_progress: "pending", // neutral/amber — gold is reserved for the act moment (§11)
   blocked: "error",
   done: "success",
   cancelled: "off",
@@ -79,7 +79,6 @@ export function PlanItemRow({
     <div
       className={cn(
         "flex items-start gap-3 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors",
-        closed && "opacity-60",
         className,
       )}
       data-plan-item={item.id}
@@ -144,8 +143,9 @@ export function PlanItemRow({
                   <button
                     key={p.label}
                     type="button"
+                    disabled={busy}
                     onClick={() => run(() => rescheduleItem(item, p.iso), `Moved to ${p.label.toLowerCase()}`)}
-                    className="w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                   >
                     {p.label}
                   </button>
@@ -169,7 +169,13 @@ export function PlanItemRow({
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Keep it</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => run(() => removeItem(item.id), "Removed")}>Remove</AlertDialogAction>
+                  <AlertDialogAction
+                    disabled={busy}
+                    onClick={() => run(() => removeItem(item.id), "Removed")}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Remove
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>

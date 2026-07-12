@@ -13,6 +13,7 @@ import { PlanItemRow } from "./PlanItemRow";
  */
 export function UpcomingWidget() {
   const { allItems, loading, refresh } = usePlanList({ scope: "mine" });
+  const reload = () => refresh({ silent: true });
 
   const due = useMemo(() => {
     const open = allItems.filter((i) => !isClosed(i));
@@ -42,7 +43,7 @@ export function UpcomingWidget() {
       }
     >
       <div className="space-y-2">
-        {shown.map((it) => <PlanItemRow key={it.id} item={it} onChanged={refresh} />)}
+        {shown.map((it) => <PlanItemRow key={it.id} item={it} onChanged={reload} />)}
       </div>
       {due.length > shown.length && (
         <Link to="/app/planning" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-foreground hover:underline">

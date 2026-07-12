@@ -45,15 +45,17 @@ export function relativeWhen(iso: string | null, now: Date = new Date()): string
   const diffMs = when.getTime() - now.getTime();
   const past = diffMs < 0;
   const abs = Math.abs(diffMs);
+  if (abs < 45_000) return "Just now";
   const mins = Math.round(abs / 60_000);
   const hours = Math.round(abs / 3_600_000);
   const days = Math.round(abs / 86_400_000);
+  const months = Math.round(days / 30);
 
   let unit: Intl.RelativeTimeFormatUnit, val: number;
   if (mins < 60) { unit = "minute"; val = Math.max(1, mins); }
   else if (hours < 24) { unit = "hour"; val = hours; }
   else if (days < 30) { unit = "day"; val = days; }
-  else { unit = "day"; val = days; }
+  else { unit = "month"; val = months; }
 
   if (past) return `Overdue by ${val} ${unit}${val === 1 ? "" : "s"}`;
   if (RTF) return RTF.format(val, unit);
