@@ -132,8 +132,15 @@ export default function CalendarAdmin() {
   }, []);
 
   const setBookingStatus = async (id: string, status: string) => {
-    const { error } = await supabase.from("internal_bookings").update({ status }).eq("id", id);
-    if (error) { toast.error(error.message); return; }
+    // Route through the tenant-gated RPC — the team board shows every host's
+    // bookings, but a raw table UPDATE is RLS-scoped to own rows, so cancelling
+    // a teammate's booking would silently no-op and falsely report success.
+    // The RPC performs the change server-side and errors truthfully if refused.
+    const { error } = await supabase.rpc("admin_set_booking_status" as any, { _booking_id: id, _status: status });
+    if (error) {
+      toast.error(/FORBIDDEN/.test(error.message) ? "You can't change that booking" : error.message);
+      return;
+    }
     setBookings((bs) => bs.map((b) => b.id === id ? { ...b, status } : b));
     setDetail((d) => d && d.id === id ? { ...d, status } : d);
     toast.success(status === "cancelled" ? "Booking cancelled" : status === "no_show" ? "Marked as no-show" : "Updated");
