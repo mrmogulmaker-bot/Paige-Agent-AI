@@ -8,7 +8,7 @@
 // theme-aware, motion guarded via Tailwind motion-safe/motion-reduce. Jargon-free copy
 // comes pre-resolved from the server (§11) — this component renders labels verbatim.
 import { useState } from "react";
-import { Loader2, Check, AlertCircle, Circle, ListChecks, Users, UserRound } from "lucide-react";
+import { Loader2, Check, AlertCircle, Circle, ListChecks, Users, UserRound, MessageSquareText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionCard, EmptyState } from "@/components/ui/page";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -17,6 +17,10 @@ export type PaigeStep = {
   id: string;
   seq: number;
   round: number;
+  // "thought" = Paige's one-line reasoning/narration for that round (what she's
+  // about to do and why); "action" = a tool she actually ran. Defaults to action
+  // for older frames that predate the field.
+  kind?: "thought" | "action";
   label: string;
   group: "owner" | "client" | "shared";
   status: "running" | "done" | "error";
@@ -75,6 +79,20 @@ export function StepTimeline({ steps, loading }: { steps: PaigeStep[]; loading?:
   return (
     <ol className="space-y-2" aria-live="polite">
       {steps.map((s, i) => {
+        // A "thought" is Paige narrating what she's about to do — render it as her
+        // voice (a quiet reasoning line), distinct from the actions she then takes.
+        if (s.kind === "thought") {
+          return (
+            <li key={s.id} className="flex items-start gap-2.5">
+              <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-[hsl(var(--ring)/0.08)] ring-1 ring-inset ring-[hsl(var(--ring)/0.2)]">
+                <MessageSquareText className="h-3.5 w-3.5 text-[hsl(var(--ring))]" aria-hidden />
+              </span>
+              <p className="min-w-0 flex-1 pt-0.5 text-sm italic leading-snug text-muted-foreground">
+                {s.label}
+              </p>
+            </li>
+          );
+        }
         const active = i === lastRunningIdx || (lastRunningIdx === -1 && i === steps.length - 1);
         const dept = DEPT_LABEL[s.group];
         return (
@@ -173,7 +191,10 @@ export function PaigeReasoningStrip({
       {steps.length > 0 && (
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
           <SheetTrigger className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]">
-            {steps.length} step{steps.length === 1 ? "" : "s"}
+            {(() => {
+              const n = steps.filter((s) => s.kind !== "thought").length;
+              return n > 0 ? `${n} step${n === 1 ? "" : "s"}` : "Details";
+            })()}
           </SheetTrigger>
           <SheetContent side="bottom" className="max-h-[70vh] overflow-y-auto">
             <SheetHeader className="mb-3">
@@ -254,12 +275,13 @@ export function ReasoningDeck({
   const working = trace.loading || steps.some((s) => s.status === "running");
   const finished = !working && steps.length > 0;
 
-  const ownerActive = working && steps.some((s) => s.group === "owner");
-  const clientActive = working && steps.some((s) => s.group === "client");
-  const ownerCount = steps.filter((s) => s.group === "owner").length;
-  const clientCount = steps.filter((s) => s.group === "client").length;
+  const ownerActive = working && steps.some((s) => s.kind !== "thought" && s.group === "owner");
+  const clientActive = working && steps.some((s) => s.kind !== "thought" && s.group === "client");
+  const ownerCount = steps.filter((s) => s.kind !== "thought" && s.group === "owner").length;
+  const clientCount = steps.filter((s) => s.kind !== "thought" && s.group === "client").length;
+  const actionCount = steps.filter((s) => s.kind !== "thought").length;
 
-  const title = working ? `${name} at work` : finished ? `Done · ${steps.length} step${steps.length === 1 ? "" : "s"}` : `${name} · ready`;
+  const title = working ? `${name} at work` : finished ? `Done · ${actionCount} step${actionCount === 1 ? "" : "s"}` : `${name} · ready`;
 
   // padded={false} + our own flex-col/min-h-0 chain: the scroll region's DIRECT parent must
   // be the bounded flex column, or SectionCard's block padding wrapper would break flex-1 and

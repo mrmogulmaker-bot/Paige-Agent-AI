@@ -3281,6 +3281,11 @@ SUPPORT & FEEDBACK AWARENESS
     const aiMessages: any[] = [
       { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice", fundingEnabled, personaCtx.brand) },
       { role: "system", content: systemPrompt },
+      // "Watch Paige work" narration (#152): when she's about to USE tools, she first
+      // writes one short backstage line saying what she's doing and why. It streams to
+      // the operator's live reasoning panel — reassurance that she's really working —
+      // and is NEVER part of her reply to the user.
+      { role: "system", content: "REASONING NARRATION (backstage — shown live in the operator's \"watch Paige work\" panel, never sent as your reply): Whenever you are about to call one or more tools this turn, FIRST write ONE short sentence (max ~16 words) in your own voice saying what you're about to do and why — e.g. \"Let me pull up your team so I can route her to the right coach.\" or \"Checking who's online before I hand this off.\" This is the ONLY time you narrate: on the turn where you actually answer the user (no tool calls), write only your real reply with no narration. Keep it jargon-free — never mention internal tool or table names." },
     ];
 
     // ── OWNER MULTI-CHAT PERSISTENCE + RECALL (#94) ──────────────────────────
@@ -5806,8 +5811,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // "Watch Paige work" step trace (#95) — a truthful, jargon-free record of what she
       // did this turn, derived read-only from the loop's already-executed tool calls and
       // burst-emitted as paige_step frames just before the answer. Never mutates the loop.
-      const stepTrace: Array<{ id: string; round: number; seq: number; label: string; group: "owner" | "client" | "shared"; status: "done" | "error"; detail?: string; ts: number }> = [];
+      const stepTrace: Array<{ id: string; round: number; seq: number; kind: "thought" | "action"; label: string; group: "owner" | "client" | "shared"; status: "done" | "error"; detail?: string; ts: number }> = [];
       let stepSeq = 0;
+      // Collapse Paige's backstage narration into one short "thought" line for the
+      // live panel: strip markdown/newlines, cap length, drop empties (#152).
+      const summarizeThought = (raw: string): string => {
+        const t = String(raw ?? "")
+          .replace(/```[\s\S]*?```/g, " ")   // no code fences in a thought line
+          .replace(/[*_`#>]/g, "")            // strip md emphasis/heading marks
+          .replace(/\s+/g, " ")
+          .trim();
+        if (t.length < 2) return "";
+        return t.length > 200 ? t.slice(0, 197).trimEnd() + "…" : t;
+      };
       // Confirm-before-commit UX (#120): mutating tools gated to 'confirm' return
       // needs_confirm; we surface each as a `paige_confirm` frame so the client can
       // render an Approve/Deny card instead of Paige asking in prose.
@@ -5821,73 +5837,102 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // Accumulates Paige's final reply text so we can persist the turn (#94).
       let finalAssistantText = "";
 
-      for (let round = 0; round < MAX_ROUNDS; round++) {
-        const { content, toolCalls, allChunks, hasToolCall } = await consumeRound(currentResponse);
-        if (!hasToolCall) { finalChunks = allChunks; finalAssistantText = content; break; }
-        const realCalls = toolCalls.filter((tc: any) => tc && tc.function?.name);
-        const sig = JSON.stringify(realCalls.map((tc: any) => [tc.function.name, tc.function.arguments]));
-        // No-progress: the model re-emitted the exact same call(s) as an earlier
-        // round. Do NOT execute again (a repeated propose_action would double-queue
-        // an approval) — close out from the balanced convo we already have.
-        if (seenSignatures.has(sig)) { forcedTermination = true; break; }
-        const overCap = totalToolCalls + realCalls.length > MAX_TOTAL_TOOL_CALLS;
-        const overTime = Date.now() - startedAt > WALL_CLOCK_MS;
-        const lastRound = round === MAX_ROUNDS - 1;
-        const { toolResults, executed } = await executeToolCalls(toolCalls, queuedApprovals);
-        totalToolCalls += executed.length;
-        seenSignatures.add(sig);
-        // Derive the step trace for THIS round here — before the terminating break below,
-        // so the final round's tools are still recorded. Purely synchronous + read-only:
-        // no await, no gateway call, no mutation of loop bounds/convo/seenSignatures.
-        for (const tc of executed) {
-          try {
-            const res = toolResults.find((r: any) => r.tool_call_id === tc.id);
-            let ok = true;
-            try {
-              const parsed = JSON.parse(res?.content ?? "{}");
-              ok = parsed?.success !== false;
-              // Capture a pending confirmation so the client renders an approve card.
-              if (parsed?.needs_confirm && parsed?.confirm_summary) {
-                confirmTrace.push({ tool: parsed.tool || tc.function?.name || "action", summary: String(parsed.confirm_summary) });
-              }
-            } catch { /* keep ok */ }
-            const derived = describeStep(tc, res);
-            if (!derived) continue; // gated/stub calls dropped (never render as failure)
-            stepTrace.push({
-              id: `${round}:${tc.id}`, round, seq: ++stepSeq,
-              label: derived.label, group: derived.group,
-              status: ok ? "done" : "error", detail: derived.detail,
-              ts: Date.now() - startedAt,
-            });
-          } catch { /* a cosmetic-trace throw must never break the agentic loop */ }
-        }
-        convo.push({ role: "assistant", content: content || null, tool_calls: executed });
-        convo.push(...toolResults);
-        if (overCap || overTime || lastRound) { forcedTermination = true; break; }
-        currentResponse = await gatewayCompat("anthropic", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
-        });
-        if (!currentResponse.ok) { forcedTermination = true; break; }
-      }
-
-      // Hybrid final stream: replay a natural tool-less round verbatim, or issue a
-      // tools-less closing call when we terminated mid-flight. Approvals queued
-      // across all rounds are surfaced first as an `approval_queued` frame.
-      let finalStreamResponse: Response | null = null;
-      if (forcedTermination) {
-        finalStreamResponse = await gatewayCompat("anthropic", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: convo, stream: true }),
-        });
-      }
+      // The agentic loop now runs INSIDE the response stream (#152) so Paige's
+      // reasoning is watchable LIVE: each round streams her one-line narration
+      // ("thought") and the steps she took, as they happen — instead of the old
+      // end-of-turn burst that left the panel a blank shimmer until everything was
+      // already done. Ordering per round: thought → action steps; then, after the
+      // loop, approvals/confirms, then her actual reply. Loop bounds, no-progress
+      // guard, convo balance, and persistence are all preserved exactly.
       const enc = new TextEncoder();
+      const emitStep = (controller: ReadableStreamDefaultController, s: any) =>
+        controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_step: s })}\n\n`));
       const finalStream = new ReadableStream({
         async start(controller) {
-          // Steps first — the trace of what she did — then approvals, then the answer.
-          for (const s of stepTrace) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_step: s })}\n\n`));
+         // The whole live loop + final answer runs here. Because the gateway calls
+         // now execute inside the stream, a mid-flight throw must degrade to a clean
+         // fallback + [DONE] rather than a broken stream (§13). The outer handler's
+         // try/catch can no longer see in here.
+         try {
+          for (let round = 0; round < MAX_ROUNDS; round++) {
+            const { content, toolCalls, allChunks, hasToolCall } = await consumeRound(currentResponse);
+            if (!hasToolCall) { finalChunks = allChunks; finalAssistantText = content; break; }
+            const realCalls = toolCalls.filter((tc: any) => tc && tc.function?.name);
+            const sig = JSON.stringify(realCalls.map((tc: any) => [tc.function.name, tc.function.arguments]));
+            // No-progress: the model re-emitted the exact same call(s) as an earlier
+            // round. Do NOT execute again (a repeated propose_action would double-queue
+            // an approval) — close out from the balanced convo we already have.
+            if (seenSignatures.has(sig)) { forcedTermination = true; break; }
+            const overCap = totalToolCalls + realCalls.length > MAX_TOTAL_TOOL_CALLS;
+            const overTime = Date.now() - startedAt > WALL_CLOCK_MS;
+            const lastRound = round === MAX_ROUNDS - 1;
+
+            // Her backstage narration for THIS round → a readable "thought" line the
+            // operator watches BEFORE the actions land. Streamed immediately so the
+            // panel shows her reasoning first, then the steps confirm it.
+            const thought = summarizeThought(content);
+            if (thought) {
+              const ts = {
+                id: `t:${round}`, round, seq: ++stepSeq, kind: "thought" as const,
+                label: thought, group: "shared" as const, status: "done" as const,
+                ts: Date.now() - startedAt,
+              };
+              stepTrace.push(ts);
+              try { emitStep(controller, ts); } catch { /* client hung up */ }
+            }
+
+            const { toolResults, executed } = await executeToolCalls(toolCalls, queuedApprovals);
+            totalToolCalls += executed.length;
+            seenSignatures.add(sig);
+            // Emit each executed tool's step LIVE as it resolves (done/error). Derived
+            // read-only from the already-executed call; gated/stub calls are dropped so
+            // they never render as a scary failure.
+            for (const tc of executed) {
+              try {
+                const res = toolResults.find((r: any) => r.tool_call_id === tc.id);
+                let ok = true;
+                try {
+                  const parsed = JSON.parse(res?.content ?? "{}");
+                  ok = parsed?.success !== false;
+                  // Capture a pending confirmation so the client renders an approve card.
+                  if (parsed?.needs_confirm && parsed?.confirm_summary) {
+                    confirmTrace.push({ tool: parsed.tool || tc.function?.name || "action", summary: String(parsed.confirm_summary) });
+                  }
+                } catch { /* keep ok */ }
+                const derived = describeStep(tc, res);
+                if (!derived) continue; // gated/stub calls dropped (never render as failure)
+                const st = {
+                  id: `${round}:${tc.id}`, round, seq: ++stepSeq, kind: "action" as const,
+                  label: derived.label, group: derived.group,
+                  status: (ok ? "done" : "error") as "done" | "error", detail: derived.detail,
+                  ts: Date.now() - startedAt,
+                };
+                stepTrace.push(st);
+                try { emitStep(controller, st); } catch { /* client hung up */ }
+              } catch { /* a cosmetic-trace throw must never break the agentic loop */ }
+            }
+            convo.push({ role: "assistant", content: content || null, tool_calls: executed });
+            convo.push(...toolResults);
+            if (overCap || overTime || lastRound) { forcedTermination = true; break; }
+            currentResponse = await gatewayCompat("anthropic", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
+            });
+            if (!currentResponse.ok) { forcedTermination = true; break; }
+          }
+
+          // Hybrid final stream: replay a natural tool-less round verbatim, or issue a
+          // tools-less closing call when we terminated mid-flight.
+          let finalStreamResponse: Response | null = null;
+          if (!finalChunks && forcedTermination) {
+            finalStreamResponse = await gatewayCompat("anthropic", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: convo, stream: true }),
+            });
+          }
+          // Approvals + confirm cards, then her actual reply.
           if (queuedApprovals.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
           for (const c of confirmTrace) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_confirm: c })}\n\n`));
           if (finalChunks) {
@@ -5927,16 +5972,28 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // threadId). bundle_ref carries the queued approvals + confirm cards so
           // the UI reconstructs them on reload. waitUntil keeps it alive past close.
           if (payloadThreadId && finalAssistantText.trim()) {
-            const p = persistAssistantTurn(finalAssistantText, {
-              surfaces: stepTrace.map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
-              bundleRef: (queuedApprovals.length || confirmTrace.length)
-                ? { approval_queued: queuedApprovals, paige_confirm: confirmTrace }
-                : null,
-            });
-            // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
-            if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
+            try {
+              const p = persistAssistantTurn(finalAssistantText, {
+                surfaces: stepTrace.map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
+                bundleRef: (queuedApprovals.length || confirmTrace.length)
+                  ? { approval_queued: queuedApprovals, paige_confirm: confirmTrace }
+                  : null,
+              });
+              // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
+              if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
+            } catch (e) { console.error("[paige] persist assistant turn failed:", (e as Error)?.message); }
           }
-          controller.close();
+         } catch (e) {
+           // The live loop or final stream failed mid-flight. Never leave the client
+           // with a truncated stream — emit a clean fallback reply and a [DONE].
+           console.error("[paige] live reasoning stream failed:", (e as Error)?.message);
+           try {
+             controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "I hit a snag finishing that — mind trying again?" } }] })}\n\n`));
+             controller.enqueue(enc.encode("data: [DONE]\n\n"));
+           } catch { /* client already gone */ }
+         } finally {
+           try { controller.close(); } catch { /* already closed */ }
+         }
         },
       });
       return new Response(finalStream, { headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
