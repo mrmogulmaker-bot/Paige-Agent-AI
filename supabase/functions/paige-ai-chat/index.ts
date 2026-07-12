@@ -3815,6 +3815,22 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "deep_research",
+              description: "Run a genuine multi-hop, cited research investigation when the client needs a thorough, source-backed answer (comparisons, landscapes, 'find real X with sources', due diligence). Plans sub-questions, searches the live web across several hops, reads top sources, ranks them by reliability, and returns findings where every claim carries a citation. Slower and heavier than web_search. Use web_search for a single quick lookup; use deep_research when the answer must be trustworthy and sourced. Never fabricates: if search is unconfigured or empty it says so.",
+              parameters: {
+                type: "object",
+                properties: {
+                  question: { type: "string", description: "The research goal in natural language." },
+                  domain: { type: "string", description: "Optional topic hint, e.g. 'market', 'general'." },
+                  max_hops: { type: "integer", minimum: 1, maximum: 3, description: "Depth. Default 2." },
+                },
+                required: ["question"],
+              },
+            },
+          },
+          {
+            type: "function",
+            function: {
               name: "crm_update_pipeline_stage",
               description: "Admin/coach only. Move a client to a new pipeline stage. Use when the operator says things like 'move Jane to In Progress', 'mark this lead as closed', 'pause this client'.",
               parameters: {
@@ -5242,6 +5258,74 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
             });
           }
+        } else if (tc.function.name === "deep_research") {
+          // Multi-hop, cited investigation via the shared paige-deep-research engine.
+          // The engine never fabricates: an unconfigured/empty search yields findings:[]
+          // and an honest note, which we surface verbatim so Paige reports the truth
+          // rather than guessing (§13). Runs are persisted owner-scoped to this user —
+          // deliberately NOT attached to the client-in-focus, so a coach's research is
+          // not exposed on a client's profile (§9).
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            void logAnalyticsEvent(supabase, user.id, "deep_research_triggered", "paige", {
+              question: typeof args.question === "string" ? args.question.slice(0, 200) : null,
+              domain: typeof args.domain === "string" ? args.domain.slice(0, 40) : null,
+            });
+            const drResp = await fetch(`${supabaseUrl}/functions/v1/paige-deep-research`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${supabaseServiceKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                question: args.question,
+                domain: args.domain,
+                max_hops: args.max_hops,
+                user_id: user.id,
+                caller: "chat",
+                persist: true,
+              }),
+            });
+            const dr = await drResp.json();
+            const coverage = dr?.coverage ?? {};
+            const findings = Array.isArray(dr?.findings) ? dr.findings : [];
+            const sources = Array.isArray(dr?.sources) ? dr.sources : [];
+            let note: string;
+            if (coverage.configured === false) {
+              note = "Deep research unavailable: live web search is not configured. Do NOT fabricate facts — tell the client web lookup is offline and answer from your knowledge, clearly flagged as not freshly sourced.";
+            } else if (findings.length === 0) {
+              note = `No verifiable sources found${coverage.note ? ` (${coverage.note})` : ""}. Report that honestly — do NOT invent results, names, or figures.`;
+            } else {
+              note = "Every factual claim below is tied to a numbered source. Weave these into a conversational answer and keep the [n] citation markers so the client can verify. Add a short 'verify before acting' note on any rates, requirements, or contact details.";
+            }
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({
+                configured: coverage.configured !== false,
+                run_id: dr?.run_id ?? null,
+                stop_reason: coverage.stop_reason ?? null,
+                findings: findings.map((f: any) => ({
+                  text: f?.text ?? "",
+                  citations: Array.isArray(f?.citations) ? f.citations : [],
+                  confidence: f?.confidence ?? "low",
+                })),
+                sources: sources
+                  .filter((s: any) => !s?.excluded)
+                  .map((s: any) => ({
+                    index: s?.index,
+                    title: s?.title ?? "",
+                    url: s?.url ?? "",
+                    reliability: s?.reliability ?? null,
+                    tier: s?.tier ?? null,
+                  })),
+                note,
+              }),
+            });
+          } catch (err) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
+            });
+          }
         } else if (tc.function.name === "get_client_rail") {
           // Read-only: pull a client's recent Paige activity through the JWT-scoped
           // client so RLS + the coach lens apply to the caller (§9/§13). Defaults to
@@ -6152,6 +6236,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // issued above; each later round re-asks WITH tools so Paige can chain
       // actions, stopping on a natural (tool-less) reply or a safety bound.
       const MAX_ROUNDS = 5, MAX_TOTAL_TOOL_CALLS = 12, WALL_CLOCK_MS = 45_000;
+      // deep_research runs a full multi-hop investigation (its own ~60s clock) inside a
+      // single tool call, so it counts as 3 against the turn's call budget — this keeps
+      // two heavy deep runs from stacking in one turn while quick calls stay cheap.
+      const toolCallCost = (tc: any): number => (tc?.function?.name === "deep_research" ? 3 : 1);
+      const sumToolCost = (calls: any[]): number => calls.reduce((n, tc) => n + toolCallCost(tc), 0);
       const startedAt = Date.now();
       const queuedApprovals: Array<{ id: string; summary: string; category: string; contact_id: string | null }> = [];
       // "Watch Paige work" step trace (#95) — a truthful, jargon-free record of what she
@@ -6280,7 +6369,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // round. Do NOT execute again (a repeated propose_action would double-queue
             // an approval) — close out from the balanced convo we already have.
             if (seenSignatures.has(sig)) { forcedTermination = true; break; }
-            const overCap = totalToolCalls + realCalls.length > MAX_TOTAL_TOOL_CALLS;
+            const overCap = totalToolCalls + sumToolCost(realCalls) > MAX_TOTAL_TOOL_CALLS;
             const overTime = Date.now() - startedAt > WALL_CLOCK_MS;
             const lastRound = round === MAX_ROUNDS - 1;
 
@@ -6299,7 +6388,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             }
 
             const { toolResults, executed } = await executeToolCalls(toolCalls, queuedApprovals);
-            totalToolCalls += executed.length;
+            totalToolCalls += sumToolCost(executed);
             seenSignatures.add(sig);
             // Emit each executed tool's step LIVE as it resolves (done/error). Derived
             // read-only from the already-executed call; gated/stub calls are dropped so

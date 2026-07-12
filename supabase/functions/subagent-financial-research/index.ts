@@ -1,12 +1,17 @@
-// Sub-Agent: Financial Research Agent
-// Lender-fit and product research. Combines Firecrawl + AI-Gateway to produce
-// a written brief grounded in current sources (recent denials, bureau prefs,
-// rate environment) for a given lender or funding product.
+// Sub-Agent: Financial Research Agent — DEPRECATED SHIM (#165/#166).
+//
+// This function no longer synthesizes anything itself. It forwards to the universal,
+// cited, anti-fabrication engine `paige-deep-research` with the opaque `domain:"funding"`
+// hint (an opt-in caller — never a platform default, §2). The old single-LLM path and its
+// hardcoded vertical system prompt were removed: no fact is ever produced here without
+// cited, reliability-ranked sources that survived the engine's deterministic gate (§13).
+//
+// The Deno.serve handler + response shape are kept so existing importers/callers don't break;
+// results now carry real citations and honest degraded states straight from the engine.
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
-import { gatewayCompat } from "../_shared/claude.ts";
-const FIRECRAWL_API_KEY = Deno.env.get("FIRECRAWL_API_KEY");
-const LOVABLE_API_KEY = "unused";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 function ok(d: unknown, status = 200) {
   return new Response(JSON.stringify(d), {
@@ -17,78 +22,82 @@ function ok(d: unknown, status = 200) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  let payload: { input?: { lender?: string; product?: string; question?: string; limit?: number } } = {};
+
+  let payload: {
+    input?: { lender?: string; product?: string; question?: string; limit?: number };
+    user_id?: string;
+    client_user_id?: string | null;
+  } = {};
   try { payload = await req.json(); } catch { return ok({ ok: false, error: "Invalid JSON" }, 400); }
   const input = payload.input ?? {};
 
-  const subject = input.lender ?? input.product ?? input.question ?? "";
+  const subject = input.question ?? input.lender ?? input.product ?? "";
   if (!subject) return ok({ ok: false, error: "lender, product, or question required" }, 400);
-  if (!FIRECRAWL_API_KEY) return ok({ ok: false, error: "FIRECRAWL_API_KEY not configured" }, 500);
 
-  const queries = [
-    input.lender ? `${input.lender} business credit card requirements ${new Date().getFullYear()}` : null,
-    input.lender ? `${input.lender} which bureau pulls business credit` : null,
-    input.product ? `${input.product} approval criteria small business ${new Date().getFullYear()}` : null,
-    input.question || subject,
-  ].filter(Boolean) as string[];
+  const userId = payload.user_id ?? (payload as any).input?.user_id;
+  if (!userId) return ok({ ok: false, error: "user_id is required (forwarded to paige-deep-research)" }, 400);
 
-  const allSources: Array<{ title: string; description: string; url: string; query: string }> = [];
-  for (const q of queries) {
-    const r = await fetch("https://api.firecrawl.dev/v2/search", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ query: q, limit: Math.min(input.limit ?? 4, 6), tbs: "qdr:m" }),
-    });
-    if (!r.ok) continue;
-    const j = await r.json();
-    const raw: Array<{ title?: string; description?: string; url?: string }> =
-      j?.data?.web ?? j?.data ?? j?.web ?? j?.results ?? [];
-    for (const item of raw) {
-      if (item.url && !allSources.find((s) => s.url === item.url)) {
-        allSources.push({
-          title: item.title ?? item.url,
-          description: item.description ?? "",
-          url: item.url,
-          query: q,
-        });
+  // Forward to the engine. domain:"funding" is an opt-in hint (this is the funding caller);
+  // the engine treats it as an opaque string. persist:false — this path is ephemeral.
+  const resp = await fetch(`${SUPABASE_URL}/functions/v1/paige-deep-research`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question: subject,
+      user_id: userId,
+      client_user_id: payload.client_user_id ?? null,
+      domain: "funding",
+      caller: "lender-research",
+      max_hops: 2,
+      strict: true,
+      persist: false,
+    }),
+  });
+
+  const dr = await resp.json().catch(() => null) as
+    | {
+        run_id: string;
+        findings: Array<{ text: string; citations: number[]; confidence: string; unverifiedFields?: string[] }>;
+        sources: Array<{ index: number; url: string; title: string; snippet: string; excluded: boolean; reliability: string }>;
+        coverage: { stop_reason: string; note: string; configured: boolean };
       }
-    }
+    | null;
+
+  if (!dr || !resp.ok) {
+    return ok({
+      ok: false,
+      subagent: "financial-research",
+      deprecated: true,
+      forwarded_to: "paige-deep-research",
+      error: "Deep-research engine unavailable.",
+    }, 502);
   }
 
-  let brief = "";
-  let verification_required = true;
-  if (LOVABLE_API_KEY && allSources.length > 0) {
-    const ctx = allSources.slice(0, 12).map((s, i) => `[${i + 1}] ${s.title}\n${s.description}\n${s.url}`).join("\n\n");
-    const aiRes = await gatewayCompat("anthropic", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a funding research analyst for the Mogul Maker Academy. Hard rules: never guarantee approval; never claim to remove negatives; flag any bureau-pull claim as 'verify before applying' because lender policies change; cite sources with [n]. Output sections: BUREAU PULL · APPROVAL CRITERIA (FICO, TIB, revenue) · REPORTING TO PERSONAL BUREAUS · RECENT SIGNALS · STRATEGIC FIT · VERIFICATION DISCLAIMER.",
-          },
-          { role: "user", content: `Subject: ${subject}\n\nSources:\n${ctx}\n\nWrite a tight brief (under 400 words).` },
-        ],
-      }),
-    });
-    if (aiRes.ok) {
-      const j = await aiRes.json();
-      brief = j?.choices?.[0]?.message?.content ?? "";
-    }
-  }
+  // Map engine output back to the legacy response shape. Every fact here is cited or absent.
+  const citable = (dr.sources ?? []).filter((s) => !s.excluded);
+  const brief = dr.findings.length
+    ? dr.findings.map((f) => `• ${f.text} ${f.citations.map((c) => `[${c}]`).join("")} (${f.confidence})`).join("\n")
+    : "";
+  const summary = !dr.coverage.configured
+    ? "Live research is not connected — no sources could be gathered, so nothing was produced."
+    : dr.findings.length
+      ? `Researched "${subject}" across ${citable.length} verified source(s). Verify details directly before acting.`
+      : `Searched "${subject}" but found no source that survived verification. Reporting nothing rather than an unverified claim.`;
 
   return ok({
     ok: true,
     subagent: "financial-research",
-    summary: `Researched ${subject} across ${allSources.length} source(s). Verify bureau pull with a soft inquiry before applying.`,
-    brief,
-    sources: allSources,
+    deprecated: true,
+    forwarded_to: "paige-deep-research",
+    run_id: dr.run_id,
     subject,
-    verification_required,
-    confidence: allSources.length >= 4 ? "medium" : "low",
+    summary,
+    brief,
+    findings: dr.findings,
+    sources: citable.map((s) => ({ title: s.title, description: s.snippet, url: s.url })),
+    verification_required: true,
+    configured: dr.coverage.configured,
+    confidence: dr.findings.length >= 3 ? "medium" : "low",
     requires_approval: false,
   });
 });
