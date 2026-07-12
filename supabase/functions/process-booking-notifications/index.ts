@@ -4,6 +4,9 @@
 // or follow-up window sends a branded email from calendar@ — claimed in
 // booking_notifications_sent first so nothing is ever sent twice.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Shared sender + templating (§12): the Twilio path and merge-field renderer
+// live in one place, reused by public-booking and booking-manage too.
+import { renderTemplate, sendSms } from "../_shared/bookingNotify.ts";
 
 // The pg_cron trigger token lives ONLY in Supabase Vault (task #145) — never in
 // source or env. The request handler authorizes each trigger by calling the
@@ -11,12 +14,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // cron job builds via public.cron_token_header(); no literal token exists here.
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_FROM = Deno.env.get("CALENDAR_EMAIL_FROM") ?? Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <calendar@paigeagent.ai>";
-// SMS (Twilio) — reminders may fire on 'sms'/'both'. Reuse the platform's
-// existing Twilio number env when TWILIO_FROM isn't set, so an SMS reminder
-// works with the same credentials the rest of the platform already uses.
-const TWILIO_SID = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
-const TWILIO_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
-const TWILIO_FROM = Deno.env.get("TWILIO_FROM") ?? Deno.env.get("TWILIO_PHONE_NUMBER") ?? "";
+// SMS (Twilio) reminders fire on 'sms'/'both' via the shared sender
+// (_shared/bookingNotify.ts), which owns the Twilio credential env.
 // Signed self-serve manage link — matches booking-manage's verifier (HMAC over
 // the base64url payload, keyed by the service-role key) and public-booking's
 // {b, iat, exp, ver} payload so the same link reschedules/cancels this booking.
@@ -82,44 +81,6 @@ async function manageUrl(bookingId: string, ver = 0): Promise<string> {
   return `${PUBLIC_BASE}/booking/manage?token=${payload}.${sig}`;
 }
 
-// Normalize a raw phone to E.164; keeps a leading '+', else assumes US (+1).
-// Returns "" when there are no dialable digits so callers can skip cleanly.
-function toE164(raw: string): string {
-  const trimmed = String(raw ?? "").trim();
-  const plus = trimmed.startsWith("+");
-  const digits = trimmed.replace(/\D/g, "");
-  if (!digits) return "";
-  return plus ? `+${digits}` : `+1${digits}`;
-}
-// Minimal Twilio REST send — inlined (not via send-sms-reminder) so this worker
-// owns its own idempotency and never depends on another function's side effects.
-// Returns true ONLY when Twilio accepted the message (§13 — a fire is not a
-// delivery; the caller counts a send only on a true here).
-async function sendSms(to: string, message: string): Promise<boolean> {
-  if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) return false;
-  const toNum = toE164(to);
-  const fromNum = toE164(TWILIO_FROM);
-  if (!toNum || !fromNum) return false;
-  try {
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`)}`,
-      },
-      body: new URLSearchParams({ To: toNum, From: fromNum, Body: message }),
-    });
-    return res.ok;
-  } catch { return false; }
-}
-
-// Config-as-data reminder copy: substitute {{guest_name}} {{when}} {{where}}
-// {{title}} {{service}} in a Paige-/owner-authored subject or body. Unknown
-// tokens are left intact rather than blanked, so a typo is visible, not silent.
-function renderTemplate(tpl: string, vars: Record<string, string>): string {
-  return tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k: string) => (k in vars ? vars[k] : m));
-}
-
 async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
   if (!RESEND_KEY) return false;
   try {
@@ -132,8 +93,12 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
   } catch { return false; }
 }
 
-interface Reminder { channel: string; offset_min: number; subject?: string; body?: string }
-interface Notify { reminders: Reminder[]; followup_guest: boolean; followup_offset_min: number }
+// to: who a reminder targets — 'guest' (default, back-compat), 'host', or 'both'.
+interface Reminder { channel: string; offset_min: number; to: string; subject?: string; body?: string }
+interface Notify {
+  reminders: Reminder[]; followup_guest: boolean; followup_offset_min: number;
+  followup_subject?: string; followup_body?: string;
+}
 function parseNotify(raw: unknown): Notify {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const reminders = Array.isArray(o.reminders)
@@ -143,6 +108,9 @@ function parseNotify(raw: unknown): Notify {
         .map((r) => ({
           channel: typeof r.channel === "string" ? r.channel : "email",
           offset_min: r.offset_min as number,
+          // Recipient targeting — a reminder can nudge the host, not just the
+          // guest. Unknown/absent => 'guest' so every existing config is unchanged.
+          to: r.to === "host" || r.to === "both" ? (r.to as string) : "guest",
           // Optional per-reminder copy (config-as-data, §10) — Paige-authorable.
           subject: typeof r.subject === "string" && r.subject.trim() ? r.subject : undefined,
           body: typeof r.body === "string" && r.body.trim() ? r.body : undefined,
@@ -152,6 +120,8 @@ function parseNotify(raw: unknown): Notify {
     reminders,
     followup_guest: o.followup_guest === true,
     followup_offset_min: typeof o.followup_offset_min === "number" ? o.followup_offset_min : 60,
+    followup_subject: typeof o.followup_subject === "string" && o.followup_subject.trim() ? o.followup_subject : undefined,
+    followup_body: typeof o.followup_body === "string" && o.followup_body.trim() ? o.followup_body : undefined,
   };
 }
 
@@ -173,7 +143,7 @@ Deno.serve(async (req) => {
   // Candidate window: reminders up to a week ahead, follow-ups up to 2 days back.
   const { data: rows } = await admin
     .from("internal_bookings")
-    .select("id, guest_email, guest_phone, guest_name, title, start_at, end_at, timezone, location_type, location_value, status, calendar_id, collective_group_id, manage_token_version, appointment_type")
+    .select("id, guest_email, guest_phone, guest_name, title, start_at, end_at, timezone, location_type, location_value, status, calendar_id, collective_group_id, manage_token_version, appointment_type, host_user_id")
     .not("calendar_id", "is", null)
     .neq("status", "cancelled")
     .neq("status", "no_show")
@@ -228,6 +198,27 @@ Deno.serve(async (req) => {
     else await admin.from("booking_notifications_sent").delete().eq("booking_id", bookingId).eq("notif_key", key); // let it retry
   }
 
+  // Host contact for host-targeted reminders (email from auth, phone from the
+  // profile). Memoized per run so a busy host is resolved once, not per booking.
+  const hostContactCache = new Map<string, { email: string; phone: string }>();
+  async function hostContact(uid: string | null): Promise<{ email: string; phone: string }> {
+    if (!uid) return { email: "", phone: "" };
+    const hit = hostContactCache.get(uid);
+    if (hit) return hit;
+    let email = "", phone = "";
+    try {
+      const { data: u } = await admin.auth.admin.getUserById(uid);
+      email = (u as { user?: { email?: string } } | null)?.user?.email ?? "";
+    } catch { /* unreachable host email — send just skips that channel */ }
+    try {
+      const { data: p } = await admin.from("profiles").select("phone").eq("user_id", uid).maybeSingle();
+      phone = String((p as { phone?: string } | null)?.phone ?? "");
+    } catch { /* no profile phone — SMS-to-host skips cleanly */ }
+    const rec = { email, phone };
+    hostContactCache.set(uid, rec);
+    return rec;
+  }
+
   // Truthful, per-channel counters — an SMS send is reported separately from an
   // email send, and each counts only on an actual provider acceptance (§13).
   let reminders = 0, smsReminders = 0, followups = 0;
@@ -266,50 +257,66 @@ Deno.serve(async (req) => {
       // its OWN claim key so the two never collide on the shared (booking, key)
       // unique gate and one channel failing can't block the other.
       const channels = rem.channel === "both" ? ["email", "sms"] : [rem.channel === "sms" ? "sms" : "email"];
-      for (const ch of channels) {
-        if (ch === "email" && !email) continue;
-        if (ch === "sms" && !phone) continue;
-        // start time is part of the key so a RESCHEDULED booking (new startMs)
-        // gets a fresh claim and re-reminds for its moved time, instead of the
-        // surviving 'sent' row from the old time silently suppressing it.
-        const key = `reminder:${ch}:${rem.offset_min}:${startMs}`;
-        // recipient_email is the claim's audit field; SMS-only has no email, so
-        // fall back to the phone as the recorded recipient identifier.
-        const recipient = ch === "email" ? email : (email || phone);
-        if (!(await claim(b.id as string, key, recipient))) continue;
-        const mUrl = await manageUrl(b.id as string, ver);
-        let ok = false;
-        if (ch === "email") {
-          const subject = rem.subject ? renderTemplate(rem.subject, vars) : `Reminder: ${title} · ${whenLabel}`;
-          const lead = rem.body ? renderTemplate(rem.body, vars) : "A quick heads-up — your session is coming up.";
-          const html = shell(brandName, accent, "Reminder: you're booked", lead,
-            [["Session", title], ["When", whenLabel], ["Where", loc]],
-            "Or just reply to this email.", mUrl);
-          ok = await sendEmail(email, subject, html);
-        } else {
-          const line = rem.body
-            ? renderTemplate(rem.body, vars)
-            : `Reminder: ${title} on ${whenLabel}. ${loc}.`;
-          // The manage link is appended (not part of the authorable copy) so an
-          // SMS reminder can still reschedule/cancel with the same signed link.
-          ok = await sendSms(phone, `${line}\nReschedule or cancel: ${mUrl}`);
+      // Recipient targeting: 'guest' (default), 'host', or 'both'. Host contact
+      // is resolved lazily (email from auth, phone from profile) only when needed.
+      const targets = rem.to === "both" ? ["guest", "host"] : [rem.to === "host" ? "host" : "guest"];
+      for (const target of targets) {
+        const contact = target === "host" ? await hostContact(b.host_user_id as string | null) : { email, phone };
+        for (const ch of channels) {
+          if (ch === "email" && !contact.email) continue;
+          if (ch === "sms" && !contact.phone) continue;
+          // start time is part of the key so a RESCHEDULED booking (new startMs)
+          // gets a fresh claim and re-reminds for its moved time, instead of the
+          // surviving 'sent' row from the old time silently suppressing it. The
+          // guest key is UNCHANGED from before targeting existed (no 'guest'
+          // segment) so already-sent guest reminders never re-fire on rollout;
+          // host is a separate key namespace.
+          const key = target === "host"
+            ? `reminder:host:${ch}:${rem.offset_min}:${startMs}`
+            : `reminder:${ch}:${rem.offset_min}:${startMs}`;
+          // recipient_email is the claim's audit field; SMS-only has no email, so
+          // fall back to the phone as the recorded recipient identifier.
+          const recipient = ch === "email" ? contact.email : (contact.email || contact.phone);
+          if (!(await claim(b.id as string, key, recipient))) continue;
+          const mUrl = await manageUrl(b.id as string, ver);
+          let ok = false;
+          if (ch === "email") {
+            const subject = rem.subject ? renderTemplate(rem.subject, vars) : `Reminder: ${title} · ${whenLabel}`;
+            const lead = rem.body ? renderTemplate(rem.body, vars) : "A quick heads-up — your session is coming up.";
+            const html = shell(brandName, accent, "Reminder: you're booked", lead,
+              [["Session", title], ["When", whenLabel], ["Where", loc]],
+              "Or just reply to this email.", mUrl);
+            ok = await sendEmail(contact.email, subject, html);
+          } else {
+            const line = rem.body
+              ? renderTemplate(rem.body, vars)
+              : `Reminder: ${title} on ${whenLabel}. ${loc}.`;
+            // The manage link is appended (not part of the authorable copy) so an
+            // SMS reminder can still reschedule/cancel with the same signed link.
+            ok = await sendSms(contact.phone, `${line}\nReschedule or cancel: ${mUrl}`);
+          }
+          await finish(b.id as string, key, ok);
+          if (ok) { if (ch === "sms") smsReminders++; else reminders++; }
         }
-        await finish(b.id as string, key, ok);
-        if (ok) { if (ch === "sms") smsReminders++; else reminders++; }
       }
     }
 
     // Follow-up (guest email): due when now is at/after (end + offset), meeting
-    // has ended. Email-only; carries the same signed manage link.
+    // has ended. Email-only; carries the same signed manage link. Honors optional
+    // owner-authored subject/body (config-as-data, §10) — empty falls back to
+    // the built-in copy so existing configs are unchanged.
     if (email && notify.followup_guest && endMs <= now && endMs + notify.followup_offset_min * MIN <= now) {
       const key = `followup:${startMs}`;
       if (await claim(b.id as string, key, email)) {
         const mUrl = await manageUrl(b.id as string, ver);
-        const html = shell(brandName, accent, "Thanks for the time",
-          `Great connecting${guestName ? `, ${esc(guestName)}` : ""}. Here's a quick follow-up.`,
+        const subject = notify.followup_subject ? renderTemplate(notify.followup_subject, vars) : `Following up on ${title}`;
+        const lead = notify.followup_body
+          ? renderTemplate(notify.followup_body, vars)
+          : `Great connecting${guestName ? `, ${esc(guestName)}` : ""}. Here's a quick follow-up.`;
+        const html = shell(brandName, accent, "Thanks for the time", lead,
           [["Session", title], ["When", whenLabel]],
           "Want to book again or have a question? Just reply — we're here.", mUrl);
-        const ok = await sendEmail(email, `Following up on ${title}`, html);
+        const ok = await sendEmail(email, subject, html);
         await finish(b.id as string, key, ok);
         if (ok) followups++;
       }

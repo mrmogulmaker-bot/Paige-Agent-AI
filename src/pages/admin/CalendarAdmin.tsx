@@ -34,9 +34,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   CalendarDays, CalendarRange, CalendarX2, ChevronLeft, ChevronRight, Clock,
-  Plus, Loader2, ListChecks, Settings2, Users,
+  Plus, Loader2, ListChecks, Settings2, Users, Cable,
 } from "lucide-react";
 import CalendarsPanel from "@/components/admin/calendar/CalendarsPanel";
+import CalendarConnectorsPanel from "@/components/admin/settings/CalendarConnectorsPanel";
 import { CalendarGrid, type GridEvent, type ViewMode } from "@/components/admin/calendar/CalendarGrid";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
@@ -372,6 +373,7 @@ export default function CalendarAdmin() {
           <TabsTrigger value="calendar" className="gap-1.5"><CalendarDays className="h-4 w-4" /> Calendar view</TabsTrigger>
           <TabsTrigger value="list" className="gap-1.5"><ListChecks className="h-4 w-4" /> Appointment list</TabsTrigger>
           <TabsTrigger value="settings" className="gap-1.5"><Settings2 className="h-4 w-4" /> Calendar settings</TabsTrigger>
+          <TabsTrigger value="connections" className="gap-1.5"><Cable className="h-4 w-4" /> Connections</TabsTrigger>
         </TabsList>
 
         {/* CALENDAR VIEW */}
@@ -512,6 +514,13 @@ export default function CalendarAdmin() {
         {/* CALENDAR SETTINGS */}
         <TabsContent value="settings" className="space-y-4">
           <CalendarsPanel />
+        </TabsContent>
+
+        {/* CONNECTIONS — account-level calendar sync (Google OAuth, Apple soon).
+            Reuses the existing Settings panel (§12) so tenants find it inside the
+            Calendar section without duplicating the connect flows. */}
+        <TabsContent value="connections" className="space-y-4">
+          <CalendarConnectorsPanel />
         </TabsContent>
       </Tabs>
 

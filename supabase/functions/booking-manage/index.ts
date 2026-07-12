@@ -13,6 +13,23 @@ import {
   isValidSlotStart,
   type SlotRules,
 } from "../_shared/slotRules.ts";
+// Shared notification primitives (§12): Twilio sender, merge-field renderer, and
+// opt-in lifecycle-trigger parsing/rendering — the same code the create path and
+// the scheduled worker use, so cancel/reschedule messages match one system.
+import {
+  channelsOf, type Lifecycle, lifecycleEmailHtml, parseLifecycle, renderTemplate, sendSms, targetsOf,
+} from "../_shared/bookingNotify.ts";
+// Anon abuse control (§13): a leaked/valid manage token could be replayed to
+// hammer view/reschedule/cancel, and invalid tokens brute-forced — throttle
+// per-IP (guards both) and per-token (guards a single leaked link). Fail-open on
+// the limiter's own error so a hiccup never blocks a legit change.
+import { clientIp, overRateLimit } from "../_shared/rateLimit.ts";
+
+// Per-window ceilings (60s). A real guest managing one booking makes a handful of
+// calls; these sit well above that but stop a replay/brute-force flood.
+const RL_MANAGE_PER_IP = 30;
+const RL_MANAGE_PER_TOKEN = 20;
+const TOO_MANY = "Too many requests — please try again shortly.";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -222,9 +239,15 @@ async function resolveHostEmails(admin: ReturnType<typeof createClient>, hostIds
   return out.filter((e): e is string => !!e);
 }
 
+async function resolveHostPhones(admin: ReturnType<typeof createClient>, hostIds: string[]): Promise<string[]> {
+  if (!hostIds.length) return [];
+  const { data: profs } = await admin.from("profiles").select("phone").in("user_id", hostIds);
+  return (profs ?? []).map((p) => String((p as { phone?: string }).phone ?? "")).filter(Boolean);
+}
+
 interface BookingCtx {
   id: string; tenant_id: string | null; host_user_id: string; guest_name: string | null;
-  guest_email: string | null; timezone: string | null; location_type: string | null;
+  guest_email: string | null; guest_phone: string | null; timezone: string | null; location_type: string | null;
   location_value: string | null; collective_group_id: string | null;
 }
 interface CalCtx { title: string | null; description: string | null; accent: string | null }
@@ -242,6 +265,7 @@ async function notifyChange(
   startMs: number,
   ver: number,
   hostIdsOverride?: string[],
+  lifecycle: Lifecycle[] = [],
 ): Promise<void> {
   try {
     const tz = b.timezone || "America/New_York";
@@ -346,6 +370,71 @@ async function notifyChange(
         metadata: { via: "booking-manage", action: kind, booking_id: b.id },
       })),
     ).then(() => {}, () => {});
+
+    // Opt-in lifecycle triggers (§8): fire any owner-authored on-cancelled /
+    // on-rescheduled message beyond the built-in emails above. Only runs when
+    // the tenant added a matching entry to notify_config.lifecycle. Each send is
+    // claimed in booking_notifications_sent (same ledger the scheduled worker
+    // uses), keyed per event/target/channel/recipient — plus the new start time
+    // for reschedules, so a SECOND reschedule re-fires while a double-call of the
+    // same one can't double-send.
+    const event = kind === "cancel" ? "cancelled" : "rescheduled";
+    const steps = lifecycle.filter((l) => l.event === event);
+    if (steps.length) {
+      const vars: Record<string, string> = {
+        guest_name: b.guest_name || "there", when: whenLabel, where: loc, title, service: title,
+      };
+      const mUrl = await manageUrl(b.id, ver);
+      const hostEmails = steps.some((l) => l.to !== "guest") ? await resolveHostEmails(admin, hostIds) : [];
+      const hostPhones = steps.some((l) => l.to !== "guest") ? await resolveHostPhones(admin, hostIds) : [];
+      const timeKey = event === "rescheduled" ? `:${startMs}` : "";
+      const claimLc = async (key: string, rec: string) => {
+        const { error } = await admin.from("booking_notifications_sent")
+          .insert({ booking_id: b.id, notif_key: key, recipient_email: rec || null, status: "sending" });
+        return !error;
+      };
+      const finishLc = async (key: string, ok: boolean) => {
+        if (ok) await admin.from("booking_notifications_sent").update({ status: "sent" }).eq("booking_id", b.id).eq("notif_key", key);
+        else await admin.from("booking_notifications_sent").delete().eq("booking_id", b.id).eq("notif_key", key);
+      };
+      // Cancelled links are dead (version bumped) — no manage link on those.
+      const lcLink = event === "cancelled" ? undefined : mUrl;
+      for (const lc of steps) {
+        for (const who of targetsOf(lc.to)) {
+          for (const ch of channelsOf(lc.channel)) {
+            const recipients = ch === "email"
+              ? (who === "guest" ? (guestEmail ? [guestEmail] : []) : hostEmails)
+              : (who === "guest" ? (b.guest_phone ? [b.guest_phone] : []) : hostPhones);
+            for (const rec of recipients) {
+              const key = `lc:${event}:${who}:${ch}:${rec}${timeKey}`;
+              if (!(await claimLc(key, rec))) continue;
+              let ok = false;
+              if (ch === "email") {
+                const heading = event === "cancelled" ? "Your booking's cancelled" : "Your time's been moved";
+                const subject = lc.subject
+                  ? renderTemplate(lc.subject, vars)
+                  : `${event === "cancelled" ? "Cancelled" : "Updated"}: ${title} · ${whenLabel}`;
+                const bodyText = lc.body
+                  ? renderTemplate(lc.body, vars)
+                  : (event === "cancelled"
+                      ? `Your booking for ${title} on ${whenLabel} is cancelled.`
+                      : `Your ${title} is now on ${whenLabel}. ${loc}.`);
+                ok = await sendEmail(rec, subject, lifecycleEmailHtml(brandName, accent, heading, bodyText, lcLink),
+                  undefined, who === "guest" ? guestSender : undefined);
+              } else {
+                const line = lc.body
+                  ? renderTemplate(lc.body, vars)
+                  : (event === "cancelled"
+                      ? `Cancelled: ${title} on ${whenLabel}.`
+                      : `Updated: ${title} is now ${whenLabel}. ${loc}.`);
+                ok = await sendSms(rec, lcLink ? `${line}\nReschedule or cancel: ${lcLink}` : line);
+              }
+              await finishLc(key, ok);
+            }
+          }
+        }
+      }
+    }
   } catch (e) {
     // Best-effort: the change is already committed. Log (visible in edge logs)
     // rather than swallow — silent catches have hidden real bugs on this path.
@@ -360,6 +449,12 @@ Deno.serve(async (req) => {
   try {
     if (!SECRET) return json({ error: "server not configured" }, 500);
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    // Per-IP throttle first — bounds invalid-token brute-forcing (checked before
+    // the token is even verified) and any per-IP replay flood.
+    const ip = clientIp(req);
+    if (await overRateLimit(admin, `bm:ip:${ip}`, RL_MANAGE_PER_IP)) {
+      return json({ error: TOO_MANY }, 429);
+    }
     const body = await req.json().catch(() => ({}));
     const action = body?.action;
     const tok = await verifyToken(String(body?.token ?? ""));
@@ -369,9 +464,14 @@ Deno.serve(async (req) => {
       return json({ error: "This link is invalid or has expired." }, 401);
     }
     const bookingId = tok.bookingId;
+    // Per-token throttle — bounds replay of one valid (possibly leaked) link
+    // across view/reschedule/cancel, independent of source IP.
+    if (await overRateLimit(admin, `bm:tok:${bookingId}`, RL_MANAGE_PER_TOKEN)) {
+      return json({ error: TOO_MANY }, 429);
+    }
 
     const { data: b } = await admin.from("internal_bookings")
-      .select("id, tenant_id, calendar_id, host_user_id, guest_name, guest_email, title, start_at, end_at, timezone, status, location_type, location_value, booking_kind, collective_group_id, appointment_type, manage_token_version")
+      .select("id, tenant_id, calendar_id, host_user_id, guest_name, guest_email, guest_phone, title, start_at, end_at, timezone, status, location_type, location_value, booking_kind, collective_group_id, appointment_type, manage_token_version")
       .eq("id", bookingId).maybeSingle();
     if (!b) return json({ error: "Booking not found." }, 404);
 
@@ -389,7 +489,7 @@ Deno.serve(async (req) => {
     let calDurationMin = 30;
     if (b.calendar_id) {
       const { data: c } = await admin.from("calendars")
-        .select("slug, availability_json, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, date_overrides, timezone, title, description, accent, theme")
+        .select("slug, availability_json, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, date_overrides, timezone, title, description, accent, theme, notify_config")
         .eq("id", b.calendar_id).maybeSingle();
       if (c) {
         cal = c; slug = c.slug as string;
@@ -401,6 +501,37 @@ Deno.serve(async (req) => {
         horizonDays = Math.max(1, (c.booking_horizon_days as number) ?? 60);
         dateOverrides = Array.isArray(c.date_overrides) ? (c.date_overrides as DateOverride[]) : [];
         calTimezone = (c.timezone as string) || null;
+      }
+    }
+
+    // Per-host hours/timezone for the roster (NULL → inherit the calendar's). The
+    // reschedule gate validates the new time against the RIGHT host's OWN windows,
+    // parity with the create engine's per-host slot rules — a booked slot can't
+    // violate the chosen host's real hours on either path. Only availability +
+    // timezone are per-host; duration/buffers/notice/horizon/date-overrides stay
+    // calendar-level.
+    const hostAvailMap: Record<string, { availability: DayWindow[] | null; timezone: string | null }> = {};
+    if (b.calendar_id) {
+      const { data: chosts } = await admin.from("calendar_hosts")
+        .select("user_id, availability_json, timezone").eq("calendar_id", b.calendar_id);
+      for (const hr of chosts ?? []) {
+        const raw = hr.availability_json;
+        // Element-validate (parity with public-booking.parseHostAvailability): a
+        // malformed window — e.g. a Paige/§10-authored write — must not flow
+        // unfiltered into isValidSlotStart. NULL/non-array → inherit (null).
+        const availability = Array.isArray(raw)
+          ? (raw as unknown[]).filter(
+              (w): w is DayWindow =>
+                !!w && typeof w === "object" &&
+                typeof (w as DayWindow).day === "number" &&
+                /^\d{2}:\d{2}$/.test((w as DayWindow).start ?? "") &&
+                /^\d{2}:\d{2}$/.test((w as DayWindow).end ?? ""),
+            )
+          : null;
+        hostAvailMap[hr.user_id as string] = {
+          availability,
+          timezone: (typeof hr.timezone === "string" && hr.timezone.trim()) ? (hr.timezone as string) : null,
+        };
       }
     }
 
@@ -441,12 +572,15 @@ Deno.serve(async (req) => {
     const bookingCtx: BookingCtx = {
       id: b.id as string, tenant_id: (b.tenant_id as string | null) ?? null, host_user_id: b.host_user_id as string,
       guest_name: (b.guest_name as string | null) ?? null, guest_email: (b.guest_email as string | null) ?? null,
+      guest_phone: (b.guest_phone as string | null) ?? null,
       timezone: (b.timezone as string | null) ?? null, location_type: (b.location_type as string | null) ?? null,
       location_value: (b.location_value as string | null) ?? null, collective_group_id: (b.collective_group_id as string | null) ?? null,
     };
     const calCtx: CalCtx | null = cal
       ? { title: (cal.title as string | null) ?? null, description: (cal.description as string | null) ?? null, accent: (cal.accent as string | null) ?? null }
       : null;
+    // Opt-in owner-authored on-cancelled / on-rescheduled messages (§8).
+    const calLifecycle = parseLifecycle(cal?.notify_config);
 
     if (action === "cancel") {
       // Snapshot the attending hosts BEFORE cancelling — otherwise notifyChange
@@ -467,7 +601,7 @@ Deno.serve(async (req) => {
         ? await admin.from("internal_bookings").update(patch).eq("collective_group_id", b.collective_group_id).neq("status", "cancelled")
         : await admin.from("internal_bookings").update(patch).eq("id", b.id);
       if (error) return json({ error: error.message }, 500);
-      await notifyChange(admin, "cancel", bookingCtx, calCtx, apptName, durationMin, Date.parse(b.start_at as string), nextVer, cancelHostIds);
+      await notifyChange(admin, "cancel", bookingCtx, calCtx, apptName, durationMin, Date.parse(b.start_at as string), nextVer, cancelHostIds, calLifecycle);
       return json({ ok: true, status: "cancelled" });
     }
 
@@ -479,11 +613,29 @@ Deno.serve(async (req) => {
       // Shared slot rules — the exact validity gate the public engine enforces
       // at create time (weekly windows, date overrides, min-notice, horizon).
       // A stale or hand-crafted `start` can't slip past overrides/horizon here.
-      const rules: SlotRules = {
-        availability: avail, durationMin, minNoticeMin: minNotice, horizonDays,
-        dateOverrides, timezone: tz, bufferBeforeMin, bufferAfterMin,
+      // Per-host window rules: build each gating host's SlotRules from THEIR own
+      // hours/timezone (falling back to the calendar's), everything else shared.
+      const rulesFor = (uid: string): SlotRules => {
+        const ha = hostAvailMap[uid];
+        return {
+          availability: ha?.availability ?? avail,
+          durationMin, minNoticeMin: minNotice, horizonDays, dateOverrides,
+          timezone: ha?.timezone ?? tz, bufferBeforeMin, bufferAfterMin,
+        };
       };
-      if (!isValidSlotStart(rules, newStart, now)) {
+      // Base rules still drive the buffer-aware isFree conflict checks below —
+      // isFree reads only duration + buffers, so per-host availability is moot there.
+      const rules: SlotRules = rulesFor(b.host_user_id as string);
+      // Hosts whose OWN windows gate this reschedule: collective must be valid for
+      // EVERY attending host; single/round-robin/class for the booking's host.
+      let gateHostIds: string[] = [b.host_user_id as string];
+      if (b.collective_group_id) {
+        const { data: gsibs } = await admin.from("internal_bookings")
+          .select("host_user_id").eq("collective_group_id", b.collective_group_id).neq("status", "cancelled");
+        const ids = Array.from(new Set((gsibs ?? []).map((s) => s.host_user_id as string)));
+        if (ids.length) gateHostIds = ids;
+      }
+      if (!gateHostIds.every((uid) => isValidSlotStart(rulesFor(uid), newStart, now))) {
         return json({ error: "That time isn't open. Please pick another." }, 409);
       }
       const newEnd = newStart + durationMin * 60000;
@@ -507,7 +659,7 @@ Deno.serve(async (req) => {
           return json({ error: error.message }, 500);
         }
         const startAt = (seat as { start_at: string }).start_at;
-        await notifyChange(admin, "reschedule", bookingCtx, calCtx, apptName, durationMin, Date.parse(startAt), currentVer);
+        await notifyChange(admin, "reschedule", bookingCtx, calCtx, apptName, durationMin, Date.parse(startAt), currentVer, undefined, calLifecycle);
         return json({ ok: true, status: "scheduled", start_at: startAt });
       }
 
@@ -537,7 +689,7 @@ Deno.serve(async (req) => {
           if (code === "23505" || code === "23P01") return json({ error: "That time was just taken. Please pick another." }, 409);
           return json({ error: error.message }, 500);
         }
-        await notifyChange(admin, "reschedule", bookingCtx, calCtx, apptName, durationMin, newStart, currentVer);
+        await notifyChange(admin, "reschedule", bookingCtx, calCtx, apptName, durationMin, newStart, currentVer, undefined, calLifecycle);
         return json({ ok: true, status: "scheduled", start_at: new Date(newStart).toISOString() });
       }
 
@@ -558,7 +710,7 @@ Deno.serve(async (req) => {
         if (code === "23505" || code === "23P01") return json({ error: "That time was just taken. Please pick another." }, 409);
         return json({ error: error.message }, 500);
       }
-      await notifyChange(admin, "reschedule", bookingCtx, calCtx, apptName, durationMin, newStart, currentVer);
+      await notifyChange(admin, "reschedule", bookingCtx, calCtx, apptName, durationMin, newStart, currentVer, undefined, calLifecycle);
       return json({ ok: true, status: "scheduled", start_at: new Date(newStart).toISOString() });
     }
 

@@ -4,6 +4,25 @@
 // Source of truth is internal_bookings + staff_calendar_settings — no external
 // provider required (Google/Cal.com/Apple sync is optional, layered on later).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Shared notification primitives (§12): the Twilio sender, merge-field renderer,
+// and opt-in lifecycle-trigger parsing/rendering — the same code the scheduled
+// worker and the self-serve reschedule/cancel path use.
+import {
+  channelsOf, type Lifecycle, lifecycleEmailHtml, parseLifecycle, renderTemplate, sendSms, targetsOf,
+} from "../_shared/bookingNotify.ts";
+// Anon abuse control (§13): per-IP / per-slug throttle for this anon-callable
+// surface, layered on top of the existing per-host create cap. Fail-open on the
+// limiter's own error so a hiccup never blocks a legit booking.
+import { clientIp, overRateLimit } from "../_shared/rateLimit.ts";
+
+// Per-window ceilings (60s). Availability is cheap but the obvious hammer target;
+// create is expensive (writes + emails) so it's capped tighter. All sit ABOVE any
+// legitimate human rate — a person paging a booking calendar or booking a slot
+// never approaches these; a script does.
+const RL_AVAIL_PER_IP = 60; // one visitor paging forward fires a handful/min
+const RL_AVAIL_PER_SLUG = 240; // distributed hammering of one page (many IPs)
+const RL_CREATE_PER_IP = 15; // a real booking is ~1; 15/min still stops a flood
+const TOO_MANY = "Too many requests — please try again shortly.";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +46,22 @@ function parseAvailability(raw: unknown): DayWindow[] {
       /^\d{2}:\d{2}$/.test((w as DayWindow).end ?? ""),
   );
   return out.length ? out : DEFAULT_AVAILABILITY;
+}
+
+// Per-host availability: absent/NULL/malformed → inherit the calendar's (return
+// null so the engine falls back). A present array is used verbatim after
+// validation — an EMPTY custom set legitimately means "this host keeps no hours
+// on this calendar" and must NOT fall back to the 9–5 default the way the
+// calendar-level parser does (that fallback is only right for the shared default).
+function parseHostAvailability(raw: unknown): DayWindow[] | null {
+  if (raw == null || !Array.isArray(raw)) return null;
+  return raw.filter(
+    (w): w is DayWindow =>
+      w && typeof w === "object" &&
+      typeof (w as DayWindow).day === "number" &&
+      /^\d{2}:\d{2}$/.test((w as DayWindow).start ?? "") &&
+      /^\d{2}:\d{2}$/.test((w as DayWindow).end ?? ""),
+  );
 }
 
 // --- Timezone math (Intl-based; no external tz lib) -------------------------
@@ -64,7 +99,11 @@ interface HostSettings {
   capacity: number; // Class-only ceiling per session (irrelevant otherwise)
   tenant_id: string | null;
   calendarId: string | null; // set when the page is backed by a first-class calendar
-  availability: DayWindow[];
+  availability: DayWindow[]; // CALENDAR-level default hours (shared fallback)
+  // Per-host override of hours/timezone, keyed by user_id. NULL fields inherit
+  // the calendar's `availability`/`timezone` — an absent entry (or all-NULL one)
+  // means the host uses the calendar default, so existing rosters are unchanged.
+  hostAvailability: Record<string, { availability: DayWindow[] | null; timezone: string | null }>;
   durationMin: number;
   bufferBeforeMin: number;
   bufferAfterMin: number;
@@ -87,6 +126,7 @@ interface HostSettings {
   appointmentTypes: AppointmentType[]; // owner-authored service menu
   confirmGuest: boolean; // send guest a confirmation
   confirmHost: boolean; // notify the host of new bookings
+  lifecycle: Lifecycle[]; // opt-in owner-authored on-booking-created messages
 }
 
 function parseNotify(raw: unknown): { confirmGuest: boolean; confirmHost: boolean } {
@@ -276,17 +316,59 @@ function isFree(h: HostSettings, busy: Busy[], s: number): boolean {
   const e = s + h.durationMin * 60000;
   return !busy.some((b) => s < b.end + h.bufferAfterMin * 60000 && e + h.bufferBeforeMin * 60000 > b.start);
 }
-/** Single-host open slots (window ∧ that host free). */
+/** A host's EFFECTIVE settings for window computation: their OWN availability +
+ *  timezone when set, else the calendar's. Everything else (duration, buffers,
+ *  min-notice, horizon, date overrides) stays calendar-level and shared. A host
+ *  with no per-host override (the default for every existing roster) returns `h`
+ *  unchanged by identity — so a calendar with no custom hours behaves EXACTLY as
+ *  before this feature (regression-free). */
+function hostView(h: HostSettings, uid: string): HostSettings {
+  const c = h.hostAvailability[uid];
+  if (!c || (c.availability == null && c.timezone == null)) return h;
+  return { ...h, availability: c.availability ?? h.availability, timezone: c.timezone ?? h.timezone };
+}
+/** Is `startMs` a real window start for THIS host's own hours (± the same ±1-min
+ *  probe the create-path re-validation uses)? */
+function isHostWindowStart(h: HostSettings, uid: string, startMs: number, nowMs: number): boolean {
+  const hv = hostView(h, uid);
+  return windowStarts(hv, startMs - 60000, startMs + 60000, nowMs).some((s) => s === startMs);
+}
+/** Single-host open slots (that host's own window ∧ that host free). */
 function computeSlots(h: HostSettings, busy: Busy[], fromMs: number, toMs: number, nowMs: number): number[] {
-  return windowStarts(h, fromMs, toMs, nowMs).filter((s) => isFree(h, busy, s));
+  const hv = hostView(h, h.user_id);
+  return windowStarts(hv, fromMs, toMs, nowMs).filter((s) => isFree(hv, busy, s));
 }
-/** Round-robin open slots: a slot is bookable if AT LEAST ONE host is free. */
+/** Round-robin open slots — UNION across hosts: a slot opens if AT LEAST ONE host
+ *  is free AND the slot falls inside THAT host's own windows. Each host's grid is
+ *  computed from their own hours/timezone, so a slot only one host works still
+ *  shows (and can only be assigned to a host it's valid for — see the create path). */
 function roundRobinSlots(h: HostSettings, busyByHost: Record<string, Busy[]>, fromMs: number, toMs: number, nowMs: number): number[] {
-  return windowStarts(h, fromMs, toMs, nowMs).filter((s) => h.hosts.some((uid) => isFree(h, busyByHost[uid] ?? [], s)));
+  const open = new Set<number>();
+  for (const uid of h.hosts) {
+    const hv = hostView(h, uid);
+    const busy = busyByHost[uid] ?? [];
+    for (const s of windowStarts(hv, fromMs, toMs, nowMs)) {
+      if (isFree(hv, busy, s)) open.add(s);
+    }
+  }
+  return Array.from(open).sort((a, b) => a - b);
 }
-/** Collective open slots: a slot is bookable only if EVERY host is free (intersection, not union) — everyone must attend. */
+/** Collective open slots — INTERSECTION across hosts: a slot opens only if EVERY
+ *  host is free AND the slot falls inside EVERY host's own windows (everyone must
+ *  attend). Build each host's set of free window-starts, then keep the starts
+ *  common to all. When all hosts inherit, every set is the calendar grid and this
+ *  reduces to the old "calendar window ∧ all hosts free". */
 function collectiveSlots(h: HostSettings, busyByHost: Record<string, Busy[]>, fromMs: number, toMs: number, nowMs: number): number[] {
-  return windowStarts(h, fromMs, toMs, nowMs).filter((s) => h.hosts.every((uid) => isFree(h, busyByHost[uid] ?? [], s)));
+  const perHost = h.hosts.map((uid) => {
+    const hv = hostView(h, uid);
+    const busy = busyByHost[uid] ?? [];
+    return new Set(windowStarts(hv, fromMs, toMs, nowMs).filter((s) => isFree(hv, busy, s)));
+  });
+  if (!perHost.length) return [];
+  const [first, ...rest] = perHost;
+  const out: number[] = [];
+  for (const s of first) if (rest.every((set) => set.has(s))) out.push(s);
+  return out.sort((a, b) => a - b);
 }
 /** Class open slots: a slot with an existing session is open while it has room;
  *  a slot with none yet is open if the host has no OTHER conflict (`busy` must
@@ -294,9 +376,10 @@ function collectiveSlots(h: HostSettings, busyByHost: Record<string, Busy[]>, fr
  *  a class's own seats would "conflict" with its own session and hide every
  *  one of its own slots). */
 function classSlots(h: HostSettings, busy: Busy[], sessions: Map<number, { capacity: number; booked: number }>, fromMs: number, toMs: number, nowMs: number): number[] {
-  return windowStarts(h, fromMs, toMs, nowMs).filter((s) => {
+  const hv = hostView(h, h.user_id); // a class has one host — use their own hours
+  return windowStarts(hv, fromMs, toMs, nowMs).filter((s) => {
     const sess = sessions.get(s);
-    return sess ? sess.booked < sess.capacity : isFree(h, busy, s);
+    return sess ? sess.booked < sess.capacity : isFree(hv, busy, s);
   });
 }
 /** Existing (non-cancelled) class sessions in the window + their live seat
@@ -341,11 +424,21 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
   // primary; round-robin/collective calendars use the whole pool.
   const { data: hosts } = await admin
     .from("calendar_hosts")
-    .select("user_id, priority")
+    .select("user_id, priority, availability_json, timezone")
     .eq("calendar_id", cal.id)
     .order("priority", { ascending: true });
-  const hostIds = (hosts ?? []).map((h) => h.user_id as string);
+  const hostRows = hosts ?? [];
+  const hostIds = hostRows.map((h) => h.user_id as string);
   if (!hostIds.length) return null; // no host = nobody to book with yet
+  // Per-host hours/timezone (NULL → inherit the calendar's). Keyed by user_id so
+  // hostView() can resolve each host's effective schedule.
+  const hostAvailability: HostSettings["hostAvailability"] = {};
+  for (const hr of hostRows) {
+    hostAvailability[hr.user_id as string] = {
+      availability: parseHostAvailability(hr.availability_json),
+      timezone: (typeof hr.timezone === "string" && hr.timezone.trim()) ? (hr.timezone as string) : null,
+    };
+  }
   // assignment_strategy.mode picks how round-robin chooses among free hosts;
   // anything unrecognized falls back to the balanced default.
   const stratMode = (cal.assignment_strategy && typeof cal.assignment_strategy === "object"
@@ -364,6 +457,7 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     tenant_id: cal.tenant_id ?? null,
     calendarId: cal.id,
     availability: parseAvailability(cal.availability_json),
+    hostAvailability,
     durationMin: Math.max(5, cal.duration_min ?? 30),
     bufferBeforeMin: Math.max(0, cal.buffer_before_min ?? 0),
     bufferAfterMin: Math.max(0, cal.buffer_after_min ?? 0),
@@ -385,6 +479,7 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     intakeQuestions: parseIntakeQuestions(cal.intake_questions),
     appointmentTypes: parseAppointmentTypes(cal.appointment_types),
     ...parseNotify(cal.notify_config),
+    lifecycle: parseLifecycle(cal.notify_config),
   };
 }
 
@@ -407,6 +502,7 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     tenant_id: data.tenant_id ?? null,
     calendarId: null,
     availability: parseAvailability(data.availability_json),
+    hostAvailability: {}, // legacy single-staff page — one host, calendar-level hours
     durationMin: Math.max(5, data.default_meeting_duration_min ?? 30),
     bufferBeforeMin: Math.max(0, data.buffer_before_min ?? 0),
     bufferAfterMin: Math.max(0, data.buffer_after_min ?? 0),
@@ -429,6 +525,7 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     appointmentTypes: [],
     confirmGuest: true,
     confirmHost: true,
+    lifecycle: [], // legacy per-staff page has no lifecycle config
   };
 }
 
@@ -677,6 +774,7 @@ Deno.serve(async (req) => {
     const action = body?.action;
     const slug = typeof body?.slug === "string" ? body.slug.toLowerCase() : "";
     if (!slug) return json({ error: "slug required" }, 400);
+    const ip = clientIp(req);
 
     // Prefer a first-class calendar; fall back to the legacy per-staff page.
     const host = (await loadCalendar(admin, slug)) ?? (await loadHost(admin, slug));
@@ -693,6 +791,13 @@ Deno.serve(async (req) => {
     };
 
     if (action === "availability") {
+      // Throttle this cheap, anon action per-IP (catches one client rotating
+      // slugs) and per-slug (catches distributed hammering of one page). Short-
+      // circuits so an already-blocked IP doesn't also charge the slug bucket.
+      if (await overRateLimit(admin, `pb:avail:ip:${ip}`, RL_AVAIL_PER_IP) ||
+          await overRateLimit(admin, `pb:avail:slug:${slug}`, RL_AVAIL_PER_SLUG)) {
+        return json({ error: TOO_MANY }, 429);
+      }
       const selType = selectType(body?.appointmentTypeId);
       const effHost = selType ? { ...host, durationMin: selType.duration_min } : host;
       const fromMs = Math.max(now, Date.parse(body?.from) || now);
@@ -754,6 +859,14 @@ Deno.serve(async (req) => {
     }
 
     if (action === "create") {
+      // Per-IP throttle for the expensive write path, in ADDITION to the
+      // per-host (and per-calendar class) caps below — this bounds an attacker
+      // spraying bookings across many slugs/hosts from one IP, which those
+      // per-target caps miss. Fail-open on limiter error (never block a real
+      // booking); fail-closed 429 on a genuine limit.
+      if (await overRateLimit(admin, `pb:create:ip:${ip}`, RL_CREATE_PER_IP)) {
+        return json({ error: TOO_MANY }, 429);
+      }
       const startMs = Date.parse(body?.start);
       const name = String(body?.guest?.name ?? "").trim().slice(0, 120);
       const email = String(body?.guest?.email ?? "").trim().toLowerCase().slice(0, 200);
@@ -799,8 +912,20 @@ Deno.serve(async (req) => {
         if ((recent ?? 0) >= 5) return json({ error: "Too many requests — please try again shortly." }, 429);
       }
 
-      // Re-validate the slot is a real window start (for the selected duration).
-      const winValid = windowStarts(effHost, startMs - 60000, startMs + 60000, now).some((s) => s === startMs);
+      // Re-validate the slot is a real window start (for the selected duration)
+      // against the RIGHT host's OWN hours: collective needs it inside EVERY
+      // host's windows, round-robin inside AT LEAST ONE host's (the specific host
+      // is then picked from those free AND in-window below), single/class inside
+      // the one host's. A slot that's free but outside the chosen host's real
+      // hours must never book.
+      let winValid: boolean;
+      if (effHost.collective) {
+        winValid = effHost.hosts.every((uid) => isHostWindowStart(effHost, uid, startMs, now));
+      } else if (effHost.roundRobin) {
+        winValid = effHost.hosts.some((uid) => isHostWindowStart(effHost, uid, startMs, now));
+      } else {
+        winValid = isHostWindowStart(effHost, effHost.user_id, startMs, now);
+      }
       if (!winValid) return json({ error: "That time is no longer available. Please pick another." }, 409);
 
       // Resolve the meeting method from the owner's offered options. One option →
@@ -895,7 +1020,12 @@ Deno.serve(async (req) => {
           const busyByHost: Record<string, Busy[]> = {};
           const loaded = await Promise.all(effHost.hosts.map(async (uid) => [uid, await loadBusy(admin, uid, startMs - dayMs, startMs + dayMs)] as const));
           for (const [uid, b] of loaded) busyByHost[uid] = b;
-          const free = effHost.hosts.filter((uid) => isFree(effHost, busyByHost[uid] ?? [], startMs));
+          // Candidate hosts: free AND the slot is inside THEIR own hours. Without
+          // the window check a host who is merely free (but off-hours) could be
+          // assigned a booking outside their real schedule — the whole point of
+          // per-host hours. Priority order is preserved by filtering `hosts`.
+          const free = effHost.hosts.filter((uid) =>
+            isFree(effHost, busyByHost[uid] ?? [], startMs) && isHostWindowStart(effHost, uid, startMs, now));
           if (!free.length) return json({ error: "That time is no longer available. Please pick another." }, 409);
 
           if (effHost.assignmentStrategy === "priority") {
@@ -908,8 +1038,13 @@ Deno.serve(async (req) => {
             const { y, mo, d } = ymdInTz(startMs, effHost.timezone);
             const dayStart = zonedWallToUtcMs(y, mo - 1, d, 0, 0, effHost.timezone);
             const dayEnd = zonedWallToUtcMs(y, mo - 1, d + 1, 0, 0, effHost.timezone);
-            const dayStarts = windowStarts(effHost, dayStart, dayEnd, now);
-            const openCount = (uid: string) => dayStarts.filter((s) => isFree(effHost, busyByHost[uid] ?? [], s)).length;
+            // Count each host's open slots that day against THEIR own hours — a
+            // host on a lighter custom schedule shouldn't look "more open" only
+            // because the calendar default is wider than the hours they work.
+            const openCount = (uid: string) => {
+              const hv = hostView(effHost, uid);
+              return windowStarts(hv, dayStart, dayEnd, now).filter((s) => isFree(hv, busyByHost[uid] ?? [], s)).length;
+            };
             let best = free[0];
             let bestOpen = openCount(best);
             for (const uid of free.slice(1)) {
@@ -1056,6 +1191,62 @@ Deno.serve(async (req) => {
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
           body: JSON.stringify({ event: "booking_created", booking_id: bookingRow.id, host_user_ids: hostsToNotify }),
         }).catch((e) => console.error("public-booking: notify-team-event dispatch failed", { bookingId: bookingRow.id, err: (e as Error)?.message }));
+
+        // Opt-in lifecycle triggers (§8): fire any owner-authored
+        // on-booking-created message. This is SEPARATE from the built-in
+        // confirmation above and only runs when the tenant added a `created`
+        // entry to notify_config.lifecycle — so a default calendar never
+        // double-sends. Each send is claimed in booking_notifications_sent (the
+        // same idempotency ledger the scheduled worker uses), keyed per
+        // event/target/channel/recipient, so a duplicate call can't double-send.
+        const createdLc = host.lifecycle.filter((l) => l.event === "created");
+        if (createdLc.length) {
+          const vars: Record<string, string> = {
+            guest_name: name || "there", when: whenLabel, where: loc, title, service: title,
+          };
+          const hostEmails = hostInfos.map((h) => h.email).filter((e): e is string => !!e);
+          // Host phones (only fetched when a host-targeted step exists).
+          let hostPhones: string[] = [];
+          if (createdLc.some((l) => l.to !== "guest")) {
+            const { data: profs } = await admin.from("profiles").select("phone").in("user_id", hostsToNotify);
+            hostPhones = (profs ?? []).map((p) => String((p as { phone?: string }).phone ?? "")).filter(Boolean);
+          }
+          // claim→send→delete-on-failure, mirroring the worker so a failed send
+          // is retryable and a won claim guarantees exactly one send.
+          const claimLc = async (key: string, rec: string) => {
+            const { error } = await admin.from("booking_notifications_sent")
+              .insert({ booking_id: bookingRow.id, notif_key: key, recipient_email: rec || null, status: "sending" });
+            return !error;
+          };
+          const finishLc = async (key: string, ok: boolean) => {
+            if (ok) await admin.from("booking_notifications_sent").update({ status: "sent" }).eq("booking_id", bookingRow.id).eq("notif_key", key);
+            else await admin.from("booking_notifications_sent").delete().eq("booking_id", bookingRow.id).eq("notif_key", key);
+          };
+          for (const lc of createdLc) {
+            for (const who of targetsOf(lc.to)) {
+              for (const ch of channelsOf(lc.channel)) {
+                const recipients = ch === "email"
+                  ? (who === "guest" ? (email ? [email] : []) : hostEmails)
+                  : (who === "guest" ? (phone ? [phone] : []) : hostPhones);
+                for (const rec of recipients) {
+                  const key = `lc:created:${who}:${ch}:${rec}`;
+                  if (!(await claimLc(key, rec))) continue;
+                  let ok = false;
+                  if (ch === "email") {
+                    const subject = lc.subject ? renderTemplate(lc.subject, vars) : `Confirmed: ${title} · ${whenLabel}`;
+                    const bodyText = lc.body ? renderTemplate(lc.body, vars) : `You're booked for ${title} on ${whenLabel}. ${loc}.`;
+                    ok = await sendEmail(rec, subject, lifecycleEmailHtml(brand.name, brand.accent, subject, bodyText, mUrl),
+                      undefined, who === "guest" ? guestSender : undefined);
+                  } else {
+                    const line = lc.body ? renderTemplate(lc.body, vars) : `Confirmed: ${title} on ${whenLabel}. ${loc}.`;
+                    ok = await sendSms(rec, `${line}\nReschedule or cancel: ${mUrl}`);
+                  }
+                  await finishLc(key, ok);
+                }
+              }
+            }
+          }
+        }
       } catch (e) {
         // Best-effort: a mail/notify failure must never fail a committed
         // booking — but log it (visible in Supabase edge logs). Two real bugs

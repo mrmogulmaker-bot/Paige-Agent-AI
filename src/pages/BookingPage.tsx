@@ -235,6 +235,58 @@ export default function BookingPage() {
   const reduceMotion = useReducedMotion();
   const tzOptions = useMemo(() => allTimezones().map((z) => ({ value: z, label: tzLabel(z) })), []);
 
+  // --- Auto-resize when embedded (see public/embed.js) ---------------------
+  // The card whose height the parent iframe should match. When this page runs
+  // inside a tenant's <iframe> we post its measured height on mount and on every
+  // content change so the embed loader can size the frame with no inner scroll.
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  // Stable for the life of the page: are we rendered inside a parent frame?
+  const embedded = typeof window !== "undefined" && window.parent !== window;
+  useEffect(() => {
+    // Only speak to a parent frame — a stand-alone visit has none to size.
+    if (!embedded) return;
+    const el = cardRef.current;
+    if (!el) return;
+
+    // Height is non-sensitive, but we still aim the message at the real parent
+    // origin rather than "*". We derive it from the embedding chain (Chromium /
+    // WebKit) or the referrer, falling back to "*" only when the browser hides
+    // it (height leaks nothing, so this is safe).
+    const parentOrigin = (() => {
+      try {
+        const ao = (window.location as unknown as { ancestorOrigins?: DOMStringList }).ancestorOrigins;
+        if (ao && ao.length > 0) return ao[0];
+      } catch { /* cross-origin access can throw; fall through */ }
+      if (document.referrer) {
+        try { return new URL(document.referrer).origin; } catch { /* malformed referrer */ }
+      }
+      return "*";
+    })();
+
+    let last = 0;
+    let frame = 0;
+    const post = () => {
+      frame = 0;
+      // Round up so sub-pixel growth never leaves a hairline scrollbar.
+      const height = Math.ceil(el.getBoundingClientRect().height);
+      if (!height || Math.abs(height - last) < 1) return;
+      last = height;
+      window.parent.postMessage({ type: "paige-booking-height", height, slug }, parentOrigin);
+    };
+    // Coalesce bursts (fonts, images, phase changes) into one post per frame.
+    const schedule = () => { if (!frame) frame = window.requestAnimationFrame(post); };
+
+    schedule();
+    const ro = new ResizeObserver(schedule);
+    ro.observe(el);
+    window.addEventListener("load", schedule);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("load", schedule);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [slug, embedded]);
+
   // Fetch availability up to `toIso` (omitted = the calendar's default window).
   // The edge function always serves from "now" and caps at the booking horizon,
   // so a wider `to` simply returns a superset — we replace, never merge stale.
@@ -784,7 +836,14 @@ export default function BookingPage() {
     "--bk-ring": brand.accent + "33",
   } as React.CSSProperties;
   return (
-    <div className="min-h-dvh flex items-center justify-center px-4 py-10" style={{ background: c.page }}>
+    // When embedded we drop the forced full-viewport height so the wrapper
+    // collapses to its content — that measured height is what we post to the
+    // parent frame, so the iframe fits with no inner scrollbar (public/embed.js).
+    <div
+      ref={cardRef}
+      className={`flex items-center justify-center px-4 ${embedded ? "py-6" : "min-h-dvh py-10"}`}
+      style={{ background: c.page }}
+    >
       <style>{BOOKING_CSS}</style>
       <div className={`w-full max-w-4xl rounded-2xl overflow-hidden grid md:grid-cols-[minmax(0,320px)_1fr]${reduceMotion ? "" : " bk-motion"}`}
         style={{ ...cardVars, background: c.card, border: `1px solid ${c.border}`, boxShadow: brand.theme === "dark" ? "0 24px 60px rgba(0,0,0,0.5)" : "0 12px 40px rgba(16,24,40,0.10)" }}>

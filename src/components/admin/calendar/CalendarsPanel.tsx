@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarDays, Plus, Copy, ExternalLink, Loader2, Trash2, Pencil, Palette, Globe, Check,
-  FolderPlus, Users, Folder, UserRound, Repeat, GraduationCap, UsersRound, ChevronUp, ChevronDown,
+  FolderPlus, Users, Folder, UserRound, Repeat, GraduationCap, UsersRound, ChevronUp, ChevronDown, Clock,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
@@ -172,16 +172,47 @@ function normalizeDateOverrides(raw: unknown): DateOverride[] {
   }).filter((o) => /^\d{4}-\d{2}-\d{2}$/.test(o.date));
 }
 
-export interface NotifyReminder { channel: string; offset_min: number; }
+// `to` = who a reminder targets: guest (default), host, or both. subject/body are
+// optional owner-authored copy with {{merge_fields}} (empty = built-in default).
+export interface NotifyReminder { channel: string; offset_min: number; to?: string; subject?: string; body?: string; }
+// A booking-lifecycle trigger: an opt-in message on created / cancelled /
+// rescheduled, beyond the built-in emails. Absent array = nothing extra sends.
+export interface NotifyLifecycle {
+  event: "created" | "cancelled" | "rescheduled";
+  channel: string; to: string; subject?: string; body?: string;
+}
 // followup_offset_min = minutes AFTER the meeting ends to send the follow-up.
 export interface NotifyConfig {
   confirm_guest: boolean; confirm_host: boolean; reminders: NotifyReminder[];
   followup_guest: boolean; followup_offset_min: number;
+  followup_subject?: string; followup_body?: string;
+  lifecycle: NotifyLifecycle[];
 }
 const DEFAULT_NOTIFY: NotifyConfig = {
   confirm_guest: true, confirm_host: true, reminders: [{ channel: "email", offset_min: 1440 }],
-  followup_guest: false, followup_offset_min: 60,
+  followup_guest: false, followup_offset_min: 60, lifecycle: [],
 };
+// Merge fields the owner can drop into any subject/body — rendered server-side
+// per booking. Shown as clickable hint chips next to each copy field.
+const MERGE_FIELDS: { token: string; label: string }[] = [
+  { token: "{{guest_name}}", label: "Guest name" },
+  { token: "{{when}}", label: "Date & time" },
+  { token: "{{where}}", label: "Location" },
+  { token: "{{service}}", label: "Service" },
+  { token: "{{title}}", label: "Session title" },
+];
+// Who a reminder / lifecycle message reaches.
+const NOTIFY_TARGETS = [
+  { value: "guest", label: "Guest" },
+  { value: "host", label: "Host" },
+  { value: "both", label: "Both" },
+];
+// Booking-lifecycle events a tenant can attach an opt-in message to.
+const LIFECYCLE_EVENTS: { value: NotifyLifecycle["event"]; label: string; hint: string }[] = [
+  { value: "created", label: "When a booking is made", hint: "Sends the moment someone books — on top of the confirmation above." },
+  { value: "cancelled", label: "When a booking is cancelled", hint: "Sends when a guest cancels via their manage link." },
+  { value: "rescheduled", label: "When a booking is moved", hint: "Sends when a guest reschedules to a new time." },
+];
 // How a reminder reaches the guest. SMS/Both need a phone on file + a texting
 // connection on the workspace; email always sends. Coaching-generic (§2).
 const REMINDER_CHANNELS = [
@@ -269,6 +300,10 @@ const BOOKING_HORIZON_PRESETS: { days: number; label: string }[] = [
   { days: 730, label: "Open — 2 years out" },
 ];
 
+// Trim to a clean optional string (undefined when empty) so we never persist "".
+function optStr(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() ? v : undefined;
+}
 // Coerce a possibly-partial/legacy notify_config jsonb into a safe shape.
 function normalizeNotify(raw: unknown): NotifyConfig {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -276,14 +311,32 @@ function normalizeNotify(raw: unknown): NotifyConfig {
     ? (o.reminders as unknown[])
         .map((r) => (r && typeof r === "object" ? r : {}) as Record<string, unknown>)
         .filter((r) => typeof r.offset_min === "number")
-        .map((r) => ({ channel: typeof r.channel === "string" ? r.channel : "email", offset_min: r.offset_min as number }))
+        .map((r) => ({
+          channel: typeof r.channel === "string" ? r.channel : "email",
+          offset_min: r.offset_min as number,
+          to: r.to === "host" || r.to === "both" ? (r.to as string) : "guest",
+          subject: optStr(r.subject), body: optStr(r.body),
+        }))
     : [...DEFAULT_NOTIFY.reminders];
+  const lifecycle = Array.isArray(o.lifecycle)
+    ? (o.lifecycle as unknown[])
+        .map((l) => (l && typeof l === "object" ? l : {}) as Record<string, unknown>)
+        .filter((l) => l.event === "created" || l.event === "cancelled" || l.event === "rescheduled")
+        .map((l) => ({
+          event: l.event as NotifyLifecycle["event"],
+          channel: l.channel === "sms" || l.channel === "both" ? (l.channel as string) : "email",
+          to: l.to === "host" || l.to === "both" ? (l.to as string) : "guest",
+          subject: optStr(l.subject), body: optStr(l.body),
+        }))
+    : [];
   return {
     confirm_guest: o.confirm_guest !== false,
     confirm_host: o.confirm_host !== false,
     reminders,
     followup_guest: o.followup_guest === true,
     followup_offset_min: typeof o.followup_offset_min === "number" ? o.followup_offset_min : DEFAULT_NOTIFY.followup_offset_min,
+    followup_subject: optStr(o.followup_subject), followup_body: optStr(o.followup_body),
+    lifecycle,
   };
 }
 function initials(name: string | null): string {
@@ -346,6 +399,45 @@ function ColorSwatches({ value, onChange }: { value: string | null; onChange: (c
 // single scroll would be a wall (§67) — each area is an accordion panel instead,
 // titled + described on its trigger, opened one (or several) at a time. The
 // accordion `value` is derived from the title so it stays stable and unique.
+// Optional owner-authored copy for a reminder / follow-up / lifecycle message:
+// subject (email only) + body, with clickable merge-field chips that append the
+// token to the message. Empty fields persist as undefined → the engine uses its
+// built-in default, so an existing config is never changed by leaving these blank.
+function NotifyCopyFields({
+  subject, body, onSubject, onBody, bodyPlaceholder, subjectPlaceholder, showSubject = true,
+}: {
+  subject?: string; body?: string;
+  onSubject?: (v: string | undefined) => void; onBody: (v: string | undefined) => void;
+  bodyPlaceholder: string; subjectPlaceholder?: string; showSubject?: boolean;
+}) {
+  return (
+    <div className="space-y-2 rounded-md border border-border/60 bg-muted/30 p-2.5">
+      {showSubject && onSubject && (
+        <div className="space-y-1">
+          <Label className="text-[11px] text-muted-foreground">Subject</Label>
+          <Input className="h-8 text-sm" value={subject ?? ""} placeholder={subjectPlaceholder || "Leave blank for the default"}
+            onChange={(e) => onSubject(e.target.value || undefined)} />
+        </div>
+      )}
+      <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">Message</Label>
+        <Textarea className="min-h-[64px] text-sm" value={body ?? ""} placeholder={bodyPlaceholder}
+          onChange={(e) => onBody(e.target.value || undefined)} />
+      </div>
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="mr-0.5 text-[11px] text-muted-foreground">Insert:</span>
+        {MERGE_FIELDS.map((f) => (
+          <button key={f.token} type="button" title={f.label}
+            className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+            onClick={() => onBody(`${body ?? ""}${f.token}`)}>
+            {f.token}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BuilderSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
     <AccordionItem value={slugify(title)} className="border border-border rounded-lg bg-card px-4">
@@ -877,16 +969,86 @@ function NewGroupDialog({ open, onOpenChange, tenantId, isPlatformStaff, onCreat
   );
 }
 
-interface HostRow { user_id: string; full_name: string | null; }
+// availability_json / timezone are the host's OWN hours; NULL = inherit the
+// calendar's (the default for every host until an owner sets custom hours).
+interface HostRow { user_id: string; full_name: string | null; availability_json: DayWindow[] | null; timezone: string | null; }
 interface HostLoadRow { user_id: string; full_name: string | null; priority: number; upcoming_count: number; }
+
+// Per-host hours editor — an inline panel under a roster row. Default is "inherit
+// the calendar's hours"; flip the switch to give this host their OWN weekly hours
+// + timezone (reuses the calendar-level weekly-grid pattern). Saving an empty
+// custom set legitimately means the host keeps no hours here. NULL avail/timezone
+// (inherit) is the backward-compatible default, so untouched rosters are unchanged.
+function HostHoursEditor({ host, calendarTimezone, busy, onSave, onCancel }: {
+  host: HostRow; calendarTimezone: string; busy: boolean;
+  onSave: (availability_json: DayWindow[] | null, timezone: string | null) => void;
+  onCancel: () => void;
+}) {
+  const [isCustom, setIsCustom] = useState(host.availability_json != null || host.timezone != null);
+  const [draftAvail, setDraftAvail] = useState<AvailState>(() => jsonToAvail(host.availability_json));
+  const [draftTz, setDraftTz] = useState(host.timezone || calendarTimezone);
+  const tzOptions = COMMON_TZ.includes(draftTz) ? COMMON_TZ : [draftTz, ...COMMON_TZ];
+
+  return (
+    <div className="border-t border-border p-3 space-y-3 bg-muted/20">
+      <label className="flex items-center gap-2 cursor-pointer">
+        <Switch checked={isCustom} onCheckedChange={setIsCustom} />
+        <span className="text-sm font-medium">Custom hours for this host</span>
+      </label>
+      {isCustom ? (
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Timezone</Label>
+            <Select value={draftTz} onValueChange={setDraftTz}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {tzOptions.map((tz) => <SelectItem key={tz} value={tz}>{tz.replace(/_/g, " ")}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5 rounded-lg border bg-background p-3">
+            {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+              <div key={d} className="flex items-center gap-3">
+                <label className="flex items-center gap-2 w-20 cursor-pointer">
+                  <Switch checked={draftAvail[d]?.enabled ?? false}
+                    onCheckedChange={(v) => setDraftAvail((a) => ({ ...a, [d]: { ...a[d], enabled: v } }))} />
+                  <span className="text-sm font-medium">{DAY_NAMES[d]}</span>
+                </label>
+                {draftAvail[d]?.enabled ? (
+                  <>
+                    <Input type="time" value={draftAvail[d]?.start ?? "09:00"} className="w-28 h-8"
+                      onChange={(e) => setDraftAvail((a) => ({ ...a, [d]: { ...a[d], start: e.target.value } }))} />
+                    <span className="text-muted-foreground text-sm">to</span>
+                    <Input type="time" value={draftAvail[d]?.end ?? "17:00"} className="w-28 h-8"
+                      onChange={(e) => setDraftAvail((a) => ({ ...a, [d]: { ...a[d], end: e.target.value } }))} />
+                  </>
+                ) : <span className="text-sm text-muted-foreground">Unavailable</span>}
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground">This host follows the calendar's hours and timezone.</p>
+      )}
+      <div className="flex items-center gap-2">
+        <Button type="button" size="sm" disabled={busy}
+          onClick={() => (isCustom ? onSave(availToJson(draftAvail), draftTz) : onSave(null, null))}>
+          {busy ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : null} Save hours
+        </Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
 // Team roster for a calendar. Hosts are priority-ordered; the whole roster is
 // rewritten atomically through set_calendar_hosts (gated on can_manage_calendar)
 // so add/remove/reorder never leaves a half-applied priority list. Round-robin
 // distribution is live — the assignment strategy (balanced / first-available /
 // priority) decides which host each new booking lands on; calendar_host_load
 // surfaces the upcoming-per-host balance so the owner can see it stay even.
-function CalendarHostsSection({ calendarId, roundRobin, multiHost, strategy, onStrategyChange }: {
-  calendarId: string; roundRobin: boolean; multiHost: boolean;
+function CalendarHostsSection({ calendarId, roundRobin, multiHost, calendarTimezone, strategy, onStrategyChange }: {
+  calendarId: string; roundRobin: boolean; multiHost: boolean; calendarTimezone: string;
   strategy: AssignmentStrategy; onStrategyChange: (s: AssignmentStrategy) => void;
 }) {
   const [hosts, setHosts] = useState<HostRow[]>([]);
@@ -895,19 +1057,32 @@ function CalendarHostsSection({ calendarId, roundRobin, multiHost, strategy, onS
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null); // host whose hours editor is open
 
   const load = useCallback(async () => {
     setLoading(true);
     // Hosts + candidate pool (manager-scoped names; profiles RLS is own-row only,
     // so teammate names come through this RPC) alongside the per-host booking load.
-    const [{ data, error }, { data: loadData }] = await Promise.all([
+    // Per-host hours live on calendar_hosts (availability_json/timezone). The
+    // candidate RPC doesn't carry them (it's name-scoped), so read them directly
+    // — the manager's RLS on calendar_hosts allows it (can_manage_calendar).
+    const [{ data, error }, { data: loadData }, { data: avData }] = await Promise.all([
       supabase.rpc("list_calendar_host_candidates", { _cal: calendarId }),
       supabase.rpc("calendar_host_load", { _cal: calendarId }),
+      supabase.from("calendar_hosts").select("user_id, availability_json, timezone").eq("calendar_id", calendarId),
     ]);
     if (error) { toast.error(error.message); setLoading(false); return; }
     const rows = (data as { user_id: string; full_name: string | null; is_host: boolean; priority: number | null }[]) ?? [];
-    setHosts(rows.filter((r) => r.is_host).map((r) => ({ user_id: r.user_id, full_name: r.full_name })));
-    setCandidates(rows.filter((r) => !r.is_host).map((r) => ({ user_id: r.user_id, full_name: r.full_name })));
+    const avByUser = new Map(
+      ((avData as { user_id: string; availability_json: DayWindow[] | null; timezone: string | null }[]) ?? [])
+        .map((r) => [r.user_id, r]),
+    );
+    setHosts(rows.filter((r) => r.is_host).map((r) => ({
+      user_id: r.user_id, full_name: r.full_name,
+      availability_json: (avByUser.get(r.user_id)?.availability_json as DayWindow[] | null) ?? null,
+      timezone: (avByUser.get(r.user_id)?.timezone as string | null) ?? null,
+    })));
+    setCandidates(rows.filter((r) => !r.is_host).map((r) => ({ user_id: r.user_id, full_name: r.full_name, availability_json: null, timezone: null })));
     setLoad((loadData as HostLoadRow[]) ?? []);
     setLoading(false);
   }, [calendarId]);
@@ -917,16 +1092,18 @@ function CalendarHostsSection({ calendarId, roundRobin, multiHost, strategy, onS
   // Every mutation rewrites the full roster in priority order through one RPC —
   // array position IS the priority, so there is no separate re-numbering step.
   const persist = async (ordered: HostRow[]) => {
+    // The whole roster is rewritten in order; each element carries its own hours
+    // (availability_json/timezone NULL = inherit the calendar's).
     const { error } = await supabase.rpc("set_calendar_hosts", {
       _cal: calendarId,
-      _hosts: ordered.map((h) => ({ user_id: h.user_id })),
+      _hosts: ordered.map((h) => ({ user_id: h.user_id, availability_json: h.availability_json, timezone: h.timezone })),
     });
     return error;
   };
   const addHost = async () => {
     if (!adding || busy) return;
     const cand = candidates.find((c) => c.user_id === adding);
-    const next = [...hosts, { user_id: adding, full_name: cand?.full_name ?? null }];
+    const next = [...hosts, { user_id: adding, full_name: cand?.full_name ?? null, availability_json: null, timezone: null }];
     setBusy(true);
     const error = await persist(next);
     setBusy(false);
@@ -954,6 +1131,18 @@ function CalendarHostsSection({ calendarId, roundRobin, multiHost, strategy, onS
     setBusy(false);
     if (error) { toast.error(error.message); await load(); return; }
     await load(); // reconcile the distribution priorities
+  };
+  // Persist one host's custom hours (or clear them back to inherit). Rewrites the
+  // full roster atomically like every other mutation — order is preserved.
+  const saveHostHours = async (uid: string, availability_json: DayWindow[] | null, timezone: string | null) => {
+    if (busy) return;
+    const next = hosts.map((h) => (h.user_id === uid ? { ...h, availability_json, timezone } : h));
+    setBusy(true);
+    const error = await persist(next);
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    setExpanded((e) => (e === uid ? null : e));
+    await load();
   };
 
   const loadByUser = useMemo(() => new Map(load_.map((r) => [r.user_id, r])), [load_]);
@@ -994,25 +1183,57 @@ function CalendarHostsSection({ calendarId, roundRobin, multiHost, strategy, onS
             </StatRow>
           )}
 
-          {hosts.map((h, i) => (
-            <div key={h.user_id} className="flex items-center gap-2 rounded-lg border border-border p-2">
-              <span className="h-7 w-7 rounded-full bg-primary/10 grid place-items-center text-[10px] font-semibold text-primary flex-shrink-0">{initials(h.full_name)}</span>
-              <span className="text-sm flex-1 truncate">{h.full_name || "Member"}{i === 0 && <span className="text-[10px] text-muted-foreground ml-1.5">Primary</span>}</span>
-              {roundRobin && (
-                <>
-                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0 || busy} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move up"><ChevronUp className="h-3.5 w-3.5" /></button>
-                  <button type="button" onClick={() => move(i, 1)} disabled={i === hosts.length - 1 || busy} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move down"><ChevronDown className="h-3.5 w-3.5" /></button>
-                </>
-              )}
-              {/* Shown whenever there's more than one host, even on a
-                  personal/class calendar — a calendar can carry a stray 2nd
-                  host from before this type could only ever book its
-                  primary, and there must be a way back down to one. */}
-              {hosts.length > 1 && (
-                <button type="button" onClick={() => removeHost(h.user_id)} disabled={busy} className="p-1 text-destructive hover:opacity-70 disabled:opacity-30" aria-label="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
-              )}
-            </div>
-          ))}
+          {hosts.map((h, i) => {
+            const custom = h.availability_json != null || h.timezone != null;
+            const isOpen = expanded === h.user_id;
+            return (
+              <div key={h.user_id} className="rounded-lg border border-border">
+                <div className="flex items-center gap-2 p-2">
+                  <span className="h-7 w-7 rounded-full bg-primary/10 grid place-items-center text-[10px] font-semibold text-primary flex-shrink-0">{initials(h.full_name)}</span>
+                  <span className="text-sm flex-1 truncate">
+                    {h.full_name || "Member"}
+                    {i === 0 && <span className="text-[10px] text-muted-foreground ml-1.5">Primary</span>}
+                    {custom && <span className="text-[10px] text-muted-foreground ml-1.5">· Custom hours</span>}
+                  </span>
+                  {/* Per-host hours only change slot math for multi-host calendars
+                      (round-robin union / collective intersection); a single-host
+                      calendar's hours ARE the calendar's, so the toggle is hidden. */}
+                  {multiHost && (
+                    <button
+                      type="button"
+                      onClick={() => setExpanded((e) => (e === h.user_id ? null : h.user_id))}
+                      className={`p-1 rounded-md hover:text-primary transition ${isOpen || custom ? "text-primary" : "text-muted-foreground"}`}
+                      aria-label="Custom hours" aria-expanded={isOpen} title="Custom hours"
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  {roundRobin && (
+                    <>
+                      <button type="button" onClick={() => move(i, -1)} disabled={i === 0 || busy} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move up"><ChevronUp className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => move(i, 1)} disabled={i === hosts.length - 1 || busy} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move down"><ChevronDown className="h-3.5 w-3.5" /></button>
+                    </>
+                  )}
+                  {/* Shown whenever there's more than one host, even on a
+                      personal/class calendar — a calendar can carry a stray 2nd
+                      host from before this type could only ever book its
+                      primary, and there must be a way back down to one. */}
+                  {hosts.length > 1 && (
+                    <button type="button" onClick={() => removeHost(h.user_id)} disabled={busy} className="p-1 text-destructive hover:opacity-70 disabled:opacity-30" aria-label="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
+                  )}
+                </div>
+                {multiHost && isOpen && (
+                  <HostHoursEditor
+                    host={h}
+                    calendarTimezone={calendarTimezone}
+                    busy={busy}
+                    onSave={(a, tz) => saveHostHours(h.user_id, a, tz)}
+                    onCancel={() => setExpanded(null)}
+                  />
+                )}
+              </div>
+            );
+          })}
           {/* Adding a 2nd host only does something for round-robin/collective —
               personal and class calendars book a single host, so a 2nd host
               added here would silently never get a booking. */}
@@ -1133,6 +1354,9 @@ function CalendarBuilderSheet({
   const [avail, setAvail] = useState<AvailState>(DEFAULT_AVAIL);
   const [slugInput, setSlugInput] = useState(""); // editable Custom URL (blank on create = auto)
   const [saving, setSaving] = useState(false);
+  // Which optional copy editors (per reminder / lifecycle event) are expanded.
+  const [copyOpen, setCopyOpen] = useState<Record<string, boolean>>({});
+  const toggleCopy = (key: string) => setCopyOpen((o) => ({ ...o, [key]: !o[key] }));
 
   useEffect(() => {
     if (!state) return;
@@ -1311,21 +1535,40 @@ function CalendarBuilderSheet({
                 This calendar is a Draft — flip it Live on the card for the link to accept bookings.
               </p>
             )}
-            {/* Embed code — drop the booking widget into any website. One source
-                of truth so what's shown is exactly what's copied. */}
+            {/* Embed code — drop the booking widget into any website. Two ways:
+                a self-sizing script (recommended) and a fixed-height iframe. One
+                source of truth so what's shown is exactly what's copied. */}
             {(() => {
-              const embedCode = `<iframe src="${bookingUrl(existing.slug)}" width="100%" height="720" style="border:0;" title="Book a time"></iframe>`;
+              const url = bookingUrl(existing.slug);
+              const scriptCode = `<script src="${window.location.origin}/embed.js" data-slug="${existing.slug}" async></script>`;
+              const iframeCode = `<iframe src="${url}" width="100%" height="720" style="border:0;" title="Book a time"></iframe>`;
+              const copyCode = async (code: string) => {
+                try { await navigator.clipboard.writeText(code); toast.success("Embed code copied"); }
+                catch { toast.error("Couldn't copy"); }
+              };
               return (
-                <div className="mt-3">
-                  <div className="text-[11px] font-medium text-muted-foreground mb-1">Embed on your site</div>
-                  <div className="flex items-center gap-2">
-                    <code className="text-[11px] bg-background rounded px-2 py-1 border truncate flex-1">{embedCode}</code>
-                    <Button variant="outline" size="sm" onClick={async () => {
-                      try { await navigator.clipboard.writeText(embedCode); toast.success("Embed code copied"); }
-                      catch { toast.error("Couldn't copy"); }
-                    }}><Copy className="h-3.5 w-3.5 mr-1" /> Copy</Button>
+                <div className="mt-3 space-y-3">
+                  <div className="text-[11px] font-medium text-muted-foreground">Embed on your site</div>
+                  {/* Script embed — sizes itself to the content, no scrollbars. */}
+                  <div>
+                    <div className="text-[11px] font-medium text-foreground/80 mb-1">Script embed (auto-resizes)</div>
+                    <div className="flex items-center gap-2">
+                      <code className="text-[11px] bg-background rounded px-2 py-1 border truncate flex-1">{scriptCode}</code>
+                      <Button variant="outline" size="sm" onClick={() => copyCode(scriptCode)}><Copy className="h-3.5 w-3.5 mr-1" /> Copy</Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Drop it anywhere on your site — the widget sizes itself to fit, no scrollbars. Add <code>data-mode="popup"</code> to open it from a button instead.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-1">Paste into any web page. Adjust <code>height</code> to fit your layout.</p>
+                  {/* Fixed iframe — the simplest option; you set the height. */}
+                  <div>
+                    <div className="text-[11px] font-medium text-foreground/80 mb-1">Fixed iframe</div>
+                    <div className="flex items-center gap-2">
+                      <code className="text-[11px] bg-background rounded px-2 py-1 border truncate flex-1">{iframeCode}</code>
+                      <Button variant="outline" size="sm" onClick={() => copyCode(iframeCode)}><Copy className="h-3.5 w-3.5 mr-1" /> Copy</Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">Paste into any web page. Adjust <code>height</code> to fit your layout.</p>
+                  </div>
                 </div>
               );
             })()}
@@ -1520,6 +1763,7 @@ function CalendarBuilderSheet({
                 calendarId={existing.id}
                 roundRobin={draft.type === "round_robin"}
                 multiHost={draft.type === "round_robin" || draft.type === "collective"}
+                calendarTimezone={draft.timezone}
                 strategy={draft.assignment_strategy}
                 onStrategyChange={(s) => set("assignment_strategy", s)}
               />
@@ -1646,37 +1890,70 @@ function CalendarBuilderSheet({
               {draft.notify_config.reminders.length === 0 && (
                 <p className="text-xs text-muted-foreground">No reminders — add one to nudge guests before the session.</p>
               )}
-              {draft.notify_config.reminders.map((rem, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Select value={rem.channel || "email"}
-                    onValueChange={(v) => {
-                      const next = draft.notify_config.reminders.map((r, j) => j === i ? { ...r, channel: v } : r);
-                      set("notify_config", { ...draft.notify_config, reminders: next });
-                    }}>
-                    <SelectTrigger className="h-8 w-24" aria-label="Reminder channel"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {REMINDER_CHANNELS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Select value={String(rem.offset_min)}
-                    onValueChange={(v) => {
-                      const next = draft.notify_config.reminders.map((r, j) => j === i ? { ...r, offset_min: Number(v) } : r);
-                      set("notify_config", { ...draft.notify_config, reminders: next });
-                    }}>
-                    <SelectTrigger className="h-8 flex-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {REMINDER_OFFSETS.map((o) => <SelectItem key={o.min} value={String(o.min)}>{o.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive"
-                    onClick={() => set("notify_config", { ...draft.notify_config, reminders: draft.notify_config.reminders.filter((_, j) => j !== i) })}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-              {draft.notify_config.reminders.some((r) => r.channel === "sms" || r.channel === "both") && (
+              {draft.notify_config.reminders.map((rem, i) => {
+                const key = `rem-${i}`;
+                const hasCopy = !!(rem.subject || rem.body);
+                const open = copyOpen[key] || hasCopy;
+                const patch = (fields: Partial<NotifyReminder>) =>
+                  set("notify_config", { ...draft.notify_config, reminders: draft.notify_config.reminders.map((r, j) => j === i ? { ...r, ...fields } : r) });
+                return (
+                  <div key={i} className="space-y-2 rounded-lg border border-border p-2.5">
+                    <div className="flex items-center gap-2">
+                      <Select value={rem.channel || "email"} onValueChange={(v) => patch({ channel: v })}>
+                        <SelectTrigger className="h-8 w-24" aria-label="Reminder channel"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {REMINDER_CHANNELS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Select value={String(rem.offset_min)} onValueChange={(v) => patch({ offset_min: Number(v) })}>
+                        <SelectTrigger className="h-8 flex-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {REMINDER_OFFSETS.map((o) => <SelectItem key={o.min} value={String(o.min)}>{o.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      {/* On a collective calendar the reminder worker collapses the group to one
+                          representative row, so a recurring host-targeted reminder would only reach the
+                          primary host — don't offer what we can't fully deliver (§13). Guest-only there;
+                          lifecycle (created/cancel/reschedule) host sends still reach the full roster. */}
+                      {(() => {
+                        const targets = draft.type === "collective"
+                          ? NOTIFY_TARGETS.filter((t) => t.value === "guest")
+                          : NOTIFY_TARGETS;
+                        const safeTo = targets.some((t) => t.value === (rem.to || "guest")) ? (rem.to || "guest") : "guest";
+                        return (
+                          <Select value={safeTo} onValueChange={(v) => patch({ to: v })}>
+                            <SelectTrigger className="h-8 w-24" aria-label="Reminder recipient"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {targets.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        );
+                      })()}
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive"
+                        onClick={() => set("notify_config", { ...draft.notify_config, reminders: draft.notify_config.reminders.filter((_, j) => j !== i) })}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    {open ? (
+                      <NotifyCopyFields
+                        showSubject={rem.channel !== "sms"}
+                        subject={rem.subject} body={rem.body}
+                        onSubject={(v) => patch({ subject: v })} onBody={(v) => patch({ body: v })}
+                        subjectPlaceholder="Reminder: {{title}} · {{when}}"
+                        bodyPlaceholder="Leave blank for the built-in reminder, or write your own using the fields below."
+                      />
+                    ) : (
+                      <button type="button" onClick={() => toggleCopy(key)}
+                        className="text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground">
+                        + Customize message
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              {draft.notify_config.reminders.some((r) => r.channel === "sms" || r.channel === "both" || r.to === "host" || r.to === "both") && (
                 <p className="text-[11px] text-muted-foreground">
-                  Text reminders need the guest's phone number on file and a text-messaging connection on your workspace — email still sends on its own.
+                  Text messages need a phone number on file (the guest's, or the host's in their profile) and a text-messaging connection on your workspace — email still sends on its own.
                 </p>
               )}
             </div>
@@ -1692,20 +1969,83 @@ function CalendarBuilderSheet({
                   onCheckedChange={(v) => set("notify_config", { ...draft.notify_config, followup_guest: v })} />
               </label>
               {draft.notify_config.followup_guest && (
-                <div className="flex items-center gap-2 pl-1">
-                  <span className="text-xs text-muted-foreground w-14">Send</span>
-                  <Select value={String(draft.notify_config.followup_offset_min)}
-                    onValueChange={(v) => set("notify_config", { ...draft.notify_config, followup_offset_min: Number(v) })}>
-                    <SelectTrigger className="h-8 flex-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {FOLLOWUP_OFFSETS.map((o) => <SelectItem key={o.min} value={String(o.min)}>{o.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-2 pl-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-14">Send</span>
+                    <Select value={String(draft.notify_config.followup_offset_min)}
+                      onValueChange={(v) => set("notify_config", { ...draft.notify_config, followup_offset_min: Number(v) })}>
+                      <SelectTrigger className="h-8 flex-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {FOLLOWUP_OFFSETS.map((o) => <SelectItem key={o.min} value={String(o.min)}>{o.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <NotifyCopyFields
+                    subject={draft.notify_config.followup_subject} body={draft.notify_config.followup_body}
+                    onSubject={(v) => set("notify_config", { ...draft.notify_config, followup_subject: v })}
+                    onBody={(v) => set("notify_config", { ...draft.notify_config, followup_body: v })}
+                    subjectPlaceholder="Following up on {{title}}"
+                    bodyPlaceholder="Leave blank for the built-in follow-up, or write your own recap / rebook nudge."
+                  />
                 </div>
               )}
               <p className="text-[11px] text-muted-foreground">
                 Delivery turns on once the platform email key is configured; settings are saved now.
               </p>
+            </div>
+
+            {/* Lifecycle triggers — opt-in messages on booking transitions (§8). */}
+            <div className="space-y-2 pt-1 mt-1 border-t border-border/60">
+              <div className="pt-2">
+                <div className="text-sm font-medium">On booking changes</div>
+                <div className="text-xs text-muted-foreground">Optional extra messages when a booking is made, moved, or cancelled — on top of the built-in emails.</div>
+              </div>
+              {LIFECYCLE_EVENTS.map((ev) => {
+                const step = draft.notify_config.lifecycle.find((l) => l.event === ev.value);
+                const on = !!step;
+                const setStep = (next: NotifyLifecycle | null) => {
+                  const others = draft.notify_config.lifecycle.filter((l) => l.event !== ev.value);
+                  set("notify_config", { ...draft.notify_config, lifecycle: next ? [...others, next] : others });
+                };
+                return (
+                  <div key={ev.value} className="space-y-2 rounded-lg border border-border p-2.5">
+                    <label className="flex items-center justify-between gap-4 cursor-pointer">
+                      <div>
+                        <div className="text-sm font-medium">{ev.label}</div>
+                        <div className="text-xs text-muted-foreground">{ev.hint}</div>
+                      </div>
+                      <Switch checked={on}
+                        onCheckedChange={(v) => setStep(v ? { event: ev.value, channel: "email", to: "guest" } : null)} />
+                    </label>
+                    {step && (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Select value={step.channel} onValueChange={(v) => setStep({ ...step, channel: v })}>
+                            <SelectTrigger className="h-8 w-24" aria-label="Message channel"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {REMINDER_CHANNELS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <span className="text-xs text-muted-foreground">to</span>
+                          <Select value={step.to} onValueChange={(v) => setStep({ ...step, to: v })}>
+                            <SelectTrigger className="h-8 w-24" aria-label="Message recipient"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {NOTIFY_TARGETS.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <NotifyCopyFields
+                          showSubject={step.channel !== "sms"}
+                          subject={step.subject} body={step.body}
+                          onSubject={(v) => setStep({ ...step, subject: v })} onBody={(v) => setStep({ ...step, body: v })}
+                          subjectPlaceholder="Leave blank for a sensible default"
+                          bodyPlaceholder="Write the message, or leave blank to use the built-in copy."
+                        />
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </BuilderSection>
         </Accordion>
