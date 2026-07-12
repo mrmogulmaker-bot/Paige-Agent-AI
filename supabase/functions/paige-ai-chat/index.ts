@@ -112,6 +112,27 @@ async function logAnalyticsEvent(
   }
 }
 
+// Human labels for Paige-rail event kinds. Shared by the focused-client rail
+// hydration and the get_client_rail chat tool so no raw backend slug
+// (owner.crm_mutation, automation.fired…) ever leaks to the model or operator
+// (§3/§11). Any slug missing here is title-cased from its tail as a safe fallback.
+const RAIL_KIND_LABEL: Record<string, string> = {
+  "owner.command_issued": "Instruction from staff",
+  "owner.action_taken": "Paige took an action",
+  "owner.crm_mutation": "Record updated",
+  "client.message": "Client message",
+  "client.intake_answer": "Intake answer",
+  "client.field_extracted": "Detail captured",
+  "client.action_response": "Client responded",
+  "automation.fired": "Automation started",
+  "automation.completed": "Automation finished",
+  "mcp.command": "External command",
+  "comms.inbound": "Message received",
+  "comms.outbound": "Message sent",
+};
+const railKindLabel = (k: string): string =>
+  RAIL_KIND_LABEL[k] ?? (k?.split(".").pop() ?? "event").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+
 const messageSchema = z.object({
   messages: z.array(
     z.object({
@@ -3589,25 +3610,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               return days < 30 ? `${days}d ago` : `${Math.round(days / 30)}mo ago`;
             };
             // Never surface raw backend slugs (owner.crm_mutation, automation.fired…)
-            // to the operator (§11/§3). Map to human labels; title-case any unmapped tail.
-            const KIND_LABEL: Record<string, string> = {
-              "owner.command_issued": "Instruction from staff",
-              "owner.action_taken": "Paige took an action",
-              "owner.crm_mutation": "Record updated",
-              "client.message": "Client message",
-              "client.intake_answer": "Intake answer",
-              "client.field_extracted": "Detail captured",
-              "client.action_response": "Client responded",
-              "automation.fired": "Automation started",
-              "automation.completed": "Automation finished",
-              "mcp.command": "External command",
-              "comms.inbound": "Message received",
-              "comms.outbound": "Message sent",
-            };
-            const kindLabel = (k: string): string =>
-              KIND_LABEL[k] ?? (k?.split(".").pop() ?? "event").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+            // to the operator (§11/§3). Uses the shared railKindLabel helper.
             const lines = rows.slice(0, 15).map((r: any) =>
-              `- ${kindLabel(String(r?.event_kind ?? ""))} — ${String(r?.title ?? "(no title)").replace(/\s+/g, " ").slice(0, 120)} (${relTime(r?.occurred_at)})`,
+              `- ${railKindLabel(String(r?.event_kind ?? ""))} — ${String(r?.title ?? "(no title)").replace(/\s+/g, " ").slice(0, 120)} (${relTime(r?.occurred_at)})`,
             );
             aiMessages.push({
               role: "system",
@@ -4675,6 +4680,52 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
           },
+          {
+            type: "function",
+            function: {
+              name: "get_client_rail",
+              description: "Read a client's recent Paige activity timeline — the messages, actions, automations, and updates that happened across every Paige surface (their portal, automations, calendar, other staff). Use this to ground an answer about what's been going on with a client before you reply. Read-only; it never changes anything. If you're already looking at a client's file you can omit contact_id and it uses that client automatically.",
+              parameters: {
+                type: "object",
+                properties: {
+                  contact_id: { type: "string", description: "The client's id. Optional — leave it out to use the client currently in focus (the file you're looking at)." },
+                  limit: { type: "number", description: "How many recent events to pull. Default 25, max 200." }
+                },
+                required: []
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "list_event_kinds",
+              description: "See which kinds of client activity Paige can track for this practice — both the standard ones every workspace gets and any this practice has added of its own. Use it to answer 'what can you track for me?' and to check what already exists before adding a new kind with author_event_kind. Read-only.",
+              parameters: {
+                type: "object",
+                properties: {},
+                required: []
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "author_event_kind",
+              description: "Create a NEW kind of client activity this practice wants Paige to track (for example a milestone or touchpoint specific to how they work). This adds it for THIS practice only — it never touches the shared defaults or any other practice. PROPOSE it first in plain language, get the operator's yes, then call again with confirm:true unless the workspace set this to auto. Choose a short lowercase slug like 'session.booked'.",
+              parameters: {
+                type: "object",
+                properties: {
+                  slug: { type: "string", description: "Short lowercase identifier for the kind, e.g. 'session.booked' or 'review.left'. Use letters, numbers, dots, and underscores." },
+                  label: { type: "string", description: "Human name shown in the timeline, e.g. 'Session booked'." },
+                  description: { type: "string", description: "One line describing when this activity happens." },
+                  audience: { type: "string", enum: ["owner", "client", "both"], description: "Who this activity is meant for: the staff/owner, the client, or both." },
+                  visibility: { type: "string", enum: ["owner_internal", "client_visible"], description: "owner_internal keeps it staff-only; client_visible lets the client see it in their portal." },
+                  department: { type: "string", enum: ["owner_ops", "client_experience"], description: "Optional. Which of Paige's teams owns this activity — owner_ops (business side) or client_experience (client side). Leave out if it doesn't clearly belong to one." }
+                },
+                required: ["slug", "label", "audience", "visibility"]
+              }
+            }
+          },
     ];
 
     // ── AUTONOMY GATE WIRING ─────────────────────────────────────────────────
@@ -4698,6 +4749,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "forge_subagent", "save_to_knowledge_base",
       "plan_set_reminder", "plan_create", "plan_add_milestone",
       "plan_assign_task", "plan_update_item", "plan_remove_item",
+      "author_event_kind",
     ]);
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
@@ -4737,6 +4789,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       plan_assign_task: "assigning a task",
       plan_update_item: "updating a plan item",
       plan_remove_item: "removing a plan item",
+      author_event_kind: "adding a new activity kind to track",
     };
 
     // A human one-liner of exactly what a mutating call will do — shown to the
@@ -4802,6 +4855,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `${a?.runtime === "hard" ? "Propose a new (code-backed) specialist" : "Spin up a new specialist"} — "${a?.name || a?.slug || "agent"}" (${a?.domain || "general"}): ${String(a?.description || "").slice(0, 80)}.${a?.runtime === "hard" ? " Goes to an admin for sign-off." : " Joins the team right away."}`;
         case "save_to_knowledge_base":
           return `Save "${a?.title || "this"}" to your knowledge base so Paige can draw on it later.`;
+        case "author_event_kind":
+          return `Add a new activity kind "${a?.label || a?.slug || ""}" for this practice to track${a?.visibility === "client_visible" ? " (clients can see it)" : " (staff only)"}. It's added for your workspace only.`;
         case "plan_set_reminder":
           return `Set a reminder${a?.target === "team" ? " for the team" : a?.target_user_id ? " for a teammate" : ""}: "${a?.title || ""}"${a?.remind_at ? ` at ${a.remind_at}` : ""}${a?.contact_id ? " (about a client)" : ""}. It'll ping ${a?.target === "team" ? "the team" : "you"} in-app at that time${a?.channel === "email" ? ", plus an email if sending's set up" : ""}.`;
         case "plan_create":
@@ -5180,6 +5235,143 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   : "Synthesize these results into a conversational answer. Cite that you searched for current information — e.g. 'I just looked this up — ...'. Do not dump raw URLs unless the client asks for sources.",
               }),
             });
+          } catch (err) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
+            });
+          }
+        } else if (tc.function.name === "get_client_rail") {
+          // Read-only: pull a client's recent Paige activity through the JWT-scoped
+          // client so RLS + the coach lens apply to the caller (§9/§13). Defaults to
+          // the client currently in focus. Slugs are mapped to human labels — no raw
+          // backend kind ever reaches the model (§3/§11).
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const targetId = (typeof args.contact_id === "string" && args.contact_id.trim())
+              ? args.contact_id.trim()
+              : payloadClientId;
+            if (!targetId) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, no_client_in_focus: true, note: "No client is in focus right now. Ask the operator which client they mean, or open a client's file first, then try again." }) });
+            } else {
+              let lim = Number(args.limit);
+              if (!Number.isFinite(lim)) lim = 25;
+              lim = Math.max(1, Math.min(200, Math.round(lim)));
+              const { data: railRows, error: railErr } = await supabaseClient.rpc("get_client_rail", { p_contact_id: targetId, p_limit: lim, p_lens: "coach" });
+              if (railErr) {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Couldn't pull this client's activity right now. Tell the operator you hit a snag and offer to try again." }) });
+              } else {
+                const rows = Array.isArray(railRows) ? railRows : [];
+                const relTime = (iso: string): string => {
+                  const t = Date.parse(iso ?? "");
+                  if (!Number.isFinite(t)) return "recently";
+                  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+                  if (mins < 1) return "just now";
+                  if (mins < 60) return `${mins}m ago`;
+                  const hrs = Math.round(mins / 60);
+                  if (hrs < 24) return `${hrs}h ago`;
+                  const days = Math.round(hrs / 24);
+                  return days < 30 ? `${days}d ago` : `${Math.round(days / 30)}mo ago`;
+                };
+                const events = rows.map((r: any) => ({
+                  activity: railKindLabel(String(r?.event_kind ?? "")),
+                  what: String(r?.title ?? "(no title)").replace(/\s+/g, " ").slice(0, 160),
+                  when: relTime(r?.occurred_at),
+                }));
+                toolResults.push({
+                  tool_call_id: tc.id,
+                  role: "tool",
+                  content: JSON.stringify({
+                    success: true,
+                    count: events.length,
+                    events,
+                    note: events.length
+                      ? "This is the client's recent Paige activity, newest first. Summarize it conversationally to ground your answer — don't just list rows verbatim."
+                      : "Nothing has been logged on this client yet. Say so plainly and offer a next step.",
+                  }),
+                });
+              }
+            }
+          } catch (err) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
+            });
+          }
+        } else if (tc.function.name === "list_event_kinds") {
+          // Read-only: the caller's available activity-kind catalog (platform defaults
+          // ∪ this tenant's own), through the JWT-scoped client so §9 visibility holds.
+          try {
+            const { data: kindRows, error: kindErr } = await supabaseClient.rpc("list_event_kinds");
+            if (kindErr) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Couldn't load the activity kinds right now. Tell the operator you hit a snag and offer to try again." }) });
+            } else {
+              const rows = Array.isArray(kindRows) ? kindRows : [];
+              const DEPT_LABEL: Record<string, string> = { owner_ops: "Business team", client_experience: "Client team" };
+              const kinds = rows
+                .filter((r: any) => r?.enabled !== false)
+                .map((r: any) => ({
+                  activity: String(r?.label ?? railKindLabel(String(r?.slug ?? ""))),
+                  source: r?.is_platform_default ? "standard" : "this practice's own",
+                  team: r?.department ? (DEPT_LABEL[String(r.department)] ?? null) : null,
+                  clients_can_see: r?.default_visibility === "client_visible",
+                }));
+              toolResults.push({
+                tool_call_id: tc.id,
+                role: "tool",
+                content: JSON.stringify({
+                  success: true,
+                  count: kinds.length,
+                  kinds,
+                  note: "These are the activity kinds Paige can track for this practice — 'standard' ones every workspace gets plus any this practice added. Answer 'what can you track?' from these; if they want a new one, propose author_event_kind.",
+                }),
+              });
+            }
+          } catch (err) {
+            toolResults.push({
+              tool_call_id: tc.id,
+              role: "tool",
+              content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
+            });
+          }
+        } else if (tc.function.name === "author_event_kind") {
+          // Confirm-gated at the autonomy gate above (MUTATING_TOOLS); by here we're
+          // cleared to write. Own-tenant only — the RPC enforces §9/§2 (no shadowing
+          // a platform default, no cross-tenant write). Structured {ok,error} → human.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const { data: upRes, error: upErr } = await supabaseClient.rpc("upsert_tenant_event_kind", {
+              p_slug: typeof args.slug === "string" ? args.slug : "",
+              p_label: typeof args.label === "string" ? args.label : "",
+              p_description: typeof args.description === "string" ? args.description : null,
+              p_default_audience: typeof args.audience === "string" ? args.audience : "",
+              p_default_visibility: typeof args.visibility === "string" ? args.visibility : "",
+              p_department: typeof args.department === "string" && args.department ? args.department : null,
+            });
+            if (upErr) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Couldn't add that activity kind right now. Tell the operator you hit a snag and offer to try again." }) });
+            } else {
+              const res = (upRes ?? {}) as any;
+              if (res.ok) {
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, label: typeof args.label === "string" ? args.label : undefined, note: `Added "${typeof args.label === "string" ? args.label : "the new activity kind"}" to what this practice tracks. Confirm it warmly and in plain language — don't mention any slug or internal id.` }) });
+              } else {
+                const FRIENDLY: Record<string, string> = {
+                  NO_TENANT: "This can only be set up from inside a practice's workspace — it's not available here.",
+                  FORBIDDEN: "You need to be an admin or coach on this workspace to add a new activity kind. Let the operator know it's a staff-only setting.",
+                  SLUG_RESERVED: "That name matches one of the standard activities every workspace already has, so it can't be reused. Suggest a more specific name for this practice's version.",
+                  SLUG_TAKEN: "This practice already has an activity using that identifier. Pick a different short name for it.",
+                  INVALID_LABEL: "It needs a clear display name. Ask the operator what to call this activity.",
+                  INVALID_SLUG: "That short identifier isn't valid — use lowercase letters, numbers, dots, or underscores, like 'session.booked'.",
+                  INVALID_AUDIENCE: "The audience has to be the owner/staff, the client, or both.",
+                  INVALID_VISIBILITY: "Visibility has to be either staff-only or client-visible.",
+                  INVALID_DEPARTMENT: "That team isn't recognized — it should be the business team or the client team, or left unset.",
+                };
+                const code = typeof res.error === "string" ? res.error : "UNKNOWN";
+                toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, reason: FRIENDLY[code] ?? "That didn't go through. Tell the operator it couldn't be added and offer to adjust the details and try again.", note: "Relay this to the operator in plain language — never surface an error code." }) });
+              }
+            }
           } catch (err) {
             toolResults.push({
               tool_call_id: tc.id,
