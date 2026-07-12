@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatePill } from "@/components/ui/page";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Link as LinkIcon, Unlink, Loader2, CalendarCheck } from "lucide-react";
@@ -104,8 +105,7 @@ export function CalendarConnectorsPanel() {
           <CalendarCheck className="h-4 w-4 text-muted-foreground" /> Calendar connectors
         </h2>
         <p className="text-sm text-muted-foreground">
-          Connect your personal calendar so bookings sync both ways. This is separate from the
-          calendars you create — those carry their own schedule.
+          Connect your calendar so your bookings stay in sync both ways.
         </p>
       </div>
 
@@ -118,7 +118,7 @@ export function CalendarConnectorsPanel() {
                 <CardDescription>Two-way sync with your Google account.</CardDescription>
               </div>
               {conn?.google_calendar_connected
-                ? <Badge className="bg-emerald-600">Connected</Badge>
+                ? <StatePill state="success">Connected</StatePill>
                 : <Badge variant="secondary">Not connected</Badge>}
             </div>
           </CardHeader>
@@ -146,10 +146,10 @@ export function CalendarConnectorsPanel() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-base">Zoom</CardTitle>
-                <CardDescription>Connect your Zoom so Paige adds a Zoom link to every booking automatically.</CardDescription>
+                <CardDescription>Connect Zoom so a meeting link is added to your bookings automatically.</CardDescription>
               </div>
               {conn?.zoom_connected
-                ? <Badge className="bg-emerald-600">Connected</Badge>
+                ? <StatePill state="success">Connected</StatePill>
                 : <Badge variant="secondary">Not connected</Badge>}
             </div>
           </CardHeader>

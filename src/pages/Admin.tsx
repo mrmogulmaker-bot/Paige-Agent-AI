@@ -428,11 +428,11 @@ const Admin = () => {
           </Suspense>
         } />
         <Route path="settings" element={
-          <AdminOnly>
+          <RoleGate allow={["admin"]} allowPlatformStaff>
             <Suspense fallback={<SuspenseFallback />}>
               <AdminSettingsHub />
             </Suspense>
-          </AdminOnly>
+          </RoleGate>
         } />
         <Route path="playbook" element={
           <AdminOnly>

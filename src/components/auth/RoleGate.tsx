@@ -8,6 +8,9 @@ interface RoleGateProps {
   allow?: AppRole[];
   /** Also allow the hardcoded platform owner (Antonio). */
   allowOwner?: boolean;
+  /** Also allow scoped platform staff (God-tier Platform Admin / super_admin),
+   *  not just the hardcoded owner. Off by default so tenant routes stay locked. */
+  allowPlatformStaff?: boolean;
   /** Custom fallback. Defaults to an inline "access denied" panel. */
   fallback?: ReactNode;
   children: ReactNode;
@@ -19,9 +22,9 @@ interface RoleGateProps {
  * so admins previewing as coaches/clients still see *why* a page
  * is hidden instead of a blank screen.
  */
-export function RoleGate({ allow = [], allowOwner = true, fallback, children }: RoleGateProps) {
+export function RoleGate({ allow = [], allowOwner = true, allowPlatformStaff = false, fallback, children }: RoleGateProps) {
   const { loading, roles, isAdmin } = useUserRoles();
-  const { isPlatformOwner } = useTenantContext();
+  const { isPlatformOwner, isPlatformStaff } = useTenantContext();
 
   if (loading) {
     return (
@@ -32,9 +35,10 @@ export function RoleGate({ allow = [], allowOwner = true, fallback, children }: 
   }
 
   const ownerOk = allowOwner && (isPlatformOwner || isAdmin);
+  const staffOk = allowPlatformStaff && isPlatformStaff;
   const roleOk = allow.length === 0 || roles.some((r) => allow.includes(r));
 
-  if (!ownerOk && !roleOk) {
+  if (!ownerOk && !staffOk && !roleOk) {
     if (fallback) return <>{fallback}</>;
     return (
       <div className="max-w-md mx-auto mt-12 rounded-lg border border-border bg-card p-6 text-center">

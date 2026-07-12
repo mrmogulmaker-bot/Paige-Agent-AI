@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ import { LiveSyncIndicator } from "@/components/ui/LiveSyncIndicator";
 import { DataPrivacyPanel } from "@/components/dashboard/DataPrivacyPanel";
 import { NotificationsSettings } from "@/components/dashboard/NotificationsSettings";
 import { linkOAuthIdentity } from "@/integrations/auth/oauth";
+import { CalendarConnectorsPanel } from "@/components/admin/settings/CalendarConnectorsPanel";
 import { z } from "zod";
 import { Switch } from "@/components/ui/switch";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
@@ -68,7 +70,7 @@ const ConnectedAccountsSection = () => {
             </div>
           </div>
           {hasGoogle ? (
-            <span className="text-xs text-accent font-medium px-2 py-1 rounded-full bg-accent/10">Linked</span>
+            <span className="text-xs text-[hsl(var(--success))] font-medium px-2 py-1 rounded-full bg-[hsl(var(--success)/0.1)]">Linked</span>
           ) : (
             <Button size="sm" variant="outline" onClick={linkGoogle} disabled={isLinking}>
               {isLinking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Link Account"}
@@ -85,6 +87,18 @@ export const ProfileSettings = () => {
   const [isEditingPersonal, setIsEditingPersonal] = useState(false);
   const { toast } = useToast();
   const { mode, setMode, isCoachOrAdmin } = useDashboardMode();
+
+  // Honor a `?tab=` deep link (e.g. the post-connect redirect lands clients on
+  // ?tab=accounts). Falls back to Personal for unknown/gated values.
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const isValidTab =
+    requestedTab === "personal" ||
+    requestedTab === "business" ||
+    requestedTab === "accounts" ||
+    requestedTab === "privacy" ||
+    (requestedTab === "preferences" && isCoachOrAdmin);
+  const [activeTab, setActiveTab] = useState(isValidTab ? (requestedTab as string) : "personal");
 
   // Realtime sync indicator state
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
@@ -408,8 +422,8 @@ export const ProfileSettings = () => {
         <LiveSyncIndicator lastUpdatedAt={lastSyncAt} justUpdated={justSynced} className="mt-2" />
       </div>
 
-      <Tabs defaultValue="personal" className="w-full">
-        <TabsList className={`grid w-full ${isCoachOrAdmin ? "grid-cols-4" : "grid-cols-3"}`}>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className={`grid w-full ${isCoachOrAdmin ? "grid-cols-5" : "grid-cols-4"}`}>
           <TabsTrigger value="personal" className="gap-2">
             <User className="w-4 h-4" />
             Personal Info
@@ -479,7 +493,12 @@ export const ProfileSettings = () => {
         )}
 
         <TabsContent value="accounts">
-          <ConnectedAccountsSection />
+          <div className="space-y-8">
+            <ConnectedAccountsSection />
+            <div className="border-t border-border pt-8">
+              <CalendarConnectorsPanel />
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="personal">

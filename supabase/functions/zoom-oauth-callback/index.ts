@@ -81,6 +81,37 @@ function redirectTo(origin: string, status: "connected" | "error", detail?: stri
   return new Response(null, { status: 302, headers: { Location: url.toString() } });
 }
 
+// Role-aware success landing (shared redirect contract): a staff user (admin,
+// coach, or super_admin) lands on the admin connectors surface; a client/consumer
+// lands on their own portal settings. Errors always use redirectTo() above — only
+// the *success* path is role-aware. On any role-lookup failure we fail toward the
+// safe non-admin surface so an admin route is never leaked to a client.
+async function redirectConnectedForUser(
+  admin: ReturnType<typeof createClient>,
+  origin: string,
+  userId: string,
+): Promise<Response> {
+  let isStaff = false;
+  try {
+    const { data, error } = await admin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .in("role", ["admin", "coach", "super_admin", "platform_admin"])
+      .limit(1);
+    if (!error && data && data.length > 0) isStaff = true;
+  } catch {
+    isStaff = false; // fail toward the client (non-admin) surface
+  }
+
+  const base = origin.replace(/\/$/, "");
+  const url = isStaff
+    ? (() => { const u = new URL(`${base}/admin/settings`); u.searchParams.set("tab", "connectors"); return u; })()
+    : (() => { const u = new URL(`${base}/app/settings`); u.searchParams.set("tab", "accounts"); return u; })();
+  url.searchParams.set("zoom", "connected");
+  return new Response(null, { status: 302, headers: { Location: url.toString() } });
+}
+
 Deno.serve(async (req) => {
   // Zoom sends a browser GET with ?code=&state= (or ?error= on denial).
   const reqUrl = new URL(req.url);
@@ -168,7 +199,7 @@ Deno.serve(async (req) => {
 
     if (error) return redirectTo(returnOrigin, "error", "persist_failed");
 
-    return redirectTo(returnOrigin, "connected");
+    return await redirectConnectedForUser(admin, returnOrigin, hostUserId);
   } catch {
     return redirectTo(returnOrigin, "error", "unexpected");
   }
