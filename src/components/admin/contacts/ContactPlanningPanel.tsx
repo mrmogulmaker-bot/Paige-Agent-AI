@@ -67,7 +67,6 @@ export function ContactPlanningPanel({
       .then(({ data }) => { if (active) setPortalTasks((data as PortalTask[]) ?? []); });
     return () => { active = false; };
   }, [linkedUserId]);
-  const openPortal = portalTasks.filter((t) => t.status !== "completed");
 
   const addTrigger = (
     <Button size="sm">
@@ -160,7 +159,7 @@ export function ContactPlanningPanel({
             aria-expanded={showPortal}
           >
             <span className="flex items-center gap-1.5">
-              <UserSquare2 className="h-3.5 w-3.5" /> Their own to-dos ({openPortal.length})
+              <UserSquare2 className="h-3.5 w-3.5" /> Their own to-dos ({portalTasks.length})
             </span>
             <ChevronDown className={cn("h-4 w-4 transition-transform motion-reduce:transition-none", showPortal && "rotate-180")} />
           </button>

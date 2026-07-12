@@ -186,9 +186,12 @@ export default function CalendarAdmin() {
   const planEvents: GridEvent[] = useMemo(() => {
     if (!showTasks) return [];
     return planItems
-      .map((it) => {
-        const d = itemDate(it);
-        if (!d) return null;
+      .map((it): GridEvent | null => {
+        // itemDate() returns the ISO string (due_at/remind_at) or null — parse
+        // it to a real Date before using date math or the grid.
+        const iso = itemDate(it);
+        if (!iso) return null;
+        const start = new Date(iso);
         const overdue = !isClosed(it) && bucketOf(it) === "overdue";
         // Open/upcoming items read at full strength (foreground) so they don't
         // look disabled; overdue is destructive; only done/closed goes muted.
@@ -198,13 +201,13 @@ export default function CalendarAdmin() {
         return {
           id: it.id,
           title: it.title,
-          start: d,
-          end: new Date(d.getTime() + 30 * 60000),
+          start,
+          end: new Date(start.getTime() + 30 * 60000),
           color,
           status: it.status,
           subtitle: it.item_type,
-          kind: "plan" as const,
-        } satisfies GridEvent;
+          kind: "plan",
+        };
       })
       .filter((e): e is GridEvent => e !== null);
   }, [planItems, showTasks]);
