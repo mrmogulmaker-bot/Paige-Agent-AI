@@ -1,18 +1,20 @@
 /**
- * Calendar — the independent, GHL-style calendar tab.
+ * Calendar — the independent, GHL-style team calendar tab.
  *
  * Three views under one tab (mirrors GoHighLevel):
- *  • Calendar view    — Day/Week/Month grid, color-coded by calendar, "now" line
+ *  • Calendar view    — Day/Week/Month grid, color-coded by calendar or host, "now" line
  *  • Appointment list — a chronological agenda of what's booked
  *  • Calendar settings — the Calendars manager (create/customize calendars)
  *
- * Toolbar: Today · date nav · Day/Week/Month · New appointment. A filter rail
- * toggles calendars on/off (color legend). Bookings are the host's own
- * (internal_bookings, RLS: bookings_host_all); each calendar carries its color.
+ * The schedule is LIVE and TEAM-WIDE: bookings come from list_team_bookings
+ * (every host in the tenant for admins; own-host fallback otherwise), and a
+ * realtime subscription refetches on insert/update/delete so the board stays in
+ * sync as teammates book. A host filter narrows to All / Just mine / one host,
+ * and events can be colored by calendar or by host so a shared board stays
+ * legible. Bookings are tenant-isolated server-side.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -24,14 +26,20 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  PageShell, PageHeader, SectionCard, StatRow, StatTile, EmptyState, FilterChip,
+} from "@/components/ui/page";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
-  CalendarDays, ChevronLeft, ChevronRight, Plus, Loader2, ListChecks, Settings2,
+  CalendarDays, CalendarRange, CalendarX2, ChevronLeft, ChevronRight, Clock,
+  Plus, Loader2, ListChecks, Settings2, Users,
 } from "lucide-react";
 import CalendarsPanel from "@/components/admin/calendar/CalendarsPanel";
 import { CalendarGrid, type GridEvent, type ViewMode } from "@/components/admin/calendar/CalendarGrid";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { usePlanList, type PlanItem } from "@/hooks/usePlanList";
 import { itemDate, bucketOf, isClosed } from "@/lib/planning";
 import { QuickAddDialog } from "@/components/planning/QuickAddDialog";
@@ -39,6 +47,7 @@ import { PlanItemRow } from "@/components/planning/PlanItemRow";
 
 interface IntakeQ { id: string; label: string; type: string; }
 interface CalMeta { id: string; title: string | null; color: string | null; accent: string | null; tenant_id: string | null; type?: string; intake_questions?: IntakeQ[]; }
+interface AppointmentType { name?: string | null; label?: string | null; duration_min?: number | null; }
 interface BookingRow {
   id: string; title: string; start_at: string; end_at: string; status: string;
   source: string; guest_name: string | null; guest_email: string | null; calendar_id: string | null;
@@ -46,7 +55,13 @@ interface BookingRow {
   guest_phone: string | null; notes: string | null;
   intake_answers: Record<string, string | string[]> | null;
   booking_kind: string; class_session_id: string | null; capacity: number | null;
+  host_user_id: string | null; host_full_name: string | null; timezone: string | null;
+  appointment_type: AppointmentType | null;
 }
+/** Host filter mode: "all" · "mine" · a specific host user_id. */
+type HostFilter = "all" | "mine" | string;
+/** Which dimension colors the event blocks. */
+type ColorBy = "calendar" | "host";
 // A class_session tile carries a live "booked/capacity" readout computed
 // from its sibling class_seat rows — the seats themselves are hidden from
 // the grid/list (one row per registrant would otherwise draw N duplicate,
@@ -55,6 +70,19 @@ type DisplayBooking = BookingRow & { seatLabel?: string };
 
 const UNASSIGNED = "__unassigned__";
 const DEFAULT_COLOR = "#7A67E8";
+
+// Color-by-host: hosts have no stored color, so we derive a stable, well-spread
+// hue from the user_id. Returned as an hsl() string the grid consumes exactly
+// like a stored calendar color (it color-mixes the fill and uses it for the
+// border/text), keeping fixed S/L for AA legibility in light and dark.
+function hostHue(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return (h % 24) * 15; // 24 evenly spaced hues
+}
+function hostColor(id: string | null): string {
+  return id ? `hsl(${hostHue(id)} 62% 48%)` : DEFAULT_COLOR;
+}
 
 function startOfDay(d: Date) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
 function addDays(d: Date, n: number) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
@@ -89,7 +117,19 @@ export default function CalendarAdmin() {
   const [loading, setLoading] = useState(true);
   const [newOpen, setNewOpen] = useState(false);
   const [detail, setDetail] = useState<DisplayBooking | null>(null);
+  const [currentUid, setCurrentUid] = useState<string | null>(null);
+  const [hostFilter, setHostFilter] = useState<HostFilter>("all");
+  // Calendar coloring by default (the established look); flip to Host to tell
+  // teammates apart on a shared team board.
+  const [colorBy, setColorBy] = useState<ColorBy>("calendar");
+  // Accumulated roster of hosts seen in loaded bookings (id → name). It only
+  // grows within a session so narrowing to one host never empties the picker.
+  const [hostDir, setHostDir] = useState<Map<string, string>>(new Map());
   const reqSeq = useRef(0);
+
+  useEffect(() => {
+    void supabase.auth.getUser().then(({ data }) => setCurrentUid(data.user?.id ?? null));
+  }, []);
 
   const setBookingStatus = async (id: string, status: string) => {
     const { error } = await supabase.from("internal_bookings").update({ status }).eq("id", id);
@@ -104,6 +144,11 @@ export default function CalendarAdmin() {
     return c?.color || c?.accent || DEFAULT_COLOR;
   }, [calendars]);
 
+  // The event's on-grid color: by calendar (stored hex) or by host (derived hue).
+  const eventColor = useCallback((b: BookingRow) => (
+    colorBy === "host" ? hostColor(b.host_user_id) : colorFor(b.calendar_id)
+  ), [colorBy, colorFor]);
+
   const loadCalendars = useCallback(async () => {
     const { data } = await supabase.from("calendars").select("id, title, color, accent, tenant_id, type, intake_questions");
     setCalendars((data as CalMeta[]) ?? []);
@@ -113,24 +158,58 @@ export default function CalendarAdmin() {
     const seq = ++reqSeq.current; // guard against out-of-order responses
     setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
-    const uid = userData.user?.id;
+    const uid = userData.user?.id ?? null;
     if (!uid) { if (seq === reqSeq.current) setLoading(false); return; }
     const [from, to] = rangeFor(view, cursor);
-    // Overlap-aware: catch events that START before the window but run into it.
-    const { data } = await supabase
-      .from("internal_bookings")
-      .select("id, title, start_at, end_at, status, source, guest_name, guest_email, calendar_id, location_type, location_value, guest_phone, notes, intake_answers, booking_kind, class_session_id, capacity")
-      .eq("host_user_id", uid)
-      .lt("start_at", to.toISOString())
-      .gte("end_at", from.toISOString())
-      .order("start_at", { ascending: true });
+    // Server-side host filter: null = whole team (admins) or own host (fallback);
+    // ["mine"] = just me; [id] = one teammate. list_team_bookings is overlap-aware
+    // and tenant-isolated, and returns host_full_name + every column we render.
+    const hostIds = hostFilter === "all" ? null : hostFilter === "mine" ? [uid] : [hostFilter];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await supabase.rpc("list_team_bookings" as any, {
+      _from: from.toISOString(),
+      _to: to.toISOString(),
+      _host_ids: hostIds,
+      _tenant_id: activeTenantId,
+    });
     if (seq !== reqSeq.current) return; // a newer request superseded this one
-    setBookings((data as BookingRow[]) ?? []);
+    if (error) { setLoading(false); toast.error(error.message); return; }
+    setBookings((data as BookingRow[] | null) ?? []);
     setLoading(false);
-  }, [view, cursor]);
+  }, [view, cursor, hostFilter, activeTenantId]);
 
   useEffect(() => { void loadCalendars(); }, [loadCalendars]);
   useEffect(() => { if (tab === "calendar" || tab === "list") void loadBookings(); }, [loadBookings, tab]);
+
+  // Grow the host roster from whatever loaded (never shrinks mid-session).
+  useEffect(() => {
+    setHostDir((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const b of bookings) {
+        if (b.host_user_id && !next.has(b.host_user_id)) {
+          next.set(b.host_user_id, b.host_full_name?.trim() || "Teammate");
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [bookings]);
+
+  // Live team schedule — refetch (debounced) on any booking change in this
+  // tenant so teammates' new/moved/cancelled bookings appear without a reload.
+  const loadRef = useRef(loadBookings);
+  useEffect(() => { loadRef.current = loadBookings; }, [loadBookings]);
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleRealtime = useCallback(() => {
+    if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    refetchTimer.current = setTimeout(() => { void loadRef.current(); }, 400);
+  }, []);
+  useEffect(() => () => { if (refetchTimer.current) clearTimeout(refetchTimer.current); }, []);
+  useRealtimeTable("internal_bookings", handleRealtime, {
+    filter: activeTenantId ? `tenant_id=eq.${activeTenantId}` : undefined,
+    enabled: tab === "calendar" || tab === "list",
+  });
 
   // class_seat rows (one per registrant) are folded into their class_session's
   // live "booked/capacity" count rather than rendered as their own tiles.
@@ -155,11 +234,37 @@ export default function CalendarAdmin() {
       title: b.seatLabel ? `${b.title || "Class"} · ${b.seatLabel}` : (b.title || b.guest_name || "Appointment"),
       start: new Date(b.start_at),
       end: new Date(b.end_at),
-      color: colorFor(b.calendar_id),
+      color: eventColor(b),
       status: b.status,
       subtitle: b.seatLabel ?? (b.guest_name ?? b.guest_email),
       kind: "booking" as const,
-    })), [visibleBookings, hidden, colorFor]);
+    })), [visibleBookings, hidden, eventColor]);
+
+  // KPI summary of what's loaded in the current range. Blocked time isn't an
+  // appointment, so it's excluded from the working counts.
+  const stats = useMemo(() => {
+    const now = new Date();
+    const todayStart = startOfDay(now), todayEnd = addDays(todayStart, 1);
+    const weekStart = startOfWeek(now), weekEnd = addDays(weekStart, 7);
+    let today = 0, week = 0, upcoming = 0, off = 0;
+    for (const b of visibleBookings) {
+      const s = new Date(b.start_at);
+      if (b.status === "cancelled" || b.status === "no_show") { off++; continue; }
+      if (b.status === "blocked") continue;
+      if (s >= todayStart && s < todayEnd) today++;
+      if (s >= weekStart && s < weekEnd) week++;
+      if (s >= now) upcoming++;
+    }
+    return { today, week, upcoming, off };
+  }, [visibleBookings]);
+
+  // Hosts for the picker/legend — the current user first ("You"), then the rest.
+  const hostList = useMemo(() => {
+    const rows = Array.from(hostDir.entries())
+      .map(([id, name]) => ({ id, name, isMe: id === currentUid }))
+      .sort((a, b) => (a.isMe === b.isMe ? a.name.localeCompare(b.name) : a.isMe ? -1 : 1));
+    return rows;
+  }, [hostDir, currentUid]);
 
   // Task/reminder overlay — the SAME plan_* items Paige and the Planning hub use
   // (§10), pulled for the visible date window by item date. They render as
@@ -232,12 +337,28 @@ export default function CalendarAdmin() {
   const toggleCal = (id: string) =>
     setHidden((h) => { const n = new Set(h); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
+  const statsLoading = loading && bookings.length === 0;
+
   return (
-    <div className="container mx-auto px-4 py-6 space-y-5 max-w-6xl">
-      <div className="flex items-center gap-2">
-        <CalendarDays className="size-5" />
-        <h1 className="text-2xl font-semibold tracking-tight">Calendar</h1>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        eyebrow="Scheduling"
+        title="Calendar"
+        description="Your team's live schedule — every booking, block, and task on one board, in sync the moment it changes."
+        actions={
+          <Button variant="gold" size="sm" onClick={() => setNewOpen(true)}>
+            <Plus className="h-4 w-4 mr-1.5" /> New appointment
+          </Button>
+        }
+      />
+
+      <StatRow>
+        <StatTile label="Today" value={stats.today} icon={CalendarDays} hint="scheduled" loading={statsLoading} />
+        <StatTile label="This week" value={stats.week} icon={CalendarRange} hint="in range" loading={statsLoading} />
+        <StatTile label="Upcoming" value={stats.upcoming} icon={Clock} hint="still to come" loading={statsLoading} />
+        <StatTile label="Cancelled / no-show" value={stats.off} icon={CalendarX2} intent={stats.off > 0 ? "negative" : "neutral"} loading={statsLoading} />
+      </StatRow>
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-4">
         <TabsList>
@@ -273,58 +394,112 @@ export default function CalendarAdmin() {
                 defaultKind="task"
                 trigger={<Button size="sm" variant="outline"><ListChecks className="h-4 w-4 mr-1.5" /> Add task</Button>}
               />
-              <Button size="sm" onClick={() => setNewOpen(true)}><Plus className="h-4 w-4 mr-1.5" /> New</Button>
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
+          <div className="grid gap-4 lg:grid-cols-[1fr_240px]">
             <div className="min-w-0 relative">
               {loading && (
-                <div className="absolute inset-0 z-20 grid place-items-center bg-background/50">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <div className="absolute inset-0 z-20 rounded-lg bg-background/60 p-4 backdrop-blur-[1px]" aria-hidden>
+                  <div className="space-y-2.5">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="ml-14 h-20 w-1/2" />
+                    <Skeleton className="ml-28 h-14 w-2/5" />
+                    <Skeleton className="ml-14 h-16 w-1/2" />
+                  </div>
                 </div>
               )}
               <CalendarGrid view={view} cursor={cursor} events={gridEvents} onEventClick={handleEventClick} />
             </div>
 
-            {/* Filter rail — color legend + calendar toggles */}
-            <Card className="h-fit">
-              <CardContent className="p-3.5 space-y-2.5">
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Calendars</div>
-                {calendars.length === 0 && <p className="text-xs text-muted-foreground">No calendars yet.</p>}
-                {calendars.map((c) => {
-                  const on = !hidden.has(c.id);
-                  return (
-                    <label key={c.id} className="flex items-center gap-2 cursor-pointer text-sm">
-                      <Checkbox checked={on} onCheckedChange={() => toggleCal(c.id)} />
-                      <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c.color || c.accent || DEFAULT_COLOR }} />
-                      <span className="truncate">{c.title || "Untitled"}</span>
-                    </label>
-                  );
-                })}
-                <label className="flex items-center gap-2 cursor-pointer text-sm pt-1 border-t border-border/60 mt-1">
-                  <Checkbox checked={!hidden.has(UNASSIGNED)} onCheckedChange={() => toggleCal(UNASSIGNED)} />
-                  <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: DEFAULT_COLOR }} />
-                  <span className="text-muted-foreground">Other / manual</span>
-                </label>
+            {/* Filter rail — host filter · color mode · legend · calendar toggles */}
+            <SectionCard className="h-fit" padded={false}>
+              <div className="space-y-4 p-4">
+                {/* Whose schedule to show — drives the server-side host filter. */}
+                <div className="space-y-1.5">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Host</div>
+                  <Select value={hostFilter} onValueChange={(v) => setHostFilter(v as HostFilter)}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All hosts</SelectItem>
+                      <SelectItem value="mine">Just mine</SelectItem>
+                      {hostList.filter((h) => !h.isMe).map((h) => (
+                        <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* How to color the blocks so a shared board stays legible. */}
+                <div className="space-y-1.5">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Color by</div>
+                  <div className="flex gap-1.5">
+                    <FilterChip active={colorBy === "host"} onClick={() => setColorBy("host")}><Users className="h-3 w-3" /> Host</FilterChip>
+                    <FilterChip active={colorBy === "calendar"} onClick={() => setColorBy("calendar")}><CalendarDays className="h-3 w-3" /> Calendar</FilterChip>
+                  </div>
+                </div>
+
+                {/* Host legend — only meaningful when coloring by host. */}
+                {colorBy === "host" && hostList.length > 0 && (
+                  <div className="space-y-2 border-t border-border/60 pt-3">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Team</div>
+                    {hostList.map((h) => (
+                      <div key={h.id} className="flex items-center gap-2 text-sm">
+                        <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: hostColor(h.id) }} />
+                        <span className="truncate">{h.isMe ? "You" : h.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Calendar visibility toggles (color dots are the calendar's own). */}
+                <div className="space-y-2.5 border-t border-border/60 pt-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Calendars</div>
+                  {calendars.length === 0 && <p className="text-xs text-muted-foreground">No calendars yet.</p>}
+                  {calendars.map((c) => {
+                    const on = !hidden.has(c.id);
+                    return (
+                      <label key={c.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox checked={on} onCheckedChange={() => toggleCal(c.id)} />
+                        <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: c.color || c.accent || DEFAULT_COLOR }} />
+                        <span className="truncate">{c.title || "Untitled"}</span>
+                      </label>
+                    );
+                  })}
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <Checkbox checked={!hidden.has(UNASSIGNED)} onCheckedChange={() => toggleCal(UNASSIGNED)} />
+                    <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full" style={{ backgroundColor: DEFAULT_COLOR }} />
+                    <span className="text-muted-foreground">Other / manual</span>
+                  </label>
+                </div>
+
                 {/* Tasks & reminders overlay toggle — the plan_* items, shown as
                     dashed pills alongside bookings (overdue in red). */}
-                <label className="flex items-center gap-2 cursor-pointer text-sm pt-1 border-t border-border/60 mt-1">
-                  <Checkbox checked={showTasks} onCheckedChange={() => setShowTasks((v) => !v)} />
-                  <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 border-[1.5px]" style={{ borderColor: "hsl(var(--foreground))" }} />
-                  <span className="text-muted-foreground">Tasks &amp; reminders</span>
-                </label>
-                {showTasks && (
-                  <p className="pl-6 text-[11px] text-muted-foreground">Overdue shown in red.</p>
-                )}
-              </CardContent>
-            </Card>
+                <div className="space-y-1.5 border-t border-border/60 pt-3">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <Checkbox checked={showTasks} onCheckedChange={() => setShowTasks((v) => !v)} />
+                    <span className="h-2.5 w-2.5 flex-shrink-0 rounded-full border-[1.5px]" style={{ borderColor: "hsl(var(--foreground))" }} />
+                    <span className="text-muted-foreground">Tasks &amp; reminders</span>
+                  </label>
+                  {showTasks && (
+                    <p className="pl-6 text-[11px] text-muted-foreground">Overdue shown in red.</p>
+                  )}
+                </div>
+              </div>
+            </SectionCard>
           </div>
         </TabsContent>
 
         {/* APPOINTMENT LIST */}
         <TabsContent value="list" className="space-y-4">
-          <AppointmentList bookings={visibleBookings} loading={loading} colorFor={colorFor} onSelect={setDetail} />
+          <AppointmentList
+            bookings={visibleBookings}
+            loading={loading}
+            colorFor={colorFor}
+            colorBy={colorBy}
+            onSelect={setDetail}
+            onNew={() => setNewOpen(true)}
+          />
         </TabsContent>
 
         {/* CALENDAR SETTINGS */}
@@ -372,7 +547,7 @@ export default function CalendarAdmin() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }
 
@@ -388,6 +563,9 @@ function BookingDetailDialog({ booking, calendars, onOpenChange, colorFor, onCan
   onNoShow: (id: string) => void;
 }) {
   const b = booking;
+  const serviceName = b?.appointment_type
+    ? (b.appointment_type.name || b.appointment_type.label || null)
+    : null;
   // Map the booking's intake answers (id→value) to the calendar's question labels.
   const intakeRows: { label: string; value: string }[] = (() => {
     if (!b?.intake_answers) return [];
@@ -415,6 +593,12 @@ function BookingDetailDialog({ booking, calendars, onOpenChange, colorFor, onCan
               </DialogDescription>
             </DialogHeader>
             <div className="text-sm space-y-1.5 py-1">
+              {b.host_full_name && (
+                <div className="flex gap-2"><span className="text-muted-foreground w-16">Host</span><span>{b.host_full_name}</span></div>
+              )}
+              {serviceName && (
+                <div className="flex gap-2"><span className="text-muted-foreground w-16">Service</span><span>{serviceName}</span></div>
+              )}
               {b.seatLabel && (
                 <div className="flex gap-2"><span className="text-muted-foreground w-16">Seats</span><span className="font-medium">{b.seatLabel}</span></div>
               )}
@@ -459,8 +643,13 @@ function BookingDetailDialog({ booking, calendars, onOpenChange, colorFor, onCan
   );
 }
 
-function AppointmentList({ bookings, loading, colorFor, onSelect }: {
-  bookings: DisplayBooking[]; loading: boolean; colorFor: (id: string | null) => string; onSelect: (b: DisplayBooking) => void;
+function AppointmentList({ bookings, loading, colorFor, colorBy, onSelect, onNew }: {
+  bookings: DisplayBooking[];
+  loading: boolean;
+  colorFor: (id: string | null) => string;
+  colorBy: ColorBy;
+  onSelect: (b: DisplayBooking) => void;
+  onNew: () => void;
 }) {
   const grouped = useMemo(() => {
     const m = new Map<string, DisplayBooking[]>();
@@ -472,41 +661,70 @@ function AppointmentList({ bookings, loading, colorFor, onSelect }: {
     return Array.from(m.entries());
   }, [bookings]);
 
-  return (
-    <Card>
-      <CardContent className="p-4 sm:p-6">
-        {loading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground py-4"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
-        ) : grouped.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">No appointments in this range.</p>
-        ) : (
-          <div className="space-y-5">
-            {grouped.map(([date, items]) => (
-              <div key={date} className="space-y-2">
-                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{date}</div>
-                {items.map((b) => (
-                  <div key={b.id} onClick={() => onSelect(b)}
-                    className="flex items-center gap-3 rounded-md border p-3 text-sm cursor-pointer hover:bg-muted/50 transition-colors">
-                    <span className="h-8 w-1 rounded-full flex-shrink-0" style={{ backgroundColor: colorFor(b.calendar_id) }} />
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium truncate">{b.title || b.guest_name || "Appointment"}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(b.start_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        {" – "}
-                        {new Date(b.end_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        {b.seatLabel ? ` · ${b.seatLabel}` : b.guest_name ? ` · ${b.guest_name}` : b.guest_email ? ` · ${b.guest_email}` : ""}
-                      </div>
-                    </div>
-                    <Badge variant="secondary" className="capitalize flex-shrink-0">{b.source.replace(/_/g, " ")}</Badge>
-                    <Badge variant={b.status === "scheduled" ? "default" : "secondary"} className="capitalize flex-shrink-0">{b.status}</Badge>
-                  </div>
-                ))}
+  if (loading && bookings.length === 0) {
+    return (
+      <SectionCard>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="flex items-center gap-3 rounded-md border border-border p-3">
+              <Skeleton className="h-8 w-1 rounded-full" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-56" />
               </div>
-            ))}
+              <Skeleton className="h-5 w-16 rounded-full" />
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+    );
+  }
+
+  if (grouped.length === 0) {
+    return (
+      <SectionCard>
+        <EmptyState
+          icon={CalendarDays}
+          title="Nothing booked in this range"
+          description="Move the date window, widen the host filter, or add an appointment to fill the board."
+          action={<Button variant="gold" size="sm" onClick={onNew}><Plus className="h-4 w-4 mr-1.5" /> New appointment</Button>}
+        />
+      </SectionCard>
+    );
+  }
+
+  return (
+    <SectionCard>
+      <div className="space-y-5">
+        {grouped.map(([date, items]) => (
+          <div key={date} className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{date}</div>
+            {items.map((b) => {
+              const stripe = colorBy === "host" ? hostColor(b.host_user_id) : colorFor(b.calendar_id);
+              const who = b.host_full_name ? `${b.host_full_name}` : null;
+              return (
+                <div key={b.id} onClick={() => onSelect(b)}
+                  className="flex cursor-pointer items-center gap-3 rounded-md border border-border p-3 text-sm transition-colors hover:bg-muted/50">
+                  <span className="h-8 w-1 flex-shrink-0 rounded-full" style={{ backgroundColor: stripe }} />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium">{b.title || b.guest_name || "Appointment"}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(b.start_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {" – "}
+                      {new Date(b.end_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {who ? ` · ${who}` : ""}
+                      {b.seatLabel ? ` · ${b.seatLabel}` : b.guest_name ? ` · ${b.guest_name}` : b.guest_email ? ` · ${b.guest_email}` : ""}
+                    </div>
+                  </div>
+                  <Badge variant="secondary" className="flex-shrink-0 capitalize">{b.source.replace(/_/g, " ")}</Badge>
+                  <Badge variant={b.status === "scheduled" ? "default" : "secondary"} className="flex-shrink-0 capitalize">{b.status.replace(/_/g, " ")}</Badge>
+                </div>
+              );
+            })}
           </div>
-        )}
-      </CardContent>
-    </Card>
+        ))}
+      </div>
+    </SectionCard>
   );
 }
 
@@ -546,16 +764,21 @@ function NewAppointmentDialog({ open, onOpenChange, calendars, activeTenantId, o
     if (!uid) { setSaving(false); toast.error("Session expired"); return; }
     const cal = calendars.find((c) => c.id === calendarId);
     const end = new Date(start.getTime() + Math.max(5, duration) * 60000);
-    const { error } = await supabase.from("internal_bookings").insert({
-      host_user_id: uid,
-      tenant_id: cal?.tenant_id ?? activeTenantId,
-      calendar_id: calendarId === UNASSIGNED ? null : calendarId,
-      title: blocked ? "Blocked" : title.trim(),
-      guest_name: guestName.trim() || null,
-      start_at: start.toISOString(),
-      end_at: end.toISOString(),
-      status: blocked ? "blocked" : "scheduled",
-      source: "manual",
+    // Route through the RPC seam (§10) so the same create path is callable by
+    // Paige, not trapped in this component. v2 enforces the overlap guard and
+    // returns the new booking id.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await supabase.rpc("create_internal_booking" as any, {
+      _title: blocked ? "Blocked" : title.trim(),
+      _start_at: start.toISOString(),
+      _end_at: end.toISOString(),
+      _timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      _host_user_id: uid,
+      _guest_name: guestName.trim() || null,
+      _tenant_id: cal?.tenant_id ?? activeTenantId,
+      _calendar_id: calendarId === UNASSIGNED ? null : calendarId,
+      _status: blocked ? "blocked" : "scheduled",
+      _source: "manual",
     });
     setSaving(false);
     if (error) {

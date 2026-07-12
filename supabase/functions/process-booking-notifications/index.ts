@@ -8,6 +8,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const CRON_TOKEN = "pcron-9f2a7c4b1e"; // shared guard; triggering only runs an idempotent scan
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_FROM = Deno.env.get("CALENDAR_EMAIL_FROM") ?? Deno.env.get("PLATFORM_DEFAULT_EMAIL_FROM") ?? "Paige Agent AI <calendar@paigeagent.ai>";
+// SMS (Twilio) — reminders may fire on 'sms'/'both'. Reuse the platform's
+// existing Twilio number env when TWILIO_FROM isn't set, so an SMS reminder
+// works with the same credentials the rest of the platform already uses.
+const TWILIO_SID = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
+const TWILIO_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+const TWILIO_FROM = Deno.env.get("TWILIO_FROM") ?? Deno.env.get("TWILIO_PHONE_NUMBER") ?? "";
+// Signed self-serve manage link — matches booking-manage's verifier (HMAC over
+// the base64url payload, keyed by the service-role key) and public-booking's
+// {b, iat, exp, ver} payload so the same link reschedules/cancels this booking.
+const SIGN_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const PUBLIC_BASE = (Deno.env.get("PUBLIC_SITE_URL") ?? "https://paigeagent.ai").replace(/\/$/, "");
+const MANAGE_TOKEN_TTL_DAYS = 30;
 
 const MIN = 60_000;
 const DAY = 86_400_000;
@@ -25,9 +37,15 @@ function locationLabel(type: string, value: string | null): string {
     default: return "To be confirmed";
   }
 }
-function shell(brandName: string, accent: string, heading: string, lead: string, rows: [string, string][], footer: string): string {
+function shell(brandName: string, accent: string, heading: string, lead: string, rows: [string, string][], footer: string, manageLink?: string): string {
   const rowHtml = rows.map(([k, v]) =>
     `<tr><td style="padding:6px 0;color:#98a0ae;width:88px;">${esc(k)}</td><td style="padding:6px 0;font-weight:600;color:#101828;">${esc(v)}</td></tr>`).join("");
+  // A signed reschedule/cancel link renders above the footer line, styled the
+  // same as public-booking's confirmation email so the guest sees one system.
+  const footerHtml = manageLink
+    ? `<p style="color:#667085;font-size:13px;margin:0 0 4px;">Need to make a change? <a href="${esc(manageLink)}" style="color:#7A67E8;font-weight:600;text-decoration:none;">Reschedule or cancel</a>.</p>
+       <p style="color:#98a0ae;font-size:12px;margin:0;">${esc(footer)}</p>`
+    : `<p style="color:#98a0ae;font-size:12px;margin:0;">${esc(footer)}</p>`;
   return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:28px 0;"><tr><td align="center">
     <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#fff;border:1px solid #e7e8ec;border-radius:14px;overflow:hidden;">
@@ -39,9 +57,64 @@ function shell(brandName: string, accent: string, heading: string, lead: string,
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">${rowHtml}</table>
       </td></tr>
       <tr><td style="padding:18px 32px 26px;border-top:1px solid #eef0f3;">
-        <p style="color:#98a0ae;font-size:12px;margin:0;">${esc(footer)}</p>
+        ${footerHtml}
       </td></tr>
     </table></td></tr></table></body></html>`;
+}
+
+// btoa() only accepts Latin1; base64url over raw bytes is fine for the HMAC path.
+function b64url(bytes: Uint8Array): string {
+  let s = ""; for (const c of bytes) s += String.fromCharCode(c);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+// Same signed link public-booking mints: HMAC-SHA256 over the base64url payload
+// {b, iat, exp, ver}, keyed by the service-role key. `ver` pins the booking's
+// manage_token_version so a later revocation invalidates links minted before it.
+async function manageUrl(bookingId: string, ver = 0): Promise<string> {
+  const iat = Math.floor(Date.now() / 1000);
+  const exp = iat + MANAGE_TOKEN_TTL_DAYS * 86_400;
+  const payload = b64url(new TextEncoder().encode(JSON.stringify({ b: bookingId, iat, exp, ver })));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(SIGN_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload))));
+  return `${PUBLIC_BASE}/booking/manage?token=${payload}.${sig}`;
+}
+
+// Normalize a raw phone to E.164; keeps a leading '+', else assumes US (+1).
+// Returns "" when there are no dialable digits so callers can skip cleanly.
+function toE164(raw: string): string {
+  const trimmed = String(raw ?? "").trim();
+  const plus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return "";
+  return plus ? `+${digits}` : `+1${digits}`;
+}
+// Minimal Twilio REST send — inlined (not via send-sms-reminder) so this worker
+// owns its own idempotency and never depends on another function's side effects.
+// Returns true ONLY when Twilio accepted the message (§13 — a fire is not a
+// delivery; the caller counts a send only on a true here).
+async function sendSms(to: string, message: string): Promise<boolean> {
+  if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) return false;
+  const toNum = toE164(to);
+  const fromNum = toE164(TWILIO_FROM);
+  if (!toNum || !fromNum) return false;
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`)}`,
+      },
+      body: new URLSearchParams({ To: toNum, From: fromNum, Body: message }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+// Config-as-data reminder copy: substitute {{guest_name}} {{when}} {{where}}
+// {{title}} {{service}} in a Paige-/owner-authored subject or body. Unknown
+// tokens are left intact rather than blanked, so a typo is visible, not silent.
+function renderTemplate(tpl: string, vars: Record<string, string>): string {
+  return tpl.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k: string) => (k in vars ? vars[k] : m));
 }
 
 async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
@@ -56,7 +129,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
   } catch { return false; }
 }
 
-interface Reminder { channel: string; offset_min: number }
+interface Reminder { channel: string; offset_min: number; subject?: string; body?: string }
 interface Notify { reminders: Reminder[]; followup_guest: boolean; followup_offset_min: number }
 function parseNotify(raw: unknown): Notify {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -64,7 +137,13 @@ function parseNotify(raw: unknown): Notify {
     ? (o.reminders as unknown[])
         .map((r) => (r && typeof r === "object" ? r : {}) as Record<string, unknown>)
         .filter((r) => typeof r.offset_min === "number")
-        .map((r) => ({ channel: typeof r.channel === "string" ? r.channel : "email", offset_min: r.offset_min as number }))
+        .map((r) => ({
+          channel: typeof r.channel === "string" ? r.channel : "email",
+          offset_min: r.offset_min as number,
+          // Optional per-reminder copy (config-as-data, §10) — Paige-authorable.
+          subject: typeof r.subject === "string" && r.subject.trim() ? r.subject : undefined,
+          body: typeof r.body === "string" && r.body.trim() ? r.body : undefined,
+        }))
     : [];
   return {
     reminders,
@@ -84,7 +163,7 @@ Deno.serve(async (req) => {
   // Candidate window: reminders up to a week ahead, follow-ups up to 2 days back.
   const { data: rows } = await admin
     .from("internal_bookings")
-    .select("id, guest_email, guest_name, title, start_at, end_at, timezone, location_type, location_value, status, calendar_id, collective_group_id")
+    .select("id, guest_email, guest_phone, guest_name, title, start_at, end_at, timezone, location_type, location_value, status, calendar_id, collective_group_id, manage_token_version, appointment_type")
     .not("calendar_id", "is", null)
     .neq("status", "cancelled")
     .neq("status", "no_show")
@@ -139,12 +218,15 @@ Deno.serve(async (req) => {
     else await admin.from("booking_notifications_sent").delete().eq("booking_id", bookingId).eq("notif_key", key); // let it retry
   }
 
-  let reminders = 0, followups = 0;
+  // Truthful, per-channel counters — an SMS send is reported separately from an
+  // email send, and each counts only on an actual provider acceptance (§13).
+  let reminders = 0, smsReminders = 0, followups = 0;
   for (const b of bookings) {
     const cal = calById.get(b.calendar_id as string);
     if (!cal) continue;
     const email = String(b.guest_email ?? "");
-    if (!email) continue;
+    const phone = String(b.guest_phone ?? "");
+    if (!email && !phone) continue; // nobody reachable on any channel
     const notify = parseNotify(cal.notify_config);
     const startMs = Date.parse(b.start_at as string);
     const endMs = Date.parse(b.end_at as string);
@@ -153,36 +235,67 @@ Deno.serve(async (req) => {
     const brandName = (cal.tenant_id && tenantName.get(cal.tenant_id as string)) || "Paige Agent AI";
     const title = (cal.title as string) || (b.title as string) || "Your session";
     const loc = locationLabel(String(b.location_type ?? ""), (b.location_value as string) ?? null);
+    const ver = Number(b.manage_token_version ?? 0) || 0;
+    const guestName = String(b.guest_name ?? "").trim();
+    const apt = (b.appointment_type && typeof b.appointment_type === "object" ? b.appointment_type : null) as { name?: string } | null;
+    const service = (apt?.name && String(apt.name)) || title;
     const whenLabel = new Intl.DateTimeFormat("en-US", {
       timeZone: tz, weekday: "long", month: "long", day: "numeric",
       hour: "numeric", minute: "2-digit", timeZoneName: "short",
     }).format(new Date(startMs));
+    // Merge vars for config-as-data reminder copy (§10).
+    const vars: Record<string, string> = {
+      guest_name: guestName || "there", when: whenLabel, where: loc, title, service,
+    };
 
     // Reminders: due when now is at/after (start - offset) and before start.
     for (const rem of notify.reminders) {
       const dueAt = startMs - rem.offset_min * MIN;
-      if (dueAt <= now && now < startMs) {
-        const key = `reminder:${rem.offset_min}`;
-        if (await claim(b.id as string, key, email)) {
-          const html = shell(brandName, accent, "Reminder: you're booked",
-            "A quick heads-up — your session is coming up.",
+      if (!(dueAt <= now && now < startMs)) continue;
+      // Honor the reminder channel: 'both' fans out to email AND sms, each with
+      // its OWN claim key so the two never collide on the shared (booking, key)
+      // unique gate and one channel failing can't block the other.
+      const channels = rem.channel === "both" ? ["email", "sms"] : [rem.channel === "sms" ? "sms" : "email"];
+      for (const ch of channels) {
+        if (ch === "email" && !email) continue;
+        if (ch === "sms" && !phone) continue;
+        const key = `reminder:${ch}:${rem.offset_min}`;
+        // recipient_email is the claim's audit field; SMS-only has no email, so
+        // fall back to the phone as the recorded recipient identifier.
+        const recipient = ch === "email" ? email : (email || phone);
+        if (!(await claim(b.id as string, key, recipient))) continue;
+        const mUrl = await manageUrl(b.id as string, ver);
+        let ok = false;
+        if (ch === "email") {
+          const subject = rem.subject ? renderTemplate(rem.subject, vars) : `Reminder: ${title} · ${whenLabel}`;
+          const lead = rem.body ? renderTemplate(rem.body, vars) : "A quick heads-up — your session is coming up.";
+          const html = shell(brandName, accent, "Reminder: you're booked", lead,
             [["Session", title], ["When", whenLabel], ["Where", loc]],
-            "Need to make a change? Just reply to this email.");
-          const ok = await sendEmail(email, `Reminder: ${title} · ${whenLabel}`, html);
-          await finish(b.id as string, key, ok);
-          if (ok) reminders++;
+            "Or just reply to this email.", mUrl);
+          ok = await sendEmail(email, subject, html);
+        } else {
+          const line = rem.body
+            ? renderTemplate(rem.body, vars)
+            : `Reminder: ${title} on ${whenLabel}. ${loc}.`;
+          // The manage link is appended (not part of the authorable copy) so an
+          // SMS reminder can still reschedule/cancel with the same signed link.
+          ok = await sendSms(phone, `${line}\nReschedule or cancel: ${mUrl}`);
         }
+        await finish(b.id as string, key, ok);
+        if (ok) { if (ch === "sms") smsReminders++; else reminders++; }
       }
     }
 
-    // Follow-up: due when now is at/after (end + offset), meeting has ended.
-    if (notify.followup_guest && endMs <= now && endMs + notify.followup_offset_min * MIN <= now) {
+    // Follow-up (guest email): due when now is at/after (end + offset), meeting
+    // has ended. Email-only; carries the same signed manage link.
+    if (email && notify.followup_guest && endMs <= now && endMs + notify.followup_offset_min * MIN <= now) {
       const key = "followup";
       if (await claim(b.id as string, key, email)) {
+        const mUrl = await manageUrl(b.id as string, ver);
         const html = shell(brandName, accent, "Thanks for the time",
-          `Great connecting${b.guest_name ? `, ${esc(String(b.guest_name))}` : ""}. Here's a quick follow-up.`,
+          `Great connecting${guestName ? `, ${esc(guestName)}` : ""}. Here's a quick follow-up.`,
           [["Session", title], ["When", whenLabel]],
-          "Want to book again or have a question? Just reply — we're here.");
+          "Want to book again or have a question? Just reply — we're here.", mUrl);
         const ok = await sendEmail(email, `Following up on ${title}`, html);
         await finish(b.id as string, key, ok);
         if (ok) followups++;
@@ -190,7 +303,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, scanned: bookings.length, reminders, followups }), {
+  return new Response(JSON.stringify({ ok: true, scanned: bookings.length, reminders, smsReminders, followups }), {
     headers: { "Content-Type": "application/json" },
   });
 });

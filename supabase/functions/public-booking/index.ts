@@ -58,6 +58,7 @@ interface HostSettings {
   user_id: string; // primary / fallback host (top priority)
   hosts: string[]; // full host pool, priority-ordered (single-host = [user_id])
   roundRobin: boolean; // distribute bookings across hosts instead of always the primary
+  assignmentStrategy: "balanced" | "availability" | "priority"; // round-robin host chooser
   collective: boolean; // every host must attend — slot needs ALL hosts free, booking records every host
   isClass: boolean; // one host, many guests share a slot up to capacity
   capacity: number; // Class-only ceiling per session (irrelevant otherwise)
@@ -152,6 +153,22 @@ function collectAnswers(questions: IntakeQuestion[], raw: unknown): { answers: R
       if (s && (q.type === "select" || q.type === "radio") && q.options.length && !q.options.includes(s)) {
         return { error: `Please pick a valid option for: ${q.label}` };
       }
+      // Per-type format validation (field-named, same 400 shape as above) so a
+      // malformed answer is caught here rather than stored and surfaced later.
+      if (s && q.type === "number" && !Number.isFinite(Number(s))) {
+        return { error: `Please enter a number for: ${q.label}` };
+      }
+      if (s && q.type === "url") {
+        let okUrl = false;
+        try { okUrl = /^https?:$/.test(new URL(s).protocol); } catch { okUrl = false; }
+        if (!okUrl) return { error: `Please enter a valid link for: ${q.label}` };
+      }
+      if (s && q.type === "phone") {
+        const digits = s.replace(/\D/g, "");
+        if (digits.length < 7 || digits.length > 15 || !/^[+0-9().\-\s]+$/.test(s)) {
+          return { error: `Please enter a valid phone number for: ${q.label}` };
+        }
+      }
       if (s) out[q.id] = s;
     }
   }
@@ -182,17 +199,30 @@ function parseDateOverrides(raw: unknown): DateOverride[] {
 }
 
 // --- Appointment types (a "service menu" on one page) -----------------------
-interface AppointmentType { id: string; name: string; description: string | null; duration_min: number; }
+// price_cents/currency are OPTIONAL (§2 — pricing is never forced): a null
+// price_cents means the type is unpriced and the public page shows no price.
+interface AppointmentType { id: string; name: string; description: string | null; duration_min: number; price_cents: number | null; currency: string; }
 function parseAppointmentTypes(raw: unknown): AppointmentType[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .map((t) => (t && typeof t === "object" ? t : {}) as Record<string, unknown>)
-    .map((t, i) => ({
-      id: String(t.id ?? `t${i}`).slice(0, 64),
-      name: String(t.name ?? "").trim().slice(0, 120),
-      description: typeof t.description === "string" ? t.description.slice(0, 500) : null,
-      duration_min: Math.max(5, Math.min(1440, Number(t.duration_min) || 30)),
-    }))
+    .map((t, i) => {
+      // Accept a number or a non-empty numeric string; anything else → unpriced.
+      // (Number(null)/Number("") both coerce to 0, which would wrongly price a
+      // type at $0.00 — so guard the empty/nullish cases explicitly.)
+      const rawPrice = t.price_cents;
+      const priceNum = typeof rawPrice === "number"
+        ? rawPrice
+        : (typeof rawPrice === "string" && rawPrice.trim() !== "" ? Number(rawPrice) : NaN);
+      return {
+        id: String(t.id ?? `t${i}`).slice(0, 64),
+        name: String(t.name ?? "").trim().slice(0, 120),
+        description: typeof t.description === "string" ? t.description.slice(0, 500) : null,
+        duration_min: Math.max(5, Math.min(1440, Number(t.duration_min) || 30)),
+        price_cents: Number.isFinite(priceNum) ? Math.max(0, Math.round(priceNum)) : null,
+        currency: typeof t.currency === "string" && t.currency.trim() ? t.currency.trim().toLowerCase().slice(0, 8) : "usd",
+      };
+    })
     .filter((t) => t.name.length > 0)
     .slice(0, 20);
 }
@@ -303,7 +333,7 @@ async function loadClassSessions(admin: ReturnType<typeof createClient>, calenda
 async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string): Promise<HostSettings | null> {
   const { data: cal } = await admin
     .from("calendars")
-    .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options, booking_horizon_days, redirect_url, intake_questions, appointment_types, date_overrides, capacity")
+    .select("id, tenant_id, type, title, description, logo_url, accent, duration_min, buffer_before_min, buffer_after_min, min_notice_min, timezone, availability_json, enabled, theme, subtitle, show_company_name, location_type, location_value, notify_config, location_options, booking_horizon_days, redirect_url, intake_questions, appointment_types, date_overrides, capacity, assignment_strategy")
     .eq("slug", slug)
     .maybeSingle();
   if (!cal || cal.enabled !== true) return null;
@@ -316,10 +346,18 @@ async function loadCalendar(admin: ReturnType<typeof createClient>, slug: string
     .order("priority", { ascending: true });
   const hostIds = (hosts ?? []).map((h) => h.user_id as string);
   if (!hostIds.length) return null; // no host = nobody to book with yet
+  // assignment_strategy.mode picks how round-robin chooses among free hosts;
+  // anything unrecognized falls back to the balanced default.
+  const stratMode = (cal.assignment_strategy && typeof cal.assignment_strategy === "object"
+    ? (cal.assignment_strategy as Record<string, unknown>).mode
+    : null);
+  const assignmentStrategy: HostSettings["assignmentStrategy"] =
+    stratMode === "priority" || stratMode === "availability" ? stratMode : "balanced";
   return {
     user_id: hostIds[0],
     hosts: hostIds,
     roundRobin: cal.type === "round_robin" && hostIds.length > 1,
+    assignmentStrategy,
     collective: cal.type === "collective" && hostIds.length > 1,
     isClass: cal.type === "event",
     capacity: Math.max(1, cal.capacity ?? 8),
@@ -362,6 +400,7 @@ async function loadHost(admin: ReturnType<typeof createClient>, slug: string): P
     user_id: data.user_id,
     hosts: [data.user_id],
     roundRobin: false,
+    assignmentStrategy: "balanced",
     collective: false,
     isClass: false,
     capacity: 1,
@@ -519,8 +558,17 @@ function b64utf8(s: string): string {
   let bin = ""; for (const b of new TextEncoder().encode(s)) bin += String.fromCharCode(b);
   return btoa(bin);
 }
-async function manageUrl(bookingId: string): Promise<string> {
-  const payload = b64url(new TextEncoder().encode(JSON.stringify({ b: bookingId })));
+const MANAGE_TOKEN_TTL_DAYS = 30;
+// Signed self-serve link. The payload widened from {b} to {b, iat, exp, ver}:
+// `iat`/`exp` bound the link to a ~30-day lifetime and `ver` pins the booking's
+// manage_token_version so a later revocation (bumping that column) invalidates
+// links minted before it. The HMAC signer/secret is unchanged, so booking-manage
+// verifies the same way — it just gains extra claims to enforce. A brand-new
+// booking is always version 0, so callers can omit `ver`.
+async function manageUrl(bookingId: string, ver = 0): Promise<string> {
+  const iat = Math.floor(Date.now() / 1000);
+  const exp = iat + MANAGE_TOKEN_TTL_DAYS * 86_400;
+  const payload = b64url(new TextEncoder().encode(JSON.stringify({ b: bookingId, iat, exp, ver })));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(SIGN_KEY), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload))));
   return `${PUBLIC_BASE}/booking/manage?token=${payload}.${sig}`;
@@ -670,13 +718,17 @@ Deno.serve(async (req) => {
         }
       } else if (effHost.collective) {
         // Everyone must attend: a slot shows only if EVERY host is free for it.
+        // Fetch every host's busy set concurrently — the loads are independent.
         const busyByHost: Record<string, Busy[]> = {};
-        for (const uid of effHost.hosts) busyByHost[uid] = await loadBusy(admin, uid, fromMs, toMs);
+        const loaded = await Promise.all(effHost.hosts.map(async (uid) => [uid, await loadBusy(admin, uid, fromMs, toMs)] as const));
+        for (const [uid, b] of loaded) busyByHost[uid] = b;
         slots = collectiveSlots(effHost, busyByHost, fromMs, toMs, now);
       } else if (effHost.roundRobin) {
         // Combined team availability: a slot shows if any host is free for it.
+        // Fetch every host's busy set concurrently — the loads are independent.
         const busyByHost: Record<string, Busy[]> = {};
-        for (const uid of effHost.hosts) busyByHost[uid] = await loadBusy(admin, uid, fromMs, toMs);
+        const loaded = await Promise.all(effHost.hosts.map(async (uid) => [uid, await loadBusy(admin, uid, fromMs, toMs)] as const));
+        for (const [uid, b] of loaded) busyByHost[uid] = b;
         slots = roundRobinSlots(effHost, busyByHost, fromMs, toMs, now);
       } else {
         const busy = await loadBusy(admin, effHost.user_id, fromMs, toMs);
@@ -815,7 +867,9 @@ Deno.serve(async (req) => {
           timezone: host.timezone, status: "scheduled", source: "booking_page",
           location_type: locationType, location_value: locationValue,
           intake_answers: Object.keys(intake.answers).length ? intake.answers : null,
-          appointment_type: selType ? { id: selType.id, name: selType.name, duration_min: selType.duration_min } : null,
+          appointment_type: selType
+            ? { id: selType.id, name: selType.name, duration_min: selType.duration_min, ...(selType.price_cents != null ? { price_cents: selType.price_cents, currency: selType.currency } : {}) }
+            : null,
         }));
         const { data: rowsInserted, error } = await admin.from("internal_bookings").insert(rows).select("id, start_at, end_at, title");
         if (error) {
@@ -830,24 +884,49 @@ Deno.serve(async (req) => {
         // Single / round-robin — unchanged.
         let chosenHost = host.user_id;
         if (effHost.roundRobin) {
-          // Free hosts at this slot, then fair rotation: fewest upcoming bookings,
-          // tie-broken by priority order. The unique (host, start) index still
-          // guards against a race on the specific host we land on.
-          const free: string[] = [];
-          for (const uid of effHost.hosts) {
-            const b = await loadBusy(admin, uid, startMs - 86_400_000, startMs + 86_400_000);
-            if (isFree(effHost, b, startMs)) free.push(uid);
-          }
+          // Load every host's busy set for the day concurrently (independent
+          // reads), then narrow to those free at this slot — preserving the
+          // roster's priority order. The unique (host, start) index still guards
+          // against a race on the specific host we land on.
+          const dayMs = 86_400_000;
+          const busyByHost: Record<string, Busy[]> = {};
+          const loaded = await Promise.all(effHost.hosts.map(async (uid) => [uid, await loadBusy(admin, uid, startMs - dayMs, startMs + dayMs)] as const));
+          for (const [uid, b] of loaded) busyByHost[uid] = b;
+          const free = effHost.hosts.filter((uid) => isFree(effHost, busyByHost[uid] ?? [], startMs));
           if (!free.length) return json({ error: "That time is no longer available. Please pick another." }, 409);
-          const loads = await Promise.all(free.map(async (uid) => {
-            const { count } = await admin.from("internal_bookings")
-              .select("id", { count: "exact", head: true })
-              .eq("host_user_id", uid).neq("status", "cancelled")
-              .gte("start_at", new Date(now).toISOString());
-            return { uid, count: count ?? 0 };
-          }));
-          loads.sort((a, b) => a.count - b.count || effHost.hosts.indexOf(a.uid) - effHost.hosts.indexOf(b.uid));
-          chosenHost = loads[0].uid;
+
+          if (effHost.assignmentStrategy === "priority") {
+            // Strict roster order: the highest-priority free host takes it.
+            chosenHost = free[0];
+          } else if (effHost.assignmentStrategy === "availability") {
+            // Give it to the free host with the most open time that day, so the
+            // busiest host is spared; ties fall to priority order (free is
+            // already priority-ordered, so the first max wins).
+            const { y, mo, d } = ymdInTz(startMs, effHost.timezone);
+            const dayStart = zonedWallToUtcMs(y, mo - 1, d, 0, 0, effHost.timezone);
+            const dayEnd = zonedWallToUtcMs(y, mo - 1, d + 1, 0, 0, effHost.timezone);
+            const dayStarts = windowStarts(effHost, dayStart, dayEnd, now);
+            const openCount = (uid: string) => dayStarts.filter((s) => isFree(effHost, busyByHost[uid] ?? [], s)).length;
+            let best = free[0];
+            let bestOpen = openCount(best);
+            for (const uid of free.slice(1)) {
+              const c = openCount(uid);
+              if (c > bestOpen) { best = uid; bestOpen = c; }
+            }
+            chosenHost = best;
+          } else {
+            // Balanced (default): fewest upcoming bookings, tie-broken by
+            // priority order — the fairest rotation across the team.
+            const loads = await Promise.all(free.map(async (uid) => {
+              const { count } = await admin.from("internal_bookings")
+                .select("id", { count: "exact", head: true })
+                .eq("host_user_id", uid).neq("status", "cancelled")
+                .gte("start_at", new Date(now).toISOString());
+              return { uid, count: count ?? 0 };
+            }));
+            loads.sort((a, b) => a.count - b.count || effHost.hosts.indexOf(a.uid) - effHost.hosts.indexOf(b.uid));
+            chosenHost = loads[0].uid;
+          }
         } else {
           const busy = await loadBusy(admin, host.user_id, startMs - 86_400_000, startMs + 86_400_000);
           if (!isFree(effHost, busy, startMs)) return json({ error: "That time is no longer available. Please pick another." }, 409);
@@ -871,7 +950,9 @@ Deno.serve(async (req) => {
           location_type: locationType,
           location_value: locationValue,
           intake_answers: Object.keys(intake.answers).length ? intake.answers : null,
-          appointment_type: selType ? { id: selType.id, name: selType.name, duration_min: selType.duration_min } : null,
+          appointment_type: selType
+            ? { id: selType.id, name: selType.name, duration_min: selType.duration_min, ...(selType.price_cents != null ? { price_cents: selType.price_cents, currency: selType.currency } : {}) }
+            : null,
         }).select("id, start_at, end_at, title").single();
         if (error) {
           // 23505 = exact-start unique violation; 23P01 = the GiST exclusion

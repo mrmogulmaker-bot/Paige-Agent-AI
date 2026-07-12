@@ -97,16 +97,20 @@ function EventBlock({ ev, style, onClick }: { ev: GridEvent; style: React.CSSPro
   }
 
   // Blocked time reads as unavailable (neutral, hatched), not a real appointment.
-  const hue = blocked ? "#94a3b8" : ev.color;
+  // Neutral is the --muted-foreground token (theme-aware) rather than a hardcoded
+  // slate hex. The event tint uses color-mix so it works for any color form —
+  // stored calendar hex OR a computed hsl() host color (color-by-host).
+  const hue = blocked ? "hsl(var(--muted-foreground))" : ev.color;
+  const background = blocked
+    ? "repeating-linear-gradient(45deg, hsl(var(--muted-foreground)/0.12), hsl(var(--muted-foreground)/0.12) 6px, hsl(var(--muted-foreground)/0.22) 6px, hsl(var(--muted-foreground)/0.22) 12px)"
+    : `color-mix(in srgb, ${ev.color} 16%, transparent)`;
   return (
     <div
       onClick={onClick}
       className={`absolute rounded-md px-1.5 py-1 overflow-hidden text-[11px] leading-tight ${onClick ? "cursor-pointer hover:brightness-95" : "cursor-default"}`}
       style={{
         ...style,
-        backgroundColor: blocked
-          ? "repeating-linear-gradient(45deg, #94a3b81f, #94a3b81f 6px, #94a3b833 6px, #94a3b833 12px)"
-          : `${ev.color}22`,
+        background,
         borderLeft: `3px solid ${hue}`,
         opacity: cancelled ? 0.5 : 1,
         textDecoration: cancelled ? "line-through" : "none",
@@ -157,11 +161,11 @@ function DayColumn({ day, events, isToday, onEventClick }: { day: Date; events: 
           }} />
         );
       })}
-      {/* now line */}
+      {/* now line — the destructive token (theme-aware) marks the current time */}
       {isToday && now !== null && (
         <div className="absolute left-0 right-0 z-10 pointer-events-none" style={{ top: (now / 60) * HOUR_HEIGHT }}>
-          <div className="h-px bg-red-500" />
-          <div className="absolute -left-1 -top-1 h-2 w-2 rounded-full bg-red-500" />
+          <div className="h-px" style={{ backgroundColor: "hsl(var(--destructive))" }} />
+          <div className="absolute -left-1 -top-1 h-2 w-2 rounded-full" style={{ backgroundColor: "hsl(var(--destructive))" }} />
         </div>
       )}
     </div>

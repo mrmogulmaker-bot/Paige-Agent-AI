@@ -9,14 +9,15 @@
  * Google Meet / Zoom / in-person / custom / ask-the-invitee). No login, no
  * external provider required — booking creates an internal_bookings appointment.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { useReducedMotion } from "framer-motion";
 import {
   format, startOfMonth, endOfMonth, addMonths, startOfWeek, addDays, isSameMonth, isSameDay, parseISO,
 } from "date-fns";
 import {
-  Clock, Loader2, Check, ArrowLeft, ChevronLeft, ChevronRight, CalendarDays,
-  Video, Phone, MapPin, Link2, HelpCircle, Users,
+  Clock, Loader2, Check, ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, CalendarDays,
+  Video, Phone, MapPin, Link2, HelpCircle, Users, Globe, Search, CalendarPlus, Download, ExternalLink,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,9 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 type LocationOption = { type: string; value: string | null };
 type IntakeQuestion = { id: string; label: string; type: string; required: boolean; options: string[]; placeholder: string | null };
-type AppointmentType = { id: string; name: string; description: string | null; duration_min: number };
+// price_cents/currency are OPTIONAL (§2 — pricing is never forced): a null
+// price_cents means the service is unpriced and the card shows no price.
+type AppointmentType = { id: string; name: string; description: string | null; duration_min: number; price_cents?: number | null; currency?: string };
 type Brand = {
   name: string; logoUrl: string | null; accent: string; title: string | null; description: string | null;
   theme: "light" | "dark"; subtitle: string | null; showCompanyName: boolean;
@@ -68,6 +71,128 @@ function palette(theme: "light" | "dark") {
         text: "#101828", sub: "#667085", faint: "#B4B8C2", hover: "#F5F6F8", field: "#FFFFFF" };
 }
 
+// --- Timezone-aware formatting (Intl-based; no external tz lib) --------------
+// Slots arrive as UTC instants; the guest re-buckets them into any IANA zone.
+/** The calendar day ("YYYY-MM-DD") a UTC instant falls on, as seen in `tz`. */
+function dayKeyInTz(iso: string, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+  } catch {
+    return format(new Date(iso), "yyyy-MM-dd");
+  }
+}
+/** The 0–23 wall-clock hour of a UTC instant in `tz` (for AM/PM grouping). */
+function hourInTz(iso: string, tz: string): number {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour12: false, hour: "2-digit" }).formatToParts(new Date(iso));
+    const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+    return h === 24 ? 0 : h;
+  } catch {
+    return new Date(iso).getHours();
+  }
+}
+/** A short time label ("2:30 PM" / "14:30") for a UTC instant in `tz`. */
+function timeLabelInTz(iso: string, tz: string, hour12: boolean): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit", hour12 }).format(new Date(iso));
+  } catch {
+    return format(new Date(iso), hour12 ? "h:mm a" : "HH:mm");
+  }
+}
+/** A long, human date+time label in `tz` (brand panel + confirmation). */
+function longLabelInTz(iso: string, tz: string, hour12: boolean): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, weekday: "short", month: "short", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit", hour12, timeZoneName: "short",
+    }).format(new Date(iso));
+  } catch {
+    return format(new Date(iso), "EEE, MMM d, yyyy · h:mm a");
+  }
+}
+/** A friendly, offset-prefixed timezone label, e.g. "(GMT-04:00) America / New York". */
+function tzLabel(tz: string): string {
+  let off = "";
+  try {
+    off = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "shortOffset" })
+      .formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch { /* older engine — no offset */ }
+  const name = tz.replace(/_/g, " ").replace(/\//g, " / ");
+  return off ? `(${off}) ${name}` : name;
+}
+// Curated fallback for engines without Intl.supportedValuesOf (older Safari).
+const FALLBACK_TZS = [
+  "UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+  "America/Anchorage", "Pacific/Honolulu", "America/Toronto", "America/Sao_Paulo", "Europe/London",
+  "Europe/Paris", "Europe/Berlin", "Europe/Madrid", "Europe/Athens", "Africa/Johannesburg",
+  "Asia/Dubai", "Asia/Kolkata", "Asia/Bangkok", "Asia/Shanghai", "Asia/Tokyo",
+  "Australia/Sydney", "Pacific/Auckland",
+];
+function allTimezones(): string[] {
+  let list: string[] = FALLBACK_TZS;
+  try {
+    const v = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone");
+    if (Array.isArray(v) && v.length) list = v;
+  } catch { /* keep fallback */ }
+  // Guarantee the visitor's own zone is selectable even if it's not enumerated.
+  return list.includes(browserTz) ? list : [browserTz, ...list];
+}
+
+// --- "Add to calendar" (built client-side from the confirmed booking) -------
+function icsStamp(ms: number): string {
+  return new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+type CalEvent = { title: string; startMs: number; endMs: number; details: string; location: string };
+function googleCalUrl(e: CalEvent): string {
+  const p = new URLSearchParams({
+    action: "TEMPLATE", text: e.title,
+    dates: `${icsStamp(e.startMs)}/${icsStamp(e.endMs)}`,
+    details: e.details, location: e.location,
+  });
+  return `https://calendar.google.com/calendar/render?${p.toString()}`;
+}
+function downloadIcs(e: CalEvent, uid: string) {
+  const clean = (s: string) => String(s ?? "").replace(/([,;\\])/g, "\\$1").replace(/\r?\n/g, "\\n");
+  const ics = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Paige Agent AI//Booking//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "BEGIN:VEVENT", `UID:${uid}`, `DTSTAMP:${icsStamp(Date.now())}`, `DTSTART:${icsStamp(e.startMs)}`, `DTEND:${icsStamp(e.endMs)}`,
+    `SUMMARY:${clean(e.title)}`, `DESCRIPTION:${clean(e.details)}`, `LOCATION:${clean(e.location)}`,
+    "END:VEVENT", "END:VCALENDAR",
+  ].join("\r\n");
+  const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = "invite.ics";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** Currency label for a price in minor units; whole amounts drop the cents. */
+function formatPrice(cents: number, currency?: string): string {
+  const code = (currency || "usd").toUpperCase();
+  const amount = cents / 100;
+  try {
+    return amount.toLocaleString(undefined, { style: "currency", currency: code, maximumFractionDigits: cents % 100 === 0 ? 0 : 2 });
+  } catch {
+    return `$${amount.toFixed(cents % 100 === 0 ? 0 : 2)}`;
+  }
+}
+/** Two-letter initials from a person's display name (for host avatars). */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  return ((parts[0][0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
+
+// Static, theme-driven hover/focus styling (class-based so we don't mutate
+// element style imperatively; colors come from CSS vars set on the card).
+const BOOKING_CSS = `
+.bk-svc, .bk-slot, .bk-opt, .bk-focusable { outline: none; }
+.bk-motion .bk-svc, .bk-motion .bk-slot { transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease, color .15s ease; }
+.bk-svc:hover, .bk-svc:focus-visible { border-color: var(--bk-accent) !important; box-shadow: 0 0 0 3px var(--bk-ring); }
+.bk-slot:hover, .bk-slot:focus-visible { background: var(--bk-accent) !important; color: var(--bk-accent-text) !important; }
+.bk-focusable:focus-visible { box-shadow: 0 0 0 3px var(--bk-ring); border-color: var(--bk-accent); }
+`;
+
 export default function BookingPage() {
   const { slug } = useParams<{ slug: string }>();
   const [phase, setPhase] = useState<Phase>("loading");
@@ -96,6 +221,15 @@ export default function BookingPage() {
   // can pull more (honoring a long booking window) without refetching per view.
   const loadedToRef = useRef<number>(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Guest-chosen display zone + clock format — slots re-bucket live, no refetch
+  // (the instants are fixed; only how we group and label them changes).
+  const [tz, setTz] = useState<string>(browserTz);
+  const [hour12, setHour12] = useState<boolean>(true);
+  // Self-serve manage link, if the create response carries one (see integrator
+  // note): powers "Reschedule or cancel" on the confirmation.
+  const [manageLink, setManageLink] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
+  const tzOptions = useMemo(() => allTimezones().map((z) => ({ value: z, label: tzLabel(z) })), []);
 
   // Fetch availability up to `toIso` (omitted = the calendar's default window).
   // The edge function always serves from "now" and caps at the booking horizon,
@@ -175,25 +309,36 @@ export default function BookingPage() {
     return Array.isArray(v) ? v.length > 0 : !!(v && String(v).trim());
   });
 
-  // Slot instants grouped by the visitor's local day; the set of bookable days.
+  // Slot instants grouped by the day they fall on in the CHOSEN zone; the set
+  // of bookable days. Re-buckets whenever the guest switches timezones.
   const byDay = useMemo(() => {
     const m = new Map<string, string[]>();
     for (const s of slots) {
-      const key = format(new Date(s), "yyyy-MM-dd");
+      const key = dayKeyInTz(s, tz);
       if (!m.has(key)) m.set(key, []);
       m.get(key)!.push(s);
     }
     return m;
-  }, [slots]);
+  }, [slots, tz]);
   const days = useMemo(() => Array.from(byDay.keys()).sort(), [byDay]);
 
-  // Land the month view + selected day on the first available day.
+  // The selected day's slots split into Morning (AM) / Afternoon (PM) so the
+  // list reads as sections instead of one long flat scroll.
+  const daySections = useMemo(() => {
+    const list = selectedDay ? byDay.get(selectedDay) ?? [] : [];
+    const am: string[] = [], pm: string[] = [];
+    for (const s of list) (hourInTz(s, tz) < 12 ? am : pm).push(s);
+    return { am, pm, total: list.length };
+  }, [selectedDay, byDay, tz]);
+
+  // Land on the first available day — and re-anchor if a timezone switch shifts
+  // the selected day out of the bookable set (it could land on a now-empty day).
   useEffect(() => {
-    if (days.length && !selectedDay) {
+    if (days.length && (!selectedDay || !byDay.has(selectedDay))) {
       setSelectedDay(days[0]);
       setMonthCursor(startOfMonth(parseISO(days[0])));
     }
-  }, [days, selectedDay]);
+  }, [days, byDay, selectedDay]);
 
   const monthCells = useMemo(() => {
     const start = startOfWeek(startOfMonth(monthCursor));
@@ -213,7 +358,10 @@ export default function BookingPage() {
       },
     });
     setSubmitting(false);
-    const res = data as { error?: string } | null;
+    const res = data as {
+      error?: string; manageUrl?: string;
+      booking?: { id: string; start_at: string; end_at: string; title: string; manageUrl?: string; manage_url?: string };
+    } | null;
     if (error || res?.error) {
       setErrorMsg(res?.error ?? "Couldn't book that time.");
       if (res?.error?.includes("no longer available") || res?.error?.includes("just booked")) {
@@ -225,6 +373,9 @@ export default function BookingPage() {
       }
       return;
     }
+    // Self-serve manage link, when the create response carries one (the edge
+    // function currently only emails it — see the integrator note).
+    setManageLink(res?.booking?.manageUrl ?? res?.booking?.manage_url ?? res?.manageUrl ?? null);
     // Owner-set redirect: send the guest to their own thank-you / community page.
     // Only http(s) — never javascript: or other schemes from tenant-authored input.
     const redirect = (brand.redirectUrl ?? "").trim();
@@ -247,6 +398,12 @@ export default function BookingPage() {
         <div className="flex items-center gap-2 text-sm" style={{ color: c.sub }}>
           <Clock className="h-4 w-4" style={{ color: brand.accent }} /> {durationMin >= 60 ? `${durationMin % 60 === 0 ? durationMin / 60 : (durationMin / 60).toFixed(1)} hr` : `${durationMin} min`}
         </div>
+        {selectedType?.price_cents != null && selectedType.price_cents > 0 && (
+          <div className="flex items-center gap-2 text-sm font-medium" style={{ color: c.text }}>
+            <span className="h-4 w-4 grid place-items-center text-[15px] font-semibold" style={{ color: brand.accent }}>$</span>
+            {formatPrice(selectedType.price_cents, selectedType.currency)}
+          </div>
+        )}
         {(() => { const Icon = meetMulti ? HelpCircle : (LOCATION_META[fixedMeet.type]?.icon ?? Link2); return (
           <div className="flex items-center gap-2 text-sm" style={{ color: c.sub }}>
             <Icon className="h-4 w-4" style={{ color: brand.accent }} />
@@ -254,14 +411,17 @@ export default function BookingPage() {
           </div>
         ); })()}
         {withHosts && (
-          <div className="flex items-center gap-2 text-sm" style={{ color: c.sub }}>
-            <Users className="h-4 w-4" style={{ color: brand.accent }} /> With {withHosts}
+          <div className="flex items-start gap-2 text-sm" style={{ color: c.sub }}>
+            <Users className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: brand.accent }} />
+            <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+              With <AvatarStack names={withHosts} accent={brand.accent} accentText={accentText} c={c} /> {withHosts}
+            </span>
           </div>
         )}
         {selectedSlot && (
           <div className="flex items-center gap-2 text-sm font-medium" style={{ color: c.text }}>
             <CalendarDays className="h-4 w-4" style={{ color: brand.accent }} />
-            {format(new Date(selectedSlot), "EEE, MMM d, yyyy · h:mm a")}
+            {longLabelInTz(selectedSlot, tz, hour12)}
           </div>
         )}
       </div>
@@ -280,16 +440,17 @@ export default function BookingPage() {
       <div className="space-y-2.5">
         {(brand.appointmentTypes ?? []).map((t) => (
           <button key={t.id} onClick={() => chooseService(t)}
-            className="w-full text-left rounded-xl p-4 transition-colors outline-none"
-            style={{ border: `1px solid ${c.border}`, background: c.panel }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = brand.accent; }}
-            onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.borderColor = c.border; }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = brand.accent; e.currentTarget.style.boxShadow = `0 0 0 3px ${brand.accent}33`; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = c.border; e.currentTarget.style.boxShadow = "none"; }}>
-            <div className="flex items-center justify-between gap-3">
+            className="bk-svc w-full text-left rounded-xl p-4"
+            style={{ border: `1px solid ${c.border}`, background: c.panel }}>
+            <div className="flex items-start justify-between gap-3">
               <span className="font-semibold text-sm" style={{ color: c.text }}>{t.name}</span>
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium flex-shrink-0" style={{ color: brand.accent }}>
-                <Clock className="h-3.5 w-3.5" /> {t.duration_min >= 60 ? `${t.duration_min % 60 === 0 ? t.duration_min / 60 : (t.duration_min / 60).toFixed(1)} hr` : `${t.duration_min} min`}
+              <span className="flex flex-col items-end gap-1 flex-shrink-0" style={{ color: brand.accent }}>
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium">
+                  <Clock className="h-3.5 w-3.5" /> {t.duration_min >= 60 ? `${t.duration_min % 60 === 0 ? t.duration_min / 60 : (t.duration_min / 60).toFixed(1)} hr` : `${t.duration_min} min`}
+                </span>
+                {t.price_cents != null && t.price_cents > 0 && (
+                  <span className="text-sm font-semibold">{formatPrice(t.price_cents, t.currency)}</span>
+                )}
               </span>
             </div>
             {t.description && <p className="text-xs mt-1.5" style={{ color: c.sub }}>{t.description}</p>}
@@ -352,34 +513,56 @@ export default function BookingPage() {
               })}
             </div>
           </div>
-          {/* Time slots */}
-          <div className="max-h-[360px] overflow-y-auto pr-1 space-y-2">
-            {selectedDay && (byDay.get(selectedDay) ?? []).length === 0 && <p className="text-sm" style={{ color: c.sub }}>No times.</p>}
-            {(selectedDay ? byDay.get(selectedDay) ?? [] : []).map((t) => {
-              // Class only: seats left at this slot, so it reads "3 left"
-              // instead of the slot just vanishing once it's full.
-              const spot = classSpots[t];
+          {/* Time slots — grouped Morning / Afternoon */}
+          <div className="max-h-[360px] overflow-y-auto pr-1 space-y-4">
+            {daySections.total === 0 && <p className="text-sm" style={{ color: c.sub }}>No times.</p>}
+            {([["Morning", daySections.am], ["Afternoon", daySections.pm]] as const).map(([label, list]) =>
+              list.length ? (
+                <div key={label} className="space-y-2">
+                  <div className="sticky top-0 z-10 py-0.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: c.faint, background: c.card }}>{label}</div>
+                  {list.map((t) => {
+                    // Class only: seats left at this slot, so it reads "3 left"
+                    // instead of the slot just vanishing once it's full.
+                    const spot = classSpots[t];
+                    return (
+                      <button key={t}
+                        onClick={() => { setSelectedSlot(t); setErrorMsg(""); setInviteeLocation(meetOptions[0].type); setPhase("form"); }}
+                        className="bk-slot w-full rounded-lg py-2.5 text-sm font-semibold flex items-center justify-center gap-2"
+                        style={{ border: `1px solid ${brand.accent}`, color: brand.accent, background: "transparent" }}>
+                        {timeLabelInTz(t, tz, hour12)}
+                        {spot && (
+                          <span className="text-xs font-normal opacity-80">
+                            · {spot.remaining} {spot.remaining === 1 ? "seat" : "seats"} left
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null,
+            )}
+          </div>
+        </div>
+      )}
+      {/* Time zone + clock format — re-buckets the slots above, no refetch */}
+      <div className="mt-6 pt-4 space-y-2.5" style={{ borderTop: `1px solid ${c.border}` }}>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs font-medium" style={{ color: c.sub }}>Time zone</span>
+          <div className="inline-flex overflow-hidden rounded-lg" style={{ border: `1px solid ${c.border}` }}>
+            {([["12h", true], ["24h", false]] as const).map(([label, is12]) => {
+              const on = hour12 === is12;
               return (
-                <button key={t}
-                  onClick={() => { setSelectedSlot(t); setErrorMsg(""); setInviteeLocation(meetOptions[0].type); setPhase("form"); }}
-                  className="w-full rounded-lg py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-                  style={{ border: `1px solid ${brand.accent}`, color: brand.accent, background: "transparent" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = brand.accent; e.currentTarget.style.color = accentText; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = brand.accent; }}>
-                  {format(new Date(t), "h:mm a")}
-                  {spot && (
-                    <span className="text-xs font-normal opacity-80">
-                      · {spot.remaining} {spot.remaining === 1 ? "seat" : "seats"} left
-                    </span>
-                  )}
+                <button key={label} type="button" onClick={() => setHour12(is12)} aria-pressed={on}
+                  className="bk-focusable px-2.5 py-1 text-xs font-medium"
+                  style={on ? { background: "var(--bk-accent)", color: "var(--bk-accent-text)" } : { background: "transparent", color: c.sub }}>
+                  {label}
                 </button>
               );
             })}
           </div>
         </div>
-      )}
-      <div className="mt-6 pt-4 text-xs flex items-center gap-1.5" style={{ borderTop: `1px solid ${c.border}`, color: c.sub }}>
-        <CalendarDays className="h-3.5 w-3.5" /> Time zone: {browserTz}
+        <ThemedSelect searchable value={tz} onChange={setTz} options={tzOptions} c={c}
+          ariaLabel="Time zone" icon={<Globe className="h-3.5 w-3.5 flex-shrink-0" style={{ color: c.sub }} />} />
       </div>
     </div>
   );
@@ -439,11 +622,9 @@ export default function BookingPage() {
           if (q.type === "select") {
             return (
               <Field key={q.id} label={label} c={c}>
-                <select value={(val as string) ?? ""} required={q.required} aria-required={q.required} onChange={(e) => setAnswer(q.id, e.target.value)}
-                  className="flex h-9 w-full rounded-md border px-3 py-1 text-sm" style={fieldStyle(c)}>
-                  <option value="">Select…</option>
-                  {q.options.map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
+                <ThemedSelect value={(val as string) ?? ""} onChange={(v) => setAnswer(q.id, v)}
+                  options={q.options.map((o) => ({ value: o, label: o }))}
+                  placeholder="Select…" ariaLabel={q.label} ariaRequired={q.required} c={c} />
               </Field>
             );
           }
@@ -501,16 +682,79 @@ export default function BookingPage() {
   );
 
   // ---- Right: confirmation ----
-  const confirmation = (
-    <div className="p-8 text-center flex flex-col items-center justify-center min-h-[320px]">
-      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full" style={{ background: brand.accent + "22", color: brand.accent }}>
-        <Check className="h-7 w-7" />
+  const confirmation = (() => {
+    const startMs = selectedSlot ? Date.parse(selectedSlot) : NaN;
+    const endMs = Number.isFinite(startMs) ? startMs + durationMin * 60000 : NaN;
+    const evtTitle = selectedType?.name || brand.title || (brand.showCompanyName ? `${brand.name} booking` : "Your booking");
+    // The meeting method the guest actually gets: their pick when several were
+    // offered, otherwise the single fixed method.
+    const chosenMeet = meetMulti ? (meetOptions.find((o) => o.type === inviteeLocation) ?? meetOptions[0]) : fixedMeet;
+    const meetIsLink = !!chosenMeet.value && /^https?:\/\//i.test(chosenMeet.value);
+    const evtLocation = chosenMeet.type === "phone"
+      ? (chosenMeet.value ? `Phone: ${chosenMeet.value}` : "Phone call")
+      : chosenMeet.type === "in_person" ? (chosenMeet.value || "In person")
+      : chosenMeet.value || (LOCATION_META[chosenMeet.type]?.label ?? "Details to follow");
+    const evt: CalEvent = { title: evtTitle, startMs, endMs, details: (brand.description || "").slice(0, 500), location: evtLocation };
+    const MeetIcon = LOCATION_META[chosenMeet.type]?.icon ?? Link2;
+    return (
+      <div className="p-8 flex flex-col items-center text-center">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full" style={{ background: brand.accent + "22", color: brand.accent }}>
+          <Check className="h-7 w-7" />
+        </div>
+        <h2 className="text-xl font-bold" style={{ color: c.text }}>You're booked</h2>
+        <p className="mt-2 font-medium" style={{ color: c.text }}>{selectedSlot && longLabelInTz(selectedSlot, tz, hour12)}</p>
+        <p className="text-sm mt-1" style={{ color: c.sub }}>A confirmation is on its way to {form.email}.</p>
+
+        {withHosts && (
+          <div className="mt-3 flex items-center gap-2 text-sm" style={{ color: c.sub }}>
+            <AvatarStack names={withHosts} accent={brand.accent} accentText={accentText} c={c} /> With {withHosts}
+          </div>
+        )}
+
+        {/* Meeting method / link */}
+        <div className="mt-5 w-full max-w-xs rounded-lg px-3 py-2.5 text-sm flex items-center gap-2 text-left"
+          style={{ background: c.panel, border: `1px solid ${c.border}`, color: c.text }}>
+          <MeetIcon className="h-4 w-4 flex-shrink-0" style={{ color: brand.accent }} />
+          {meetIsLink ? (
+            <a href={chosenMeet.value!} target="_blank" rel="noopener noreferrer"
+              className="bk-focusable inline-flex items-center gap-1 rounded font-medium underline decoration-1 underline-offset-2" style={{ color: brand.accent }}>
+              Join {LOCATION_META[chosenMeet.type]?.label ?? "meeting"} <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          ) : (
+            <span>{chosenMeet.type === "google_meet" || chosenMeet.type === "zoom"
+              ? `${LOCATION_META[chosenMeet.type]?.label} — link is in your email`
+              : chosenMeet.type === "phone" ? (chosenMeet.value ? `Phone: ${chosenMeet.value}` : "We'll call the number you provided")
+              : evtLocation}</span>
+          )}
+        </div>
+
+        {/* Add to calendar — built client-side from the booking */}
+        {Number.isFinite(startMs) && (
+          <div className="mt-4 w-full max-w-xs">
+            <div className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: c.faint }}>Add to calendar</div>
+            <div className="grid grid-cols-2 gap-2">
+              <a href={googleCalUrl(evt)} target="_blank" rel="noopener noreferrer"
+                className="bk-focusable inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold"
+                style={{ border: `1px solid ${c.border}`, color: c.text }}>
+                <CalendarPlus className="h-4 w-4" style={{ color: brand.accent }} /> Google
+              </a>
+              <button type="button" onClick={() => downloadIcs(evt, `${slug}-${startMs}@paigeagent.ai`)}
+                className="bk-focusable inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold"
+                style={{ border: `1px solid ${c.border}`, color: c.text }}>
+                <Download className="h-4 w-4" style={{ color: brand.accent }} /> .ics file
+              </button>
+            </div>
+          </div>
+        )}
+
+        {manageLink && (
+          <a href={manageLink} className="bk-focusable mt-5 rounded text-sm font-medium" style={{ color: brand.accent }}>
+            Reschedule or cancel
+          </a>
+        )}
       </div>
-      <h2 className="text-xl font-bold" style={{ color: c.text }}>You're booked</h2>
-      <p className="mt-2" style={{ color: c.text }}>{selectedSlot && format(new Date(selectedSlot), "EEEE, MMMM d 'at' h:mm a")}</p>
-      <p className="text-sm mt-1" style={{ color: c.sub }}>A confirmation is saved under {form.email}.</p>
-    </div>
-  );
+    );
+  })();
 
   const rightContent =
     phase === "loading" ? <div className="p-8 flex items-center gap-2" style={{ color: c.sub }}><Loader2 className="h-4 w-4 animate-spin" /> Loading availability…</div>
@@ -526,14 +770,143 @@ export default function BookingPage() {
     : phase === "form" ? detailsForm
     : picker;
 
+  // Accent-derived CSS vars drive the class-based hover/focus styling (§4) so we
+  // never mutate element style imperatively; they cascade to the whole card.
+  const cardVars = {
+    "--bk-accent": brand.accent,
+    "--bk-accent-text": accentText,
+    "--bk-ring": brand.accent + "33",
+  } as React.CSSProperties;
   return (
     <div className="min-h-dvh flex items-center justify-center px-4 py-10" style={{ background: c.page }}>
-      <div className="w-full max-w-4xl rounded-2xl overflow-hidden grid md:grid-cols-[minmax(0,320px)_1fr]"
-        style={{ background: c.card, border: `1px solid ${c.border}`, boxShadow: brand.theme === "dark" ? "0 24px 60px rgba(0,0,0,0.5)" : "0 12px 40px rgba(16,24,40,0.10)" }}>
+      <style>{BOOKING_CSS}</style>
+      <div className={`w-full max-w-4xl rounded-2xl overflow-hidden grid md:grid-cols-[minmax(0,320px)_1fr]${reduceMotion ? "" : " bk-motion"}`}
+        style={{ ...cardVars, background: c.card, border: `1px solid ${c.border}`, boxShadow: brand.theme === "dark" ? "0 24px 60px rgba(0,0,0,0.5)" : "0 12px 40px rgba(16,24,40,0.10)" }}>
         {brandPanel}
         <div>{rightContent}</div>
       </div>
     </div>
+  );
+}
+
+// --- Accessible, themed dropdown (replaces native <select>; §11 no-native) --
+// A combobox/listbox with full keyboard support, optional type-ahead search,
+// and downward/upward flip so it never gets clipped by the card's overflow.
+type Opt = { value: string; label: string };
+function ThemedSelect({ value, onChange, options, placeholder, ariaLabel, ariaRequired, c, searchable = false, icon }: {
+  value: string; onChange: (v: string) => void; options: Opt[]; placeholder?: string;
+  ariaLabel?: string; ariaRequired?: boolean; c: ReturnType<typeof palette>; searchable?: boolean; icon?: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const [dropUp, setDropUp] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const uid = useId();
+
+  const filtered = useMemo(() => {
+    if (!searchable || !query.trim()) return options;
+    const q = query.toLowerCase();
+    return options.filter((o) => o.label.toLowerCase().includes(q));
+  }, [options, query, searchable]);
+  const selected = options.find((o) => o.value === value) ?? null;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  // Keep the active index in range as the filter narrows the list.
+  useEffect(() => { setActive((a) => Math.min(a, Math.max(0, filtered.length - 1))); }, [filtered.length]);
+  // Follow keyboard navigation with the scroll position.
+  useEffect(() => { if (open) document.getElementById(`${uid}-opt-${active}`)?.scrollIntoView({ block: "nearest" }); }, [active, open, uid]);
+
+  const openMenu = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    const below = r ? window.innerHeight - r.bottom : Infinity;
+    setDropUp(!!r && below < 280 && r.top > below); // flip up only when there's more room above
+    setQuery("");
+    const idx = options.findIndex((o) => o.value === value);
+    setActive(idx >= 0 ? idx : 0);
+    setOpen(true);
+    if (searchable) setTimeout(() => searchRef.current?.focus(), 0);
+  };
+  const toggle = () => (open ? setOpen(false) : openMenu());
+  const choose = (v: string) => { onChange(v); setOpen(false); btnRef.current?.focus(); };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); if (!open) openMenu(); else setActive((a) => Math.min(a + 1, filtered.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); if (open) setActive((a) => Math.max(a - 1, 0)); }
+    else if (e.key === "Enter") { if (open) { e.preventDefault(); const o = filtered[active]; if (o) choose(o.value); } }
+    else if (e.key === "Escape") { if (open) { e.preventDefault(); setOpen(false); btnRef.current?.focus(); } }
+    else if ((e.key === " " || e.key === "Spacebar") && !searchable) { e.preventDefault(); toggle(); }
+  };
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button ref={btnRef} type="button" role="combobox" aria-haspopup="listbox" aria-expanded={open}
+        aria-required={ariaRequired} aria-label={ariaLabel}
+        aria-activedescendant={open && filtered[active] ? `${uid}-opt-${active}` : undefined}
+        onClick={toggle} onKeyDown={onKeyDown}
+        className="bk-focusable flex h-9 w-full items-center justify-between gap-2 rounded-md border px-3 text-sm"
+        style={fieldStyle(c)}>
+        <span className="flex items-center gap-2 truncate" style={{ color: selected ? c.text : c.faint }}>
+          {icon}{selected ? selected.label : (placeholder ?? "Select…")}
+        </span>
+        <ChevronDown className="h-4 w-4 flex-shrink-0" style={{ color: c.sub, transform: open ? "rotate(180deg)" : "none", transition: "transform .15s ease" }} />
+      </button>
+      {open && (
+        <div className={`absolute z-30 w-full overflow-hidden rounded-lg border ${dropUp ? "bottom-full mb-1" : "top-full mt-1"}`}
+          style={{ background: c.card, borderColor: c.border, boxShadow: "0 12px 30px rgba(16,24,40,0.18)" }}>
+          {searchable && (
+            <div className="p-2" style={{ borderBottom: `1px solid ${c.border}` }}>
+              <div className="flex items-center gap-2 rounded-md border px-2" style={{ borderColor: c.border, background: c.field }}>
+                <Search className="h-3.5 w-3.5 flex-shrink-0" style={{ color: c.faint }} />
+                <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onKeyDown}
+                  placeholder="Search…" aria-label="Filter options"
+                  className="h-8 w-full bg-transparent text-sm outline-none" style={{ color: c.text }} />
+              </div>
+            </div>
+          )}
+          <div role="listbox" aria-label={ariaLabel} className="max-h-56 overflow-y-auto py-1">
+            {filtered.length === 0 && <div className="px-3 py-2 text-sm" style={{ color: c.sub }}>No matches</div>}
+            {filtered.map((o, i) => {
+              const on = o.value === value, act = i === active;
+              return (
+                <div key={o.value} id={`${uid}-opt-${i}`} role="option" aria-selected={on}
+                  onMouseEnter={() => setActive(i)} onMouseDown={(e) => { e.preventDefault(); choose(o.value); }}
+                  className="bk-opt flex cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm"
+                  style={{ background: act ? c.hover : "transparent" }}>
+                  <span className="truncate" style={on ? { color: "var(--bk-accent)", fontWeight: 600 } : { color: c.text }}>{o.label}</span>
+                  {on && <Check className="h-4 w-4 flex-shrink-0" style={{ color: "var(--bk-accent)" }} />}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Overlapping initial-badges for a host roster (round-robin / collective).
+function AvatarStack({ names, accent, accentText, c }: { names: string; accent: string; accentText: string; c: ReturnType<typeof palette> }) {
+  const list = names.split(",").map((n) => n.trim()).filter(Boolean).slice(0, 4);
+  if (!list.length) return null;
+  return (
+    <span className="inline-flex -space-x-1.5 align-middle">
+      {list.map((n, i) => (
+        <span key={n + i} title={n}
+          className="inline-grid h-6 w-6 place-items-center rounded-full text-[10px] font-semibold"
+          style={{ background: accent, color: accentText, border: `1.5px solid ${c.card}` }}>
+          {initials(n)}
+        </span>
+      ))}
+    </span>
   );
 }
 

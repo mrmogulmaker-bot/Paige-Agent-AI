@@ -40,6 +40,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
+} from "@/components/ui/accordion";
+import { StatePill, StatRow, StatTile, FilterChip } from "@/components/ui/page";
 import { toast } from "sonner";
 import { useTenantContext } from "@/hooks/useTenantContext";
 
@@ -75,6 +79,20 @@ export interface CalendarRow {
   appointment_types: AppointmentType[];
   date_overrides: DateOverride[];
   notify_config: NotifyConfig;
+  assignment_strategy: AssignmentStrategy;
+}
+
+// How round-robin picks which host takes each new booking (§9 tenant-scoped).
+export interface AssignmentStrategy { mode: "balanced" | "availability" | "priority" }
+const ASSIGNMENT_MODES: { value: AssignmentStrategy["mode"]; label: string; desc: string }[] = [
+  { value: "balanced", label: "Balanced", desc: "Spread evenly — the next booking goes to the free host with the fewest upcoming." },
+  { value: "availability", label: "First available", desc: "Fill the earliest open slot across the team, whoever it belongs to." },
+  { value: "priority", label: "By priority", desc: "Send to the top of the order first; fall to the next only when they're booked." },
+];
+function normalizeAssignmentStrategy(raw: unknown): AssignmentStrategy {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const mode = o.mode === "availability" || o.mode === "priority" ? o.mode : "balanced";
+  return { mode };
 }
 
 export interface LocationOption { type: string; value: string | null; }
@@ -117,16 +135,19 @@ function newId(prefix: string): string {
 }
 
 // Appointment types — a "service menu" on one booking page (tenant-scoped, §9).
-export interface AppointmentType { id: string; name: string; description: string; duration_min: number; }
+// price_cents is optional (§2): a service can be free / not-collected-here.
+export interface AppointmentType { id: string; name: string; description: string; duration_min: number; price_cents: number | null; }
 function normalizeAppointmentTypes(raw: unknown): AppointmentType[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((t, i) => {
     const o = (t && typeof t === "object" ? t : {}) as Record<string, unknown>;
+    const cents = Number(o.price_cents);
     return {
       id: String(o.id ?? `t${i}`),
       name: String(o.name ?? ""),
       description: typeof o.description === "string" ? o.description : "",
       duration_min: Math.max(5, Math.min(1440, Number(o.duration_min) || 30)),
+      price_cents: Number.isFinite(cents) && cents > 0 ? Math.round(cents) : null,
     };
   });
 }
@@ -161,6 +182,13 @@ const DEFAULT_NOTIFY: NotifyConfig = {
   confirm_guest: true, confirm_host: true, reminders: [{ channel: "email", offset_min: 1440 }],
   followup_guest: false, followup_offset_min: 60,
 };
+// How a reminder reaches the guest. SMS/Both need a phone on file + a texting
+// connection on the workspace; email always sends. Coaching-generic (§2).
+const REMINDER_CHANNELS = [
+  { value: "email", label: "Email" },
+  { value: "sms", label: "SMS" },
+  { value: "both", label: "Both" },
+];
 const REMINDER_OFFSETS = [
   { min: 15, label: "15 min before" },
   { min: 60, label: "1 hour before" },
@@ -188,7 +216,7 @@ const DEFAULT_AVAIL: AvailState = Object.fromEntries(
   [0, 1, 2, 3, 4, 5, 6].map((d) => [d, { enabled: d >= 1 && d <= 5, start: "09:00", end: "17:00" }]),
 );
 
-const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, capacity, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config";
+const SELECT_COLS = "id, tenant_id, slug, type, title, description, logo_url, accent, color, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, capacity, redirect_url, timezone, availability_json, enabled, group_id, created_by, theme, subtitle, show_company_name, location_type, location_value, location_options, intake_questions, appointment_types, date_overrides, notify_config, assignment_strategy";
 
 // Meeting methods the owner can offer. Enable one → fixed; enable several → the
 // invitee chooses on the booking page. in_person/custom carry a value field.
@@ -298,7 +326,7 @@ function ColorSwatches({ value, onChange }: { value: string | null; onChange: (c
         return (
           <button
             key={c} type="button" onClick={() => onChange(c)}
-            className={`h-7 w-7 rounded-full border flex items-center justify-center transition ${active ? "ring-2 ring-offset-2 ring-offset-background ring-foreground" : "border-black/10 hover:scale-110"}`}
+            className={`h-7 w-7 rounded-full border flex items-center justify-center transition ${active ? "ring-2 ring-offset-2 ring-offset-background ring-[hsl(var(--ring))]" : "border-border hover:scale-110"}`}
             style={{ backgroundColor: c }} aria-label={`Use ${c}`}
           >
             {active && <Check className="h-3.5 w-3.5 text-white drop-shadow" />}
@@ -307,23 +335,30 @@ function ColorSwatches({ value, onChange }: { value: string | null; onChange: (c
       })}
       <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
         <input type="color" value={value || "#EBB94C"} onChange={(e) => onChange(e.target.value)}
-          className="h-7 w-7 rounded p-0.5 border border-black/10 bg-transparent cursor-pointer" />
+          className="h-7 w-7 rounded p-0.5 border border-border bg-transparent cursor-pointer" />
         Custom
       </label>
     </div>
   );
 }
 
-// A labelled section inside the builder — gives the sheet real hierarchy.
+// A collapsible section inside the builder. The builder covers ~10 areas, so a
+// single scroll would be a wall (§67) — each area is an accordion panel instead,
+// titled + described on its trigger, opened one (or several) at a time. The
+// accordion `value` is derived from the title so it stays stable and unique.
 function BuilderSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
-        {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
-      </div>
-      {children}
-    </section>
+    <AccordionItem value={slugify(title)} className="border border-border rounded-lg bg-card px-4">
+      <AccordionTrigger className="hover:no-underline py-3.5">
+        <div className="text-left pr-2">
+          <div className="text-sm font-semibold tracking-tight">{title}</div>
+          {description && <div className="mt-0.5 text-xs font-normal text-muted-foreground">{description}</div>}
+        </div>
+      </AccordionTrigger>
+      <AccordionContent className="space-y-3 pt-0 pb-4">
+        {children}
+      </AccordionContent>
+    </AccordionItem>
   );
 }
 
@@ -381,6 +416,17 @@ function IntakeQuestionsEditor({ questions, onChange }: { questions: IntakeQuest
                 Required
               </label>
             </div>
+            {!hasOptions && (
+              <div className="space-y-1">
+                <Label className="text-xs">Placeholder (optional)</Label>
+                <Input
+                  value={q.placeholder ?? ""}
+                  placeholder="Faint hint shown in the empty field"
+                  onChange={(e) => patch(i, { placeholder: e.target.value || null })}
+                  className="h-8 text-sm"
+                />
+              </div>
+            )}
             {hasOptions && (
               <div className="space-y-1">
                 <Label className="text-xs">Options (one per line)</Label>
@@ -392,7 +438,7 @@ function IntakeQuestionsEditor({ questions, onChange }: { questions: IntakeQuest
                   className="text-sm"
                 />
                 {q.options.filter((o) => o.trim()).length === 0 && (
-                  <p className="text-xs text-amber-600">Add at least one option — a choice question with none is dropped on save.</p>
+                  <p className="text-xs text-[hsl(var(--warning))]">Add at least one option — a choice question with none is dropped on save.</p>
                 )}
               </div>
             )}
@@ -417,7 +463,7 @@ function AppointmentTypesEditor({ types, onChange }: { types: AppointmentType[];
     if (j < 0 || j >= types.length) return;
     const next = [...types]; [next[i], next[j]] = [next[j], next[i]]; onChange(next);
   };
-  const add = () => onChange([...types, { id: newId("t"), name: "", description: "", duration_min: 30 }]);
+  const add = () => onChange([...types, { id: newId("t"), name: "", description: "", duration_min: 30, price_cents: null }]);
   return (
     <div className="space-y-3">
       {types.length === 0 && (
@@ -443,6 +489,14 @@ function AppointmentTypesEditor({ types, onChange }: { types: AppointmentType[];
             ))}
             <Input type="number" min={5} step={5} value={t.duration_min} aria-label="Custom length in minutes" className="w-16 h-7"
               onChange={(e) => patch(i, { duration_min: Math.max(5, Number(e.target.value) || 30) })} />
+            <span className="text-xs text-muted-foreground ml-2 mr-0.5">Price</span>
+            <span className="text-sm text-muted-foreground">$</span>
+            <Input type="number" min={0} step="0.01" aria-label="Price" className="w-20 h-7" placeholder="Free"
+              value={t.price_cents != null ? String(t.price_cents / 100) : ""}
+              onChange={(e) => {
+                const v = e.target.value.trim();
+                patch(i, { price_cents: v === "" ? null : (Math.max(0, Math.round(Number(v) * 100)) || null) });
+              }} />
           </div>
           <Input value={t.description} aria-label="Service description" placeholder="Short blurb (optional)" onChange={(e) => patch(i, { description: e.target.value })} className="h-8 text-sm" />
         </div>
@@ -599,9 +653,7 @@ export default function CalendarsPanel() {
               </div>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
-              <span className={`text-[10px] font-medium ${c.enabled ? "text-emerald-500" : "text-muted-foreground"}`}>
-                {c.enabled ? "Live" : "Draft"}
-              </span>
+              <StatePill state={c.enabled ? "on" : "off"}>{c.enabled ? "Live" : "Draft"}</StatePill>
               <Switch
                 checked={c.enabled}
                 onCheckedChange={async (v) => {
@@ -664,7 +716,7 @@ export default function CalendarsPanel() {
             <Button onClick={() => setGroupOpen(true)} size="sm" variant="outline">
               <FolderPlus className="h-4 w-4 mr-1.5" /> New group
             </Button>
-            <Button onClick={() => setTypeChooser(true)} size="sm">
+            <Button onClick={() => setTypeChooser(true)} size="sm" variant="gold">
               <Plus className="h-4 w-4 mr-1.5" /> New calendar
             </Button>
           </div>
@@ -703,7 +755,7 @@ export default function CalendarsPanel() {
             <p className="text-xs text-muted-foreground mt-1 mb-3">
               Build your first calendar — set its schedule and branding, then share its booking link.
             </p>
-            <Button size="sm" onClick={() => setTypeChooser(true)}>
+            <Button size="sm" variant="gold" onClick={() => setTypeChooser(true)}>
               <Plus className="h-4 w-4 mr-1.5" /> Create a calendar
             </Button>
           </div>
@@ -826,71 +878,130 @@ function NewGroupDialog({ open, onOpenChange, tenantId, isPlatformStaff, onCreat
 }
 
 interface HostRow { user_id: string; full_name: string | null; }
-// Team roster for a calendar. Hosts live in calendar_hosts (priority-ordered).
-// Managing them is a direct DB op (RLS: can_manage_calendar). The top-priority
-// host currently takes bookings; round-robin distribution is a follow-up.
-function CalendarHostsSection({ calendarId, roundRobin, multiHost }: {
+interface HostLoadRow { user_id: string; full_name: string | null; priority: number; upcoming_count: number; }
+// Team roster for a calendar. Hosts are priority-ordered; the whole roster is
+// rewritten atomically through set_calendar_hosts (gated on can_manage_calendar)
+// so add/remove/reorder never leaves a half-applied priority list. Round-robin
+// distribution is live — the assignment strategy (balanced / first-available /
+// priority) decides which host each new booking lands on; calendar_host_load
+// surfaces the upcoming-per-host balance so the owner can see it stay even.
+function CalendarHostsSection({ calendarId, roundRobin, multiHost, strategy, onStrategyChange }: {
   calendarId: string; roundRobin: boolean; multiHost: boolean;
+  strategy: AssignmentStrategy; onStrategyChange: (s: AssignmentStrategy) => void;
 }) {
   const [hosts, setHosts] = useState<HostRow[]>([]);
   const [candidates, setCandidates] = useState<HostRow[]>([]);
+  const [load_, setLoad] = useState<HostLoadRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
-    // One authoritative call: hosts + candidate pool with names, manager-scoped.
-    // (profiles RLS is own-row-only, so teammate names come through this RPC.)
-    const { data, error } = await supabase.rpc("list_calendar_host_candidates", { _cal: calendarId });
+    // Hosts + candidate pool (manager-scoped names; profiles RLS is own-row only,
+    // so teammate names come through this RPC) alongside the per-host booking load.
+    const [{ data, error }, { data: loadData }] = await Promise.all([
+      supabase.rpc("list_calendar_host_candidates", { _cal: calendarId }),
+      supabase.rpc("calendar_host_load", { _cal: calendarId }),
+    ]);
     if (error) { toast.error(error.message); setLoading(false); return; }
     const rows = (data as { user_id: string; full_name: string | null; is_host: boolean; priority: number | null }[]) ?? [];
     setHosts(rows.filter((r) => r.is_host).map((r) => ({ user_id: r.user_id, full_name: r.full_name })));
     setCandidates(rows.filter((r) => !r.is_host).map((r) => ({ user_id: r.user_id, full_name: r.full_name })));
+    setLoad((loadData as HostLoadRow[]) ?? []);
     setLoading(false);
   }, [calendarId]);
 
   useEffect(() => { void load(); }, [load]);
 
-  // Rewrite priorities 0..n-1 from the given order.
-  const persistOrder = async (ordered: HostRow[]) => {
-    await Promise.all(ordered.map((h, i) =>
-      supabase.from("calendar_hosts").update({ priority: i }).eq("calendar_id", calendarId).eq("user_id", h.user_id)));
+  // Every mutation rewrites the full roster in priority order through one RPC —
+  // array position IS the priority, so there is no separate re-numbering step.
+  const persist = async (ordered: HostRow[]) => {
+    const { error } = await supabase.rpc("set_calendar_hosts", {
+      _cal: calendarId,
+      _hosts: ordered.map((h) => ({ user_id: h.user_id })),
+    });
+    return error;
   };
   const addHost = async () => {
-    if (!adding) return;
-    const { error } = await supabase.from("calendar_hosts").insert({ calendar_id: calendarId, user_id: adding, priority: hosts.length });
+    if (!adding || busy) return;
+    const cand = candidates.find((c) => c.user_id === adding);
+    const next = [...hosts, { user_id: adding, full_name: cand?.full_name ?? null }];
+    setBusy(true);
+    const error = await persist(next);
+    setBusy(false);
     if (error) { toast.error(error.message); return; }
     setAdding(""); await load();
   };
   const removeHost = async (uid: string) => {
     if (hosts.length <= 1) { toast.error("A calendar needs at least one host"); return; }
-    const { error } = await supabase.from("calendar_hosts").delete().eq("calendar_id", calendarId).eq("user_id", uid);
-    if (error) { toast.error(error.message); return; }
+    if (busy) return;
     const next = hosts.filter((h) => h.user_id !== uid);
-    setHosts(next); await persistOrder(next);
+    setBusy(true);
+    const error = await persist(next);
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    await load();
   };
   const move = async (idx: number, dir: -1 | 1) => {
     const j = idx + dir;
-    if (j < 0 || j >= hosts.length) return;
+    if (j < 0 || j >= hosts.length || busy) return;
     const next = [...hosts];
     [next[idx], next[j]] = [next[j], next[idx]];
-    setHosts(next); await persistOrder(next);
+    setHosts(next); // optimistic — order is the visible change
+    setBusy(true);
+    const error = await persist(next);
+    setBusy(false);
+    if (error) { toast.error(error.message); await load(); return; }
+    await load(); // reconcile the distribution priorities
   };
 
+  const loadByUser = useMemo(() => new Map(load_.map((r) => [r.user_id, r])), [load_]);
+  const activeMode = ASSIGNMENT_MODES.find((m) => m.value === strategy.mode) ?? ASSIGNMENT_MODES[0];
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading team…</div>
       ) : (
         <>
+          {/* Round-robin assignment strategy — how the next booking picks a host. */}
+          {roundRobin && (
+            <div className="space-y-2">
+              <Label className="text-xs">Assignment</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {ASSIGNMENT_MODES.map((m) => (
+                  <FilterChip key={m.value} active={strategy.mode === m.value} onClick={() => onStrategyChange({ mode: m.value })}>
+                    {m.label}
+                  </FilterChip>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">{activeMode.desc}</p>
+            </div>
+          )}
+
+          {/* Distribution — upcoming bookings per host, so the balance is visible. */}
+          {multiHost && hosts.length > 1 && (
+            <StatRow cols={2}>
+              {hosts.map((h) => (
+                <StatTile
+                  key={h.user_id}
+                  label={h.full_name || "Member"}
+                  value={loadByUser.get(h.user_id)?.upcoming_count ?? 0}
+                  hint="upcoming"
+                />
+              ))}
+            </StatRow>
+          )}
+
           {hosts.map((h, i) => (
-            <div key={h.user_id} className="flex items-center gap-2 rounded-lg border p-2">
+            <div key={h.user_id} className="flex items-center gap-2 rounded-lg border border-border p-2">
               <span className="h-7 w-7 rounded-full bg-primary/10 grid place-items-center text-[10px] font-semibold text-primary flex-shrink-0">{initials(h.full_name)}</span>
               <span className="text-sm flex-1 truncate">{h.full_name || "Member"}{i === 0 && <span className="text-[10px] text-muted-foreground ml-1.5">Primary</span>}</span>
               {roundRobin && (
                 <>
-                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move up"><ChevronUp className="h-3.5 w-3.5" /></button>
-                  <button type="button" onClick={() => move(i, 1)} disabled={i === hosts.length - 1} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move down"><ChevronDown className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0 || busy} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move up"><ChevronUp className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => move(i, 1)} disabled={i === hosts.length - 1 || busy} className="p-1 disabled:opacity-30 hover:text-primary" aria-label="Move down"><ChevronDown className="h-3.5 w-3.5" /></button>
                 </>
               )}
               {/* Shown whenever there's more than one host, even on a
@@ -898,7 +1009,7 @@ function CalendarHostsSection({ calendarId, roundRobin, multiHost }: {
                   host from before this type could only ever book its
                   primary, and there must be a way back down to one. */}
               {hosts.length > 1 && (
-                <button type="button" onClick={() => removeHost(h.user_id)} className="p-1 text-destructive hover:opacity-70" aria-label="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => removeHost(h.user_id)} disabled={busy} className="p-1 text-destructive hover:opacity-70 disabled:opacity-30" aria-label="Remove"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
             </div>
           ))}
@@ -913,12 +1024,12 @@ function CalendarHostsSection({ calendarId, roundRobin, multiHost }: {
                   {candidates.map((c) => <SelectItem key={c.user_id} value={c.user_id}>{c.full_name || "Member"}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Button type="button" size="sm" variant="outline" onClick={addHost} disabled={!adding}><Plus className="h-3.5 w-3.5 mr-1" /> Add</Button>
+              <Button type="button" size="sm" variant="outline" onClick={addHost} disabled={!adding || busy}><Plus className="h-3.5 w-3.5 mr-1" /> Add</Button>
             </div>
           )}
           {multiHost && (
             <p className="text-[11px] text-muted-foreground">
-              {roundRobin ? "Bookings rotate by this order (top = primary). " : "Every host above must be free for a slot to open."}
+              {roundRobin ? "Bookings rotate through this roster by your assignment rule above (top = primary)." : "Every host above must be free for a slot to open."}
             </p>
           )}
         </>
@@ -997,6 +1108,7 @@ function blankDraft(): Omit<CalendarRow, "id" | "slug" | "tenant_id" | "created_
     appointment_types: [],
     date_overrides: [],
     notify_config: { ...DEFAULT_NOTIFY, reminders: [...DEFAULT_NOTIFY.reminders] },
+    assignment_strategy: { mode: "balanced" },
   };
 }
 
@@ -1040,6 +1152,7 @@ function CalendarBuilderSheet({
         appointment_types: normalizeAppointmentTypes(c.appointment_types),
         date_overrides: normalizeDateOverrides(c.date_overrides),
         notify_config: normalizeNotify(c.notify_config),
+        assignment_strategy: normalizeAssignmentStrategy(c.assignment_strategy),
       });
       setAvail(jsonToAvail(c.availability_json));
       setSlugInput(c.slug);
@@ -1096,13 +1209,14 @@ function CalendarBuilderSheet({
         })
         .filter((q) => q.label.length > 0 && !(q._isChoice && q.options.length === 0))
         .map(({ _isChoice, ...q }) => q),
-      // Service menu: drop unnamed types; clamp duration.
+      // Service menu: drop unnamed types; clamp duration; keep price only when set.
       appointment_types: draft.appointment_types
         .map((t) => ({
           id: t.id,
           name: t.name.trim(),
           description: (t.description ?? "").trim(),
           duration_min: Math.max(5, Math.min(1440, t.duration_min || 30)),
+          price_cents: t.price_cents != null && t.price_cents > 0 ? Math.round(t.price_cents) : null,
         }))
         .filter((t) => t.name.length > 0),
       // Date overrides: keep valid dates; a non-blocked date needs ≥1 window.
@@ -1114,6 +1228,7 @@ function CalendarBuilderSheet({
         }))
         .filter((o) => /^\d{4}-\d{2}-\d{2}$/.test(o.date) && (o.blocked || o.windows.length > 0)),
       notify_config: draft.notify_config,
+      assignment_strategy: draft.assignment_strategy,
     };
 
     setSaving(true);
@@ -1192,7 +1307,7 @@ function CalendarBuilderSheet({
               </Button>
             </div>
             {!existing.enabled && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-1.5">
+              <p className="text-[11px] text-[hsl(var(--warning))] mt-1.5">
                 This calendar is a Draft — flip it Live on the card for the link to accept bookings.
               </p>
             )}
@@ -1217,7 +1332,7 @@ function CalendarBuilderSheet({
           </div>
         )}
 
-        <div className="space-y-7 py-5">
+        <Accordion type="multiple" defaultValue={["details"]} className="space-y-2.5 py-5">
           {/* 1 — Details */}
           <BuilderSection title="Details" description="What this calendar is for.">
             <div className="space-y-1.5">
@@ -1237,7 +1352,7 @@ function CalendarBuilderSheet({
               </div>
               <p className="text-[11px] text-muted-foreground">The public booking link. Leave blank to auto-generate. Letters, numbers, and dashes only.</p>
               {isEdit && existing?.enabled && slugify(slugInput) && slugify(slugInput) !== existing.slug && (
-                <p className="text-[11px] text-amber-600 dark:text-amber-500">Changing this breaks any link or embed you've already shared at the old address.</p>
+                <p className="text-[11px] text-[hsl(var(--warning))]">Changing this breaks any link or embed you've already shared at the old address.</p>
               )}
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
@@ -1358,14 +1473,15 @@ function CalendarBuilderSheet({
             </div>
             <div className="space-y-1.5">
               <Label>Booking window</Label>
-              <select
-                value={String(draft.booking_horizon_days)}
-                onChange={(e) => set("booking_horizon_days", Number(e.target.value) || 60)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-                {BOOKING_HORIZON_PRESETS.map((p) => (
-                  <option key={p.days} value={String(p.days)}>{p.label}</option>
-                ))}
-              </select>
+              <Select value={String(draft.booking_horizon_days)}
+                onValueChange={(v) => set("booking_horizon_days", Number(v) || 60)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {BOOKING_HORIZON_PRESETS.map((p) => (
+                    <SelectItem key={p.days} value={String(p.days)}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground">How far ahead guests can book — keep it tight for a busy calendar, or open it wide.</p>
             </div>
             {draft.type === "event" && (
@@ -1404,6 +1520,8 @@ function CalendarBuilderSheet({
                 calendarId={existing.id}
                 roundRobin={draft.type === "round_robin"}
                 multiHost={draft.type === "round_robin" || draft.type === "collective"}
+                strategy={draft.assignment_strategy}
+                onStrategyChange={(s) => set("assignment_strategy", s)}
               />
             </BuilderSection>
           )}
@@ -1530,7 +1648,16 @@ function CalendarBuilderSheet({
               )}
               {draft.notify_config.reminders.map((rem, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground w-14">Email</span>
+                  <Select value={rem.channel || "email"}
+                    onValueChange={(v) => {
+                      const next = draft.notify_config.reminders.map((r, j) => j === i ? { ...r, channel: v } : r);
+                      set("notify_config", { ...draft.notify_config, reminders: next });
+                    }}>
+                    <SelectTrigger className="h-8 w-24" aria-label="Reminder channel"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {REMINDER_CHANNELS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                   <Select value={String(rem.offset_min)}
                     onValueChange={(v) => {
                       const next = draft.notify_config.reminders.map((r, j) => j === i ? { ...r, offset_min: Number(v) } : r);
@@ -1547,6 +1674,11 @@ function CalendarBuilderSheet({
                   </Button>
                 </div>
               ))}
+              {draft.notify_config.reminders.some((r) => r.channel === "sms" || r.channel === "both") && (
+                <p className="text-[11px] text-muted-foreground">
+                  Text reminders need the guest's phone number on file and a text-messaging connection on your workspace — email still sends on its own.
+                </p>
+              )}
             </div>
 
             {/* Post-meeting follow-up — nurture after the session ends. */}
@@ -1576,7 +1708,7 @@ function CalendarBuilderSheet({
               </p>
             </div>
           </BuilderSection>
-        </div>
+        </Accordion>
 
         <SheetFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
