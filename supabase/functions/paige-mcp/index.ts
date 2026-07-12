@@ -156,8 +156,9 @@ async function actorIsPlatformOwner(actor = currentActor()): Promise<boolean> {
     .from("user_roles")
     .select("role")
     .eq("user_id", actor.user_id)
-    .in("role", ["super_admin", "admin"]);
-  return (data ?? []).some((r: any) => r.role === "super_admin");
+    .eq("role", "super_admin")
+    .maybeSingle();
+  return !!data;
 }
 
 async function actorTenantId(): Promise<string | null> {
@@ -194,27 +195,17 @@ async function actorTenantId(): Promise<string | null> {
 }
 
 // ── Tier derivation (§9/§25) ────────────────────────────────────────────────
-// Agency management requires AUTHORITY over the parent (owner/admin), not mere
-// membership. Mirrors is_tenant_owner but admits 'admin' since agency admin work
-// is owner+admin.
-async function actorManagesTenant(actor: ActorCtx, tenantId: string): Promise<boolean> {
-  if (actor.kind === "platform") return true;
-  if (!actor.user_id) return false;
-  const { data } = await admin
-    .from("tenant_members")
-    .select("role")
-    .eq("user_id", actor.user_id)
-    .eq("tenant_id", tenantId)
-    .eq("status", "active")
-    .maybeSingle();
-  return data?.role === "owner" || data?.role === "admin";
-}
-
-// The active tenant's account_type ('standalone' | 'agency' | 'enterprise').
-async function actorTenantAccountType(tenantId: string | null): Promise<string | null> {
-  if (!tenantId) return null;
-  const { data } = await admin.from("tenants").select("account_type").eq("id", tenantId).maybeSingle();
-  return (data?.account_type as string | null) ?? null;
+// Agency tier is a property of the ACTOR, not their current tenant: it's "does
+// this actor own/admin ANY agency/enterprise tenant." Deriving it from the
+// active tenant's account_type would trap the operator the moment they switch
+// into a standalone child (tier → tenant, agency tools unreachable, no way back).
+// Basing it on the actor keeps the agency tool set reachable while they operate
+// inside a child. (SECURITY DEFINER, service_role-only RPC.)
+async function actorManagesAnyAgency(actor: ActorCtx): Promise<boolean> {
+  if (actor.kind !== "user" || !actor.user_id) return false;
+  const { data, error } = await admin.rpc("actor_manages_any_agency", { _actor: actor.user_id });
+  if (error) return false;
+  return data === true;
 }
 
 // A client/consumer portal seat: a USER token whose granted scopes are ENTIRELY
@@ -228,18 +219,12 @@ function isClientSeat(actor: ActorCtx): boolean {
 }
 
 // THE request-time tier. Precedence: god → client(sealed) → agency → tenant.
-// MUST run inside actorStore.run(actor, …) so the DB helpers see the actor.
-async function deriveTier(actor: ActorCtx, tenantId: string | null): Promise<McpTier> {
+async function deriveTier(actor: ActorCtx): Promise<McpTier> {
   if (actor.kind === "platform") return "god";
   if (await actorIsPlatformOwner(actor)) return "god";   // actorIsPlatformOwner already ⇒ true for platform
-  // client is sealed BEFORE agency — a self.* seat whose active tenant happens
-  // to be an agency can NEVER widen to agency.
+  // client is sealed BEFORE agency — a self.* seat can never widen to agency.
   if (isClientSeat(actor)) return "client";
-  const acct = await actorTenantAccountType(tenantId);
-  if ((acct === "agency" || acct === "enterprise") && tenantId &&
-      await actorManagesTenant(actor, tenantId)) {
-    return "agency";
-  }
+  if (await actorManagesAnyAgency(actor)) return "agency";
   // Fallback: standalone owner/admin, or an agency member without owner/admin
   // authority, or an unresolved tenant (tenant tools all re-resolve and hard-fail
   // tenant_not_resolved, so an unresolved tenant can touch nothing).
@@ -2571,7 +2556,12 @@ mcp.tool("search_clients_fuzzy", {
       .limit(max);
     // Only the platform owner searches across every tenant; everyone else
     // (including agencies) is hard-scoped to their own tenant here (§9).
-    if (tid && !isGod) q = q.eq("tenant_id", tid);
+    // Fail CLOSED: a non-god with no resolvable tenant gets nothing, never an
+    // unscoped cross-tenant search.
+    if (!isGod) {
+      if (!tid) return err("tenant_not_resolved");
+      q = q.eq("tenant_id", tid);
+    }
     const { data, error } = await q;
     if (error) return err(error.message);
     const items = data ?? [];
@@ -3544,13 +3534,30 @@ mcp.tool("switch_into_subaccount", {
   handler: async ({ subaccount_id }) => {
     const actor = currentActor();
     if (!actor.user_id) return err("agency_actor_required");
-    // Parentage-check BEFORE the write — the scoped analog of god
-    // switch_active_tenant, hard-limited to the caller's own children.
-    if (!(await agencyCanManageChild(subaccount_id))) return err("agency_scope_forbidden");
-    const { error } = await admin.from("profiles").update({ active_tenant_id: subaccount_id }).eq("user_id", actor.user_id);
-    if (error) return err(error.message);
+    // One guarded RPC: parentage-checks, ensures the operator has a membership on
+    // their own child (so the active tenant actually resolves there and tenant
+    // tools operate inside it), then points active_tenant at it. RAISEs
+    // agency_scope_forbidden (42501) for a foreign/arbitrary child. The operator
+    // stays AGENCY tier throughout (tier is a property of the actor, not the
+    // active tenant), so they can list/switch/exit from inside the child.
+    const { error } = await admin.rpc("agency_enter_subaccount", { _child: subaccount_id, _actor: actor.user_id });
+    if (error) return err(/agency_scope_forbidden/.test(error.message) ? "agency_scope_forbidden" : error.message);
     await audit("switch_into_subaccount", "tenant", subaccount_id, {});
     return ok({ active_tenant_id: subaccount_id });
+  },
+});
+
+mcp.tool("exit_subaccount", {
+  description:
+    "Agency only. Leave the sub-account you switched into and return to your agency workspace, so subsequent tools operate at the agency level again.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const actor = currentActor();
+    if (!actor.user_id) return err("agency_actor_required");
+    const { data, error } = await admin.rpc("agency_exit_subaccount", { _actor: actor.user_id });
+    if (error) return err(/no_agency_home/.test(error.message) ? "no_agency_home" : error.message);
+    await audit("exit_subaccount", "tenant", (data as string) ?? null, {});
+    return ok({ active_tenant_id: data });
   },
 });
 
@@ -4648,6 +4655,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   get_subaccount_metrics: "admin.read",
   create_subaccount: "admin.write",
   switch_into_subaccount: "admin.write",
+  exit_subaccount: "admin.write",
 
 };
 
@@ -4665,6 +4673,7 @@ const AGENCY_TOOLS = new Set<string>([
   "create_subaccount",
   "get_subaccount_metrics",
   "switch_into_subaccount",
+  "exit_subaccount",
 ]);
 function toolTier(name: string): McpTier {
   if (MASTER_ONLY_TOOLS.has(name)) return "god";
@@ -4752,11 +4761,24 @@ async function enforceTierAndScope(
   body: any,
   actor: ActorCtx,
 ): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  // NOTE: this inspects a single JSON-RPC object's `.method`. A JSON-RPC batch
+  // ARRAY has no top-level `.method` and would slip past — that is safe TODAY
+  // only because the transport (StreamableHttpTransport, no session adapter)
+  // rejects batch arrays with a 400 before dispatch. If a session adapter is
+  // ever added, this gate MUST iterate over each batch element.
   if (body?.method !== "tools/call") return { ok: true };
   const toolName = body?.params?.name;
   const requiredTier = toolTier(toolName);
-  const callerTenant = await actorStore.run(actor, () => actorTenantId());
-  const tier = await actorStore.run(actor, () => deriveTier(actor, callerTenant));
+
+  // Tier resolution reads the DB (roles/agency). A transient DB error must fail
+  // CLOSED as a structured 403, never throw past the caller into an opaque 500 (§13).
+  let tier: McpTier;
+  try {
+    tier = await actorStore.run(actor, () => deriveTier(actor));
+  } catch (e) {
+    console.error("[paige-mcp] tier resolution failed", (e as Error)?.message);
+    return { ok: false, status: 403, error: "tier_resolution_failed" };
+  }
 
   // ── TIER GATE (audience) ──
   let tierOk: boolean;
@@ -4765,7 +4787,8 @@ async function enforceTierAndScope(
   else tierOk = TIER_RANK[tier] >= TIER_RANK[requiredTier];       // god⊇agency⊇tenant
   if (!tierOk) {
     await actorStore.run(actor, () =>
-      audit("tier_denied", "mcp_tool", toolName ?? null, { required_tier: requiredTier, caller_tier: tier }));
+      audit("tier_denied", "mcp_tool", toolName ?? null, { required_tier: requiredTier, caller_tier: tier }))
+      .catch(() => {});
     return {
       ok: false, status: 403,
       error: `tier_forbidden: '${toolName}' requires '${requiredTier}', caller is '${tier}'`,
@@ -5132,8 +5155,7 @@ app.all("/*", async (c) => {
   // the full operator set.
   if (method === "POST" && peekedBody?.method === "tools/list") {
     try {
-      const callerTenant = await actorStore.run(actor, () => actorTenantId());
-      const tier = await actorStore.run(actor, () => deriveTier(actor, callerTenant));
+      const tier = await actorStore.run(actor, () => deriveTier(actor));
       const isUser = actor.kind === "user";
       const scopeSet = new Set(actor.scopes);
       // Tier-aware visibility mirrors the enforcement gate in enforceTierAndScope
