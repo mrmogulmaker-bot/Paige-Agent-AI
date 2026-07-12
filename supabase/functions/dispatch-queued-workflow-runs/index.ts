@@ -13,6 +13,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { dispatchWorkflowRun } from "../_shared/workflowDispatch.ts";
+import { contactHintsFromPayload, emitAutomationRail } from "../_shared/railAutomation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -89,7 +90,7 @@ Deno.serve(async (req) => {
   // 2. Running rows on langgraph_bridge needing completion check.
   const { data: bridgeRunning } = await admin
     .from("paige_workflow_runs")
-    .select("id, registry_id, status, n8n_execution_id, langgraph_thread_id, retry_count, last_dispatched_at, paige_workflow_registry!inner(provider)")
+    .select("id, registry_id, status, payload, n8n_execution_id, langgraph_thread_id, retry_count, last_dispatched_at, paige_workflow_registry!inner(provider, label, tenant_id)")
     .eq("status", "running")
     .eq("paige_workflow_registry.provider", "langgraph_bridge")
     .lt("last_dispatched_at", bridgePollCutoff)
@@ -127,6 +128,19 @@ Deno.serve(async (req) => {
         completed_at: stamp,
         last_dispatched_at: stamp,
       }).eq("id", r.id);
+      // Rail (owner_ops) — the async bridge run has genuinely COMPLETED (§13: only on
+      // real terminal success). Its automation.fired was emitted at dispatch time
+      // (paige-mcp), so this pairs it. Best-effort + non-blocking; skips without a client.
+      {
+        const reg = (r as any).paige_workflow_registry ?? {};
+        const hints = contactHintsFromPayload((r as any).payload ?? {});
+        await emitAutomationRail(admin, {
+          tenantId: reg?.tenant_id ?? null,
+          contactId: hints.contactId, email: hints.email, phone: hints.phone,
+          workflowName: reg?.label ?? null,
+          phase: "completed", refTable: "paige_workflow_runs", refId: r.id,
+        });
+      }
       results.push({ run_id: r.id, mode: "bridge_poll", status: "succeeded" });
     } else if (poll.status && TERMINAL_FAIL.has(poll.status)) {
       await admin.from("paige_workflow_runs").update({

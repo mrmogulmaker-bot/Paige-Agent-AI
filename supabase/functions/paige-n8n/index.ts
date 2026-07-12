@@ -13,6 +13,7 @@
 //    blocklist + manual-redirect re-validation) so it can't be pointed at an
 //    internal target or DNS-rebind.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { contactHintsFromPayload, emitAutomationRail } from "../_shared/railAutomation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -227,10 +228,12 @@ Deno.serve(async (req) => {
         // node and be active). Accept an explicit webhook_path, or resolve it
         // from the workflow's webhook node.
         let path: string | undefined = body.webhook_path;
+        let wfName: string | null = null;
         if (!path && body.workflow_id) {
           const wres = await n8nFetch(baseUrl, apiKey, `/workflows/${encodeURIComponent(body.workflow_id)}`);
           if (!wres.ok) return json({ error: `n8n_${wres.status}`, detail: (await wres.text()).slice(0, 300) }, 502);
           const wf = await wres.json();
+          wfName = typeof wf?.name === "string" ? wf.name : null;
           const nodes: any[] = wf?.nodes ?? [];
           const hook = nodes.find((n) => typeof n?.type === "string" && n.type.toLowerCase().includes("webhook"));
           path = hook?.parameters?.path;
@@ -276,6 +279,17 @@ Deno.serve(async (req) => {
           delivered = errs.length ? false : anyTrue ? true : anyClaim ? false : null;
         }
         const executionId = o.executionId ?? o.execution_id ?? hookRes.headers.get("x-execution-id") ?? null;
+        // Rail (owner_ops) — the automation fired for the run's client (LAYER 1: the
+        // webhook accepted it). Delivery/completion stays a separate concern (verified
+        // via execution_get), so we file fired only, never a premature completed (§13).
+        // Best-effort + non-blocking; skips unless a real client resolves from payload.
+        if (hookRes.ok) {
+          const hints = contactHintsFromPayload(body.payload ?? {});
+          await emitAutomationRail(admin, {
+            tenantId, contactId: hints.contactId, email: hints.email, phone: hints.phone,
+            workflowName: wfName, phase: "fired",
+          });
+        }
         return json({
           ok: true,                          // the edge function itself ran
           action: "run",

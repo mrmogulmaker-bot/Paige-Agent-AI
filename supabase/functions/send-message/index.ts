@@ -193,6 +193,75 @@ Deno.serve(async (req) => {
       .eq("id", body.approval_id);
   }
 
+  // ── Paige Context Rail — COMMS emitter: file 'comms.outbound' after a message
+  // actually SENDS to a client, so the OWNER rail AND the client's OWN live feed
+  // both reflect the two-way conversation in real time (§7/§8). comms.outbound is a
+  // client_visible kind → record_rail_event reaches both the client feed and the
+  // owner rail. Truthful (§13): gated on status === "sent" only — a fire is not a
+  // delivery, and a failed send never files a comms event. Telemetry ONLY: the whole
+  // block is wrapped so a rail failure can NEVER affect message delivery or the
+  // structured { status, error } payload this function returns. Contact resolution:
+  // an explicit body.contact_id wins; otherwise we resolve the to-address WITHIN THE
+  // CALLER'S TENANT via the JWT-scoped resolver (userClient carries the caller's JWT,
+  // so auth.uid() is set and resolve_contact_id scopes to current_user_tenant_id() —
+  // no cross-tenant match, §9). If no contact resolves we SKIP rather than fabricate
+  // one (§13). We then read that contact's tenant to pass p_tenant_id on the
+  // service-role record_rail_event call (auth.uid() is NULL there).
+  if (status === "sent") {
+    try {
+      // Resolve the caller's own tenant once (JWT-scoped). An explicitly-supplied
+      // body.contact_id is only trusted if it belongs to THIS tenant — otherwise a
+      // caller in tenant A could pass tenant B's contact id and file comms.outbound
+      // onto B's owner rail AND B's client-visible feed (§9). The resolver-fallback
+      // path below is already scoped to the caller via userClient's JWT, so it can
+      // only ever return an in-tenant contact.
+      const { data: callerTenant } = await userClient.rpc("current_user_tenant_id");
+      let railContactId: string | null = body.contact_id ?? null;
+      if (!railContactId) {
+        const { data: resolved } = await userClient.rpc("resolve_contact_id", {
+          p_tenant: null,
+          p_phone: body.channel === "sms" ? body.to : null,
+          p_email: body.channel === "email" ? body.to : null,
+          p_user_id: null,
+        });
+        railContactId = (typeof resolved === "string" && resolved) ? resolved : null;
+      }
+      if (railContactId) {
+        const { data: contactRow } = await admin
+          .from("clients")
+          .select("tenant_id")
+          .eq("id", railContactId)
+          .maybeSingle();
+        const tenantId = contactRow?.tenant_id ?? null;
+        // §9 gate: the contact's tenant must match the caller's own tenant. This
+        // catches a foreign explicit body.contact_id; the resolver path trivially
+        // passes (same tenant). Skip (don't mis-file) on mismatch or unknown caller.
+        if (tenantId && callerTenant && tenantId === callerTenant) {
+          // Build a clean, jargon-free preview for BOTH channels: email bodies are
+          // HTML, so strip tags (prefer the subject) before truncating so no markup
+          // leaks into the feed summary (§3); SMS bodies are already plain text.
+          const rawPreview = body.channel === "email" ? (body.subject || body.body) : body.body;
+          const text = (rawPreview || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+          const preview = text.length > 140 ? text.slice(0, 137) + "…" : text;
+          await admin.rpc("record_rail_event", {
+            p_contact_id: railContactId,
+            p_event_kind: "comms.outbound",
+            p_surface: "client_portal",
+            p_actor_type: "paige_agent",
+            p_title: "Message sent",
+            p_summary: preview || null,
+            p_ref_table: "paige_messages_audit",
+            p_ref_id: auditRow?.id ?? null,
+            p_from_department: "client_experience",
+            p_tenant_id: tenantId,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[send-message] comms.outbound rail emit skipped:", (e as Error)?.message);
+    }
+  }
+
   return new Response(
     JSON.stringify({
       audit_id: auditRow?.id,

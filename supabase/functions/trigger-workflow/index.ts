@@ -1,6 +1,7 @@
 // Trigger a workflow from paige_workflow_registry.
 // Routes by provider: n8n (webhook), langgraph (API), direct_edge_function (invoke), cron_only (rejected).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { contactHintsFromPayload, emitAutomationRail } from "../_shared/railAutomation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -156,6 +157,13 @@ Deno.serve(async (req) => {
       } else {
         newStatus = "succeeded";
       }
+    } else {
+      // Unknown/unsupported provider (e.g. a langgraph_bridge row that should route
+      // via the dispatcher, not here): nothing was dispatched. Mark failed so the run
+      // status is truthful AND the rail emitter below (which skips 'failed') never
+      // files an automation.fired for a workflow that was never sent (§13).
+      newStatus = "failed";
+      errorText = `unsupported_provider: ${registry.provider}`;
     }
   } catch (e) {
     newStatus = "failed";
@@ -172,6 +180,22 @@ Deno.serve(async (req) => {
       completed_at: newStatus === "running" ? null : new Date().toISOString(),
     })
     .eq("id", run.id);
+
+  // Rail (owner_ops) — file automation.fired/.completed for the run's client, if one
+  // resolves. Best-effort + non-blocking (§13): a rail failure can't affect the run.
+  // A dispatch that FAILED to fire is not reported. 'succeeded' (synchronous
+  // direct_edge_function) fired AND completed; 'running' (async n8n/langgraph) only fired.
+  if (newStatus === "running" || newStatus === "succeeded") {
+    const hints = contactHintsFromPayload(payload);
+    const railBase = {
+      tenantId: (registry as { tenant_id?: string | null }).tenant_id ?? null,
+      contactId: hints.contactId, email: hints.email, phone: hints.phone,
+      workflowName: (registry as { label?: string | null }).label ?? null,
+      refTable: "paige_workflow_runs", refId: run.id,
+    };
+    await emitAutomationRail(admin, { ...railBase, phase: "fired" });
+    if (newStatus === "succeeded") await emitAutomationRail(admin, { ...railBase, phase: "completed" });
+  }
 
   return jsonRes({
     run_id: run.id,

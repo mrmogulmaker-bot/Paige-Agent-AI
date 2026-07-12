@@ -4547,6 +4547,140 @@ function enforceScopeForBody(body: any, actor: ActorCtx): { ok: true } | { ok: f
   return { ok: true };
 }
 
+// ── Paige Context Rail — MCP producer (§7/§8/§12) ────────────────────────────
+// When an EXTERNAL MCP command (Claude Desktop, ChatGPT, etc.) runs an action
+// that TARGETS A CLIENT, we file an `mcp.command` event onto that client's
+// context rail so Paige-the-orchestrator (owner side) sees an outside tool
+// acted. `mcp.command` is owner_internal / owner_ops, so record_rail_event
+// broadcasts it to the owner rail only — never the client feed (§9).
+//
+// Only the tools below file a rail event — a curated allowlist of client-acting
+// mutations. Reads (search_/get_/list_) and tenant-level admin never emit. Each
+// label is human, friendly, and free of tool slugs / method names / jargon (§3),
+// and neutral about vertical (no credit/funding wording, even for opted-in
+// funding tools — §2). Title renders as "External command: <label>".
+const CLIENT_ACTION_LABELS: Record<string, string> = {
+  create_contact: "added a new client",
+  update_contact: "updated a client's details",
+  update_contact_stage: "updated a client's stage",
+  update_lifecycle_stage: "updated a client's stage",
+  add_contact_note: "added a note to a client",
+  append_client_memory: "saved a note about a client",
+  propose_client_update: "proposed a client update",
+  link_contact_to_business: "linked a client to their business",
+  assign_coach: "assigned a coach to a client",
+  advance_contact_journey_stage: "advanced a client's journey",
+  create_deal: "created a deal for a client",
+  create_invoice: "created an invoice for a client",
+  send_transactional_email: "sent an email to a client",
+  send_composed_email: "sent an email to a client",
+  send_btf_template_email: "sent an email to a client",
+  send_sms: "sent a text to a client",
+  run_workflow: "ran an automation for a client",
+  ingest_credit_scores: "recorded a client update",
+  ingest_banking_snapshot: "recorded a client update",
+  trigger_readiness_scan_for_contact: "started a client review",
+  handle_data_subject_request: "processed a data request for a client",
+};
+
+function firstStr(...vals: unknown[]): string | null {
+  for (const v of vals) if (typeof v === "string" && v.trim()) return v.trim();
+  return null;
+}
+
+// Decide, from the transport's response, whether the tool call ACTUALLY
+// succeeded — a call is not a completed action (§13 truthful). Handles both the
+// JSON and text/event-stream framings mcp-lite can return. A JSON-RPC protocol
+// error, a missing result, or a tool that returned err() (result.isError) all
+// count as failure and suppress the emit.
+function mcpCallSucceeded(text: string, contentType: string, id: unknown): boolean {
+  const check = (obj: any): boolean => {
+    if (!obj || typeof obj !== "object") return false;
+    if (id !== undefined && obj.id !== undefined && obj.id !== id) return false;
+    if (obj.error) return false;
+    if (!obj.result) return false;
+    if (obj.result.isError === true) return false;
+    return true;
+  };
+  try {
+    if (contentType.includes("text/event-stream")) {
+      for (const line of text.split("\n")) {
+        const m = line.match(/^data:\s*(\{.*\})\s*$/);
+        if (m) { try { if (check(JSON.parse(m[1]))) return true; } catch { /* keep scanning frames */ } }
+      }
+      return false;
+    }
+    return check(JSON.parse(text));
+  } catch { return false; }
+}
+
+// File the mcp.command rail event for a client-targeting external command.
+// DETACHED and best-effort: clones the response synchronously, then does all
+// resolution + the emit off the response path so it can NEVER block or break
+// the MCP reply (§13). Emits only AFTER confirmed success and only when a REAL
+// contact resolves from the command's own arguments (never fabricated, never
+// cross-tenant — §9).
+function emitMcpCommandRail(actor: ActorCtx, body: any, res: Response): void {
+  const name: string = body?.params?.name ?? "";
+  const label = CLIENT_ACTION_LABELS[name];
+  if (!label) return; // not a client-acting command — nothing to file
+  const clone = res.clone();
+  void (async () => {
+    try {
+      const ct = clone.headers.get("content-type") ?? "";
+      const text = await clone.text();
+      if (!mcpCallSucceeded(text, ct, body?.id)) return; // truthful: only real completions
+
+      const rawArgs = (body?.params?.arguments && typeof body.params.arguments === "object")
+        ? body.params.arguments : {};
+      const explicitId = firstStr(rawArgs.contact_id, rawArgs.client_id, rawArgs.contact_client_id);
+      const email = firstStr(rawArgs.email, rawArgs.to, rawArgs.to_email, rawArgs.recipient_email);
+      const phone = firstStr(rawArgs.phone, rawArgs.to_phone);
+      if (!explicitId && !email && !phone) return; // tenant-level command, no client target
+
+      // Tenant comes from the MCP auth/consent context (the resolved bearer actor);
+      // actorTenantId() must run inside the actor's ALS scope.
+      const tenantId = await actorStore.run(actor, () => actorTenantId());
+      if (!tenantId) return;
+
+      // Resolve the target contact. An explicit contact id from the command's own
+      // arguments wins — use it directly and let record_rail_event's contact-in-tenant
+      // check validate/scope it (the deployed resolve_contact_id has NO explicit-id
+      // param; its p_user_id matches clients.linked_user_id, not clients.id, so an
+      // explicit contact id must NOT be routed through it). Otherwise resolve by
+      // email/phone via the correct deployed signature (p_tenant, p_phone, p_email,
+      // p_user_id). NULL ⇒ skip rather than guess or mis-attribute (§9/§13).
+      let contactId: string | null = explicitId ?? null;
+      if (!contactId && (email || phone)) {
+        const { data } = await admin.rpc("resolve_contact_id", {
+          p_tenant: tenantId,
+          p_phone: phone ?? null,
+          p_email: email ?? null,
+          p_user_id: null,
+        });
+        contactId = typeof data === "string" && data ? data : null;
+      }
+      if (!contactId || typeof contactId !== "string") return;
+
+      // Trusted service path: pass p_tenant_id explicitly (auth.uid() is NULL here).
+      await admin.rpc("record_rail_event", {
+        p_contact_id: contactId,
+        p_event_kind: "mcp.command",
+        p_surface: "mcp",
+        p_actor_type: "external",
+        p_title: `External command: ${label}`,
+        p_summary: null,
+        p_payload: { source: "mcp", mcp_client: actor.client_id, actor_kind: actor.kind },
+        p_ref_table: "clients",
+        p_ref_id: contactId,
+        p_tenant_id: tenantId,
+      });
+    } catch (e) {
+      console.warn("[paige-mcp] mcp.command rail emit skipped:", (e as Error)?.message);
+    }
+  })();
+}
+
 app.all("/*", async (c) => {
   const url = new URL(c.req.url);
   const path = url.pathname;
@@ -4736,6 +4870,19 @@ app.all("/*", async (c) => {
   }
 
   const res = await actorStore.run(actor, () => httpHandler(c.req.raw));
+
+  // Paige Context Rail — MCP emitter: after an external MCP tool call returns,
+  // file mcp.command onto the target client's rail when it was a client-acting
+  // command. Detached + fully guarded, so it can never slow or break the MCP
+  // response; see emitMcpCommandRail for the truthful-success + contact-resolve
+  // rules. (task #161 note: when clients later connect their OWN ChatGPT/Claude/
+  // Gemini, a distinct 'client connects assistant' event would be filed from the
+  // consent/link handler — NOT here; this producer is for external tools ACTING
+  // on a client, not the client authorizing their own assistant.)
+  if (method === "POST" && peekedBody?.method === "tools/call") {
+    try { emitMcpCommandRail(actor, peekedBody, res); }
+    catch (e) { console.warn("[paige-mcp] mcp.command emit skipped:", (e as Error)?.message); }
+  }
 
   // Doctrine §118 + client-tier curation: filter master-only tools out of
   // tools/list for non-MMA callers, AND for user-tier callers strip any tool

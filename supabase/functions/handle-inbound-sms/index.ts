@@ -129,5 +129,44 @@ Deno.serve(async (req) => {
     body: bodyRaw,
   });
 
+  // ── Paige Context Rail — COMMS emitter: file 'comms.inbound' when a real client
+  // SMS arrives, so the OWNER rail AND the client's OWN live feed both reflect the
+  // two-way conversation in real time (§7/§8). comms.inbound is a client_visible
+  // kind, so record_rail_event correctly broadcasts it to both the client feed and
+  // the owner rail. Telemetry ONLY (§13): the whole emit is wrapped so a rail
+  // failure can NEVER affect the Twilio response or the real message handling. We
+  // emit AFTER the conversation row was actually inserted (a real inbound), and
+  // ONLY when the sender's contact resolved above (contactId) — no contact means we
+  // SKIP rather than fabricate one (§13 truthful). We read the contact's tenant to
+  // pass p_tenant_id explicitly, because inside record_rail_event this service-role
+  // call has auth.uid() = NULL (trusted service path).
+  if (contactId) {
+    try {
+      const { data: contactRow } = await admin
+        .from("clients")
+        .select("tenant_id")
+        .eq("id", contactId)
+        .maybeSingle();
+      const tenantId = contactRow?.tenant_id ?? null;
+      if (tenantId) {
+        const preview = bodyRaw.length > 140 ? bodyRaw.slice(0, 137) + "…" : bodyRaw;
+        await admin.rpc("record_rail_event", {
+          p_contact_id: contactId,
+          p_event_kind: "comms.inbound",
+          p_surface: "client_portal",
+          p_actor_type: "client",
+          p_title: "Message received",
+          p_summary: preview,
+          p_ref_table: "paige_conversations",
+          p_ref_id: convo.id,
+          p_from_department: "client_experience",
+          p_tenant_id: tenantId,
+        });
+      }
+    } catch (e) {
+      console.warn("[handle-inbound-sms] comms.inbound rail emit skipped:", (e as Error)?.message);
+    }
+  }
+
   return twiml();
 });

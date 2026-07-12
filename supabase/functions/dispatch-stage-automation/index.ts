@@ -12,6 +12,7 @@
 // If consent required but missing, event status = 'skipped_no_consent' — never silent.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { emitAutomationRail } from "../_shared/railAutomation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -139,6 +140,21 @@ Deno.serve(async (req) => {
     await mark("dispatched", {
       webhook_response: parsed ?? { raw: responseText.slice(0, 500) },
     });
+
+    // Rail (owner_ops) — the stage automation fired for this client. Fire-and-forget
+    // to a downstream webhook, so completion isn't observable here → fired only.
+    // Best-effort + non-blocking (§13); tenant + contact are explicit on the event.
+    if (body.contact_id) {
+      await emitAutomationRail(supabase, {
+        tenantId: body.tenant_id,
+        contactId: body.contact_id,
+        workflowName: "stage change follow-up",
+        phase: "fired",
+        refTable: "stage_automation_events",
+        refId: body.event_id,
+      });
+    }
+
     return new Response(JSON.stringify({ status: "dispatched" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

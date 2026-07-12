@@ -1,6 +1,7 @@
 // Trigger an n8n workflow by ID via REST API (not webhook).
 // Body: { workflow_id: string, payload?: object, connection_id?: string }
 import { corsHeaders, jsonResponse, requireAdmin } from "../_shared/adminAuth.ts";
+import { contactHintsFromPayload, emitAutomationRail } from "../_shared/railAutomation.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -24,7 +25,7 @@ Deno.serve(async (req) => {
   // Optional: log a run row (when this workflow is in the registry)
   const reg = await admin
     .from("paige_workflow_registry")
-    .select("id")
+    .select("id, label, tenant_id")
     .eq("n8n_workflow_id", body.workflow_id)
     .maybeSingle();
 
@@ -55,6 +56,18 @@ Deno.serve(async (req) => {
     if (run.data) await admin.from("paige_workflow_runs").update({
       status: "running", n8n_execution_id: executionId,
     }).eq("id", run.data.id);
+    // Rail (owner_ops) — the workflow fired (n8n REST execute is async, so completion
+    // isn't known here → fired only). Best-effort + non-blocking (§13); only when the
+    // workflow is registered (gives us a tenant + human name) and a client resolves.
+    if (reg.data) {
+      const hints = contactHintsFromPayload(body.payload ?? {});
+      await emitAutomationRail(admin, {
+        tenantId: (reg.data as { tenant_id?: string | null }).tenant_id ?? null,
+        contactId: hints.contactId, email: hints.email, phone: hints.phone,
+        workflowName: (reg.data as { label?: string | null }).label ?? null,
+        phase: "fired", refTable: "paige_workflow_runs", refId: run.data?.id ?? null,
+      });
+    }
     return jsonResponse({ ok: true, execution_id: executionId, run_id: run.data?.id ?? null });
   } catch (e) {
     if (run.data) await admin.from("paige_workflow_runs").update({

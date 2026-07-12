@@ -9,6 +9,7 @@
 //   - cron_only            → fail fast (registry says this only runs from cron)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { contactHintsFromPayload, emitAutomationRail } from "./railAutomation.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -34,6 +35,13 @@ export type DispatchOpts = {
    * Omit (e.g. from the cron sweeper) to bypass the gate for system-level retries.
    */
   callerTenantId?: string | null;
+  /**
+   * Optional rail hints so the automation.fired/.completed emit can avoid a lookup.
+   * When absent, they're resolved from the run's registry row (label) and payload
+   * (contact). A caller like paige-mcp can pass these straight through.
+   */
+  workflowLabel?: string | null;
+  contactId?: string | null;
 };
 
 // Doctrine §118: platform-owner tenant for shared infra (MMA OS LangGraph bridge,
@@ -67,6 +75,46 @@ export async function dispatchWorkflowRun(opts: DispatchOpts): Promise<DispatchR
       full.retry_count = ((data?.retry_count as number | null) ?? 0) + 1;
     }
     await admin.from("paige_workflow_runs").update(full).eq("id", runId);
+  };
+
+  // ── Rail (owner_ops) — file automation.fired/.completed for the run's client.
+  // Best-effort + NON-BLOCKING (§13). Skipped on retries: the sweeper re-dispatches
+  // runs that ALREADY emitted when first created, so only a first-attempt dispatch
+  // (e.g. paige-mcp.run_workflow, where isRetry is falsy) emits — no double-counting.
+  let railCache: {
+    tenantId: string | null; contactId: string | null;
+    email: string | null; phone: string | null; label: string | null;
+  } | null = null;
+  const resolveRail = async () => {
+    if (railCache) return railCache;
+    const hints = contactHintsFromPayload(opts.payload);
+    let tenantId: string | null = opts.callerTenantId ?? null;
+    let label: string | null = opts.workflowLabel ?? null;
+    const contactId: string | null = opts.contactId ?? hints.contactId;
+    if (!tenantId || !label) {
+      try {
+        const { data } = await admin
+          .from("paige_workflow_runs")
+          .select("registry:paige_workflow_registry(label, tenant_id)")
+          .eq("id", runId)
+          .maybeSingle();
+        const reg = (data as { registry?: { label?: string; tenant_id?: string } } | null)?.registry ?? null;
+        if (!tenantId) tenantId = reg?.tenant_id ?? null;
+        if (!label) label = reg?.label ?? null;
+      } catch { /* best-effort */ }
+    }
+    railCache = { tenantId, contactId, email: hints.email, phone: hints.phone, label };
+    return railCache;
+  };
+  const fireRail = async (phase: "fired" | "completed") => {
+    if (opts.isRetry) return;
+    try {
+      const r = await resolveRail();
+      await emitAutomationRail(admin, {
+        tenantId: r.tenantId, contactId: r.contactId, email: r.email, phone: r.phone,
+        workflowName: r.label, phase, refTable: "paige_workflow_runs", refId: runId,
+      });
+    } catch { /* never throw */ }
   };
 
   if (!provider || provider === "cron_only") {
@@ -116,6 +164,7 @@ export async function dispatchWorkflowRun(opts: DispatchOpts): Promise<DispatchR
         executionId = j?.executionId ?? j?.execution_id ?? null;
       } catch { /* webhook may return plain text */ }
       await updateRun({ status: "running", n8n_execution_id: executionId });
+      await fireRail("fired");
       return { status: "running", executionId };
     }
 
@@ -149,6 +198,7 @@ export async function dispatchWorkflowRun(opts: DispatchOpts): Promise<DispatchR
       const executionId = j?.run_id ?? j?.id ?? null;
       const threadId = j?.thread_id ?? null;
       await updateRun({ status: "running", n8n_execution_id: executionId, langgraph_thread_id: threadId, result: j });
+      await fireRail("fired");
       return { status: "running", executionId, threadId };
     }
 
@@ -208,6 +258,7 @@ export async function dispatchWorkflowRun(opts: DispatchOpts): Promise<DispatchR
         langgraph_thread_id: threadId,
         result: body?.run ?? body ?? null,
       });
+      await fireRail("fired");
       return { status: "running", executionId, threadId };
     }
 
@@ -244,6 +295,9 @@ export async function dispatchWorkflowRun(opts: DispatchOpts): Promise<DispatchR
         status: "succeeded", result: resultJson as never,
         completed_at: new Date().toISOString(),
       });
+      // Synchronous provider — it fired AND completed in this call (§13 truthful).
+      await fireRail("fired");
+      await fireRail("completed");
       return { status: "succeeded" };
     }
 
