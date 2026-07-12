@@ -362,7 +362,11 @@ serve(async (req) => {
               p_event_kind: "client.message",
               p_surface: "client_portal",
               p_actor_type: "client",
-              p_title: "You messaged Paige",
+              // Persona-neutral stored title: the client feed renders its own
+              // persona-aware headline from the kind, and the owner rail shows this
+              // title — so keep it truthful from the owner's POV and free of a
+              // hardcoded "Paige" that would be wrong for a renamed assistant (§3).
+              p_title: "Client sent a message",
               p_summary: preview,
               p_ref_table: "paige_conversations",
               p_from_department: "client_experience",

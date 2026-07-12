@@ -351,7 +351,7 @@ function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }
       <UpcomingWidget />
 
       {hasCreditData ? (
-        <div className="grid grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-5">
           {[
             { label: "Payment History", score: factors.payment_history_score, weight: "35%" },
             { label: "Utilization", score: factors.utilization_score, weight: "30%" },
