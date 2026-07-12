@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { InviteMemberDialog } from "@/components/admin/InviteMemberDialog";
 import { ReassignCoachDialog } from "@/components/admin/ReassignCoachDialog";
 import { MemberProfileDrawer } from "@/components/admin/MemberProfileDrawer";
+import { isAvatarBucketUrl } from "@/components/ui/avatar-uploader";
 import { ManageRolesDialog } from "@/components/admin/ManageRolesDialog";
 import { useTenantContext } from "@/hooks/useTenantContext";
 
@@ -501,7 +502,7 @@ export default function MembersAdmin() {
                         onClick={() => setProfileTarget(m)}
                       >
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted text-[11px] font-semibold text-muted-foreground">
-                          {m.avatar_url
+                          {isAvatarBucketUrl(m.avatar_url)
                             ? <img src={m.avatar_url} alt="" className="h-full w-full object-cover" />
                             : (m.full_name || m.email || "?").split(/\s+/).map(s => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase()}
                         </span>

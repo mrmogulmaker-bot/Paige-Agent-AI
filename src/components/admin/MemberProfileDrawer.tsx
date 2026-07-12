@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Crown, ShieldCheck, ShieldOff, Mail, Calendar, Clock, Users, FileText, Pencil, Save, X, KeyRound, LogOut, Send, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 import { callAdminAccountAction } from "@/lib/functions/adminAccountActions";
-import { AvatarUploader } from "@/components/ui/avatar-uploader";
+import { AvatarUploader, isAvatarBucketUrl, removeAvatarObject } from "@/components/ui/avatar-uploader";
 
 export interface MemberProfile {
   user_id: string;
@@ -136,6 +136,11 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
       const payload: any = { user_id: member.user_id, ...fields, updated_at: new Date().toISOString() };
       const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
       if (error) throw error;
+      // Now that the new photo is persisted, tidy the replaced file (never
+      // before save — a cancel must leave the live photo intact).
+      if (original.avatar_url && original.avatar_url !== fields.avatar_url && isAvatarBucketUrl(original.avatar_url)) {
+        void removeAvatarObject(original.avatar_url);
+      }
       toast.success("Profile saved");
       setOriginal(fields);
       setEditing(false);
@@ -170,8 +175,8 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-base font-semibold overflow-hidden">
-              {fields.avatar_url
+            <div className="w-12 h-12 rounded-full border border-border bg-muted flex items-center justify-center text-base font-semibold text-muted-foreground overflow-hidden">
+              {isAvatarBucketUrl(fields.avatar_url)
                 ? <img src={fields.avatar_url} alt="" className="w-full h-full object-cover" />
                 : initials}
             </div>

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { AvatarUploader, isAvatarBucketUrl, removeAvatarObject } from "@/components/ui/avatar-uploader";
 import { Loader2, User, Building2, Eye, EyeOff, Monitor, UserCircle, Link2, Unlink, LogOut, ShieldAlert, Bell, ShieldOff } from "lucide-react";
 import { LiveSyncIndicator } from "@/components/ui/LiveSyncIndicator";
 import { DataPrivacyPanel } from "@/components/dashboard/DataPrivacyPanel";
@@ -104,6 +105,9 @@ export const ProfileSettings = () => {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [postalCode, setPostalCode] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [savedAvatarUrl, setSavedAvatarUrl] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
   
   // SSN and DOB - sensitive fields
   const [ssn, setSsn] = useState("");
@@ -166,11 +170,18 @@ export const ProfileSettings = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setUserId(user.id);
 
       // Load personal profile via PII-logged RPC (records read access to ssn/dob)
       const { data: profileRows } = await supabase
         .rpc("get_profile_with_pii_log", { _user_id: user.id });
       const profile = Array.isArray(profileRows) ? profileRows[0] : profileRows;
+
+      // Avatar isn't part of the PII RPC surface — read it directly (own row).
+      const { data: av } = await supabase
+        .from("profiles").select("avatar_url").eq("user_id", user.id).maybeSingle();
+      setAvatarUrl(av?.avatar_url || "");
+      setSavedAvatarUrl(av?.avatar_url || "");
 
       if (profile) {
         setFullName(profile.full_name || "");
@@ -251,12 +262,18 @@ export const ProfileSettings = () => {
         city,
         state,
         postal_code: postalCode,
+        avatar_url: avatarUrl,
       };
 
       const { error: profileError } = await supabase
         .from("profiles")
         .update(updateData)
         .eq("user_id", user.id);
+      // Tidy the replaced photo only after the new one is persisted.
+      if (!profileError && savedAvatarUrl && savedAvatarUrl !== avatarUrl && isAvatarBucketUrl(savedAvatarUrl)) {
+        void removeAvatarObject(savedAvatarUrl);
+      }
+      if (!profileError) setSavedAvatarUrl(avatarUrl);
 
       if (profileError) throw profileError;
 
@@ -517,6 +534,18 @@ export const ProfileSettings = () => {
               </div>
             ) : (
               <div className="space-y-4">
+              {userId && (
+                <div className="space-y-2">
+                  <Label>Profile photo</Label>
+                  <AvatarUploader
+                    userId={userId}
+                    value={avatarUrl}
+                    onChange={setAvatarUrl}
+                    name={fullName}
+                    size={72}
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="fullName">Full Name *</Label>
                 <Input
