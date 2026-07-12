@@ -138,6 +138,14 @@ const MASTER_ONLY_TOOLS = new Set<string>([
   "broadcast_system_announcement",
 ]);
 
+// Doctrine §9/§25 — four named audience tiers on the SINGLE MCP endpoint.
+// Tier answers "who is this for?" (audience); scope answers "what operation?"
+// A tools/call must clear BOTH. Ordered least→most privileged for the
+// god⊇agency⊇tenant inheritance chain; `client` is a SEALED tier (self.* only —
+// never inherits tenant, never inherited by tenant), handled explicitly.
+type McpTier = "client" | "tenant" | "agency" | "god";
+const TIER_RANK: Record<McpTier, number> = { client: 0, tenant: 1, agency: 2, god: 3 };
+
 // Resolve the actor's effective tenant_id WITHOUT relying on static data.
 // Platform-key callers → MMA. User callers → active_tenant_id only when valid,
 // otherwise the first active tenant_members row. This mirrors SQL current_user_tenant_id().
@@ -183,6 +191,59 @@ async function actorTenantId(): Promise<string | null> {
   }
 
   return (memberships?.[0]?.tenant_id as string | null) ?? null;
+}
+
+// ── Tier derivation (§9/§25) ────────────────────────────────────────────────
+// Agency management requires AUTHORITY over the parent (owner/admin), not mere
+// membership. Mirrors is_tenant_owner but admits 'admin' since agency admin work
+// is owner+admin.
+async function actorManagesTenant(actor: ActorCtx, tenantId: string): Promise<boolean> {
+  if (actor.kind === "platform") return true;
+  if (!actor.user_id) return false;
+  const { data } = await admin
+    .from("tenant_members")
+    .select("role")
+    .eq("user_id", actor.user_id)
+    .eq("tenant_id", tenantId)
+    .eq("status", "active")
+    .maybeSingle();
+  return data?.role === "owner" || data?.role === "admin";
+}
+
+// The active tenant's account_type ('standalone' | 'agency' | 'enterprise').
+async function actorTenantAccountType(tenantId: string | null): Promise<string | null> {
+  if (!tenantId) return null;
+  const { data } = await admin.from("tenants").select("account_type").eq("id", tenantId).maybeSingle();
+  return (data?.account_type as string | null) ?? null;
+}
+
+// A client/consumer portal seat: a USER token whose granted scopes are ENTIRELY
+// within the self.* namespace. client_id is present on every user token (staff
+// included), so the forgery-resistant signal is the scope set — nothing an
+// operator token carries. No schema change required.
+function isClientSeat(actor: ActorCtx): boolean {
+  if (actor.kind !== "user") return false;
+  if (actor.scopes.length === 0) return false;
+  return actor.scopes.every((s) => s.startsWith("self."));
+}
+
+// THE request-time tier. Precedence: god → client(sealed) → agency → tenant.
+// MUST run inside actorStore.run(actor, …) so the DB helpers see the actor.
+async function deriveTier(actor: ActorCtx, tenantId: string | null): Promise<McpTier> {
+  if (actor.kind === "platform") return "god";
+  if (await actorIsPlatformOwner(actor)) return "god";   // actorIsPlatformOwner already ⇒ true for platform
+  // client is sealed BEFORE agency — a self.* seat whose active tenant happens
+  // to be an agency can NEVER widen to agency.
+  if (isClientSeat(actor)) return "client";
+  const acct = await actorTenantAccountType(tenantId);
+  if ((acct === "agency" || acct === "enterprise") && tenantId &&
+      await actorManagesTenant(actor, tenantId)) {
+    return "agency";
+  }
+  // Fallback: standalone owner/admin, or an agency member without owner/admin
+  // authority, or an unresolved tenant (tenant tools all re-resolve and hard-fail
+  // tenant_not_resolved, so an unresolved tenant can touch nothing).
+  return "tenant";
 }
 
 
@@ -2034,9 +2095,13 @@ mcp.tool("register_workflow", {
   handler: async (args) => {
     const tenantId = await actorTenantId();
     if (!tenantId) return err("tenant_not_resolved");
-    // §118: only MMA may register MMA-infra providers.
+    // §25: gate on platform OWNERSHIP, not a hardcoded tenant UUID — the operator
+    // may run from any tenant. actorIsPlatformOwner() is true for the platform key
+    // AND for a super_admin user.
+    const isGod = await actorIsPlatformOwner();
+    // Platform-infra providers (n8n/langgraph) are the operator's own rails.
     const platformOwnerProviders = new Set(["n8n", "langgraph", "langgraph_bridge"]);
-    if (platformOwnerProviders.has(args.provider) && tenantId !== MMA_TENANT_ID) {
+    if (platformOwnerProviders.has(args.provider) && !isGod) {
       return err("provider_restricted_to_platform_owner");
     }
     const cfg = args.provider_config ?? {};
@@ -2053,7 +2118,11 @@ mcp.tool("register_workflow", {
       requires_approval: args.requires_approval ?? false,
       allowed_roles: args.allowed_roles ?? ["admin", "super_admin"],
       is_active: true,
-      tenant_id: tenantId === MMA_TENANT_ID ? null : tenantId,
+      // A platform-owner registration is a GLOBAL (tenant_id NULL) registry row;
+      // anyone else registers a tenant-scoped one. Binding the NULL write to
+      // ownership (not the MMA literal) stops a non-god caller whose resolved
+      // tenant happens to be MMA from seeding the shared registry.
+      tenant_id: isGod ? null : tenantId,
     };
     const { data, error } = await admin.from("paige_workflow_registry").insert(row).select("id, key, tenant_id, created_at").single();
     if (error) return err(error.message);
@@ -2418,6 +2487,7 @@ const CONFIDENCE = ["high", "medium", "low"] as const;
 
 async function tenantScopedClient(client_id: string): Promise<{ ok: boolean; tenant_id: string | null; reason?: string }> {
   const tid = await actorTenantId();
+  const isGod = await actorIsPlatformOwner();
   const { data, error } = await admin
     .from("clients")
     .select("id, tenant_id")
@@ -2425,8 +2495,11 @@ async function tenantScopedClient(client_id: string): Promise<{ ok: boolean; ten
     .maybeSingle();
   if (error) return { ok: false, tenant_id: null, reason: error.message };
   if (!data) return { ok: false, tenant_id: null, reason: "client_not_found" };
-  // Master tenant (MMA) can reach across; everyone else is hard-scoped.
-  if (tid !== MMA_TENANT_ID && data.tenant_id !== tid) {
+  // The platform OWNER (not a hardcoded tenant) can reach across tenants;
+  // everyone else is hard-scoped to their own. An agency does NOT gain
+  // cross-tenant client reach here — agency access to its children is the
+  // explicit, parentage-checked agency tool set, never this bypass (§9).
+  if (!isGod && data.tenant_id !== tid) {
     return { ok: false, tenant_id: data.tenant_id as string | null, reason: "cross_tenant_forbidden" };
   }
   return { ok: true, tenant_id: data.tenant_id as string | null };
@@ -2485,6 +2558,7 @@ mcp.tool("search_clients_fuzzy", {
   handler: async ({ query, limit }) => {
     const max = Math.min(Math.max(limit ?? 8, 1), 25);
     const tid = await actorTenantId();
+    const isGod = await actorIsPlatformOwner();
     const safe = String(query).replace(/[,()%]/g, " ").trim();
     if (!safe) return err("empty_query");
     let q = admin
@@ -2495,7 +2569,9 @@ mcp.tool("search_clients_fuzzy", {
       )
       .order("updated_at", { ascending: false })
       .limit(max);
-    if (tid && tid !== MMA_TENANT_ID) q = q.eq("tenant_id", tid);
+    // Only the platform owner searches across every tenant; everyone else
+    // (including agencies) is hard-scoped to their own tenant here (§9).
+    if (tid && !isGod) q = q.eq("tenant_id", tid);
     const { data, error } = await q;
     if (error) return err(error.message);
     const items = data ?? [];
@@ -3376,7 +3452,111 @@ mcp.tool("approve_subagent_proposal", {
 
 
 // ============================================================
-// Batch #4 — Master Admin (MMA-only, gated via MASTER_ONLY_TOOLS)
+// Agency tier (§9/§25) — an Agency/Enterprise tenant manages its OWN
+// sub-accounts and NOTHING else. Audience is gated by enforceTierAndScope
+// (agency tier); row-level isolation is the load-bearing SQL guard
+// agency_can_manage_child(_child, _actor) — every tool that names a child
+// re-proves parentage server-side, so a hostile call by name still fails
+// closed. No tool here accepts a parent id (parent = the caller's own tenant).
+// ============================================================
+
+// Thin wrapper over the SQL parentage guard — TRUE iff `child` is a sub-account
+// of an Agency/Enterprise the current actor owns/admins.
+async function agencyCanManageChild(child: string): Promise<boolean> {
+  const actor = currentActor();
+  if (!actor.user_id) return actor.kind === "platform"; // platform key is god, not agency-scoped
+  const { data, error } = await admin.rpc("agency_can_manage_child", { _child: child, _actor: actor.user_id });
+  if (error) return false;
+  return data === true;
+}
+
+mcp.tool("list_subaccounts", {
+  description:
+    "Agency only. List the sub-accounts YOUR agency owns (child workspaces of your Agency/Enterprise account). Returns each child's id, slug, name, account type, status, and created date. You only ever see your own children.",
+  inputSchema: z.object({
+    status: z.enum(["active", "suspended", "all"]).optional().describe("Filter by child status; default all."),
+    limit: z.number().int().max(200).optional(),
+  }),
+  handler: async ({ status, limit }) => {
+    const actor = currentActor();
+    if (!actor.user_id) return err("agency_actor_required");
+    const { data, error } = await admin.rpc("list_subaccounts", { _actor: actor.user_id });
+    if (error) return err(error.message);
+    let items = (data ?? []) as Array<Record<string, unknown>>;
+    if (status && status !== "all") items = items.filter((r) => r.status === status);
+    if (limit) items = items.slice(0, limit);
+    return ok({ items, count: items.length });
+  },
+});
+
+mcp.tool("create_subaccount", {
+  description:
+    "Agency only. Create a new sub-account (child workspace) under YOUR agency. Requires a display `name`; optional `industry` and `description`. The child is created as a standalone workspace owned by you. Only the agency OWNER may create sub-accounts.",
+  inputSchema: z.object({
+    name: z.string().min(1),
+    industry: z.string().optional(),
+    description: z.string().optional(),
+  }),
+  handler: async ({ name, industry, description }) => {
+    const actor = currentActor();
+    if (!actor.user_id) return err("agency_actor_required");
+    const parent = await actorTenantId();
+    if (!parent) return err("tenant_not_resolved");
+    // 5-arg actor-explicit core (service_role): enforces owner-only +
+    // agency/enterprise-parent + 100-child cap + forces child account_type.
+    const { data, error } = await admin.rpc("create_subaccount", {
+      _name: name,
+      _industry: industry ?? null,
+      _description: description ?? null,
+      _parent_tenant_id: parent,
+      _actor: actor.user_id,
+    });
+    if (error) return err(error.message);
+    await audit("create_subaccount", "tenant", (data as any)?.id ?? null, { name, parent });
+    return ok({ subaccount: data });
+  },
+});
+
+mcp.tool("get_subaccount_metrics", {
+  description:
+    "Agency only. Get a health snapshot (client count, active workflows, active members) for ONE of your own sub-accounts. Fails if the sub-account is not a child of your agency.",
+  inputSchema: z.object({
+    subaccount_id: z.string().uuid(),
+  }),
+  handler: async ({ subaccount_id }) => {
+    const actor = currentActor();
+    if (!actor.user_id) return err("agency_actor_required");
+    const { data, error } = await admin.rpc("get_subaccount_metrics", { _child: subaccount_id, _actor: actor.user_id });
+    if (error) {
+      // The RPC RAISEs 'agency_scope_forbidden' (42501) for a foreign/arbitrary child.
+      return err(/agency_scope_forbidden/.test(error.message) ? "agency_scope_forbidden" : error.message);
+    }
+    return ok({ subaccount_id, metrics: data });
+  },
+});
+
+mcp.tool("switch_into_subaccount", {
+  description:
+    "Agency only. Set your active workspace to one of YOUR sub-accounts so subsequent tools operate inside it. You can only switch into a child your agency owns; switching into any other tenant is refused.",
+  inputSchema: z.object({
+    subaccount_id: z.string().uuid(),
+  }),
+  handler: async ({ subaccount_id }) => {
+    const actor = currentActor();
+    if (!actor.user_id) return err("agency_actor_required");
+    // Parentage-check BEFORE the write — the scoped analog of god
+    // switch_active_tenant, hard-limited to the caller's own children.
+    if (!(await agencyCanManageChild(subaccount_id))) return err("agency_scope_forbidden");
+    const { error } = await admin.from("profiles").update({ active_tenant_id: subaccount_id }).eq("user_id", actor.user_id);
+    if (error) return err(error.message);
+    await audit("switch_into_subaccount", "tenant", subaccount_id, {});
+    return ok({ active_tenant_id: subaccount_id });
+  },
+});
+
+
+// ============================================================
+// Batch #4 — Master Admin (god tier, gated via tier=god in TOOL_TIER)
 // ============================================================
 
 mcp.tool("list_tenants", {
@@ -4462,9 +4642,37 @@ const TOOL_SCOPE: Record<string, Scope> = {
   reject_readiness_proposal: "btf.write",
   trigger_readiness_scan_for_contact: "btf.write",
 
-
+  // Agency tier (§25) — management of the caller's own sub-accounts is admin
+  // work; the AGENCY audience restriction is the tier gate, not the scope.
+  list_subaccounts: "admin.read",
+  get_subaccount_metrics: "admin.read",
+  create_subaccount: "admin.write",
+  switch_into_subaccount: "admin.write",
 
 };
+
+// ── Tool → audience tier (§9/§25) ────────────────────────────────────────────
+// MASTER_ONLY_TOOLS (the 7 all-tenant operator functions) stay the single source
+// of the god set. AGENCY_TOOLS manage the caller's OWN sub-accounts only. Every
+// other tool derives its tier from its scope: a self.* tool is `client`, anything
+// else is `tenant`. NOTE: register_workflow / propose_subagent etc. deliberately
+// stay `tenant`-tier here — they carry a platform.* SCOPE that already restricts
+// them, and register_workflow also serves the tenant workflow path (a god-lock
+// would break tenant workflow registration). Their platform-infra restriction is
+// enforced in-handler via actorIsPlatformOwner(), not by tier.
+const AGENCY_TOOLS = new Set<string>([
+  "list_subaccounts",
+  "create_subaccount",
+  "get_subaccount_metrics",
+  "switch_into_subaccount",
+]);
+function toolTier(name: string): McpTier {
+  if (MASTER_ONLY_TOOLS.has(name)) return "god";
+  if (AGENCY_TOOLS.has(name)) return "agency";
+  const s = TOOL_SCOPE[name];
+  if (s && s.startsWith("self.")) return "client";
+  return "tenant";
+}
 
 // Branding shown by MCP clients (ChatGPT, Claude, etc.) in the connector
 // picker and OAuth consent screen. logo_uri must be a public https URL.
@@ -4534,11 +4742,38 @@ async function resolveBearer(presented: string): Promise<ActorCtx | null> {
   return { kind: "user", user_id: data.user_id, client_id: data.client_id, scopes: data.scopes ?? [] };
 }
 
-// Inspect the JSON-RPC body and enforce per-tool scope for `tools/call`.
-function enforceScopeForBody(body: any, actor: ActorCtx): { ok: true } | { ok: false; status: number; error: string } {
-  if (actor.kind === "platform") return { ok: true };
+// Inspect the JSON-RPC body and enforce, for `tools/call`, BOTH the audience
+// TIER (§9/§25) and the per-tool SCOPE. Tier is the OUTER gate and runs for
+// everyone — including the platform key (trivially god) — so a hostile client
+// can never reach a hidden tool by calling it by name (visibility ≠ enforcement).
+// A tier denial writes an audit row (§13). Scope keeps its original semantics:
+// the platform key bypasses scope, user tokens must hold the required scope.
+async function enforceTierAndScope(
+  body: any,
+  actor: ActorCtx,
+): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   if (body?.method !== "tools/call") return { ok: true };
   const toolName = body?.params?.name;
+  const requiredTier = toolTier(toolName);
+  const callerTenant = await actorStore.run(actor, () => actorTenantId());
+  const tier = await actorStore.run(actor, () => deriveTier(actor, callerTenant));
+
+  // ── TIER GATE (audience) ──
+  let tierOk: boolean;
+  if (requiredTier === "client") tierOk = tier === "client";     // client tools: only the client seat
+  else if (tier === "client") tierOk = false;                    // client seat is sealed to self.* tools
+  else tierOk = TIER_RANK[tier] >= TIER_RANK[requiredTier];       // god⊇agency⊇tenant
+  if (!tierOk) {
+    await actorStore.run(actor, () =>
+      audit("tier_denied", "mcp_tool", toolName ?? null, { required_tier: requiredTier, caller_tier: tier }));
+    return {
+      ok: false, status: 403,
+      error: `tier_forbidden: '${toolName}' requires '${requiredTier}', caller is '${tier}'`,
+    };
+  }
+
+  // ── SCOPE GATE (operation) — unchanged semantics ──
+  if (actor.kind === "platform") return { ok: true };
   const required = TOOL_SCOPE[toolName];
   if (!required) return { ok: false, status: 403, error: `unknown_tool:${toolName}` };
   if (!actor.scopes.includes(required)) {
@@ -4866,7 +5101,7 @@ app.all("/*", async (c) => {
   if (method === "POST") {
     const raw = c.req.raw.clone();
     peekedBody = await raw.json().catch(() => null);
-    const gate = enforceScopeForBody(peekedBody, actor);
+    const gate = await enforceTierAndScope(peekedBody, actor);
     if (!gate.ok) {
       return c.json({
         jsonrpc: "2.0", id: peekedBody?.id ?? null,
@@ -4898,17 +5133,24 @@ app.all("/*", async (c) => {
   if (method === "POST" && peekedBody?.method === "tools/list") {
     try {
       const callerTenant = await actorStore.run(actor, () => actorTenantId());
-      const isMma = callerTenant === MMA_TENANT_ID;
+      const tier = await actorStore.run(actor, () => deriveTier(actor, callerTenant));
       const isUser = actor.kind === "user";
       const scopeSet = new Set(actor.scopes);
+      // Tier-aware visibility mirrors the enforcement gate in enforceTierAndScope
+      // (the real guard). This just curates what each tier SEES: a tenant never
+      // sees god/agency tools, a client sees only its self.* tools, etc. The old
+      // `!isMma && MASTER_ONLY_TOOLS` branch is subsumed by the tier ladder.
       const keep = (t: any): boolean => {
         const name = t?.name;
         if (!name) return true;
+        const req = toolTier(name);
+        if (req === "client") { if (tier !== "client") return false; }
+        else if (tier === "client") { return false; }
+        else if (TIER_RANK[tier] < TIER_RANK[req]) { return false; }
         if (isUser) {
-          const req = TOOL_SCOPE[name];
-          if (!req || !scopeSet.has(req)) return false;
+          const s = TOOL_SCOPE[name];
+          if (!s || !scopeSet.has(s)) return false;
         }
-        if (!isMma && MASTER_ONLY_TOOLS.has(name)) return false;
         return true;
       };
       const cloned = res.clone();
