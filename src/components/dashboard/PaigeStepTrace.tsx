@@ -88,7 +88,7 @@ export function StepTimeline({ steps, loading }: { steps: PaigeStep[]; loading?:
                 <MessageSquareText className="h-3.5 w-3.5 text-[hsl(var(--ring))]" aria-hidden />
               </span>
               <p className="min-w-0 flex-1 pt-0.5 text-sm italic leading-snug text-muted-foreground">
-                {s.label}
+                <span className="sr-only">Reasoning: </span>{s.label}
               </p>
             </li>
           );
@@ -281,7 +281,11 @@ export function ReasoningDeck({
   const clientCount = steps.filter((s) => s.kind !== "thought" && s.group === "client").length;
   const actionCount = steps.filter((s) => s.kind !== "thought").length;
 
-  const title = working ? `${name} at work` : finished ? `Done · ${actionCount} step${actionCount === 1 ? "" : "s"}` : `${name} · ready`;
+  const title = working
+    ? `${name} at work`
+    : finished
+      ? (actionCount > 0 ? `Done · ${actionCount} step${actionCount === 1 ? "" : "s"}` : "Done")
+      : `${name} · ready`;
 
   // padded={false} + our own flex-col/min-h-0 chain: the scroll region's DIRECT parent must
   // be the bounded flex column, or SectionCard's block padding wrapper would break flex-1 and

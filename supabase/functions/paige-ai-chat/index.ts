@@ -5814,9 +5814,22 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       const stepTrace: Array<{ id: string; round: number; seq: number; kind: "thought" | "action"; label: string; group: "owner" | "client" | "shared"; status: "done" | "error"; detail?: string; ts: number }> = [];
       let stepSeq = 0;
       // Collapse Paige's backstage narration into one short "thought" line for the
-      // live panel: strip markdown/newlines, cap length, drop empties (#152).
+      // live panel: a thought is UNVETTED model text shown to the tenant, so we
+      // fail SAFE — if it smells like an internal leak (tool/table snake_case, a
+      // §NN doctrine ref, MMA OS, a SCREAMING_VAR, a uuid), drop it entirely rather
+      // than risk a jargon leak (§3/§11). A missing thought is always better than a
+      // leaky one; the action steps (curated server-side) still render. Then strip
+      // markdown/newlines and cap length (#152).
       const summarizeThought = (raw: string): string => {
-        const t = String(raw ?? "")
+        const src = String(raw ?? "");
+        if (
+          /\b[a-z0-9]+_[a-z0-9]+\b/.test(src)        // snake_case tool/table names
+          || /§\s*\d+/.test(src)                      // §NN section references
+          || /\bMMA\s?OS\b/i.test(src)                // internal codename
+          || /\b[A-Z][A-Z0-9]+_[A-Z0-9_]+\b/.test(src) // SECRET_VAR / SCREAMING_CASE
+          || /\b[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-/.test(src) // uuids
+        ) return "";
+        const t = src
           .replace(/```[\s\S]*?```/g, " ")   // no code fences in a thought line
           .replace(/[*_`#>]/g, "")            // strip md emphasis/heading marks
           .replace(/\s+/g, " ")
@@ -5974,7 +5987,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           if (payloadThreadId && finalAssistantText.trim()) {
             try {
               const p = persistAssistantTurn(finalAssistantText, {
-                surfaces: stepTrace.map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
+                // Surfaces reflect executed WORK — thoughts (narration) don't count.
+                surfaces: stepTrace.filter((s) => s.kind !== "thought").map((s) => s.group).filter((v, i, a) => v && a.indexOf(v) === i),
                 bundleRef: (queuedApprovals.length || confirmTrace.length)
                   ? { approval_queued: queuedApprovals, paige_confirm: confirmTrace }
                   : null,
@@ -5987,10 +6001,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
            // The live loop or final stream failed mid-flight. Never leave the client
            // with a truncated stream — emit a clean fallback reply and a [DONE].
            console.error("[paige] live reasoning stream failed:", (e as Error)?.message);
+           const snag = "I hit a snag finishing that — mind trying again?";
            try {
-             controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "I hit a snag finishing that — mind trying again?" } }] })}\n\n`));
+             controller.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: snag } }] })}\n\n`));
              controller.enqueue(enc.encode("data: [DONE]\n\n"));
            } catch { /* client already gone */ }
+           // Persist the fallback too (#94) so a reload doesn't show the user's
+           // question with no assistant reply — symmetry with the in-band fallback.
+           if (payloadThreadId) {
+             try {
+               const p = persistAssistantTurn(snag, { surfaces: [], bundleRef: null });
+               // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime
+               if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else await p;
+             } catch (pe) { console.error("[paige] persist snag fallback failed:", (pe as Error)?.message); }
+           }
          } finally {
            try { controller.close(); } catch { /* already closed */ }
          }
