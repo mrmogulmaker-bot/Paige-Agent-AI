@@ -26,6 +26,7 @@ import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { setScopedUserId } from "@/lib/scopedUser";
 import { useQueryClient } from "@tanstack/react-query";
 import { ClientHomeTiles } from "@/components/client/ClientHomeTiles";
+import { ClientActivityFeed } from "@/components/app/ClientActivityFeed";
 import { UpcomingWidget } from "@/components/planning/UpcomingWidget";
 import { usePlaybook } from "@/lib/playbook";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
@@ -380,6 +381,8 @@ function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }
       )}
 
       {userId && <ClientHomeTiles userId={userId} />}
+
+      <ClientActivityFeed />
 
     </div>
   );

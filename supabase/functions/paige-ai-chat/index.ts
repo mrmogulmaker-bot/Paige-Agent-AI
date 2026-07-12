@@ -332,6 +332,50 @@ serve(async (req) => {
 
     const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext, userTime, userTimezone, userTimeFormatted } = validatedData;
 
+    // ── Paige Context Rail — Step 4 CLIENT emitter: file 'client.message' when a
+    // PORTAL CLIENT sends a message, so Paige-the-orchestrator (owner rail) and the
+    // client's own live feed both see it in real time (§7/§8 two-way loop). This is
+    // the SERVICE-ROLE path (option A): the caller is the client's JWT, but the
+    // membership-less client has no current_user_tenant_id(), so we resolve their
+    // OWN contact + tenant here (service role) and pass p_tenant_id explicitly — no
+    // dependency on the JWT-side resolution. Fully guarded and fully additive: it
+    // only fires on a real client chat turn (not summary mode, not an owner viewing
+    // a client file via payloadClientId), and ANY failure is swallowed so it can
+    // NEVER block or slow the chat turn (§13). §9: it can only ever file the
+    // caller's OWN client-visible event for their OWN contact — the WHERE
+    // linked_user_id = user.id lookup is the client's own identity, and
+    // 'client.message' is a client_visible kind.
+    if (!generateSessionSummary && !payloadClientId) {
+      try {
+        const lastUserMsg = [...messages].reverse().find((m: any) => m?.role === "user");
+        const msgText = (lastUserMsg?.content ?? "").toString().trim();
+        if (msgText) {
+          const { data: selfContact } = await supabase
+            .from("clients")
+            .select("id, tenant_id")
+            .eq("linked_user_id", user.id)
+            .maybeSingle();
+          if (selfContact?.id && selfContact?.tenant_id) {
+            const preview = msgText.length > 140 ? msgText.slice(0, 137) + "…" : msgText;
+            await supabase.rpc("record_rail_event", {
+              p_contact_id: selfContact.id,
+              p_event_kind: "client.message",
+              p_surface: "client_portal",
+              p_actor_type: "client",
+              p_title: "You messaged Paige",
+              p_summary: preview,
+              p_ref_table: "paige_conversations",
+              p_from_department: "client_experience",
+              p_to_department: "owner_ops",
+              p_tenant_id: selfContact.tenant_id,
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[paige-ai-chat] client.message rail emit skipped:", (e as Error)?.message);
+      }
+    }
+
     // === SESSION SUMMARY GENERATION MODE ===
     if (generateSessionSummary && sessionMessages && sessionMessages.length > 0) {
       const last20 = sessionMessages.slice(-20);

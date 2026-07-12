@@ -19,6 +19,7 @@ import { useMyActions, type CustomerAction, type ActionResponseType } from "@/ho
 import { usePlaybook } from "@/lib/playbook";
 import { useClientPortalBrand } from "@/hooks/useClientPortalBrand";
 import { readableTextOn } from "@/lib/brand/contrast";
+import { ClientActivityFeed } from "@/components/app/ClientActivityFeed";
 
 const TYPE_LABEL: Record<CustomerAction["action_type"], string> = {
   task: "Task",
@@ -170,7 +171,7 @@ function ActionCard({
 }
 
 export default function ActionItems() {
-  const { open, past, loading, respond } = useMyActions();
+  const { open, past, loading, respond, contactId } = useMyActions();
   const pb = usePlaybook();
   const brand = useClientPortalBrand();
   const accent = brand?.primary_color ?? null;
@@ -192,6 +193,8 @@ export default function ActionItems() {
           Things {paigeName} and your team flagged for you. Respond right here — they'll see it instantly.
         </p>
       </div>
+
+      <ClientActivityFeed contactId={contactId} />
 
       {loading ? (
         <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
