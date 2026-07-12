@@ -57,6 +57,11 @@ export interface UsePlanListOpts {
   from?: string; // ISO date
   to?: string;   // ISO date
   status?: string;
+  /** Only items for this client (the contact-record Tasks tab). */
+  contactId?: string;
+  /** Treat from/to as ITEM due/remind dates (the calendar range read) rather
+   * than plan-window dates. */
+  byItemDate?: boolean;
   enabled?: boolean;
 }
 
@@ -77,7 +82,7 @@ export interface UsePlanListResult {
 }
 
 export function usePlanList(opts: UsePlanListOpts = {}): UsePlanListResult {
-  const { scope = "mine", from, to, status, enabled = true } = opts;
+  const { scope = "mine", from, to, status, contactId, byItemDate, enabled = true } = opts;
   const [plans, setPlans] = useState<Plan[]>([]);
   const [looseItems, setLooseItems] = useState<PlanItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +104,8 @@ export function usePlanList(opts: UsePlanListOpts = {}): UsePlanListResult {
         p_to: to ?? null,
         p_status: status ?? null,
         p_limit: 200,
+        p_contact_id: contactId ?? null,
+        p_by_item_date: byItemDate ?? false,
       };
       // 'mine' pins to the caller; 'team'/'by_me' fetch the full visible set and
       // filter client-side (plan_list has no created_by filter yet).
@@ -133,7 +140,7 @@ export function usePlanList(opts: UsePlanListOpts = {}): UsePlanListResult {
     } finally {
       setLoading(false);
     }
-  }, [enabled, scope, from, to, status]);
+  }, [enabled, scope, from, to, status, contactId, byItemDate]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 

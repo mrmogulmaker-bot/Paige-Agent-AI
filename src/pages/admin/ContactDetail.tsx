@@ -30,7 +30,7 @@ import { ClientOrgChartPanel } from "@/components/admin/contacts/ClientOrgChartP
 import { ContactCommsPanel } from "@/components/admin/contacts/ContactCommsPanel";
 import { ContactNotesPanel } from "@/components/admin/contacts/ContactNotesPanel";
 import { ContactFilesPanel } from "@/components/admin/contacts/ContactFilesPanel";
-import { ContactTasksPanel } from "@/components/admin/contacts/ContactTasksPanel";
+import { ContactPlanningPanel } from "@/components/admin/contacts/ContactPlanningPanel";
 import { ContactPortalPanel } from "@/components/admin/contacts/ContactPortalPanel";
 import { ClientOnboardingStatusPanel } from "@/components/admin/contacts/ClientOnboardingStatusPanel";
 import { ImpersonateClientButton } from "@/components/admin/ImpersonateClientButton";
@@ -430,7 +430,7 @@ export default function ContactDetail() {
         </TabsContent>
 
         <TabsContent value="tasks">
-          <ContactTasksPanel contactId={client.id} linkedUserId={client.linked_user_id} />
+          <ContactPlanningPanel contactId={client.id} contactName={fullName || client.email || null} />
         </TabsContent>
 
         <TabsContent value="notes">

@@ -94,7 +94,7 @@ const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
 const PipelineSettings = lazy(() => import("@/pages/admin/PipelineSettings"));
 const StageAutomationRules = lazy(() => import("@/pages/admin/StageAutomationRules"));
 const ReadinessProposalsAdmin = lazy(() => import("@/pages/admin/ReadinessProposalsAdmin"));
-const TasksAdmin = lazy(() => import("@/pages/admin/TasksAdmin"));
+const PlanningAdmin = lazy(() => import("@/pages/admin/PlanningAdmin"));
 const SubAgentsAdmin = lazy(() => import("@/pages/admin/SubAgentsAdmin"));
 const SkillsHub = lazy(() => import("@/pages/admin/SkillsHub"));
 const WorkflowsList = lazy(() => import("@/pages/admin/WorkflowsList"));
@@ -303,9 +303,14 @@ const Admin = () => {
         <Route path="pipeline" element={
           <Suspense fallback={<SuspenseFallback />}><PipelineAdmin /></Suspense>
         } />
-        <Route path="tasks" element={
-          <Suspense fallback={<SuspenseFallback />}><TasksAdmin /></Suspense>
+        <Route path="planning" element={
+          <Suspense fallback={<SuspenseFallback />}><PlanningAdmin /></Suspense>
         } />
+        {/* Legacy /admin/tasks now lands on the real Planning hub — the task
+            manager the owner asked to be "wired to the admin user". The old
+            TasksAdmin page is retired from the router; notifications and any
+            saved deep-links resolve to Planning. */}
+        <Route path="tasks" element={<Navigate to="/admin/planning" replace />} />
         <Route path="coaches" element={
           <Suspense fallback={<SuspenseFallback />}><CoachesAdmin /></Suspense>
         } />

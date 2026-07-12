@@ -36,7 +36,7 @@ const byWhen = (a: PlanItem, b: PlanItem) => {
   return av < bv ? -1 : av > bv ? 1 : 0;
 };
 
-export function PlanningHub({ staff = false }: { staff?: boolean }) {
+export function PlanningHub({ staff = false, paigeHref = "/app" }: { staff?: boolean; paigeHref?: string }) {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const reduce = useReducedMotion();
@@ -87,19 +87,19 @@ export function PlanningHub({ staff = false }: { staff?: boolean }) {
       el.focus({ preventScroll: true });
       el.classList.add("ring-2", "ring-ring", "ring-offset-2", "ring-offset-background");
       const t = setTimeout(() => el?.classList.remove("ring-2", "ring-ring", "ring-offset-2", "ring-offset-background"), 2400);
-      navigate("/app/planning", { replace: true });
+      navigate({ search: "" }, { replace: true });
       return () => clearTimeout(t);
     }
     // The linked item isn't on this person's board (completed, removed, or a
     // team item they can't see) — say so plainly instead of a silent no-op.
     toast("That reminder isn't on your board", { description: "It may have been completed, removed, or belongs to the team." });
-    navigate("/app/planning", { replace: true });
+    navigate({ search: "" }, { replace: true });
   }, [focusItem, loading, reduce, navigate]);
 
   const heroActions = (
     <div className="flex items-center gap-2">
       <QuickAddDialog userId={userId} onCreated={reload} />
-      <Button variant="gold" onClick={() => navigate("/app")}>
+      <Button variant="gold" onClick={() => navigate(paigeHref)}>
         <Sparkles className="mr-1.5 h-4 w-4" /> Plan with Paige
       </Button>
     </div>

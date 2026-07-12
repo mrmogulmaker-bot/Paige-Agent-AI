@@ -16,6 +16,9 @@ export interface GridEvent {
   color: string;
   status: string;
   subtitle?: string | null;
+  /** "booking" (default) draws a solid time block; "plan" draws a lighter,
+   * dashed task/reminder pill so the two never read as the same thing. */
+  kind?: "booking" | "plan";
 }
 
 export type ViewMode = "day" | "week" | "month";
@@ -70,6 +73,29 @@ function layoutDay(events: GridEvent[]): Array<{ ev: GridEvent; lane: number; la
 function EventBlock({ ev, style, onClick }: { ev: GridEvent; style: React.CSSProperties; onClick?: () => void }) {
   const cancelled = ev.status === "cancelled";
   const blocked = ev.status === "blocked";
+  const done = ev.status === "done";
+
+  // A plan item (task/reminder) reads as a lighter, dashed pill — clearly not a
+  // booked appointment. Overdue/normal color is carried in ev.color (a token).
+  if (ev.kind === "plan") {
+    return (
+      <div
+        onClick={onClick}
+        className={`absolute rounded-md border border-dashed px-1.5 py-0.5 overflow-hidden text-[11px] leading-tight ${onClick ? "cursor-pointer hover:brightness-95" : "cursor-default"}`}
+        style={{
+          ...style,
+          backgroundColor: `color-mix(in srgb, ${ev.color} 12%, transparent)`,
+          borderColor: ev.color,
+          opacity: done ? 0.55 : 1,
+          textDecoration: done ? "line-through" : "none",
+        }}
+        title={`${ev.title} · ${fmtTime(ev.start)}`}
+      >
+        <div className="truncate font-medium" style={{ color: ev.color }}>{ev.title}</div>
+      </div>
+    );
+  }
+
   // Blocked time reads as unavailable (neutral, hatched), not a real appointment.
   const hue = blocked ? "#94a3b8" : ev.color;
   return (
@@ -234,9 +260,13 @@ function MonthView({ cursor, events, onEventClick }: { cursor: Date; events: Gri
               <div className="space-y-0.5">
                 {list.slice(0, 3).map((e) => (
                   <div key={e.id} onClick={onEventClick ? () => onEventClick(e.id) : undefined}
-                    className={`flex items-center gap-1 text-[10px] truncate ${onEventClick ? "cursor-pointer hover:opacity-70" : ""}`}
+                    className={`flex items-center gap-1 text-[10px] truncate ${onEventClick ? "cursor-pointer hover:opacity-70" : ""} ${e.kind === "plan" && e.status === "done" ? "line-through opacity-60" : ""}`}
                     title={`${e.title} · ${fmtTime(e.start)}`}>
-                    <span className="h-1.5 w-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
+                    {/* Plan items get a hollow ring; bookings a solid dot. */}
+                    <span className="h-1.5 w-1.5 rounded-full flex-shrink-0"
+                      style={e.kind === "plan"
+                        ? { border: `1.5px solid ${e.color}` }
+                        : { backgroundColor: e.color }} />
                     <span className="text-muted-foreground tabular-nums">{e.start.getHours()}:{String(e.start.getMinutes()).padStart(2, "0")}</span>
                     <span className="truncate">{e.title}</span>
                   </div>

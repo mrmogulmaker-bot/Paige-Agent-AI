@@ -31,6 +31,10 @@ import {
 import CalendarsPanel from "@/components/admin/calendar/CalendarsPanel";
 import { CalendarGrid, type GridEvent, type ViewMode } from "@/components/admin/calendar/CalendarGrid";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { usePlanList, type PlanItem } from "@/hooks/usePlanList";
+import { itemDate, bucketOf, isClosed } from "@/lib/planning";
+import { QuickAddDialog } from "@/components/planning/QuickAddDialog";
+import { PlanItemRow } from "@/components/planning/PlanItemRow";
 
 interface IntakeQ { id: string; label: string; type: string; }
 interface CalMeta { id: string; title: string | null; color: string | null; accent: string | null; tenant_id: string | null; type?: string; intake_questions?: IntakeQ[]; }
@@ -54,6 +58,8 @@ const DEFAULT_COLOR = "#7A67E8";
 function startOfDay(d: Date) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
 function addDays(d: Date, n: number) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
 function startOfWeek(d: Date) { const x = startOfDay(d); return addDays(x, -x.getDay()); }
+/** Local YYYY-MM-DD (no TZ shift) — the plan_list date-window params are `date`. */
+function ymd(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
 function rangeFor(view: ViewMode, cursor: Date): [Date, Date] {
   if (view === "day") return [startOfDay(cursor), addDays(startOfDay(cursor), 1)];
@@ -151,7 +157,57 @@ export default function CalendarAdmin() {
       color: colorFor(b.calendar_id),
       status: b.status,
       subtitle: b.seatLabel ?? (b.guest_name ?? b.guest_email),
+      kind: "booking" as const,
     })), [visibleBookings, hidden, colorFor]);
+
+  // Task/reminder overlay — the SAME plan_* items Paige and the Planning hub use
+  // (§10), pulled for the visible date window by item date. They render as
+  // dashed pills, distinct from bookings, and click through to the plan detail.
+  const [planFrom, planTo] = useMemo(() => rangeFor(view, cursor), [view, cursor]);
+  const planEnabled = tab === "calendar" || tab === "list";
+  const { allItems: planItems, refresh: refreshPlans, userId: planUserId } = usePlanList({
+    scope: "mine", byItemDate: true, from: ymd(planFrom), to: ymd(planTo), enabled: planEnabled,
+  });
+  const [showTasks, setShowTasks] = useState(true);
+  const [planDetail, setPlanDetail] = useState<PlanItem | null>(null);
+
+  const planById = useMemo(() => {
+    const m = new Map<string, PlanItem>();
+    for (const it of planItems) m.set(it.id, it);
+    return m;
+  }, [planItems]);
+
+  const planEvents: GridEvent[] = useMemo(() => {
+    if (!showTasks) return [];
+    return planItems
+      .map((it) => {
+        const d = itemDate(it);
+        if (!d) return null;
+        const overdue = !isClosed(it) && bucketOf(it) === "overdue";
+        const color = isClosed(it)
+          ? "hsl(var(--muted-foreground))"
+          : overdue ? "hsl(var(--destructive))" : "hsl(var(--muted-foreground))";
+        return {
+          id: it.id,
+          title: it.title,
+          start: d,
+          end: new Date(d.getTime() + 30 * 60000),
+          color,
+          status: it.status,
+          subtitle: it.item_type,
+          kind: "plan" as const,
+        } satisfies GridEvent;
+      })
+      .filter((e): e is GridEvent => e !== null);
+  }, [planItems, showTasks]);
+
+  const gridEvents = useMemo(() => [...events, ...planEvents], [events, planEvents]);
+
+  const handleEventClick = useCallback((id: string) => {
+    const plan = planById.get(id);
+    if (plan) { setPlanDetail(plan); return; }
+    setDetail(visibleBookings.find((b) => b.id === id) ?? null);
+  }, [planById, visibleBookings]);
 
   const nav = (dir: -1 | 0 | 1) => {
     if (dir === 0) { setCursor(new Date()); return; }
@@ -199,6 +255,13 @@ export default function CalendarAdmin() {
                   <SelectItem value="month">Month view</SelectItem>
                 </SelectContent>
               </Select>
+              <QuickAddDialog
+                userId={planUserId}
+                onCreated={() => refreshPlans({ silent: true })}
+                defaultDate={ymd(cursor)}
+                defaultKind="task"
+                trigger={<Button size="sm" variant="outline"><ListChecks className="h-4 w-4 mr-1.5" /> Add task</Button>}
+              />
               <Button size="sm" onClick={() => setNewOpen(true)}><Plus className="h-4 w-4 mr-1.5" /> New</Button>
             </div>
           </div>
@@ -210,8 +273,7 @@ export default function CalendarAdmin() {
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
               )}
-              <CalendarGrid view={view} cursor={cursor} events={events}
-                onEventClick={(id) => setDetail(visibleBookings.find((b) => b.id === id) ?? null)} />
+              <CalendarGrid view={view} cursor={cursor} events={gridEvents} onEventClick={handleEventClick} />
             </div>
 
             {/* Filter rail — color legend + calendar toggles */}
@@ -233,6 +295,13 @@ export default function CalendarAdmin() {
                   <input type="checkbox" checked={!hidden.has(UNASSIGNED)} onChange={() => toggleCal(UNASSIGNED)} className="rounded" />
                   <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: DEFAULT_COLOR }} />
                   <span className="text-muted-foreground">Other / manual</span>
+                </label>
+                {/* Tasks & reminders overlay toggle — the plan_* items, shown as
+                    dashed pills alongside bookings. */}
+                <label className="flex items-center gap-2 cursor-pointer text-sm pt-1 border-t border-border/60 mt-1">
+                  <input type="checkbox" checked={showTasks} onChange={() => setShowTasks((v) => !v)} className="rounded" />
+                  <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 border-[1.5px]" style={{ borderColor: "hsl(var(--muted-foreground))" }} />
+                  <span className="text-muted-foreground">Tasks &amp; reminders</span>
                 </label>
               </CardContent>
             </Card>
@@ -270,6 +339,25 @@ export default function CalendarAdmin() {
           if (startedAt) setCursor(startedAt); else void loadBookings();
         }}
       />
+
+      {/* Task/reminder detail — same PlanItemRow actions (complete · snooze ·
+          remove) the Planning hub uses, so the calendar drives the one seam. */}
+      <Dialog open={planDetail !== null} onOpenChange={(v) => !v && setPlanDetail(null)}>
+        <DialogContent className="sm:max-w-md">
+          {planDetail && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{planDetail.item_type === "reminder" ? "Reminder" : planDetail.item_type === "milestone" ? "Milestone" : "Task"}</DialogTitle>
+                <DialogDescription>Update it here — it stays in sync with Planning and Paige.</DialogDescription>
+              </DialogHeader>
+              <PlanItemRow
+                item={planDetail}
+                onChanged={() => { void refreshPlans({ silent: true }); setPlanDetail(null); }}
+              />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

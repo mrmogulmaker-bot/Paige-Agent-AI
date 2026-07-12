@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, Store, Send,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -79,11 +79,21 @@ const hubs: Hub[] = [
     icon: CalendarDays,
     aliases: ["/admin/bookings"],
   },
+  // Planning — the task/reminder manager (HubSpot/Asana/GHL parity). Everything
+  // Paige sets and everything staff add manually lives here, tenant/caller-scoped
+  // off the shared plan_* seam. /admin/tasks redirects here for deep-link
+  // back-compat from notifications.
+  {
+    label: "Planning",
+    href: "/admin/planning",
+    icon: CalendarClock,
+    aliases: ["/admin/tasks"],
+  },
   // Inbox hub dissolved — Conversations live per-contact under Contacts → [contact] → Comms tab.
   // Bookings rebuilt as personal Calendar (per-user Google/Apple). Support moved to the More menu.
   // Routes (/admin/communications, /admin/bookings, /admin/support) remain mounted for deep-link back-compat.
-  // Tasks & Approvals removed from global nav — now scoped per-contact under Contacts → [contact] → Tasks / Approvals tabs.
-  // Routes (/admin/tasks, /admin/approvals, /admin/approvals/:id) remain mounted for deep-link back-compat from notifications.
+  // Approvals removed from global nav — now scoped per-contact under Contacts → [contact] → Approvals tab.
+  // Routes (/admin/approvals, /admin/approvals/:id) remain mounted for deep-link back-compat from notifications.
   {
     label: "Campaigns",
     href: "/admin/campaigns",
@@ -162,6 +172,7 @@ const GOD_HUBS: Hub[] = [
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
   { label: "Contacts", href: "/admin/contacts", icon: Contact, aliases: ["/admin/leads"] },
   { label: "Calendar", href: "/admin/calendar", icon: CalendarDays, aliases: ["/admin/bookings"] },
+  { label: "Planning", href: "/admin/planning", icon: CalendarClock, aliases: ["/admin/tasks"] },
   { label: "Inbox", href: "/admin/communications", icon: Inbox },
   { label: "Campaigns", href: "/admin/campaigns", icon: Rocket, aliases: ["/admin/growth"] },
   {
@@ -199,6 +210,7 @@ const GOD_STAFF_HUBS: Hub[] = [
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
   { label: "Calendar", href: "/admin/calendar", icon: CalendarDays, aliases: ["/admin/bookings"] },
+  { label: "Planning", href: "/admin/planning", icon: CalendarClock, aliases: ["/admin/tasks"] },
 ];
 const GOD_STAFF_MORE: MoreItem[] = [];
 

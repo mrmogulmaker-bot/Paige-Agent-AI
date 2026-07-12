@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Plus, Bell, CheckSquare, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -13,34 +13,82 @@ import { friendlyPlanError } from "@/lib/planning";
 
 type Kind = "reminder" | "task";
 
-/** Human create-path for the Task Manager — a person adds a reminder/task for
- * themselves without going through Paige. Calls the SAME plan_* RPCs Paige's
- * tools call (§10), so the UI and Paige are one caller. */
-export function QuickAddDialog({ userId, onCreated }: { userId: string | null; onCreated: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<Kind>("reminder");
+/** Local datetime-local string (YYYY-MM-DDTHH:mm) for a given ISO date at 09:00,
+ * so a calendar day-click preselects a sensible time in the viewer's zone. */
+function dateToLocalNine(date: string): string {
+  // date is YYYY-MM-DD; keep it literal (no TZ shift) and default to 09:00.
+  return `${date}T09:00`;
+}
+
+interface QuickAddDialogProps {
+  userId: string | null;
+  onCreated: () => void;
+  /** Scope the new item to a client — the contact-record Tasks tab and the
+   * calendar's per-contact adds pass this so it shows on that record too. */
+  contactId?: string | null;
+  /** Name shown in the dialog copy when contact-scoped (e.g. "for Dana Reid"). */
+  contactName?: string | null;
+  /** Preselect a day (YYYY-MM-DD) — used by the calendar overlay's day add. */
+  defaultDate?: string | null;
+  /** Default the picker to reminder or task. */
+  defaultKind?: Kind;
+  /** Custom trigger. Omit to render the default "New" outline button. Pass
+   * `null` with `open`/`onOpenChange` to drive the dialog fully controlled. */
+  trigger?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+/** Human create-path for the Task Manager — a person adds a reminder/task
+ * without going through Paige. Calls the SAME plan_* RPCs Paige's tools call
+ * (§10), so the UI and Paige are one caller. Reused on the Planning hub, the
+ * contact-record Tasks tab, and the calendar overlay. */
+export function QuickAddDialog({
+  userId, onCreated, contactId = null, contactName = null,
+  defaultDate = null, defaultKind = "reminder", trigger, open: openProp, onOpenChange,
+}: QuickAddDialogProps) {
+  const controlled = openProp !== undefined;
+  const [openState, setOpenState] = useState(false);
+  const open = controlled ? openProp : openState;
+  const setOpen = (o: boolean) => { if (!controlled) setOpenState(o); onOpenChange?.(o); };
+
+  const [kind, setKind] = useState<Kind>(defaultKind);
   const [title, setTitle] = useState("");
-  const [whenLocal, setWhenLocal] = useState(""); // datetime-local value
+  const [whenLocal, setWhenLocal] = useState(defaultDate ? dateToLocalNine(defaultDate) : "");
   const [busy, setBusy] = useState(false);
 
-  const reset = () => { setKind("reminder"); setTitle(""); setWhenLocal(""); };
+  const reset = () => {
+    setKind(defaultKind);
+    setTitle("");
+    setWhenLocal(defaultDate ? dateToLocalNine(defaultDate) : "");
+  };
+
+  // When the preset day changes (calendar overlay reopened on another date),
+  // reseed the time field while the dialog is closed.
+  useEffect(() => {
+    if (!open) setWhenLocal(defaultDate ? dateToLocalNine(defaultDate) : "");
+  }, [defaultDate, open]);
 
   async function submit() {
     const t = title.trim();
     if (!t) { toast.error("Give it a title"); return; }
     if (kind === "reminder" && !whenLocal) { toast.error("Pick a time to be reminded"); return; }
     const iso = whenLocal ? new Date(whenLocal).toISOString() : null;
-    if (iso && new Date(iso).getTime() <= Date.now()) { toast.error("Pick a future time"); return; }
+    if (iso && kind === "reminder" && new Date(iso).getTime() <= Date.now()) { toast.error("Pick a future time"); return; }
 
     setBusy(true);
     try {
       if (kind === "reminder") {
-        const { error } = await supabase.rpc("plan_set_reminder", { p_title: t, p_remind_at: iso, p_channel: "in_app" });
+        const { error } = await supabase.rpc("plan_set_reminder", {
+          p_title: t, p_remind_at: iso, p_channel: "in_app", p_contact_id: contactId,
+        });
         if (error) throw new Error(friendlyPlanError(error.message));
         toast.success("Reminder set — it'll ping you at that time");
       } else {
         if (!userId) throw new Error("Your account isn't loaded yet");
-        const { error } = await supabase.rpc("plan_assign_task", { p_title: t, p_assigned_to_user_id: userId, p_due_at: iso });
+        const { error } = await supabase.rpc("plan_assign_task", {
+          p_title: t, p_assigned_to_user_id: userId, p_due_at: iso, p_contact_id: contactId,
+        });
         if (error) throw new Error(friendlyPlanError(error.message));
         toast.success("Task added");
       }
@@ -54,17 +102,27 @@ export function QuickAddDialog({ userId, onCreated }: { userId: string | null; o
     }
   }
 
+  const forWhom = contactName ? ` for ${contactName}` : "";
+
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
-      <DialogTrigger asChild>
-        <Button variant="outline">
-          <Plus className="mr-1.5 h-4 w-4" /> New
-        </Button>
-      </DialogTrigger>
+      {trigger !== null && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button variant="outline">
+              <Plus className="mr-1.5 h-4 w-4" /> New
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add to your plan</DialogTitle>
-          <DialogDescription>A quick reminder or task for yourself. For anything more, just ask Paige.</DialogDescription>
+          <DialogTitle>{contactName ? `Add${forWhom}` : "Add to your plan"}</DialogTitle>
+          <DialogDescription>
+            {contactName
+              ? `A reminder or task about ${contactName}. For anything more, just ask Paige.`
+              : "A quick reminder or task for yourself. For anything more, just ask Paige."}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
