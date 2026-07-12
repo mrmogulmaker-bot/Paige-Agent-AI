@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Crown, ShieldCheck, ShieldOff, Mail, Calendar, Clock, Users, FileText, Pencil, Save, X, KeyRound, LogOut, Send, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 import { callAdminAccountAction } from "@/lib/functions/adminAccountActions";
+import { AvatarUploader } from "@/components/ui/avatar-uploader";
 
 export interface MemberProfile {
   user_id: string;
@@ -67,8 +68,14 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [confirmSignout, setConfirmSignout] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => { setEditing(initialEdit); }, [initialEdit, member?.user_id]);
+  // A person may only upload to their OWN avatar folder (storage RLS), so the
+  // photo control appears only when this drawer is the signed-in user's own.
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
+  }, []);
 
   useEffect(() => {
     if (!open || !member) return;
@@ -117,6 +124,7 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
   }, [open, member]);
 
   if (!member) return null;
+  const isSelf = !!currentUserId && member.user_id === currentUserId;
   const initials = (fields.full_name || member.email || "?")
     .split(/\s+/).map(s => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
@@ -217,6 +225,18 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
           {/* Personal */}
           <div className="space-y-3">
             <div className="text-xs uppercase text-muted-foreground">Personal</div>
+            {editing && isSelf && (
+              <div className="space-y-1">
+                <Label className="text-xs">Profile photo</Label>
+                <AvatarUploader
+                  userId={member.user_id}
+                  value={fields.avatar_url}
+                  onChange={(url) => set("avatar_url", url)}
+                  name={fields.full_name || member.email}
+                  size={72}
+                />
+              </div>
+            )}
             {editing ? (
               <>
                 <Field label="First name" value={fields.first_name} editing onChange={v => set("first_name", v)} />

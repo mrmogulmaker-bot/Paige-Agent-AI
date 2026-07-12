@@ -52,6 +52,7 @@ interface MemberRow {
   user_id: string;
   email: string | null;
   full_name: string | null;
+  avatar_url: string | null;
   created_at: string;
   last_sign_in_at: string | null;
   suspended_at: string | null;
@@ -117,7 +118,7 @@ export default function MembersAdmin() {
 
       const [{ data: roleRows }, { data: profRows }, { data: ownerCheck }, { data: pendingInvites }] = await Promise.all([
         supabase.from("user_roles").select("user_id, role").in("user_id", userIds),
-        supabase.from("coach_client_profiles_safe").select("user_id, full_name, suspended_at, suspended_reason").in("user_id", userIds),
+        supabase.from("coach_client_profiles_safe").select("user_id, full_name, avatar_url, suspended_at, suspended_reason").in("user_id", userIds),
         supabase.rpc("is_platform_owner"),
         supabase.from("invitations").select("id, email, role, invited_by, created_at, expires_at")
           .is("accepted_at", null).order("created_at", { ascending: false }),
@@ -162,6 +163,7 @@ export default function MembersAdmin() {
           user_id: u.id,
           email: u.email ?? prof.email ?? null,
           full_name: prof.full_name ?? null,
+          avatar_url: prof.avatar_url ?? null,
           created_at: u.created_at,
           last_sign_in_at: u.last_sign_in_at,
           suspended_at: prof.suspended_at ?? null,
@@ -498,6 +500,11 @@ export default function MembersAdmin() {
                         className="flex items-center gap-2 text-left hover:underline focus:outline-none focus:underline"
                         onClick={() => setProfileTarget(m)}
                       >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted text-[11px] font-semibold text-muted-foreground">
+                          {m.avatar_url
+                            ? <img src={m.avatar_url} alt="" className="h-full w-full object-cover" />
+                            : (m.full_name || m.email || "?").split(/\s+/).map(s => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase()}
+                        </span>
                         {m.is_owner && <Crown className="w-4 h-4 text-yellow-500" />}
                         <div>
                           <div className="font-medium">{m.full_name || m.email || "—"}</div>
