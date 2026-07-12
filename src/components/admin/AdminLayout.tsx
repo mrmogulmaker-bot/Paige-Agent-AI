@@ -20,6 +20,7 @@ import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
+import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 
 import { useRoleLens } from "@/contexts/RoleLensContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
@@ -238,6 +239,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  // Publish this staff member's live presence while they're in the admin
+  // workspace (#148). The heartbeat self-resolves auth.uid() server-side.
+  usePresenceHeartbeat(true);
   // When a multi-hat user picks the Coach lens, treat the UI as coach-scoped
   // even if their real role is admin. Real permissions still come from RLS.
   const effectiveRole: "admin" | "coach" =

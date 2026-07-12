@@ -58,6 +58,8 @@ function describeStep(
     case "crm_delete_contact": return { label: "Removing that contact", group: "client" };
     case "crm_log_activity": return { label: "Jotting down a note", group: "client" };
     case "crm_list_team": return { label: "Checking your team", group: "owner" };
+    case "presence_who_online": return { label: "Checking who's online", group: "owner" };
+    case "presence_is_online": return { label: "Checking if someone's online", group: "owner" };
     case "crm_assign_contact": return { label: "Assigning the contact", group: "owner" };
     case "program_list": return { label: "Reviewing your programs", group: "owner" };
     case "program_enroll": return { label: "Enrolling them in the program", group: "client" };
@@ -3989,6 +3991,26 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "presence_who_online",
+              description: "Owner/admin/coach. See who is on the platform right now (online/away). For the platform owner this spans all tenants; for a tenant member it's just their own team. Use when the operator asks 'who's online', 'is anyone on right now', 'who's here'.",
+              parameters: { type: "object", properties: {} }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "presence_is_online",
+              description: "Owner/admin/coach. Check whether a specific person (by name or email) is online right now. Tenant-scoped for members (only their own team). Use for 'is <name> online?'.",
+              parameters: {
+                type: "object",
+                properties: { query: { type: "string", description: "Person's name or email to look up." } },
+                required: ["query"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "crm_assign_contact",
               description: "Admin/coach only. Assign a contact to a teammate. role picks the seat: 'coach' (default), 'owner'/'sales_rep' (lead owner), or 'cs' (client-success primary). Resolve the person via crm_list_team first to get their user_id. Confirm with the operator before assigning.",
               parameters: {
@@ -5044,6 +5066,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "action_list" ||
           tc.function.name === "action_get" ||
           tc.function.name === "crm_list_team" ||
+          tc.function.name === "presence_who_online" ||
+          tc.function.name === "presence_is_online" ||
           tc.function.name === "crm_assign_contact" ||
           tc.function.name === "program_list" ||
           tc.function.name === "program_enroll" ||
@@ -5304,6 +5328,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, count: (data as any[])?.length ?? 0, members: data ?? [] };
+            } else if (tc.function.name === "presence_who_online") {
+              // p_tenant_id: null so the platform OWNER sees platform-wide and a
+              // tenant member is auto-pinned to their own team by the DEFINER RPC.
+              // (Do NOT pass personaCtx.tenant_id — it would wrongly narrow the owner.)
+              const { data, error } = await supabaseClient.rpc("presence_list_online", {
+                p_tenant_id: null,
+                p_window_seconds: 75,
+              });
+              if (error) throw error;
+              result = { success: true, count: (data as any[])?.length ?? 0, online: data ?? [] };
+            } else if (tc.function.name === "presence_is_online") {
+              const { data, error } = await supabaseClient.rpc("presence_check_user", {
+                p_query: args.query,
+                p_window_seconds: 75,
+              });
+              if (error) throw error;
+              result = { success: true, count: (data as any[])?.length ?? 0, matches: data ?? [] };
             } else if (tc.function.name === "crm_assign_contact") {
               const { data, error } = await supabaseClient.rpc("assign_contact", {
                 p_contact_id: args.contact_id,

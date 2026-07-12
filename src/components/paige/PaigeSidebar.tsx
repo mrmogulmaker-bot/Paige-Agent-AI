@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CustomerSelector } from "./CustomerSelector";
 import { CustomerMiniCard } from "./CustomerMiniCard";
 import { LiveActionFeed } from "./LiveActionFeed";
+import { PaigeWhosHere } from "./PaigeWhosHere";
 import type { FocusedClient } from "./commandCenterTypes";
 import type { ApprovalQueueRow } from "@/hooks/usePendingApprovals";
 
@@ -35,6 +36,11 @@ export function PaigeSidebarBody({ focused, onFocus, onClear, approvals, approva
             <p className="text-xs text-muted-foreground">Pick someone and Paige focuses on them.</p>
           </>
         )}
+      </div>
+
+      {/* Who's here — live presence roster (§148): see who's on the platform right now */}
+      <div className="rounded-lg border bg-card/60 p-3">
+        <PaigeWhosHere />
       </div>
 
       {/* Live action feed */}

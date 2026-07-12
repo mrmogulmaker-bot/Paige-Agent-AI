@@ -28,6 +28,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ClientHomeTiles } from "@/components/client/ClientHomeTiles";
 import { UpcomingWidget } from "@/components/planning/UpcomingWidget";
 import { usePlaybook } from "@/lib/playbook";
+import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 
 // Map /app sub-routes to canonical feature names emitted as `feature_visit`.
 function routeToFeatureName(pathname: string): string | null {
@@ -69,6 +70,9 @@ const AppShell = () => {
   const effectiveUserId = impersonationTarget?.targetUserId ?? user?.id;
   const { factors } = useCreditFactors(effectiveUserId ?? null, { enabled: !!effectiveUserId });
   const { showWarning, staySignedIn } = useSessionTimeout();
+  // Publish live presence while signed in (#148). The heartbeat always stamps
+  // the real authenticated user (auth.uid()), regardless of view-as-client.
+  usePresenceHeartbeat(!!user?.id);
 
   // Show context panel on non-root /app routes
   const showContextPanel = location.pathname !== "/app" || !isMobile;
