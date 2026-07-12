@@ -119,6 +119,7 @@ const Support = lazyWithReload(() => import("./pages/Support"));
 const MyAgreements = lazyWithReload(() => import("./pages/MyAgreements"));
 const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
 const ActionItems = lazyWithReload(() => import("./pages/app/ActionItems"));
+const Planning = lazyWithReload(() => import("./pages/app/Planning"));
 const GoogleCalendarCallback = lazyWithReload(() => import("./pages/GoogleCalendarCallback"));
 
 const queryClient = new QueryClient({
@@ -211,6 +212,7 @@ const App = () => (
               <Route path="affiliate" element={<PageSuspense><AffiliateTracking /></PageSuspense>} />
               <Route path="approvals" element={<PageSuspense><ClientApprovals /></PageSuspense>} />
               <Route path="actions" element={<PageSuspense><ActionItems /></PageSuspense>} />
+              <Route path="planning" element={<PageSuspense><Planning /></PageSuspense>} />
             </Route>
 
             {/* Backward compat redirect */}

@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Home, BookOpen, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye, LifeBuoy, ListChecks, ClipboardList } from "lucide-react";
+import { Home, BookOpen, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye, LifeBuoy, ListChecks, ClipboardList, CalendarClock } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -35,6 +35,7 @@ const MODULE_ROUTES: Record<string, { href: string; icon: LucideIcon }> = {
   resources: { href: "/app/learn", icon: BookOpen },
   approvals: { href: "/app/approvals", icon: ListChecks },
   actions: { href: "/app/actions", icon: ClipboardList },
+  planning: { href: "/app/planning", icon: CalendarClock },
 };
 
 interface NavItem {
@@ -95,6 +96,14 @@ export function AppNav({ user }: AppNavProps) {
     navItems.splice(homeIdx >= 0 ? homeIdx + 1 : 0, 0, {
       label: "Action items", href: "/app/actions", icon: ClipboardList,
     });
+  }
+
+  // Planning is the Task Manager — where every reminder/task/milestone Paige
+  // sets actually lives, and the landing spot for a fired reminder's
+  // notification. Staff always get it (plan_list is tenant-member scoped, so a
+  // pure client can't use it yet — the client view ships separately).
+  if (isCoachOrAdmin && !navItems.some((i) => i.href === "/app/planning")) {
+    navItems.push({ label: "Planning", href: "/app/planning", icon: CalendarClock });
   }
 
   const userRoleLabel = isAdmin ? "Admin" : isCoachOrAdmin ? "Coach" : "Client";

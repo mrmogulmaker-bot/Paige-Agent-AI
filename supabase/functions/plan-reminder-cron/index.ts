@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
         type: "task_reminder",
         title,
         message: summary || "You asked Paige to remind you.",
-        action_url: PLANNING_URL,
+        action_url: `${PLANNING_URL}?item=${r.id}`,
         is_read: false,
         metadata: { plan_item_id: r.id, plan_id: r.plan_id, remind_target: r.remind_target, source: "paige_planning" },
       }));

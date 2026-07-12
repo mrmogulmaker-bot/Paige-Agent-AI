@@ -26,6 +26,7 @@ import { useImpersonation } from "@/contexts/ImpersonationContext";
 import { setScopedUserId } from "@/lib/scopedUser";
 import { useQueryClient } from "@tanstack/react-query";
 import { ClientHomeTiles } from "@/components/client/ClientHomeTiles";
+import { UpcomingWidget } from "@/components/planning/UpcomingWidget";
 import { usePlaybook } from "@/lib/playbook";
 
 // Map /app sub-routes to canonical feature names emitted as `feature_visit`.
@@ -341,6 +342,8 @@ function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }
           Ask {pb.persona.name} anything — she's here to keep you moving toward your goals.
         </p>
       </div>
+
+      <UpcomingWidget />
 
       {hasCreditData ? (
         <div className="grid grid-cols-5 gap-4">
