@@ -182,7 +182,7 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                {member.is_owner && <Crown className="w-4 h-4 text-yellow-500" />}
+                {member.is_owner && <Crown className="w-4 h-4 text-gold-dark" />}
                 <span className="truncate">{fields.full_name || member.email || "Unnamed"}</span>
               </div>
               <SheetDescription className="text-xs truncate">{member.email}</SheetDescription>
@@ -354,12 +354,12 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Reset actions never touch credit data, businesses, or CRM history. Use Delete to remove an account.
+              Reset actions never touch a member's records, businesses, or CRM history. Use Delete to remove an account.
             </p>
           </div>
 
           {confirmSignout && (
-            <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
+            <div className="rounded-md border border-warning/40 bg-warning/5 p-3 space-y-2">
               <p className="text-sm">Sign this user out of every device immediately?</p>
               <div className="flex gap-2 justify-end">
                 <Button size="sm" variant="ghost" onClick={() => setConfirmSignout(false)} disabled={!!actionPending}>Cancel</Button>
@@ -371,7 +371,7 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
           )}
 
           {confirmWipe && (
-            <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
+            <div className="rounded-md border border-warning/40 bg-warning/5 p-3 space-y-2">
               <p className="text-sm">Reset this user's onboarding, intake, and consent flags? They'll re-run the welcome flow on next login.</p>
               <div className="flex gap-2 justify-end">
                 <Button size="sm" variant="ghost" onClick={() => setConfirmWipe(false)} disabled={!!actionPending}>Cancel</Button>

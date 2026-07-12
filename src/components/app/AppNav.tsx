@@ -19,6 +19,7 @@ import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { supabase } from "@/integrations/supabase/client";
 import { performSignOut, customerSignOutTarget, cachePortalSlug } from "@/lib/auth/signOut";
 import { useUnreadSupportCount } from "@/hooks/useUnreadSupportCount";
+import { isAvatarBucketUrl } from "@/components/ui/avatar-uploader";
 import { usePlaybook } from "@/lib/playbook";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
@@ -55,6 +56,16 @@ export function AppNav({ user }: AppNavProps) {
   const { isCoachOrAdmin, isAdmin, mode, setMode } = useDashboardMode();
   const { count: unreadSupport } = useUnreadSupportCount(user.id);
   const pb = usePlaybook();
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    supabase.from("profiles").select("avatar_url").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => { if (!cancelled) setAvatarUrl((data as any)?.avatar_url || ""); });
+    return () => { cancelled = true; };
+  }, [user.id]);
+  const avatarNode = isAvatarBucketUrl(avatarUrl)
+    ? <img src={avatarUrl} alt="" className="h-6 w-6 rounded-full object-cover" />
+    : <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sidebar-accent"><UserIcon className="w-3.5 h-3.5" /></span>;
 
   // Cache this customer's portal slug so an involuntary logout (session expiry,
   // forced sign-out) can still return them to their tenant gateway, not the
@@ -229,7 +240,7 @@ export function AppNav({ user }: AppNavProps) {
               size="sm"
               className="text-primary-foreground hover:bg-sidebar-accent gap-2 px-2"
             >
-              <UserIcon className="w-4 h-4" />
+              {avatarNode}
               <span className="hidden md:inline text-xs max-w-[140px] truncate">
                 {user.email}
               </span>
