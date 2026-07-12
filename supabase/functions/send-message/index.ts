@@ -85,7 +85,11 @@ Deno.serve(async (req) => {
       const { data: sender } = await admin.rpc("get_tenant_sender", { _tenant_id: tenantId });
       const senderRow = Array.isArray(sender) ? sender[0] : sender;
       const senderName = senderRow?.from_name || "Paige Agent";
-      const senderEmail = senderRow?.from_email || config?.default_from_email || "no-reply@paigeagent.ai";
+      // Last-resort fallback on the VERIFIED sending subdomain (Tier 1 #64) — the
+      // bare apex is not a confirmed Resend sending domain. Post-migration
+      // get_tenant_sender always returns the tenant's <slug>@mail.paigeagent.ai,
+      // so this only fires on an RPC miss; keep it verified so it can still deliver.
+      const senderEmail = senderRow?.from_email || config?.default_from_email || "no-reply@mail.paigeagent.ai";
       fromAddress = `${senderName} <${senderEmail}>`;
 
       const headers: Record<string, string> = {};

@@ -13,7 +13,12 @@ const SENDER_DOMAIN = "paigeagent.ai"
 // FROM_DOMAIN is the domain shown in the From: header. It MUST align with SENDER_DOMAIN
 // (same subdomain, or the SENDER_ROOT). A different subdomain (e.g., mail.example.com while
 // SENDER_DOMAIN is notify.example.com) triggers a provider 400 sender_domain_mismatch.
-const FROM_DOMAIN = "paigeagent.ai"
+// Tier 1 (#64): the domain VERIFIED in Resend for sending is the subdomain
+// mail.paigeagent.ai — the bare apex is not a confirmed sending domain. The From:
+// header + the no-tenant / unaligned fallbacks below must use the verified
+// subdomain so Resend never rejects a fallback send. SENDER_DOMAIN/SENDER_ROOT
+// stay the apex root so fromAddressAligns() still accepts any *.paigeagent.ai.
+const FROM_DOMAIN = "mail.paigeagent.ai"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

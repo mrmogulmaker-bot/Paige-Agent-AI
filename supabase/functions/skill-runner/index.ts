@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
           const doc_type = (body.inputs?.doc_type as string) ?? "summary";
           const prompt = (body.inputs?.prompt as string) ?? "";
           if (!contact_id) throw new Error("contact_id required");
-          const { data: contact } = await admin.from("clients").select("id, first_name, last_name, email").eq("id", contact_id).maybeSingle();
+          const { data: contact } = await admin.from("clients").select("id, first_name, last_name, email, tenant_id").eq("id", contact_id).maybeSingle();
           if (!contact?.email) throw new Error("contact has no email on file");
           if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY missing");
 
@@ -186,11 +186,19 @@ Deno.serve(async (req) => {
           // Email via Resend (already configured)
           const resendKey = Deno.env.get("RESEND_API_KEY");
           if (!resendKey) throw new Error("RESEND_API_KEY missing");
+          // Resolve the tenant's per-tenant sending identity (unique shared-domain
+          // address on the verified sending domain) so this client-facing doc goes
+          // out under the coach's brand — never a shared hardcoded platform address.
+          const { data: senderRow } = await admin.rpc("get_tenant_sender", { _tenant_id: contact.tenant_id ?? null });
+          const sRow = Array.isArray(senderRow) ? senderRow[0] : senderRow;
+          const fromName = sRow?.from_name || "Paige";
+          const fromEmail = sRow?.from_email || "notify@mail.paigeagent.ai";
+          const fromHeader = `${fromName} <${fromEmail}>`;
           const emailRes = await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              from: "Paige <notify@paigeagent.ai>",
+              from: fromHeader,
               to: [contact.email],
               subject: `Your ${doc_type} from Paige`,
               html: `<div style="font-family:Inter,sans-serif;max-width:640px;margin:0 auto;padding:24px">${html}</div>`,
