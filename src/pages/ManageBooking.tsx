@@ -31,6 +31,7 @@ interface Booking {
   id: string; title: string; start_at: string; status: string;
   guest_name: string | null; timezone: string; slug: string | null;
   accent: string; durationMin: number; canModify: boolean;
+  theme?: "light" | "dark"; // The calendar owner's brand theme (§6 continuity).
   with?: string; // Collective only: every attending host's name.
   appointmentType?: AppointmentType | null; // Drives per-type slot duration.
 }
@@ -77,22 +78,28 @@ export default function ManageBooking() {
   const [pendingSlot, setPendingSlot] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
 
-  // Public page: honor the visitor's system light/dark preference by scoping the
-  // token theme onto <html> (so portaled dialogs match too), and cleanly restore
-  // it on unmount. Only toggles the class we added — never clobbers an existing one.
+  // Follow the calendar owner's brand theme (§6 continuity) once the booking
+  // loads — the manage page shouldn't hand off from a dark-branded booking flow
+  // to a light one for the same booking. Fall back to the visitor's OS
+  // preference only when the calendar hasn't set a theme. Restores the original
+  // <html> class on unmount so we never clobber the surrounding app.
   useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    if (typeof window === "undefined") return;
     const root = document.documentElement;
-    let added = false;
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    const hadDark = root.classList.contains("dark");
     const apply = () => {
-      if (mq.matches && !root.classList.contains("dark")) { root.classList.add("dark"); added = true; }
-      else if (!mq.matches && added) { root.classList.remove("dark"); added = false; }
+      const dark = booking?.theme ? booking.theme === "dark" : !!mq?.matches;
+      root.classList.toggle("dark", dark);
     };
     apply();
-    mq.addEventListener("change", apply);
-    return () => { mq.removeEventListener("change", apply); if (added) root.classList.remove("dark"); };
-  }, []);
+    // Only track OS changes while the calendar hasn't forced a theme.
+    if (!booking?.theme && mq) mq.addEventListener("change", apply);
+    return () => {
+      if (!booking?.theme && mq) mq.removeEventListener("change", apply);
+      root.classList.toggle("dark", hadDark);
+    };
+  }, [booking?.theme]);
 
   const load = useCallback(async () => {
     if (!token) { setError("This link is missing its token."); setLoading(false); return; }

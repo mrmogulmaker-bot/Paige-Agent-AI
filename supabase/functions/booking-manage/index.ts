@@ -389,7 +389,7 @@ Deno.serve(async (req) => {
     let calDurationMin = 30;
     if (b.calendar_id) {
       const { data: c } = await admin.from("calendars")
-        .select("slug, availability_json, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, date_overrides, timezone, title, description, accent")
+        .select("slug, availability_json, duration_min, buffer_before_min, buffer_after_min, min_notice_min, booking_horizon_days, date_overrides, timezone, title, description, accent, theme")
         .eq("id", b.calendar_id).maybeSingle();
       if (c) {
         cal = c; slug = c.slug as string;
@@ -429,6 +429,7 @@ Deno.serve(async (req) => {
         booking: {
           id: b.id, title: apptName || (cal?.title as string) || b.title, start_at: b.start_at, status: b.status,
           guest_name: b.guest_name, timezone: b.timezone, slug, accent: (cal?.accent as string) || "#EBB94C",
+          theme: (cal?.theme as string) === "dark" ? "dark" : "light",
           durationMin, canModify: b.status === "scheduled",
           ...(withNames ? { with: withNames } : {}),
         },

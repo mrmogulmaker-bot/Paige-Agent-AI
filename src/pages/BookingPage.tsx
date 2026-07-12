@@ -40,9 +40,13 @@ type Brand = {
   locationType: string; locationValue: string | null; locationOptions: LocationOption[]; durationMin?: number;
   redirectUrl?: string | null; intakeQuestions?: IntakeQuestion[]; appointmentTypes?: AppointmentType[];
 };
+// Neutral placeholder shown only until the tenant's own branding loads — it must
+// NOT flash the platform master brand ("Paige Agent AI") on a tenant's public
+// page (§2/§6). Name is blank + hidden; the tenant's real name/accent override
+// on load, and a brand-less tenant simply shows no company name (never ours).
 const DEFAULT_BRAND: Brand = {
-  name: "Paige Agent AI", logoUrl: null, accent: "#EBB94C", title: null, description: null,
-  theme: "light", subtitle: null, showCompanyName: true, locationType: "google_meet", locationValue: null,
+  name: "", logoUrl: null, accent: "#EBB94C", title: null, description: null,
+  theme: "light", subtitle: null, showCompanyName: false, locationType: "google_meet", locationValue: null,
   locationOptions: [{ type: "google_meet", value: null }], redirectUrl: null, intakeQuestions: [], appointmentTypes: [],
 };
 
@@ -469,10 +473,10 @@ export default function BookingPage() {
         </button>
       )}
       <h2 className="text-base font-semibold mb-4" style={{ color: c.text }}>Select Date &amp; Time</h2>
-      {days.length === 0 ? (
-        <p className="text-sm" style={{ color: c.sub }}>No open times in the next two weeks. Please check back soon.</p>
-      ) : (
-        <div className="grid gap-6 lg:grid-cols-[1fr_170px]">
+      {/* The month grid + prev/next nav always render so a visitor with no
+          openings this month can still page forward to one — an empty window is
+          not a dead-end (audit fix). */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_170px]">
           {/* Month grid */}
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -512,6 +516,9 @@ export default function BookingPage() {
                 );
               })}
             </div>
+            {days.length === 0 && (
+              <p className="text-xs mt-3" style={{ color: c.sub }}>No open times this month — use the arrows to check later dates.</p>
+            )}
           </div>
           {/* Time slots — grouped Morning / Afternoon */}
           <div className="max-h-[360px] overflow-y-auto pr-1 space-y-4">
@@ -543,7 +550,6 @@ export default function BookingPage() {
             )}
           </div>
         </div>
-      )}
       {/* Time zone + clock format — re-buckets the slots above, no refetch */}
       <div className="mt-6 pt-4 space-y-2.5" style={{ borderTop: `1px solid ${c.border}` }}>
         <div className="flex items-center justify-between gap-3">
