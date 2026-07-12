@@ -15,6 +15,7 @@ interface Props {
   onCustomize: () => void;
   approvals: ApprovalQueueRow[];
   approvalsLoading: boolean;
+  tenantId: string | null;
 }
 
 export function PaigeRailSheet({ open, onOpenChange, ...rail }: Props) {

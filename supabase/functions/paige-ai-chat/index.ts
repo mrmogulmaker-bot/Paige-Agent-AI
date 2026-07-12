@@ -3384,6 +3384,7 @@ SUPPORT & FEEDBACK AWARENESS
     // When the signed-in user is an admin or coach, Paige gets full CRM
     // visibility tools (search contacts, read deals, list tasks, etc.).
     let isOperator = false;
+    let operatorRoleLabel = "";
     try {
       const { data: roleRows } = await supabase
         .from("user_roles")
@@ -3391,6 +3392,10 @@ SUPPORT & FEEDBACK AWARENESS
         .eq("user_id", user.id);
       const roles = (roleRows || []).map((r: any) => r.role);
       isOperator = roles.includes("admin") || roles.includes("coach");
+      // A short, human role phrase for the identity line (#139): she should know
+      // WHO she's talking to and in WHAT capacity, not just their name.
+      operatorRoleLabel = roles.includes("admin") ? "an admin/owner"
+        : roles.includes("coach") ? "a coach" : "";
     } catch (e) {
       console.warn("[paige-ai-chat] role lookup failed:", e);
     }
@@ -3410,7 +3415,7 @@ SUPPORT & FEEDBACK AWARENESS
           || (op?.full_name ?? "").trim();
       } catch (_e) { /* name is a nicety, never block */ }
       const whoLine = operatorName
-        ? `You are speaking with ${operatorName}${operatorFirst ? ` — address them as ${operatorFirst}` : ""}, a member of ${personaCtx?.tenant_name ?? "this"} team. This is a named teammate, not an anonymous user: greet and refer to them by their first name naturally, and remember it for this conversation.\n\n`
+        ? `You are speaking with ${operatorName}${operatorFirst ? ` — address them as ${operatorFirst}` : ""}, ${operatorRoleLabel ? `${operatorRoleLabel} on` : "a member of"} ${personaCtx?.tenant_name ?? "this"} team. This is a named teammate, not an anonymous user: greet and refer to them by their first name naturally, and remember it for this conversation.\n\n`
         : "";
       aiMessages.push({
         role: "system",
@@ -3474,6 +3479,101 @@ NEW CLIENT ONBOARDING — when a contact is added, proactively ask (grouped, 3�
 Ask only what's relevant, act on the yes's, and file the ones that need doing onto the action bus. If a capability isn't available yet, say what you'd do and note it's coming — don't go silent.
 === END CRM OPERATOR MODE ===`,
       });
+
+      // ── Paige Context Rail — live owner-side context (#139 identity + sender,
+      // §7 cross-surface hydration). Every block below is INDEPENDENTLY guarded and
+      // fully additive: any failure here is swallowed and NEVER blocks the chat turn.
+
+      // (2a) FOCUSED CLIENT — name who she's looking at, so "this client"/"her"/"him"
+      // resolves to a real person. Resolved from the clients row; falls back silently.
+      try {
+        if (payloadClientId) {
+          // JWT client (RLS-enforced): a foreign-tenant clientId returns nothing,
+          // so a body-supplied UUID from another tenant can never leak a name (§9).
+          const { data: fc } = await supabaseClient
+            .from("clients")
+            .select("first_name, last_name")
+            .eq("id", payloadClientId)
+            .maybeSingle();
+          const fcName = [fc?.first_name, fc?.last_name].filter(Boolean).join(" ").trim();
+          if (fcName) {
+            aiMessages.push({
+              role: "system",
+              content: `FOCUSED CLIENT: you are currently looking at ${fcName}'s file with ${operatorName || "the operator"}. When they say "this client", "her", or "him" without a name, they mean ${fcName} — refer to them by name.`,
+            });
+          }
+        }
+      } catch (e) { console.warn("[paige-ai-chat] focused-client injection skipped:", (e as Error)?.message); }
+
+      // (2b) SENDER IDENTITY — tell her which address her drafts send from (§15).
+      // Context only; does NOT change actual send behavior. tenant_sender_identity
+      // returns jsonb { from_name, from_address, reply_to, tenant_name, ... }.
+      try {
+        if (personaCtx?.tenant_id) {
+          const { data: senderRow } = await supabaseClient.rpc("tenant_sender_identity", { _tenant_id: personaCtx.tenant_id });
+          const s = (Array.isArray(senderRow) ? senderRow[0] : senderRow) as any;
+          if (s?.from_name && s?.from_address) {
+            aiMessages.push({
+              role: "system",
+              content: `When you draft an email for this workspace it sends from ${s.from_name} <${s.from_address}>. If the operator asks which address goes out, tell them that one — don't invent a different sender.`,
+            });
+          }
+        }
+      } catch (e) { console.warn("[paige-ai-chat] sender identity injection skipped:", (e as Error)?.message); }
+
+      // (1) HYDRATION — fold the focused client's recent rail (across portal,
+      // automations, calendar, other staff) into context so she's aware of
+      // cross-surface events. Rows come back newest-first; capped compact.
+      try {
+        if (payloadClientId) {
+          const { data: railRows } = await supabaseClient.rpc("get_client_rail", { p_contact_id: payloadClientId, p_limit: 20, p_lens: "coach" });
+          const rows = Array.isArray(railRows) ? railRows : [];
+          if (rows.length) {
+            const relTime = (iso: string): string => {
+              const t = Date.parse(iso ?? "");
+              if (!Number.isFinite(t)) return "recently";
+              const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+              if (mins < 1) return "just now";
+              if (mins < 60) return `${mins}m ago`;
+              const hrs = Math.round(mins / 60);
+              if (hrs < 24) return `${hrs}h ago`;
+              const days = Math.round(hrs / 24);
+              return days < 30 ? `${days}d ago` : `${Math.round(days / 30)}mo ago`;
+            };
+            // Never surface raw backend slugs (owner.crm_mutation, automation.fired…)
+            // to the operator (§11/§3). Map to human labels; title-case any unmapped tail.
+            const KIND_LABEL: Record<string, string> = {
+              "owner.command_issued": "Instruction from staff",
+              "owner.action_taken": "Paige took an action",
+              "owner.crm_mutation": "Record updated",
+              "client.message": "Client message",
+              "client.intake_answer": "Intake answer",
+              "client.field_extracted": "Detail captured",
+              "client.action_response": "Client responded",
+              "automation.fired": "Automation started",
+              "automation.completed": "Automation finished",
+              "mcp.command": "External command",
+              "comms.inbound": "Message received",
+              "comms.outbound": "Message sent",
+            };
+            const kindLabel = (k: string): string =>
+              KIND_LABEL[k] ?? (k?.split(".").pop() ?? "event").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+            const lines = rows.slice(0, 15).map((r: any) =>
+              `- ${kindLabel(String(r?.event_kind ?? ""))} — ${String(r?.title ?? "(no title)").replace(/\s+/g, " ").slice(0, 120)} (${relTime(r?.occurred_at)})`,
+            );
+            aiMessages.push({
+              role: "system",
+              content: `RECENT ACTIVITY ON THIS CLIENT (across all Paige surfaces — portal, automations, calendar, other staff), newest first:\n${lines.join("\n")}`,
+            });
+          }
+        }
+      } catch (e) { console.warn("[paige-ai-chat] rail hydration skipped:", (e as Error)?.message); }
+
+      // (owner.command_issued per-turn emit intentionally omitted: it fired on every
+      // focused-client turn regardless of whether anything happened, noising the rail
+      // with non-actionable "they typed something" rows. The truthful signal is the
+      // post-side-effect producer events below — a rail entry means Paige actually
+      // did something, not merely that the operator spoke.)
     }
 
     for (let i = 0; i < messages.length; i++) {
@@ -5819,6 +5919,64 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // burst-emitted as paige_step frames just before the answer. Never mutates the loop.
       const stepTrace: Array<{ id: string; round: number; seq: number; kind: "thought" | "action"; label: string; group: "owner" | "client" | "shared"; status: "done" | "error"; detail?: string; ts: number }> = [];
       let stepSeq = 0;
+
+      // ── PRODUCER (§8/§13) — mirror client-scoped operator mutations onto the
+      // client's context rail. Best-effort and fully NON-BLOCKING: every call is
+      // wrapped and fire-and-forget, so a rail-write failure can never touch the
+      // turn or the tool result. record_rail_event is the SOURCE OF TRUTH, so we
+      // only fire AFTER a tool actually returned success (§13 — a fire is not a
+      // delivery), and only when a real contact_id resolves (the rail is per-client;
+      // general/non-client actions are skipped). Labels reuse describeStep's
+      // jargon-free wording so the rail reads like the live trace.
+      const RAIL_CRM_TOOLS = new Set([
+        "crm_update_contact", "crm_create_contact", "crm_delete_contact", "crm_log_activity",
+        "crm_assign_contact", "crm_assign_coach", "crm_update_pipeline_stage", "program_enroll",
+      ]);
+      const RAIL_ACTION_TOOLS = new Set(["calendar_book_meeting", "crm_create_task"]);
+      const RAIL_REF_TABLE: Record<string, string> = {
+        crm_update_contact: "clients", crm_create_contact: "clients", crm_delete_contact: "clients",
+        crm_assign_contact: "clients", crm_assign_coach: "clients", crm_update_pipeline_stage: "clients",
+        program_enroll: "clients", crm_log_activity: "activities", crm_create_task: "tasks",
+        calendar_book_meeting: "calendar_events",
+      };
+      const resolveRailContactId = (args: any, out: any): string | null => {
+        // A bulk assign (client_ids[]) only maps cleanly to ONE rail when it's a
+        // single target; multi-target bulk ops don't fall back to the focused client.
+        if (Array.isArray(args?.client_ids)) {
+          return args.client_ids.length === 1 && typeof args.client_ids[0] === "string" ? args.client_ids[0] : null;
+        }
+        // Require an EXPLICIT contact reference from the tool itself — do NOT fall
+        // back to the focused client. A general task/note (crm_create_task,
+        // crm_log_activity) that carries no contact_id would otherwise be
+        // misattributed to whoever is focused (§13 truthfulness). Under-emit over
+        // mis-attribute: if the tool didn't name a contact, no rail event.
+        const cand = out?.contact_id ?? args?.contact_id ?? args?.client_id ?? null;
+        return typeof cand === "string" && cand ? cand : null;
+      };
+      const emitRailForTool = (tc: any, res: any, label: string): void => {
+        try {
+          const name: string = tc?.function?.name ?? "";
+          const isCrm = RAIL_CRM_TOOLS.has(name);
+          const isAction = RAIL_ACTION_TOOLS.has(name);
+          if (!isCrm && !isAction) return;
+          let args: any = {}; try { args = JSON.parse(tc?.function?.arguments ?? "{}"); } catch { /* ignore */ }
+          let out: any = {}; try { out = JSON.parse(res?.content ?? "{}"); } catch { /* ignore */ }
+          if (out?.success !== true) return; // never mirror a non-success
+          const contactId = resolveRailContactId(args, out);
+          if (!contactId) return; // rail is per-client — skip general/non-client actions
+          void supabaseClient.rpc("record_rail_event", {
+            p_contact_id: contactId,
+            p_event_kind: isCrm ? "owner.crm_mutation" : "owner.action_taken",
+            p_surface: "your_paige",
+            p_actor_type: "owner_staff",
+            p_title: label || "Updated the client",
+            p_summary: null,
+            p_ref_table: RAIL_REF_TABLE[name] ?? null,
+            p_ref_id: null,
+          }).then?.(({ error }: any) => { if (error) console.warn("[paige-ai-chat] rail producer non-fatal:", error.message); })
+            .catch?.((e: any) => console.warn("[paige-ai-chat] rail producer skipped:", e?.message));
+        } catch (e) { console.warn("[paige-ai-chat] rail producer skipped:", (e as Error)?.message); }
+      };
       // Collapse Paige's backstage narration into one short "thought" line for the
       // live panel: a thought is UNVETTED model text shown to the tenant, so we
       // fail SAFE — if it smells like an internal leak (tool/table snake_case, a
@@ -5920,6 +6078,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 } catch { /* keep ok */ }
                 const derived = describeStep(tc, res);
                 if (!derived) continue; // gated/stub calls dropped (never render as failure)
+                // Mirror a successful client-scoped mutation onto the rail (§8) —
+                // fire-and-forget, guarded, and only on real success (ok === true).
+                if (ok) emitRailForTool(tc, res, derived.label);
                 const st = {
                   id: `${round}:${tc.id}`, round, seq: ++stepSeq, kind: "action" as const,
                   label: derived.label, group: derived.group,

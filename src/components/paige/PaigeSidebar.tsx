@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CustomerSelector } from "./CustomerSelector";
 import { CustomerMiniCard } from "./CustomerMiniCard";
 import { LiveActionFeed } from "./LiveActionFeed";
+import { PaigeRailFeed } from "./PaigeRailFeed";
 import { PaigeWhosHere } from "./PaigeWhosHere";
 import type { FocusedClient } from "./commandCenterTypes";
 import type { ApprovalQueueRow } from "@/hooks/usePendingApprovals";
@@ -19,10 +20,12 @@ interface Props {
   onCustomize: () => void;
   approvals: ApprovalQueueRow[];
   approvalsLoading: boolean;
+  /** Active tenant id — powers the tenant-wide live rail strip. Null → placeholder. */
+  tenantId: string | null;
 }
 
 /** Customer selector + live action feed, natural height (no wrapper scroll/floor). */
-export function PaigeSidebarBody({ focused, onFocus, onClear, approvals, approvalsLoading }: Omit<Props, "onCustomize">) {
+export function PaigeSidebarBody({ focused, onFocus, onClear, approvals, approvalsLoading, tenantId }: Omit<Props, "onCustomize">) {
   return (
     <div className="space-y-3">
       {/* Customer selector */}
@@ -46,6 +49,11 @@ export function PaigeSidebarBody({ focused, onFocus, onClear, approvals, approva
       {/* Live action feed */}
       <div className="rounded-lg border bg-card/60 p-3">
         <LiveActionFeed approvals={approvals} approvalsLoading={approvalsLoading} focused={focused} />
+      </div>
+
+      {/* Across your clients — live (tenant-wide Context Rail, STEP 3) */}
+      <div className="rounded-lg border bg-card/60 p-3">
+        <PaigeRailFeed tenantId={tenantId} />
       </div>
     </div>
   );

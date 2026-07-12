@@ -210,6 +210,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
     onCustomize: () => openConsole("persona"),
     approvals: tenantApprovals,
     approvalsLoading,
+    tenantId: activeTenantId,
   };
 
   return (
