@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -165,8 +166,13 @@ export default function CalendarAdmin() {
   // dashed pills, distinct from bookings, and click through to the plan detail.
   const [planFrom, planTo] = useMemo(() => rangeFor(view, cursor), [view, cursor]);
   const planEnabled = tab === "calendar" || tab === "list";
+  // Widen the fetch window ±1 day: plan_list compares item date in the DB tz
+  // (UTC) against these date bounds, but the grid renders in the viewer's local
+  // zone. The extra day on each side prevents a positive-UTC-offset viewer from
+  // dropping an in-window item; the grid only draws events on days it renders.
   const { allItems: planItems, refresh: refreshPlans, userId: planUserId } = usePlanList({
-    scope: "mine", byItemDate: true, from: ymd(planFrom), to: ymd(planTo), enabled: planEnabled,
+    scope: "mine", byItemDate: true,
+    from: ymd(addDays(planFrom, -1)), to: ymd(addDays(planTo, 1)), enabled: planEnabled,
   });
   const [showTasks, setShowTasks] = useState(true);
   const [planDetail, setPlanDetail] = useState<PlanItem | null>(null);
@@ -184,9 +190,11 @@ export default function CalendarAdmin() {
         const d = itemDate(it);
         if (!d) return null;
         const overdue = !isClosed(it) && bucketOf(it) === "overdue";
+        // Open/upcoming items read at full strength (foreground) so they don't
+        // look disabled; overdue is destructive; only done/closed goes muted.
         const color = isClosed(it)
           ? "hsl(var(--muted-foreground))"
-          : overdue ? "hsl(var(--destructive))" : "hsl(var(--muted-foreground))";
+          : overdue ? "hsl(var(--destructive))" : "hsl(var(--foreground))";
         return {
           id: it.id,
           title: it.title,
@@ -285,24 +293,27 @@ export default function CalendarAdmin() {
                   const on = !hidden.has(c.id);
                   return (
                     <label key={c.id} className="flex items-center gap-2 cursor-pointer text-sm">
-                      <input type="checkbox" checked={on} onChange={() => toggleCal(c.id)} className="rounded" />
+                      <Checkbox checked={on} onCheckedChange={() => toggleCal(c.id)} />
                       <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c.color || c.accent || DEFAULT_COLOR }} />
                       <span className="truncate">{c.title || "Untitled"}</span>
                     </label>
                   );
                 })}
                 <label className="flex items-center gap-2 cursor-pointer text-sm pt-1 border-t border-border/60 mt-1">
-                  <input type="checkbox" checked={!hidden.has(UNASSIGNED)} onChange={() => toggleCal(UNASSIGNED)} className="rounded" />
+                  <Checkbox checked={!hidden.has(UNASSIGNED)} onCheckedChange={() => toggleCal(UNASSIGNED)} />
                   <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: DEFAULT_COLOR }} />
                   <span className="text-muted-foreground">Other / manual</span>
                 </label>
                 {/* Tasks & reminders overlay toggle — the plan_* items, shown as
-                    dashed pills alongside bookings. */}
+                    dashed pills alongside bookings (overdue in red). */}
                 <label className="flex items-center gap-2 cursor-pointer text-sm pt-1 border-t border-border/60 mt-1">
-                  <input type="checkbox" checked={showTasks} onChange={() => setShowTasks((v) => !v)} className="rounded" />
-                  <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 border-[1.5px]" style={{ borderColor: "hsl(var(--muted-foreground))" }} />
+                  <Checkbox checked={showTasks} onCheckedChange={() => setShowTasks((v) => !v)} />
+                  <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 border-[1.5px]" style={{ borderColor: "hsl(var(--foreground))" }} />
                   <span className="text-muted-foreground">Tasks &amp; reminders</span>
                 </label>
+                {showTasks && (
+                  <p className="pl-6 text-[11px] text-muted-foreground">Overdue shown in red.</p>
+                )}
               </CardContent>
             </Card>
           </div>

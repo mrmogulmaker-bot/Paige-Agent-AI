@@ -430,7 +430,7 @@ export default function ContactDetail() {
         </TabsContent>
 
         <TabsContent value="tasks">
-          <ContactPlanningPanel contactId={client.id} contactName={fullName || client.email || null} />
+          <ContactPlanningPanel contactId={client.id} contactName={fullName || client.email || null} linkedUserId={client.linked_user_id} />
         </TabsContent>
 
         <TabsContent value="notes">

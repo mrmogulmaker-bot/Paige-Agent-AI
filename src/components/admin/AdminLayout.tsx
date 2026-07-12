@@ -24,7 +24,6 @@ import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { useRoleLens } from "@/contexts/RoleLensContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
-import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PLATFORM } from "@/lib/platform/identity";
 
@@ -239,8 +238,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const { items: pendingApprovals } = usePendingApprovals({ scope: "all" });
-  const pendingCount = pendingApprovals.length;
   // When a multi-hat user picks the Coach lens, treat the UI as coach-scoped
   // even if their real role is admin. Real permissions still come from RLS.
   const effectiveRole: "admin" | "coach" =
@@ -363,10 +360,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               isActive(hub.href) ||
               (hub.children?.some((c) => isActive(c.href)) ?? false) ||
               (hub.aliases?.some((a) => isActive(a)) ?? false);
-            const showBadge =
-              (hub.href === "/admin/tasks" || hub.children?.some((c) => c.href === "/admin/approvals")) &&
-              pendingCount > 0;
-
 
             const pill = (
               <div
@@ -378,11 +371,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               >
                 <hub.icon className="w-4 h-4" />
                 <span>{hub.label}</span>
-                {showBadge && (
-                  <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] bg-accent text-accent-foreground">
-                    {pendingCount > 99 ? "99+" : pendingCount}
-                  </Badge>
-                )}
                 {hub.children && <ChevronDown className="w-3.5 h-3.5 opacity-70" />}
                 {hubActive && (
                   <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-t-full" />
@@ -414,11 +402,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                     >
                       <c.icon className="w-4 h-4 mr-2" />
                       {c.label}
-                      {c.href === "/admin/approvals" && pendingCount > 0 && (
-                        <Badge variant="secondary" className="ml-auto h-4 min-w-4 px-1 text-[10px] bg-accent text-accent-foreground">
-                          {pendingCount > 99 ? "99+" : pendingCount}
-                        </Badge>
-                      )}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
