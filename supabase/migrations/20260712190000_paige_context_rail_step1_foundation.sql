@@ -1,0 +1,244 @@
+-- Paige Context Rail — Step 1 foundation (task #152).
+--
+-- One brain, many surfaces: every Paige touchpoint (Your Paige, client-profile,
+-- client-portal, automations, MCP, calendar, support, …) writes what happened to
+-- ONE append-only, per-client + per-tenant rail, and reads it back so all Paige
+-- instances stay coherent (§7). This step ships the rail itself — the registry,
+-- the append-only event table, and the three callable-seam RPCs (§10) — with NO
+-- producers/consumers wired yet and NO realtime (that's Step 2). Verifiable in
+-- isolation via RPC alone. Additive; touches no existing surface.
+--
+-- Proven with rolled-back JWT-simulation isolation tests: staff sees all,
+-- client (even requesting coach lens) sees only client-visible, owner_internal
+-- leak to client = 0, cross-tenant row read = 0, cross-tenant write => 42501.
+
+-- ── (A) REGISTRY — open event-kind catalog (§9 platform-default vs tenant) ────
+CREATE TABLE IF NOT EXISTS public.paige_event_kinds (
+  slug               text PRIMARY KEY,
+  tenant_id          uuid REFERENCES public.tenants(id) ON DELETE CASCADE,   -- NULL = coaching-generic platform default
+  label              text NOT NULL,
+  description        text,
+  default_audience   text NOT NULL DEFAULT 'owner'  CHECK (default_audience   IN ('owner','client','both')),
+  default_visibility text NOT NULL DEFAULT 'owner_internal' CHECK (default_visibility IN ('owner_internal','client_visible')),
+  department         text REFERENCES public.paige_departments(slug),
+  enabled            boolean NOT NULL DEFAULT true,
+  created_at         timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.paige_event_kinds ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS event_kinds_read ON public.paige_event_kinds;
+CREATE POLICY event_kinds_read ON public.paige_event_kinds FOR SELECT TO authenticated
+  USING (tenant_id IS NULL OR tenant_id = public.current_user_tenant_id() OR public.is_platform_owner());
+REVOKE INSERT, UPDATE, DELETE ON public.paige_event_kinds FROM authenticated, anon;
+GRANT SELECT ON public.paige_event_kinds TO authenticated;
+
+INSERT INTO public.paige_event_kinds (slug, label, description, default_audience, default_visibility, department) VALUES
+  ('owner.command_issued', 'Command issued',      'An operator gave Paige an instruction.',                 'owner', 'owner_internal', 'owner_ops'),
+  ('owner.action_taken',   'Action taken',         'Paige took an action for the operator.',                 'owner', 'owner_internal', 'owner_ops'),
+  ('owner.crm_mutation',   'Record updated',       'Paige created or changed a CRM record.',                 'owner', 'owner_internal', 'owner_ops'),
+  ('client.message',       'Client message',       'The client said something to their Paige.',              'both',  'client_visible', 'client_experience'),
+  ('client.intake_answer', 'Intake answer',        'The client answered an onboarding/intake question.',     'both',  'client_visible', 'client_experience'),
+  ('client.field_extracted','Detail captured',     'Paige captured a detail from the client.',               'owner', 'owner_internal', 'client_experience'),
+  ('client.action_response','Client responded',    'The client responded to something Paige proposed.',      'both',  'client_visible', 'client_experience'),
+  ('automation.fired',     'Automation started',   'An automation began running for this client.',           'owner', 'owner_internal', 'owner_ops'),
+  ('automation.completed', 'Automation finished',  'An automation finished for this client.',                'owner', 'owner_internal', 'owner_ops'),
+  ('mcp.command',          'External command',     'A command arrived from an external tool.',               'owner', 'owner_internal', 'owner_ops'),
+  ('comms.inbound',        'Message received',     'An inbound message came in from the client.',            'both',  'client_visible', 'client_experience'),
+  ('comms.outbound',       'Message sent',         'A message was sent to the client.',                      'both',  'client_visible', 'client_experience')
+ON CONFLICT (slug) DO NOTHING;
+
+-- ── (B) THE RAIL — append-only per-client event stream ───────────────────────
+CREATE TABLE IF NOT EXISTS public.paige_client_events (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       uuid NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  contact_id      uuid NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+  event_kind      text NOT NULL REFERENCES public.paige_event_kinds(slug),
+  surface         text NOT NULL CHECK (surface IN ('your_paige','contact_paige','client_portal','automation','mcp')),
+  actor_type      text NOT NULL CHECK (actor_type IN ('owner_staff','client','paige_agent','automation','external')),
+  actor_user_id   uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  audience        text NOT NULL CHECK (audience IN ('owner','client','both')),
+  visibility      text NOT NULL CHECK (visibility IN ('owner_internal','client_visible')),
+  from_department text REFERENCES public.paige_departments(slug),
+  to_department   text REFERENCES public.paige_departments(slug),
+  title           text NOT NULL,
+  summary         text,
+  payload         jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ref_table       text,
+  ref_id          uuid,
+  occurred_at     timestamptz NOT NULL DEFAULT now(),
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS pce_tenant_contact_time_idx  ON public.paige_client_events (tenant_id, contact_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS pce_tenant_audience_time_idx ON public.paige_client_events (tenant_id, audience, occurred_at DESC);
+
+ALTER TABLE public.paige_client_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS pce_staff_read ON public.paige_client_events;
+CREATE POLICY pce_staff_read ON public.paige_client_events FOR SELECT TO authenticated
+  USING (
+    public.is_platform_owner()
+    OR (tenant_id = public.current_user_tenant_id()
+        AND public.has_any_role(auth.uid(), ARRAY['admin','super_admin','coach']))
+  );
+
+DROP POLICY IF EXISTS pce_client_read ON public.paige_client_events;
+CREATE POLICY pce_client_read ON public.paige_client_events FOR SELECT TO authenticated
+  USING (
+    audience IN ('client','both')
+    AND visibility = 'client_visible'
+    AND EXISTS (SELECT 1 FROM public.clients c WHERE c.id = contact_id AND c.linked_user_id = auth.uid())
+  );
+
+REVOKE INSERT, UPDATE, DELETE ON public.paige_client_events FROM authenticated, anon;
+GRANT SELECT ON public.paige_client_events TO authenticated;
+
+-- ── (C) WRITE SEAM — record_rail_event (§10 callable, §13 truthful) ──────────
+CREATE OR REPLACE FUNCTION public.record_rail_event(
+  p_contact_id       uuid,
+  p_event_kind       text,
+  p_surface          text,
+  p_actor_type       text,
+  p_title            text,
+  p_summary          text DEFAULT NULL,
+  p_payload          jsonb DEFAULT '{}'::jsonb,
+  p_ref_table        text DEFAULT NULL,
+  p_ref_id           uuid DEFAULT NULL,
+  p_from_department  text DEFAULT NULL,
+  p_to_department    text DEFAULT NULL,
+  p_occurred_at      timestamptz DEFAULT NULL,
+  p_narrow_to_owner  boolean DEFAULT false,
+  p_tenant_id        uuid DEFAULT NULL
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_uid       uuid := auth.uid();
+  v_tenant    uuid;
+  v_kind      public.paige_event_kinds%ROWTYPE;
+  v_audience  text;
+  v_visibility text;
+  v_actor     uuid;
+  v_id        uuid;
+BEGIN
+  IF v_uid IS NOT NULL THEN
+    v_tenant := public.current_user_tenant_id();
+    IF p_tenant_id IS NOT NULL AND p_tenant_id <> v_tenant THEN
+      RAISE EXCEPTION 'tenant mismatch' USING errcode = '42501';
+    END IF;
+  ELSE
+    IF p_tenant_id IS NULL THEN RAISE EXCEPTION 'p_tenant_id required for service caller'; END IF;
+    v_tenant := p_tenant_id;
+  END IF;
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'no tenant resolved'; END IF;
+
+  SELECT * INTO v_kind FROM public.paige_event_kinds
+    WHERE slug = p_event_kind AND enabled AND (tenant_id IS NULL OR tenant_id = v_tenant);
+  IF NOT FOUND THEN RAISE EXCEPTION 'unknown or unavailable event kind: %', p_event_kind; END IF;
+
+  PERFORM 1 FROM public.clients c WHERE c.id = p_contact_id AND c.tenant_id = v_tenant;
+  IF NOT FOUND THEN RAISE EXCEPTION 'contact not in tenant' USING errcode = '42501'; END IF;
+
+  v_audience   := CASE WHEN p_narrow_to_owner THEN 'owner' ELSE v_kind.default_audience END;
+  v_visibility := CASE WHEN v_audience = 'owner' THEN 'owner_internal' ELSE v_kind.default_visibility END;
+  v_actor      := CASE WHEN p_actor_type IN ('owner_staff','client') THEN v_uid ELSE NULL END;
+
+  INSERT INTO public.paige_client_events (
+    tenant_id, contact_id, event_kind, surface, actor_type, actor_user_id,
+    audience, visibility, from_department, to_department,
+    title, summary, payload, ref_table, ref_id, occurred_at
+  ) VALUES (
+    v_tenant, p_contact_id, p_event_kind, p_surface, p_actor_type, v_actor,
+    v_audience, v_visibility,
+    COALESCE(p_from_department, v_kind.department), p_to_department,
+    p_title, p_summary, COALESCE(p_payload, '{}'::jsonb), p_ref_table, p_ref_id,
+    COALESCE(p_occurred_at, now())
+  ) RETURNING id INTO v_id;
+
+  INSERT INTO public.audit_logs (user_id, action, entity, entity_id, data)
+  VALUES (v_uid, 'paige_rail_event', 'paige_client_events', v_id,
+          jsonb_build_object('kind', p_event_kind, 'surface', p_surface, 'contact_id', p_contact_id, 'audience', v_audience));
+
+  RETURN v_id;
+END $$;
+REVOKE ALL ON FUNCTION public.record_rail_event(uuid,text,text,text,text,text,jsonb,text,uuid,text,text,timestamptz,boolean,uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.record_rail_event(uuid,text,text,text,text,text,jsonb,text,uuid,text,text,timestamptz,boolean,uuid) TO authenticated, service_role;
+
+-- ── (D) HYDRATION READ — get_client_rail (lens-scoped, §7 coherence seam) ────
+CREATE OR REPLACE FUNCTION public.get_client_rail(
+  p_contact_id uuid,
+  p_limit      integer DEFAULT 50,
+  p_lens       text DEFAULT 'coach'
+) RETURNS TABLE (
+  id uuid, event_kind text, surface text, actor_type text, actor_user_id uuid,
+  audience text, visibility text, from_department text, to_department text,
+  title text, summary text, payload jsonb, ref_table text, ref_id uuid, occurred_at timestamptz
+)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_uid     uuid := auth.uid();
+  v_tenant  uuid;
+  v_is_staff boolean;
+  v_is_subject boolean;
+  v_lens    text;
+  v_limit   integer := LEAST(GREATEST(COALESCE(p_limit, 50), 1), 200);
+BEGIN
+  IF v_uid IS NULL THEN RETURN; END IF;
+  SELECT c.tenant_id INTO v_tenant FROM public.clients c WHERE c.id = p_contact_id;
+  IF v_tenant IS NULL THEN RETURN; END IF;
+
+  v_is_staff := public.is_platform_owner()
+             OR (v_tenant = public.current_user_tenant_id()
+                 AND public.has_any_role(v_uid, ARRAY['admin','super_admin','coach']));
+  v_is_subject := EXISTS (SELECT 1 FROM public.clients c WHERE c.id = p_contact_id AND c.linked_user_id = v_uid);
+
+  IF NOT v_is_staff AND NOT v_is_subject THEN RETURN; END IF;
+  v_lens := CASE WHEN v_is_staff AND p_lens IN ('coach','owner') THEN 'staff' ELSE 'client' END;
+
+  RETURN QUERY
+  SELECT e.id, e.event_kind, e.surface, e.actor_type, e.actor_user_id,
+         e.audience, e.visibility, e.from_department, e.to_department,
+         e.title, e.summary, e.payload, e.ref_table, e.ref_id, e.occurred_at
+  FROM public.paige_client_events e
+  WHERE e.contact_id = p_contact_id
+    AND (v_lens = 'staff'
+         OR (e.audience IN ('client','both') AND e.visibility = 'client_visible'))
+  ORDER BY e.occurred_at DESC
+  LIMIT v_limit;
+END $$;
+REVOKE ALL ON FUNCTION public.get_client_rail(uuid,integer,text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_client_rail(uuid,integer,text) TO authenticated, service_role;
+
+-- ── (E) RESOLVER — map phone/email/auth-uid to a contact within a tenant ─────
+CREATE OR REPLACE FUNCTION public.resolve_contact_id(
+  p_tenant  uuid,
+  p_phone   text DEFAULT NULL,
+  p_email   text DEFAULT NULL,
+  p_user_id uuid DEFAULT NULL
+) RETURNS uuid
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_uid    uuid := auth.uid();
+  v_tenant uuid;
+  v_id     uuid;
+BEGIN
+  IF v_uid IS NOT NULL THEN
+    v_tenant := public.current_user_tenant_id();
+    IF p_tenant IS NOT NULL AND p_tenant <> v_tenant THEN RETURN NULL; END IF;
+  ELSE
+    v_tenant := p_tenant;
+  END IF;
+  IF v_tenant IS NULL THEN RETURN NULL; END IF;
+
+  SELECT c.id INTO v_id FROM public.clients c
+  WHERE c.tenant_id = v_tenant
+    AND (
+      (p_user_id IS NOT NULL AND c.linked_user_id = p_user_id)
+      OR (p_email IS NOT NULL AND lower(c.email) = lower(p_email))
+      OR (p_phone IS NOT NULL AND regexp_replace(c.phone, '[^0-9]', '', 'g') = regexp_replace(p_phone, '[^0-9]', '', 'g'))
+    )
+  ORDER BY (p_user_id IS NOT NULL AND c.linked_user_id = p_user_id) DESC
+  LIMIT 1;
+  RETURN v_id;
+END $$;
+REVOKE ALL ON FUNCTION public.resolve_contact_id(uuid,text,text,uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.resolve_contact_id(uuid,text,text,uuid) TO authenticated, service_role;
