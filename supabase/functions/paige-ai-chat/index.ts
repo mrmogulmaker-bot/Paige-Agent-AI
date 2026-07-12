@@ -1394,8 +1394,14 @@ JSON:`;
         b.logo_dark_url && `Logo (for dark backgrounds): ${b.logo_dark_url}`,
         b.tagline && `Tagline: "${b.tagline}"`,
       ].filter(Boolean).join("\n");
-      if (!lines) return "";
-      return `\n\nBRAND — everything you design or build for ${tenant} (a landing page, an email, a form, an image, a document) MUST wear THIS brand, never a generic look and never the platform's. Use the primary color for headers and primary actions, the accent color ONLY for the act/approve moment, place the logo where a logo belongs, and call the product by its own name — never "Paige Agent AI." If a brand asset you need is missing, ask the owner for it rather than inventing an off-brand placeholder:\n${lines}`;
+      // The Brand Kit surface ALWAYS exists (Campaigns → Brand Kit) — a tenant
+      // uploads their logo, sets colors/font/name there and it cascades to
+      // everything Paige builds. Never tell the owner "there's no brand kit."
+      const kitPointer = `The owner can set or change any of this in their Brand Kit (Campaigns → Brand Kit) — logo (light/dark), colors, font, product name, tagline, sending identity — and it flows into everything you build. Point them there when a brand asset is missing; never say a brand kit doesn't exist.`;
+      if (!lines) {
+        return `\n\nBRAND — this workspace hasn't filled in its Brand Kit yet, so you don't have their logo/colors on hand. ${kitPointer} Until they do, keep anything you build clean and neutral and ASK for the asset you need rather than inventing an off-brand placeholder or defaulting to the platform's look.`;
+      }
+      return `\n\nBRAND — everything you design or build for ${tenant} (a landing page, an email, a form, an image, a document) MUST wear THIS brand, never a generic look and never the platform's. Use the primary color for headers and primary actions, the accent color ONLY for the act/approve moment, place the logo where a logo belongs, and call the product by its own name — never "Paige Agent AI." If a brand asset you need is missing, ask the owner for it rather than inventing an off-brand placeholder. ${kitPointer}\n${lines}`;
     }
 
     function buildPaigePersonaBlock(pb: any, tenantName: string, fundingOn: boolean, brand: Record<string, any> | null = null): string {
@@ -3438,7 +3444,7 @@ ADD SUB-AGENTS INTELLIGENTLY — one brain by default (give it tools, not more b
 
 BE A PROACTIVE ASSISTANT, NOT AN ORDER-TAKER. Never just execute the literal request and stop. Anticipate the natural next steps and offer them, and confirm before you commit anything. Three rules:
 1. PROPOSE → GET A YES → THEN ACT. For ANYTHING that creates or changes a record — a contact, a pipeline, a stage, a task, a booking, a role, saved content, an action — FIRST say in one plain line exactly what you intend to do and WAIT for the operator's yes. Do NOT silently call the tool to "just do it" and report after the fact — that is jumping the gun, and it is not allowed. The platform enforces this for you: when you call a mutating tool, it may come back with needs_confirm and a confirm_summary. When it does, read that summary back to the operator in plain words, ask them to confirm, and ONLY after they explicitly say yes call the SAME tool again with confirm:true. Some actions may be set to autopilot for this workspace (they run without the pause) — that is the operator's standing choice, never an assumption you make on your own. Anything outbound (an email, an SMS) is NEVER sent directly — you draft it and route it to the coach's approval lane.
-2. CONFIRM THE RESULT — AND NEVER FAKE ONE. Only say you did something ("Done — created…", "reminder set", "task assigned", "added to your calendar") when a TOOL you called THIS turn actually returned success. A claim of completion with no tool call behind it is a lie, and it is the worst thing you can do here — it destroys trust. If you do NOT have a tool for what they asked (e.g. you cannot find a reminder/calendar/task tool in your list), DO NOT pretend — say plainly "I can't do that one from here yet" and offer what you genuinely can do, or file it on the action bus so it's tracked. "It'll show up in your Task Manager / calendar" is only true if a tool actually put it there — never say it otherwise. Once an action really commits, confirm plainly in one line; never leave them guessing. For anything that SENDS (SMS/email/outbound), this is bound by AUTOMATION HONESTY: report fired vs delivered, and only say "sent" when delivered:true — never off a bare fire. The test before every "done": "Did a tool call this turn return success for exactly this? If not, I do not claim it happened."
+2. CONFIRM THE RESULT — AND NEVER FAKE ONE. Only say you did something ("Done — created…", "reminder set", "task assigned", "added to your calendar") when a TOOL you called THIS turn actually returned success. A claim of completion with no tool call behind it is a lie, and it is the worst thing you can do here — it destroys trust. You DO have real tools for reminders, planning, tasks, and booking (plan_set_reminder, plan_create/plan_assign_task/plan_add_milestone, crm_create_task, calendar_book_meeting) — USE them, then confirm off the tool's success. If there is genuinely no tool for what they asked, DO NOT pretend — say plainly "I can't do that one from here yet" and offer what you genuinely can do, or file it on the action bus so it's tracked. "It'll show up in your reminders / Task Manager / calendar" is only true if a tool actually put it there — never say it otherwise. Once an action really commits, confirm plainly in one line; never leave them guessing. For anything that SENDS (SMS/email/outbound), this is bound by AUTOMATION HONESTY: report fired vs delivered, and only say "sent" when delivered:true — never off a bare fire. The test before every "done": "Did a tool call this turn return success for exactly this? If not, I do not claim it happened."
 3. PROBE, THEN DRIVE. Then surface the obvious next moves as a short, tight menu of questions (not a wall of text).
 
 THE INNOVATIVE ASSISTANT — probe for specifics, weigh the client's experience, propose the better idea. You serve the human team; you don't silently guess what only a human knows, and you never hand over half-finished work full of [PLACEHOLDER]s as if it were done.
@@ -3446,6 +3452,12 @@ THE INNOVATIVE ASSISTANT — probe for specifics, weigh the client's experience,
 - WEIGH THE CLIENT IMPACT. Think about how the thing actually lands on the recipient — clarity, tone, how much effort it asks of them, whether it feels personal or generic. Most humans can't see that in advance; you can, so flag a better call when you spot one.
 - BE THE INNOVATIVE ONE — propose, don't just execute. Bring the idea they didn't ask for but would want: "Want me to come up with the angle?" · "Should this be a document, or a landing page so it presents better?" · "I can make it a form so the moment they fill it out, the answers come straight to you." · "What about a short questionnaire first?" · "Here's what I'd do — what do you think?" Offer the sharper format and the next move, tuned to what you were asked — then, on their yes, BUILD it with your team (design-studio for pages/visuals, forge a specialist, the automation fabric for a form that routes answers back, a document, whatever fits).
 - GROW THE PRACTICE'S BRAIN — with a yes. When you or an agent learn something reusable — a repeatable play, a domain fact, an answer to a recurring question — OFFER to keep it: "Want me to save this to your knowledge base?" and on their yes use save_to_knowledge_base (it's embedded, searchable, and stays yours). If it's a repeatable capability, offer to stand it up as a specialist (forge_subagent). Always confirmation-gated; tenant-scoped; coaching-generic unless this tenant's offer includes the topic.
+
+PLANNING & REMINDERS — you can actually plan work and set reminders that FIRE. This is the Siri-style "remind me to…" plus real team/individual planning. The tools:
+- plan_set_reminder — "remind me to follow up with Dana Friday 9am." Resolve the time they said into a concrete ISO timestamp WITH their timezone (never a vague time; if it's ambiguous, ask). It genuinely fires at that time — an in-app ping (and a branded email if they ask for email) — isolated to the person. A logged-in staffer can set their OWN reminder freely; aiming one at a teammate or the WHOLE TEAM is admin/coach only (resolve the teammate with crm_list_team first). A sales rep's "remind me to follow up with this lead" → set it, and if it's about a specific client pass their contact_id. When you set one, say so truthfully: "Reminder's locked in — it'll ping you Friday 9am." Because it really will.
+- plan_create + plan_add_milestone + plan_assign_task + plan_update_item + plan_remove_item + plan_list — map out a week / month / quarter / semiannual / year / custom range. When someone says "help me plan my week (or month/quarter)", DON'T just make a list — first ask the scope in one quick line: "Is this just for you, for the team, tied to a campaign, or a future workflow?" Then plan_create the plan and hang milestones/tasks/reminders on it. Individual weekly planning is the common entry point and ANY staffer can do their own; team plans, milestones, and assigning work to OTHERS are admin/coach. Assign campaign-rollout tasks to teammates with plan_assign_task (it also lands on the owner's action-bus queue). Use plan_list to answer "what's on my plate / show my week / what reminders do I have" and to resolve an id before you change something.
+- Everyone in the workspace now has a default "Meetings" calendar created automatically — so "add it to my calendar" / booking a meeting has a real home (use calendar_book_meeting). Never claim something's on the calendar unless a tool put it there.
+- REVISIT: when you see a milestone or reminder coming due in plan_list, it's fair game to nudge — "That Q3 launch milestone is next week — still on track, or want to move it?" You're the assistant who remembers.
 
 NEW CLIENT ONBOARDING — when a contact is added, proactively ask (grouped, 3–4 crisp questions, only those that apply):
 - OWNERSHIP: "Want me to assign her to someone — a coach, broker, admin, or sales rep?" (resolve the person, then set the assignment.)
@@ -4109,6 +4121,141 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "plan_set_reminder",
+              description: "Set a reminder — the Siri-style 'remind me to…' Files a real reminder that ACTUALLY FIRES at its time: an in-app ping (and a branded email if they ask for one), isolated to the person. ANY logged-in staffer can set one for themselves; only admins/coaches can aim a reminder at someone else or at the whole team. Resolve remind_at to a concrete ISO timestamp WITH timezone from what they said ('tomorrow 9am', 'in 2 hours', 'Friday') — never guess a vague time; if it's ambiguous, ask. For a teammate/client-rep reminder, resolve the person to their user id first (crm_list_team). Governed by the autonomy policy: unless set to auto, PROPOSE first ('Reminder set for Fri 9am — good?') and call again with confirm:true.",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string", description: "What to be reminded of, e.g. 'Follow up with Dana about her onboarding'." },
+                  remind_at: { type: "string", description: "Concrete ISO 8601 timestamp WITH offset, e.g. 2026-07-15T09:00:00-04:00. Resolve from the user's words + their timezone." },
+                  target: { type: "string", enum: ["user", "team"], description: "'user' = one person (default, themselves unless target_user_id given); 'team' = the whole active team. team needs admin/coach." },
+                  target_user_id: { type: "string", description: "Auth user UUID of the teammate to remind (admin/coach only). Omit for a self-reminder." },
+                  channel: { type: "string", enum: ["in_app", "email", "sms"], description: "How it fires. in_app (default) always lands in their feed; email also sends a branded note; sms is not wired yet (still pings in-app)." },
+                  summary: { type: "string", description: "Optional one-line detail shown with the reminder." }
+                },
+                required: ["title", "remind_at"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "plan_create",
+              description: "Create a plan the person (or team) can map work onto — a week, month, quarter, semiannual, year, or a custom date range. ANY staffer can create their OWN individual plan; a team plan needs admin/coach. Resolve starts_on/ends_on to concrete dates that match the horizon (e.g. a 'week' plan = Mon–Sun of the week they mean). After creating, you can hang milestones, tasks, and reminders on it. When someone says 'help me plan my week/month/quarter', create the plan first, then propose the items. Governed by the autonomy policy: unless auto, propose first, then confirm:true.",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string", description: "e.g. 'Antonio — Week of Jul 14' or 'Q3 Marketing Push'." },
+                  horizon: { type: "string", enum: ["week", "month", "quarter", "semiannual", "year", "custom"], description: "Planning horizon." },
+                  starts_on: { type: "string", description: "ISO date YYYY-MM-DD the plan window opens." },
+                  ends_on: { type: "string", description: "ISO date YYYY-MM-DD the plan window closes." },
+                  scope: { type: "string", enum: ["individual", "team"], description: "individual (default, this person) or team (needs admin/coach)." },
+                  owner_user_id: { type: "string", description: "Whose plan it is (admin/coach can create for another). Omit for self." },
+                  summary: { type: "string", description: "Optional description / intent of the plan." },
+                  campaign_ref: { type: "object", description: "Optional link to a campaign this plan drives, e.g. {name, id}." }
+                },
+                required: ["title", "horizon", "starts_on", "ends_on"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "plan_add_milestone",
+              description: "Add a milestone (a dated checkpoint) to a plan — 'landing page live', 'first 10 clients onboarded'. Admin/coach only (milestones are team markers). Resolve the plan id first (plan_list). Optionally assign it to a specific teammate. Governed by the autonomy policy: unless auto, propose first, then confirm:true.",
+              parameters: {
+                type: "object",
+                properties: {
+                  plan_id: { type: "string", description: "The plan to attach to (from plan_list)." },
+                  title: { type: "string", description: "The milestone, e.g. 'Campaign creative approved'." },
+                  summary: { type: "string", description: "Optional detail." },
+                  due_at: { type: "string", description: "Optional ISO timestamp the milestone is targeted for." },
+                  assigned_to_user_id: { type: "string", description: "Optional teammate responsible (auth user UUID)." },
+                  priority: { type: "string", enum: ["low", "normal", "high", "urgent"], description: "Defaults to normal." }
+                },
+                required: ["plan_id", "title"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "plan_assign_task",
+              description: "Assign a task to a teammate — the campaign-rollout / follow-up workhorse. Files the task AND (by default) routes it onto the two-team action bus so it shows in the owner's queue. ANY staffer can assign a task to THEMSELVES; assigning to someone ELSE needs admin/coach. Resolve the assignee to their auth user UUID first (crm_list_team). Optionally tie it to a plan, a milestone, or a client (contact_id) — e.g. 'a rep's follow-up with a lead'. Governed by the autonomy policy: unless auto, propose first, then confirm:true.",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string", description: "The task, e.g. 'Send week-2 check-in email to Dana'." },
+                  assigned_to_user_id: { type: "string", description: "Auth user UUID of who does it (from crm_list_team). For self, pass your own id or omit and note it's for you." },
+                  plan_id: { type: "string", description: "Optional plan to file it under." },
+                  milestone_id: { type: "string", description: "Optional milestone this task ladders up to." },
+                  due_at: { type: "string", description: "Optional ISO timestamp it's due." },
+                  priority: { type: "string", enum: ["low", "normal", "high", "urgent"], description: "Defaults to normal." },
+                  summary: { type: "string", description: "Optional detail." },
+                  contact_id: { type: "string", description: "Optional client (clients.id) this task is about — e.g. a follow-up with a specific lead/client." },
+                  campaign_ref: { type: "object", description: "Optional campaign link, e.g. {name, id}." }
+                },
+                required: ["title", "assigned_to_user_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "plan_update_item",
+              description: "Update a plan item (milestone, task, or reminder) — change its status ('done', 'in_progress', 'cancelled'), retitle it, move its due/reminder time, re-prioritize, or reassign. A person can update their OWN items; changing someone else's or reassigning needs admin/coach. Resolve the item id via plan_list. Governed by the autonomy policy: unless auto, propose first, then confirm:true.",
+              parameters: {
+                type: "object",
+                properties: {
+                  item_id: { type: "string", description: "The plan_item id (from plan_list)." },
+                  status: { type: "string", enum: ["open", "in_progress", "done", "cancelled", "blocked"], description: "New status." },
+                  title: { type: "string", description: "New title." },
+                  summary: { type: "string", description: "New detail." },
+                  due_at: { type: "string", description: "New ISO due timestamp (milestone/task)." },
+                  remind_at: { type: "string", description: "New ISO reminder timestamp (reminder items). Clears reminded state so it can fire again." },
+                  priority: { type: "string", enum: ["low", "normal", "high", "urgent"] },
+                  assigned_to_user_id: { type: "string", description: "Reassign to this auth user UUID (admin/coach)." }
+                },
+                required: ["item_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "plan_remove_item",
+              description: "Remove a plan item (milestone, task, or reminder) — cancels it and, if it was on the action bus, dismisses that action too. A person can remove their OWN items; removing someone else's needs admin/coach. Resolve the item id via plan_list. Governed by the autonomy policy: unless auto, propose first, then confirm:true.",
+              parameters: {
+                type: "object",
+                properties: {
+                  item_id: { type: "string", description: "The plan_item id to remove (from plan_list)." }
+                },
+                required: ["item_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "plan_list",
+              description: "Read plans and their items (milestones, tasks, reminders) for this workspace — the person sees their own plus any team plans; admins/coaches see all. Use to answer 'what's on my plate', 'show my week', 'what reminders do I have', or to resolve a plan/item id before updating it. Filter by horizon, a single plan, status, assignee, or a date window. Read-only.",
+              parameters: {
+                type: "object",
+                properties: {
+                  horizon: { type: "string", enum: ["week", "month", "quarter", "semiannual", "year", "custom"], description: "Only plans on this horizon." },
+                  plan_id: { type: "string", description: "Drill into one plan's items." },
+                  status: { type: "string", description: "Filter items by status." },
+                  assigned_to_user_id: { type: "string", description: "Only items assigned to this teammate." },
+                  from: { type: "string", description: "ISO date lower bound (plan window / item due)." },
+                  to: { type: "string", description: "ISO date upper bound." },
+                  limit: { type: "number", description: "Max rows (default 50)." }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "list_subagents",
               description: "Discover Paige's specialized sub-agents (Fundability Diagnostician, Legal & Compliance Reviewer, Business Credit Strategist, Funding Path Architect, Data Consistency Auditor, Market Research, Financial Research, Content Drafter, Intake Concierge, Sales Pipeline, Coach Copilot, Problem Reverse-Engineer). Use this FIRST when the user asks for deep analysis, audits, research, or anything beyond simple data lookups — then call delegate_to_subagent with the matching slug. AUTO-DELEGATION: when the user describes a problem, blocker, or 'why isn't X working' situation, immediately delegate_to_subagent with slug='problem-reverse-engineer' and pass {problem_statement: <verbatim user problem>, contact_id?: <if known>}. When you receive a root_cause_analysis result, embed the raw JSON inside a fenced code block tagged ```root-cause-analysis on its own line so the UI can render the Root-Cause card, then add a 2-3 sentence plainspoken summary underneath.",
               parameters: {
@@ -4367,6 +4514,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
       "n8n_run_workflow", "n8n_archive_workflow", "n8n_delete_workflow",
       "forge_subagent", "save_to_knowledge_base",
+      "plan_set_reminder", "plan_create", "plan_add_milestone",
+      "plan_assign_task", "plan_update_item", "plan_remove_item",
     ]);
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
@@ -4400,6 +4549,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       n8n_delete_workflow: "permanently deleting an automation",
       forge_subagent: "spinning up a new specialist agent",
       save_to_knowledge_base: "saving this to your knowledge base",
+      plan_set_reminder: "setting a reminder",
+      plan_create: "creating a plan",
+      plan_add_milestone: "adding a milestone",
+      plan_assign_task: "assigning a task",
+      plan_update_item: "updating a plan item",
+      plan_remove_item: "removing a plan item",
     };
 
     // A human one-liner of exactly what a mutating call will do — shown to the
@@ -4465,6 +4620,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `${a?.runtime === "hard" ? "Propose a new (code-backed) specialist" : "Spin up a new specialist"} — "${a?.name || a?.slug || "agent"}" (${a?.domain || "general"}): ${String(a?.description || "").slice(0, 80)}.${a?.runtime === "hard" ? " Goes to an admin for sign-off." : " Joins the team right away."}`;
         case "save_to_knowledge_base":
           return `Save "${a?.title || "this"}" to your knowledge base so Paige can draw on it later.`;
+        case "plan_set_reminder":
+          return `Set a reminder${a?.target === "team" ? " for the team" : a?.target_user_id ? " for a teammate" : ""}: "${a?.title || ""}"${a?.remind_at ? ` at ${a.remind_at}` : ""}${a?.channel && a.channel !== "in_app" ? ` (via ${a.channel})` : ""}. It will actually fire.`;
+        case "plan_create":
+          return `Create a ${a?.horizon || ""} plan "${a?.title || "Untitled"}"${a?.starts_on ? ` (${a.starts_on}${a?.ends_on ? `–${a.ends_on}` : ""})` : ""}${a?.scope === "team" ? " for the team" : ""}.`;
+        case "plan_add_milestone":
+          return `Add milestone "${a?.title || ""}"${a?.due_at ? ` due ${a.due_at}` : ""} to the plan.`;
+        case "plan_assign_task":
+          return `Assign task "${a?.title || ""}"${a?.due_at ? ` due ${a.due_at}` : ""} to a teammate${a?.contact_id ? " (about a client)" : ""}.`;
+        case "plan_update_item":
+          return `Update this plan item${a?.status ? ` → ${a.status}` : ""}${a?.remind_at ? ` (reminder moved to ${a.remind_at})` : a?.due_at ? ` (due ${a.due_at})` : ""}.`;
+        case "plan_remove_item":
+          return `Remove this plan item. If it was on the action bus, that action is dismissed too.`;
         default:
           return `Paige is ${TOOL_LABELS[name] || `running ${name}`}.`;
       }
@@ -5493,6 +5660,78 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, queued: true, approval_id: inserted.id, summary, note: "Filed in the operator's approvals queue — it will send once approved. Tell the user it's waiting on them." }) });
           } catch (e) {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "propose_action_error" }) });
+          }
+        } else if (
+          tc.function.name === "plan_set_reminder" ||
+          tc.function.name === "plan_create" ||
+          tc.function.name === "plan_add_milestone" ||
+          tc.function.name === "plan_assign_task" ||
+          tc.function.name === "plan_update_item" ||
+          tc.function.name === "plan_remove_item" ||
+          tc.function.name === "plan_list"
+        ) {
+          // Planning + reminders. Called with the CALLER's JWT (supabaseClient) so
+          // auth.uid() resolves inside each SECURITY DEFINER RPC — that's what the
+          // RPCs use to set the actor, enforce tenant isolation, and gate team/other
+          // actions to admin/coach (an individual can always plan their own work).
+          // tenant_id is also passed explicitly as a belt-and-suspenders match.
+          // These RPCs are the honest seam: a reminder filed here is a row the
+          // minute-cadence runner actually fires — no claim without a backing action.
+          try {
+            const args = JSON.parse(tc.function.arguments || "{}");
+            const tid = personaCtx?.tenant_id ?? null;
+            let rpcName = "", rpcArgs: Record<string, unknown> = {};
+            switch (tc.function.name) {
+              case "plan_set_reminder":
+                rpcName = "plan_set_reminder";
+                rpcArgs = { p_title: args.title, p_remind_at: args.remind_at, p_target: args.target ?? "user", p_target_user_id: args.target_user_id ?? null, p_channel: args.channel ?? "in_app", p_plan_id: args.plan_id ?? null, p_summary: args.summary ?? null, p_tenant_id: tid };
+                break;
+              case "plan_create":
+                rpcName = "plan_create";
+                rpcArgs = { p_title: args.title, p_horizon: args.horizon, p_starts_on: args.starts_on, p_ends_on: args.ends_on, p_scope: args.scope ?? "individual", p_owner_user_id: args.owner_user_id ?? null, p_summary: args.summary ?? null, p_campaign_ref: args.campaign_ref ?? null, p_tenant_id: tid };
+                break;
+              case "plan_add_milestone":
+                rpcName = "plan_add_milestone";
+                rpcArgs = { p_plan_id: args.plan_id, p_title: args.title, p_summary: args.summary ?? null, p_due_at: args.due_at ?? null, p_assigned_to_user_id: args.assigned_to_user_id ?? null, p_priority: args.priority ?? "normal", p_tenant_id: tid };
+                break;
+              case "plan_assign_task":
+                rpcName = "plan_assign_task";
+                rpcArgs = { p_title: args.title, p_assigned_to_user_id: args.assigned_to_user_id, p_plan_id: args.plan_id ?? null, p_milestone_id: args.milestone_id ?? null, p_due_at: args.due_at ?? null, p_priority: args.priority ?? "normal", p_summary: args.summary ?? null, p_contact_id: args.contact_id ?? null, p_campaign_ref: args.campaign_ref ?? null, p_file_to_bus: true, p_tenant_id: tid };
+                break;
+              case "plan_update_item":
+                rpcName = "plan_update_item";
+                rpcArgs = { p_item_id: args.item_id, p_status: args.status ?? null, p_title: args.title ?? null, p_summary: args.summary ?? null, p_due_at: args.due_at ?? null, p_remind_at: args.remind_at ?? null, p_priority: args.priority ?? null, p_assigned_to_user_id: args.assigned_to_user_id ?? null, p_tenant_id: tid };
+                break;
+              case "plan_remove_item":
+                rpcName = "plan_remove_item";
+                rpcArgs = { p_item_id: args.item_id, p_tenant_id: tid };
+                break;
+              case "plan_list":
+                rpcName = "plan_list";
+                rpcArgs = { p_horizon: args.horizon ?? null, p_plan_id: args.plan_id ?? null, p_status: args.status ?? null, p_assigned_to_user_id: args.assigned_to_user_id ?? null, p_from: args.from ?? null, p_to: args.to ?? null, p_limit: args.limit ?? 50, p_tenant_id: tid };
+                break;
+            }
+            const { data: rpcData, error: rpcErr } = await supabaseClient.rpc(rpcName, rpcArgs);
+            if (rpcErr) {
+              // Surface the real reason (PLAN_FORBIDDEN, missing time, etc.) — never
+              // claim success. The honesty rule depends on this being truthful.
+              const msg = String(rpcErr.message || "");
+              const friendly = msg.includes("PLAN_FORBIDDEN")
+                ? "You don't have permission for that — team-wide or someone-else's planning is admin/coach only; your own is always fine."
+                : msg.includes("PLAN_REMINDER_TIME_REQUIRED") ? "That reminder needs a concrete time — ask when to fire it."
+                : msg.includes("PLAN_ASSIGNEE_NOT_IN_TENANT") ? "That person isn't on this workspace's team."
+                : msg.includes("PLAN_NOT_IN_TENANT") || msg.includes("PLAN_ITEM_NOT_IN_TENANT") ? "That plan/item isn't in this workspace."
+                : msg;
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: friendly, note: "It did NOT happen — tell the operator plainly why; do not claim it was set." }) });
+            } else {
+              const note = tc.function.name === "plan_set_reminder"
+                ? "Reminder is set and WILL fire at its time (in-app; email too if asked). Tell the operator it's locked in."
+                : tc.function.name === "plan_list" ? undefined
+                : "Done and saved. Report exactly what was created/changed; never mention internal table/function names.";
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, ...(rpcData && typeof rpcData === "object" ? rpcData : { result: rpcData }), ...(note ? { note } : {}) }) });
+            }
+          } catch (e) {
+            toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: e instanceof Error ? e.message : "plan_error", note: "It did NOT happen — do not claim success." }) });
           }
         } else {
           toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: `Unknown tool: ${tc.function.name}` }) });
