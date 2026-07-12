@@ -4851,7 +4851,13 @@ app.all("/*", async (c) => {
   if (!actor) {
     return c.json({ error: "unauthorized" }, 401, {
       ...CORS,
-      "WWW-Authenticate": `Bearer realm="paige-mcp", resource_metadata="${APP_ORIGIN}/.well-known/oauth-protected-resource"`,
+      // Point the client at the origin that ACTUALLY serves the metadata — this
+      // function (PUBLIC_ORIGIN). It was pointing at APP_ORIGIN (paigeagent.ai),
+      // which doesn't serve /.well-known/*, so an external MCP client (Zoom) fetched
+      // the resource-metadata URL, got a 404, and failed discovery ("MCP client
+      // UNAUTHORIZED"). The metadata body already advertises authorization_endpoint
+      // on APP_ORIGIN (the in-app consent page), so the auth flow still lands there.
+      "WWW-Authenticate": `Bearer realm="paige-mcp", resource_metadata="${PUBLIC_ORIGIN}/.well-known/oauth-protected-resource"`,
     });
   }
 
