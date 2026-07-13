@@ -190,3 +190,9 @@ project_id = "xygzykjyynhzqytbqnzu"
   [functions.doctrine-201-language-sweep]
     verify_jwt = false
 
+  # Growth OS vibe-coding studio (#86): Paige drafts a branded landing page from a brief.
+  # JWT-gated like content-draft (the fn re-verifies the caller and role-gates to
+  # admin/coach/super_admin); pure draft, zero DB writes.
+  [functions.growth-page-draft]
+    verify_jwt = true
+
