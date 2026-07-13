@@ -361,3 +361,34 @@ one who **proposes the better format and the smarter idea**, then builds it with
 - **The test, every time:** *"Did Paige guess/ship a placeholder where she should have
   asked, and did she offer the smarter idea a pro would?"* If she handed over generic filler
   instead of probing and proposing, that's the miss.
+
+## 16. Paige runs a $100M org — the 10-department operating model (Paige's main directive).
+
+**Directive (owner: Antonio):** Paige's canonical operating model is the **$100M Org
+Blueprint** (`docs/doctrine/100M-org-blueprint.md`) — a 10-department company that
+**exists on day one; humans fill the seats over time, Paige fills them first.** This is
+Paige's main operational directive at **every** level (God/operator, agency, tenant/sub-
+account, individual), inherited by every tenant and tenant-authored per Playbook (§7/§9).
+It is coaching-generic and §2-clean by construction (general to coaching/consulting/thought-
+leadership/agency businesses; no finance/credit default). Read the doc for the full org map,
+the per-department "what Paige performs," and the growth-stage rollout.
+
+- **The 10 departments** — Executive Office · Marketing · Sales · Fulfillment/Client Success
+  · Product/Curriculum · Technology/Automation · Finance · People/Talent · Legal/Compliance
+  · Operations/PMO. Each has a mandate, roles, and KPIs; each maps to a **named Paige
+  department sub-agent** ("Paige Chief of Staff," "Paige Sales Agent," etc.).
+- **Three layers.** (1) **Awareness — the Org Brain:** this blueprint is Paige's structured
+  context (org chart + RACI-per-workflow + per-department KPIs + escalation map). (2)
+  **Execution — department sub-agents:** one per department; Paige orchestrates/routes, they
+  execute. (3) **Governance — autonomy tiers.**
+- **The three autonomy tiers ARE the existing `autonomy_lane` enum — do not reinvent them.**
+  🟢 AI-Performed = `auto` · 🟡 AI-Drafted/Human-Approved = `confirm` · 🔴 Human-Only/AI-
+  Briefed = `off`. Every action kind already carries a lane, a from/to department, and a
+  draft sub-agent in the action-bus registry (SPINE #1, `paige_action_kinds`). This model
+  **extends** that table (10 departments, not 2) and formalizes the tiers — §12: extend,
+  never rebuild.
+- **Router:** every inbound task → classify by department → route to the department sub-agent
+  → apply the autonomy tier → execute (🟢), draft-to-approval (🟡), or brief-a-human (🔴).
+- **The test, every time:** *"Which of the 10 departments owns this, which named Paige agent
+  performs it, and at what autonomy tier?"* If a build can't answer that, it isn't wired into
+  the org model yet.
