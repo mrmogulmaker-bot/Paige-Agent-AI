@@ -18,6 +18,7 @@ import {
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
+import { AccountSwitcher } from "@/components/admin/AccountSwitcher";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
@@ -360,6 +361,10 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
           {/* Desktop utilities */}
           <div className="hidden md:flex items-center gap-1">
+            {/* Agency-owner-only sub-account switcher (§9). Self-gates: renders
+                null unless the caller owns/admins an agency, so a plain
+                sub-account user never sees it. */}
+            <AccountSwitcher />
             <TenantSwitcher />
             <AdminBridgeBell />
 

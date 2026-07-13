@@ -42,6 +42,7 @@ import {
 import {
   MARKETPLACE_SKILLS, SKILL_CATEGORIES, type MarketplaceSkill,
 } from "@/lib/marketplace/skills";
+import { stashSwitchNotice } from "@/lib/agency/switchNotice";
 
 // Catalog icons resolve here (the catalog stores a lucide name, §platform-owned).
 const ICONS: Record<string, LucideIcon> = { TrendingUp, Palette, Mic, Workflow: WorkflowIcon };
@@ -66,9 +67,11 @@ const asSlugs = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
 
 export default function AgencyBoard() {
-  const { activeTenant, activeTenantId, switchTenant } = useTenantContext();
+  const { activeTenant, activeTenantId } = useTenantContext();
 
   const [subs, setSubs] = useState<SubAccount[]>([]);
+  // Which child we're entering (drives the row's Open-button spinner).
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<Record<string, ChildMetrics>>({});
   const [loading, setLoading] = useState(true);
   const [metricsLoading, setMetricsLoading] = useState(false);
@@ -166,11 +169,30 @@ export default function AgencyBoard() {
     }
   };
 
-  const openChild = async (childId: string) => {
-    // Persist the active tenant, then hard-navigate so every consumer of the
-    // tenant context re-reads it fresh (same pattern SubAccountsPanel uses).
-    await switchTenant(childId);
-    window.location.assign("/admin");
+  const openChild = async (child: SubAccount) => {
+    // Enter the sub-account through the parentage-gated RPC (§9/§10): it grants
+    // the agency admin a membership row on the child (so child-scoped RLS lets
+    // them work) AND sets active_tenant_id = child in one authenticated call —
+    // strictly more correct than a bare active_tenant_id write, which would
+    // leave the admin unable to read the child under RLS. Then hard-navigate so
+    // every per-instance tenant context re-reads the new scope (switchNotice.ts).
+    if (switchingId) return;
+    setSwitchingId(child.id);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await supabase.rpc("agency_enter_subaccount" as any, { _child: child.id });
+      if (error) throw error;
+      stashSwitchNotice(`Now managing ${child.name}.`);
+      window.location.assign("/admin");
+    } catch (e) {
+      const code = (e as { code?: string } | null)?.code;
+      toast.error(
+        code === "42501"
+          ? "You can't manage that account."
+          : e instanceof Error ? e.message : "Couldn't open that sub-account",
+      );
+      setSwitchingId(null);
+    }
   };
 
   const toggleItem = async (item: MarketplaceSkill, on: boolean) => {
@@ -361,9 +383,15 @@ export default function AgencyBoard() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={(e) => { e.stopPropagation(); openChild(s.id); }}
+                    disabled={switchingId === s.id}
+                    onClick={(e) => { e.stopPropagation(); openChild(s); }}
                   >
-                    <ArrowRightLeft className="mr-1.5 h-3.5 w-3.5" /> Open
+                    {switchingId === s.id ? (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <ArrowRightLeft className="mr-1.5 h-3.5 w-3.5" />
+                    )}
+                    Open
                   </Button>
                 </TableCell>
               </TableRow>
