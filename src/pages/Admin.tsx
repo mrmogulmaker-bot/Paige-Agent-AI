@@ -24,6 +24,7 @@ const lazy = <T extends React.ComponentType<any>>(factory: () => Promise<{ defau
 import { useNavigate, Routes, Route, useParams, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
 import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
@@ -53,6 +54,32 @@ const PlatformStaffOnly = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+/**
+ * Agency-tier gate: only tenants whose account_type is 'agency'/'enterprise'
+ * reach the Agency Board (§9 — an agency manages/resells to its OWN children).
+ * Standalone tenants get a graceful upgrade nudge instead of a dead 404.
+ */
+const AgencyOnly = ({ children }: { children: React.ReactNode }) => {
+  const { loading, activeTenant } = useTenantContext();
+  const isAgency = activeTenant?.account_type === "agency" || activeTenant?.account_type === "enterprise";
+  if (loading) return <div className="p-6 text-sm text-muted-foreground animate-pulse">Checking access…</div>;
+  if (!isAgency) {
+    return (
+      <div className="max-w-md mx-auto mt-12 rounded-lg border border-border bg-card p-6 text-center">
+        <h2 className="text-lg font-semibold mb-1">Upgrade to Agency</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          The Agency Board lets you run sub-accounts and resell platform capabilities onto them.
+          Turn on Agency in your workspace settings to unlock it.
+        </p>
+        <Button asChild variant="gold" size="sm">
+          <a href="/admin/settings">Go to Settings</a>
+        </Button>
+      </div>
+    );
+  }
+  return <>{children}</>;
+};
+
 
 // Lazy-load admin sub-pages
 const ClientManagementDashboard = lazy(() => import("@/components/dashboard/ClientManagementDashboard").then(m => ({ default: m.ClientManagementDashboard })));
@@ -71,6 +98,7 @@ const Marketplace = lazy(() => import("@/pages/admin/Marketplace"));
 const PlatformTenants = lazy(() => import("@/pages/admin/PlatformTenants"));
 const PlatformTeam = lazy(() => import("@/pages/admin/PlatformTeam"));
 const PlatformSendingIdentities = lazy(() => import("@/pages/admin/PlatformSendingIdentities"));
+const AgencyBoard = lazy(() => import("@/pages/admin/AgencyBoard"));
 const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformance").then(m => ({ default: m.UserPerformance })));
 const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
 const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
@@ -583,6 +611,9 @@ const Admin = () => {
         } />
         <Route path="funding-lens" element={
           <FundingRoute><Suspense fallback={<SuspenseFallback />}><FundingLensHub /></Suspense></FundingRoute>
+        } />
+        <Route path="agency" element={
+          <AgencyOnly><Suspense fallback={<SuspenseFallback />}><AgencyBoard /></Suspense></AgencyOnly>
         } />
         <Route path="platform/tenants" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformTenants /></Suspense></PlatformStaffOnly>

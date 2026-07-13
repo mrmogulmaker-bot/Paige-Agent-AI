@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, Network,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -224,7 +224,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const navigate = useNavigate();
   const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
-  const { isPlatformOwner, isPlatformStaff } = useTenantContext();
+  const { isPlatformOwner, isPlatformStaff, activeTenant } = useTenantContext();
   // Funding surfaces are an opt-in tenant offer (§2/§9) — hidden unless this
   // tenant has chosen the funding preset (which flips the funding_readiness
   // feature). Generic coaching/consulting/agency tenants never see them.
@@ -232,8 +232,22 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // Platform staff (owner + Platform Admin) run the God console — its own nav of
   // fleet/platform concerns, not the agency CRM hubs.
   const godMode = isPlatformStaff;
+  // Agency-tier tenants get a dedicated "Agency" hub (§9) — their own sub-account
+  // roster + the resell surface. Standalone tenants and the God console never see
+  // it. Injected after the Marketplace hub so it reads as a peer capability tab.
+  const isAgencyTenant =
+    !godMode && (activeTenant?.account_type === "agency" || activeTenant?.account_type === "enterprise");
+  const tenantHubs = isAgencyTenant
+    ? (() => {
+        const marketIdx = hubs.findIndex((h) => h.href === "/admin/marketplace");
+        const agencyHub: Hub = { label: "Agency", href: "/admin/agency", icon: Network };
+        const next = [...hubs];
+        next.splice(marketIdx >= 0 ? marketIdx + 1 : next.length, 0, agencyHub);
+        return next;
+      })()
+    : hubs;
   const FUNDING_NAV_HREFS = new Set(["/admin/funding", "/admin/funding-pipeline", "/admin/funding-lens"]);
-  const activeHubs = (godMode ? (isPlatformOwner ? GOD_HUBS : GOD_STAFF_HUBS) : hubs).map((h) =>
+  const activeHubs = (godMode ? (isPlatformOwner ? GOD_HUBS : GOD_STAFF_HUBS) : tenantHubs).map((h) =>
     fundingEnabled ? h : { ...h, children: h.children?.filter((c) => !FUNDING_NAV_HREFS.has(c.href)) }
   );
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
@@ -271,7 +285,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
   const currentSection = godMode
     ? (activeHubs.find((i) => isActive(i.href))?.label ?? "Platform")
-    : (adminNavItems.find((i) => isActive(i.href))?.label ?? "Admin");
+    : (adminNavItems.find((i) => isActive(i.href))?.label
+        ?? activeHubs.find((i) => isActive(i.href))?.label
+        ?? "Admin");
 
   return (
     <div className="h-dvh flex flex-col bg-background overflow-hidden">
